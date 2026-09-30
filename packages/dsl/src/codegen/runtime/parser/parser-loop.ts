@@ -325,7 +325,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                     if (!gotoAccepts && token >= 0 && token <= MAX_TERMINAL_ID) {
                       let checkTok = token == TOKEN_EOF ? 0 : token;
                       let dist = reachability_matrix[gotoState * (MAX_TERMINAL_ID + 1) + checkTok];
-                      if (dist < 250) gotoAccepts = true;
+                      if (dist == 0) gotoAccepts = true;
                     }
                     if (gotoAccepts) {
                       // Force ε-reduction: create empty list, push via goto.
@@ -382,7 +382,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
               let dist = reachability_matrix[currentState * (MAX_TERMINAL_ID + 1) + checkTok];
-              if (dist < 250) canAccept = true;
+              if (dist == 0) canAccept = true;
             }
             if (canAccept) {
               let suffix = extractListSlice(oldListRoot, oldListStart, oldSrcLexPos, 0xffffffff, headSym as u16, 0);
@@ -421,7 +421,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
               let dist = reachability_matrix[currentState * (MAX_TERMINAL_ID + 1) + checkTok];
-              if (dist < 250) canAccept = true;
+              if (dist == 0) canAccept = true;
             }
             if (canAccept) {
               let combined = concatLists(lastNode, prefixSlice, headSym as u16, 0);
@@ -470,7 +470,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
               let dist = reachability_matrix[currentState * (MAX_TERMINAL_ID + 1) + checkTok];
-              if (dist < 250) {
+              if (dist == 0) {
                 canAccept = true;
               }
             }
@@ -532,7 +532,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
               let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
-              if (dist < 250) {
+              if (dist == 0) {
                 canAccept = true;
               }
             }
@@ -4147,7 +4147,7 @@ export function advanceGLR(): void {
           if (canAccept == 0 && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
             let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
             let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
-            if (dist < 250) {
+            if (dist == 0) {
               canAccept = 1;
             }
           }

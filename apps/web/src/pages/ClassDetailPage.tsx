@@ -101,10 +101,19 @@ const HeaderBar = styled.div`
 `;
 
 const glassCard = css`
-  background: var(--color-glass-bg);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-glass-border);
-  border-radius: 8px;
+  background: var(--color-bg-card, rgba(15, 23, 42, 0.65));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
+  border-radius: 14px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow:
+      0 8px 24px -6px rgba(0, 0, 0, 0.5),
+      0 0 16px rgba(139, 92, 246, 0.12);
+  }
 `;
 
 const GlassCard = styled.div`

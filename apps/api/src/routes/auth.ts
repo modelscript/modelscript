@@ -2,75 +2,238 @@
 /* eslint-disable */
 
 import bcrypt from "bcryptjs";
-import type { Request, Response, Router } from "express";
-import { Router as createRouter } from "express";
+import express, { Router as createRouter, type Request, type Response, type Router } from "express";
 import jwt from "jsonwebtoken";
 
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, requireAuth } from "../middleware/auth-middleware.js";
+
+import { defaultRegistrationLimiter } from "../middleware/registration-limiter.js";
+import { defaultMailer } from "../services/mailer.js";
+import { defaultOidcService } from "../services/oidc.js";
+import { verifyCaptchaToken } from "../util/captcha.js";
+import { enforceExportCompliance } from "../util/compliance.js";
+import { isDisposableEmail } from "../util/email-filter.js";
+import { signEmailVerificationToken, verifyEmailVerificationToken } from "../util/email-verification.js";
 
 export function authRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 
   /**
    * POST /api/v1/auth/register
+   *
+   * Hardened registration with anti-Sybil defense:
+   * - Terms of Service & Acceptable Use Policy agreement audit trail
+   * - Bot mitigation via Cloudflare Turnstile captcha
+   * - Disposable / temporary email blocking
+   * - IP velocity rate limiting
+   * - Proof-of-personhood: free tier compute credits withheld until email verification
    */
-  router.post("/register", async (req: Request, res: Response): Promise<void> => {
-    const { username, email, password } = req.body;
+  router.post(
+    "/register",
+    enforceExportCompliance(() => database),
+    async (req: Request, res: Response): Promise<void> => {
+      const { username, email, password, acceptTerms, captchaToken } = req.body;
 
-    if (!username || !email || !password) {
-      res.status(400).json({ error: "Username, email, and password are required" });
-      return;
-    }
+      // 1. Audit trail: Terms of Service agreement
+      if (acceptTerms !== true) {
+        res.status(400).json({
+          error: "You must accept the Terms of Service and Acceptable Use Policy to register",
+        });
+        return;
+      }
 
-    if (typeof username !== "string" || username.length < 3) {
-      res.status(400).json({ error: "Username must be at least 3 characters" });
-      return;
-    }
+      // 2. IP Velocity Limiting
+      const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+      const rateCheck = defaultRegistrationLimiter.check(clientIp);
+      if (!rateCheck.allowed) {
+        res.status(429).json({
+          error: "Too many registration attempts. Please try again later.",
+          retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+        });
+        return;
+      }
 
-    if (typeof password !== "string" || password.length < 8) {
-      res.status(400).json({ error: "Password must be at least 8 characters" });
-      return;
-    }
+      if (!username || !email || !password) {
+        res.status(400).json({ error: "Username, email, and password are required" });
+        return;
+      }
 
-    const emailRegex =
-      /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    if (!emailRegex.test(email)) {
-      res.status(400).json({ error: "Invalid email address" });
+      if (typeof username !== "string" || username.length < 3) {
+        res.status(400).json({ error: "Username must be at least 3 characters" });
+        return;
+      }
+
+      if (typeof password !== "string" || password.length < 8) {
+        res.status(400).json({ error: "Password must be at least 8 characters" });
+        return;
+      }
+
+      const emailRegex =
+        /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+      if (!emailRegex.test(email)) {
+        res.status(400).json({ error: "Invalid email address" });
+        return;
+      }
+
+      // 3. Anti-Sybil: Reject disposable / temporary burner emails
+      if (isDisposableEmail(email)) {
+        res.status(403).json({
+          error: "Disposable and temporary email addresses are not permitted. Please use a permanent email address.",
+        });
+        return;
+      }
+
+      // 4. Bot mitigation: Cloudflare Turnstile / Captcha validation
+      const captcha = await verifyCaptchaToken(captchaToken, clientIp);
+      if (!captcha.success) {
+        res.status(400).json({ error: captcha.error || "Captcha verification failed" });
+        return;
+      }
+
+      try {
+        const existing = database.getUserByEmail(email);
+        if (existing) {
+          res.status(409).json({ error: "An account with this email already exists" });
+          return;
+        }
+
+        const existingUsername = database.getUserByUsername(username);
+        if (existingUsername) {
+          res.status(409).json({ error: "This username is already taken" });
+          return;
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create user with compute credits withheld until verification
+        const user = database.createUser(username, email, passwordHash, {
+          emailVerified: false,
+          initialCredits: 0.0,
+          status: "pending_verification",
+          termsAcceptedAt: new Date().toISOString(),
+          registrationIp: clientIp,
+        });
+
+        // Record successful registration for IP velocity limit
+        defaultRegistrationLimiter.record(clientIp);
+
+        const token = jwt.sign({ id: user.id, username: user.username, email: user.email }, JWT_SECRET, {
+          expiresIn: "7d",
+        });
+
+        const verificationToken = signEmailVerificationToken(user.id, user.email);
+
+        // Asynchronously dispatch verification email
+        void defaultMailer.sendVerificationEmail(user.email, user.username, verificationToken).catch((err) => {
+          console.error("[Auth] Failed to dispatch verification email:", err);
+        });
+
+        const { password_hash: _, github_token, gitlab_token, ...safeUser } = user as any;
+
+        // In production mode, never expose verificationToken in the JSON response payload
+        const isProduction = process.env["NODE_ENV"] === "production";
+        const tokenPayload = isProduction ? undefined : verificationToken;
+
+        res.status(201).json({
+          token,
+          user: safeUser,
+          ...(tokenPayload ? { verificationToken: tokenPayload } : {}),
+          verificationRequired: true,
+          message:
+            "Account created successfully. Please verify your email address to unlock your free tier compute credits.",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Registration failed";
+        res.status(500).json({ error: message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/v1/auth/resend-verification
+   *
+   * Resends email verification link to unverified accounts.
+   */
+  router.post("/resend-verification", express.json(), async (req: Request, res: Response) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "Email address is required" });
       return;
     }
 
     try {
-      const existing = database.getUserByEmail(email);
-      if (existing) {
-        res.status(409).json({ error: "An account with this email already exists" });
+      const user = database.getUserByEmail(email.toLowerCase().trim());
+      // Return 200 even if user not found to prevent user enumeration
+      if (!user) {
+        res.status(200).json({
+          message: "If an account exists with this email address, a verification link has been sent.",
+        });
         return;
       }
 
-      const existingUsername = database.getUserByUsername(username);
-      if (existingUsername) {
-        res.status(409).json({ error: "This username is already taken" });
+      if (user.email_verified === 1) {
+        res.status(400).json({ error: "Email address is already verified" });
         return;
       }
 
-      const passwordHash = await bcrypt.hash(password, 10);
-      const user = database.createUser(username, email, passwordHash);
+      const verificationToken = signEmailVerificationToken(user.id, user.email);
+      await defaultMailer.sendVerificationEmail(user.email, user.username, verificationToken);
 
-      const token = jwt.sign({ id: user.id, username: user.username, email: user.email }, JWT_SECRET, {
-        expiresIn: "7d",
+      const isProduction = process.env["NODE_ENV"] === "production";
+      const tokenPayload = isProduction ? undefined : verificationToken;
+
+      res.status(200).json({
+        message: "If an account exists with this email address, a verification link has been sent.",
+        ...(tokenPayload ? { verificationToken: tokenPayload } : {}),
       });
-
-      const { password_hash: _, github_token, gitlab_token, ...safeUser } = user as any;
-
-      res.status(201).json({
-        token,
-        user: safeUser,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Registration failed";
-      res.status(500).json({ error: message });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to resend verification email" });
     }
   });
+
+  /**
+   * GET/POST /api/v1/auth/verify-email
+   *
+   * Verifies email address using signed HMAC token and unlocks 50 free compute credits.
+   */
+  const handleVerifyEmail = async (req: Request, res: Response): Promise<void> => {
+    const token = ((req.body?.token || req.query["token"]) as string) || "";
+
+    if (!token) {
+      res.status(400).json({ error: "Email verification token is required" });
+      return;
+    }
+
+    const verification = verifyEmailVerificationToken(token);
+    if (!verification.valid || !verification.userId) {
+      res.status(400).json({ error: verification.error || "Invalid or expired email verification token" });
+      return;
+    }
+
+    const result = database.verifyUserEmail(verification.userId, 50.0);
+    if (!result.success || !result.user) {
+      res.status(404).json({ error: "User account not found or email verification failed" });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Email address verified successfully. Free tier compute credits unlocked!",
+      creditsGranted: result.creditsGranted,
+      user: {
+        id: result.user.id,
+        username: result.user.username,
+        email: result.user.email,
+        email_verified: result.user.email_verified,
+        status: result.user.status,
+        credit_balance: result.user.credit_balance,
+      },
+    });
+  };
+
+  router.get("/verify-email", handleVerifyEmail);
+  router.post("/verify-email", handleVerifyEmail);
 
   /**
    * POST /api/v1/auth/login
@@ -289,6 +452,61 @@ export function authRouter(database: LibraryDatabase): Router {
     } catch (err) {
       console.error("OAuth callback error:", err);
       res.redirect(`http://localhost:3000/login?error=OAuthFailed`);
+    }
+  });
+
+  // ── Enterprise OpenID Connect (OIDC / SSO) ──
+  router.get("/oidc/config", (_req: Request, res: Response) => {
+    res.json({
+      enabled: defaultOidcService.isConfigured(),
+      issuer: process.env["OIDC_ISSUER_URL"] || null,
+      adminGroup: process.env["OIDC_ADMIN_GROUP"] || "Engineering-Admins",
+    });
+  });
+
+  router.get("/oidc/login", (_req: Request, res: Response) => {
+    if (!defaultOidcService.isConfigured()) {
+      res.status(501).json({ error: "Enterprise OIDC is not configured on this node" });
+      return;
+    }
+    const state = Math.random().toString(36).substring(2);
+    const nonce = Math.random().toString(36).substring(2);
+    const authUrl = defaultOidcService.getAuthorizationUrl(state, nonce);
+    res.redirect(authUrl);
+  });
+
+  router.get("/oidc/callback", async (req: Request, res: Response) => {
+    const { code } = req.query;
+    if (!code || typeof code !== "string") {
+      res.status(400).json({ error: "Authorization code is required" });
+      return;
+    }
+
+    try {
+      const { idToken } = await defaultOidcService.exchangeCode(code);
+      const claims = defaultOidcService.extractClaims(idToken);
+      const result = await defaultOidcService.handleOidcLogin(database, claims);
+
+      const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
+      res.redirect(`${frontendUrl}/oauth/callback?token=${result.token}`);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "OIDC authentication failed" });
+    }
+  });
+
+  router.post("/oidc/token", express.json(), async (req: Request, res: Response) => {
+    const { idToken } = req.body || {};
+    if (!idToken || typeof idToken !== "string") {
+      res.status(400).json({ error: "idToken is required" });
+      return;
+    }
+
+    try {
+      const claims = defaultOidcService.extractClaims(idToken);
+      const result = await defaultOidcService.handleOidcLogin(database, claims);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || "Invalid OIDC token payload" });
     }
   });
 

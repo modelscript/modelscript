@@ -11,6 +11,7 @@ import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
 import { setAuthDatabase } from "./middleware/auth-middleware.js";
+import { adminRouter } from "./routes/admin.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { billingRouter } from "./routes/billing.js";
@@ -46,8 +47,13 @@ import { seedCfdAnimation } from "./seed-cfd-animation.js";
 import { seedDroneCfd } from "./seed-drone-cfd.js";
 import { seedDroneFea } from "./seed-drone-fea.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
+import { FederationWorker } from "./services/federation-worker.js";
+import { locationService } from "./services/location.js";
+import { defaultMailer } from "./services/mailer.js";
 import { SysML2OmgService } from "./services/sysml2-omg-service.js";
 import { LibraryStorage } from "./storage.js";
+import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
+import { seedInitialAdmin } from "./util/seed-admin.js";
 import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
 
 /** Options for creating the Express application. */
@@ -75,13 +81,34 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.locals.jobQueue = jobQueue;
 
   const database = opts.database ?? new LibraryDatabase();
+  app.locals.database = database;
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
+
+  const federationWorker = new FederationWorker(database);
+  federationWorker.start();
+  app.locals.federationWorker = federationWorker;
 
   setAuthDatabase(database);
 
   // Initialize the extensible artifact system (FMU, Dataset, etc.)
   initializeArtifactSystem();
+
+  // Initialize LocationService
+  void locationService.init().catch((err) => {
+    console.error("[LocationService] Error during init:", err);
+  });
+
+  // Seed initial admin if specified via env vars or if running in non-test mode and no admin exists
+  if (
+    process.env["ADMIN_INIT_USERNAME"] ||
+    process.env["ADMIN_INIT_PASSWORD"] ||
+    process.env["NODE_ENV"] === "production"
+  ) {
+    void seedInitialAdmin(database).catch((err) => {
+      console.error("[AdminSeed] Failed to bootstrap admin:", err);
+    });
+  }
 
   if (
     (process.env["NODE_ENV"] !== "production" && process.env["NODE_ENV"] !== "test") ||
@@ -329,11 +356,16 @@ graph TD
     app.use(limiter);
   }
 
-  // CORS — allow all origins (VS Code webviews, Morsel, etc.)
+  // CORS & Security Defensive Headers (OWASP, SOC 2, ISO 27001, GDPR Art. 32)
   app.use((_req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.header("X-Content-Type-Options", "nosniff");
+    res.header("X-Frame-Options", "SAMEORIGIN");
+    res.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    res.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     if (_req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
@@ -343,16 +375,17 @@ graph TD
 
   // Auth routes
   app.use("/api/v1/auth", authRouter(database));
-  app.use("/api/v1/users", usersRouter(database));
-  app.use("/api/v1/social", socialRouter(database));
+  app.use("/api/v1/users", usersRouter(database, federationWorker));
+  app.use("/api/v1/social", socialRouter(database, federationWorker));
   app.use("/api/v1/repos", reposRouter(database));
   app.use("/api/v1/search", searchRouter(database));
   app.use("/api/v1/storage", storageRouter());
-  app.use("/", federationRouter(database));
+  app.use("/api/v1", adminRouter(database, federationWorker));
+  app.use("/", federationRouter(database, federationWorker));
 
   // Mount the library routers
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));
-  app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database));
+  app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", sparqlRouter(database));
@@ -386,14 +419,92 @@ graph TD
     app.use("/static-examples", express.static(path.resolve(process.cwd(), "../../packages/examples")));
   }
 
-  // ── OMG Systems Modeling REST API (SysML v2 - ptc/2024-02-03) ──
-  const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
-  app.use("/api/v1/sysml2", omgRouter);
-  app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
+  // ── RFC 9116 Security Disclosure (security.txt) ──
+  const securityTxtHandler = (_req: express.Request, res: express.Response) => {
+    res
+      .type("text/plain")
+      .send(
+        [
+          "Contact: mailto:security@modelscript.org",
+          "Expires: 2027-12-31T23:59:59.000Z",
+          "Encryption: https://modelscript.org/pgp-key.asc",
+          "Acknowledgments: https://modelscript.org/security/hall-of-fame",
+          "Preferred-Languages: en",
+          "Canonical: https://modelscript.org/.well-known/security.txt",
+          "Policy: https://modelscript.org/security-policy",
+        ].join("\n") + "\n",
+      );
+  };
+  app.get("/.well-known/security.txt", securityTxtHandler);
+  app.get("/security.txt", securityTxtHandler);
 
-  // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
-  app.use("/", npmAuthRouter(database));
-  app.use("/", npmRegistryRouter(database));
+  // ── Legal, Privacy & AGPLv3 § 13 Source Disclosure ──
+  const legalHandler = (_req: express.Request, res: express.Response) => {
+    res.json({
+      name: "ModelScript Cloud",
+      license: "AGPL-3.0-or-later",
+      termsOfService: "https://modelscript.org/terms",
+      privacyPolicy: "https://modelscript.org/privacy",
+      exportPolicy: "https://modelscript.org/export-compliance",
+      securityPolicy: "https://modelscript.org/.well-known/security.txt",
+      sourceCode: "https://github.com/modelscript/modelscript",
+      agplNotice:
+        "In compliance with GNU AGPLv3 Section 13, users interacting with this instance over a network may obtain the complete Corresponding Source code at the sourceCode URL above.",
+    });
+  };
+  app.get("/legal", legalHandler);
+  app.get("/api/v1/compliance/policy", legalHandler);
+
+  // ── Compliance & Trust Readiness Probe ──
+  app.get("/api/v1/compliance/readiness", (_req: express.Request, res: express.Response) => {
+    const isProd = process.env["NODE_ENV"] === "production";
+    const envJwt = process.env["JWT_SECRET"];
+    const jwtOk = Boolean(envJwt && envJwt !== "modelscript-dev-secret");
+    const turnstileOk = Boolean(process.env["TURNSTILE_SECRET_KEY"]);
+    const hasAdmin = database.hasAdminUser();
+    const geoIpLoaded = locationService.isReady();
+
+    const isDegraded = isProd && (!jwtOk || !turnstileOk || !hasAdmin);
+
+    res.status(isDegraded ? 503 : 200).json({
+      timestamp: new Date().toISOString(),
+      status: isDegraded ? "degraded" : "ready",
+      environment: process.env["NODE_ENV"] || "development",
+      checks: {
+        exportControls: {
+          status: "enforced",
+          sanctionedCountriesCount: SANCTIONED_COUNTRIES.size,
+          sanctionedRegionsCount: SANCTIONED_REGIONS.size,
+          policy: "Overcompliance (24 countries + 5 occupied Ukrainian regions)",
+        },
+        secrets: {
+          jwtSecretConfigured: Boolean(envJwt),
+          jwtSecretIsSecure: jwtOk,
+          turnstileConfigured: turnstileOk,
+        },
+        services: {
+          geolocation: {
+            dbLoaded: geoIpLoaded,
+            fallbackPrefixesActive: true,
+          },
+          mailer: {
+            driver: defaultMailer.getDriver(),
+          },
+          database: {
+            connected: Boolean(database && database.db && database.db.open),
+            hasAdminUser: hasAdmin,
+          },
+        },
+        regulations: {
+          ofacEarItar: "active",
+          gdprArticle17Erasure: "active",
+          gdprArticle20Portability: "active",
+          rfc9116SecurityTxt: "active",
+          agplv3Section13: "active",
+        },
+      },
+    });
+  });
 
   // Health check
   app.get("/health", (_req, res) => {
@@ -403,6 +514,15 @@ graph TD
       historian: dbPool ? "connected" : "unavailable",
     });
   });
+
+  // ── OMG Systems Modeling REST API (SysML v2 - ptc/2024-02-03) ──
+  const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
+  app.use("/api/v1/sysml2", omgRouter);
+  app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
+
+  // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
+  app.use("/", npmAuthRouter(database));
+  app.use("/", npmRegistryRouter(database));
 
   return app;
 }

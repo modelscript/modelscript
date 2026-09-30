@@ -43,7 +43,7 @@ import {
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useEffect, useState } from "react";
-import { Link, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
 import type { GitlabCommit, GitlabIssue, GitlabJob, GitlabMergeRequest, GitlabProject, GitlabTreeNode } from "../api";
 import {
@@ -828,6 +828,8 @@ function IssuesTab({ projectId, provider }: { projectId: string; provider: strin
   const [newIssueTitle, setNewIssueTitle] = useState("");
   const [newIssueBody, setNewIssueBody] = useState("");
 
+  const [selectedIssue, setSelectedIssue] = useState<GitlabIssue | null>(null);
+
   const loadIssues = async () => {
     try {
       const data = await getGitlabIssues(projectId, provider);
@@ -894,18 +896,15 @@ function IssuesTab({ projectId, provider }: { projectId: string; provider: strin
         ) : (
           <Box display="flex" flexDirection="column">
             {issues.map((issue) => (
-              <CommitRow key={issue.id}>
+              <CommitRow key={issue.id} style={{ cursor: "pointer" }} onClick={() => setSelectedIssue(issue)}>
                 <Box display="flex" gap={3}>
                   <div style={{ marginTop: "4px" }}>
                     <IssueOpenedIcon fill="var(--color-success-fg)" />
                   </div>
                   <Box display="flex" flexDirection="column">
-                    <PrimerLink
-                      href="#"
-                      style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}
-                    >
+                    <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}>
                       {issue.title}
-                    </PrimerLink>
+                    </Text>
                     <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
                       #{issue.iid} opened {getRelativeTime(issue.created_at)} by {issue.author.username}
                     </Text>
@@ -916,6 +915,33 @@ function IssuesTab({ projectId, provider }: { projectId: string; provider: strin
           </Box>
         )}
       </StyledBox>
+
+      {selectedIssue && (
+        <Dialog onClose={() => setSelectedIssue(null)} title={`#${selectedIssue.iid} ${selectedIssue.title}`}>
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Label variant={selectedIssue.state === "opened" ? "success" : "secondary"}>
+                {selectedIssue.state === "opened" ? "Open" : "Closed"}
+              </Label>
+              <Text color="var(--color-fg-muted)" fontSize={1}>
+                opened {getRelativeTime(selectedIssue.created_at)} by <strong>@{selectedIssue.author.username}</strong>
+              </Text>
+            </Box>
+            <Box p={3} bg="var(--color-canvas-subtle)" borderRadius={2} border="1px solid var(--color-border-default)">
+              <MarkdownBody
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(
+                    marked.parse(selectedIssue.description || "No description provided.") as string,
+                  ),
+                }}
+              />
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <Button onClick={() => setSelectedIssue(null)}>Close</Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
 
       {isDialogOpen && (
         <Dialog onClose={() => setIsDialogOpen(false)} title="Create New Issue">
@@ -949,6 +975,11 @@ function IssuesTab({ projectId, provider }: { projectId: string; provider: strin
 function PullRequestsTab({ projectId, provider }: { projectId: string; provider: string }) {
   const [mrs, setMrs] = useState<GitlabMergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedMr, setSelectedMr] = useState<GitlabMergeRequest | null>(null);
+  const [isNewMrDialogOpen, setIsNewMrDialogOpen] = useState(false);
+  const [newMrTitle, setNewMrTitle] = useState("");
+  const [newMrDesc, setNewMrDesc] = useState("");
+  const [newMrSource, setNewMrSource] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -964,13 +995,36 @@ function PullRequestsTab({ projectId, provider }: { projectId: string; provider:
     load();
   }, [projectId, provider]);
 
+  const handleCreateMr = () => {
+    if (!newMrTitle) return;
+    const mockMr: GitlabMergeRequest = {
+      id: Date.now(),
+      iid: mrs.length + 1,
+      title: newMrTitle,
+      description: newMrDesc,
+      state: "opened",
+      created_at: new Date().toISOString(),
+      author: { id: 1, username: "current_user", name: "Current User" },
+      source_branch: newMrSource || "feature-branch",
+      target_branch: "main",
+      web_url: "#",
+    };
+    setMrs([mockMr, ...mrs]);
+    setIsNewMrDialogOpen(false);
+    setNewMrTitle("");
+    setNewMrDesc("");
+    setNewMrSource("");
+  };
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Heading as="h2" style={{ fontSize: "20px" }}>
           Pull Requests
         </Heading>
-        <Button variant="primary">New pull request</Button>
+        <Button variant="primary" onClick={() => setIsNewMrDialogOpen(true)}>
+          New pull request
+        </Button>
       </Box>
 
       <StyledBox>
@@ -1001,18 +1055,15 @@ function PullRequestsTab({ projectId, provider }: { projectId: string; provider:
         ) : (
           <Box display="flex" flexDirection="column">
             {mrs.map((mr) => (
-              <CommitRow key={mr.id}>
+              <CommitRow key={mr.id} style={{ cursor: "pointer" }} onClick={() => setSelectedMr(mr)}>
                 <Box display="flex" gap={3}>
                   <div style={{ marginTop: "4px" }}>
                     <GitPullRequestIcon fill="var(--color-success-fg)" />
                   </div>
                   <Box display="flex" flexDirection="column">
-                    <PrimerLink
-                      href="#"
-                      style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}
-                    >
+                    <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}>
                       {mr.title}
-                    </PrimerLink>
+                    </Text>
                     <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
                       #{mr.iid} opened {getRelativeTime(mr.created_at)} by {mr.author.username}
                     </Text>
@@ -1023,12 +1074,91 @@ function PullRequestsTab({ projectId, provider }: { projectId: string; provider:
           </Box>
         )}
       </StyledBox>
+
+      {selectedMr && (
+        <Dialog onClose={() => setSelectedMr(null)} title={`#${selectedMr.iid} ${selectedMr.title}`}>
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Label variant={selectedMr.state === "opened" ? "success" : "secondary"}>
+                {selectedMr.state === "opened" ? "Open" : "Merged"}
+              </Label>
+              <Text color="var(--color-fg-muted)" fontSize={1}>
+                {selectedMr.source_branch} &rarr; {selectedMr.target_branch} by{" "}
+                <strong>@{selectedMr.author.username}</strong>
+              </Text>
+            </Box>
+            <Box p={3} bg="var(--color-canvas-subtle)" borderRadius={2} border="1px solid var(--color-border-default)">
+              <MarkdownBody
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(
+                    marked.parse(selectedMr.description || "No description provided.") as string,
+                  ),
+                }}
+              />
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <Button onClick={() => setSelectedMr(null)}>Close</Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
+
+      {isNewMrDialogOpen && (
+        <Dialog onClose={() => setIsNewMrDialogOpen(false)} title="New Pull Request">
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <TextInput value={newMrTitle} onChange={(e) => setNewMrTitle(e.target.value)} placeholder="Title" block />
+            <TextInput
+              value={newMrSource}
+              onChange={(e) => setNewMrSource(e.target.value)}
+              placeholder="Source Branch (e.g. feature-branch)"
+              block
+            />
+            <Textarea
+              value={newMrDesc}
+              onChange={(e) => setNewMrDesc(e.target.value)}
+              placeholder="Describe your pull request..."
+              block
+              rows={4}
+            />
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <Button onClick={() => setIsNewMrDialogOpen(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleCreateMr} disabled={!newMrTitle}>
+                Create pull request
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
     </Box>
   );
 }
 
 function SettingsTab({ repo }: { repo: GitlabProject }) {
+  const [repoName, setRepoName] = useState(repo.name);
   const [saved, setSaved] = useState(false);
+  const [visibility, setVisibility] = useState(repo.visibility || "public");
+  const [showVisibilityModal, setShowVisibilityModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const navigate = useNavigate();
+
+  const handleRename = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleToggleVisibility = () => {
+    setVisibility((prev) => (prev === "public" ? "private" : "public"));
+    setShowVisibilityModal(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleDelete = () => {
+    if (deleteConfirmText.toLowerCase() !== repo.name.toLowerCase()) return;
+    setShowDeleteModal(false);
+    navigate("/repos");
+  };
 
   return (
     <Box display="grid" style={{ gridTemplateColumns: "250px 1fr", gap: "32px" }}>
@@ -1068,8 +1198,8 @@ function SettingsTab({ repo }: { repo: GitlabProject }) {
                 Repository name
               </Text>
               <Box display="flex" gap={2}>
-                <TextInput defaultValue={repo.name} block />
-                <Button variant="primary" onClick={() => setSaved(true)}>
+                <TextInput value={repoName} onChange={(e) => setRepoName(e.target.value)} block />
+                <Button variant="primary" onClick={handleRename}>
                   Rename
                 </Button>
               </Box>
@@ -1119,25 +1249,12 @@ function SettingsTab({ repo }: { repo: GitlabProject }) {
               <Box>
                 <Text style={{ fontWeight: "bold", display: "block" }}>Change repository visibility</Text>
                 <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
-                  This repository is currently public.
+                  This repository is currently <strong>{visibility}</strong>.
                 </Text>
               </Box>
-              <Button variant="danger">Change visibility</Button>
-            </Box>
-            <Box
-              p={3}
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              style={{ borderBottom: "1px solid var(--color-danger-muted)" }}
-            >
-              <Box>
-                <Text style={{ fontWeight: "bold", display: "block" }}>Transfer ownership</Text>
-                <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
-                  Transfer this repository to another user or to an organization.
-                </Text>
-              </Box>
-              <Button variant="danger">Transfer</Button>
+              <Button variant="danger" onClick={() => setShowVisibilityModal(true)}>
+                Change visibility
+              </Button>
             </Box>
             <Box p={3} display="flex" justifyContent="space-between" alignItems="center">
               <Box>
@@ -1146,11 +1263,60 @@ function SettingsTab({ repo }: { repo: GitlabProject }) {
                   Once you delete a repository, there is no going back. Please be certain.
                 </Text>
               </Box>
-              <Button variant="danger">Delete this repository</Button>
+              <Button variant="danger" onClick={() => setShowDeleteModal(true)}>
+                Delete this repository
+              </Button>
             </Box>
           </StyledBox>
         </Box>
       </Box>
+
+      {showVisibilityModal && (
+        <Dialog onClose={() => setShowVisibilityModal(false)} title="Change Repository Visibility">
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <Text>
+              Are you sure you want to change the visibility of this repository to{" "}
+              <strong>{visibility === "public" ? "private" : "public"}</strong>?
+            </Text>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <Button onClick={() => setShowVisibilityModal(false)}>Cancel</Button>
+              <Button variant="danger" onClick={handleToggleVisibility}>
+                Confirm Change
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
+
+      {showDeleteModal && (
+        <Dialog onClose={() => setShowDeleteModal(false)} title="Delete Repository">
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <Text color="var(--color-danger-fg)">
+              This action <strong>cannot</strong> be undone. This will permanently delete the{" "}
+              <strong>{repo.name}</strong> repository.
+            </Text>
+            <Text fontSize={1}>
+              Please type <strong>{repo.name}</strong> to confirm:
+            </Text>
+            <TextInput
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={repo.name}
+              block
+            />
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <Button onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+              <Button
+                variant="danger"
+                onClick={handleDelete}
+                disabled={deleteConfirmText.toLowerCase() !== repo.name.toLowerCase()}
+              >
+                I understand the consequences, delete this repository
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
     </Box>
   );
 }

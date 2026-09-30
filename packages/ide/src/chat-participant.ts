@@ -58,30 +58,57 @@ export function registerChatParticipant(context: vscode.ExtensionContext): void 
       }
 
       try {
-        const response = await model.sendRequest(
-          messages,
-          { tools, justification: "Modelica development assistance" },
-          token,
-        );
+        const MAX_ROUNDS = 5;
+        let round = 0;
+        let hasToolCalls = true;
 
-        for await (const part of response.stream) {
-          if (part instanceof vscode.LanguageModelTextPart) {
-            stream.markdown(part.value);
-          } else if (part instanceof vscode.LanguageModelToolCallPart) {
-            // Execute tool call
+        while (round < MAX_ROUNDS && hasToolCalls && !token.isCancellationRequested) {
+          round++;
+          hasToolCalls = false;
+          const toolCallParts: vscode.LanguageModelToolCallPart[] = [];
+
+          const response = await model.sendRequest(
+            messages,
+            { tools, justification: "Modelica development assistance" },
+            token,
+          );
+
+          let assistantText = "";
+          for await (const part of response.stream) {
+            if (part instanceof vscode.LanguageModelTextPart) {
+              assistantText += part.value;
+              stream.markdown(part.value);
+            } else if (part instanceof vscode.LanguageModelToolCallPart) {
+              hasToolCalls = true;
+              toolCallParts.push(part);
+            }
+          }
+
+          if (assistantText) {
+            messages.push(vscode.LanguageModelChatMessage.Assistant(assistantText));
+          }
+
+          // Execute tool calls and feed results back into the conversation for next hop
+          for (const callPart of toolCallParts) {
+            stream.markdown(`\n\n**Tool: ${callPart.name}**\n\`\`\`\n`);
             const toolResult = await vscode.lm.invokeTool(
-              part.name,
-              { input: part.input, toolInvocationToken: request.toolInvocationToken },
+              callPart.name,
+              { input: callPart.input, toolInvocationToken: request.toolInvocationToken },
               token,
             );
-            // Feed result back to the model
-            stream.markdown(`\n\n**Tool: ${part.name}**\n\`\`\`\n`);
+            let resultText = "";
             for (const resultPart of toolResult.content) {
               if (resultPart instanceof vscode.LanguageModelTextPart) {
+                resultText += resultPart.value;
                 stream.markdown(resultPart.value);
               }
             }
             stream.markdown("\n```\n\n");
+            messages.push(
+              vscode.LanguageModelChatMessage.User(
+                `Tool result for ${callPart.name}:\n${resultText}\n\nPlease analyze this result and continue.`,
+              ),
+            );
           }
         }
       } catch (e) {

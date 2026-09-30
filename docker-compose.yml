@@ -1,6 +1,25 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["federated"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-localhost}
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+      - web
+      - ide
+    restart: unless-stopped
+
   mqtt:
     image: eclipse-mosquitto:2
+    profiles: ["internal", "federated"]
     ports:
       - "1883:1883"
       - "9001:9001"
@@ -16,6 +35,7 @@ services:
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
+    profiles: ["internal", "federated"]
     ports:
       - "5432:5432"
     environment:
@@ -34,6 +54,7 @@ services:
 
   api:
     image: ghcr.io/modelscript/api:latest
+    profiles: ["standalone", "internal", "federated"]
     build:
       context: .
       target: api
@@ -41,20 +62,18 @@ services:
       - "3000:3000"
     volumes:
       - api-data:/app/apps/api/data
-    depends_on:
-      mqtt:
-        condition: service_healthy
-      timescaledb:
-        condition: service_healthy
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - MQTT_BROKER_URL=mqtt://mqtt:1883
-      - TIMESCALE_URL=postgresql://modelscript:${TIMESCALE_PASSWORD:-modelscript}@timescaledb:5432/modelscript_historian
+      - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
+      - JWT_SECRET=${JWT_SECRET:-modelscript-dev-secret}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
+      - TIMESCALE_URL=${TIMESCALE_URL:-postgresql://modelscript:modelscript@timescaledb:5432/modelscript_historian}
     restart: unless-stopped
 
   morsel:
     image: ghcr.io/modelscript/morsel:latest
+    profiles: ["internal", "federated"]
     build:
       context: .
       target: morsel
@@ -69,6 +88,7 @@ services:
 
   web:
     image: ghcr.io/modelscript/web:latest
+    profiles: ["standalone", "internal", "federated"]
     build:
       context: .
       target: web
@@ -80,6 +100,7 @@ services:
 
   ide:
     image: ghcr.io/modelscript/ide:latest
+    profiles: ["standalone", "internal", "federated"]
     build:
       context: .
       target: ide
@@ -96,3 +117,5 @@ volumes:
   api-data:
   mqtt-data:
   timescale-data:
+  caddy-data:
+  caddy-config:

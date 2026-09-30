@@ -15,7 +15,7 @@ import {
   ReportIcon,
   RssIcon,
 } from "@primer/octicons-react";
-import { Button, Heading, Spinner, Text } from "@primer/react";
+import { Button, Dialog, Flash, FormControl, Heading, Select, Spinner, Text, Textarea } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import styled from "styled-components";
@@ -61,9 +61,10 @@ const Tab = styled.button<{ $active?: boolean }>`
     content: "";
     position: absolute;
     bottom: 0;
-    height: 4px;
+    height: 3px;
     width: 56px;
-    background-color: var(--color-accent-emphasis);
+    background: var(--gradient-cta);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
   }
@@ -79,17 +80,88 @@ const ProfilePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState("Posts");
 
   const [isBlocked, setIsBlocked] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [showUnblockModal, setShowUnblockModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("Spam or automated bot");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportSuccess, setReportSuccess] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const handleBlock = () => {
-    setIsBlocked(true);
-    setShowBlockMenu(false);
+  const handleBlock = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${username}/block`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setIsBlocked(true);
+        setIsFollowing(false);
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Failed to block user");
+    } finally {
+      setShowBlockMenu(false);
+    }
   };
 
-  const handleUnblock = () => {
-    setIsBlocked(false);
-    setShowUnblockModal(false);
+  const handleUnblock = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${username}/block`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setIsBlocked(false);
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Failed to unblock user");
+    } finally {
+      setShowUnblockModal(false);
+    }
+  };
+
+  const handleMuteToggle = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${username}/mute`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsMuted(Boolean(data.muted));
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Failed to mute user");
+    } finally {
+      setShowBlockMenu(false);
+    }
+  };
+
+  const handleReportSubmit = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${username}/report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: reportReason, details: reportDetails }),
+      });
+      if (res.ok) {
+        setShowReportModal(false);
+        setReportDetails("");
+        setReportSuccess(true);
+        setTimeout(() => setReportSuccess(false), 5000);
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Failed to submit report");
+    }
   };
 
   const isOwnProfile = user?.username === username;
@@ -103,7 +175,9 @@ const ProfilePage: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           setProfile(data.profile);
-          setIsFollowing(data.isFollowing);
+          setIsFollowing(Boolean(data.isFollowing));
+          setIsBlocked(Boolean(data.isBlocked));
+          setIsMuted(Boolean(data.isMuted));
           setLinkedAccounts(data.linkedAccounts || []);
         }
       } catch (err) {
@@ -330,6 +404,7 @@ const ProfilePage: React.FC = () => {
                           <LinkIcon size={20} /> Copy link to profile
                         </button>
                         <button
+                          onClick={handleMuteToggle}
                           style={{
                             width: "100%",
                             padding: "12px 16px",
@@ -346,7 +421,7 @@ const ProfilePage: React.FC = () => {
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         >
-                          <MuteIcon size={20} /> Mute
+                          <MuteIcon size={20} /> {isMuted ? "Unmute" : "Mute"} @{profile.username}
                         </button>
                         <button
                           onClick={handleBlock}
@@ -369,6 +444,10 @@ const ProfilePage: React.FC = () => {
                           <NoEntryIcon size={20} /> Block @{profile.username}
                         </button>
                         <button
+                          onClick={() => {
+                            setShowBlockMenu(false);
+                            setShowReportModal(true);
+                          }}
                           style={{
                             width: "100%",
                             padding: "12px 16px",
@@ -437,8 +516,8 @@ const ProfilePage: React.FC = () => {
               style={{
                 fontSize: "12px",
                 padding: "2px 8px",
-                backgroundColor: "#1f1f1f",
-                color: "#fff",
+                backgroundColor: "var(--color-neutral-muted, rgba(128, 128, 128, 0.2))",
+                color: "var(--color-fg-default)",
                 borderRadius: "12px",
                 display: "inline-flex",
                 alignItems: "center",
@@ -522,10 +601,25 @@ const ProfilePage: React.FC = () => {
         ))}
       </TabBar>
 
+      {reportSuccess && (
+        <Box p={3}>
+          <Flash variant="success">Report submitted. Thank you for keeping our community safe.</Flash>
+        </Box>
+      )}
+      {actionError && (
+        <Box p={3}>
+          <Flash variant="danger">{actionError}</Flash>
+        </Box>
+      )}
+
       {activeTab === "Repos" ? (
         <ProfileRepos username={profile.username} isOwnProfile={isOwnProfile} />
       ) : activeTab === "Posts" ? (
-        <ProfilePosts username={profile.username} />
+        <ProfilePosts username={profile.username} type="posts" />
+      ) : activeTab === "Replies" ? (
+        <ProfilePosts username={profile.username} type="replies" />
+      ) : activeTab === "Artifacts" ? (
+        <ProfilePosts username={profile.username} type="artifacts" />
       ) : (
         <Box p={4} textAlign="center">
           <Heading as="h2" style={{ fontSize: "20px" }}>
@@ -596,6 +690,39 @@ const ProfilePage: React.FC = () => {
             </Button>
           </Box>
         </div>
+      )}
+
+      {showReportModal && (
+        <Dialog title={`Report @${profile.username}`} onClose={() => setShowReportModal(false)}>
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <FormControl>
+              <FormControl.Label>Reason</FormControl.Label>
+              <Select value={reportReason} onChange={(e) => setReportReason(e.target.value)}>
+                <Select.Option value="Spam or automated bot">Spam or automated bot</Select.Option>
+                <Select.Option value="Harassment or abuse">Harassment or abuse</Select.Option>
+                <Select.Option value="Copyright or license violation">Copyright or license violation</Select.Option>
+                <Select.Option value="Malicious or harmful code">Malicious or harmful code</Select.Option>
+                <Select.Option value="Other">Other</Select.Option>
+              </Select>
+            </FormControl>
+            <FormControl>
+              <FormControl.Label>Additional Details (Optional)</FormControl.Label>
+              <Textarea
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                placeholder="Describe why you are reporting this account..."
+                rows={4}
+                block
+              />
+            </FormControl>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <Button onClick={() => setShowReportModal(false)}>Cancel</Button>
+              <Button variant="danger" onClick={handleReportSubmit}>
+                Submit Report
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
       )}
     </Box>
   );

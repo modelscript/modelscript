@@ -92,14 +92,14 @@ const Input = styled.input`
   box-sizing: border-box;
 
   &:focus {
-    border-color: #1f1f1f;
+    border-color: var(--color-accent-fg, #1d9bf0);
   }
 `;
 
 const Button = styled.button`
   height: 40px;
-  background: #1f1f1f;
-  color: #fff;
+  background: var(--color-btn-primary-bg, var(--color-fg-default));
+  color: var(--color-btn-primary-text, var(--color-canvas-default));
   border: none;
   border-radius: 9999px;
   font-size: 15px;

@@ -15,6 +15,7 @@ import { listComputeProfiles } from "../services/hpc/compute-profiles.js";
 import { SlurmRestDriver } from "../services/hpc/drivers/slurm-rest-driver.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { enforceExportCompliance } from "../util/compliance.js";
 
 const CAE_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
 
@@ -81,136 +82,141 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     res.json({ hash, cached: false, filename: req.file.originalname, message: "File cached successfully." });
   });
 
-  router.post("/cae/jobs", express.json({ limit: "50mb" }), async (req, res) => {
-    try {
-      const { solver = "calculix", title, deck, geometry, options = {} } = req.body;
+  router.post(
+    "/cae/jobs",
+    enforceExportCompliance(() => database),
+    express.json({ limit: "50mb" }),
+    async (req, res) => {
+      try {
+        const { solver = "calculix", title, deck, geometry, options = {} } = req.body;
 
-      if (!deck || (!deck.content && !deck.casHash)) {
-        return res.status(400).json({ error: "Missing required deck content or casHash." });
-      }
-
-      const solverType: CaeSolverType = solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix";
-      let deckContent = deck.content;
-
-      if (!deckContent && deck.casHash) {
-        const safe = sanitizeHash(deck.casHash);
-        const deckDir = path.join(CAE_CACHE_DIR, safe);
-        const files = fs.readdirSync(deckDir);
-        const firstFile = files[0];
-        if (!firstFile) {
-          return res.status(404).json({ error: "Deck not found in CAS cache." });
+        if (!deck || (!deck.content && !deck.casHash)) {
+          return res.status(400).json({ error: "Missing required deck content or casHash." });
         }
-        deckContent = fs.readFileSync(path.join(deckDir, firstFile), "utf8");
-      }
 
-      // Geometry file path
-      let geomPath: string | undefined;
-      if (geometry?.casHash) {
-        const safeGeom = sanitizeHash(geometry.casHash);
-        const geomDir = path.join(CAE_CACHE_DIR, safeGeom);
-        if (fs.existsSync(geomDir)) {
-          const geomFiles = fs.readdirSync(geomDir);
-          const firstGeom = geomFiles[0];
-          if (firstGeom) {
-            geomPath = path.join(geomDir, firstGeom);
+        const solverType: CaeSolverType = solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix";
+        let deckContent = deck.content;
+
+        if (!deckContent && deck.casHash) {
+          const safe = sanitizeHash(deck.casHash);
+          const deckDir = path.join(CAE_CACHE_DIR, safe);
+          const files = fs.readdirSync(deckDir);
+          const firstFile = files[0];
+          if (!firstFile) {
+            return res.status(404).json({ error: "Deck not found in CAS cache." });
           }
+          deckContent = fs.readFileSync(path.join(deckDir, firstFile), "utf8");
         }
-      }
 
-      // Pre-flight quota check
-      const profile = options.profile || "standard";
-      const userId = resolveRequestUserId(req, database);
-      if (userId) {
-        const quota = checkComputeQuota(userId, profile, database);
-        if (!quota.allowed) {
-          return res.status(402).json({
-            error: "Payment Required: Insufficient Compute Credits",
-            message: quota.reason,
-            balance: quota.userBalance,
-            required: quota.estimatedCost,
-            profile: quota.profileId,
-          });
-        }
-      }
-
-      // Create DB job
-      const deckHash = sha256(deckContent);
-      const resultDir = path.join(CAE_CACHE_DIR, "results", `${solverType}_${deckHash.slice(0, 16)}`);
-      const dbJobId = database.createJob(
-        `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
-        "RUNNING",
-        "ADHOC",
-        "ide",
-        null,
-        { resultDir },
-        userId,
-      );
-
-      const streamer = new CaeTelemetryStreamer(solverType);
-      activeStreamers.set(dbJobId.toString(), streamer);
-
-      const jobSpec: CaeJobSpec = {
-        jobId: dbJobId.toString(),
-        solver: solverType,
-        deckContent,
-        deckFormat: deck.format || (solverType === "su2" ? "cfg" : "inp"),
-        geometryPath: geomPath,
-        cores: options.cores || 4,
-        timeoutSeconds: options.timeoutSeconds || 1800,
-        runner: options.runner || "auto",
-        profile,
-        resultDir,
-      };
-
-      // Enqueue job execution
-      jobQueue.enqueue(`cae-${dbJobId}`, async () => {
-        try {
-          const result = await runner.executeJob(jobSpec, streamer);
-          if (result.status === "completed") {
-            database.updateJobStatus(dbJobId, "SUCCESS");
-            if (result.usage) {
-              database.updateJobAccounting(dbJobId, {
-                computeProfile: result.profile || profile,
-                cpuSeconds: result.usage.cpuCoreSeconds,
-                peakMemoryMb: result.usage.peakMemoryMb,
-                gpuSeconds: result.usage.gpuSeconds,
-                costCredits: result.usage.costCredits,
-              });
-
-              if (userId && result.usage.costCredits > 0) {
-                database.deductUserCredits(
-                  userId,
-                  result.usage.costCredits,
-                  dbJobId,
-                  `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
-                  { profile: result.profile || profile, ...result.usage },
-                );
-              }
+        // Geometry file path
+        let geomPath: string | undefined;
+        if (geometry?.casHash) {
+          const safeGeom = sanitizeHash(geometry.casHash);
+          const geomDir = path.join(CAE_CACHE_DIR, safeGeom);
+          if (fs.existsSync(geomDir)) {
+            const geomFiles = fs.readdirSync(geomDir);
+            const firstGeom = geomFiles[0];
+            if (firstGeom) {
+              geomPath = path.join(geomDir, firstGeom);
             }
-            const status = jobQueue.getStatus(`cae-${dbJobId}`);
-            if (status && result.resultVtuPath) status.resultPath = result.resultVtuPath;
-          } else if (result.status === "cancelled") {
-            database.updateJobStatus(dbJobId, "FAILED");
-          } else {
+          }
+        }
+
+        // Pre-flight quota check
+        const profile = options.profile || "standard";
+        const userId = resolveRequestUserId(req, database);
+        if (userId) {
+          const quota = checkComputeQuota(userId, profile, database);
+          if (!quota.allowed) {
+            return res.status(402).json({
+              error: "Payment Required: Insufficient Compute Credits",
+              message: quota.reason,
+              balance: quota.userBalance,
+              required: quota.estimatedCost,
+              profile: quota.profileId,
+            });
+          }
+        }
+
+        // Create DB job
+        const deckHash = sha256(deckContent);
+        const resultDir = path.join(CAE_CACHE_DIR, "results", `${solverType}_${deckHash.slice(0, 16)}`);
+        const dbJobId = database.createJob(
+          `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
+          "RUNNING",
+          "ADHOC",
+          "ide",
+          null,
+          { resultDir },
+          userId,
+        );
+
+        const streamer = new CaeTelemetryStreamer(solverType);
+        activeStreamers.set(dbJobId.toString(), streamer);
+
+        const jobSpec: CaeJobSpec = {
+          jobId: dbJobId.toString(),
+          solver: solverType,
+          deckContent,
+          deckFormat: deck.format || (solverType === "su2" ? "cfg" : "inp"),
+          geometryPath: geomPath,
+          cores: options.cores || 4,
+          timeoutSeconds: options.timeoutSeconds || 1800,
+          runner: options.runner || "auto",
+          profile,
+          resultDir,
+        };
+
+        // Enqueue job execution
+        jobQueue.enqueue(`cae-${dbJobId}`, async () => {
+          try {
+            const result = await runner.executeJob(jobSpec, streamer);
+            if (result.status === "completed") {
+              database.updateJobStatus(dbJobId, "SUCCESS");
+              if (result.usage) {
+                database.updateJobAccounting(dbJobId, {
+                  computeProfile: result.profile || profile,
+                  cpuSeconds: result.usage.cpuCoreSeconds,
+                  peakMemoryMb: result.usage.peakMemoryMb,
+                  gpuSeconds: result.usage.gpuSeconds,
+                  costCredits: result.usage.costCredits,
+                });
+
+                if (userId && result.usage.costCredits > 0) {
+                  database.deductUserCredits(
+                    userId,
+                    result.usage.costCredits,
+                    dbJobId,
+                    `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
+                    { profile: result.profile || profile, ...result.usage },
+                  );
+                }
+              }
+              const status = jobQueue.getStatus(`cae-${dbJobId}`);
+              if (status && result.resultVtuPath) status.resultPath = result.resultVtuPath;
+            } else if (result.status === "cancelled") {
+              database.updateJobStatus(dbJobId, "FAILED");
+            } else {
+              database.updateJobStatus(dbJobId, "FAILED");
+            }
+          } catch {
             database.updateJobStatus(dbJobId, "FAILED");
           }
-        } catch {
-          database.updateJobStatus(dbJobId, "FAILED");
-        }
-      });
+        });
 
-      res.json({
-        jobId: dbJobId.toString(),
-        status: "queued",
-        solver: solverType,
-        profile,
-        resultDir,
-      });
-    } catch (err) {
-      console.error("POST /cae/jobs ERROR:", err);
-      return res.status(500).json({ error: String(err), stack: (err as any)?.stack });
-    }
-  });
+        res.json({
+          jobId: dbJobId.toString(),
+          status: "queued",
+          solver: solverType,
+          profile,
+          resultDir,
+        });
+      } catch (err) {
+        console.error("POST /cae/jobs ERROR:", err);
+        return res.status(500).json({ error: String(err), stack: (err as any)?.stack });
+      }
+    },
+  );
 
   // 3. Get CAE Job Status
   router.get("/cae/jobs/:id", (req, res) => {

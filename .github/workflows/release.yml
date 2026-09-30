@@ -135,6 +135,19 @@ jobs:
           external_repository: modelscript-ide/modelscript-ide.github.io
           publish_dir: ./apps/ide/dist/static
 
+      # --- Deploy Docs ---
+      - name: Build PDF Manual
+        run: npm run build:pdf --workspace=@modelscript/docs
+      - name: Build Docs
+        run: npm run build --workspace=@modelscript/docs
+      - name: Deploy Docs
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.MODELSCRIPT_DOCS_DEPLOY_PAT || secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
+          external_repository: modelscript/docs.modelscript.org
+          publish_dir: ./apps/docs/docs/.vitepress/dist
+          cname: docs.modelscript.org
+
       # --- Publish Docker images to GHCR ---
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR

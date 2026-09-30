@@ -134,6 +134,9 @@ export interface LanguageOptions<
     | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[][])
     | NoInfer<RuleName>[][];
 
+  /** When true, any unwhitelisted grammar conflicts will throw a compilation error instead of logging a warning. */
+  strictConflicts?: boolean;
+
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?: string[][];
 

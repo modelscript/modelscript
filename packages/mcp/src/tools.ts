@@ -1138,6 +1138,216 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
   );
 
+  // ── modelscript_patch_code ─────────────────────────────────────────────
+
+  server.tool(
+    "modelscript_patch_code",
+    "Surgically patch a model file by finding a specific searchBlock and replacing it with replaceBlock.",
+    {
+      filePath: z.string().describe("Path to the file to modify"),
+      searchBlock: z.string().describe("Exact or unique lines of code to search for and replace"),
+      replaceBlock: z.string().describe("New replacement code block"),
+    },
+    async ({ filePath, searchBlock, replaceBlock }) => {
+      try {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const resolvedPath = path.resolve(process.cwd(), filePath);
+        const originalContent = await fs.readFile(resolvedPath, "utf-8");
+
+        let idx = originalContent.indexOf(searchBlock);
+        let matchedLen = searchBlock.length;
+
+        if (idx === -1) {
+          const normSearch = searchBlock.trim().replace(/\r\n/g, "\n");
+          const normContent = originalContent.replace(/\r\n/g, "\n");
+          const normIdx = normContent.indexOf(normSearch);
+          if (normIdx !== -1) {
+            idx = normIdx;
+            matchedLen = normSearch.length;
+          }
+        }
+
+        if (idx === -1) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  success: false,
+                  error: `Could not locate searchBlock in '${filePath}'. Ensure exact indentation or unique surrounding lines.`,
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const newContent =
+          originalContent.substring(0, idx) + replaceBlock + originalContent.substring(idx + matchedLen);
+        await fs.writeFile(resolvedPath, newContent, "utf-8");
+
+        const deletedLines = searchBlock.split("\n").length;
+        const addedLines = replaceBlock.split("\n").length;
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                success: true,
+                file: path.basename(filePath),
+                addedLines,
+                deletedLines,
+                message: `Successfully patched ${path.basename(filePath)} (+${addedLines}/-${deletedLines} lines).`,
+              }),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ success: false, error: err?.message ?? String(err) }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── modelscript_read_file ─────────────────────────────────────────────
+
+  server.tool(
+    "modelscript_read_file",
+    "Read file contents or a specific range of lines from a workspace file.",
+    {
+      filePath: z.string().describe("Relative or absolute path to the file"),
+      startLine: z.number().optional().describe("Optional 1-indexed starting line"),
+      endLine: z.number().optional().describe("Optional 1-indexed ending line"),
+    },
+    async ({ filePath, startLine, endLine }) => {
+      try {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const resolvedPath = path.resolve(process.cwd(), filePath);
+        const content = await fs.readFile(resolvedPath, "utf-8");
+        const allLines = content.split("\n");
+        const totalLines = allLines.length;
+
+        const actualStart = typeof startLine === "number" ? Math.max(1, startLine) : 1;
+        const actualEnd = typeof endLine === "number" ? Math.min(totalLines, endLine) : totalLines;
+        const sliced = allLines.slice(actualStart - 1, actualEnd).join("\n");
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  file: path.basename(filePath),
+                  filePath,
+                  totalLines,
+                  startLine: actualStart,
+                  endLine: actualEnd,
+                  content: sliced,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ success: false, error: err?.message ?? String(err) }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── modelscript_list_workspace_files ──────────────────────────────────
+
+  server.tool(
+    "modelscript_list_workspace_files",
+    "List engineering model files in the workspace (Modelica, SysML, STEP, SCAD, CSV).",
+    {
+      directory: z.string().optional().describe("Root directory to scan (defaults to current working directory)"),
+      extension: z.string().optional().describe("Filter by extension (e.g. '.mo' or '.sysml')"),
+      maxResults: z.number().optional().describe("Max files to return (default 50)"),
+    },
+    async ({ directory, extension, maxResults = 50 }) => {
+      try {
+        const fs = await import("node:fs/promises");
+        const path = await import("node:path");
+        const rootDir = path.resolve(process.cwd(), directory ?? ".");
+        const matchedFiles: string[] = [];
+        const validExts = extension
+          ? [extension.startsWith(".") ? extension : `.${extension}`]
+          : [".mo", ".mos", ".sysml", ".sysml2", ".step", ".stp", ".csv", ".scad", ".cfg", ".inp"];
+
+        async function scan(dir: string, depth = 0): Promise<void> {
+          if (depth > 6 || matchedFiles.length >= maxResults) return;
+          let entries;
+          try {
+            entries = await fs.readdir(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const entry of entries) {
+            if (matchedFiles.length >= maxResults) break;
+            if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist") continue;
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              await scan(full, depth + 1);
+            } else if (entry.isFile()) {
+              const ext = path.extname(entry.name).toLowerCase();
+              if (validExts.includes(ext)) {
+                matchedFiles.push(path.relative(rootDir, full));
+              }
+            }
+          }
+        }
+
+        await scan(rootDir);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  count: matchedFiles.length,
+                  files: matchedFiles,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ success: false, error: err?.message ?? String(err) }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
   // ── modelica_diff_calibrate ──────────────────────────────────────────
 
   server.tool(

@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PlusIcon, RssIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
-import { Heading, Text } from "@primer/react";
+import { Button, Dialog, Heading, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
@@ -122,6 +122,8 @@ const FeedsPage: React.FC = () => {
   const [urlInput, setUrlInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unsubscribingFeed, setUnsubscribingFeed] = useState<any | null>(null);
+  const [isUnsubscribing, setIsUnsubscribing] = useState(false);
 
   const fetchFeeds = async () => {
     if (!token) return;
@@ -181,19 +183,22 @@ const FeedsPage: React.FC = () => {
     }
   };
 
-  const handleUnsubscribe = async (feedId: number) => {
-    if (!window.confirm("Are you sure you want to unsubscribe from this feed?")) return;
-
+  const confirmUnsubscribe = async () => {
+    if (!unsubscribingFeed) return;
+    setIsUnsubscribing(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/social/feeds/${feedId}/unsubscribe`, {
+      const res = await fetch(`${API_BASE_URL}/social/feeds/${unsubscribingFeed.id}/unsubscribe`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        setFeeds(feeds.filter((f) => f.id !== feedId));
+        setFeeds(feeds.filter((f) => f.id !== unsubscribingFeed.id));
+        setUnsubscribingFeed(null);
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsUnsubscribing(false);
     }
   };
 
@@ -268,12 +273,38 @@ const FeedsPage: React.FC = () => {
                   {feed.url}
                 </MutedUrl>
               </Box>
-              <TrashIconButton onClick={() => handleUnsubscribe(feed.id)} title="Unsubscribe">
+              <TrashIconButton onClick={() => setUnsubscribingFeed(feed)} title="Unsubscribe">
                 <TrashIcon size={16} />
               </TrashIconButton>
             </FeedItemWrapper>
           ))}
         </Box>
+      )}
+
+      {unsubscribingFeed && (
+        <Dialog
+          isOpen={!!unsubscribingFeed}
+          onDismiss={() => {
+            if (!isUnsubscribing) setUnsubscribingFeed(null);
+          }}
+          aria-labelledby="unsub-dialog-title"
+        >
+          <Dialog.Header id="unsub-dialog-title">Unsubscribe from Feed</Dialog.Header>
+          <Box p={3}>
+            <Text as="p" color="var(--color-fg-default)" style={{ marginBottom: "16px" }}>
+              Are you sure you want to unsubscribe from{" "}
+              <strong>{unsubscribingFeed.title || unsubscribingFeed.url}</strong>?
+            </Text>
+            <Box display="flex" justifyContent="flex-end" gap={2}>
+              <Button onClick={() => setUnsubscribingFeed(null)} disabled={isUnsubscribing}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={confirmUnsubscribe} disabled={isUnsubscribing}>
+                {isUnsubscribing ? "Unsubscribing..." : "Unsubscribe"}
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
       )}
     </Box>
   );

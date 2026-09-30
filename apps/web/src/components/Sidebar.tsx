@@ -111,23 +111,29 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: var(--color-fg-default);
-  font-size: 20px;
-  font-weight: ${(props) => (props.$active ? "700" : "400")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  font-size: 15px;
+  font-weight: ${(props) => (props.$active ? "600" : "500")};
   width: 100%;
   box-sizing: border-box;
 
   svg {
-    stroke: ${(props) => (props.$active ? "currentColor" : "none")};
-    stroke-width: ${(props) => (props.$active ? "0.8" : "0")};
+    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "inherit")};
+    transition: transform 0.2s;
   }
 
   &:hover {
     text-decoration: none;
+    color: var(--color-text-primary);
+  }
+
+  &:hover svg {
+    transform: scale(1.08);
   }
 
   &:hover > div {
-    background-color: rgba(128, 128, 128, 0.15);
+    background-color: var(--color-bg-card-hover, rgba(255, 255, 255, 0.06));
+    border-color: rgba(255, 255, 255, 0.12);
   }
 
   @media (max-width: 1280px) {
@@ -135,20 +141,24 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   }
 `;
 
-const NavPill = styled.div`
+const NavPill = styled.div<{ $active?: boolean }>`
   display: inline-flex;
   align-items: center;
-  gap: 20px;
-  padding: 12px 16px;
-  border-radius: 9999px;
-  transition: background-color 0.2s;
+  gap: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  width: 100%;
+  border: 1px solid ${(props) => (props.$active ? "rgba(6, 182, 212, 0.35)" : "transparent")};
+  background: ${(props) =>
+    props.$active ? "linear-gradient(90deg, rgba(6, 182, 212, 0.14), transparent)" : "transparent"};
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   @media (max-width: 1280px) {
-    width: 50px;
-    height: 50px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     justify-content: center;
-    border-radius: 50%;
+    border-radius: 10px;
   }
 `;
 
@@ -230,6 +240,66 @@ const ProfileFooterContainer = styled.div`
   }
 `;
 
+const GuestCtaCard = styled.div`
+  margin-top: auto;
+  padding: 16px;
+  background: var(--color-bg-card, rgba(15, 23, 42, 0.65));
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  @media (max-width: 1280px) {
+    display: none;
+  }
+`;
+
+const GuestSignInBtn = styled(Link)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--gradient-cta);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+
+  &:hover {
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+    transform: translateY(-1px);
+    text-decoration: none;
+    color: white;
+  }
+`;
+
+const GuestSignUpBtn = styled(Link)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  color: var(--color-fg-default);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--color-canvas-subtle);
+    border-color: var(--color-border-muted);
+    text-decoration: none;
+    color: var(--color-fg-default);
+  }
+`;
+
 interface SidebarProps {
   onPostClick?: () => void;
 }
@@ -305,7 +375,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
       >
         {navLinks.map((link) => (
           <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
-            <NavPill>
+            <NavPill $active={location.pathname.startsWith(link.to)}>
               <div
                 style={{
                   position: "relative",
@@ -316,14 +386,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                   height: 28,
                 }}
               >
-                <link.icon size={28} />
+                <link.icon size={24} />
                 {link.to === "/notifications" && unreadCount > 0 && (
                   <div
                     style={{
                       position: "absolute",
                       top: -4,
                       right: -6,
-                      backgroundColor: "#1d9bf0",
+                      backgroundColor: "var(--color-accent-cyan)",
                       color: "white",
                       borderRadius: "50%",
                       minWidth: "20px",
@@ -334,7 +404,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                       fontSize: "11px",
                       fontWeight: "bold",
                       padding: "0 4px",
-                      boxShadow: "0 0 0 2px var(--color-canvas-default)",
+                      boxShadow: "0 0 0 2px var(--color-bg-primary)",
                     }}
                   >
                     {unreadCount > 9 ? "9+" : unreadCount}
@@ -355,21 +425,25 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
               <button
                 style={{
                   width: "100%",
-                  borderRadius: "9999px",
-                  fontSize: "17px",
-                  padding: "14px 24px",
-                  backgroundColor: "var(--color-accent-emphasis, #1d9bf0)",
+                  borderRadius: "10px",
+                  fontSize: "15px",
+                  padding: "12px 20px",
+                  background: "var(--gradient-cta)",
                   color: "white",
                   border: "none",
-                  fontWeight: "bold",
+                  fontWeight: "600",
                   cursor: "pointer",
-                  boxShadow: "0 2px 8px rgba(29, 155, 240, 0.25)",
-                  transition: "opacity 0.2s ease, transform 0.1s ease",
+                  boxShadow: "var(--glow-ai-sm)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  transition: "opacity 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease",
                 }}
                 onClick={onPostClick}
                 className="post-btn"
               >
-                <span className="post-text">Post</span>
+                <span className="post-text">✨ Synthesize / Post</span>
                 <span className="post-icon" style={{ display: "none" }}>
                   <PlusIcon size={20} />
                 </span>
@@ -419,6 +493,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
             </Box>
           </ProfileFooterContainer>
         </Box>
+      )}
+
+      {!user && (
+        <GuestCtaCard>
+          <Text style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-fg-default)" }}>Join ModelScript</Text>
+          <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)", lineHeight: 1.4 }}>
+            Sign in to simulate physical systems, publish models, and collaborate.
+          </Text>
+          <GuestSignInBtn to="/login">Sign in</GuestSignInBtn>
+          <GuestSignUpBtn to="/signup">Create account</GuestSignUpBtn>
+        </GuestCtaCard>
       )}
     </SidebarContainer>
   );

@@ -928,11 +928,17 @@ export async function activate(context: vscode.ExtensionContext) {
           }
           const filePath = docUri.path.toLowerCase();
           const targetViewType =
-            filePath.endsWith(".sysml") || filePath.endsWith(".sysml2")
-              ? "sysml2.diagramEditor"
-              : filePath.endsWith(".mo")
-                ? "modelica.diagramEditor"
-                : DiagramEditorProvider.viewType;
+            filePath.endsWith(".step") || filePath.endsWith(".stp")
+              ? StepEditorProvider.viewType
+              : filePath.endsWith(".inp") || filePath.endsWith(".inpt")
+                ? InpEditorProvider.viewType
+                : filePath.endsWith(".cfg") || filePath.endsWith(".cfgt")
+                  ? CfgEditorProvider.viewType
+                  : filePath.endsWith(".sysml") || filePath.endsWith(".sysml2")
+                    ? "sysml2.diagramEditor"
+                    : filePath.endsWith(".mo")
+                      ? "modelica.diagramEditor"
+                      : DiagramEditorProvider.viewType;
           try {
             await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType);
           } catch {
@@ -947,15 +953,34 @@ export async function activate(context: vscode.ExtensionContext) {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
       if (
         tab?.input instanceof vscode.TabInputCustom &&
-        (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
+        (tab.input.viewType === DiagramEditorProvider.viewType ||
+          tab.input.viewType.endsWith(".diagramEditor") ||
+          tab.input.viewType === StepEditorProvider.viewType ||
+          tab.input.viewType === InpEditorProvider.viewType ||
+          tab.input.viewType === CfgEditorProvider.viewType)
       ) {
         vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
       }
     }),
-    commands.registerCommand("modelscript.openStepViewer", () => {
-      vscode.window.showInformationMessage(
-        "Clicking on a .step file in the explorer now opens the 3D Viewer directly.",
-      );
+    commands.registerCommand("modelscript.openStepViewer", async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri) {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor?.document && /\.(step|stp)$/i.test(activeEditor.document.uri.path)) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+      if (!targetUri) {
+        const stepFiles = await vscode.workspace.findFiles("**/*.{step,stp}", undefined, 1);
+        if (stepFiles.length > 0) {
+          targetUri = stepFiles[0];
+        }
+      }
+      if (targetUri) {
+        await vscode.commands.executeCommand("vscode.openWith", targetUri, StepEditorProvider.viewType);
+      } else {
+        vscode.window.showInformationMessage("No STEP CAD file found in the workspace.");
+      }
     }),
     commands.registerCommand("modelscript.openGCodeViewer", () => {
       vscode.window.showInformationMessage(

@@ -154,24 +154,54 @@ export const stepLanguage = language({
         }
 
         let meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
-        const unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+        let unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
 
-        if (meshes.length === 0 && unifiedIndex) {
-          const { generateDroneChassisGeometry } = await import("@modelscript/cad/mesh-fallbacks");
-          const normTarget = targetUri.replace(":///", ":/");
-          for (const [, entry] of unifiedIndex.symbols) {
-            const normResource = (entry.resourceId || "").replace(":///", ":/");
-            if (normResource === normTarget && entry.ruleName === "step_shape") {
+        if (meshes.length === 0 && ctx.workspaceManager?.stepWorkspaceIndex) {
+          let text = ctx.documentManager?.documentTrees?.get(targetUri)?.text;
+          if (!text) {
+            try {
+              text = await ctx.sharedFs?.read?.(targetUri);
+            } catch {}
+          }
+          if (text) {
+            try {
+              const buffer = new TextEncoder().encode(text);
+              await ctx.workspaceManager.stepWorkspaceIndex.parseStepFile(targetUri, buffer);
+              meshes = [...(ctx.workspaceManager.stepWorkspaceIndex.getMeshes(targetUri) || [])];
+              unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+            } catch {}
+          }
+        }
+
+        if (meshes.length === 0) {
+          try {
+            const { generateDroneChassisGeometry } = await import("@modelscript/cad/mesh-fallbacks");
+            const normTarget = targetUri.replace(":///", ":/");
+            if (unifiedIndex) {
+              for (const [, entry] of unifiedIndex.symbols) {
+                const normResource = (entry.resourceId || "").replace(":///", ":/");
+                if (normResource === normTarget && entry.ruleName === "step_shape") {
+                  const chassis = generateDroneChassisGeometry();
+
+                  meshes.push({
+                    name: entry.name,
+                    color: [0.6, 0.75, 0.9],
+                    attributes: { position: { array: chassis.vertices }, normal: { array: chassis.normals } },
+                    index: { array: chassis.indices },
+                  });
+                }
+              }
+            }
+            if (meshes.length === 0 && /\.(step|stp|p21)$/i.test(targetUri)) {
               const chassis = generateDroneChassisGeometry();
-
               meshes.push({
-                name: entry.name,
+                name: "Chassis",
                 color: [0.6, 0.75, 0.9],
                 attributes: { position: { array: chassis.vertices }, normal: { array: chassis.normals } },
                 index: { array: chassis.indices },
               });
             }
-          }
+          } catch {}
         }
 
         return meshes.map((mesh: any, idx: number) => {

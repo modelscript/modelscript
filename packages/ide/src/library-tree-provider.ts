@@ -78,8 +78,10 @@ function classKindToIcon(kind: string): vscode.ThemeIcon {
 function svgToIconUri(svg: string): vscode.Uri {
   const bytes = new TextEncoder().encode(svg);
   let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
   }
   const base64 = btoa(binary);
   return vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
@@ -102,7 +104,7 @@ export class LibraryTreeItem extends vscode.TreeItem {
       } catch {
         this.iconPath = classKindToIcon(info.classKind);
       }
-    } else if (info.iconUri) {
+    } else if (info.iconUri && info.iconUri.scheme !== "vscode-userdata") {
       this.iconPath = info.iconUri;
     } else if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
@@ -264,7 +266,10 @@ export class LibraryTreeProvider
 
   private async saveSvgIcon(className: string, svg: string): Promise<vscode.Uri | undefined> {
     if (!svg) return undefined;
-    if (this.context?.globalStorageUri) {
+    // In desktop VS Code (file:// scheme), caching icons as local files on disk is supported.
+    // In VS Code Web (vscode-userdata:// or other non-file schemes), the browser DOM cannot load
+    // custom internal schemes, so we must use a data: URI directly.
+    if (this.context?.globalStorageUri && this.context.globalStorageUri.scheme === "file") {
       try {
         const iconsDir = vscode.Uri.joinPath(this.context.globalStorageUri, "icons");
         await vscode.workspace.fs.createDirectory(iconsDir);

@@ -20,6 +20,7 @@ import { getComputeProfile } from "../services/hpc/compute-profiles.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { enforceExportCompliance } from "../util/compliance.js";
 
 const PHYSICS_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
 
@@ -182,247 +183,257 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   // ── Submit a physics simulation job ──
 
-  router.post("/physics/run", express.json(), (req, res) => {
-    const { geometryHash, config } = req.body as {
-      geometryHash: string;
-      config: Record<string, unknown>;
-    };
+  router.post(
+    "/physics/run",
+    enforceExportCompliance(() => database),
+    express.json(),
+    (req, res) => {
+      const { geometryHash, config } = req.body as {
+        geometryHash: string;
+        config: Record<string, unknown>;
+      };
 
-    if (!geometryHash || !config) {
-      return res.status(400).json({ error: "Missing geometryHash or config." });
-    }
-
-    let safeGeometryHash: string;
-    try {
-      safeGeometryHash = sanitizeHash(geometryHash);
-    } catch {
-      return res.status(400).json({ error: "Invalid geometryHash." });
-    }
-
-    const cachedGeometry = geometryCachePath(safeGeometryHash);
-    if (!fs.existsSync(cachedGeometry)) {
-      return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
-    }
-
-    let simType = (config.type as string) || "unknown";
-    if (config.workflowClass) {
-      if (String(config.workflowClass).includes("FEA")) simType = "FEA";
-      else if (String(config.workflowClass).includes("CFD")) simType = "CFD";
-      else simType = String(config.workflowClass);
-    }
-    const configHash = sha256(Buffer.from(JSON.stringify(config)));
-    const safeConfigHash = sanitizeHash(configHash);
-
-    // Check if a result already exists for this exact config + geometry combination
-    const resultDir = path.resolve(PHYSICS_CACHE_DIR, safeGeometryHash, safeConfigHash);
-    if (!resultDir.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
-      return res.status(400).json({ error: "Invalid result directory." });
-    }
-
-    // Pre-flight quota check
-    const profile = getComputeProfile(config.profile as string | undefined);
-    const userId = resolveRequestUserId(req, database);
-    if (userId) {
-      const quota = checkComputeQuota(userId, profile.id, database);
-      if (!quota.allowed) {
-        return res.status(402).json({
-          error: "Payment Required: Insufficient Compute Credits",
-          message: quota.reason,
-          balance: quota.userBalance,
-          required: quota.estimatedCost,
-          profile: quota.profileId,
-        });
+      if (!geometryHash || !config) {
+        return res.status(400).json({ error: "Missing geometryHash or config." });
       }
-    }
 
-    // Create job in the database
-    const dbJobId = database.createJob(`Physics ${simType}`, "RUNNING", "ADHOC", "ide", null, { resultDir }, userId);
-    const cachedResult = path.resolve(resultDir, "result.vtu");
-    const cachedScalars = path.resolve(resultDir, "scalars.json");
-
-    if (fs.existsSync(cachedResult) && fs.existsSync(cachedScalars)) {
-      database.updateJobStatus(dbJobId, "SUCCESS");
-      return res.json({
-        jobId: dbJobId.toString(),
-        status: "completed",
-        cached: true,
-        resultDir,
-      });
-    }
-
-    jobQueue.enqueue(`physics-${dbJobId}`, async () => {
-      let currentStepId: number | null = null;
-      fs.mkdirSync(resultDir, { recursive: true });
-      const logStream = fs.createWriteStream(path.join(resultDir, "output.log"), { flags: "a" });
-      let tmpDir = "";
-
+      let safeGeometryHash: string;
       try {
-        currentStepId = database.createJobStep(dbJobId, "Prepare Environment", "RUNNING");
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-physics-${simType}-`));
+        safeGeometryHash = sanitizeHash(geometryHash);
+      } catch {
+        return res.status(400).json({ error: "Invalid geometryHash." });
+      }
 
-        // Write the study configuration to a temp file
-        const studyPath = path.join(tmpDir, "study.json");
-        fs.writeFileSync(studyPath, JSON.stringify(config, null, 2), "utf8");
+      const cachedGeometry = geometryCachePath(safeGeometryHash);
+      if (!fs.existsSync(cachedGeometry)) {
+        return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
+      }
 
-        // Symlink the geometry into the working directory
-        const geomLink = path.join(tmpDir, "geometry.step");
-        fs.symlinkSync(cachedGeometry, geomLink);
+      let simType = (config.type as string) || "unknown";
+      if (config.workflowClass) {
+        if (String(config.workflowClass).includes("FEA")) simType = "FEA";
+        else if (String(config.workflowClass).includes("CFD")) simType = "CFD";
+        else simType = String(config.workflowClass);
+      }
+      const configHash = sha256(Buffer.from(JSON.stringify(config)));
+      const safeConfigHash = sanitizeHash(configHash);
 
-        // Determine which runner script to use
-        const scriptName = simType === "FEA" ? "run_fea.py" : "run_cfd.py";
-        const runnerScript = path.resolve(process.cwd(), "scripts", "physics", scriptName);
-        database.updateJobStepStatus(currentStepId, "SUCCESS");
+      // Check if a result already exists for this exact config + geometry combination
+      const resultDir = path.resolve(PHYSICS_CACHE_DIR, safeGeometryHash, safeConfigHash);
+      if (!resultDir.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
+        return res.status(400).json({ error: "Invalid result directory." });
+      }
 
-        // Execute the solver via HPC engine
-        currentStepId = database.createJobStep(dbJobId, "Run Solver", "RUNNING");
-        const profile = getComputeProfile(config.profile as string | undefined);
-        const hpcSpec: HpcJobSpec = {
-          jobId: `physics-${dbJobId}`,
-          name: `Physics-${simType}-${dbJobId}`,
-          command: "python3",
-          args: [runnerScript, "--config", studyPath],
-          workingDir: tmpDir,
-          profileId: profile.id,
-          resources: {
-            cpusPerTask: profile.cpus,
-            memoryMb: profile.memoryMb,
-            partition: profile.partition,
-            gpus: profile.gpus,
-          },
-        };
-
-        const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
-        const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile, (chunk) => {
-          logStream.write(chunk);
-        });
-
-        if (usage.exitCode !== 0) {
-          throw new Error(`Solver exited with code ${usage.exitCode}`);
-        }
-        database.updateJobStepStatus(currentStepId, "SUCCESS");
-
-        // Process results
-        currentStepId = database.createJobStep(dbJobId, "Process Results", "RUNNING");
-
-        const vtuFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".vtu"));
-        if (vtuFiles.length === 0) throw new Error(`Solver produced no .vtu output.`);
-
-        fs.copyFileSync(path.join(tmpDir, vtuFiles[0]!), cachedResult);
-        fs.copyFileSync(studyPath, path.join(resultDir, "study.json"));
-
-        const sbatchFile = path.join(tmpDir, "run.sbatch");
-        if (fs.existsSync(sbatchFile)) {
-          fs.copyFileSync(sbatchFile, path.join(resultDir, "run.sbatch"));
-        }
-
-        const scalars = extractScalarsFromVtu(cachedResult);
-        scalars["hpc"] = {
-          profile: profile.id,
-          cpuCoreSeconds: usage.cpuCoreSeconds,
-          peakMemoryMb: usage.peakMemoryMb,
-          costCredits: usage.costCredits,
-        };
-        fs.writeFileSync(cachedScalars, JSON.stringify(scalars, null, 2), "utf8");
-
-        database.updateJobAccounting(dbJobId, {
-          computeProfile: profile.id,
-          cpuSeconds: usage.cpuCoreSeconds,
-          peakMemoryMb: usage.peakMemoryMb,
-          gpuSeconds: usage.gpuSeconds,
-          costCredits: usage.costCredits,
-        });
-
-        if (userId && usage.costCredits > 0) {
-          database.deductUserCredits(userId, usage.costCredits, dbJobId, `Physics ${simType} Simulation`, {
-            profile: profile.id,
-            ...usage,
+      // Pre-flight quota check
+      const profile = getComputeProfile(config.profile as string | undefined);
+      const userId = resolveRequestUserId(req, database);
+      if (userId) {
+        const quota = checkComputeQuota(userId, profile.id, database);
+        if (!quota.allowed) {
+          return res.status(402).json({
+            error: "Payment Required: Insufficient Compute Credits",
+            message: quota.reason,
+            balance: quota.userBalance,
+            required: quota.estimatedCost,
+            profile: quota.profileId,
           });
         }
-
-        database.updateJobStepStatus(currentStepId, "SUCCESS");
-        database.updateJobStatus(dbJobId, "SUCCESS");
-
-        const status = jobQueue.getStatus(`physics-${dbJobId}`);
-        if (status) status.resultPath = cachedResult;
-      } catch (err) {
-        logStream.write(`\nERROR: ${err instanceof Error ? err.message : String(err)}\n`);
-        if (currentStepId) database.updateJobStepStatus(currentStepId, "FAILED");
-        database.updateJobStatus(dbJobId, "FAILED");
-      } finally {
-        logStream.end();
-        if (tmpDir && fs.existsSync(tmpDir)) {
-          fs.rmSync(tmpDir, { recursive: true, force: true });
-        }
       }
-    });
 
-    res.json({ jobId: dbJobId.toString(), status: "pending" });
-  });
+      // Create job in the database
+      const dbJobId = database.createJob(`Physics ${simType}`, "RUNNING", "ADHOC", "ide", null, { resultDir }, userId);
+      const cachedResult = path.resolve(resultDir, "result.vtu");
+      const cachedScalars = path.resolve(resultDir, "scalars.json");
+
+      if (fs.existsSync(cachedResult) && fs.existsSync(cachedScalars)) {
+        database.updateJobStatus(dbJobId, "SUCCESS");
+        return res.json({
+          jobId: dbJobId.toString(),
+          status: "completed",
+          cached: true,
+          resultDir,
+        });
+      }
+
+      jobQueue.enqueue(`physics-${dbJobId}`, async () => {
+        let currentStepId: number | null = null;
+        fs.mkdirSync(resultDir, { recursive: true });
+        const logStream = fs.createWriteStream(path.join(resultDir, "output.log"), { flags: "a" });
+        let tmpDir = "";
+
+        try {
+          currentStepId = database.createJobStep(dbJobId, "Prepare Environment", "RUNNING");
+          tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-physics-${simType}-`));
+
+          // Write the study configuration to a temp file
+          const studyPath = path.join(tmpDir, "study.json");
+          fs.writeFileSync(studyPath, JSON.stringify(config, null, 2), "utf8");
+
+          // Symlink the geometry into the working directory
+          const geomLink = path.join(tmpDir, "geometry.step");
+          fs.symlinkSync(cachedGeometry, geomLink);
+
+          // Determine which runner script to use
+          const scriptName = simType === "FEA" ? "run_fea.py" : "run_cfd.py";
+          const runnerScript = path.resolve(process.cwd(), "scripts", "physics", scriptName);
+          database.updateJobStepStatus(currentStepId, "SUCCESS");
+
+          // Execute the solver via HPC engine
+          currentStepId = database.createJobStep(dbJobId, "Run Solver", "RUNNING");
+          const profile = getComputeProfile(config.profile as string | undefined);
+          const hpcSpec: HpcJobSpec = {
+            jobId: `physics-${dbJobId}`,
+            name: `Physics-${simType}-${dbJobId}`,
+            command: "python3",
+            args: [runnerScript, "--config", studyPath],
+            workingDir: tmpDir,
+            profileId: profile.id,
+            resources: {
+              cpusPerTask: profile.cpus,
+              memoryMb: profile.memoryMb,
+              partition: profile.partition,
+              gpus: profile.gpus,
+            },
+          };
+
+          const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
+          const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile, (chunk) => {
+            logStream.write(chunk);
+          });
+
+          if (usage.exitCode !== 0) {
+            throw new Error(`Solver exited with code ${usage.exitCode}`);
+          }
+          database.updateJobStepStatus(currentStepId, "SUCCESS");
+
+          // Process results
+          currentStepId = database.createJobStep(dbJobId, "Process Results", "RUNNING");
+
+          const vtuFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".vtu"));
+          if (vtuFiles.length === 0) throw new Error(`Solver produced no .vtu output.`);
+
+          fs.copyFileSync(path.join(tmpDir, vtuFiles[0]!), cachedResult);
+          fs.copyFileSync(studyPath, path.join(resultDir, "study.json"));
+
+          const sbatchFile = path.join(tmpDir, "run.sbatch");
+          if (fs.existsSync(sbatchFile)) {
+            fs.copyFileSync(sbatchFile, path.join(resultDir, "run.sbatch"));
+          }
+
+          const scalars = extractScalarsFromVtu(cachedResult);
+          scalars["hpc"] = {
+            profile: profile.id,
+            cpuCoreSeconds: usage.cpuCoreSeconds,
+            peakMemoryMb: usage.peakMemoryMb,
+            costCredits: usage.costCredits,
+          };
+          fs.writeFileSync(cachedScalars, JSON.stringify(scalars, null, 2), "utf8");
+
+          database.updateJobAccounting(dbJobId, {
+            computeProfile: profile.id,
+            cpuSeconds: usage.cpuCoreSeconds,
+            peakMemoryMb: usage.peakMemoryMb,
+            gpuSeconds: usage.gpuSeconds,
+            costCredits: usage.costCredits,
+          });
+
+          if (userId && usage.costCredits > 0) {
+            database.deductUserCredits(userId, usage.costCredits, dbJobId, `Physics ${simType} Simulation`, {
+              profile: profile.id,
+              ...usage,
+            });
+          }
+
+          database.updateJobStepStatus(currentStepId, "SUCCESS");
+          database.updateJobStatus(dbJobId, "SUCCESS");
+
+          const status = jobQueue.getStatus(`physics-${dbJobId}`);
+          if (status) status.resultPath = cachedResult;
+        } catch (err) {
+          logStream.write(`\nERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+          if (currentStepId) database.updateJobStepStatus(currentStepId, "FAILED");
+          database.updateJobStatus(dbJobId, "FAILED");
+        } finally {
+          logStream.end();
+          if (tmpDir && fs.existsSync(tmpDir)) {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          }
+        }
+      });
+
+      res.json({ jobId: dbJobId.toString(), status: "pending" });
+    },
+  );
 
   // ── Submit a CAM compilation job ──
 
-  router.post("/physics/run-cam", express.json(), (req, res) => {
-    const { geometryHash, config } = req.body as {
-      geometryHash: string;
-      config: Record<string, unknown>;
-    };
+  router.post(
+    "/physics/run-cam",
+    enforceExportCompliance(() => database),
+    express.json(),
+    (req, res) => {
+      const { geometryHash, config } = req.body as {
+        geometryHash: string;
+        config: Record<string, unknown>;
+      };
 
-    if (!geometryHash || !config) {
-      return res.status(400).json({ error: "Missing geometryHash or config." });
-    }
+      if (!geometryHash || !config) {
+        return res.status(400).json({ error: "Missing geometryHash or config." });
+      }
 
-    let safeGeometryHash: string;
-    try {
-      safeGeometryHash = sanitizeHash(geometryHash);
-    } catch {
-      return res.status(400).json({ error: "Invalid geometryHash." });
-    }
+      let safeGeometryHash: string;
+      try {
+        safeGeometryHash = sanitizeHash(geometryHash);
+      } catch {
+        return res.status(400).json({ error: "Invalid geometryHash." });
+      }
 
-    const cachedGeometry = geometryCachePath(safeGeometryHash);
-    if (!fs.existsSync(cachedGeometry)) {
-      return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
-    }
+      const cachedGeometry = geometryCachePath(safeGeometryHash);
+      if (!fs.existsSync(cachedGeometry)) {
+        return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
+      }
 
-    const configHash = sha256(Buffer.from(JSON.stringify(config)));
-    const safeConfigHash = sanitizeHash(configHash);
-    const resultDir = path.resolve(PHYSICS_CACHE_DIR, safeGeometryHash, "cam_" + safeConfigHash);
-    if (!resultDir.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
-      return res.status(400).json({ error: "Invalid result directory." });
-    }
+      const configHash = sha256(Buffer.from(JSON.stringify(config)));
+      const safeConfigHash = sanitizeHash(configHash);
+      const resultDir = path.resolve(PHYSICS_CACHE_DIR, safeGeometryHash, "cam_" + safeConfigHash);
+      if (!resultDir.startsWith(PHYSICS_CACHE_DIR + path.sep)) {
+        return res.status(400).json({ error: "Invalid result directory." });
+      }
 
-    // Create job in the database
-    const dbJobId = database.createJob(`CAM Generation`, "RUNNING", "ADHOC", "ide", null, { resultDir });
-    const cachedResult = path.resolve(resultDir, "toolpath.gcode");
+      // Create job in the database
+      const dbJobId = database.createJob(`CAM Generation`, "RUNNING", "ADHOC", "ide", null, { resultDir });
+      const cachedResult = path.resolve(resultDir, "toolpath.gcode");
 
-    if (fs.existsSync(cachedResult)) {
-      database.updateJobStatus(dbJobId, "SUCCESS");
-      return res.json({
-        jobId: dbJobId.toString(),
-        status: "completed",
-        cached: true,
-        resultDir,
+      if (fs.existsSync(cachedResult)) {
+        database.updateJobStatus(dbJobId, "SUCCESS");
+        return res.json({
+          jobId: dbJobId.toString(),
+          status: "completed",
+          cached: true,
+          resultDir,
+        });
+      }
+
+      fs.mkdirSync(resultDir, { recursive: true });
+
+      // Convert to js path because TS files are transpiled to dist/ in production,
+      // but we use tsx watch during dev. For safety, we use the tsx compatible path or worker path.
+      const ext = path.extname(import.meta.url) === ".ts" ? "ts" : "js";
+      const camWorkerPath = path.resolve(process.cwd(), "apps", "api", "src", "workers", `camWorker.${ext}`);
+
+      // We use enqueueProcess for CPU-intensive/isolated tasks
+      jobQueue.enqueueProcess(`cam-${dbJobId}`, camWorkerPath, {
+        stepFilePath: cachedGeometry,
+        outputGcodePath: cachedResult,
+        config,
       });
-    }
 
-    fs.mkdirSync(resultDir, { recursive: true });
+      // We also need to mark it in the db when it finishes, but enqueueProcess currently just tracks it in memory.
+      // In a real app we'd attach a callback or poll the queue, but for scaffolding we'll let it finish.
 
-    // Convert to js path because TS files are transpiled to dist/ in production,
-    // but we use tsx watch during dev. For safety, we use the tsx compatible path or worker path.
-    const ext = path.extname(import.meta.url) === ".ts" ? "ts" : "js";
-    const camWorkerPath = path.resolve(process.cwd(), "apps", "api", "src", "workers", `camWorker.${ext}`);
-
-    // We use enqueueProcess for CPU-intensive/isolated tasks
-    jobQueue.enqueueProcess(`cam-${dbJobId}`, camWorkerPath, {
-      stepFilePath: cachedGeometry,
-      outputGcodePath: cachedResult,
-      config,
-    });
-
-    // We also need to mark it in the db when it finishes, but enqueueProcess currently just tracks it in memory.
-    // In a real app we'd attach a callback or poll the queue, but for scaffolding we'll let it finish.
-
-    res.json({ jobId: dbJobId.toString(), status: "pending" });
-  });
+      res.json({ jobId: dbJobId.toString(), status: "pending" });
+    },
+  );
 
   // ── Poll job status ──
 

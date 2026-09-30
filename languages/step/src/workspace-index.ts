@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/runtime";
@@ -69,7 +69,7 @@ function extractStepNames(text: string): {
 
   const encoder = new TextEncoder();
 
-  const headerRegex = /#\d+=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
+  const headerRegex = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
   let headerMatch: RegExpExecArray | null;
 
   while ((headerMatch = headerRegex.exec(text)) !== null) {
@@ -175,6 +175,28 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
 
   public getAssemblyModel(uri: string): StepAssemblyModel | undefined {
     return this.fileAssemblies.get(uri);
+  }
+
+  public has(uri: string): boolean {
+    return this.fileIndices.has(uri);
+  }
+
+  public getFileIndex(uri: string): SymbolIndex | undefined {
+    return this.fileIndices.get(uri);
+  }
+
+  public register(uri: string, _loader?: () => any): void {
+    if (!this.fileIndices.has(uri)) {
+      this.fileIndices.set(uri, {
+        symbols: new Map(),
+        byName: new Map(),
+        childrenOf: new Map(),
+      });
+    }
+  }
+
+  public reindexDocument(uri: string, _loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+    this._version++;
   }
 
   /**

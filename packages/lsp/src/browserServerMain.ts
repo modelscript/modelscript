@@ -334,6 +334,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     }
   }
   (globalThis as any).serverDistBase = serverDistBase;
+  const stepWs = workspaceManager.getWorkspaceIndex("step");
+  if (stepWs) stepWs.serverDistBase = serverDistBase;
 
   try {
     await initBltWasm(`${serverDistBase}/release.wasm`);
@@ -647,6 +649,7 @@ let activeVerification: AbortController | null = null;
 const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
 globalThis.activeSemanticTimers = activeSemanticTimers;
 const activeShortDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const activeSyntaxDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const lastSyntaxErrorsCount = new Map<string, number>();
 // Per-URI revision counter: incremented on every edit, checked before semantic work
 // Track last-indexed text per URI to avoid re-marking dirty when text hasn't changed
@@ -730,7 +733,13 @@ documents.onDidChangeContent((change) => {
     validationService.revalidationTimer = null;
   }
 
-  // Cancel active Tier 2 and Tier 3 timers for this URI
+  // Cancel active Tier 1 syntax, Tier 2, and Tier 3 timers for this URI
+  const existingSyntaxTimer = activeSyntaxDebounceTimers.get(uri);
+  if (existingSyntaxTimer) {
+    clearTimeout(existingSyntaxTimer);
+    activeSyntaxDebounceTimers.delete(uri);
+  }
+
   const existingTier2 = activeShortDebounceTimers.get(uri);
   if (existingTier2) {
     clearTimeout(existingTier2);
@@ -772,13 +781,24 @@ documents.onDidChangeContent((change) => {
         const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
         const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
-        // Surface syntax errors if errors are present or if previous errors were just cleared
-        if (syntaxDiags.length > 0 || lastCount > 0) {
-          lastSyntaxErrorsCount.set(uri, syntaxDiags.length);
+        // Surface syntax errors: clear immediately when 0, debounce by 180ms when editing
+        if (syntaxDiags.length === 0 && lastCount > 0) {
+          lastSyntaxErrorsCount.set(uri, 0);
           const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-          const allDiags = [...syntaxDiags, ...cachedSemantic];
-          if (allDiags.length > 1000) allDiags.length = 1000;
-          connection.sendDiagnostics({ uri, diagnostics: allDiags });
+          connection.sendDiagnostics({ uri, diagnostics: cachedSemantic });
+        } else if (syntaxDiags.length > 0) {
+          activeSyntaxDebounceTimers.set(
+            uri,
+            setTimeout(() => {
+              activeSyntaxDebounceTimers.delete(uri);
+              if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
+              lastSyntaxErrorsCount.set(uri, syntaxDiags.length);
+              const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
+              const allDiags = [...syntaxDiags, ...cachedSemantic];
+              if (allDiags.length > 1000) allDiags.length = 1000;
+              connection.sendDiagnostics({ uri, diagnostics: allDiags });
+            }, 180),
+          );
         }
       }
     } catch (e: any) {
@@ -802,16 +822,16 @@ documents.onDidChangeContent((change) => {
       if (cached?.tree) {
         const langId = plugin?.id ?? (change.document.languageId || "modelica");
         const wsIndex = plugin?.workspaceIndex ?? workspaceManager.getWorkspaceIndex(langId);
-        if (wsIndex) {
+        if (wsIndex && typeof wsIndex.has === "function") {
           const effectiveUri = uri.startsWith("modelscript-lib://global")
             ? "file://" + uri.substring("modelscript-lib://global".length)
             : uri;
           if (wsIndex.has(effectiveUri)) {
-            wsIndex.reindexDocument(effectiveUri, () => cached.tree.rootNode);
+            wsIndex.reindexDocument?.(effectiveUri, () => cached.tree.rootNode);
           } else {
-            wsIndex.register(effectiveUri, () => cached.tree.rootNode);
+            wsIndex.register?.(effectiveUri, () => cached.tree.rootNode);
           }
-          wsIndex.getFileIndex(effectiveUri);
+          wsIndex.getFileIndex?.(effectiveUri);
         }
       }
     }, 60),
@@ -841,6 +861,11 @@ documents.onDidChangeContent((change) => {
 
 // Clean up when a document is closed
 documents.onDidClose((event) => {
+  const syntaxTimer = activeSyntaxDebounceTimers.get(event.document.uri);
+  if (syntaxTimer) {
+    clearTimeout(syntaxTimer);
+    activeSyntaxDebounceTimers.delete(event.document.uri);
+  }
   activeShortDebounceTimers.delete(event.document.uri);
   lastSyntaxErrorsCount.delete(event.document.uri);
   const timer = validationService.activeValidationTimers.get(event.document.uri);

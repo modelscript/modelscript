@@ -22,6 +22,9 @@ export interface AuthUser {
   id: number;
   username: string;
   email: string;
+  role?: string | undefined;
+  accountType?: string | undefined;
+  account_type?: string | undefined;
 }
 
 declare module "express" {
@@ -51,7 +54,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       return;
     }
 
-    req.user = botUser;
+    req.user = {
+      ...botUser,
+      accountType: botUser.account_type,
+    };
     next();
     return;
   }
@@ -67,6 +73,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         res.status(401).json({ error: "User no longer exists" });
         return;
       }
+      decoded.accountType = userExists.account_type || decoded.accountType || decoded.role || "user";
+      decoded.account_type = decoded.accountType;
     }
 
     req.user = decoded;
@@ -74,4 +82,47 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
   }
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  requireAuth(req, res, () => {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const isAdmin = user.role === "admin" || user.accountType === "admin" || user.account_type === "admin";
+
+    if (!isAdmin) {
+      res.status(403).json({ error: "Access denied: Administrator privileges required" });
+      return;
+    }
+
+    next();
+  });
+}
+
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    next();
+    return;
+  }
+
+  const token = authHeader.substring(7);
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
+    if (sharedAuthDatabase) {
+      const userExists = sharedAuthDatabase.getUserById(decoded.id);
+      if (userExists) {
+        req.user = decoded;
+      }
+    } else {
+      req.user = decoded;
+    }
+  } catch {
+    // Ignore invalid or expired token for optional auth
+  }
+  next();
 }

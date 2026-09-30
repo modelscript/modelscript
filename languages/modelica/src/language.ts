@@ -598,7 +598,7 @@ export const modelicaLanguage = language({
       choice(
         seq(
           semanticToken("class", field("name", $.identifier), ["declaration"]),
-          field("description", $.description_string),
+          field("description", optional($.description_string)),
           field("composition", $.composition),
           "end",
           optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
@@ -607,7 +607,7 @@ export const modelicaLanguage = language({
           "extends",
           semanticToken("class", field("name", $.identifier), ["declaration"]),
           optional($.class_modification),
-          field("description", $.description_string),
+          field("description", optional($.description_string)),
           field("composition", $.composition),
           "end",
           optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
@@ -822,7 +822,7 @@ export const modelicaLanguage = language({
       ),
 
     element_modification: ($) =>
-      seq(field("name", $.name), optional(field("modification", $.modification)), $.description_string),
+      seq(field("name", $.name), optional(field("modification", $.modification)), optional($.description_string)),
 
     element_redeclaration: ($) =>
       seq(
@@ -858,9 +858,11 @@ export const modelicaLanguage = language({
     short_class_definition: ($) => seq($.class_prefixes, $.short_class_specifier),
 
     // A.2.6 Equations
-    equation_section: ($) => seq(optional("initial"), "equation", repeat(choice(seq($.some_equation, ";"), seq($.annotation_clause, ";")))),
+    equation_section: ($) =>
+      seq(optional("initial"), "equation", repeat(choice(seq($.some_equation, ";"), seq($.annotation_clause, ";")))),
 
-    algorithm_section: ($) => seq(optional("initial"), "algorithm", repeat(choice(seq($.statement, ";"), seq($.annotation_clause, ";")))),
+    algorithm_section: ($) =>
+      seq(optional("initial"), "algorithm", repeat(choice(seq($.statement, ";"), seq($.annotation_clause, ";")))),
 
     some_equation: ($) =>
       seq(
@@ -1197,9 +1199,9 @@ export const modelicaLanguage = language({
 
     subscript: ($) => choice(field("flexible", ":"), field("expression", $.expression)),
 
-    description: ($) => seq($.description_string, optional($.annotation_clause)),
+    description: ($) => seq(optional($.description_string), optional($.annotation_clause)),
 
-    description_string: ($) => choice(prec(1, seq($.string_literal, repeat(seq("+", $.string_literal)))), prec(0, seq())),
+    description_string: ($) => seq($.string_literal, repeat(seq("+", $.string_literal))),
 
     annotation_clause: ($) => seq("annotation", $.class_modification),
 

@@ -190,4 +190,66 @@ describe("SysML v2 Requirement Falsification Engine", () => {
     assert.ok(peakConcurrency > 1, `Expected concurrent execution, peak was ${peakConcurrency}`);
     assert.ok(peakConcurrency <= 4, `Peak concurrency ${peakConcurrency} should not exceed configured limit of 4`);
   });
+
+  it("should falsify safety requirements using CMA-ES", async () => {
+    const formula: STLFormula = {
+      type: "always",
+      interval: [0, 2],
+      formula: {
+        type: "predicate",
+        variable: "speed",
+        operator: "<=",
+        threshold: 60.0,
+      },
+    };
+
+    const res = await RequirementFalsifier.falsify({
+      algorithm: "cmaes",
+      parameters: [{ name: "throttle", min: 0.1, max: 1.0 }],
+      formula,
+      maxGenerations: 10,
+      populationSize: 8,
+      simulate: async (params) => {
+        const times = [0, 1, 2];
+        const speed = times.map((t) => params.throttle * 80 * (t / 2));
+        return { times, signals: { speed } };
+      },
+    });
+
+    assert.strictEqual(res.isFalsified, true);
+    assert.ok(res.minRobustness < 0);
+    assert.ok(res.counterexampleParams !== undefined);
+    assert.ok(res.summary.includes("Requirement falsified"));
+  });
+
+  it("should falsify safety requirements using PSO", async () => {
+    const formula: STLFormula = {
+      type: "always",
+      interval: [0, 2],
+      formula: {
+        type: "predicate",
+        variable: "heat",
+        operator: "<=",
+        threshold: 50.0,
+      },
+    };
+
+    const res = await RequirementFalsifier.falsify({
+      algorithm: "pso",
+      parameters: [{ name: "voltage", min: 10, max: 50 }],
+      formula,
+      maxGenerations: 8,
+      populationSize: 10,
+      simulate: async (params) => {
+        const times = [0, 1, 2];
+        const heat = times.map((_t) => params.voltage * 1.5);
+        return { times, signals: { heat } };
+      },
+    });
+
+    assert.strictEqual(res.isFalsified, true);
+    assert.ok(res.minRobustness < 0);
+    assert.ok(res.counterexampleParams !== undefined);
+    assert.ok(res.summary.includes("Requirement falsified"));
+  });
 });

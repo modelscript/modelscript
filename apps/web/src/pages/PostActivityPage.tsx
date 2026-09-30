@@ -80,23 +80,22 @@ const PostActivityPage: React.FC = () => {
     async function fetchActivity() {
       setLoading(true);
       try {
-        // Ideally these would be specialized endpoints
-        // For now, we simulate by fetching replies and filtering or just fetching a timeline
-        // Real implementation should be fetching GET /posts/:id/quotes and GET /posts/:id/reposts
-
-        // Since we don't have dedicated endpoints yet, let's fetch generic replies as a fallback or if we have them:
-        const quotesRes = await fetch(`${API_BASE_URL}/social/posts/${id}/replies`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const [quotesRes, repostsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/social/posts/${id}/quotes`, { headers }),
+          fetch(`${API_BASE_URL}/social/posts/${id}/reposts`, { headers }),
+        ]);
 
         if (quotesRes.ok) {
           const data = await quotesRes.json();
-          // Filter out true quotes if possible, or just show them
-          setQuotes(data.posts.filter((p: any) => p.quote_post_id === Number(id)) || []);
-          setReposts(data.posts.filter((p: any) => p.repost_of_id === Number(id)) || []);
+          setQuotes(data.quotes || []);
+        }
+        if (repostsRes.ok) {
+          const data = await repostsRes.json();
+          setReposts(data.reposts || []);
         }
       } catch (err) {
-        console.error(err);
+        console.error("Failed to fetch post activity:", err);
       } finally {
         setLoading(false);
       }

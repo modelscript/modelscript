@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser, choice, field, language, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
+import { buildParser, choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -13,13 +13,14 @@ const dsl = language({
   name: "GlrAmbiguityLang",
   rules: {
     Program: ($: any) => repeat($.Stmt),
-    Stmt: ($: any) => choice($.IfStmt, $.ExprStmt),
+    Stmt: ($: any) => choice($.IfStmt, $.ExprStmt, $.OptStmt),
     // Dangling-else ambiguity test
     IfStmt: ($: any) =>
       choice(
         prec(1, seq("if", "(", $.Expr, ")", $.Stmt)),
         prec(2, seq("if", "(", $.Expr, ")", $.Stmt, "else", $.Stmt)),
       ),
+    OptStmt: ($: any) => seq("opt", optional(field("tag", $.Identifier)), field("name", $.Identifier), ";"),
     ExprStmt: ($: any) => seq($.Expr, ";"),
     Expr: ($: any) => choice($.AddExpr, $.MulExpr, $.ParenExpr, $.Identifier, $.Number),
     AddExpr: ($: any) => prec.left(1, seq(field("left", $.Expr), "+", field("right", $.Expr))),
@@ -138,5 +139,54 @@ describe("GLR Ambiguity, GSS Splitting & Precedence Tests", () => {
 
     const sexpr = activeFacade.getAstSExpr(ast, true);
     expect(sexpr).toContain("(E)");
+  });
+
+  it("should prefer consuming optional token over epsilon reduction (maximal munch)", () => {
+    // Both 'foo' (tag) and 'bar' (name) are provided.
+    // optional($.Identifier) must consume 'foo' rather than reducing to epsilon and leaving 'bar' out of place.
+    const code = "opt foo bar;";
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    expect(ast).toBeGreaterThan(0);
+
+    const sexpr = activeFacade.getAstSExpr(ast, true);
+    expect(sexpr).toContain("OptStmt");
+    // Verify optional child consumed 'foo' ([0, 4] - [0, 7])
+    expect(sexpr).toContain("(_Identifier? [0, 4] - [0, 7]");
+    // Verify following identifier consumed 'bar' ([0, 8] - [0, 11])
+    expect(sexpr).toContain("(Identifier [0, 8] - [0, 11]");
+    expect(sexpr).not.toContain("ERROR");
+  });
+
+  it("should handle omitted optional token via epsilon without error", () => {
+    // Only 'bar' (name) is provided; tag is omitted.
+    const code = "opt bar;";
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    expect(ast).toBeGreaterThan(0);
+
+    const sexpr = activeFacade.getAstSExpr(ast, true);
+    expect(sexpr).toContain("OptStmt");
+    // Verify optional child was empty epsilon ([0, 3] - [0, 3])
+    expect(sexpr).toContain("(_Identifier? [0, 3] - [0, 3]");
+    // Verify identifier consumed 'bar' ([0, 4] - [0, 7])
+    expect(sexpr).toContain("(Identifier [0, 4] - [0, 7]");
+    expect(sexpr).not.toContain("ERROR");
+  });
+
+  it("should throw an error during buildParser when strictConflicts is enabled and unresolved conflicts exist", () => {
+    const conflictingDsl = language({
+      name: "ConflictingLang",
+      strictConflicts: true,
+      rules: {
+        Root: ($: any) => choice($.A, $.B),
+        A: ($: any) => seq("x", "y"),
+        B: ($: any) => seq("x", "y"),
+      },
+    });
+
+    expect(() => {
+      buildParser(conflictingDsl as any);
+    }).toThrow(/unresolved conflict/);
   });
 });

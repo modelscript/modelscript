@@ -348,11 +348,13 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             <span
               style={{
                 fontSize: "11px",
-                background: "rgba(31, 111, 235, 0.15)",
-                color: "#58a6ff",
+                background: "rgba(6, 182, 212, 0.15)",
+                color: "var(--color-accent-cyan)",
+                border: "1px solid rgba(6, 182, 212, 0.3)",
                 padding: "2px 6px",
-                borderRadius: "4px",
+                borderRadius: "6px",
                 fontWeight: 600,
+                fontFamily: "var(--font-mono)",
               }}
             >
               ⚡ {viewConfig.provenance.solver?.toUpperCase()} • {viewConfig.provenance.profile}
@@ -367,21 +369,23 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
                 window.open(`/api/v1/cae/jobs/${viewConfig.jobId}/reproduce-spec`, "_blank");
               }}
               style={{
-                background: "var(--color-canvas-subtle)",
+                background: "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2))",
                 color: "var(--color-text-primary)",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "4px",
+                border: "1px solid var(--color-border-glass)",
+                borderRadius: "6px",
                 padding: "3px 8px",
                 fontSize: "11px",
                 fontWeight: "600",
+                fontFamily: "var(--font-mono)",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "4px",
+                boxShadow: "0 0 8px rgba(139, 92, 246, 0.25)",
               }}
               title="Inspect execution recipe and reproduction parameters"
             >
-              Fork &amp; Reproduce
+              ⚡ Fork &amp; Reproduce
             </button>
           )}
           {isLoaded && (

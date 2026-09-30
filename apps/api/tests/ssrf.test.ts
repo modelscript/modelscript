@@ -2,7 +2,13 @@
 
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { assertSafePublicUrl, isSafePublicUrl } from "../src/util/ssrf.js";
+import {
+  assertSafePublicUrl,
+  assertSafePublicUrlAsync,
+  isSafePublicUrl,
+  isSafePublicUrlAsync,
+  safePublicFetch,
+} from "../src/util/ssrf.js";
 
 describe("SSRF Protection (assertSafePublicUrl)", () => {
   test("allows legitimate public URLs", () => {
@@ -99,5 +105,61 @@ describe("SSRF Protection (assertSafePublicUrl)", () => {
       assert.throws(() => assertSafePublicUrl(url), /Forbidden (?:numeric host|host|private IPv4)/);
       assert.strictEqual(isSafePublicUrl(url), false);
     }
+  });
+
+  test("rejects DNS rebinding / hostnames resolving to private IPs", async () => {
+    // Mock resolver simulating a malicious domain resolving to AWS metadata / loopback
+    const mockRebindingResolver = async (host: string) => {
+      if (host === "rebind-meta.attacker.com") {
+        return [{ address: "169.254.169.254", family: 4 }];
+      }
+      if (host === "rebind-loopback.attacker.com") {
+        return [{ address: "127.0.0.1", family: 4 }];
+      }
+      if (host === "rebind-dual.attacker.com") {
+        return [
+          { address: "93.184.216.34", family: 4 },
+          { address: "10.0.0.5", family: 4 }, // one private IP must fail the entire set
+        ];
+      }
+      if (host === "safe.example.com") {
+        return [{ address: "93.184.216.34", family: 4 }];
+      }
+      throw new Error("ENOTFOUND");
+    };
+
+    // Valid public hostname
+    const safeUrl = await assertSafePublicUrlAsync("https://safe.example.com/api", mockRebindingResolver);
+    assert.strictEqual(safeUrl.hostname, "safe.example.com");
+    assert.strictEqual(await isSafePublicUrlAsync("https://safe.example.com/api", mockRebindingResolver), true);
+
+    // Rebinding to cloud metadata
+    await assert.rejects(
+      async () => assertSafePublicUrlAsync("https://rebind-meta.attacker.com/secret", mockRebindingResolver),
+      /SSRF Blocked: rebind-meta\.attacker\.com resolves to private IP 169\.254\.169\.254/,
+    );
+    assert.strictEqual(
+      await isSafePublicUrlAsync("https://rebind-meta.attacker.com/secret", mockRebindingResolver),
+      false,
+    );
+
+    // Rebinding to loopback
+    await assert.rejects(
+      async () => assertSafePublicUrlAsync("http://rebind-loopback.attacker.com:8080/", mockRebindingResolver),
+      /SSRF Blocked: rebind-loopback\.attacker\.com resolves to private IP 127\.0\.0\.1/,
+    );
+
+    // Multi-record with one private IP
+    await assert.rejects(
+      async () => assertSafePublicUrlAsync("http://rebind-dual.attacker.com/", mockRebindingResolver),
+      /SSRF Blocked: rebind-dual\.attacker\.com resolves to private IP 10\.0\.0\.5/,
+    );
+
+    // safePublicFetch rejects rebinding before issuing network fetch
+    await assert.rejects(
+      async () =>
+        safePublicFetch("https://rebind-meta.attacker.com/latest/meta-data/", undefined, mockRebindingResolver),
+      /SSRF Blocked/,
+    );
   });
 });

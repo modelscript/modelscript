@@ -182,7 +182,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   }
 
   // If STEP / 3D CAD viewer is enabled
-  if (options?.features?.cad3dViewer) {
+  if (options?.features?.cad3dViewer || languages.some((l) => l.id === "step")) {
     customEditors.push({
       viewType: "modelscript.stepEditor",
       displayName: "3D CAD / STEP Viewer",
@@ -192,20 +192,24 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   }
 
   // FEA / CalculiX Deck 3D Editor
-  customEditors.push({
-    viewType: "modelscript.inpEditor",
-    displayName: "FEA Deck & 3D Simulation Viewer",
-    selector: [{ filenamePattern: "*.inp" }, { filenamePattern: "*.inpt" }],
-    priority: "option",
-  });
+  if (languages.some((l) => l.id === "fea")) {
+    customEditors.push({
+      viewType: "modelscript.inpEditor",
+      displayName: "FEA Deck & 3D Simulation Viewer",
+      selector: [{ filenamePattern: "*.inp" }, { filenamePattern: "*.inpt" }],
+      priority: "option",
+    });
+  }
 
   // CFD / SU2 Config 3D Editor
-  customEditors.push({
-    viewType: "modelscript.cfgEditor",
-    displayName: "CFD Config & 3D Aerodynamics Viewer",
-    selector: [{ filenamePattern: "*.cfg" }, { filenamePattern: "*.cfgt" }],
-    priority: "option",
-  });
+  if (languages.some((l) => l.id === "cfd")) {
+    customEditors.push({
+      viewType: "modelscript.cfgEditor",
+      displayName: "CFD Config & 3D Aerodynamics Viewer",
+      selector: [{ filenamePattern: "*.cfg" }, { filenamePattern: "*.cfgt" }],
+      priority: "option",
+    });
+  }
 
   // SysML Requirements Matrix Custom Editor
   if (languages.some((l) => l.id === "sysml2" || l.id === "sysml")) {
@@ -232,6 +236,12 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       icon: "$(go-to-file)",
     },
     {
+      command: "modelscript.openStepViewer",
+      title: "ModelScript: Open 3D CAD Viewer",
+      category: "ModelScript",
+      icon: "$(package)",
+    },
+    {
       command: "modelscript.generateFeaMesh",
       title: "ModelScript: Discretize CAD to FEA Mesh (.inp)",
       category: "ModelScript CAE",
@@ -245,18 +255,26 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
   const editorTitleMenus: any[] = [];
   const editorContextMenus: any[] = [];
-  const explorerContextMenus: any[] = [
-    {
-      command: "modelscript.generateFeaMesh",
-      when: "resourceExtname == .step || resourceExtname == .stp",
-      group: "modelscript_cae@1",
-    },
-    {
-      command: "modelscript.generateCfdMesh",
-      when: "resourceExtname == .step || resourceExtname == .stp",
-      group: "modelscript_cae@2",
-    },
-  ];
+  const explorerContextMenus: any[] = [];
+  if (languages.some((l) => l.id === "step") || options?.features?.cad3dViewer) {
+    explorerContextMenus.push(
+      {
+        command: "modelscript.openStepViewer",
+        when: "resourceExtname == .step || resourceExtname == .stp",
+        group: "modelscript_cae@0",
+      },
+      {
+        command: "modelscript.generateFeaMesh",
+        when: "resourceExtname == .step || resourceExtname == .stp",
+        group: "modelscript_cae@1",
+      },
+      {
+        command: "modelscript.generateCfdMesh",
+        when: "resourceExtname == .step || resourceExtname == .stp",
+        group: "modelscript_cae@2",
+      },
+    );
+  }
   const commandPaletteMenus: any[] = [];
   const languageModelTools: any[] = [];
   const keybindings: any[] = [];
@@ -294,6 +312,15 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       ...languages.map((l) => `${l.id}.diagramEditor`),
       ...(languages.some((l) => l.id === "sysml2") ? ["sysml.diagramEditor"] : []),
     ];
+    if (options?.features?.cad3dViewer || languages.some((l) => l.id === "step")) {
+      diagramViewTypes.push("modelscript.stepEditor");
+    }
+    if (languages.some((l) => l.id === "fea")) {
+      diagramViewTypes.push("modelscript.inpEditor");
+    }
+    if (languages.some((l) => l.id === "cfd")) {
+      diagramViewTypes.push("modelscript.cfgEditor");
+    }
     const customEditorWhen = diagramViewTypes.map((vt) => `activeCustomEditorId == ${vt}`).join(" || ");
 
     editorTitleMenus.push({
@@ -891,7 +918,8 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!editor) return;
       const lang = REGISTERED_LANGUAGES.find(l => l.fileExtensions.some(ext => editor.document.fileName.endsWith(ext)));
       if (lang) {
-        await vscode.commands.executeCommand("vscode.openWith", editor.document.uri, \`\${lang.id}.diagramEditor\`);
+        const viewType = lang.id === "step" ? "modelscript.stepEditor" : \`\${lang.id}.diagramEditor\`;
+        await vscode.commands.executeCommand("vscode.openWith", editor.document.uri, viewType);
       }
     })
   );
@@ -1535,29 +1563,19 @@ module.exports.default = module.exports;
   }
 
   // Build webviews
-  const webviewEntries = [
-    "webview/diagram.ts",
-    "webview/simulationWebview.ts",
-    "webview/cosimWebview.ts",
-    "webview/chatWebview.ts",
-    "webview/chatWorker.ts",
-    "webview/cadWebview.tsx",
-    "webview/stepWebview.tsx",
-    "webview/multibodyAnimationWebview.tsx",
-    "webview/analysisWebview.ts",
-    "webview/calibrationWebview.tsx",
-    "webview/optimizationWebview.tsx",
-    "webview/uncertaintyWebview.tsx",
-    "webview/markdownPreview.ts",
-    "webview/surrogateWebview.tsx",
-    "webview/physicsSetupWebview.tsx",
-    "webview/gcodeWebview.tsx",
-    "webview/feaDeckWebview.tsx",
-    "webview/cfdConfigWebview.tsx",
-    "webview/vrVisualizationWebview.tsx",
-  ]
-    .map((rel) => path.join(ideDir, rel))
-    .filter((p) => fs.existsSync(p));
+  const webviewDir = path.join(ideDir, "webview");
+  const webviewEntries: string[] = [];
+  if (fs.existsSync(webviewDir)) {
+    const files = fs.readdirSync(webviewDir);
+    for (const f of files) {
+      if ((f.endsWith(".ts") || f.endsWith(".tsx")) && f !== "notebook-renderer.ts" && f !== "notebookRenderer.ts") {
+        const fullPath = path.join(webviewDir, f);
+        if (fs.statSync(fullPath).isFile()) {
+          webviewEntries.push(fullPath);
+        }
+      }
+    }
+  }
 
   if (webviewEntries.length > 0) {
     await esbuild.build({
@@ -1569,19 +1587,45 @@ module.exports.default = module.exports;
       sourcemap: "inline",
       external: ["@kitware/vtk.js", "@kitware/vtk.js/*"],
     });
+
+    // Provide camelCase aliases for all kebab-case webviews for backward compatibility
+    const distDir = path.join(outDir, "dist");
+    if (fs.existsSync(distDir)) {
+      const distFiles = fs.readdirSync(distDir);
+      for (const f of distFiles) {
+        if (f.includes("-")) {
+          // Convert kebab-case to camelCase: e.g. simulation-webview.js -> simulationWebview.js
+          const camel = f.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
+          if (camel !== f) {
+            const srcPath = path.join(distDir, f);
+            const dstPath = path.join(distDir, camel);
+            fs.copyFileSync(srcPath, dstPath);
+          }
+        }
+      }
+    }
   }
 
   // Build notebook renderer
-  const notebookRendererPath = path.join(ideDir, "webview", "notebookRenderer.ts");
-  if (fs.existsSync(notebookRendererPath)) {
+  const notebookRendererPath = [
+    path.join(ideDir, "webview", "notebook-renderer.ts"),
+    path.join(ideDir, "webview", "notebookRenderer.ts"),
+  ].find((p) => fs.existsSync(p));
+
+  if (notebookRendererPath) {
+    const nbOut = path.join(outDir, "dist", "notebook-renderer.js");
+    const nbAlias = path.join(outDir, "dist", "notebookRenderer.js");
     await esbuild.build({
       entryPoints: [notebookRendererPath],
-      outfile: path.join(outDir, "dist", "notebookRenderer.js"),
+      outfile: nbOut,
       bundle: true,
       format: "esm",
       platform: "browser",
       sourcemap: "inline",
     });
+    if (fs.existsSync(nbOut)) {
+      fs.copyFileSync(nbOut, nbAlias);
+    }
   }
 
   // 5. Copy WASM and library assets

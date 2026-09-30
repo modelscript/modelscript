@@ -791,7 +791,12 @@ export class GLRTable {
       console.warn(
         `Found ${diagnostics.length} unresolved conflict${diagnostics.length === 1 ? "" : "s"} (${numReduceReduce} reduce/reduce, ${numShiftReduce} shift/reduce).\n`,
       );
-      // process.exit(1);
+      if (this.grammar.strictConflicts || process.env.STRICT_GRAMMAR_CONFLICTS === "true") {
+        throw new Error(
+          `Grammar '${this.grammar.name}' has ${diagnostics.length} unresolved conflict(s). Resolve with explicit precedence or whitelist in 'conflicts':\n` +
+            diagnostics.map((d, i) => `Conflict ${i + 1}:\n${d.output}`).join("\n"),
+        );
+      }
     } else {
       this.diagnostics = [];
     }

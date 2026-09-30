@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { AlertIcon, HourglassIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
-import { Heading, Text } from "@primer/react";
+import { AlertIcon, HourglassIcon, SearchIcon, SyncIcon, XCircleFillIcon } from "@primer/octicons-react";
+import { Button, Heading, Text, TextInput } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import type { LibraryListItem } from "../api";
 import { getLibraries } from "../api";
+import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 
 /* ─── styled helpers ─── */
@@ -57,16 +57,18 @@ const Tab = styled.button<{ $active?: boolean }>`
     content: "";
     position: absolute;
     bottom: 0;
-    height: 4px;
+    height: 3px;
     width: 56px;
-    background-color: var(--color-accent-emphasis, #1d9bf0);
+    background: var(--gradient-cta);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
   }
 `;
 
 const ResultCount = styled.span`
-  font-size: 14px;
+  font-size: 13px;
+  font-family: var(--font-mono);
   color: var(--color-text-muted);
   margin-left: 8px;
 `;
@@ -74,84 +76,8 @@ const ResultCount = styled.span`
 const CardList = styled.div`
   display: flex;
   flex-direction: column;
-`;
-
-const CardRow = styled.div`
-  display: block;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--color-border);
-
-  &:first-child {
-    border-top: 1px solid var(--color-border);
-  }
-`;
-
-const CardInner = styled.div`
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-`;
-
-const CardBody = styled.div`
-  flex: 1;
-  min-width: 0;
-`;
-
-const LibName = styled(Link)`
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-link);
-  text-decoration: none;
-  transition: color 0.15s;
-
-  &:hover {
-    color: var(--color-link-hover);
-    text-decoration: underline;
-  }
-`;
-
-const VersionBadge = styled.span`
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  background: var(--color-badge-bg);
-  padding: 2px 8px;
-  border-radius: 12px;
-  margin-left: 10px;
-  vertical-align: middle;
-`;
-
-const VersionCount = styled.span`
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  margin-left: 8px;
-  vertical-align: middle;
-`;
-
-const Description = styled.p`
-  font-size: 14px;
-  color: var(--color-text-muted);
-  margin: 6px 0 0;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const MetaRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-
-  span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
+  gap: 12px;
+  padding: 16px 0;
 `;
 
 const PackageIcon = ({ name, version }: { name: string; version: string }) => {
@@ -162,17 +88,17 @@ const PackageIcon = ({ name, version }: { name: string; version: string }) => {
     return (
       <Box
         sx={{
-          width: 40,
-          height: 40,
-          borderRadius: "8px",
-          backgroundColor: "var(--color-done-emphasis)",
+          width: 44,
+          height: 44,
+          borderRadius: "10px",
+          background: "var(--gradient-icon-box)",
+          border: "1px solid var(--gradient-icon-box-border)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "white",
-          fontWeight: "bold",
-          fontSize: "16px",
+          fontSize: "18px",
           flexShrink: 0,
+          boxShadow: "var(--glow-ai-sm)",
         }}
       >
         📦
@@ -193,15 +119,36 @@ const PackageIcon = ({ name, version }: { name: string; version: string }) => {
 /* ─── main page ─── */
 
 const LibraryListPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [libraries, setLibraries] = useState<LibraryListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const query = searchParams.get("q") || "";
+  const [searchInput, setSearchInput] = useState(query);
+  const [activeTab, setActiveTab] = useState<"all" | "my">("all");
 
   useEffect(() => {
-    document.title = "Libraries | ModelScript";
+    document.title = "Packages | ModelScript";
   }, []);
+
+  useEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchInput.trim() !== query) {
+        if (searchInput.trim()) {
+          setSearchParams({ q: searchInput.trim() });
+        } else {
+          setSearchParams({});
+        }
+      }
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchInput, query, setSearchParams]);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -235,25 +182,73 @@ const LibraryListPage: React.FC = () => {
     };
   }, [query]);
 
+  const displayedLibraries = libraries.filter((lib) => {
+    if (activeTab === "my") {
+      if (!user) return false;
+      return (
+        lib.author === user.username ||
+        lib.scope === user.username ||
+        lib.name.startsWith(`@${user.username}/`) ||
+        lib.name.startsWith(`${user.username}/`)
+      );
+    }
+    return true;
+  });
+
   return (
     <Box>
       <TabBar>
-        <Tab $active>All Packages</Tab>
-        <Tab>My Packages</Tab>
+        <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
+          All Packages
+        </Tab>
+        <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
+          My Packages
+        </Tab>
       </TabBar>
 
       <Box p={4}>
-        {/* Search header */}
-        <Box display="flex" alignItems="center" justifyContent="space-between" style={{ marginBottom: "24px" }}>
-          <Box display="flex" alignItems="baseline" gap="8px">
-            <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 800, fontSize: 24, margin: 0 }}>
-              Packages
-            </Heading>
-            {!loading && (
-              <ResultCount>
-                {libraries.length} package{libraries.length !== 1 ? "s" : ""}
-              </ResultCount>
-            )}
+        {/* Search header & Input */}
+        <Box display="flex" flexDirection="column" gap={3} mb={4}>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <Box display="flex" alignItems="baseline" gap="8px">
+              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 800, fontSize: 24, margin: 0 }}>
+                Packages
+              </Heading>
+              {!loading && (
+                <ResultCount>
+                  {displayedLibraries.length} package{displayedLibraries.length !== 1 ? "s" : ""}
+                </ResultCount>
+              )}
+            </Box>
+          </Box>
+
+          <Box
+            display="flex"
+            alignItems="center"
+            style={{
+              maxWidth: "500px",
+              width: "100%",
+            }}
+          >
+            <TextInput
+              leadingVisual={SearchIcon}
+              placeholder="Search packages by name or keyword..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              trailingAction={
+                searchInput ? (
+                  <TextInput.Action
+                    icon={XCircleFillIcon}
+                    aria-label="Clear search"
+                    onClick={() => {
+                      setSearchInput("");
+                      setSearchParams({});
+                    }}
+                  />
+                ) : undefined
+              }
+              sx={{ width: "100%" }}
+            />
           </Box>
         </Box>
 
@@ -281,7 +276,28 @@ const LibraryListPage: React.FC = () => {
               The server may be unavailable. Please try again later.
             </Text>
           </Box>
-        ) : libraries.length === 0 ? (
+        ) : activeTab === "my" && !user ? (
+          <Box
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 16,
+              padding: 60,
+              textAlign: "center",
+            }}
+          >
+            <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
+              Sign in to view your packages
+            </Heading>
+            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
+              Sign in to view and manage packages published under your username.
+            </Text>
+            <Button variant="primary" onClick={() => navigate("/login")}>
+              Sign In
+            </Button>
+          </Box>
+        ) : displayedLibraries.length === 0 ? (
           <Box
             style={{
               display: "flex",
@@ -297,12 +313,16 @@ const LibraryListPage: React.FC = () => {
               No packages found
             </Heading>
             <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
-              {query ? `No results matching "${query}"` : "No libraries have been published yet."}
+              {activeTab === "my"
+                ? "You haven't published any packages yet."
+                : query
+                  ? `No results matching "${query}"`
+                  : "No libraries have been published yet."}
             </Text>
           </Box>
         ) : (
           <CardList>
-            {libraries.map((lib) => (
+            {displayedLibraries.map((lib) => (
               <Box
                 key={lib.name}
                 display="flex"

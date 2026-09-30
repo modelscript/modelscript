@@ -75,6 +75,14 @@ export function generateSbatchScript(spec: HpcJobSpec, stagingManifest?: JobStag
     lines.push(manifest.prologueScript);
   }
 
+  const networkIsolation = spec.sandbox?.networkIsolation ?? spec.resources.networkIsolation ?? false;
+
+  if (networkIsolation) {
+    lines.push("");
+    lines.push("# --- Security & Zero-Egress Network Isolation ---");
+    lines.push("# Blocks all outbound network access to prevent cryptomining and data exfiltration");
+  }
+
   lines.push("");
   lines.push("# --- Execution Command ---");
 
@@ -84,7 +92,11 @@ export function generateSbatchScript(spec: HpcJobSpec, stagingManifest?: JobStag
   // Wrap in Apptainer / Singularity if specified
   if (spec.apptainerImage) {
     const gpuFlag = r.gpus && r.gpus > 0 ? " --nv" : "";
-    baseCmd = `apptainer exec${gpuFlag} ${spec.apptainerImage} ${baseCmd}`;
+    const netFlag = networkIsolation ? " --net --network none" : "";
+    baseCmd = `apptainer exec${gpuFlag}${netFlag} ${spec.apptainerImage} ${baseCmd}`;
+  } else if (networkIsolation) {
+    // Native network namespace isolation (zero-egress sandbox)
+    baseCmd = `unshare -n -r ${baseCmd}`;
   }
 
   // Wrap in srun for parallel MPI collective execution

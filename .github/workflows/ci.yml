@@ -216,6 +216,42 @@ jobs:
           external_repository: modelscript/modelscript.github.io
           publish_dir: ./apps/site/build/client
 
+  deploy_docs:
+    needs: [build, test, lint]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-
+      - name: Build PDF Manual
+        run: npm run build:pdf --workspace=@modelscript/docs
+      - name: Build Docs
+        run: npx nx build @modelscript/docs
+      - name: Deploy Docs
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.MODELSCRIPT_DOCS_DEPLOY_PAT || secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
+          external_repository: modelscript/docs.modelscript.org
+          publish_dir: ./apps/docs/docs/.vitepress/dist
+          cname: docs.modelscript.org
+
   docker_build:
     needs: [build, test, lint]
     runs-on: ubuntu-latest

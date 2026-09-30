@@ -175,6 +175,7 @@ const RepositoryListPage: React.FC = () => {
     let provider: string;
     let repo_full_name: string;
     try {
+      const parsedUrl = new URL(url.startsWith("http") ? url : "https://" + url);
       const host = parsedUrl.hostname.toLowerCase();
       if (host === "github.com" || host.endsWith(".github.com")) provider = "github";
       else if (host === "gitlab.com" || host.endsWith(".gitlab.com")) provider = "gitlab";

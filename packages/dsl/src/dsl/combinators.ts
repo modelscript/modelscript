@@ -85,7 +85,7 @@ export function repeat1<F extends string = string>(rule: RuleLike<F>): Rule<F> {
  * Equivalent to optional in EBNF: `A?`
  */
 export function optional<F extends string = string>(rule: RuleLike<F>): Rule<F> {
-  return choice(rule, seq());
+  return { type: "OPTIONAL", children: [toRule(rule)] };
 }
 
 export function sepBy1<F1 extends string, F2 extends string>(

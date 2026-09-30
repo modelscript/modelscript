@@ -13,7 +13,7 @@ export interface FalsifyArgs {
   cad?: string;
   params?: string;
   formula?: string;
-  algorithm?: "de" | "cem";
+  algorithm?: "de" | "cem" | "cmaes" | "cma-es" | "pso";
   generations?: number;
   population?: number;
   outTrace?: string;
@@ -186,7 +186,7 @@ export const Falsify: CommandModule<{}, FalsifyArgs> = {
         description: "STL formula JSON or predicate shorthand (e.g. 'stress <= 200')",
       })
       .option("algorithm", {
-        choices: ["de", "cem"] as const,
+        choices: ["de", "cem", "cmaes", "cma-es", "pso"] as const,
         default: "de" as const,
         description: "Falsification global optimization algorithm",
       })

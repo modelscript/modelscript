@@ -97,4 +97,39 @@ test("HPC .sbatch Generator", async (t) => {
     assert.ok(sbatch.includes("module load su2/7.5.0"), "Should load su2 module");
     assert.ok(sbatch.includes("srun SU2_CFD config.cfg"), "Should wrap multi-task MPI in srun");
   });
+
+  await t.test("generates network-isolated zero-egress scripts", () => {
+    // 1. Apptainer container network isolation
+    const apptainerSpec: HpcJobSpec = {
+      jobId: "iso-apptainer",
+      name: "Sandbox-Apptainer",
+      command: "python3",
+      args: ["run.py"],
+      workingDir: "/workspace",
+      apptainerImage: "/images/sandbox.sif",
+      resources: { networkIsolation: true },
+    };
+    const sbatchApptainer = generateSbatchScript(apptainerSpec);
+    assert.ok(
+      sbatchApptainer.includes("apptainer exec --net --network none /images/sandbox.sif python3 run.py"),
+      "Apptainer should include --net --network none",
+    );
+    assert.ok(sbatchApptainer.includes("# --- Security & Zero-Egress Network Isolation ---"));
+
+    // 2. Native unshare network isolation
+    const nativeSpec: HpcJobSpec = {
+      jobId: "iso-native",
+      name: "Sandbox-Native",
+      command: "omc",
+      args: ["simulate.mos"],
+      workingDir: "/workspace",
+      resources: {},
+      sandbox: { networkIsolation: true },
+    };
+    const sbatchNative = generateSbatchScript(nativeSpec);
+    assert.ok(
+      sbatchNative.includes("unshare -n -r omc simulate.mos"),
+      "Native command should be wrapped with unshare -n -r",
+    );
+  });
 });

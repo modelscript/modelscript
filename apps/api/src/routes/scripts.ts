@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { enforceExportCompliance } from "../util/compliance.js";
 
 export function scriptsRouter(db: LibraryDatabase) {
   const router = express.Router();
@@ -33,48 +34,53 @@ export function scriptsRouter(db: LibraryDatabase) {
     }
   });
 
-  router.post("/templates/:id/run", requireAuth, (req, res) => {
-    try {
-      const id = parseInt(req.params.id as string);
-      const template = db.getScriptTemplate(id);
-      if (!template) return res.status(404).json({ error: "Template not found" });
+  router.post(
+    "/templates/:id/run",
+    requireAuth,
+    enforceExportCompliance(() => db),
+    (req, res) => {
+      try {
+        const id = parseInt(req.params.id as string);
+        const template = db.getScriptTemplate(id);
+        if (!template) return res.status(404).json({ error: "Template not found" });
 
-      const resultDir = fs.mkdtempSync(path.join(os.tmpdir(), "job-"));
-      const logPath = path.join(resultDir, "output.log");
-      fs.writeFileSync(logPath, `Starting job for template ${template.name}...\\n`);
+        const resultDir = fs.mkdtempSync(path.join(os.tmpdir(), "job-"));
+        const logPath = path.join(resultDir, "output.log");
+        fs.writeFileSync(logPath, `Starting job for template ${template.name}...\\n`);
 
-      const jobId = db.createJob(
-        template.name,
-        "RUNNING",
-        "TEMPLATE_RUN",
-        "api",
-        null,
-        JSON.stringify({ templateSlug: template.slug, templateId: id, resultDir }),
-      );
+        const jobId = db.createJob(
+          template.name,
+          "RUNNING",
+          "TEMPLATE_RUN",
+          "api",
+          null,
+          JSON.stringify({ templateSlug: template.slug, templateId: id, resultDir }),
+        );
 
-      const step1 = db.createJobStep(jobId, "Initializing Environment", "RUNNING");
+        const step1 = db.createJobStep(jobId, "Initializing Environment", "RUNNING");
 
-      // Simulate a background job
-      setTimeout(() => {
-        db.updateJobStepStatus(step1, "SUCCESS");
-        fs.appendFileSync(logPath, "Environment initialized successfully.\\n");
-        const step2 = db.createJobStep(jobId, "Executing Script", "RUNNING");
-        fs.appendFileSync(logPath, "Executing main script...\\n");
-
+        // Simulate a background job
         setTimeout(() => {
-          db.updateJobStepStatus(step2, "SUCCESS");
-          fs.appendFileSync(logPath, "Script execution completed.\\n");
-          db.updateJobStatus(jobId, "SUCCESS");
-          fs.appendFileSync(logPath, "Job finished successfully.\\n");
-        }, 2000);
-      }, 2000);
+          db.updateJobStepStatus(step1, "SUCCESS");
+          fs.appendFileSync(logPath, "Environment initialized successfully.\\n");
+          const step2 = db.createJobStep(jobId, "Executing Script", "RUNNING");
+          fs.appendFileSync(logPath, "Executing main script...\\n");
 
-      res.json({ jobId });
-    } catch (error) {
-      console.error("Error running template:", error);
-      res.status(500).json({ error: "Failed to run template" });
-    }
-  });
+          setTimeout(() => {
+            db.updateJobStepStatus(step2, "SUCCESS");
+            fs.appendFileSync(logPath, "Script execution completed.\\n");
+            db.updateJobStatus(jobId, "SUCCESS");
+            fs.appendFileSync(logPath, "Job finished successfully.\\n");
+          }, 2000);
+        }, 2000);
+
+        res.json({ jobId });
+      } catch (error) {
+        console.error("Error running template:", error);
+        res.status(500).json({ error: "Failed to run template" });
+      }
+    },
+  );
 
   // ── Job Instances ────────────────────────────────────────────────
   router.get("/", (req, res) => {

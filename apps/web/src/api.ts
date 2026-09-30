@@ -56,6 +56,8 @@ export interface LibraryListItem {
   versions: string[];
   latestVersion: string | null;
   description?: string;
+  author?: string;
+  scope?: string;
   jobStatus?: {
     status: JobStatus;
     classesProcessed?: number;

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ArrowLeftIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, Dialog, FormControl, Heading, Select, Text, TextInput } from "@primer/react";
+import { Button, Dialog, Flash, FormControl, Heading, Select, Text, TextInput } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
 
@@ -20,9 +21,14 @@ interface ScriptTemplate {
 const TemplateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { token } = useAuth();
   const [template, setTemplate] = useState<ScriptTemplate | null>(null);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [meshResolution, setMeshResolution] = useState<"coarse" | "medium" | "fine">("medium");
+  const [maxIterations, setMaxIterations] = useState<number>(1000);
+  const [tolerance, setTolerance] = useState<string>("1e-5");
+  const [error, setError] = useState<string | null>(null);
   const focusRef = useRef(null);
 
   useEffect(() => {
@@ -34,8 +40,20 @@ const TemplateDetailPage: React.FC = () => {
 
   const handleRun = async () => {
     setIsSubmitting(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/v1/jobs/templates/${id}/run`, { method: "POST" });
+      const res = await fetch(`/api/v1/jobs/templates/${id}/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          meshResolution,
+          maxIterations: Number(maxIterations),
+          tolerance: parseFloat(tolerance),
+        }),
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.jobId) {
@@ -43,12 +61,13 @@ const TemplateDetailPage: React.FC = () => {
         }
       } else {
         const data = await res.json();
-        alert(`Failed to run template: ${data.error || res.statusText}`);
+        setError(data.error || `Failed to run template: ${res.statusText}`);
         setIsSubmitting(false);
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
-      alert("Error starting job");
+      const msg = e instanceof Error ? e.message : "Error starting job";
+      setError(msg);
       setIsSubmitting(false);
     }
   };
@@ -139,9 +158,17 @@ const TemplateDetailPage: React.FC = () => {
         >
           <Dialog.Header id="header-id">Configure Run: {template.name}</Dialog.Header>
           <Box p={3}>
+            {error && (
+              <Flash variant="danger" sx={{ mb: 3 }}>
+                {error}
+              </Flash>
+            )}
             <FormControl sx={{ mb: 3 }}>
               <FormControl.Label>Simulation Mesh Resolution</FormControl.Label>
-              <Select defaultValue="medium">
+              <Select
+                value={meshResolution}
+                onChange={(e) => setMeshResolution(e.target.value as "coarse" | "medium" | "fine")}
+              >
                 <Select.Option value="coarse">Coarse (Fast)</Select.Option>
                 <Select.Option value="medium">Medium (Standard)</Select.Option>
                 <Select.Option value="fine">Fine (High Accuracy)</Select.Option>
@@ -149,11 +176,17 @@ const TemplateDetailPage: React.FC = () => {
             </FormControl>
             <FormControl sx={{ mb: 3 }}>
               <FormControl.Label>Maximum Iterations</FormControl.Label>
-              <TextInput defaultValue="1000" type="number" />
+              <TextInput
+                value={String(maxIterations)}
+                onChange={(e) => setMaxIterations(Number(e.target.value) || 0)}
+                type="number"
+                min="1"
+                max="100000"
+              />
             </FormControl>
             <FormControl sx={{ mb: 3 }}>
               <FormControl.Label>Target Tolerance</FormControl.Label>
-              <TextInput defaultValue="1e-5" />
+              <TextInput value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder="1e-5" />
             </FormControl>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={4}>
               <Button onClick={() => setIsWizardOpen(false)} disabled={isSubmitting}>

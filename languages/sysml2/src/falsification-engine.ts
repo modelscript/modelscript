@@ -13,6 +13,7 @@
  */
 
 import { type CanonicalTraceRecord, STLEvaluator, type STLFormula, TraceRecordNormalizer } from "@modelscript/runtime";
+import { type BlackBoxProblem, cmaesSolve, deSolve, psoSolve } from "@modelscript/simulate/optimizer";
 
 export interface ParameterRange {
   name: string;
@@ -37,8 +38,8 @@ export interface FalsificationOptions {
   maxGenerations?: number;
   populationSize?: number;
   seed?: number;
-  /** Algorithm: 'de' (Differential Evolution, default) or 'cem' (Cross-Entropy Method). */
-  algorithm?: "de" | "cem";
+  /** Algorithm: 'de' (default), 'cmaes' / 'cma-es', 'pso', or 'cem' (Cross-Entropy Method). */
+  algorithm?: "de" | "cem" | "cmaes" | "cma-es" | "pso";
   /** Elite fraction for CEM (default 0.1 = top 10%). */
   eliteFraction?: number;
   /** Maximum number of concurrent simulations when using individual `simulate` (default: 1 = sequential). */
@@ -92,13 +93,160 @@ export class RequirementFalsifier {
 
   /**
    * Searches for a parameter vector that violates the given temporal requirement.
-   * Dispatches to Differential Evolution (default) or Cross-Entropy Method.
+   * Dispatches to CMA-ES, Differential Evolution, PSO, or Cross-Entropy Method.
    */
   public static async falsify(options: FalsificationOptions): Promise<FalsificationResult> {
-    if (options.algorithm === "cem") {
+    const algo = options.algorithm ?? "de";
+    if (algo === "cem") {
       return RequirementFalsifier.falsifyCEM(options);
     }
+    if (algo === "cmaes" || algo === "cma-es") {
+      return RequirementFalsifier.falsifyCMAES(options);
+    }
+    if (algo === "pso") {
+      return RequirementFalsifier.falsifyPSO(options);
+    }
     return RequirementFalsifier.falsifyDE(options);
+  }
+
+  /**
+   * CMA-ES requirement falsification.
+   * Adapts full covariance matrix across parameter interactions.
+   */
+  public static async falsifyCMAES(options: FalsificationOptions): Promise<FalsificationResult> {
+    return RequirementFalsifier.falsifyWithBlackBoxSolver("cmaes", options);
+  }
+
+  /**
+   * Particle Swarm Optimization requirement falsification.
+   */
+  public static async falsifyPSO(options: FalsificationOptions): Promise<FalsificationResult> {
+    return RequirementFalsifier.falsifyWithBlackBoxSolver("pso", options);
+  }
+
+  /**
+   * Universal metaheuristic runner bridging to @modelscript/simulate/optimizer solvers.
+   */
+  private static async falsifyWithBlackBoxSolver(
+    solverType: "cmaes" | "de" | "pso",
+    options: FalsificationOptions,
+  ): Promise<FalsificationResult> {
+    const { parameters, formula } = options;
+    const popSize = options.populationSize ?? 16;
+    const maxGen = options.maxGenerations ?? 15;
+
+    let evalCount = 0;
+    let bestParams: Record<string, number> | null = null;
+    let minRobustness = Infinity;
+    let falsificationTime: number | undefined = undefined;
+    let violatingTraj: SimulationTrajectory | null = null;
+    let violatingIndex: number | undefined = undefined;
+
+    const vectorToRecord = (vec: Float64Array): Record<string, number> => {
+      const rec: Record<string, number> = {};
+      for (let i = 0; i < parameters.length; i++) {
+        rec[parameters[i]!.name] = vec[i]!;
+      }
+      return rec;
+    };
+
+    const bbProblem: BlackBoxProblem = {
+      dimension: parameters.length,
+      bounds: {
+        min: new Float64Array(parameters.map((p) => p.min)),
+        max: new Float64Array(parameters.map((p) => p.max)),
+      },
+      batchFitness: async (candidates: Float64Array[]) => {
+        const candidateParams = candidates.map(vectorToRecord);
+        const trajs = await RequirementFalsifier.evaluateBatch(candidateParams, options);
+        evalCount += candidateParams.length;
+
+        const fitnesses: number[] = [];
+        for (let i = 0; i < candidates.length; i++) {
+          const traj = trajs[i]!;
+          const evalRes = STLEvaluator.evaluate(formula, traj.times, traj.signals);
+          fitnesses.push(evalRes.robustness);
+
+          if (evalRes.robustness < minRobustness) {
+            minRobustness = evalRes.robustness;
+            bestParams = candidateParams[i]!;
+            falsificationTime = evalRes.violationTime;
+            if (evalRes.robustness < 0) {
+              violatingTraj = traj;
+              violatingIndex = (evalRes as any).violationIndex ?? (evalRes as any).violationTime;
+            }
+          }
+        }
+        return fitnesses;
+      },
+      fitness: async (vec: Float64Array) => {
+        const pRec = vectorToRecord(vec);
+        const [traj] = await RequirementFalsifier.evaluateBatch([pRec], options);
+        evalCount++;
+        const evalRes = STLEvaluator.evaluate(formula, traj!.times, traj!.signals);
+        if (evalRes.robustness < minRobustness) {
+          minRobustness = evalRes.robustness;
+          bestParams = pRec;
+          falsificationTime = evalRes.violationTime;
+          if (evalRes.robustness < 0) {
+            violatingTraj = traj!;
+            violatingIndex = (evalRes as any).violationIndex ?? (evalRes as any).violationTime;
+          }
+        }
+        return evalRes.robustness;
+      },
+    };
+
+    const solverOpts = {
+      populationSize: popSize,
+      maxGenerations: maxGen,
+      seed: options.seed,
+      targetFitness: -1e-12,
+    };
+
+    if (solverType === "cmaes") {
+      await cmaesSolve(bbProblem, solverOpts);
+    } else if (solverType === "pso") {
+      await psoSolve(bbProblem, solverOpts);
+    } else {
+      await deSolve(bbProblem, solverOpts);
+    }
+
+    if (minRobustness < 0 && bestParams) {
+      let traceRecord: CanonicalTraceRecord | undefined;
+      if (violatingTraj) {
+        traceRecord = TraceRecordNormalizer.fromFalsificationTrajectory({
+          times: violatingTraj.times,
+          signals: violatingTraj.signals,
+          parameters: bestParams,
+          minRobustness,
+          violatingTimeIndex: violatingIndex,
+        });
+      }
+
+      return {
+        isFalsified: true,
+        minRobustness,
+        counterexampleParams: bestParams,
+        falsificationTime,
+        evaluationsCount: evalCount,
+        summary: `Requirement falsified with margin ${minRobustness.toFixed(4)} at t=${(falsificationTime ?? 0).toFixed(
+          4,
+        )}s after ${evalCount} simulation runs.`,
+        traceRecord,
+      };
+    }
+
+    return {
+      isFalsified: false,
+      minRobustness,
+      counterexampleParams: bestParams || undefined,
+      falsificationTime,
+      evaluationsCount: evalCount,
+      summary: `Requirement held across ${evalCount} adversarial evaluations. Minimum observed robustness margin: +${minRobustness.toFixed(
+        4,
+      )}.`,
+    };
   }
 
   /**

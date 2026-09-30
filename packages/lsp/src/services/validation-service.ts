@@ -413,12 +413,14 @@ export class ValidationService {
             }
           }
 
-          if (wsIndex.has(effectiveUri)) {
-            wsIndex.reindexDocument(effectiveUri, () => tree.rootNode, actualEditRanges, totalDelta);
-          } else {
-            wsIndex.register(effectiveUri, () => tree.rootNode);
+          if (typeof wsIndex.has === "function") {
+            if (wsIndex.has(effectiveUri)) {
+              wsIndex.reindexDocument?.(effectiveUri, () => tree.rootNode, actualEditRanges, totalDelta);
+            } else {
+              wsIndex.register?.(effectiveUri, () => tree.rootNode);
+            }
+            wsIndex.getFileIndex?.(effectiveUri);
           }
-          wsIndex.getFileIndex(effectiveUri);
           this.lastIndexedText.set(effectiveUri, text);
         }
 
@@ -542,9 +544,10 @@ export class ValidationService {
                       end: currentDoc.positionAt(d.endCharOffset),
                     };
                   } else if (typeof d.startByte === "number" && typeof d.endByte === "number" && bridge) {
+                    const charDiv = (facade?.getInputEncoding ? facade.getInputEncoding() : 1) === 1 ? 2 : 1;
                     range = {
-                      start: (bridge as any).positions.offsetToPosition(d.startByte),
-                      end: (bridge as any).positions.offsetToPosition(d.endByte),
+                      start: (bridge as any).positions.offsetToPosition(Math.floor(d.startByte / charDiv)),
+                      end: (bridge as any).positions.offsetToPosition(Math.floor(d.endByte / charDiv)),
                     };
                   }
 
@@ -569,7 +572,10 @@ export class ValidationService {
                       typeof d.endByte === "number" &&
                       d.endByte > d.startByte
                     ) {
-                      tokenText = currentText.slice(d.startByte, d.endByte).trim();
+                      const charDiv = (facade?.getInputEncoding ? facade.getInputEncoding() : 1) === 1 ? 2 : 1;
+                      tokenText = currentText
+                        .slice(Math.floor(d.startByte / charDiv), Math.floor(d.endByte / charDiv))
+                        .trim();
                     }
 
                     // Determine descriptive message

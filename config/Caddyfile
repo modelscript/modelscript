@@ -1,0 +1,40 @@
+# Caddy configuration for ModelScript Federated Node
+# Automatically provisions and renews Let's Encrypt / ZeroSSL TLS certificates
+
+{$PUBLIC_DOMAIN:localhost} {
+    # Encode responses with gzip or zstd
+    encode gzip zstd
+
+    # Route ActivityPub & API traffic to backend API
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+    handle /.well-known/* {
+        reverse_proxy api:3000
+    }
+    handle /users/* {
+        reverse_proxy api:3000
+    }
+    handle /actor* {
+        reverse_proxy api:3000
+    }
+    handle /inbox* {
+        reverse_proxy api:3000
+    }
+    handle /legal* {
+        reverse_proxy api:3000
+    }
+    handle /health* {
+        reverse_proxy api:3000
+    }
+
+    # Route Web IDE Workbench
+    handle /ide/* {
+        reverse_proxy ide:3003
+    }
+
+    # Route Web UI Portal (all other requests)
+    handle {
+        reverse_proxy web:80
+    }
+}

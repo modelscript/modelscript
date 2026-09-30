@@ -9,10 +9,19 @@ import type {
   HpcDriver,
   HpcJobSpec,
   HpcJobState,
+  HpcSandboxConfig,
   HpcSubmissionResult,
   HpcUsageMetrics,
 } from "../hpc-types.js";
 import { generateSbatchScript } from "../sbatch-generator.js";
+
+export interface LocalDriverOptions {
+  defaultSandbox?: HpcSandboxConfig | undefined;
+  defaultMaxWallClockMinutes?: number | undefined;
+  walletBalanceChecker?: ((userId: number) => number) | undefined;
+  anomalyDetectionEnabled?: boolean | undefined;
+  cryptoAnomalyThresholdSeconds?: number | undefined;
+}
 
 interface LocalJobRecord {
   spec: HpcJobSpec;
@@ -24,16 +33,116 @@ interface LocalJobRecord {
   totalCpuMicroseconds?: number | undefined;
   exitCode?: number | undefined;
   logPath: string;
+  suspiciousActivity?: "potential_cryptomining" | "timeout" | "credit_exhausted" | undefined;
+  networkIsolationEnforced?: boolean | undefined;
+  sandboxRuntime?: string | undefined;
 }
 
 /**
  * Local process execution driver.
  * Emulates Slurm's execution model and accounting on developer workstations
- * and single-node instances without requiring Slurm daemons or root access.
+ * and single-node instances with optional containerized (Docker/Podman) or
+ * kernel namespace (unshare) zero-egress sandboxing.
  */
 export class LocalProcessDriver implements HpcDriver {
   readonly type = "local" as const;
   private readonly jobs = new Map<string, LocalJobRecord>();
+  private readonly options: LocalDriverOptions;
+
+  constructor(options: LocalDriverOptions = {}) {
+    this.options = options;
+  }
+
+  /**
+   * Resolves the execution command and arguments, applying container or namespace sandboxing.
+   */
+  public resolveSandboxCommand(spec: HpcJobSpec): {
+    execCmd: string;
+    execArgs: string[];
+    runtime: string;
+    networkIsolation: boolean;
+  } {
+    const totalTasks = (spec.resources.nodes ?? 1) * (spec.resources.tasksPerNode ?? 1);
+    let execCmd = spec.command;
+    let execArgs = [...spec.args];
+
+    if (totalTasks > 1 && this.isExecutableInPath("mpirun")) {
+      execArgs = ["-n", String(totalTasks), execCmd, ...execArgs];
+      execCmd = "mpirun";
+    }
+
+    const sandboxConfig = spec.sandbox || this.options.defaultSandbox;
+    let networkIsolation = false;
+    let runtime = "none";
+
+    const requestedRuntime =
+      sandboxConfig?.runtime ||
+      (process.env["HPC_SANDBOX_RUNTIME"] as "auto" | "docker" | "podman" | "unshare" | "none") ||
+      "auto";
+
+    const isSandboxRequested =
+      sandboxConfig?.enabled === true ||
+      spec.resources.networkIsolation === true ||
+      process.env["HPC_SANDBOX_ENABLED"] === "true";
+
+    let effectiveRuntime = requestedRuntime;
+    if (requestedRuntime === "auto") {
+      if (isSandboxRequested) {
+        if (this.isExecutableInPath("podman")) {
+          effectiveRuntime = "podman";
+        } else if (this.isExecutableInPath("docker")) {
+          effectiveRuntime = "docker";
+        } else if (process.platform === "linux" && this.isExecutableInPath("unshare")) {
+          effectiveRuntime = "unshare";
+        } else {
+          effectiveRuntime = "none";
+        }
+      } else {
+        effectiveRuntime = "none";
+      }
+    }
+
+    if (effectiveRuntime === "docker" || effectiveRuntime === "podman") {
+      runtime = effectiveRuntime;
+      networkIsolation = sandboxConfig?.networkIsolation !== false;
+      const readOnly = sandboxConfig?.readOnlyRoot !== false;
+      const tmpfsMb = sandboxConfig?.tmpfsSizeMb ?? 2048;
+      const image = sandboxConfig?.image || process.env["HPC_SANDBOX_IMAGE"] || "ghcr.io/modelscript/runner:latest";
+      const absWorkingDir = path.resolve(spec.workingDir);
+
+      const containerArgs: string[] = ["run", "--rm"];
+      if (networkIsolation) {
+        containerArgs.push("--network", "none");
+      }
+      if (readOnly) {
+        containerArgs.push("--read-only");
+      }
+      containerArgs.push("--tmpfs", `/tmp:rw,size=${tmpfsMb}m`);
+      containerArgs.push("-v", `${absWorkingDir}:${absWorkingDir}:rw`);
+      containerArgs.push("-w", absWorkingDir);
+
+      const cpus = spec.resources.cpusPerTask ?? 4;
+      containerArgs.push("--cpus", String(cpus));
+
+      const memMb = spec.resources.memoryMb ?? 1024;
+      containerArgs.push("--memory", `${memMb}m`);
+
+      if (sandboxConfig?.dropCapabilities !== false) {
+        containerArgs.push("--cap-drop=ALL", "--security-opt=no-new-privileges");
+      }
+
+      containerArgs.push(image, execCmd, ...execArgs);
+      execCmd = effectiveRuntime;
+      execArgs = containerArgs;
+    } else if (effectiveRuntime === "unshare" && process.platform === "linux") {
+      runtime = "unshare";
+      networkIsolation = true;
+      execArgs = ["-n", "-r", execCmd, ...execArgs];
+      execCmd = "unshare";
+    }
+
+    return { execCmd, execArgs, runtime, networkIsolation };
+  }
 
   public async submit(spec: HpcJobSpec): Promise<HpcSubmissionResult> {
     fs.mkdirSync(spec.workingDir, { recursive: true });
@@ -47,15 +156,8 @@ export class LocalProcessDriver implements HpcDriver {
     const logPath = this.getLogPath(spec.jobId, spec.workingDir);
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
-    // 3. Resolve command & MPI wrapping
-    const totalTasks = (spec.resources.nodes ?? 1) * (spec.resources.tasksPerNode ?? 1);
-    let execCmd = spec.command;
-    let execArgs = [...spec.args];
-
-    if (totalTasks > 1 && this.isExecutableInPath("mpirun")) {
-      execArgs = ["-n", String(totalTasks), execCmd, ...execArgs];
-      execCmd = "mpirun";
-    }
+    // 3. Resolve command, MPI, and Sandboxing
+    const { execCmd, execArgs, runtime, networkIsolation } = this.resolveSandboxCommand(spec);
 
     const startCpuUsage = process.cpuUsage();
     const startTime = Date.now();
@@ -81,32 +183,107 @@ export class LocalProcessDriver implements HpcDriver {
       startTime,
       startCpuUsage,
       logPath,
+      networkIsolationEnforced: networkIsolation,
+      sandboxRuntime: runtime,
     };
 
     this.jobs.set(spec.jobId, record);
 
-    // Timeout watchdog
+    // 5. Wall-Clock Timeout Watchdog
     let timeoutTimer: NodeJS.Timeout | undefined;
-    if (spec.resources.timeLimitMinutes && spec.resources.timeLimitMinutes > 0) {
+    const maxTimeMinutes =
+      spec.resources.timeLimitMinutes ??
+      (spec.resources.maxWallClockSeconds ? spec.resources.maxWallClockSeconds / 60 : undefined) ??
+      this.options.defaultMaxWallClockMinutes ??
+      30;
+
+    if (maxTimeMinutes > 0) {
       timeoutTimer = setTimeout(
         () => {
           if (record.state === "RUNNING") {
             record.state = "FAILED";
             record.exitCode = 124; // Standard timeout code
-            logStream.write(`\n[HPC Local Driver]: Job exceeded time limit of ${spec.resources.timeLimitMinutes}m\n`);
+            record.suspiciousActivity = "timeout";
+            logStream.write(`\n[HPC Local Driver]: Job exceeded time limit of ${maxTimeMinutes}m\n`);
             child.kill("SIGTERM");
+            setTimeout(() => {
+              if (!child.killed) child.kill("SIGKILL");
+            }, 2000);
           }
         },
-        spec.resources.timeLimitMinutes * 60 * 1000,
+        maxTimeMinutes * 60 * 1000,
       );
     }
 
-    child.on("close", (code) => {
+    // 6. Credit drain & Anomaly Watchdog
+    let watchdogTimer: NodeJS.Timeout | undefined;
+    const anomalyThresholdSec = this.options.cryptoAnomalyThresholdSeconds ?? 600;
+
+    watchdogTimer = setInterval(() => {
+      if (record.state !== "RUNNING") {
+        if (watchdogTimer) clearInterval(watchdogTimer);
+        return;
+      }
+
+      const elapsedSeconds = (Date.now() - record.startTime) / 1000;
+
+      // Check credit exhaustion
+      if (spec.userId !== undefined && this.options.walletBalanceChecker) {
+        try {
+          const balance = this.options.walletBalanceChecker(spec.userId);
+          const currentCost = (elapsedSeconds / 3600) * 10;
+          if (balance - currentCost < 0) {
+            record.state = "FAILED";
+            record.exitCode = 402;
+            record.suspiciousActivity = "credit_exhausted";
+            logStream.write(
+              `\n[HPC Security Watchdog]: Job terminated due to compute credit exhaustion (balance: ${balance.toFixed(2)} cr).\n`,
+            );
+            child.kill("SIGTERM");
+            if (watchdogTimer) clearInterval(watchdogTimer);
+            return;
+          }
+        } catch {
+          // ignore checker errors
+        }
+      }
+
+      // Anomaly heuristics (e.g. sustained high compute with no log output or result files)
+      if (this.options.anomalyDetectionEnabled !== false && elapsedSeconds >= anomalyThresholdSec) {
+        try {
+          const stats = fs.existsSync(logPath) ? fs.statSync(logPath) : null;
+          const logBytes = stats?.size ?? 0;
+          const files = fs.readdirSync(spec.workingDir).filter((f) => f !== "run.sbatch" && !f.startsWith("slurm-"));
+
+          if (logBytes < 64 && files.length === 0) {
+            record.suspiciousActivity = "potential_cryptomining";
+            logStream.write(
+              `\n[HPC Security Watchdog]: Alert: Sustained compute with zero solver output detected (potential cryptomining).\n`,
+            );
+            record.state = "FAILED";
+            record.exitCode = 137;
+            child.kill("SIGTERM");
+            if (watchdogTimer) clearInterval(watchdogTimer);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }, 1000);
+
+    const cleanupTimers = () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (watchdogTimer) clearInterval(watchdogTimer);
+    };
+
+    child.on("close", (code) => {
+      cleanupTimers();
       const diffCpu = process.cpuUsage(record.startCpuUsage);
       record.totalCpuMicroseconds = diffCpu.user + diffCpu.system;
       record.endTime = Date.now();
-      record.exitCode = code ?? -1;
+      if (record.exitCode === undefined) {
+        record.exitCode = code ?? -1;
+      }
 
       if (record.state === "RUNNING") {
         record.state = code === 0 ? "COMPLETED" : "FAILED";
@@ -116,7 +293,7 @@ export class LocalProcessDriver implements HpcDriver {
     });
 
     child.on("error", (err) => {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
+      cleanupTimers();
       record.endTime = Date.now();
       record.state = "FAILED";
       record.exitCode = -1;
@@ -176,6 +353,9 @@ export class LocalProcessDriver implements HpcDriver {
       costCredits,
       nativeJobId,
       exitCode: record?.exitCode,
+      suspiciousActivity: record?.suspiciousActivity,
+      networkIsolationEnforced: record?.networkIsolationEnforced,
+      sandboxRuntime: record?.sandboxRuntime,
     };
   }
 

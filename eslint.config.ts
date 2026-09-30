@@ -99,8 +99,6 @@ export default defineConfig([
             "packages/exchange/validation/fmi/scripts/fmusim-verify.ts",
             "packages/exchange/validation/fmi/scripts/omc-verify.ts",
             "packages/exchange/validation/fmi/scripts/validate.ts",
-            "apps/docs/docs/.vitepress/config.ts",
-            "apps/docs/docs/.vitepress/theme/index.ts",
             "apps/api/scripts/*.ts",
             "apps/ide/scripts/*.ts",
             "languages/sysml2/scripts/*.ts",

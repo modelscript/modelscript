@@ -66,8 +66,9 @@ const TabText = styled.div<{ $active?: boolean }>`
     bottom: 0;
     left: 0;
     right: 0;
-    height: 4px;
-    background-color: var(--color-accent-emphasis, #1d9bf0);
+    height: 3px;
+    background: var(--gradient-cta);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
   }

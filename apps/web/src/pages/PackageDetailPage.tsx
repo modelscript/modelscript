@@ -118,10 +118,19 @@ const HeaderBar = styled.div`
 `;
 
 const glassCard = css`
-  background: var(--color-glass-bg);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-glass-border);
-  border-radius: 8px;
+  background: var(--color-bg-card, rgba(15, 23, 42, 0.65));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
+  border-radius: 14px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow:
+      0 8px 24px -6px rgba(0, 0, 0, 0.5),
+      0 0 16px rgba(139, 92, 246, 0.12);
+  }
 `;
 
 const GlassCard = styled.div`
@@ -254,11 +263,12 @@ const Tab = styled.button<{ $active: boolean }>`
   gap: 6px;
   padding: 12px 20px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   border: none;
   background: transparent;
   color: ${(p) => (p.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
-  border-bottom: 2px solid ${(p) => (p.$active ? "var(--color-accent, #6366f1)" : "transparent")};
+  border-bottom: 3px solid ${(p) => (p.$active ? "var(--color-accent-cyan)" : "transparent")};
+  box-shadow: ${(p) => (p.$active ? "0 2px 10px rgba(6, 182, 212, 0.4)" : "none")};
   margin-bottom: -2px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -271,22 +281,24 @@ const Tab = styled.button<{ $active: boolean }>`
 /* ─── install copy box ─── */
 
 const InstallBox = styled.div`
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
+  background: #020408;
+  border: 1px solid var(--color-border-glass);
+  border-radius: 8px;
   padding: 12px 16px;
   margin-bottom: 24px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--color-text-primary);
+  color: var(--color-accent-cyan);
   cursor: pointer;
-  transition: border-color 0.2s;
+  box-shadow: var(--glow-ai-sm);
+  transition: all 0.2s;
 
   &:hover {
-    border-color: var(--color-border-strong);
+    border-color: rgba(6, 182, 212, 0.45);
+    box-shadow: 0 0 16px rgba(6, 182, 212, 0.3);
   }
 
   code {
@@ -317,16 +329,18 @@ const TreeItem = styled(Link)<{ $depth: number }>`
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px 5px ${(p) => 8 + p.$depth * 16}px;
+  padding: 6px 10px 6px ${(p) => 10 + p.$depth * 16}px;
   font-size: 13px;
+  font-family: var(--font-mono);
   color: var(--color-text-primary);
   text-decoration: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.15s;
   &:hover {
     background: var(--color-glass-bg-hover);
-    color: var(--color-text-heading);
+    color: var(--color-accent-cyan);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.15);
   }
 `;
 

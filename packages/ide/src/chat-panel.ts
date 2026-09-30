@@ -44,6 +44,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           case "listClasses":
             await this.handleListClasses(msg);
             break;
+          case "cloudChatCompletion":
+            await this.handleCloudChatCompletion(msg);
+            break;
         }
       },
       null,
@@ -53,10 +56,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // Auto-send active file context when view opens
     this.sendActiveFileContext();
 
-    // Re-send active file context when user switches editors
+    // Re-send active file context when user switches editors or changes selection
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(() => {
         this.sendActiveFileContext();
+      }),
+      vscode.window.onDidChangeTextEditorSelection((e) => {
+        if (e.textEditor === vscode.window.activeTextEditor) {
+          this.sendActiveFileContext();
+        }
       }),
     );
 
@@ -121,6 +129,199 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await vscode.commands.executeCommand("modelscript.runSimulation");
           result = { success: true, message: "Simulation triggered and panel opened." };
           break;
+        case "modelscript_verify":
+          result = await this.client.sendRequest("modelscript/verifyCandidate", msg.input);
+          break;
+        case "modelscript_patch_code": {
+          const searchBlock = String(msg.input?.searchBlock ?? "");
+          const replaceBlock = String(msg.input?.replaceBlock ?? "");
+          const fileName = typeof msg.input?.fileName === "string" ? msg.input.fileName : undefined;
+
+          let targetEditor = vscode.window.activeTextEditor;
+          if (fileName) {
+            targetEditor =
+              vscode.window.visibleTextEditors.find(
+                (ed) => ed.document.fileName.endsWith(fileName) || ed.document.fileName.includes(fileName),
+              ) ?? targetEditor;
+          }
+
+          if (!targetEditor) {
+            result = { error: "No active text editor available to apply patch." };
+            break;
+          }
+
+          const doc = targetEditor.document;
+          const fullText = doc.getText();
+
+          let idx = fullText.indexOf(searchBlock);
+          let matchedLen = searchBlock.length;
+
+          if (idx === -1) {
+            const normSearch = searchBlock.trim().replace(/\r\n/g, "\n");
+            const normDoc = fullText.replace(/\r\n/g, "\n");
+            const normIdx = normDoc.indexOf(normSearch);
+            if (normIdx !== -1) {
+              idx = normIdx;
+              matchedLen = normSearch.length;
+            }
+          }
+
+          if (idx === -1) {
+            result = {
+              error: `Target searchBlock could not be found in active file '${doc.fileName.split(/[/\\]/).pop()}'.`,
+            };
+            break;
+          }
+
+          const startPos = doc.positionAt(idx);
+          const endPos = doc.positionAt(idx + matchedLen);
+          const editRange = new vscode.Range(startPos, endPos);
+
+          const applied = await targetEditor.edit((editBuilder) => {
+            editBuilder.replace(editRange, replaceBlock);
+          });
+
+          if (!applied) {
+            result = { error: "VS Code text editor failed to apply the edit replacement." };
+            break;
+          }
+
+          const deletedLines = Math.max(1, editRange.end.line - editRange.start.line + 1);
+          const addedLines = replaceBlock.split("\n").length;
+          const shortName = doc.fileName.split(/[/\\]/).pop() ?? "file";
+
+          result = {
+            success: true,
+            action: "Edited",
+            file: shortName,
+            added: addedLines,
+            deleted: deletedLines,
+            message: `Successfully patched ${shortName} (+${addedLines}/-${deletedLines} lines).`,
+          };
+          break;
+        }
+        case "modelscript_read_file": {
+          const fileName = String(msg.input?.fileName ?? msg.input?.filePath ?? "");
+          const startLine = typeof msg.input?.startLine === "number" ? Math.max(1, msg.input.startLine) : 1;
+          const endLine = typeof msg.input?.endLine === "number" ? msg.input.endLine : undefined;
+
+          let targetUri: vscode.Uri | undefined;
+          if (fileName) {
+            const found = await vscode.workspace.findFiles(`**/${fileName}`, "**/node_modules/**", 1);
+            if (found.length > 0) {
+              targetUri = found[0];
+            } else {
+              const openEditor = vscode.window.visibleTextEditors.find(
+                (ed) => ed.document.fileName.endsWith(fileName) || ed.document.fileName.includes(fileName),
+              );
+              if (openEditor) targetUri = openEditor.document.uri;
+            }
+          } else if (vscode.window.activeTextEditor) {
+            targetUri = vscode.window.activeTextEditor.document.uri;
+          }
+
+          if (!targetUri) {
+            result = { error: `File '${fileName}' not found in workspace.` };
+            break;
+          }
+
+          const doc = await vscode.workspace.openTextDocument(targetUri);
+          const totalLines = doc.lineCount;
+          const actualEndLine = Math.min(totalLines, endLine ?? totalLines);
+          const actualStartLine = Math.min(startLine, actualEndLine);
+
+          const lines: string[] = [];
+          for (let i = actualStartLine - 1; i < actualEndLine; i++) {
+            lines.push(doc.lineAt(i).text);
+          }
+
+          result = {
+            fileName: doc.fileName.split(/[/\\]/).pop(),
+            path: vscode.workspace.asRelativePath(doc.uri),
+            totalLines,
+            startLine: actualStartLine,
+            endLine: actualEndLine,
+            content: lines.join("\n"),
+          };
+          break;
+        }
+        case "modelscript_list_workspace_files": {
+          const pattern =
+            typeof msg.input?.pattern === "string" && msg.input.pattern.trim().length > 0
+              ? msg.input.pattern.trim()
+              : "**/*.{mo,mos,sysml,sysml2,step,stp,p21,csv,scad,cfg,inp}";
+          const maxResults = typeof msg.input?.maxResults === "number" ? Math.min(100, msg.input.maxResults) : 50;
+
+          const uris = await vscode.workspace.findFiles(pattern, "**/node_modules/**", maxResults);
+          result = {
+            count: uris.length,
+            files: uris.map((u) => vscode.workspace.asRelativePath(u)),
+          };
+          break;
+        }
+        case "modelscript_find_symbols": {
+          const query = typeof msg.input?.query === "string" ? msg.input.query.toLowerCase().trim() : "";
+          const kind = typeof msg.input?.kind === "string" ? msg.input.kind.toLowerCase().trim() : "";
+
+          const raw = (await this.client.sendRequest("modelscript/listClasses")) as {
+            classes: { name: string; kind: string; uri: string }[];
+          };
+          const filtered = (raw.classes || []).filter((c) => {
+            const matchesQuery = !query || c.name.toLowerCase().includes(query);
+            const matchesKind = !kind || c.kind.toLowerCase() === kind;
+            return matchesQuery && matchesKind;
+          });
+
+          result = {
+            count: filtered.length,
+            symbols: filtered.slice(0, 30).map((c) => ({
+              name: c.name,
+              kind: c.kind,
+              file: c.uri.split(/[/\\]/).pop(),
+              uri: c.uri,
+            })),
+          };
+          break;
+        }
+        case "modelscript_get_diagnostics": {
+          const fileName = typeof msg.input?.fileName === "string" ? msg.input.fileName : undefined;
+          const allDiags: {
+            file: string;
+            severity: "Error" | "Warning" | "Information" | "Hint";
+            message: string;
+            line: number;
+            code?: string | number;
+          }[] = [];
+
+          for (const [uri, diags] of vscode.languages.getDiagnostics()) {
+            const short = uri.fsPath.split(/[/\\]/).pop() || uri.toString();
+            if (fileName && !short.includes(fileName) && !uri.fsPath.includes(fileName)) {
+              continue;
+            }
+            for (const d of diags) {
+              allDiags.push({
+                file: short,
+                severity:
+                  d.severity === vscode.DiagnosticSeverity.Error
+                    ? "Error"
+                    : d.severity === vscode.DiagnosticSeverity.Warning
+                      ? "Warning"
+                      : d.severity === vscode.DiagnosticSeverity.Information
+                        ? "Information"
+                        : "Hint",
+                message: d.message,
+                line: d.range.start.line + 1,
+                code: typeof d.code === "object" ? d.code?.value : d.code,
+              });
+            }
+          }
+
+          result = {
+            count: allDiags.length,
+            diagnostics: allDiags.slice(0, 25),
+          };
+          break;
+        }
         default:
           result = { error: `Unknown tool: ${msg.tool}` };
       }
@@ -150,6 +351,71 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async handleCloudChatCompletion(msg: { id: string; messages: { role: string; content: string }[] }) {
+    if (!this.view) return;
+    const webview = this.view.webview;
+    try {
+      // 1. Try VS Code Language Model API (e.g. Copilot, Claude, GPT-4o) if available
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lm = (vscode as any).lm;
+      if (typeof lm?.selectChatModels === "function") {
+        const models = await lm.selectChatModels({ family: "gpt-4o" });
+        const model = models[0] ?? (await lm.selectChatModels())[0];
+
+        if (model) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const LMChatMessage = (vscode as any).LanguageModelChatMessage;
+          const lmMessages = msg.messages.map((m) =>
+            m.role === "assistant" ? LMChatMessage.Assistant(m.content) : LMChatMessage.User(m.content),
+          );
+          const response = await model.sendRequest(lmMessages, {}, new vscode.CancellationTokenSource().token);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for await (const chunk of response.stream) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (chunk && typeof (chunk as any).value === "string") {
+              webview.postMessage({ type: "cloudStreamChunk", id: msg.id, content: (chunk as any).value });
+            }
+          }
+          webview.postMessage({ type: "cloudStreamEnd", id: msg.id });
+          return;
+        }
+      }
+
+      // 2. Fallback: Check if local proxy or IDE backend endpoint is reachable
+      const serverUrl = process.env.MODELSCRIPT_API_URL || "http://localhost:8000/api/llm/chat";
+      try {
+        const res = await fetch(serverUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: msg.messages }),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as { content?: string; text?: string };
+          const reply = data.content || data.text || "";
+          webview.postMessage({ type: "cloudStreamChunk", id: msg.id, content: reply });
+          webview.postMessage({ type: "cloudStreamEnd", id: msg.id });
+          return;
+        }
+      } catch {
+        // serverUrl unreachable
+      }
+
+      webview.postMessage({
+        type: "cloudStreamError",
+        id: msg.id,
+        error:
+          "No active VS Code Copilot model or hosted ModelScript endpoint found. Please select Local WebGPU or Ollama.",
+      });
+    } catch (err) {
+      webview.postMessage({
+        type: "cloudStreamError",
+        id: msg.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private sendActiveFileContext() {
     if (!this.view) return;
     let editor = vscode.window.activeTextEditor;
@@ -157,11 +423,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.scheme !== "output");
     }
     if (editor && editor.document.uri.scheme !== "output") {
+      const doc = editor.document;
+      const selection = editor.selection;
+      const selectedText = selection && !selection.isEmpty ? doc.getText(selection) : null;
+      const cursorLine = selection ? selection.active.line : null;
+
+      // Extract semantic outline (models, classes, packages, components)
+      const text = doc.getText();
+      const outlineMatches = text.matchAll(
+        /(?:^|\n)\s*(model|class|block|package|connector|function|record|part\s+def|action\s+def)\s+([a-zA-Z_][a-zA-Z0-9_]*)/g,
+      );
+      const symbols: { name: string; kind: string }[] = [];
+      for (const m of outlineMatches) {
+        symbols.push({ name: m[2], kind: m[1] });
+      }
+
       this.view.webview.postMessage({
         type: "activeFileContext",
-        fileName: editor.document.fileName.split("/").pop(),
-        content: editor.document.getText(),
-        uri: editor.document.uri.toString(),
+        fileName: doc.fileName.split(/[/\\]/).pop(),
+        content: doc.getText(),
+        uri: doc.uri.toString(),
+        selectedText,
+        cursorLine,
+        symbols,
       });
     } else {
       this.view.webview.postMessage({
@@ -169,6 +453,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         fileName: null,
         content: null,
         uri: null,
+        selectedText: null,
+        cursorLine: null,
+        symbols: [],
       });
     }
   }
@@ -451,8 +738,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body class="empty">
   <div id="header">
-    <span><img src="${iconUri}" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">ModelScript AI</span>
-    <span class="status" id="model-status">Ready</span>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <img src="${iconUri}" width="16" height="16" style="vertical-align: middle;">
+      <span>ModelScript AI</span>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 6px;">
+      <select id="model-provider-select" style="background: var(--vscode-dropdown-background, #252526); color: var(--vscode-dropdown-foreground, #ccc); border: 1px solid var(--vscode-dropdown-border, #3c3c3c); border-radius: 3px; font-size: 11px; padding: 1px 4px; outline: none; cursor: pointer;">
+        <option value="webgpu">Local WebGPU (Qwen3-0.6B)</option>
+        <option value="ollama">Local Workstation (Ollama 11434)</option>
+        <option value="hosted-mcp">Hosted Cloud (ModelScript / MCP)</option>
+      </select>
+      <span class="status" id="model-status">Ready</span>
+    </div>
   </div>
   <div id="progress-container">
     <div style="background: var(--vscode-editorWidget-background, #333); border-radius: 2px; overflow: hidden;">

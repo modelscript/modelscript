@@ -15,7 +15,7 @@ The extension bundles the Language Server, the 3D Viewer, and all necessary poly
 
 ## For Developers
 
-To set up ModelScript for local development, you'll need `Node.js` (v20+) and `Docker` installed.
+To set up ModelScript for local development, you will need **Node.js ≥ 24** (matching `.nvmrc`) and `npm`. Docker is optional and only required if running backend database/API services.
 
 ### 1. Clone the Repository
 
@@ -32,12 +32,13 @@ We use `npm` workspaces to manage our monorepo packages.
 npm install
 ```
 
-### 3. Build the Native Modules
+### 3. Build the Monorepo
 
-ModelScript uses Tree-sitter for AST generation, which requires native WebAssembly bindings:
+ModelScript compiles its native WebAssembly GLR parsers, AssemblyScript flattening kernels, and TypeScript packages via Nx:
 
 ```bash
-npm run build --workspaces
+npm run build:libs    # Build core compiler packages and language runtimes
+npm run build         # Build all monorepo targets
 ```
 
 ### 4. Run the Dev Server

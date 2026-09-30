@@ -414,12 +414,12 @@ export async function verifyGate2Dimensions(
       },
     };
   } else if (norm === "modelica") {
-    // Modelica unit checking: parse unit annotations or declaration types
+    // 1. Check unit bracket additions: e.g. 5[m] + 10[s]
     const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\r\n]+);/g);
     for (const match of unitMatches) {
       const expr = match[2].trim();
       // Check for obvious incompatible addition of different unit markers if present
-      if (/\b(kg|m|s|N|Pa|W|J)\b/.test(expr)) {
+      if (/\b(kg|m|s|N|Pa|W|J|V|A|Ohm|F|H)\b/.test(expr)) {
         // e.g., 5[m] + 10[s]
         const m = expr.match(/\[([a-zA-Z]+)\][^[+]*\+[^[]*\[([a-zA-Z]+)\]/);
         if (m && m[1] !== m[2]) {
@@ -430,6 +430,46 @@ export async function verifyGate2Dimensions(
             message: `Dimensional mismatch in Modelica expression '${expr.trim()}': cannot add unit [${m[1]}] to [${m[2]}].`,
           });
         }
+      }
+    }
+
+    // 2. Check SI unit type incompatibilities:
+    // e.g. Modelica.SIunits.Length len = weight; where weight is Modelica.SIunits.Mass
+    const declMatches = code.matchAll(
+      /\b(?:Modelica\s*\.\s*SIunits\s*\.\s*)?([A-Z][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\([^)]*\))?\s*(?:=\s*([^;]+))?;/g,
+    );
+    const varTypes = new Map<string, string>();
+    const varAssignments: { varName: string; declaredType: string; rhs: string }[] = [];
+    for (const dm of declMatches) {
+      const typeName = dm[1];
+      const varName = dm[2];
+      const rhs = dm[3];
+      varTypes.set(varName, typeName);
+      if (rhs) {
+        varAssignments.push({ varName, declaredType: typeName, rhs: rhs.trim() });
+      }
+    }
+
+    const incompatiblePairs: Record<string, string[]> = {
+      Length: ["Mass", "Time", "Voltage", "Current", "Pressure", "Temperature", "Power"],
+      Mass: ["Length", "Time", "Voltage", "Current", "Pressure", "Temperature", "Power"],
+      Time: ["Length", "Mass", "Voltage", "Current", "Pressure", "Temperature", "Power"],
+      Voltage: ["Length", "Mass", "Time", "Current", "Pressure", "Temperature"],
+      Current: ["Length", "Mass", "Time", "Voltage", "Pressure", "Temperature"],
+      Pressure: ["Length", "Mass", "Time", "Voltage", "Current"],
+    };
+
+    for (const { varName, declaredType, rhs } of varAssignments) {
+      const rhsVar = rhs.replace(/[^a-zA-Z0-9_.]/g, "");
+      const rhsType = varTypes.get(rhsVar);
+      if (rhsType && incompatiblePairs[declaredType]?.includes(rhsType)) {
+        diagnostics.push({
+          gate: 2,
+          gateName: "QUDV Physical Dimensions",
+          severity: "error",
+          message: `Dimensional mismatch: cannot assign '${rhsVar}' of type ${rhsType} to '${varName}' of type ${declaredType}.`,
+          metadata: { featureName: varName, declaredType, rhsType },
+        });
       }
     }
 
@@ -603,30 +643,77 @@ export async function verifyGate4DAEBalance(
   code: string,
   language: ClosedLoopLanguage,
   tree?: any,
+  lspContext?: any,
 ): Promise<GateVerificationResult> {
   const diagnostics: GateDiagnostic[] = [];
   const norm = language.toLowerCase();
 
   if (norm === "modelica") {
-    // For Modelica, count equations and variables
-    // Simple structural scanner if flattening isn't pre-warmed
-    const varMatches = code.matchAll(
-      /\b(?:Real|Integer|Boolean)\s+(?!parameter\b|constant\b)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*([^;\r\n]+))?;/g,
-    );
+    // Robust Modelica equation & variable structural balance
+    const cleanCode = code.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+
+    // 1. Separate declarations from equation/algorithm sections
+    const eqMatch = cleanCode.match(/\bequation\b([\s\S]*?)(?:\balgorithm\b|\bend\b|$)/);
+    const declPart = cleanCode.split(/\bequation\b/)[0] ?? cleanCode;
+
+    // 2. Extract dynamic unknown state variables (exclude parameters, constants, and inputs)
+    const declStatements = declPart
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
     const declaredVars = new Set<string>();
-    for (const vm of varMatches) {
-      declaredVars.add(vm[1]);
+    for (const stmt of declStatements) {
+      if (
+        stmt.startsWith("model ") ||
+        stmt.startsWith("class ") ||
+        stmt.startsWith("package ") ||
+        stmt.startsWith("block ") ||
+        stmt.startsWith("import ") ||
+        stmt.startsWith("extends ") ||
+        stmt.startsWith("annotation")
+      ) {
+        continue;
+      }
+
+      // Check variability prefix
+      const isParam = /\bparameter\b/.test(stmt);
+      const isConst = /\bconstant\b/.test(stmt);
+      const isInput = /\binput\b/.test(stmt);
+      if (isParam || isConst || isInput) {
+        continue;
+      }
+
+      // Extract variable name(s): e.g. Real x, y; or Modelica.SIunits.Length len;
+      const typeIdentMatch = stmt.match(
+        /(?:(?:public|protected)\s+)?(?:(?:output|discrete)\s+)?(?:(?:Modelica\s*\.\s*SIunits\s*\.\s*)?[A-Za-z_][a-zA-Z0-9_.]*)\s+([^=;()]+)/,
+      );
+      if (typeIdentMatch && typeIdentMatch[1]) {
+        const idents = typeIdentMatch[1]
+          .split(",")
+          .map((id) => id.trim().split(/\s+/)[0])
+          .filter((id) => id.length > 0 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id));
+        for (const id of idents) {
+          declaredVars.add(id);
+        }
+      }
     }
 
-    // Extract equations in equation section
+    // 3. Extract equations in equation section
     let eqCount = 0;
-    const eqSection = code.match(/equation([\s\S]*?)(?:end|algorithm|$)/);
-    if (eqSection && eqSection[1]) {
-      const rawEqs = eqSection[1]
+    if (eqMatch && eqMatch[1]) {
+      const rawEqs = eqMatch[1]
         .split(";")
         .map((s) => s.trim())
-        .filter((s) => s.length > 0 && s.includes("="));
-      eqCount = rawEqs.length;
+        .filter((s) => s.length > 0);
+
+      for (const eq of rawEqs) {
+        if (/\bconnect\s*\(/.test(eq)) {
+          eqCount += 2;
+        } else if (eq.includes("=") || /\bder\s*\(/.test(eq)) {
+          eqCount += 1;
+        }
+      }
     }
 
     const varCount = declaredVars.size;
@@ -755,7 +842,10 @@ export class ClosedLoopCompilerEngine {
   constructor(public readonly lspContext?: any) {}
 
   /**
-   * Runs candidate code sequentially through the 4 verification gates.
+   * Runs candidate code through the 4 verification gates.
+   * Gate 1 certifies syntax and CST structure; once certified,
+   * semantic gates (2: Dimensions, 3: SMT Feasibility, 4: DAE Balance)
+   * execute concurrently to return a complete, aggregated diagnostic vector.
    */
   public async verifyCandidate(
     code: string,
@@ -766,7 +856,7 @@ export class ClosedLoopCompilerEngine {
     const gates: GateVerificationResult[] = [];
     const docUri = options?.documentUri ?? "file:///candidate/model.sysml";
 
-    // --- Gate 1: Syntax ---
+    // --- Gate 1: Syntax (Prerequisite for semantic CST analysis) ---
     let tree: any = null;
     if (targetGates.has(1)) {
       const g1 = await verifyGate1Syntax(code, language, options?.parser);
@@ -782,46 +872,35 @@ export class ClosedLoopCompilerEngine {
       }
     }
 
-    // --- Gate 2: Dimensions ---
+    // --- Gates 2, 3, 4: Semantic Verification Gates (Evaluated Concurrently) ---
+    const semanticTasks: Promise<GateVerificationResult>[] = [];
     if (targetGates.has(2)) {
-      const g2 = await verifyGate2Dimensions(code, language, tree, docUri);
-      gates.push(g2);
-      if (!g2.passed) {
-        return {
-          allPassed: false,
-          gates,
-          summary: `Failed at Gate 2 (QUDV Physical Dimensions) with ${g2.diagnostics.length} dimensional violations.`,
-          timestamp: new Date().toISOString(),
-        };
-      }
+      semanticTasks.push(verifyGate2Dimensions(code, language, tree, docUri));
     }
-
-    // --- Gate 3: SMT Requirements ---
     if (targetGates.has(3)) {
-      const g3 = await verifyGate3Requirements(code, language, tree, docUri);
-      gates.push(g3);
-      if (!g3.passed) {
-        return {
-          allPassed: false,
-          gates,
-          summary: `Failed at Gate 3 (SMT Requirement Feasibility): conflicting requirements detected.`,
-          timestamp: new Date().toISOString(),
-        };
+      semanticTasks.push(verifyGate3Requirements(code, language, tree, docUri));
+    }
+    if (targetGates.has(4)) {
+      semanticTasks.push(verifyGate4DAEBalance(code, language, tree, this.lspContext));
+    }
+
+    if (semanticTasks.length > 0) {
+      const semanticResults = await Promise.all(semanticTasks);
+      for (const res of semanticResults) {
+        gates.push(res);
       }
     }
 
-    // --- Gate 4: DAE Structural Balance ---
-    if (targetGates.has(4)) {
-      const g4 = await verifyGate4DAEBalance(code, language, tree);
-      gates.push(g4);
-      if (!g4.passed) {
-        return {
-          allPassed: false,
-          gates,
-          summary: `Failed at Gate 4 (DAE Structural Balance): system of equations is unbalanced.`,
-          timestamp: new Date().toISOString(),
-        };
-      }
+    const failedGates = gates.filter((g) => !g.passed);
+    if (failedGates.length > 0) {
+      const totalDiags = failedGates.reduce((sum, g) => sum + g.diagnostics.length, 0);
+      const gateLabels = failedGates.map((g) => `Gate ${g.gate} (${g.gateName})`).join(", ");
+      return {
+        allPassed: false,
+        gates,
+        summary: `Failed at ${gateLabels} with ${totalDiags} total diagnostic${totalDiags === 1 ? "" : "s"}.`,
+        timestamp: new Date().toISOString(),
+      };
     }
 
     return {

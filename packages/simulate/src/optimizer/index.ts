@@ -3,12 +3,17 @@
 export * from "./core/calibrator.js";
 export * from "./core/optimizer.js";
 export * from "./core/stochastic-optimizer.js";
+export * from "./solvers/blackbox.js";
+export * from "./solvers/cma-es.js";
 export * from "./solvers/coinor-codegen.js";
 export * from "./solvers/coinor-wasm.js";
+export * from "./solvers/differential-evolution.js";
 export * from "./solvers/global-optimizer.js";
 export * from "./solvers/gpu-codegen.js";
 export * from "./solvers/ipopt-solver.js";
 export * from "./solvers/lbfgsb.js";
+export * from "./solvers/nsga2.js";
+export * from "./solvers/pso.js";
 
 // Re-export ArenaSimulator from the sibling simulator package for convenience
 export { ArenaSimulator } from "../core/simulate-arena.js";

@@ -154,9 +154,15 @@ export function generateParserTables(
   code += `// Generated for ${grammar.productions.length} productions and ${table.actionTable.size} states\n\n`;
 
   const symToInt = grammar.symToInt;
+  let maxSymbolId = 0;
+  for (const [sym, id] of symToInt.entries()) {
+    if (sym !== "EOF" && id > maxSymbolId) {
+      maxSymbolId = id;
+    }
+  }
   const startSymName = Object.keys(originalGrammar.rules)[0] || "Program";
   const startSymId = symToInt.get(startSymName) || 1;
-  code += `export const SYMBOL_COUNT = ${symToInt.size};\n`;
+  code += `export const SYMBOL_COUNT = ${maxSymbolId};\n`;
   code += `export const STATE_COUNT = ${table.actionTable.size};\n`;
   code += `export const START_SYMBOL_ID = ${startSymId};\n\n`;
 
@@ -307,7 +313,7 @@ export function generateParserTables(
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");
 
-  const tokenIsWord = new Array(symToInt.size + 1).fill(0);
+  const tokenIsWord = new Array(maxSymbolId + 1).fill(0);
   for (const [sym, symId] of symToInt.entries()) {
     if (sym.startsWith('"')) {
       const cleanOp = sym.slice(1, -1);
@@ -322,7 +328,7 @@ export function generateParserTables(
   }
   code += generateStaticArray(tokenIsWord, "token_is_word");
 
-  const tokenIsOperator = new Array(symToInt.size + 1).fill(0);
+  const tokenIsOperator = new Array(maxSymbolId + 1).fill(0);
   for (const [sym, symId] of symToInt.entries()) {
     const cleanSym = sym.replace(/^"|"$/g, "");
     if (grammarOperators.has(sym) || grammarOperators.has(cleanSym)) {
@@ -334,10 +340,13 @@ export function generateParserTables(
   let maxTerminalId = 0;
   for (const term of grammar.terminals) {
     if (term !== "EOF" && term !== "ERROR") {
-      maxTerminalId++;
+      const id = symToInt.get(term);
+      if (id !== undefined && id > maxTerminalId) {
+        maxTerminalId = id;
+      }
     }
   }
-  const sortedSymbols = Array.from({ length: symToInt.size }, (_, i) => i + 1).filter((id) => id <= maxTerminalId);
+  const sortedSymbols = Array.from({ length: maxSymbolId }, (_, i) => i + 1).filter((id) => id <= maxTerminalId);
   sortedSymbols.sort((a, b) => tokenInsertCosts[a] - tokenInsertCosts[b]);
   code += generateStaticArray(sortedSymbols, "sorted_insertion_symbols");
 
@@ -475,7 +484,7 @@ export function generateParserTables(
   code += generateStaticArray(Array.from(precomputedRepairs), "precomputed_repairs");
 
   // Literal terminal strings for keyword/symbol similarity matching
-  const tokenStringOffsets: number[] = new Array(symToInt.size + 1).fill(-1);
+  const tokenStringOffsets: number[] = new Array(maxSymbolId + 1).fill(-1);
   const tokenStringBytes: number[] = [];
   for (const [sym, symId] of symToInt.entries()) {
     if (sym.startsWith('"') && sym.endsWith('"') && sym.length > 2) {
@@ -510,7 +519,7 @@ export function generateParserTables(
   }
 
   // 2. Generate tokenDeleteCosts
-  const tokenDeleteCosts: number[] = new Array(symToInt.size + 1).fill(10);
+  const tokenDeleteCosts: number[] = new Array(maxSymbolId + 1).fill(10);
   for (const [sym, id] of symToInt.entries()) {
     let cost = 10;
     if (listSeparators.has(sym)) {
@@ -565,10 +574,10 @@ export function generateParserTables(
     }
   }
 
-  const minYieldOffsets: number[] = new Array(symToInt.size + 1).fill(0);
+  const minYieldOffsets: number[] = new Array(maxSymbolId + 1).fill(0);
   const minYieldData: number[] = [];
 
-  for (let symId = 1; symId <= symToInt.size; symId++) {
+  for (let symId = 1; symId <= maxSymbolId; symId++) {
     minYieldOffsets[symId] = minYieldData.length;
     let symName = "";
     for (const [s, id] of symToInt.entries()) {
@@ -789,10 +798,10 @@ export function generateParserTables(
     }
   }
 
-  const typeSemantics: number[] = new Array(symToInt.size + 1).fill(-1);
+  const typeSemantics: number[] = new Array(maxSymbolId + 1).fill(-1);
   const typeSemanticData: number[] = [];
 
-  for (let symId = 1; symId <= symToInt.size; symId++) {
+  for (let symId = 1; symId <= maxSymbolId; symId++) {
     const semanticsList = new Map<number, { type: number; bitmask: number }>();
     for (const p of sortedProds) {
       if ((symToInt.get(p.left) || 0) === symId && p.semantics) {
@@ -833,13 +842,13 @@ export function generateParserTables(
   code += generateStaticArray(typeSemantics, "type_semantics");
   code += generateStaticArray(typeSemanticData.length > 0 ? typeSemanticData : [0], "type_semantic_data");
 
-  const typeIsList: number[] = new Array(symToInt.size + 1).fill(0);
+  const typeIsList: number[] = new Array(maxSymbolId + 1).fill(0);
   for (let p = 0; p < prodLhs.length; p++) {
     if (prodIsList[p] === 1) typeIsList[prodLhs[p]] = 1;
   }
   code += generateStaticArray(typeIsList, "type_is_list");
 
-  const typeIsFolding: number[] = new Array(symToInt.size + 1).fill(0);
+  const typeIsFolding: number[] = new Array(maxSymbolId + 1).fill(0);
   if (originalGrammar.lsp && originalGrammar.lsp.folding) {
     for (const f of originalGrammar.lsp.folding) {
       const id = symToInt.get(f) || symToInt.get(`"${f}"`);
@@ -848,7 +857,7 @@ export function generateParserTables(
   }
   code += generateStaticArray(typeIsFolding, "type_is_folding");
 
-  const typeIsOutline: number[] = new Array(symToInt.size + 1).fill(0);
+  const typeIsOutline: number[] = new Array(maxSymbolId + 1).fill(0);
   if (originalGrammar.lsp && originalGrammar.lsp.outline) {
     for (const f of originalGrammar.lsp.outline) {
       const id = symToInt.get(f) || symToInt.get(`"${f}"`);
@@ -857,9 +866,9 @@ export function generateParserTables(
   }
   code += generateStaticArray(typeIsOutline, "type_is_outline");
 
-  const typeIsSymbol: number[] = new Array(symToInt.size + 1).fill(0);
-  const symbolNameField: number[] = new Array(symToInt.size + 1).fill(0);
-  const symbolIsScope: number[] = new Array(symToInt.size + 1).fill(0);
+  const typeIsSymbol: number[] = new Array(maxSymbolId + 1).fill(0);
+  const symbolNameField: number[] = new Array(maxSymbolId + 1).fill(0);
+  const symbolIsScope: number[] = new Array(maxSymbolId + 1).fill(0);
 
   if (originalGrammar.symbols) {
     for (const [ruleName, config] of Object.entries(originalGrammar.symbols)) {
@@ -880,7 +889,7 @@ export function generateParserTables(
 
   code += generateLexer(originalGrammar, grammar);
 
-  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${symToInt.size};\nexport const MAX_FIELD_CURSOR_DEPTH: i32 = ${maxFieldCursorDepth};\n`;
+  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${maxSymbolId};\nexport const MAX_FIELD_CURSOR_DEPTH: i32 = ${maxFieldCursorDepth};\n`;
   code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
   let lintSwitchStr = "";

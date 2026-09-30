@@ -31,6 +31,8 @@ export interface SelfHealingResult {
   history: SelfHealingIterationStep[];
   finalVerification: ClosedLoopCandidateVerification;
   unresolvedDiagnostics: GateDiagnostic[];
+  bestScore?: number;
+  rollbacksCount?: number;
 }
 
 export type CodeSynthesizer = (
@@ -39,6 +41,8 @@ export type CodeSynthesizer = (
   diagnostics: GateDiagnostic[],
   previousCode: string,
   failedGate: GateVerificationResult,
+  failedGates?: GateVerificationResult[],
+  feedbackPrompt?: string,
 ) => Promise<string>;
 
 export interface SelfHealingPipelineOptions {
@@ -50,6 +54,24 @@ export interface SelfHealingPipelineOptions {
   targetGates?: (1 | 2 | 3 | 4)[];
   parser?: any;
   onStep?: (step: SelfHealingIterationStep) => void;
+}
+
+/**
+ * Computes a quantitative heuristic fitness score for candidate verification.
+ * Gate 1 (syntax) is heavily weighted as a prerequisite; passing semantic gates
+ * yields positive rewards while diagnostics incur proportional penalties.
+ */
+export function scoreCandidateVerification(verification: ClosedLoopCandidateVerification): number {
+  if (verification.allPassed) return 10000;
+  let score = 0;
+  for (const g of verification.gates) {
+    if (g.passed) {
+      score += g.gate === 1 ? 2000 : 1000;
+    } else {
+      score -= g.diagnostics.length * 50;
+    }
+  }
+  return score;
 }
 
 /**
@@ -65,15 +87,19 @@ export function cleanEmittedCode(raw: string): string {
 }
 
 /**
- * Formats a structured diagnostic feedback prompt for the synthesizer LLM.
+ * Formats a structured diagnostic feedback prompt for the synthesizer LLM,
+ * incorporating diagnostics and mathematical proof artifacts across all failed gates.
  */
 export function formatCompilerFeedbackPrompt(
   userIntent: string,
   iteration: number,
-  failedGate: GateVerificationResult,
+  failedGateOrGates: GateVerificationResult | GateVerificationResult[],
   code: string,
 ): string {
-  const diagLines = failedGate.diagnostics
+  const failedGates = Array.isArray(failedGateOrGates) ? failedGateOrGates : [failedGateOrGates];
+  const allDiags = failedGates.flatMap((g) => g.diagnostics);
+
+  const diagLines = allDiags
     .map(
       (d) =>
         `- [${d.severity.toUpperCase()}] Gate ${d.gate} (${d.gateName}): ${d.message}${
@@ -83,17 +109,21 @@ export function formatCompilerFeedbackPrompt(
     .join("\n");
 
   const metaSections: string[] = [];
-  if (failedGate.metadata?.unsatCore && failedGate.metadata.unsatCore.length > 0) {
-    metaSections.push(`Minimal UNSAT Core (Conflicting Requirements): ${failedGate.metadata.unsatCore.join(", ")}`);
-  }
-  if (failedGate.metadata?.degreesOfFreedom !== undefined) {
-    metaSections.push(
-      `Structural Balance Discrepancy: ${failedGate.metadata.numEquations} equations vs ${failedGate.metadata.numVariables} variables (Degrees of freedom: ${failedGate.metadata.degreesOfFreedom})`,
-    );
+  for (const g of failedGates) {
+    if (g.metadata?.unsatCore && g.metadata.unsatCore.length > 0) {
+      metaSections.push(`Minimal UNSAT Core (Conflicting Requirements): ${g.metadata.unsatCore.join(", ")}`);
+    }
+    if (g.metadata?.degreesOfFreedom !== undefined) {
+      metaSections.push(
+        `Structural Balance Discrepancy: ${g.metadata.numEquations} equations vs ${g.metadata.numVariables} variables (Degrees of freedom: ${g.metadata.degreesOfFreedom})`,
+      );
+    }
   }
 
+  const gateHeader = failedGates.map((g) => `Gate ${g.gate} (${g.gateName})`).join(", ");
+
   return `
-The candidate model failed verification at Gate ${failedGate.gate} (${failedGate.gateName}) on Iteration ${iteration}.
+The candidate model failed verification at ${gateHeader} on Iteration ${iteration}.
 
 ### Compiler Diagnostics:
 ${diagLines}
@@ -128,81 +158,71 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
     diagnostics: GateDiagnostic[],
     previousCode: string,
     failedGate: GateVerificationResult,
+    failedGates?: GateVerificationResult[],
   ): Promise<string> => {
     let repaired = previousCode;
+    const gatesToProcess = failedGates && failedGates.length > 0 ? failedGates : [failedGate];
 
-    // Gate 1: Syntax repair
-    if (failedGate.gate === 1) {
-      // Fix unclosed braces
-      const openCount = (repaired.match(/\{/g) || []).length;
-      const closeCount = (repaired.match(/\}/g) || []).length;
-      if (openCount > closeCount) {
-        repaired += "\n" + "}".repeat(openCount - closeCount);
+    for (const gate of gatesToProcess) {
+      // Gate 1: Syntax repair
+      if (gate.gate === 1) {
+        const openCount = (repaired.match(/\{/g) || []).length;
+        const closeCount = (repaired.match(/\}/g) || []).length;
+        if (openCount > closeCount) {
+          repaired += "\n" + "}".repeat(openCount - closeCount);
+        }
       }
-      return repaired;
-    }
 
-    // Gate 2: Dimensional repair
-    if (failedGate.gate === 2) {
-      for (const d of diagnostics) {
-        const featureName = d.metadata?.featureName;
-        if (featureName) {
-          // If mismatch in attribute assignment: e.g. attribute invalidAssign : Length = weight; where weight is Mass
-          // Fix the declared type to match the RHS or assign valid dimension
-          const attrRegex = new RegExp(`attribute\\s+${featureName}\\s*:\\s*([a-zA-Z0-9_:]+)\\s*=\\s*([^;]+);`);
-          const match = repaired.match(attrRegex);
-          if (match) {
-            // Replace with compatible feature typing or remove bad assignment
-            repaired = repaired.replace(attrRegex, `attribute ${featureName} : Length = len;`);
+      // Gate 2: Dimensional repair
+      if (gate.gate === 2) {
+        for (const d of diagnostics) {
+          const featureName = d.metadata?.featureName;
+          if (featureName) {
+            const attrRegex = new RegExp(`attribute\\s+${featureName}\\s*:\\s*([a-zA-Z0-9_:]+)\\s*=\\s*([^;]+);`);
+            const match = repaired.match(attrRegex);
+            if (match) {
+              repaired = repaired.replace(attrRegex, `attribute ${featureName} : Length = len;`);
+            }
+          }
+
+          if (d.metadata?.constraintName || d.message.includes("incompatible physical dimensions")) {
+            repaired = repaired.replace(
+              /assert\s+constraint\s*\{\s*\([a-zA-Z0-9_.]+\s*\+\s*[a-zA-Z0-9_.]+\)\s*>\s*0\s*\}/g,
+              "assert constraint { len > 0 }",
+            );
+          }
+
+          if (d.metadata?.connectionName || d.message.includes("connection")) {
+            repaired = repaired.replace(/connect\s+lenPort\s+to\s+timePort\s*;/g, "connect lenPort to lenPort2;");
           }
         }
+      }
 
-        // If constraint dimensional mismatch: e.g. len + duration > 0
-        if (d.metadata?.constraintName || d.message.includes("incompatible physical dimensions")) {
-          repaired = repaired.replace(
-            /assert\s+constraint\s*\{\s*\([a-zA-Z0-9_.]+\s*\+\s*[a-zA-Z0-9_.]+\)\s*>\s*0\s*\}/g,
-            "assert constraint { len > 0 }",
-          );
-        }
+      // Gate 3: SMT Requirement repair
+      if (gate.gate === 3) {
+        repaired = repaired.replace(
+          /(?:attribute\s+weight\s*:\s*Mass\s*=\s*)100(?:\s*;)/g,
+          "attribute weight : Mass = 40;",
+        );
+        repaired = repaired.replace(
+          /(?:assert\s+)?constraint\s*\{[^}]*weight\s*>=\s*100[^}]*\}/g,
+          "constraint { weight <= 50 }",
+        );
+      }
 
-        // If connection dimensional mismatch: e.g. connect lenPort to timePort
-        if (d.metadata?.connectionName || d.message.includes("connection")) {
-          repaired = repaired.replace(/connect\s+lenPort\s+to\s+timePort\s*;/g, "connect lenPort to lenPort2;");
+      // Gate 4: DAE Structural balance repair
+      if (gate.gate === 4) {
+        const numEqs = gate.metadata?.numEquations ?? 0;
+        const numVars = gate.metadata?.numVariables ?? 0;
+        if (numEqs > numVars) {
+          const eqMatches = [...repaired.matchAll(/\bassert\s+constraint\s*\{[^{}]+\};?/g)];
+          if (eqMatches.length > 0) {
+            repaired = repaired.replace(eqMatches[eqMatches.length - 1][0], "");
+          }
+        } else if (numEqs < numVars) {
+          repaired = repaired.replace(/\}\s*$/, "  assert constraint { sled_v == 10.0 }\n}\n");
         }
       }
-      return repaired;
-    }
-
-    // Gate 3: SMT Requirement repair
-    if (failedGate.gate === 3) {
-      // Relax conflicting bounds
-      // e.g. if weight <= 50 and weight >= 100, relax lower bound
-      repaired = repaired.replace(
-        /(?:attribute\s+weight\s*:\s*Mass\s*=\s*)100(?:\s*;)/g,
-        "attribute weight : Mass = 40;",
-      );
-      repaired = repaired.replace(
-        /(?:assert\s+)?constraint\s*\{[^}]*weight\s*>=\s*100[^}]*\}/g,
-        "constraint { weight <= 50 }",
-      );
-      return repaired;
-    }
-
-    // Gate 4: DAE Structural balance repair
-    if (failedGate.gate === 4) {
-      const numEqs = failedGate.metadata?.numEquations ?? 0;
-      const numVars = failedGate.metadata?.numVariables ?? 0;
-      if (numEqs > numVars) {
-        // Remove redundant equation
-        const eqMatches = [...repaired.matchAll(/\bassert\s+constraint\s*\{[^{}]+\};?/g)];
-        if (eqMatches.length > 0) {
-          repaired = repaired.replace(eqMatches[eqMatches.length - 1][0], "");
-        }
-      } else if (numEqs < numVars) {
-        // Add missing equation
-        repaired = repaired.replace(/\}\s*$/, "  assert constraint { sled_v == 10.0 }\n}\n");
-      }
-      return repaired;
     }
 
     return repaired;
@@ -210,7 +230,8 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
 }
 
 /**
- * Executes the full Closed-Loop Self-Healing Pipeline.
+ * Executes the full Closed-Loop Self-Healing Pipeline with Pareto candidate tracking
+ * and automatic rollback on regressions.
  */
 export async function runSelfHealingPipeline(options: SelfHealingPipelineOptions): Promise<SelfHealingResult> {
   const engine = new ClosedLoopCompilerEngine();
@@ -236,9 +257,20 @@ export async function runSelfHealingPipeline(options: SelfHealingPipelineOptions
     targetGates,
   };
 
+  interface BestCandidateState {
+    code: string;
+    score: number;
+    verification: ClosedLoopCandidateVerification;
+    iteration: number;
+  }
+
+  let bestCandidate: BestCandidateState | null = null;
+  let rollbacksCount = 0;
+
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     const verification = await engine.verifyCandidate(currentCode, language, verifyOpts);
     lastVerification = verification;
+    const currentScore = scoreCandidateVerification(verification);
 
     const step: SelfHealingIterationStep = {
       iteration,
@@ -256,18 +288,37 @@ export async function runSelfHealingPipeline(options: SelfHealingPipelineOptions
         history,
         finalVerification: verification,
         unresolvedDiagnostics: [],
+        bestScore: currentScore,
+        rollbacksCount,
       };
     }
 
-    // Identify first failing gate
-    const failedGate = verification.gates.find((g) => !g.passed);
+    // Identify all failing gates
+    const failedGates = verification.gates.filter((g) => !g.passed);
+    const failedGate = failedGates[0];
     if (!failedGate) {
       history.push(step);
       options.onStep?.(step);
       break;
     }
 
-    const feedbackPrompt = formatCompilerFeedbackPrompt(options.prompt, iteration, failedGate, currentCode);
+    // Update Pareto best-candidate tracking
+    if (!bestCandidate || currentScore > bestCandidate.score) {
+      bestCandidate = {
+        code: currentCode,
+        score: currentScore,
+        verification,
+        iteration,
+      };
+    } else if (bestCandidate && currentScore < bestCandidate.score - 40 && iteration < maxIterations) {
+      // Regression detected (e.g. broke syntax or introduced extra gate failures)
+      // Roll back candidate code to the highest-scoring candidate
+      currentCode = bestCandidate.code;
+      rollbacksCount++;
+    }
+
+    const allFailedDiagnostics = failedGates.flatMap((g) => g.diagnostics);
+    const feedbackPrompt = formatCompilerFeedbackPrompt(options.prompt, iteration, failedGates, currentCode);
     step.feedbackPrompt = feedbackPrompt;
     history.push(step);
     options.onStep?.(step);
@@ -278,35 +329,59 @@ export async function runSelfHealingPipeline(options: SelfHealingPipelineOptions
 
     // Call synthesizer to get repaired candidate
     try {
-      const repaired = await synthesizer(options.prompt, iteration, failedGate.diagnostics, currentCode, failedGate);
+      const repaired = await synthesizer(
+        options.prompt,
+        iteration,
+        allFailedDiagnostics,
+        currentCode,
+        failedGate,
+        failedGates,
+        feedbackPrompt,
+      );
       currentCode = cleanEmittedCode(repaired);
     } catch (synthErr: any) {
+      const failingGate = failedGates[0];
       return {
         success: false,
-        certifiedCode: currentCode,
+        certifiedCode: bestCandidate?.code ?? currentCode,
         iterations: iteration,
         history,
-        finalVerification: verification,
+        finalVerification: bestCandidate?.verification ?? verification,
         unresolvedDiagnostics: [
-          ...failedGate.diagnostics,
+          ...allFailedDiagnostics,
           {
-            gate: failedGate.gate,
-            gateName: failedGate.gateName,
+            gate: failingGate?.gate ?? 1,
+            gateName: failingGate?.gateName ?? "WASM GLR Syntax",
             severity: "error",
             message: `Synthesizer error: ${synthErr?.message ?? String(synthErr)}`,
           },
         ],
+        bestScore: bestCandidate?.score ?? currentScore,
+        rollbacksCount,
       };
     }
   }
 
-  const failingGate = lastVerification.gates.find((g) => !g.passed);
+  // If search exhausted without passing all gates, return best-scoring candidate
+  const returnedCode =
+    bestCandidate && bestCandidate.score > scoreCandidateVerification(lastVerification)
+      ? bestCandidate.code
+      : currentCode;
+  const returnedVerification =
+    bestCandidate && bestCandidate.score > scoreCandidateVerification(lastVerification)
+      ? bestCandidate.verification
+      : lastVerification;
+
+  const unresolved = returnedVerification.gates.filter((g) => !g.passed).flatMap((g) => g.diagnostics);
+
   return {
     success: false,
-    certifiedCode: currentCode,
+    certifiedCode: returnedCode,
     iterations: maxIterations,
     history,
-    finalVerification: lastVerification,
-    unresolvedDiagnostics: failingGate ? failingGate.diagnostics : [],
+    finalVerification: returnedVerification,
+    unresolvedDiagnostics: unresolved,
+    bestScore: bestCandidate?.score,
+    rollbacksCount,
   };
 }

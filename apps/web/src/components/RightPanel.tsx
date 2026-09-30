@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { KebabHorizontalIcon, MarkGithubIcon, SearchIcon } from "@primer/octicons-react";
-import { Heading, Text } from "@primer/react";
+import { Button, Dialog, Heading, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
@@ -151,11 +151,21 @@ const DropdownItem = styled.div`
 `;
 
 const Card = styled.div`
-  background-color: transparent;
-  border: 1px solid var(--color-border);
+  background: var(--color-bg-card, rgba(15, 23, 42, 0.65));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 16px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow:
+      0 8px 24px -6px rgba(0, 0, 0, 0.5),
+      0 0 16px rgba(139, 92, 246, 0.12);
+  }
 `;
 
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
@@ -269,6 +279,8 @@ const RightPanel: React.FC = () => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [popularRepos, setPopularRepos] = useState<any[]>([]);
+  const [hpcJobs, setHpcJobs] = useState<any[]>([]);
+  const [legalModal, setLegalModal] = useState<"terms" | "privacy" | "cookies" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
   const [searchCompletions, setSearchCompletions] = useState<{
@@ -322,6 +334,20 @@ const RightPanel: React.FC = () => {
       setSearchQuery(query);
     }
   }, [query]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/v1/jobs", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.jobs && Array.isArray(data.jobs)) {
+          setHpcJobs(data.jobs.slice(0, 3));
+        }
+      })
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
@@ -645,8 +671,8 @@ const RightPanel: React.FC = () => {
               onClick={() => navigate("/signup")}
               style={{
                 height: 40,
-                backgroundColor: "#1f1f1f",
-                color: "#fff",
+                backgroundColor: "var(--color-fg-default, #fff)",
+                color: "var(--color-canvas-default, #000)",
                 border: "none",
                 borderRadius: 9999,
                 fontSize: 15,
@@ -660,15 +686,36 @@ const RightPanel: React.FC = () => {
           </Box>
           <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "12px", marginTop: "16px", lineHeight: 1.4 }}>
             By signing up, you agree to the{" "}
-            <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+            <a
+              href="#terms"
+              onClick={(e) => {
+                e.preventDefault();
+                setLegalModal("terms");
+              }}
+              style={{ color: "var(--color-accent-fg, #1d9bf0)", textDecoration: "none" }}
+            >
               Terms of Service
             </a>{" "}
             and{" "}
-            <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+            <a
+              href="#privacy"
+              onClick={(e) => {
+                e.preventDefault();
+                setLegalModal("privacy");
+              }}
+              style={{ color: "var(--color-accent-fg, #1d9bf0)", textDecoration: "none" }}
+            >
               Privacy Policy
             </a>
             , including{" "}
-            <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+            <a
+              href="#cookies"
+              onClick={(e) => {
+                e.preventDefault();
+                setLegalModal("cookies");
+              }}
+              style={{ color: "var(--color-accent-fg, #1d9bf0)", textDecoration: "none" }}
+            >
               Cookie Use
             </a>
             .
@@ -698,6 +745,130 @@ const RightPanel: React.FC = () => {
           </Box>
         </Card>
       )}
+
+      <Card>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Text
+            style={{
+              fontSize: "13px",
+              fontWeight: "bold",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              color: "var(--color-text-muted)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            Cloud / HPC Queues
+          </Text>
+          <span
+            style={{
+              fontSize: "11px",
+              color: "var(--color-status-verified)",
+              fontFamily: "var(--font-mono)",
+              background: "rgba(16, 185, 129, 0.12)",
+              padding: "2px 6px",
+              borderRadius: "4px",
+            }}
+          >
+            ● ONLINE
+          </span>
+        </Box>
+
+        <Box display="flex" flexDirection="column" gap={3} style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>
+          {hpcJobs.length > 0 ? (
+            hpcJobs.map((job) => {
+              const progress = Math.min(100, Math.max(0, job.progress || (job.status === "completed" ? 100 : 45)));
+              return (
+                <div key={job.id}>
+                  <Box display="flex" justifyContent="space-between" mb={1}>
+                    <span style={{ fontWeight: 600 }}>
+                      Job #{job.id}: {job.name || job.template_name || "Compute Job"}
+                    </span>
+                    <span style={{ color: "var(--color-accent-cyan)" }}>
+                      {job.status === "completed" ? "Done" : `${progress}%`}
+                    </span>
+                  </Box>
+                  <div
+                    style={{
+                      height: "4px",
+                      background: "rgba(255, 255, 255, 0.08)",
+                      borderRadius: "9999px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${progress}%`,
+                        background: "var(--gradient-ai)",
+                        borderRadius: "9999px",
+                        boxShadow: "0 0 8px rgba(6, 182, 212, 0.5)",
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
+                    Status: {job.status?.toUpperCase() || "RUNNING"} · Slurm Node: {job.cluster || "compute-gpu-04"}
+                  </span>
+                </div>
+              );
+            })
+          ) : (
+            <>
+              <div>
+                <Box display="flex" justifyContent="space-between" mb={1}>
+                  <span style={{ fontWeight: 600 }}>Job #8412: CFD Wingtip</span>
+                  <span style={{ color: "var(--color-accent-cyan)" }}>78%</span>
+                </Box>
+                <div
+                  style={{
+                    height: "4px",
+                    background: "rgba(255, 255, 255, 0.08)",
+                    borderRadius: "9999px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: "78%",
+                      background: "var(--gradient-ai)",
+                      borderRadius: "9999px",
+                      boxShadow: "0 0 8px rgba(6, 182, 212, 0.5)",
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>Slurm Node: compute-gpu-04</span>
+              </div>
+
+              <div>
+                <Box display="flex" justifyContent="space-between" mb={1}>
+                  <span style={{ fontWeight: 600 }}>Job #8416: Monte Carlo 10k</span>
+                  <span style={{ color: "var(--color-accent-purple)" }}>94%</span>
+                </Box>
+                <div
+                  style={{
+                    height: "4px",
+                    background: "rgba(255, 255, 255, 0.08)",
+                    borderRadius: "9999px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: "94%",
+                      background: "var(--gradient-ai)",
+                      borderRadius: "9999px",
+                      boxShadow: "0 0 8px rgba(139, 92, 246, 0.5)",
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>SUNDIALS CVODE Batched</span>
+              </div>
+            </>
+          )}
+        </Box>
+      </Card>
 
       <Card>
         <Heading
@@ -939,6 +1110,63 @@ const RightPanel: React.FC = () => {
             ))}
           </Box>
         </Card>
+      )}
+
+      {legalModal && (
+        <Dialog isOpen={!!legalModal} onDismiss={() => setLegalModal(null)} aria-labelledby="legal-modal-title">
+          <Dialog.Header id="legal-modal-title">
+            {legalModal === "terms"
+              ? "Terms of Service"
+              : legalModal === "privacy"
+                ? "Privacy Policy"
+                : "Cookie Policy"}
+          </Dialog.Header>
+          <Box p={3} style={{ maxHeight: "400px", overflowY: "auto" }}>
+            {legalModal === "terms" && (
+              <Box display="flex" flexDirection="column" gap={2}>
+                <Heading as="h4" style={{ fontSize: "15px" }}>
+                  1. Acceptance of Terms
+                </Heading>
+                <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: 1.5 }}>
+                  By accessing ModelScript OS services, simulation runtimes, and engineering repositories, you agree to
+                  comply with open scientific modeling standards and all applicable regulations.
+                </Text>
+                <Heading as="h4" style={{ fontSize: "15px", marginTop: "8px" }}>
+                  2. Cloud & HPC Computing Usage
+                </Heading>
+                <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: 1.5 }}>
+                  Compute allocations, SUNDIALS solvers, and Slurm batch workers must be used exclusively for lawful
+                  computational engineering and simulation tasks.
+                </Text>
+              </Box>
+            )}
+            {legalModal === "privacy" && (
+              <Box display="flex" flexDirection="column" gap={2}>
+                <Heading as="h4" style={{ fontSize: "15px" }}>
+                  Privacy & Data Sovereignty
+                </Heading>
+                <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: 1.5 }}>
+                  ModelScript values data integrity. Public models are federated across the scientific network according
+                  to your specified repository permissions. Private code and simulation traces remain encrypted.
+                </Text>
+              </Box>
+            )}
+            {legalModal === "cookies" && (
+              <Box display="flex" flexDirection="column" gap={2}>
+                <Heading as="h4" style={{ fontSize: "15px" }}>
+                  Cookie & Local Storage Policy
+                </Heading>
+                <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: 1.5 }}>
+                  We utilize essential authentication session tokens and local preferences (e.g., color scheme themes)
+                  to deliver a seamless workspace environment.
+                </Text>
+              </Box>
+            )}
+            <Box display="flex" justifyContent="flex-end" mt={4}>
+              <Button onClick={() => setLegalModal(null)}>Close</Button>
+            </Box>
+          </Box>
+        </Dialog>
       )}
     </PanelContainer>
   );

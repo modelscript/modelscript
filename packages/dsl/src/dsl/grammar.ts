@@ -252,7 +252,7 @@ export class OptionalNormalizer implements RuleNormalizer {
 
     const childSyms = g.flatten(ctx, children[0], p);
     g.addProduction(optSym, childSyms, p.prec, p.assoc, false, p.dynamicPrec);
-    g.addProduction(optSym, [], undefined, undefined, true);
+    g.addProduction(optSym, [], undefined, undefined, false);
     return [{ sym: optSym, field: p.field }];
   }
   getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
@@ -382,6 +382,8 @@ export class NormalizedGrammar {
   /** Set of all non-terminal symbols (rules) discovered. */
   nonTerminals = new Set<SymbolName>();
   startSymbol: SymbolName;
+  name: string;
+  strictConflicts: boolean;
 
   private nextId = 0;
   private syntheticCount = 0;
@@ -401,6 +403,8 @@ export class NormalizedGrammar {
   extractedKeywords?: string[];
 
   constructor(grammar: LanguageOptions<any>) {
+    this.name = grammar.name || "Grammar";
+    this.strictConflicts = !!grammar.strictConflicts;
     const dummy$ = new Proxy(
       {},
       {
@@ -594,6 +598,11 @@ export class NormalizedGrammar {
       this.addProduction(name, right, p.prec, p.assoc, false, p.dynamicPrec);
     }
 
+    // Ensure symbols that have productions (nonTerminals) are not classified as terminals
+    for (const nt of this.nonTerminals) {
+      this.terminals.delete(nt);
+    }
+
     // Build symToInt mapping
     let symId = 1;
     for (const term of this.terminals) {
@@ -602,6 +611,7 @@ export class NormalizedGrammar {
     }
     for (const nonTerm of this.nonTerminals) {
       if (nonTerm === "EOF" || nonTerm === "ERROR") continue;
+      if (this.symToInt.has(nonTerm)) continue;
       this.symToInt.set(nonTerm, symId++);
     }
     this.symToInt.set("EOF", 1023);

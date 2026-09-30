@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ModelScript — AI Engineering Platform UI Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #06080f;
+      --bg-surface: #0b0f19;
+      --bg-card: rgba(15, 23, 42, 0.65);
+      --bg-card-hover: rgba(22, 33, 62, 0.75);
+      --bg-elevated: #111827;
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --border-glass: rgba(255, 255, 255, 0.12);
+      
+      --accent-violet: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-blue: #3b82f6;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      
+      --grad-ai: linear-gradient(135deg, #8b5cf6, #06b6d4);
+      --grad-ai-subtle: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.15));
+      --glow-ai: 0 0 20px rgba(139, 92, 246, 0.35);
+      --glow-cyan: 0 0 16px rgba(6, 182, 212, 0.35);
+      --font-mono: 'Geist Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.08) 0%, transparent 40%),
+        radial-gradient(rgba(139, 92, 246, 0.15) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 28px 28px;
+    }
+
+    /* Top HUD / Command Bar */
+    header.global-hud {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(6, 8, 15, 0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .hud-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.5px;
+    }
+    .logo-orb {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--grad-ai);
+      box-shadow: var(--glow-ai);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 900;
+      color: white;
+    }
+    .omnibar {
+      flex: 0 1 540px;
+      height: 36px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-glass);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .omnibar:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+      color: var(--text-secondary);
+    }
+    .omnibar kbd {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      margin-left: auto;
+    }
+    .hud-telemetry {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .pill-telemetry {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--accent-emerald);
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Layout Container */
+    .app-layout {
+      display: flex;
+      max-width: 1440px;
+      margin: 0 auto;
+      min-height: calc(100vh - 56px);
+      padding: 16px 20px;
+      gap: 24px;
+    }
+
+    /* Page Tabs Navigator (Demo Switcher) */
+    .demo-bar {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 999;
+      background: rgba(11, 15, 25, 0.9);
+      border: 1px solid var(--accent-violet);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), var(--glow-ai);
+      padding: 6px 8px;
+      border-radius: 14px;
+      display: flex;
+      gap: 6px;
+      backdrop-filter: blur(16px);
+    }
+    .demo-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .demo-btn.active {
+      background: var(--grad-ai);
+      color: white;
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.5);
+    }
+
+    /* Left Sidebar */
+    aside.sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+    }
+    .nav-item.active {
+      border-left: 2px solid var(--accent-cyan);
+      background: linear-gradient(90deg, rgba(6, 182, 212, 0.1), transparent);
+    }
+    .nav-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 16px 12px 6px;
+    }
+
+    /* Main Content Area */
+    main.main-viewport {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Right Rail / Radar */
+    aside.radar-panel {
+      width: 320px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* View Mode Container */
+    .view-container { display: none; }
+    .view-container.active { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+
+    /* Glassmorphic Engineering Card */
+    .eng-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .eng-card:hover {
+      border-color: rgba(139, 92, 246, 0.35);
+      background: var(--bg-card-hover);
+      box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(139, 92, 246, 0.12);
+    }
+    .eng-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    }
+
+    /* Card Header & Status HUD */
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .author-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .author-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: var(--grad-ai);
+      padding: 1.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .avatar-inner {
+      width: 100%;
+      height: 100%;
+      background: var(--bg-surface);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .author-meta h4 {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .author-meta span {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .status-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .eng-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .badge-verified {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent-emerald);
+    }
+    .badge-solver {
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      color: var(--accent-cyan);
+    }
+    .badge-fmu {
+      background: rgba(139, 92, 246, 0.12);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--accent-violet);
+    }
+
+    /* Artifact Viewport (CAD / Simulation Canvas) */
+    .artifact-canvas-box {
+      border-radius: 12px;
+      background: #04060a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      position: relative;
+      overflow: hidden;
+      margin: 16px 0;
+      height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .canvas-hud-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .hud-metrics {
+      display: flex;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: rgba(6, 8, 15, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .hud-metrics span { color: var(--accent-cyan); font-weight: 600; }
+    
+    /* 3D Wireframe / Model Representation */
+    .wireframe-model {
+      position: relative;
+      width: 220px;
+      height: 180px;
+    }
+    .spatial-pin {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: var(--glow-cyan);
+      border: 2px solid white;
+      cursor: pointer;
+      animation: pinGlow 2s infinite;
+    }
+    .pin-label {
+      position: absolute;
+      left: 16px;
+      top: -4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: rgba(11, 15, 25, 0.9);
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    /* AI Copilot Insight Ribbon */
+    .ai-insight-ribbon {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.08));
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .ai-badge-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+      color: var(--accent-violet);
+    }
+
+    /* Engineering Actions Row */
+    .eng-actions-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .action-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .eng-btn {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-glass);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .eng-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .eng-btn-primary {
+      background: var(--grad-ai);
+      border: none;
+      color: white;
+      box-shadow: 0 0 16px rgba(139, 92, 246, 0.3);
+    }
+    .eng-btn-primary:hover {
+      box-shadow: 0 0 24px rgba(139, 92, 246, 0.5);
+      transform: translateY(-1px);
+    }
+
+    /* Radar / Right Panel Cards */
+    .radar-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .radar-card h3 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .job-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 12px;
+    }
+    .job-item:last-child { border-bottom: none; }
+    .job-title {
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+    }
+    .progress-track {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--grad-ai);
+      border-radius: 9999px;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+    }
+
+    /* Split-Pane Inspector View Specifics */
+    .split-layout {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 24px;
+      width: 100%;
+    }
+    .inspector-pane {
+      background: #04060a;
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 120px);
+    }
+
+    /* Compose Studio Bar */
+    .compose-studio {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .compose-prompt-input {
+      background: transparent;
+      border: none;
+      color: white;
+      font-size: 15px;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      min-height: 70px;
+    }
+    .compose-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-glass);
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: var(--accent-cyan);
+      cursor: pointer;
+    }
+    .chip:hover {
+      background: rgba(6, 182, 212, 0.15);
+      border-color: var(--accent-cyan);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Global HUD -->
+  <header class="global-hud">
+    <div class="hud-brand">
+      <div class="logo-orb">M</div>
+      <span>ModelScript OS</span>
+    </div>
+    
+    <div class="omnibar">
+      <span>⚡ Ask AI Copilot, search models, or run CVODE solver...</span>
+      <kbd>⌘ K</kbd>
+    </div>
+
+    <div class="hud-telemetry">
+      <div class="pill-telemetry">
+        <div class="pulse-dot"></div>
+        <span>SLURM CLUSTER 94% IDLE</span>
+      </div>
+      <div style="color: var(--accent-cyan);">WASM Kernel v3.4</div>
+    </div>
+  </header>
+
+  <!-- Main App Shell -->
+  <div class="app-layout">
+
+    <!-- Left Navigation Rail -->
+    <aside class="sidebar">
+      <div class="nav-section-title">Mission Control</div>
+      <a href="#" class="nav-item active">⚡ Telemetry Stream</a>
+      <a href="#" class="nav-item">🧪 Workspaces & Trees</a>
+      <a href="#" class="nav-item">🤖 AI Agent Swarms</a>
+      <a href="#" class="nav-item">📦 Artifact Registry</a>
+      <a href="#" class="nav-item">📊 Cluster & Slurm Queue</a>
+
+      <div class="nav-section-title">Physical Domains</div>
+      <a href="#" class="nav-item">🏎️ Aero & Thermal (CFD)</a>
+      <a href="#" class="nav-item">⚡ High-Voltage Electrical</a>
+      <a href="#" class="nav-item">⚙️ Multi-Body Dynamics</a>
+      <a href="#" class="nav-item">🌐 Digital Twin Telemetry</a>
+    </aside>
+
+    <!-- Center Viewport (Switches based on demo tabs) -->
+    <main class="main-viewport">
+
+      <!-- ================= PAGE 1: HOME FEED (WORKBENCH STREAM) ================= -->
+      <div id="page-feed" class="view-container active">
+        
+        <!-- AI Generative Compose Studio Quickbar -->
+        <div class="compose-studio">
+          <textarea class="compose-prompt-input" placeholder="Share simulation telemetry, or type '/synthesize' to ask AI Copilot to generate a Modelica model..."></textarea>
+          <div class="compose-chips">
+            <span class="chip">✨ /synthesize model</span>
+            <span class="chip">⚡ /benchmark solver</span>
+            <span class="chip">📎 Attach STEP CAD</span>
+            <span class="chip">📦 Export FMU 3.0</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+            <span style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono);">Arena DAE Memory: 128MB ready</span>
+            <button class="eng-btn eng-btn-primary">⚡ Publish & Run</button>
+          </div>
+        </div>
+
+        <!-- Post Card 1: Interactive 3D CAD & Thermal Model -->
+        <div class="eng-card">
+          <div class="card-header">
+            <div class="author-info">
+              <div class="author-avatar"><div class="avatar-inner">ER</div></div>
+              <div class="author-meta">
+                <h4>Dr. Elena Rostova <span style="color: var(--accent-cyan);">● Aerodyne Labs</span></h4>
+                <span>@elena_physics • 18m ago</span>
+              </div>
+            </div>
+            <div class="status-badges">
+              <span class="eng-badge badge-verified">✓ Modelica 3.4</span>
+              <span class="eng-badge badge-solver">⚡ CVODE 34ms</span>
+              <span class="eng-badge badge-fmu">📦 FMU 3.0</span>
+            </div>
+          </div>
+
+          <p style="font-size: 14px; line-height: 1.6; margin-bottom: 12px;">
+            Finished parameter optimization on the nonlinear gimbal damper. Replaced Coulomb friction with continuous tanh smoothing to eliminate solver chattering during high-speed maneuvers.
+          </p>
+
+          <!-- 3D Interactive Viewport Representation -->
+          <div class="artifact-canvas-box">
+            <div class="canvas-hud-overlay">
+              <div class="hud-metrics">
+                <span>STEP CAD</span> | 14.8k Polys | Rot: 45°
+              </div>
+              <div class="hud-metrics">
+                Mass: <span>1.42kg</span> | Damping: <span>0.18 N·s/m</span> | Temp: <span>48.2°C</span>
+              </div>
+            </div>
+
+            <!-- Vector SVG Gimbal CAD Schematic -->
+            <svg width="240" height="180" viewBox="0 0 240 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="120" cy="90" rx="90" ry="40" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="3 3"/>
+              <ellipse cx="120" cy="90" rx="60" ry="70" stroke="#06b6d4" stroke-width="1.5"/>
+              <circle cx="120" cy="90" r="30" stroke="#3b82f6" stroke-width="2" fill="rgba(6, 182, 212, 0.05)"/>
+              <line x1="30" y1="90" x2="210" y2="90" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+              <line x1="120" y1="20" x2="120" y2="160" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+            </svg>
+
+            <!-- Luminous Spatial Pin -->
+            <div class="spatial-pin" style="top: 85px; left: 195px;">
+              <div class="pin-label">Bearing Pin: Friction Δ=0.04</div>
+            </div>
+          </div>
+
+          <!-- AI Diagnostic Ribbon -->
+          <div class="ai-insight-ribbon">
+            <span class="ai-badge-icon">✨</span>
+            <div>
+              <strong>AI Stability Audit:</strong> Eigenvalues remain strictly in the left-half plane across all operating points. Zero algebraic loop singularities detected.
+            </div>
+          </div>
+
+          <!-- Engineering Actions -->
+          <div class="eng-actions-row">
+            <div class="action-group">
+              <button class="eng-btn eng-btn-primary">▶ Run in Sandbox</button>
+              <button class="eng-btn">⚡ Fork & Tweak</button>
+              <button class="eng-btn">Δ Param Diff (4)</button>
+            </div>
+            <div class="action-group">
+              <button class="eng-btn">💬 14 Reviews</button>
+              <button class="eng-btn">★ 52 Stars</button>
+              <button class="eng-btn">⤓ FMU</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Post Card 2: Multi-Domain Vega Plot -->
+        <div class="eng-card">
+          <div class="card-header">
+            <div class="author-info">
+              <div class="author-avatar" style="background: var(--accent-emerald);"><div class="avatar-inner">SB</div></div>
+              <div class="author-meta">
+                <h4>Sim-Bot-4 <span style="color: var(--accent-emerald);">● Autonomous Regression Agent</span></h4>
+                <span>@agent_ci • 1h ago</span>
+              </div>
+            </div>
+            <div class="status-badges">
+              <span class="eng-badge badge-verified">✓ 100/100 Passed</span>
+              <span class="eng-badge badge-solver">CVODE vs IDA</span>
+            </div>
+          </div>
+
+          <p style="font-size: 14px; line-height: 1.6; margin-bottom: 12px;">
+            Nightly verification run complete for IEEE 14-bus Grid model. Voltage harmonic distortion stays below 1.2% threshold under step-load injection.
+          </p>
+
+          <div class="artifact-canvas-box" style="height: 200px;">
+            <svg width="480" height="140" viewBox="0 0 480 140" fill="none">
+              <path d="M0 100 Q 60 20, 120 70 T 240 60 T 360 40 T 480 30" stroke="#06b6d4" stroke-width="2.5" fill="none" style="filter: drop-shadow(0 0 8px rgba(6,182,212,0.6));"/>
+              <path d="M0 110 Q 70 80, 140 100 T 260 90 T 380 75 T 480 70" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="4 4" fill="none"/>
+              <line x1="240" y1="0" x2="240" y2="140" stroke="rgba(255,255,255,0.15)" stroke-dasharray="2 2"/>
+            </svg>
+          </div>
+
+          <div class="eng-actions-row">
+            <div class="action-group">
+              <button class="eng-btn eng-btn-primary">▶ Reproduce Trace</button>
+              <button class="eng-btn">📊 Inspect CSV Telemetry</button>
+            </div>
+            <div class="action-group">
+              <button class="eng-btn">💬 4 Comments</button>
+              <button class="eng-btn">★ 19</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================= PAGE 2: SPLIT-PANE INSPECTOR (POST DETAIL) ================= -->
+      <div id="page-detail" class="view-container">
+        <div class="split-layout">
+          <!-- Left: Engineering Discussion & Audit History -->
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div class="eng-card">
+              <div class="card-header">
+                <div class="author-info">
+                  <div class="author-avatar"><div class="avatar-inner">ER</div></div>
+                  <div class="author-meta">
+                    <h4>Dr. Elena Rostova</h4>
+                    <span>@elena_physics • Detailed Verification Thread</span>
+                  </div>
+                </div>
+                <span class="eng-badge badge-verified">Active Inspection</span>
+              </div>
+
+              <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">Nonlinear Gimbal Damper with Tanh Continuous Regularization</h2>
+              <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                Below are the parameter comparisons against the baseline OpenModelica 1.22 run. Notice how the stiffness index drops from 10^5 to 12.4.
+              </p>
+
+              <!-- Parameter Diff Table -->
+              <div style="background: rgba(0,0,0,0.4); border-radius: 8px; border: 1px solid var(--border-subtle); padding: 12px; margin: 12px 0; font-family: var(--font-mono); font-size: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px; margin-bottom: 6px;">
+                  <span>Parameter</span><span>Baseline</span><span>Proposed</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 4px 0;">
+                  <span>damping_c</span><span>0.10 N·s/m</span><span style="color: var(--accent-cyan);">0.18 N·s/m</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 4px 0;">
+                  <span>v_threshold</span><span>1e-5 m/s</span><span style="color: var(--accent-emerald);">1e-3 m/s</span>
+                </div>
+              </div>
+
+              <!-- Peer Comments -->
+              <div style="margin-top: 16px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
+                <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text-muted);">ENGINEERING PEER REVIEWS (3)</h4>
+                <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+                  <strong style="font-size: 13px; color: var(--accent-violet);">@marcus_dynamics:</strong>
+                  <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Verified on SUNDIALS CVODE with stiff BDF. Execution speed jumped 3.2x without precision loss.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Docked Simulation Sandbox -->
+          <div class="inspector-pane">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent-cyan);">DOCK: LIVE WASM SANDBOX</span>
+              <span class="eng-badge badge-solver">WASM JIT Ready</span>
+            </div>
+
+            <!-- Dynamic Parameter Sliders -->
+            <div style="display: flex; flex-direction: column; gap: 10px; font-family: var(--font-mono); font-size: 12px;">
+              <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <span>Damping (c):</span><span style="color: var(--accent-cyan);">0.18 N·s/m</span>
+                </div>
+                <input type="range" min="0.05" max="0.5" step="0.01" value="0.18" style="width: 100%; accent-color: var(--accent-violet);">
+              </div>
+              <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <span>Solver RelTol:</span><span style="color: var(--accent-emerald);">1e-6</span>
+                </div>
+                <input type="range" min="1" max="10" value="6" style="width: 100%; accent-color: var(--accent-cyan);">
+              </div>
+            </div>
+
+            <!-- Real-time Convergence Canvas -->
+            <div style="flex: 1; background: #000; border-radius: 10px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; justify-content: center; align-items: center;">
+              <svg width="280" height="160" viewBox="0 0 280 160">
+                <path d="M10 140 C 40 10, 100 130, 160 50 S 240 70, 270 68" stroke="#10b981" stroke-width="2.5" fill="none" style="filter: drop-shadow(0 0 10px rgba(16,185,129,0.7));"/>
+              </svg>
+              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--accent-emerald);">Status: CONVERGED in 28ms</span>
+            </div>
+
+            <div style="display: flex; gap: 8px;">
+              <button class="eng-btn eng-btn-primary" style="flex: 1; justify-content: center;">⚡ Re-simulate</button>
+              <button class="eng-btn" style="flex: 1; justify-content: center;">⤓ Export FMU</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= PAGE 3: AI GENERATIVE COMPOSE STUDIO ================= -->
+      <div id="page-compose" class="view-container">
+        <div class="eng-card" style="border-color: rgba(139, 92, 246, 0.5); box-shadow: var(--glow-ai);">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+            <div class="logo-orb" style="width: 32px; height: 32px;">✨</div>
+            <div>
+              <h3 style="font-size: 16px; font-weight: 700;">ModelScript Autonomous Synthesizer</h3>
+              <p style="font-size: 12px; color: var(--text-muted);">Transform natural language & specifications into verifiable Modelica / SysML v2 models</p>
+            </div>
+          </div>
+
+          <!-- Prompt Box -->
+          <div style="background: rgba(0,0,0,0.5); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 12px; padding: 16px;">
+            <textarea style="width: 100%; height: 90px; background: transparent; border: none; color: #fff; font-family: inherit; font-size: 15px; outline: none;" placeholder="Example: Synthesize a 3-phase inverter cooling circuit in Modelica with thermal mass, convection to air at 25C, and temperature-dependent resistance..."></textarea>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
+              <div style="display: flex; gap: 8px;">
+                <span class="chip" style="background: rgba(139, 92, 246, 0.2);">✨ Physics-Constrained</span>
+                <span class="chip">🎯 Target: Modelica 3.4</span>
+                <span class="chip">⚡ Solver: CVODE</span>
+              </div>
+              <button class="eng-btn eng-btn-primary">✨ Synthesize & Flatten</button>
+            </div>
+          </div>
+
+          <!-- Synthesized Code Preview -->
+          <div style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 12px; margin-bottom: 6px; color: var(--text-muted);">
+              <span>SYNTHESIZED ARENA MODELICA AST</span>
+              <span style="color: var(--accent-emerald);">● Zero Parse Errors</span>
+            </div>
+            <pre style="background: #020408; border: 1px solid var(--border-glass); border-radius: 10px; padding: 16px; font-family: var(--font-mono); font-size: 12px; color: var(--accent-cyan); overflow-x: auto;">
+model ThermalInverterCircuit
+  parameter Modelica.Units.SI.Resistance R_ref = 0.05 "Base resistance at 25C";
+  parameter Modelica.Units.SI.HeatCapacity C_th = 450.0 "Thermal capacity";
+  Modelica.Thermal.HeatTransfer.Sources.FixedTemperature ambient(T = 298.15);
+  Modelica.Thermal.HeatTransfer.Components.ThermalConductor heatSink(G = 12.5);
+equation
+  heatSink.Q_flow = heatSink.G * (heatSink.port_a.T - ambient.T);
+end ThermalInverterCircuit;</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= PAGE 4: ENGINEERING RADAR & EXPLORE ================= -->
+      <div id="page-explore" class="view-container">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <!-- Benchmark Leaderboards -->
+          <div class="eng-card">
+            <h3 style="font-size: 14px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 14px;">⚡ TOP SOLVER BENCHMARKS</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px; font-family: var(--font-mono); font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+                <span>#1 NASA Quadrotor MPC</span>
+                <span style="color: var(--accent-emerald);">4.2ms (WASM)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+                <span>#2 IEEE 118-Bus Power Flow</span>
+                <span style="color: var(--accent-emerald);">18.7ms (SUNDIALS)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+                <span>#3 Cryogenic Rocket Chilling</span>
+                <span style="color: var(--accent-amber);">142ms (Stiff IDA)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Digital Twin Stream Grid -->
+          <div class="eng-card">
+            <h3 style="font-size: 14px; font-weight: 700; color: var(--accent-violet); margin-bottom: 14px;">🌐 LIVE DIGITAL TWINS</h3>
+            <div style="display: flex; flex-direction: column; gap: 12px; font-family: var(--font-mono); font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+                <span>Turbine #04 (Munich)</span>
+                <span style="color: var(--accent-cyan);">1,450 RPM ● 42.1 kW</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+                <span>Battery Pack 800V (EV Twin)</span>
+                <span style="color: var(--accent-emerald);">98.4% Health ● 28°C</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Right Rail: Radar & Live HPC Cluster -->
+    <aside class="radar-panel">
+      <!-- Cluster Job Status -->
+      <div class="radar-card">
+        <h3>
+          <span>Cloud / HPC Queues</span>
+          <span style="color: var(--accent-emerald); font-family: var(--font-mono); font-size: 11px;">● ONLINE</span>
+        </h3>
+        
+        <div class="job-item">
+          <div class="job-title">
+            <span>Job #8412: CFD Wingtip</span>
+            <span style="color: var(--accent-cyan);">78%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width: 78%;"></div></div>
+          <span style="color: var(--text-muted); font-size: 10px; font-family: var(--font-mono);">Slurm Node: compute-gpu-04</span>
+        </div>
+
+        <div class="job-item">
+          <div class="job-title">
+            <span>Job #8416: Monte Carlo 10k</span>
+            <span style="color: var(--accent-violet);">94%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width: 94%;"></div></div>
+          <span style="color: var(--text-muted); font-size: 10px; font-family: var(--font-mono);">SUNDIALS CVODE Batched</span>
+        </div>
+      </div>
+
+      <!-- Trending Engineering Repositories -->
+      <div class="radar-card">
+        <h3>Trending Systems</h3>
+        <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+          <div>
+            <strong style="color: var(--text-primary);">modelscript/power-grid-v2</strong>
+            <p style="font-size: 11px; color: var(--text-muted);">Standard library for renewable microgrids + inverter dynamics</p>
+          </div>
+          <div>
+            <strong style="color: var(--text-primary);">aerodyne/quadrotor-mpc</strong>
+            <p style="font-size: 11px; color: var(--text-muted);">Nonlinear trajectory solver with OpenCASCADE CAD</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Interactive Demo Switcher Bar -->
+  <div class="demo-bar">
+    <button class="demo-btn active" onclick="switchPage('page-feed', this)">
+      <span>⚡</span> 1. Home Feed & Stream
+    </button>
+    <button class="demo-btn" onclick="switchPage('page-detail', this)">
+      <span>🔍</span> 2. Split-Pane Inspector
+    </button>
+    <button class="demo-btn" onclick="switchPage('page-compose', this)">
+      <span>✨</span> 3. AI Generative Studio
+    </button>
+    <button class="demo-btn" onclick="switchPage('page-explore', this)">
+      <span>📊</span> 4. Radar & Telemetry
+    </button>
+  </div>
+
+  <script>
+    function switchPage(pageId, btn) {
+      document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.demo-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>

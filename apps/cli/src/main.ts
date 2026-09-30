@@ -401,6 +401,14 @@ await yargs(rawArgs)
       "Unpublish",
     ),
   )
+  .command(
+    lazy(
+      "hub <command>",
+      "Manage, configure, and inspect ModelScript hub nodes",
+      () => import("./commands/hub.js"),
+      "Hub",
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

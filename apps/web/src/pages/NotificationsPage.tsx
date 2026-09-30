@@ -198,10 +198,24 @@ function groupNotifications(notifs: any[]) {
 }
 
 const NotificationsPage: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token, user, setUnreadCount } = useAuth();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"all" | "mentions">("all");
+
+  const markAllRead = () => {
+    if (!token) return;
+    fetch(`${API_BASE_URL}/social/notifications/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(() => {
+        setUnreadCount(0);
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: 1 })));
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!token) {
@@ -228,31 +242,96 @@ const NotificationsPage: React.FC = () => {
 
   useEffect(() => {
     if (!token) return;
-    // Mark as read after a short delay so the GET request can fetch the unread status first
     const timeout = setTimeout(() => {
       fetch(`${API_BASE_URL}/social/notifications/read`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
-      });
+      })
+        .then(() => {
+          setUnreadCount(0);
+        })
+        .catch(() => {});
     }, 2000);
     return () => clearTimeout(timeout);
-  }, [token]);
+  }, [token, setUnreadCount]);
+
+  const filteredNotifications = notifications.filter((notif) => {
+    if (activeTab === "mentions") {
+      return notif.type === "mention" || notif.type === "reply";
+    }
+    return true;
+  });
 
   return (
     <Box>
-      <StickyHeader>
+      <StickyHeader style={{ justifyContent: "space-between", alignItems: "center" }}>
         <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
           Notifications
         </Heading>
+        {notifications.some((n) => !n.read) && (
+          <button
+            onClick={markAllRead}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--color-accent-cyan)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              padding: "4px 8px",
+            }}
+          >
+            Mark all as read
+          </button>
+        )}
       </StickyHeader>
+
+      <Box display="flex" borderBottom="1px solid var(--color-border-subtle)">
+        <button
+          onClick={() => setActiveTab("all")}
+          style={{
+            flex: 1,
+            padding: "14px",
+            background: "none",
+            border: "none",
+            borderBottom: activeTab === "all" ? "3px solid var(--color-accent-cyan)" : "3px solid transparent",
+            color: activeTab === "all" ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+            fontWeight: activeTab === "all" ? 700 : 500,
+            cursor: "pointer",
+            fontSize: "15px",
+          }}
+        >
+          All
+        </button>
+        <button
+          onClick={() => setActiveTab("mentions")}
+          style={{
+            flex: 1,
+            padding: "14px",
+            background: "none",
+            border: "none",
+            borderBottom: activeTab === "mentions" ? "3px solid var(--color-accent-cyan)" : "3px solid transparent",
+            color: activeTab === "mentions" ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+            fontWeight: activeTab === "mentions" ? 700 : 500,
+            cursor: "pointer",
+            fontSize: "15px",
+          }}
+        >
+          Mentions
+        </button>
+      </Box>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">
           <Spinner size="large" />
         </Box>
+      ) : filteredNotifications.length === 0 ? (
+        <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+          {activeTab === "mentions" ? "No mentions yet." : "You have no notifications yet."}
+        </Box>
       ) : (
         <Box>
-          {notifications.map((notif) => {
+          {filteredNotifications.map((notif) => {
             let thumbnail = null;
             if (notif.post_artifact_config && notif.post_artifact_type === "picture") {
               try {
@@ -272,10 +351,10 @@ const NotificationsPage: React.FC = () => {
                 $unread={!notif.read}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest("a, button, .interactive-element")) return;
+                  const postAuthor =
+                    notif.post_author || notif.author_username || notif.actors?.[0]?.username || user?.username;
                   const url =
-                    notif.type === "follow"
-                      ? `/${notif.actors[0].username}`
-                      : `/${user?.username}/status/${notif.post_id}`;
+                    notif.type === "follow" ? `/${notif.actors[0].username}` : `/${postAuthor}/status/${notif.post_id}`;
                   navigate(url);
                 }}
               >

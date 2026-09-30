@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getComputeProfile } from "./compute-profiles.js";
-import { LocalProcessDriver } from "./drivers/local-driver.js";
+import { LocalProcessDriver, type LocalDriverOptions } from "./drivers/local-driver.js";
 import { SlurmDriver } from "./drivers/slurm-driver.js";
 import { SlurmRestDriver } from "./drivers/slurm-rest-driver.js";
 import type { ComputeProfile, HpcDriver, HpcJobSpec, HpcSubmissionResult, HpcUsageMetrics } from "./hpc-types.js";
@@ -13,6 +13,7 @@ export interface HpcEngineOptions {
   driver?: HpcDriver | undefined;
   stager?: ObjectStager | undefined;
   defaultBackend?: "local" | "slurm" | "slurm-rest" | "mock" | undefined;
+  localOptions?: LocalDriverOptions | undefined;
 }
 
 /**
@@ -36,7 +37,7 @@ export class HpcEngine {
       } else if (backend === "slurm") {
         this.driver = new SlurmDriver();
       } else {
-        this.driver = new LocalProcessDriver();
+        this.driver = new LocalProcessDriver(options.localOptions);
       }
     }
 

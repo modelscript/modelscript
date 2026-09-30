@@ -144,6 +144,41 @@ async function runTests() {
   assert.ok(calibResult.residual < 1e-4, `Residual ${calibResult.residual} too high!`);
 
   console.log("  ✔ Adjoint ModelicaCalibrator successfully recovered physical parameters (< 0.1% error)!");
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Test 3: ModelicaCalibrator with Hybrid CMA-ES + Levenberg-Marquardt
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log("\nTest 3: ModelicaCalibrator with Hybrid CMA-ES + LM on Mass-Spring-Damper system...");
+  const hybridCalibrator = new ModelicaCalibrator(arena, sim, {
+    parameters: ["k", "c"],
+    parameterBounds: new Map([
+      ["k", { min: 1.0, max: 30.0 }],
+      ["c", { min: 0.1, max: 10.0 }],
+    ]),
+    initialGuess,
+    measurements: new Map([["x", { t: measT, y: measX }]]),
+    startTime: 0.0,
+    stopTime: 1.5,
+    method: "hybrid-cmaes-lm",
+    tolerance: 1e-6,
+    maxIterations: 40,
+  });
+
+  const hybridResult = hybridCalibrator.calibrate();
+  const hybridK = hybridResult.parameters.get("k") ?? 0;
+  const hybridC = hybridResult.parameters.get("c") ?? 0;
+
+  console.log(`  Hybrid CMA-ES/LM Calibration Result:`);
+  console.log(`    Estimated k: ${hybridK.toFixed(4)}, True k: ${true_k.toFixed(4)}`);
+  console.log(`    Estimated c: ${hybridC.toFixed(4)}, True c: ${true_c.toFixed(4)}`);
+  console.log(`    Final cost:  ${hybridResult.residual.toExponential(4)} in ${hybridResult.iterations} iters`);
+  console.log(`    Message:     ${hybridResult.message}`);
+
+  assert.ok(Math.abs(hybridK - true_k) < 0.1, `Hybrid estimated k (${hybridK}) differs from true k (${true_k})`);
+  assert.ok(Math.abs(hybridC - true_c) < 0.1, `Hybrid estimated c (${hybridC}) differs from true c (${true_c})`);
+  assert.ok(hybridResult.residual < 1e-4, `Residual ${hybridResult.residual} too high!`);
+  console.log("  ✔ Hybrid CMA-ES/LM calibrator successfully recovered physical parameters!");
+
   console.log("\nAll Adjoint Calibration & L-BFGS-B tests PASSED successfully!");
 }
 

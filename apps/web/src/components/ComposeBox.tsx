@@ -27,23 +27,27 @@ import SimpleEmojiPicker from "./SimpleEmojiPicker";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 
 const TweetButton = styled.button`
-  background-color: #1d9bf0;
+  background: var(--gradient-cta);
   color: white;
   border: none;
-  border-radius: 9999px;
-  padding: 8px 20px;
-  font-size: 15px;
-  font-weight: bold;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-mono);
   cursor: pointer;
-  transition: opacity 0.2s;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
+  transition: all 0.2s ease;
 
-  &:hover {
-    opacity: 0.9;
+  &:hover:not(:disabled) {
+    box-shadow: 0 0 18px rgba(6, 182, 212, 0.5);
+    transform: translateY(-1px);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    box-shadow: none;
   }
 `;
 
@@ -941,6 +945,53 @@ export default function ComposeBox({
                 marginTop: isModal ? "auto" : undefined,
               }}
             >
+              <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "11px",
+                    background: "rgba(139, 92, 246, 0.15)",
+                    color: "var(--color-accent-purple)",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setContent((prev) => (prev ? prev + " " : "") + "/synthesize model ")}
+                >
+                  ✨ /synthesize model
+                </span>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "11px",
+                    background: "rgba(6, 182, 212, 0.12)",
+                    color: "var(--color-accent-cyan)",
+                    border: "1px solid rgba(6, 182, 212, 0.3)",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setContent((prev) => (prev ? prev + " " : "") + "/benchmark solver=cvode ")}
+                >
+                  ⚡ /benchmark solver
+                </span>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "11px",
+                    background: "rgba(255, 255, 255, 0.05)",
+                    color: "var(--color-text-secondary)",
+                    border: "1px solid var(--color-border-glass)",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  📎 Attach CAD/FMU
+                </span>
+              </Box>
               <Box display="flex" justifyContent="space-between" alignItems="center">
                 <Box display="flex" gap={2} alignItems="center">
                   <ActionIconButton
@@ -1025,7 +1076,7 @@ export default function ComposeBox({
                   )}
                 </Box>
                 <TweetButton onClick={handleSubmit} disabled={(!content.trim() && !artifactId) || submitting}>
-                  {replyToPost ? "Reply" : "Post"}
+                  {replyToPost ? "Reply" : "⚡ Publish & Run"}
                 </TweetButton>
               </Box>
             </Box>

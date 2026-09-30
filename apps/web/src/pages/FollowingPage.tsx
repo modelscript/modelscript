@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
+import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
+import { CircleIconButton } from "../components/SharedStyles";
 import { API_BASE_URL } from "../config";
 
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
@@ -44,10 +45,59 @@ const UserRow = styled.div`
   }
 `;
 
+const TabBar = styled.div`
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: calc(var(--dev-header-height, 0px) + 53px);
+  background: var(--color-canvas-default);
+  z-index: 9;
+`;
+
+const TabButton = styled(Link)<{ $active?: boolean }>`
+  flex: 1;
+  text-align: center;
+  padding: 14px 16px;
+  font-weight: ${(props) => (props.$active ? "700" : "500")};
+  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
+  text-decoration: none;
+  position: relative;
+  transition: all 0.15s;
+
+  &:hover {
+    background-color: var(--color-canvas-subtle);
+    color: var(--color-fg-default);
+    text-decoration: none;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: ${(props) => (props.$active ? "60px" : "0")};
+    height: 3px;
+    background: var(--color-accent-cyan, #58a6ff);
+    border-radius: 9999px;
+    transition: width 0.2s;
+  }
+`;
+
+interface FollowUser {
+  id: string | number;
+  username: string;
+  display_name?: string;
+  avatar_url?: string;
+  bio?: string;
+  is_following?: boolean;
+}
+
 const FollowingPage: React.FC = () => {
   const { username } = useParams();
+  const navigate = useNavigate();
   const { token, user: currentUser } = useAuth();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<FollowUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -81,11 +131,28 @@ const FollowingPage: React.FC = () => {
         top="var(--dev-header-height, 0px)"
         bg="var(--color-canvas-default)"
         zIndex={10}
+        display="flex"
+        alignItems="center"
+        gap={3}
       >
-        <Heading as="h2" style={{ fontSize: "20px" }}>
-          @{username} is following
-        </Heading>
+        <CircleIconButton onClick={() => navigate(`/${username}`)} aria-label="Back">
+          <ArrowLeftIcon size={20} />
+        </CircleIconButton>
+        <Box display="flex" flexDirection="column">
+          <Heading as="h2" style={{ fontSize: "18px", margin: 0, fontWeight: 700 }}>
+            @{username}
+          </Heading>
+        </Box>
       </Box>
+
+      <TabBar>
+        <TabButton to={`/${username}/followers`} $active={false}>
+          Followers
+        </TabButton>
+        <TabButton to={`/${username}/following`} $active={true}>
+          Following
+        </TabButton>
+      </TabBar>
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">
           <Spinner />

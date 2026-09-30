@@ -602,16 +602,16 @@ export function startNodeServer(input?: any, output?: any) {
         if (cached?.tree) {
           const langId = plugin?.id ?? (change.document.languageId || "modelica");
           const wsIndex = plugin?.workspaceIndex ?? workspaceManager.getWorkspaceIndex(langId);
-          if (wsIndex) {
+          if (wsIndex && typeof wsIndex.has === "function") {
             const effectiveUri = uri.startsWith("modelscript-lib://global")
               ? "file://" + uri.substring("modelscript-lib://global".length)
               : uri;
             if (wsIndex.has(effectiveUri)) {
-              wsIndex.reindexDocument(effectiveUri, () => cached.tree.rootNode);
+              wsIndex.reindexDocument?.(effectiveUri, () => cached.tree.rootNode);
             } else {
-              wsIndex.register(effectiveUri, () => cached.tree.rootNode);
+              wsIndex.register?.(effectiveUri, () => cached.tree.rootNode);
             }
-            wsIndex.getFileIndex(effectiveUri);
+            wsIndex.getFileIndex?.(effectiveUri);
           }
         }
       }, 60),

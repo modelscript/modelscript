@@ -4,11 +4,13 @@
 import Box from "./Box";
 
 import { BellIcon, HomeIcon, MoonIcon, PersonIcon, PlusIcon, SearchIcon, SunIcon, XIcon } from "@primer/octicons-react";
+import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
+import { CommandPalette } from "./CommandPalette";
 import ComposeModal from "./ComposeModal";
 import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
@@ -18,41 +20,166 @@ import { ComposeContext } from "./ComposeContext";
 
 const ShellContainer = styled.div`
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   min-height: 100vh;
-  background-color: var(--color-canvas-default);
+  background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
   box-sizing: border-box;
 `;
 
+const TopGlobalHud = styled.header`
+  position: sticky;
+  top: var(--dev-header-height, 0px);
+  z-index: 1000;
+  width: 100%;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: rgba(6, 8, 15, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--color-border);
+  box-sizing: border-box;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
+`;
+
+const HudBrand = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.3px;
+  color: var(--color-text-heading);
+  cursor: pointer;
+`;
+
+const LogoOrb = styled.div`
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--gradient-ai);
+  box-shadow: var(--glow-ai-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: white;
+`;
+
+const Omnibar = styled.div`
+  flex: 0 1 520px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border-glass);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 10px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.45);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+    color: var(--color-text-primary);
+  }
+
+  kbd {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    margin-left: auto;
+    color: var(--color-text-tertiary);
+  }
+`;
+
+const HudTelemetry = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+`;
+
+const PillTelemetry = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--color-status-verified);
+`;
+
+const PulseDot = styled.div`
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-status-verified);
+  box-shadow: 0 0 8px var(--color-status-verified);
+  animation: pulseAnim 2s infinite;
+
+  @keyframes pulseAnim {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.5;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+`;
+
 const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean }>`
   display: flex;
   width: 100%;
-  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1290px")};
+  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1380px")};
+  justify-content: center;
 `;
 
 const SidebarWrapper = styled.div`
   flex: 1;
   display: flex;
   justify-content: flex-end;
-  max-width: 340px;
+  max-width: 320px;
 `;
 
 const RightPanelWrapper = styled.div`
   flex: 1;
   display: flex;
   justify-content: flex-start;
+  max-width: 350px;
 `;
 
 const MainColumn = styled.main<{ $isWideLayout?: boolean; $isFullScreenLayout?: boolean }>`
-  flex: ${(props) => (props.$isWideLayout || props.$isFullScreenLayout ? "1" : "0 1 600px")};
+  flex: ${(props) => (props.$isWideLayout || props.$isFullScreenLayout ? "1" : "0 1 740px")};
   width: 100%;
-  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : props.$isWideLayout ? "1050px" : "600px")};
+  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : props.$isWideLayout ? "1150px" : "740px")};
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
-  min-height: calc(100vh - var(--dev-header-height, 0px));
+  min-height: calc(100vh - 54px - var(--dev-header-height, 0px));
   padding-bottom: ${(props) => (props.$isFullScreenLayout ? "0px" : "80px")};
   display: flex;
   flex-direction: column;
@@ -107,16 +234,22 @@ const CenterPostButton = styled.button`
   width: 50px;
   height: 50px;
   border-radius: 50%;
-  background-color: #1f1f1f;
+  background: var(--gradient-cta);
   color: white;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
   margin-top: -20px;
-  transition: transform 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+
+  &:hover {
+    box-shadow: 0 0 22px rgba(6, 182, 212, 0.6);
+  }
 
   &:active {
     transform: scale(0.95);
@@ -148,11 +281,26 @@ const BannerContent = styled.div`
 
 const AppShell: React.FC = () => {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState(false);
+  const [isResetDbDialogOpen, setIsResetDbDialogOpen] = React.useState(false);
+  const [isResettingDb, setIsResettingDb] = React.useState(false);
+  const [resetError, setResetError] = React.useState<string | null>(null);
   const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(true);
   const { user, isLoading: loading, login, logout, unreadCount } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+
+  React.useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   const isDev = import.meta.env.DEV;
 
@@ -198,22 +346,9 @@ const AppShell: React.FC = () => {
               <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <button
-                    onClick={async () => {
-                      if (confirm("Are you sure you want to reload the database with dev data?")) {
-                        try {
-                          const res = await fetch("/api/v1/dev/reset", { method: "POST" });
-                          if (res.ok) {
-                            logout();
-                            setTimeout(() => {
-                              window.location.reload();
-                            }, 100);
-                          } else {
-                            alert("Failed to reset database");
-                          }
-                        } catch (e) {
-                          alert("Failed to connect to dev server");
-                        }
-                      }
+                    onClick={() => {
+                      setResetError(null);
+                      setIsResetDbDialogOpen(true);
                     }}
                     style={{
                       background: "rgba(255,255,255,0.2)",
@@ -325,6 +460,23 @@ const AppShell: React.FC = () => {
           </div>
         )}
         <ShellContainer>
+          <TopGlobalHud>
+            <HudBrand onClick={() => navigate(user ? "/home" : "/explore")}>
+              <LogoOrb>M</LogoOrb>
+              <span>ModelScript OS</span>
+            </HudBrand>
+            <Omnibar onClick={() => setIsCommandPaletteOpen(true)}>
+              <span>⚡ Ask AI Copilot, search models, or run CVODE solver...</span>
+              <kbd>⌘ K</kbd>
+            </Omnibar>
+            <HudTelemetry>
+              <PillTelemetry>
+                <PulseDot />
+                <span>SLURM 94% IDLE</span>
+              </PillTelemetry>
+              <span style={{ color: "var(--color-accent-cyan)" }}>WASM v3.4</span>
+            </HudTelemetry>
+          </TopGlobalHud>
           <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
             <SidebarWrapper>
               <Sidebar onPostClick={() => setIsComposeOpen(true)} />
@@ -420,7 +572,7 @@ const AppShell: React.FC = () => {
                   position: "absolute",
                   top: 4,
                   right: 4,
-                  backgroundColor: "#1d9bf0",
+                  backgroundColor: "var(--color-accent-cyan)",
                   color: "white",
                   borderRadius: "50%",
                   minWidth: "16px",
@@ -431,7 +583,7 @@ const AppShell: React.FC = () => {
                   fontSize: "10px",
                   fontWeight: "bold",
                   padding: "0 4px",
-                  boxShadow: "0 0 0 2px var(--color-canvas-default)",
+                  boxShadow: "0 0 0 2px var(--color-bg-primary)",
                 }}
               >
                 {unreadCount > 9 ? "9+" : unreadCount}
@@ -453,6 +605,65 @@ const AppShell: React.FC = () => {
               window.dispatchEvent(new CustomEvent("modelscript:post-created", { detail: post }));
             }}
           />
+        )}
+
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onOpenCompose={() => setIsComposeOpen(true)}
+        />
+
+        {isResetDbDialogOpen && (
+          <Dialog
+            isOpen={isResetDbDialogOpen}
+            onDismiss={() => {
+              if (!isResettingDb) setIsResetDbDialogOpen(false);
+            }}
+            aria-labelledby="reset-db-title"
+          >
+            <Dialog.Header id="reset-db-title">Reset Development Database</Dialog.Header>
+            <Box p={3}>
+              <Text as="p" color="var(--color-fg-default)" style={{ marginBottom: "16px" }}>
+                Are you sure you want to reload the database with seed and development data? This will clear all
+                existing test posts, comments, and sessions.
+              </Text>
+              {resetError && (
+                <Text as="p" color="var(--color-danger-fg)" style={{ marginBottom: "16px", fontSize: "13px" }}>
+                  {resetError}
+                </Text>
+              )}
+              <Box display="flex" justifyContent="flex-end" gap={2}>
+                <Button onClick={() => setIsResetDbDialogOpen(false)} disabled={isResettingDb}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={isResettingDb}
+                  onClick={async () => {
+                    setIsResettingDb(true);
+                    setResetError(null);
+                    try {
+                      const res = await fetch("/api/v1/dev/reset", { method: "POST" });
+                      if (res.ok) {
+                        logout();
+                        setTimeout(() => {
+                          window.location.reload();
+                        }, 100);
+                      } else {
+                        setResetError("Failed to reset database");
+                        setIsResettingDb(false);
+                      }
+                    } catch (e: any) {
+                      setResetError("Failed to connect to dev server");
+                      setIsResettingDb(false);
+                    }
+                  }}
+                >
+                  {isResettingDb ? "Resetting..." : "Reset Database"}
+                </Button>
+              </Box>
+            </Box>
+          </Dialog>
         )}
       </div>
     </ComposeContext.Provider>

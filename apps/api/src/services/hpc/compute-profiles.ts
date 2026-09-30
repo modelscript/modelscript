@@ -16,6 +16,7 @@ export const COMPUTE_PROFILES: Record<string, ComputeProfile> = {
     tasksPerNode: 1,
     nodes: 1,
     costCreditsPerHour: 10,
+    maxWallClockMinutes: 30,
   },
   "high-memory": {
     id: "high-memory",
@@ -28,6 +29,7 @@ export const COMPUTE_PROFILES: Record<string, ComputeProfile> = {
     tasksPerNode: 1,
     nodes: 1,
     costCreditsPerHour: 35,
+    maxWallClockMinutes: 60,
   },
   "gpu-a100": {
     id: "gpu-a100",
@@ -42,6 +44,7 @@ export const COMPUTE_PROFILES: Record<string, ComputeProfile> = {
     tasksPerNode: 1,
     nodes: 1,
     costCreditsPerHour: 80,
+    maxWallClockMinutes: 120,
   },
   "hpc-mpi-64": {
     id: "hpc-mpi-64",
@@ -54,6 +57,7 @@ export const COMPUTE_PROFILES: Record<string, ComputeProfile> = {
     nodes: 2,
     memoryMb: 131072,
     costCreditsPerHour: 150,
+    maxWallClockMinutes: 240,
   },
 };
 

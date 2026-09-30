@@ -49,6 +49,9 @@ export default function Index() {
           <span style={{ fontWeight: 700, fontSize: "1.125rem" }}>ModelScript</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Button as="a" href="https://docs.modelscript.org" variant="invisible" size="small">
+            Docs
+          </Button>
           <Button as="a" href="https://ide.modelscript.org" variant="invisible" size="small">
             IDE
           </Button>
@@ -119,7 +122,7 @@ export default function Index() {
           <FeatureCard
             icon={<FileCodeIcon size={24} />}
             title="Incremental Parsing"
-            description="Tree-sitter based parser with full Modelica grammar coverage. Incremental re-parsing for IDE-speed responsiveness."
+            description="Native WebAssembly GLR incremental parser with full Modelica grammar coverage and IDE-speed responsiveness."
           />
           <FeatureCard
             icon={<SearchIcon size={24} />}
@@ -168,9 +171,9 @@ export default function Index() {
               install="npm install -g @modelscript/cli"
             />
             <PackageCard
-              name="@modelscript/modelica/parser"
-              description="Tree-sitter grammar for Modelica — native Node.js binding and WebAssembly build for browser use."
-              install="npm install @modelscript/modelica/parser"
+              name="@modelscript/modelica"
+              description="Modelica compiler and language runtime — native WebAssembly GLR parser, CST indexer, and flattener."
+              install="npm install @modelscript/modelica"
             />
           </div>
         </div>
@@ -186,7 +189,7 @@ export default function Index() {
           <FeatureCard
             icon={<TypographyIcon size={24} />}
             title="Syntax Highlighting"
-            description="Rich, accurate syntax highlighting for all Modelica language constructs with Tree-sitter grammar."
+            description="Rich, accurate syntax highlighting for all Modelica language constructs with native TextMate and GLR grammar."
           />
           <FeatureCard
             icon={<SearchIcon size={24} />}

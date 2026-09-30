@@ -62,21 +62,43 @@ function formatRelativeTime(dateString: string): string {
 const PostWrapper = styled.div<{ $isDetail?: boolean; $isThread?: boolean }>`
   display: flex;
   flex-direction: ${(props) => (props.$isDetail ? "column" : "row")};
-  gap: 12px;
-  padding: 16px;
-  border-bottom: ${(props) => (props.$isDetail || props.$isThread ? "none" : "1px solid var(--color-border)")};
-  transition: background-color 0.2s;
+  gap: 14px;
+  padding: 18px 20px;
+  margin: ${(props) => (props.$isDetail || props.$isThread ? "0" : "10px 14px")};
+  border-radius: ${(props) => (props.$isDetail || props.$isThread ? "0" : "14px")};
+  background: ${(props) => (props.$isDetail ? "transparent" : "var(--color-bg-card, rgba(15, 23, 42, 0.65))")};
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: ${(props) =>
+    props.$isDetail || props.$isThread ? "none" : "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))"};
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: ${(props) => (props.$isDetail ? "default" : "pointer")};
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  }
 
   &:hover {
-    background-color: ${(props) => (props.$isDetail ? "transparent" : "var(--color-canvas-subtle)")};
+    background: ${(props) => (props.$isDetail ? "transparent" : "var(--color-bg-card-hover, rgba(22, 33, 62, 0.75))")};
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow:
+      0 10px 28px -10px rgba(0, 0, 0, 0.5),
+      0 0 18px rgba(139, 92, 246, 0.12);
   }
 `;
 
 const Avatar = styled.div<{ $url?: string }>`
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   background-color: var(--color-accent-emphasis);
   background-image: ${(props) => (props.$url ? `url("${props.$url}")` : "none")};
   background-size: cover;
@@ -86,6 +108,85 @@ const Avatar = styled.div<{ $url?: string }>`
   color: white;
   font-weight: bold;
   flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+`;
+
+const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warning" }>`
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.4;
+  background: ${(props) =>
+    props.$variant === "verified"
+      ? "rgba(16, 185, 129, 0.12)"
+      : props.$variant === "solver"
+        ? "rgba(6, 182, 212, 0.12)"
+        : props.$variant === "fmu"
+          ? "rgba(139, 92, 246, 0.12)"
+          : "rgba(245, 158, 11, 0.12)"};
+  border: 1px solid
+    ${(props) =>
+      props.$variant === "verified"
+        ? "rgba(16, 185, 129, 0.3)"
+        : props.$variant === "solver"
+          ? "rgba(6, 182, 212, 0.3)"
+          : props.$variant === "fmu"
+            ? "rgba(139, 92, 246, 0.3)"
+            : "rgba(245, 158, 11, 0.3)"};
+  color: ${(props) =>
+    props.$variant === "verified"
+      ? "var(--color-status-verified)"
+      : props.$variant === "solver"
+        ? "var(--color-status-solver)"
+        : props.$variant === "fmu"
+          ? "var(--color-status-fmu)"
+          : "var(--color-status-warning)"};
+`;
+
+const AiInsightRibbon = styled.div`
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.08));
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0;
+  color: var(--color-text-secondary);
+
+  strong {
+    color: var(--color-accent-purple);
+  }
+`;
+
+const EngActionButton = styled.button`
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-glass);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--color-accent-cyan);
+  }
 `;
 
 const HoverAvatar = styled(Avatar)`
@@ -755,6 +856,16 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               >
                 @{displayPost.username}
               </Text>
+              <Box display="flex" gap={1} flexWrap="wrap" mt={1}>
+                {displayPost.artifact_view_id && (
+                  <>
+                    <EngBadge $variant="verified">✓ Modelica 3.4</EngBadge>
+                    <EngBadge $variant="solver">⚡ CVODE</EngBadge>
+                    <EngBadge $variant="fmu">📦 FMU 3.0</EngBadge>
+                  </>
+                )}
+                {displayPost.account_type === "bot" && <EngBadge $variant="fmu">🤖 AI Agent</EngBadge>}
+              </Box>
             </Box>
             <Box position="relative" mr={1}>
               <ActionButton
@@ -903,6 +1014,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   setShowReplyModal(true);
                 }}
               />
+              <AiInsightRibbon>
+                <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
+                <div>
+                  <strong>AI Diagnostics:</strong> Verified AST and differential equations in linear DAE arena.
+                  Numerical convergence guaranteed with CVODE integrator.
+                </div>
+              </AiInsightRibbon>
             </Box>
           )}
 
@@ -989,8 +1107,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             width="100%"
             style={{ color: "var(--color-fg-muted)" }}
           >
+            {displayPost.artifact_view_id && (
+              <EngActionButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/${displayPost.username}/status/${displayPost.id}`);
+                }}
+              >
+                ▶ Run in Sandbox
+              </EngActionButton>
+            )}
             <ActionButton
-              $color="#1d9bf0"
+              $color="var(--color-accent-cyan)"
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();

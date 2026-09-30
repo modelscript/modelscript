@@ -11,6 +11,7 @@ process.env["NODE_ENV"] = "test";
 
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
+import { defaultPaymentGuard } from "../src/services/billing/payment-guard.js";
 import { checkComputeQuota } from "../src/services/hpc/quota-guard.js";
 
 test("User Credit Wallet, Quotas & Billing Ledger", async (t) => {
@@ -178,5 +179,143 @@ test("User Credit Wallet, Quotas & Billing Ledger", async (t) => {
     assert.strictEqual(res.body.success, true);
     assert.strictEqual(res.body.amountAdded, 200);
     assert.ok(res.body.newBalance >= 200);
+  });
+
+  await t.test("POST /api/v1/billing/topup enforces anti-carding minimum threshold and lockout", async () => {
+    // Rejects micro-charges below 10 credits (carding test attack)
+    const cardingRes = await request(app).post("/api/v1/billing/topup").send({ amount: 5 }).expect(400);
+    assert.ok(cardingRes.body.error.includes("Minimum top-up threshold"));
+
+    // Rejects excessive single charges (> 10,000 credits)
+    const whaleRes = await request(app).post("/api/v1/billing/topup").send({ amount: 25000 }).expect(400);
+    assert.ok(whaleRes.body.error.includes("Maximum single top-up"));
+
+    // Simulate 3 payment failures
+    for (let i = 0; i < 3; i++) {
+      const failRes = await request(app)
+        .post("/api/v1/billing/topup")
+        .set("x-forwarded-for", "198.51.100.99")
+        .send({ amount: 50, simulatePaymentFailure: true })
+        .expect(402);
+      assert.strictEqual(failRes.body.failedAttempts, i + 1);
+    }
+
+    // 4th attempt from the same locked identity should be rejected with 429
+    const lockedRes = await request(app)
+      .post("/api/v1/billing/topup")
+      .set("x-forwarded-for", "198.51.100.99")
+      .send({ amount: 50 })
+      .expect(429);
+    assert.ok(lockedRes.body.error.includes("temporarily locked"));
+
+    // Reset lockouts for subsequent tests
+    defaultPaymentGuard.clear(`user:${testUserId}`);
+    defaultPaymentGuard.clear("ip:198.51.100.99");
+  });
+
+  await t.test("POST /api/v1/billing/payment-intent enforces 3D Secure 2 and Radar risk score ceilings", async () => {
+    // Rejects amounts below anti-carding threshold
+    await request(app).post("/api/v1/billing/payment-intent").send({ amount: 5 }).expect(400);
+
+    // Standard valid intent with mandatory 3DS
+    const intentRes = await request(app)
+      .post("/api/v1/billing/payment-intent")
+      .set("x-forwarded-for", "203.0.113.1")
+      .send({
+        amount: 50,
+        customerCountry: "US",
+        cardCountry: "US",
+      })
+      .expect(201);
+
+    assert.strictEqual(intentRes.body.success, true);
+    assert.strictEqual(intentRes.body.requires3DS, true);
+    assert.strictEqual(intentRes.body.amountCents, 5000); // 50 credits = 5000 cents
+    assert.ok(intentRes.body.clientSecret.startsWith("pi_"));
+
+    // Geo-mismatch triggers heightened 3DS challenge and risk scoring
+    const geoMismatchRes = await request(app)
+      .post("/api/v1/billing/payment-intent")
+      .set("x-forwarded-for", "203.0.113.2")
+      .send({
+        amount: 100,
+        customerCountry: "US",
+        cardCountry: "FR",
+      })
+      .expect(201);
+    assert.strictEqual(geoMismatchRes.body.requires3DS, true);
+    assert.ok(geoMismatchRes.body.riskScore >= 40);
+
+    // High Radar fraud score (> 75) is blocked with 403
+    const fraudRes = await request(app)
+      .post("/api/v1/billing/payment-intent")
+      .set("x-forwarded-for", "203.0.113.3")
+      .send({
+        amount: 100,
+        simulateRadarScore: 88,
+      })
+      .expect(403);
+    assert.ok(fraudRes.body.error.includes("Payment blocked by Stripe Radar: High fraud risk detected"));
+  });
+
+  await t.test("POST /api/v1/billing/webhook handles dispute chargeback and settlement events", async () => {
+    // 1. Chargeback event: quarantine account and zero-out balance
+    const disputeRes = await request(app)
+      .post("/api/v1/billing/webhook")
+      .send({
+        id: "evt_dispute_123",
+        type: "charge.dispute.created",
+        data: {
+          object: {
+            id: "dp_test_456",
+            metadata: { userId: String(testUserId) },
+            reason: "fraudulent",
+          },
+        },
+      })
+      .expect(200);
+
+    assert.strictEqual(disputeRes.body.received, true);
+    assert.strictEqual(disputeRes.body.action, "account_frozen_dispute");
+    assert.strictEqual(disputeRes.body.userId, testUserId);
+
+    // Verify DB state for the frozen user
+    const frozenBalance = db.getUserBalance(testUserId);
+    assert.strictEqual(frozenBalance, 0.0);
+
+    const userRecord = db.getUserById(testUserId);
+    assert.strictEqual(userRecord.status, "suspended_dispute");
+
+    const historyAfterDispute = db.getUserTransactions(testUserId);
+    const disputeTx = historyAfterDispute[0]!;
+    assert.strictEqual(disputeTx.type, "dispute_freeze");
+    assert.strictEqual(disputeTx.balance_after, 0.0);
+
+    // 2. Successful Payment Intent event: grant credits
+    const paymentSucceededRes = await request(app)
+      .post("/api/v1/billing/webhook")
+      .send({
+        id: "evt_pi_succeeded_789",
+        type: "payment_intent.succeeded",
+        data: {
+          object: {
+            id: "pi_stripe_succeeded_999",
+            amount: 5000, // 50.0 credits
+            metadata: { userId: String(testUserId) },
+          },
+        },
+      })
+      .expect(200);
+
+    assert.strictEqual(paymentSucceededRes.body.received, true);
+    assert.strictEqual(paymentSucceededRes.body.action, "credits_granted");
+
+    const restoredBalance = db.getUserBalance(testUserId);
+    assert.strictEqual(restoredBalance, 50.0);
+
+    const latestTx = db.getUserTransactions(testUserId)[0]!;
+    assert.strictEqual(latestTx.type, "top_up");
+    assert.strictEqual(latestTx.amount, 50.0);
+    assert.strictEqual(latestTx.balance_after, 50.0);
   });
 });

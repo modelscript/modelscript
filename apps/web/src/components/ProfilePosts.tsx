@@ -8,7 +8,13 @@ import { API_BASE_URL } from "../config";
 import Box from "./Box";
 import Post from "./Post";
 
-export default function ProfilePosts({ username }: { username: string }) {
+export default function ProfilePosts({
+  username,
+  type = "posts",
+}: {
+  username: string;
+  type?: "posts" | "replies" | "artifacts";
+}) {
   const { token } = useAuth();
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +22,8 @@ export default function ProfilePosts({ username }: { username: string }) {
   useEffect(() => {
     async function fetchPosts() {
       try {
-        const res = await fetch(`${API_BASE_URL}/social/users/${username}/posts`, {
+        const queryParam = type ? `?type=${type}` : "";
+        const res = await fetch(`${API_BASE_URL}/social/users/${username}/posts${queryParam}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok) {
@@ -30,7 +37,7 @@ export default function ProfilePosts({ username }: { username: string }) {
       }
     }
     fetchPosts();
-  }, [username, token]);
+  }, [username, token, type]);
 
   if (loading) {
     return (
@@ -44,9 +51,12 @@ export default function ProfilePosts({ username }: { username: string }) {
     return (
       <Box p={4} textAlign="center">
         <Text as="h2" style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "8px" }}>
-          No posts yet
+          No {type === "replies" ? "replies" : type === "artifacts" ? "artifacts" : "posts"} yet
         </Text>
-        <Text color="var(--color-fg-muted)">When @{username} posts, they will show up here.</Text>
+        <Text color="var(--color-fg-muted)">
+          When @{username} has {type === "replies" ? "replies" : type === "artifacts" ? "model artifacts" : "posts"},
+          they will show up here.
+        </Text>
       </Box>
     );
   }

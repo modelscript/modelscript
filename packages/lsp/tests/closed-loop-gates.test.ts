@@ -218,4 +218,135 @@ describe("Closed-Loop Compiler Agent: 4-Stage Verification Gates", () => {
     assert.ok(stepCount >= 2, "Should have recorded steps");
     assert.equal(result.unresolvedDiagnostics.length, 0);
   });
+
+  test("ClosedLoopCompilerEngine: evaluates semantic Gates 2, 3, 4 concurrently and aggregates diagnostics", async () => {
+    const engine = new ClosedLoopCompilerEngine();
+
+    // Multi-defect candidate: Gate 2 dimensional mismatch AND Gate 3 SMT contradiction
+    const multiDefectCode = `
+      package MultiDefectSystem {
+        import ScalarValues::*;
+        import ISQ::*;
+        import SIBaseUnits::*;
+
+        part def System {
+          attribute len : Length;
+          attribute weight : Mass;
+          attribute invalidAssign : Length = weight;
+
+          attribute capacity : Real;
+          assert constraint { capacity <= 10.0 }
+          assert constraint { capacity >= 50.0 }
+        }
+      }
+    `;
+
+    const verification = await engine.verifyCandidate(multiDefectCode, "sysml2", { parser });
+    assert.equal(verification.allPassed, false, "Candidate with defects should fail verification");
+    assert.equal(verification.gates.length, 4, "Should have evaluated all 4 gates");
+
+    const failedGates = verification.gates.filter((g) => !g.passed);
+    assert.ok(failedGates.length >= 2, "Should capture failures in both Gate 2 and Gate 3 in a single pass");
+    assert.ok(
+      failedGates.some((g) => g.gate === 2),
+      "Gate 2 (Dimensions) should have failed",
+    );
+    assert.ok(
+      failedGates.some((g) => g.gate === 3),
+      "Gate 3 (SMT Requirements) should have failed",
+    );
+    assert.ok(verification.summary.includes("Gate 2") && verification.summary.includes("Gate 3"));
+  });
+
+  test("Modelica Gates 2 & 4: checks SI units and DAE equation balance", async () => {
+    // 1. Modelica Gate 2: SI unit dimensional mismatch
+    const invalidModelicaDim = `
+      model UnitMismatch
+        Modelica.SIunits.Length len = weight;
+        Modelica.SIunits.Mass weight = 10.0;
+      equation
+        len = weight;
+      end UnitMismatch;
+    `;
+    const dimRes = await verifyGate2Dimensions(invalidModelicaDim, "modelica");
+    assert.equal(dimRes.passed, false, "Should fail Gate 2 due to Length vs Mass mismatch");
+    assert.ok(dimRes.diagnostics.some((d) => d.message.includes("Dimensional mismatch")));
+
+    // 2. Modelica Gate 4: Overdetermined DAE (3 equations for 2 variables)
+    const overdeterminedModelica = `
+      model OverdeterminedSystem
+        parameter Real c = 1.0;
+        Real x;
+        Real v;
+      equation
+        der(x) = v;
+        der(v) = -c * x;
+        x = 0;
+      end OverdeterminedSystem;
+    `;
+    const overRes = await verifyGate4DAEBalance(overdeterminedModelica, "modelica");
+    assert.equal(overRes.passed, false, "Should fail Gate 4 due to overdetermined DAE");
+    assert.ok(overRes.diagnostics.some((d) => d.message.includes("overdetermined by +1")));
+    assert.equal(overRes.metadata?.numEquations, 3);
+    assert.equal(overRes.metadata?.numVariables, 2);
+
+    // 3. Modelica Gate 4: Structurally balanced DAE (2 equations for 2 dynamic variables)
+    const balancedModelica = `
+      model BalancedSystem
+        parameter Real c = 1.0;
+        Real x;
+        Real v;
+      equation
+        der(x) = v;
+        der(v) = -c * x;
+      end BalancedSystem;
+    `;
+    const balRes = await verifyGate4DAEBalance(balancedModelica, "modelica");
+    assert.equal(balRes.passed, true, "Should pass Gate 4 when equations equal dynamic variables");
+    assert.equal(balRes.metadata?.isBalanced, true);
+    assert.equal(balRes.metadata?.numEquations, 2);
+    assert.equal(balRes.metadata?.numVariables, 2);
+  });
+
+  test("Self-Healing Pipeline: handles rollback on regression", async () => {
+    // Initial candidate is syntactically valid but fails SMT (Gate 3)
+    const initialCandidate = `
+      package FeasibilityTest {
+        part def Rover {
+          attribute weight : Real;
+          assert constraint { weight <= 20.0 }
+          assert constraint { weight >= 50.0 }
+        }
+      }
+    `;
+
+    // A synthesizer that intentionally causes a syntax regression on iteration 2
+    let callCount = 0;
+    const regressingSynthesizer = async (
+      _prompt: string,
+      iteration: number,
+      _diags: any[],
+      prevCode: string,
+    ): Promise<string> => {
+      callCount++;
+      if (iteration === 1) {
+        // Intentionally emit broken syntax (unclosed braces, regressing from Gate 3 failure to Gate 1 failure)
+        return "package BrokenSyntax { part def Bad { attribute x : Real;";
+      }
+      // On iteration 2, provide the valid fix
+      return prevCode.replace("weight >= 50.0", "weight >= 10.0");
+    };
+
+    const result = await runSelfHealingPipeline({
+      prompt: "Fix weight constraints",
+      initialCode: initialCandidate,
+      language: "sysml2",
+      parser,
+      maxIterations: 3,
+      synthesizer: regressingSynthesizer,
+    });
+
+    assert.ok(result.rollbacksCount && result.rollbacksCount > 0, "Should have detected regression and rolled back");
+    assert.ok(callCount >= 2, "Synthesizer should have been invoked");
+  });
 });

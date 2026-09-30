@@ -12,7 +12,7 @@ ModelScript is a unified workspace designed to bridge the gap between different 
 
 ## Core Features
 
-- **Blazing Fast LSP**: Built with Tree-sitter and optimized indexing, providing sub-millisecond autocomplete, diagnostics, and symbol resolution.
+- **Blazing Fast LSP**: Powered by native WebAssembly GLR incremental parsers and a linear memory CST symbol indexer, providing sub-millisecond autocomplete, diagnostics, and symbol resolution.
 - **Semantic Diff Engine**: Unlike standard text diffs, ModelScript understands the AST of your models and provides semantic diff annotations directly in your editor.
 - **Unified Library Explorer**: A seamless sidebar for viewing both Modelica and SysML2 libraries with zero context switching.
 - **Dynamic CAD Viewer**: Associate Modelica variables with 3D components for dynamic, in-editor animations and visual debugging.

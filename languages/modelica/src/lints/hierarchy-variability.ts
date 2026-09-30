@@ -330,9 +330,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
-      // Check if the type can be resolved through imports or scope resolution
-      const resolved = db.scope.resolve(node);
-      if (resolved != 0) {
+      if (findClassByName(db, node, $) != 0) {
         return;
       }
 

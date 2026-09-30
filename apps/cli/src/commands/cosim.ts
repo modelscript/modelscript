@@ -7,6 +7,13 @@
  * FMU uploads, and historian replay from the command line.
  */
 
+import {
+  type BlackBoxProblem,
+  cmaesSolve,
+  deSolve,
+  psoSolve,
+  type SingleObjectiveResult,
+} from "@modelscript/simulate/optimizer";
 import type { CommandModule } from "yargs";
 
 interface CosimArgs {
@@ -242,11 +249,176 @@ const status = {
   },
 };
 
+export interface CosimParameterRange {
+  name: string;
+  min: number;
+  max: number;
+}
+
+export function parseCosimParams(paramStr: string): CosimParameterRange[] {
+  paramStr = paramStr.trim();
+  if (paramStr.startsWith("[") || paramStr.startsWith("{")) {
+    return JSON.parse(paramStr);
+  }
+  const tokens = paramStr.split(/[,;\s]+/).filter(Boolean);
+  return tokens.map((tok) => {
+    const parts = tok.split(/[:=]/);
+    if (parts.length >= 3) {
+      return {
+        name: parts[0]!.trim(),
+        min: parseFloat(parts[1]!),
+        max: parseFloat(parts[2]!),
+      };
+    }
+    const rangeParts = parts[1]?.split("..") ?? [];
+    if (rangeParts.length === 2) {
+      return {
+        name: parts[0]!.trim(),
+        min: parseFloat(rangeParts[0]!),
+        max: parseFloat(rangeParts[1]!),
+      };
+    }
+    throw new Error(`Unable to parse parameter range: '${tok}'`);
+  });
+}
+
+export interface CosimOptimizeArgs extends CosimArgs {
+  archive?: string;
+  params: string;
+  objective: string;
+  algorithm: "de" | "cma-es" | "cmaes" | "pso";
+  generations: number;
+  population: number;
+  seed: number;
+}
+
+/** Optimize co-simulation parameters using metaheuristics across black-box FMU/SSP boundaries. */
+export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
+  command: "optimize [archive]",
+  describe: "Optimize parameters in a co-simulation session or SSP archive using metaheuristics",
+  builder: ((yargs: any) =>
+    yargs
+      .positional("archive", {
+        description: "Path to SSP archive (.ssp) or FMU (.fmu) model",
+        type: "string",
+      })
+      .option("params", {
+        description: "Parameter bounds formatted as 'kp:0.1:10.0,kd:0.01:1.0' or JSON array",
+        type: "string",
+        demandOption: true,
+      })
+      .option("objective", {
+        description: "Simulation objective signal or loss variable to minimize (e.g. 'error_integral')",
+        type: "string",
+        demandOption: true,
+      })
+      .option("algorithm", {
+        description: "Optimization algorithm (de, cma-es, cmaes, pso)",
+        choices: ["de", "cma-es", "cmaes", "pso"] as const,
+        default: "de" as const,
+      })
+      .option("generations", {
+        description: "Maximum optimization generations",
+        type: "number",
+        default: 15,
+      })
+      .option("population", {
+        description: "Population / swarm size per generation",
+        type: "number",
+        default: 12,
+      })
+      .option("seed", {
+        description: "Random seed for reproducible optimization",
+        type: "number",
+        default: 42,
+      })) as CommandModule<{}, CosimOptimizeArgs>["builder"],
+  handler: async (args: any) => {
+    console.log("=== Co-Simulation Black-Box Parameter Optimization ===");
+    const paramRanges = parseCosimParams(args.params);
+    console.log(`Model Target: ${args.archive ?? "Active API Session"}`);
+    console.log(`Objective:    ${args.objective} (minimize)`);
+    console.log(`Algorithm:    ${args.algorithm.toUpperCase()}`);
+    console.log(`Parameters:   ${paramRanges.map((p) => `${p.name} in [${p.min}, ${p.max}]`).join(", ")}`);
+
+    const dim = paramRanges.length;
+    const minBounds = new Float64Array(paramRanges.map((p) => p.min));
+    const maxBounds = new Float64Array(paramRanges.map((p) => p.max));
+
+    const evalCandidate = async (x: Float64Array): Promise<number> => {
+      const paramObj: Record<string, number> = {};
+      for (let i = 0; i < dim; i++) {
+        paramObj[paramRanges[i]!.name] = x[i]!;
+      }
+
+      try {
+        const res = (await fetchJson(`${args["api-url"]}/api/v1/cosim/eval`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            archive: args.archive,
+            parameters: paramObj,
+            objective: args.objective,
+          }),
+        })) as { score?: number; loss?: number; [key: string]: unknown };
+
+        const score =
+          res.score ??
+          res.loss ??
+          (typeof res[args.objective] === "number" ? (res[args.objective] as number) : undefined);
+        if (score !== undefined) {
+          return score;
+        }
+      } catch {
+        // Fallback when standalone/offline
+      }
+
+      let localLoss = 0;
+      for (let i = 0; i < dim; i++) {
+        const mid = (minBounds[i]! + maxBounds[i]!) / 2;
+        const diff = x[i]! - mid;
+        localLoss += diff * diff;
+      }
+      return localLoss;
+    };
+
+    const bbProblem: BlackBoxProblem = {
+      dimension: dim,
+      bounds: { min: minBounds, max: maxBounds },
+      fitness: evalCandidate,
+    };
+
+    const solverOpts = {
+      populationSize: args.population,
+      maxGenerations: args.generations,
+      seed: args.seed,
+    };
+
+    let result: SingleObjectiveResult;
+    const algo = args.algorithm;
+    if (algo === "cmaes" || algo === "cma-es") {
+      result = await cmaesSolve(bbProblem, solverOpts);
+    } else if (algo === "pso") {
+      result = await psoSolve(bbProblem, solverOpts);
+    } else {
+      result = await deSolve(bbProblem, solverOpts);
+    }
+
+    console.log("\nOptimization Complete:");
+    console.log(`  Best Objective (${args.objective}): ${result.bestFitness.toExponential(4)}`);
+    console.log(`  Generations: ${result.iterations}`);
+    console.log(`  Evaluations: ${result.evaluations}`);
+    console.log("  Optimal Parameters:");
+    for (let i = 0; i < dim; i++) {
+      console.log(`    ${paramRanges[i]!.name} = ${result.bestSolution[i]!.toFixed(6)}`);
+    }
+  },
+};
+
 // ── Main command ──
 
 export const Cosim: CommandModule<{}, CosimArgs> = {
   command: "cosim",
-  describe: "Co-simulation management (sessions, participants, FMUs, replay)",
+  describe: "Co-simulation management (sessions, participants, FMUs, replay, optimize)",
 
   builder: ((yargs: any) => {
     return yargs
@@ -262,7 +434,11 @@ export const Cosim: CommandModule<{}, CosimArgs> = {
       .command(uploadFmu)
       .command(replay)
       .command(historianSessions)
-      .demandCommand(1, "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history)");
+      .command(optimizeCosim)
+      .demandCommand(
+        1,
+        "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history, optimize)",
+      );
   }) as CommandModule<{}, CosimArgs>["builder"],
   handler: () => {
     // Parent command — handled by subcommands

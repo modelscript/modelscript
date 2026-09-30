@@ -57,7 +57,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         />
         <meta
           name="keywords"
-          content="Modelica, simulation, modeling, open-source, compiler, DAE, ODE, tree-sitter, VS Code, ModelScript, systems engineering, differential equations, Modelica Standard Library, MSL"
+          content="Modelica, simulation, modeling, open-source, compiler, DAE, ODE, GLR, WebAssembly, AssemblyScript, VS Code, ModelScript, systems engineering, differential equations, Modelica Standard Library, MSL"
         />
         <meta name="author" content="Mohamad Omar Nachawati" />
         <link rel="canonical" href="https://modelscript.org" />

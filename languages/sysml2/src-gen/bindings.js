@@ -376,8 +376,8 @@ export class NativeRuntime {
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s/","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_(Name | ())","_((\"<\" Name \">\" (Name | ())) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","_(_Identification | ())","_(((_Identification | ()) \"from\") | ())","_(\",\" QualifiedName)*","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_((\"about\" Annotation (\",\" Annotation)*) | ())","_((\"comment\" (_Identification | ()) ((\"about\" Annotation (\",\" Annotation)*) | ())) | ())","_((\"locale\" STRING_VALUE) | ())","_((\"rep\" (_Identification | ())) | ())","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_(((\":\" | (\"defined\" \"by\"))) | ())","_(((_Identification | ()) (((\":\" | (\"defined\" \"by\"))) | ())) | ())","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_(\"ref\" | ())","_(\":>>\" | \"redefines\")","_((\":>>\" | \"redefines\") | ())","_(_FeatureSpecializationPart | ())","_(_ValuePart | ())","__usage_modifier*","_(\"standard\" | ())","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_(VisibilityIndicator | ())","_(_DefinitionElement | _UsageElement)","_((\"<\" Name \">\") | ())","_(\"all\" | ())","_(MembershipImport | NamespaceImport)","_((\"::\" \"**\") | ())","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember*","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification (_FeatureSpecializationPart | ())) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)*","_(OwnedMultiplicity | ((OwnedMultiplicity | ()) ((\"ordered\" (\"nonunique\" | ())) | (\"nonunique\" (\"ordered\" | ())))))","_(OwnedMultiplicity | ())","_(\"nonunique\" | ())","_((\"ordered\" (\"nonunique\" | ())) | (\"nonunique\" (\"ordered\" | ())))","_(\"ordered\" | ())","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_((\"..\" MultiplicityExpressionMember) | ())","_(_LiteralExpression | FeatureReferenceExpression)","_(_SubclassificationPart | ())","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | ((EmptySuccessionMember | ()) OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_(EmptySuccessionMember | ())","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","_(_UsageDeclaration | ())","_(\"=\" | \":=\" | (\"default\" ((\"=\" | \":=\") | ())))","_(\"=\" | \":=\")","_((\"=\" | \":=\") | ())","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_(\"enum\" | ())","_(\"::>\" | \"references\")","_((Name (\"::>\" | \"references\")) | ())","_((\"connect\" _ConnectorPart) | ())","_((\"connection\" (_UsageDeclaration | ()) (_ValuePart | ()) ((\"connect\" _ConnectorPart) | ())) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_((\"binding\" (_UsageDeclaration | ())) | ())","_((\"succession\" (_UsageDeclaration | ())) | ())","_((\"if\" OwnedExpression) | ())","_((\"allocate\" _ConnectorPart) | ())","_((\"allocation\" (_UsageDeclaration | ()) ((\"allocate\" _ConnectorPart) | ())) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | ((_UsageDeclaration | ()) (_ValuePart | ()) ((\"of\" PayloadFeatureMember) | ()) ((\"from\" FlowEndMember \"to\" FlowEndMember) | ())))","_((\"of\" PayloadFeatureMember) | ())","_((\"from\" FlowEndMember \"to\" FlowEndMember) | ())","_(((_Identification | ()) _FeatureSpecializationPart (_ValuePart | ())) | ((_Identification | ()) _ValuePart) | (OwnedFeatureTyping (OwnedMultiplicity | ())) | (OwnedMultiplicity OwnedFeatureTyping))","_((OwnedReferenceSubsetting \".\") | ())","_(_ParameterList | ())","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | ((EmptySuccessionMember | ()) _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_((\"action\" (_UsageDeclaration | ())) | ())","_(ActionBodyParameter | IfNode)","_((\"else\" (ActionBodyParameter | IfNode)) | ())","_((\"while\" OwnedExpression) | \"loop\")","_((\"until\" OwnedExpression \";\") | ())","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_((\"via\" OwnedReferenceSubsetting) | ())","_((\"to\" OwnedExpression) | ())","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"action\" (_UsageDeclaration | ())))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* (ResultExpressionMember | ()) \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_(ResultExpressionMember | ())","_(\",\" ParameterMember)*","_((ParameterMember (\",\" ParameterMember)*) | ())","_(\"not\" | ())","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"constraint\" (_UsageDeclaration | ()) (_ValuePart | ())))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* (\"constraint\" | ()) (_UsageDeclaration | ()) (_ValuePart | ()) _CalculationBody))","_(\"constraint\" | ())","_(\"assert\" | ())","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"requirement\" (_UsageDeclaration | ())))","_((\"by\" OwnedReferenceSubsetting) | ())","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* (ResultExpressionMember | ()) \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* (ResultExpressionMember | ()) \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember)","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"use\" \"case\" (_UsageDeclaration | ())))","_(\";\" | ((\"parallel\" | ()) \"{\" _StateBodyItem* \"}\"))","_(\"parallel\" | ())","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | ((EmptySuccessionMember | ()) _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember)","_(\";\" | ((_UsageDeclaration | ()) (_ValuePart | ()) _ActionBody))","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"state\" (_UsageDeclaration | ())))","_(((_UsageDeclaration | ()) \"first\") | ())","_((\"accept\" PayloadFeatureMember) | ())","_((\"do\" StateActionUsage) | ())","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)*","_(_Expression ((\"??\" ImpliesExpressionReference) (\"??\" ImpliesExpressionReference)*))","_(\"implies\" ImpliesExpressionReference)*","_(_Expression ((\"implies\" ImpliesExpressionReference) (\"implies\" ImpliesExpressionReference)*))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))*","_(_Expression (((\"|\" _Expression) | (\"or\" XorExpressionReference)) ((\"|\" _Expression) | (\"or\" XorExpressionReference))*))","_(\"xor\" _Expression)*","_(_Expression ((\"xor\" _Expression) (\"xor\" _Expression)*))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*","_(_Expression (((\"&\" _Expression) | (\"and\" EqualityExpressionReference)) ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*))","_(EqualityOperator _Expression)*","_(_Expression ((EqualityOperator _Expression) (EqualityOperator _Expression)*))","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)*","_(_Expression ((RelationalOperator _Expression) (RelationalOperator _Expression)*))","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)*","_(_Expression ((AdditiveOperator _Expression) (AdditiveOperator _Expression)*))","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)*","_(_Expression ((MultiplicativeOperator _Expression) (MultiplicativeOperator _Expression)*))","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_((\".\" FeatureChainMember) | ())","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression (_postfix_operation _postfix_operation*)))","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_((\",\" | (\",\" SequenceExpression)) | ())","_(\".\" OwnedFeatureChaining)*","_(_PositionalArgumentList | _NamedArgumentList)","_((_PositionalArgumentList | _NamedArgumentList) | ())","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_(DECIMAL_VALUE | ())","_(DECIMAL_VALUE | EXP_VALUE)","_(((DECIMAL_VALUE | ()) \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_(GlobalQualification | ())","_(((GlobalQualification | ()) Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s/","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_(Name | ())","_((\"<\" Name \">\" (Name | ())) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","_(_Identification | ())","_(((_Identification | ()) \"from\") | ())","_(\",\" QualifiedName)*","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_((\"about\" Annotation (\",\" Annotation)*) | ())","_((\"comment\" (_Identification | ()) ((\"about\" Annotation (\",\" Annotation)*) | ())) | ())","_((\"locale\" STRING_VALUE) | ())","_((\"rep\" (_Identification | ())) | ())","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_(((\":\" | (\"defined\" \"by\"))) | ())","_(((_Identification | ()) (((\":\" | (\"defined\" \"by\"))) | ())) | ())","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_(\"ref\" | ())","_(\":>>\" | \"redefines\")","_((\":>>\" | \"redefines\") | ())","_(_FeatureSpecializationPart | ())","_(_ValuePart | ())","__usage_modifier*","_(\"standard\" | ())","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_(VisibilityIndicator | ())","_(_DefinitionElement | _UsageElement)","_((\"<\" Name \">\") | ())","_(\"all\" | ())","_(MembershipImport | NamespaceImport)","_((\"::\" \"**\") | ())","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember*","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification (_FeatureSpecializationPart | ())) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)*","_(OwnedMultiplicity | ((OwnedMultiplicity | ()) ((\"ordered\" (\"nonunique\" | ())) | (\"nonunique\" (\"ordered\" | ())))))","_(OwnedMultiplicity | ())","_(\"nonunique\" | ())","_((\"ordered\" (\"nonunique\" | ())) | (\"nonunique\" (\"ordered\" | ())))","_(\"ordered\" | ())","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_((\"..\" MultiplicityExpressionMember) | ())","_(_LiteralExpression | FeatureReferenceExpression)","_(_SubclassificationPart | ())","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | ((EmptySuccessionMember | ()) OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_(EmptySuccessionMember | ())","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","_(_UsageDeclaration | ())","_(\"=\" | \":=\" | (\"default\" ((\"=\" | \":=\") | ())))","_(\"=\" | \":=\")","_((\"=\" | \":=\") | ())","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_(\"enum\" | ())","_(\"::>\" | \"references\")","_((Name (\"::>\" | \"references\")) | ())","_((\"connect\" _ConnectorPart) | ())","_((\"connection\" (_UsageDeclaration | ()) (_ValuePart | ()) ((\"connect\" _ConnectorPart) | ())) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_((\"binding\" (_UsageDeclaration | ())) | ())","_((\"succession\" (_UsageDeclaration | ())) | ())","_((\"if\" OwnedExpression) | ())","_((\"allocate\" _ConnectorPart) | ())","_((\"allocation\" (_UsageDeclaration | ()) ((\"allocate\" _ConnectorPart) | ())) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | ((_UsageDeclaration | ()) (_ValuePart | ()) ((\"of\" PayloadFeatureMember) | ()) ((\"from\" FlowEndMember \"to\" FlowEndMember) | ())))","_((\"of\" PayloadFeatureMember) | ())","_((\"from\" FlowEndMember \"to\" FlowEndMember) | ())","_(((_Identification | ()) _FeatureSpecializationPart (_ValuePart | ())) | ((_Identification | ()) _ValuePart) | (OwnedFeatureTyping (OwnedMultiplicity | ())) | (OwnedMultiplicity OwnedFeatureTyping))","_((OwnedReferenceSubsetting \".\") | ())","_(_ParameterList | ())","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | ((EmptySuccessionMember | ()) _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_((\"action\" (_UsageDeclaration | ())) | ())","_(ActionBodyParameter | IfNode)","_((\"else\" (ActionBodyParameter | IfNode)) | ())","_((\"while\" OwnedExpression) | \"loop\")","_((\"until\" OwnedExpression \";\") | ())","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_((\"via\" OwnedReferenceSubsetting) | ())","_((\"to\" OwnedExpression) | ())","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"action\" (_UsageDeclaration | ())))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* (ResultExpressionMember | ()) \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_(ResultExpressionMember | ())","_(\",\" ParameterMember)*","_((ParameterMember (\",\" ParameterMember)*) | ())","_(\"not\" | ())","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"constraint\" (_UsageDeclaration | ()) (_ValuePart | ())))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* (\"constraint\" | ()) (_UsageDeclaration | ()) (_ValuePart | ()) _CalculationBody))","_(\"constraint\" | ())","_(\"assert\" | ())","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"requirement\" (_UsageDeclaration | ())))","_((\"by\" OwnedReferenceSubsetting) | ())","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* (ResultExpressionMember | ()) \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* (ResultExpressionMember | ()) \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember)","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"use\" \"case\" (_UsageDeclaration | ())))","_(\";\" | ((\"parallel\" | ()) \"{\" _StateBodyItem* \"}\"))","_(\"parallel\" | ())","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | ((EmptySuccessionMember | ()) _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember)","_(\";\" | ((_UsageDeclaration | ()) (_ValuePart | ()) _ActionBody))","_((OwnedReferenceSubsetting (_FeatureSpecializationPart | ())) | (\"state\" (_UsageDeclaration | ())))","_(((_UsageDeclaration | ()) \"first\") | ())","_((\"accept\" PayloadFeatureMember) | ())","_((\"do\" StateActionUsage) | ())","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)*","_(_Expression ((\"??\" ImpliesExpressionReference) (\"??\" ImpliesExpressionReference)*))","_(\"implies\" ImpliesExpressionReference)*","_(_Expression ((\"implies\" ImpliesExpressionReference) (\"implies\" ImpliesExpressionReference)*))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))*","_(_Expression (((\"|\" _Expression) | (\"or\" XorExpressionReference)) ((\"|\" _Expression) | (\"or\" XorExpressionReference))*))","_(\"xor\" _Expression)*","_(_Expression ((\"xor\" _Expression) (\"xor\" _Expression)*))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*","_(_Expression (((\"&\" _Expression) | (\"and\" EqualityExpressionReference)) ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*))","_(EqualityOperator _Expression)*","_(_Expression ((EqualityOperator _Expression) (EqualityOperator _Expression)*))","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)*","_(_Expression ((RelationalOperator _Expression) (RelationalOperator _Expression)*))","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)*","_(_Expression ((AdditiveOperator _Expression) (AdditiveOperator _Expression)*))","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)*","_(_Expression ((MultiplicativeOperator _Expression) (MultiplicativeOperator _Expression)*))","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_((\".\" FeatureChainMember) | ())","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression (_postfix_operation _postfix_operation*)))","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_((\",\" | (\",\" SequenceExpression)) | ())","_(\".\" OwnedFeatureChaining)*","_(_PositionalArgumentList | _NamedArgumentList)","_((_PositionalArgumentList | _NamedArgumentList) | ())","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_(DECIMAL_VALUE | ())","_(DECIMAL_VALUE | EXP_VALUE)","_(((DECIMAL_VALUE | ()) \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_(GlobalQualification | ())","_(((GlobalQualification | ()) Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"comment\" _Identification? (\"about\" Annotation (\",\" Annotation)*)?)?","_(\"locale\" STRING_VALUE)?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember*","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecializationPart?) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)*","_(OwnedMultiplicity | (OwnedMultiplicity? ((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))))","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))","_\"ordered\"?","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceExpression)","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _ValuePart? (\"connect\" _ConnectorPart)?) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allocate\" _ConnectorPart)?) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | (_UsageDeclaration? _ValuePart? (\"of\" PayloadFeatureMember)? (\"from\" FlowEndMember \"to\" FlowEndMember)?))","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializationPart _ValuePart?) | (_Identification? _ValuePart) | (OwnedFeatureTyping OwnedMultiplicity?) | (OwnedMultiplicity OwnedFeatureTyping))","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"action\" _UsageDeclaration?))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"constraint\" _UsageDeclaration? _ValuePart?))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* \"constraint\"? _UsageDeclaration? _ValuePart? _CalculationBody))","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"requirement\" _UsageDeclaration?))","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* ResultExpressionMember? \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember)","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"use\" \"case\" _UsageDeclaration?))","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember)","_(\";\" | (_UsageDeclaration? _ValuePart? _ActionBody))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"state\" _UsageDeclaration?))","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)*","_(_Expression ((\"??\" ImpliesExpressionReference) (\"??\" ImpliesExpressionReference)*))","_(\"implies\" ImpliesExpressionReference)*","_(_Expression ((\"implies\" ImpliesExpressionReference) (\"implies\" ImpliesExpressionReference)*))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))*","_(_Expression (((\"|\" _Expression) | (\"or\" XorExpressionReference)) ((\"|\" _Expression) | (\"or\" XorExpressionReference))*))","_(\"xor\" _Expression)*","_(_Expression ((\"xor\" _Expression) (\"xor\" _Expression)*))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*","_(_Expression (((\"&\" _Expression) | (\"and\" EqualityExpressionReference)) ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*))","_(EqualityOperator _Expression)*","_(_Expression ((EqualityOperator _Expression) (EqualityOperator _Expression)*))","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)*","_(_Expression ((RelationalOperator _Expression) (RelationalOperator _Expression)*))","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)*","_(_Expression ((AdditiveOperator _Expression) (AdditiveOperator _Expression)*))","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)*","_(_Expression ((MultiplicativeOperator _Expression) (MultiplicativeOperator _Expression)*))","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_(\".\" FeatureChainMember)?","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression (_postfix_operation _postfix_operation*)))","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(\".\" OwnedFeatureChaining)*","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"comment\" _Identification? (\"about\" Annotation (\",\" Annotation)*)?)?","_(\"locale\" STRING_VALUE)?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember*","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecializationPart?) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)*","_(OwnedMultiplicity | (OwnedMultiplicity? ((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))))","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))","_\"ordered\"?","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceExpression)","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _ValuePart? (\"connect\" _ConnectorPart)?) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allocate\" _ConnectorPart)?) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | (_UsageDeclaration? _ValuePart? (\"of\" PayloadFeatureMember)? (\"from\" FlowEndMember \"to\" FlowEndMember)?))","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializationPart _ValuePart?) | (_Identification? _ValuePart) | (OwnedFeatureTyping OwnedMultiplicity?) | (OwnedMultiplicity OwnedFeatureTyping))","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"action\" _UsageDeclaration?))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"constraint\" _UsageDeclaration? _ValuePart?))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* \"constraint\"? _UsageDeclaration? _ValuePart? _CalculationBody))","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"requirement\" _UsageDeclaration?))","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* ResultExpressionMember? \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember)","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"use\" \"case\" _UsageDeclaration?))","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember)","_(\";\" | (_UsageDeclaration? _ValuePart? _ActionBody))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"state\" _UsageDeclaration?))","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)*","_(_Expression ((\"??\" ImpliesExpressionReference) (\"??\" ImpliesExpressionReference)*))","_(\"implies\" ImpliesExpressionReference)*","_(_Expression ((\"implies\" ImpliesExpressionReference) (\"implies\" ImpliesExpressionReference)*))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))*","_(_Expression (((\"|\" _Expression) | (\"or\" XorExpressionReference)) ((\"|\" _Expression) | (\"or\" XorExpressionReference))*))","_(\"xor\" _Expression)*","_(_Expression ((\"xor\" _Expression) (\"xor\" _Expression)*))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*","_(_Expression (((\"&\" _Expression) | (\"and\" EqualityExpressionReference)) ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*))","_(EqualityOperator _Expression)*","_(_Expression ((EqualityOperator _Expression) (EqualityOperator _Expression)*))","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)*","_(_Expression ((RelationalOperator _Expression) (RelationalOperator _Expression)*))","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)*","_(_Expression ((AdditiveOperator _Expression) (AdditiveOperator _Expression)*))","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)*","_(_Expression ((MultiplicativeOperator _Expression) (MultiplicativeOperator _Expression)*))","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_(\".\" FeatureChainMember)?","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression (_postfix_operation _postfix_operation*)))","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(\".\" OwnedFeatureChaining)*","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
   typeof {} !== "undefined"
@@ -5482,363 +5482,363 @@ export const semanticLegend = { tokenTypes: [], tokenModifiers: [] };
 
 export const SyntaxKind = {
   ERROR: 0,
-  MetaClassificationTestOperator: 641,
-  CastOperator: 642,
-  MetaCastOperator: 643,
-  LiteralInfinity: 678,
-  DECIMALVALUE: 683,
-  DECIMAL_VALUE: 683,
-  EXPVALUE: 684,
-  EXP_VALUE: 684,
-  ID: 685,
-  UNRESTRICTEDNAME: 686,
-  UNRESTRICTED_NAME: 686,
-  STRINGVALUE: 687,
-  STRING_VALUE: 687,
-  REGULARCOMMENT: 688,
-  REGULAR_COMMENT: 688,
-  MLNOTE: 689,
-  ML_NOTE: 689,
-  SLNOTE: 690,
-  SL_NOTE: 690,
-  RootNamespace: 189,
-  PackageBodyElement: 190,
-  _PackageBodyElement: 190,
-  Identification: 191,
-  _Identification: 191,
-  RelationshipBody: 192,
-  _RelationshipBody: 192,
-  VisibilityIndicator: 193,
-  Dependency: 194,
-  Annotation: 195,
-  OwnedAnnotation: 196,
-  AnnotatingMember: 197,
-  AnnotatingElement: 198,
-  _AnnotatingElement: 198,
-  Comment: 199,
-  Documentation: 200,
-  TextualRepresentation: 201,
-  PrefixMetadataAnnotation: 202,
-  PrefixMetadataMember: 203,
-  PrefixMetadataUsage: 204,
-  MetadataUsage: 205,
-  MetadataTyping: 206,
-  MetadataBody: 207,
-  _MetadataBody: 207,
-  MetadataBodyUsageMember: 208,
-  MetadataBodyUsage: 209,
-  MetadataDefinition: 210,
-  Package: 211,
-  LibraryPackage: 212,
-  PackageBody: 213,
-  _PackageBody: 213,
-  PackageMember: 214,
-  ElementFilterMember: 215,
-  AliasMember: 216,
-  ImportPrefix: 217,
-  _ImportPrefix: 217,
-  Import: 218,
-  MembershipImport: 219,
-  ImportedMembership: 220,
-  _ImportedMembership: 220,
-  NamespaceImport: 221,
-  ImportedNamespace: 222,
-  _ImportedNamespace: 222,
-  FilterPackage: 223,
-  FilterPackageImport: 224,
-  FilterPackageMembershipImport: 225,
-  FilterPackageNamespaceImport: 226,
-  FilterPackageMember: 227,
-  DefinitionElement: 228,
-  _DefinitionElement: 228,
-  UsageElement: 229,
-  _UsageElement: 229,
-  NonOccurrenceUsageElement: 230,
-  _NonOccurrenceUsageElement: 230,
-  OccurrenceUsageElement: 231,
-  _OccurrenceUsageElement: 231,
-  StructureUsageElement: 232,
-  _StructureUsageElement: 232,
-  BehaviorUsageElement: 233,
-  _BehaviorUsageElement: 233,
-  SubclassificationPart: 234,
-  _SubclassificationPart: 234,
-  OwnedSubclassification: 235,
-  FeatureDeclaration: 236,
-  _FeatureDeclaration: 236,
-  FeatureSpecializationPart: 237,
-  _FeatureSpecializationPart: 237,
-  MultiplicityPart: 238,
-  _MultiplicityPart: 238,
-  FeatureSpecialization: 239,
-  _FeatureSpecialization: 239,
-  Typings: 240,
-  _Typings: 240,
-  Subsettings: 241,
-  _Subsettings: 241,
-  References: 242,
-  _References: 242,
-  Crosses: 243,
-  _Crosses: 243,
-  Redefinitions: 244,
-  _Redefinitions: 244,
-  FeatureTyping: 245,
-  OwnedFeatureTyping: 246,
-  OwnedSubsetting: 247,
-  OwnedReferenceSubsetting: 248,
-  OwnedCrossSubsetting: 249,
-  OwnedRedefinition: 250,
-  OwnedMultiplicity: 251,
-  MultiplicityRange: 252,
-  MultiplicityExpressionMember: 253,
-  Definition: 254,
-  _Definition: 254,
-  DefinitionBody: 255,
-  _DefinitionBody: 255,
-  DefinitionBodyItem: 256,
-  _DefinitionBodyItem: 256,
-  DefinitionMember: 257,
-  VariantUsageMember: 258,
-  NonOccurrenceUsageMember: 259,
-  OccurrenceUsageMember: 260,
-  UsageModifier: 261,
-  _usage_modifier: 261,
-  UsageDeclaration: 262,
-  _UsageDeclaration: 262,
-  UsageCompletion: 263,
-  _UsageCompletion: 263,
-  Usage: 264,
-  _Usage: 264,
-  ValuePart: 265,
-  _ValuePart: 265,
-  FeatureValue: 266,
-  DefaultReferenceUsage: 267,
-  ReferenceUsage: 268,
-  AttributeDefinition: 269,
-  AttributeUsage: 270,
-  EnumerationDefinition: 271,
-  EnumerationBody: 272,
-  _EnumerationBody: 272,
-  EnumerationUsageMember: 273,
-  EnumeratedValue: 274,
-  EnumerationUsage: 275,
-  OccurrenceDefinition: 276,
-  OccurrenceUsage: 277,
-  ItemDefinition: 278,
-  ItemUsage: 279,
-  PartDefinition: 280,
-  PartUsage: 281,
-  PortDefinition: 282,
-  PortUsage: 283,
-  ConjugatedPortTyping: 284,
-  ConnectorEndMember: 285,
-  ConnectorEnd: 286,
-  ConnectionDefinition: 287,
-  ConnectionUsage: 288,
-  ConnectorPart: 289,
-  _ConnectorPart: 289,
-  BinaryConnectorPart: 290,
-  _BinaryConnectorPart: 290,
-  NaryConnectorPart: 291,
-  _NaryConnectorPart: 291,
-  BindingConnectorAsUsage: 292,
-  SuccessionAsUsage: 293,
-  InterfaceDefinition: 294,
-  InterfaceUsage: 295,
-  AllocationDefinition: 296,
-  AllocationUsage: 297,
-  FlowDefinition: 298,
-  FlowUsage: 299,
-  SuccessionFlowUsage: 300,
-  PayloadFeatureMember: 301,
-  PayloadFeature: 302,
-  FlowEndMember: 303,
-  FlowEnd: 304,
-  FlowFeatureMember: 305,
-  FlowFeature: 306,
-  ActionDefinition: 307,
-  ActionBody: 308,
-  _ActionBody: 308,
-  ActionBodyItem: 309,
-  _ActionBodyItem: 309,
-  EmptySuccessionMember: 310,
-  MultiplicitySourceEnd: 311,
-  ActionNodeMember: 312,
-  ActionNode: 313,
-  _ActionNode: 313,
-  IfNode: 314,
-  ActionBodyParameter: 315,
-  WhileLoopNode: 316,
-  ForLoopNode: 317,
-  ForVariableDeclaration: 318,
-  ControlNode: 319,
-  MergeNode: 320,
-  DecisionNode: 321,
-  JoinNode: 322,
-  ForkNode: 323,
-  ActionUsage: 324,
-  AcceptActionNode: 325,
-  SendActionNode: 326,
-  AssignActionNode: 327,
-  PerformActionUsage: 328,
-  CalculationDefinition: 329,
-  CalculationBody: 330,
-  _CalculationBody: 330,
-  ParameterList: 331,
-  _ParameterList: 331,
-  ParameterMember: 332,
-  ReturnParameterMember: 333,
-  ResultExpressionMember: 334,
-  CalculationUsage: 335,
-  ConstraintDefinition: 336,
-  ConstraintUsage: 337,
-  AssertConstraintUsage: 338,
-  RequirementDefinition: 339,
-  RequirementBody: 340,
-  _RequirementBody: 340,
-  RequirementBodyItem: 341,
-  _RequirementBodyItem: 341,
-  SubjectMember: 342,
-  SubjectUsage: 343,
-  RequirementConstraintMember: 344,
-  RequirementConstraintUsage: 345,
-  ActorMember: 346,
-  ActorUsage: 347,
-  StakeholderMember: 348,
-  StakeholderUsage: 349,
-  RequirementUsage: 350,
-  SatisfyRequirementUsage: 351,
-  ConcernDefinition: 352,
-  ConcernUsage: 353,
-  CaseDefinition: 354,
-  CaseBody: 355,
-  _CaseBody: 355,
-  CaseUsage: 356,
-  AnalysisCaseDefinition: 357,
-  AnalysisCaseUsage: 358,
-  VerificationCaseDefinition: 359,
-  VerificationCaseUsage: 360,
-  VerificationBody: 361,
-  _VerificationBody: 361,
-  VerificationBodyItem: 362,
-  _VerificationBodyItem: 362,
-  VerifyRequirementUsageMember: 363,
-  VerifyRequirementUsage: 364,
-  ObjectiveMember: 365,
-  ObjectiveRequirementUsage: 366,
-  UseCaseDefinition: 367,
-  UseCaseUsage: 368,
-  IncludeUseCaseUsage: 369,
-  StateDefinition: 370,
-  StateBodyItem: 371,
-  _StateBodyItem: 371,
-  EntryActionMember: 372,
-  DoActionMember: 373,
-  ExitActionMember: 374,
-  StateActionUsage: 375,
-  StateUsage: 376,
-  ExhibitStateUsage: 377,
-  TransitionUsageMember: 378,
-  TransitionUsage: 379,
-  ViewDefinition: 380,
-  ViewUsage: 381,
-  ViewpointDefinition: 382,
-  ViewpointUsage: 383,
-  RenderingDefinition: 384,
-  RenderingUsage: 385,
-  OwnedExpressionMember: 386,
-  OwnedExpression: 387,
-  Expression: 388,
-  _Expression: 388,
-  OwnedExpressionReference: 389,
-  ConditionalExpression: 390,
-  NullCoalescingExpression: 391,
-  ImpliesExpressionReference: 392,
-  ImpliesExpressionMember: 393,
-  ImpliesExpression: 394,
-  OrExpressionReference: 395,
-  OrExpressionMember: 396,
-  OrExpression: 397,
-  XorExpressionReference: 398,
-  XorExpressionMember: 399,
-  XorExpression: 400,
-  AndExpression: 401,
-  EqualityExpressionReference: 402,
-  EqualityExpressionMember: 403,
-  EqualityExpression: 404,
-  EqualityOperator: 405,
-  ClassificationExpression: 406,
-  ClassificationTestOperator: 407,
-  MetadataReference: 408,
-  TypeReferenceMember: 409,
-  TypeResultMember: 410,
-  TypeReference: 411,
-  ReferenceTyping: 412,
-  RelationalExpression: 413,
-  RelationalOperator: 414,
-  RangeExpression: 415,
-  AdditiveExpression: 416,
-  AdditiveOperator: 417,
-  MultiplicativeExpression: 418,
-  MultiplicativeOperator: 419,
-  ExponentiationExpression: 420,
-  ExponentiationOperator: 421,
-  UnaryExpression: 422,
-  UnaryOperator: 423,
-  ExtentExpression: 424,
-  PostfixOperation: 425,
-  _postfix_operation: 425,
-  PrimaryExpression: 426,
-  FunctionReferenceExpression: 427,
-  FunctionReferenceMember: 428,
-  FunctionReference: 429,
-  FeatureChainMember: 430,
-  OwnedFeatureChain: 431,
-  BaseExpression: 432,
-  _BaseExpression: 432,
-  BodyExpression: 433,
-  ExpressionBodyMember: 434,
-  ExpressionBody: 435,
-  SequenceExpression: 436,
-  FeatureReferenceExpression: 437,
-  FeatureReferenceMember: 438,
-  MetadataAccessExpression: 439,
-  ElementReferenceMember: 440,
-  InvocationExpression: 441,
-  ConstructorExpression: 442,
-  ConstructorResultMember: 443,
-  ConstructorResult: 444,
-  InstantiatedTypeMember: 445,
-  FeatureChain: 446,
-  _FeatureChain: 446,
-  OwnedFeatureChaining: 447,
-  ArgumentList: 448,
-  _ArgumentList: 448,
-  PositionalArgumentList: 449,
-  _PositionalArgumentList: 449,
-  ArgumentMember: 450,
-  Argument: 451,
-  NamedArgumentList: 452,
-  _NamedArgumentList: 452,
-  NamedArgumentMember: 453,
-  NamedArgument: 454,
-  ParameterRedefinition: 455,
-  ArgumentValue: 456,
-  NullExpression: 457,
-  LiteralExpression: 458,
-  _LiteralExpression: 458,
-  LiteralBoolean: 459,
-  BooleanValue: 460,
-  LiteralString: 461,
-  LiteralInteger: 462,
-  LiteralReal: 463,
-  RealValue: 464,
-  Name: 465,
-  GlobalQualification: 466,
-  Qualification: 467,
-  QualifiedName: 468,
-  START: 469,
-  _START: 469,
+  RootNamespace: 177,
+  PackageBodyElement: 178,
+  _PackageBodyElement: 178,
+  Identification: 179,
+  _Identification: 179,
+  RelationshipBody: 180,
+  _RelationshipBody: 180,
+  VisibilityIndicator: 181,
+  Dependency: 182,
+  Annotation: 183,
+  OwnedAnnotation: 184,
+  AnnotatingMember: 185,
+  AnnotatingElement: 186,
+  _AnnotatingElement: 186,
+  Comment: 187,
+  Documentation: 188,
+  TextualRepresentation: 189,
+  PrefixMetadataAnnotation: 190,
+  PrefixMetadataMember: 191,
+  PrefixMetadataUsage: 192,
+  MetadataUsage: 193,
+  MetadataTyping: 194,
+  MetadataBody: 195,
+  _MetadataBody: 195,
+  MetadataBodyUsageMember: 196,
+  MetadataBodyUsage: 197,
+  MetadataDefinition: 198,
+  Package: 199,
+  LibraryPackage: 200,
+  PackageBody: 201,
+  _PackageBody: 201,
+  PackageMember: 202,
+  ElementFilterMember: 203,
+  AliasMember: 204,
+  ImportPrefix: 205,
+  _ImportPrefix: 205,
+  Import: 206,
+  MembershipImport: 207,
+  ImportedMembership: 208,
+  _ImportedMembership: 208,
+  NamespaceImport: 209,
+  ImportedNamespace: 210,
+  _ImportedNamespace: 210,
+  FilterPackage: 211,
+  FilterPackageImport: 212,
+  FilterPackageMembershipImport: 213,
+  FilterPackageNamespaceImport: 214,
+  FilterPackageMember: 215,
+  DefinitionElement: 216,
+  _DefinitionElement: 216,
+  UsageElement: 217,
+  _UsageElement: 217,
+  NonOccurrenceUsageElement: 218,
+  _NonOccurrenceUsageElement: 218,
+  OccurrenceUsageElement: 219,
+  _OccurrenceUsageElement: 219,
+  StructureUsageElement: 220,
+  _StructureUsageElement: 220,
+  BehaviorUsageElement: 221,
+  _BehaviorUsageElement: 221,
+  SubclassificationPart: 222,
+  _SubclassificationPart: 222,
+  OwnedSubclassification: 223,
+  FeatureDeclaration: 224,
+  _FeatureDeclaration: 224,
+  FeatureSpecializationPart: 225,
+  _FeatureSpecializationPart: 225,
+  MultiplicityPart: 226,
+  _MultiplicityPart: 226,
+  FeatureSpecialization: 227,
+  _FeatureSpecialization: 227,
+  Typings: 228,
+  _Typings: 228,
+  Subsettings: 229,
+  _Subsettings: 229,
+  References: 230,
+  _References: 230,
+  Crosses: 231,
+  _Crosses: 231,
+  Redefinitions: 232,
+  _Redefinitions: 232,
+  FeatureTyping: 233,
+  OwnedFeatureTyping: 234,
+  OwnedSubsetting: 235,
+  OwnedReferenceSubsetting: 236,
+  OwnedCrossSubsetting: 237,
+  OwnedRedefinition: 238,
+  OwnedMultiplicity: 239,
+  MultiplicityRange: 240,
+  MultiplicityExpressionMember: 241,
+  Definition: 242,
+  _Definition: 242,
+  DefinitionBody: 243,
+  _DefinitionBody: 243,
+  DefinitionBodyItem: 244,
+  _DefinitionBodyItem: 244,
+  DefinitionMember: 245,
+  VariantUsageMember: 246,
+  NonOccurrenceUsageMember: 247,
+  OccurrenceUsageMember: 248,
+  UsageModifier: 249,
+  _usage_modifier: 249,
+  UsageDeclaration: 250,
+  _UsageDeclaration: 250,
+  UsageCompletion: 251,
+  _UsageCompletion: 251,
+  Usage: 252,
+  _Usage: 252,
+  ValuePart: 253,
+  _ValuePart: 253,
+  FeatureValue: 254,
+  DefaultReferenceUsage: 255,
+  ReferenceUsage: 256,
+  AttributeDefinition: 257,
+  AttributeUsage: 258,
+  EnumerationDefinition: 259,
+  EnumerationBody: 260,
+  _EnumerationBody: 260,
+  EnumerationUsageMember: 261,
+  EnumeratedValue: 262,
+  EnumerationUsage: 263,
+  OccurrenceDefinition: 264,
+  OccurrenceUsage: 265,
+  ItemDefinition: 266,
+  ItemUsage: 267,
+  PartDefinition: 268,
+  PartUsage: 269,
+  PortDefinition: 270,
+  PortUsage: 271,
+  ConjugatedPortTyping: 272,
+  ConnectorEndMember: 273,
+  ConnectorEnd: 274,
+  ConnectionDefinition: 275,
+  ConnectionUsage: 276,
+  ConnectorPart: 277,
+  _ConnectorPart: 277,
+  BinaryConnectorPart: 278,
+  _BinaryConnectorPart: 278,
+  NaryConnectorPart: 279,
+  _NaryConnectorPart: 279,
+  BindingConnectorAsUsage: 280,
+  SuccessionAsUsage: 281,
+  InterfaceDefinition: 282,
+  InterfaceUsage: 283,
+  AllocationDefinition: 284,
+  AllocationUsage: 285,
+  FlowDefinition: 286,
+  FlowUsage: 287,
+  SuccessionFlowUsage: 288,
+  PayloadFeatureMember: 289,
+  PayloadFeature: 290,
+  FlowEndMember: 291,
+  FlowEnd: 292,
+  FlowFeatureMember: 293,
+  FlowFeature: 294,
+  ActionDefinition: 295,
+  ActionBody: 296,
+  _ActionBody: 296,
+  ActionBodyItem: 297,
+  _ActionBodyItem: 297,
+  EmptySuccessionMember: 298,
+  MultiplicitySourceEnd: 299,
+  ActionNodeMember: 300,
+  ActionNode: 301,
+  _ActionNode: 301,
+  IfNode: 302,
+  ActionBodyParameter: 303,
+  WhileLoopNode: 304,
+  ForLoopNode: 305,
+  ForVariableDeclaration: 306,
+  ControlNode: 307,
+  MergeNode: 308,
+  DecisionNode: 309,
+  JoinNode: 310,
+  ForkNode: 311,
+  ActionUsage: 312,
+  AcceptActionNode: 313,
+  SendActionNode: 314,
+  AssignActionNode: 315,
+  PerformActionUsage: 316,
+  CalculationDefinition: 317,
+  CalculationBody: 318,
+  _CalculationBody: 318,
+  ParameterList: 319,
+  _ParameterList: 319,
+  ParameterMember: 320,
+  ReturnParameterMember: 321,
+  ResultExpressionMember: 322,
+  CalculationUsage: 323,
+  ConstraintDefinition: 324,
+  ConstraintUsage: 325,
+  AssertConstraintUsage: 326,
+  RequirementDefinition: 327,
+  RequirementBody: 328,
+  _RequirementBody: 328,
+  RequirementBodyItem: 329,
+  _RequirementBodyItem: 329,
+  SubjectMember: 330,
+  SubjectUsage: 331,
+  RequirementConstraintMember: 332,
+  RequirementConstraintUsage: 333,
+  ActorMember: 334,
+  ActorUsage: 335,
+  StakeholderMember: 336,
+  StakeholderUsage: 337,
+  RequirementUsage: 338,
+  SatisfyRequirementUsage: 339,
+  ConcernDefinition: 340,
+  ConcernUsage: 341,
+  CaseDefinition: 342,
+  CaseBody: 343,
+  _CaseBody: 343,
+  CaseUsage: 344,
+  AnalysisCaseDefinition: 345,
+  AnalysisCaseUsage: 346,
+  VerificationCaseDefinition: 347,
+  VerificationCaseUsage: 348,
+  VerificationBody: 349,
+  _VerificationBody: 349,
+  VerificationBodyItem: 350,
+  _VerificationBodyItem: 350,
+  VerifyRequirementUsageMember: 351,
+  VerifyRequirementUsage: 352,
+  ObjectiveMember: 353,
+  ObjectiveRequirementUsage: 354,
+  UseCaseDefinition: 355,
+  UseCaseUsage: 356,
+  IncludeUseCaseUsage: 357,
+  StateDefinition: 358,
+  StateBodyItem: 359,
+  _StateBodyItem: 359,
+  EntryActionMember: 360,
+  DoActionMember: 361,
+  ExitActionMember: 362,
+  StateActionUsage: 363,
+  StateUsage: 364,
+  ExhibitStateUsage: 365,
+  TransitionUsageMember: 366,
+  TransitionUsage: 367,
+  ViewDefinition: 368,
+  ViewUsage: 369,
+  ViewpointDefinition: 370,
+  ViewpointUsage: 371,
+  RenderingDefinition: 372,
+  RenderingUsage: 373,
+  OwnedExpressionMember: 374,
+  OwnedExpression: 375,
+  Expression: 376,
+  _Expression: 376,
+  OwnedExpressionReference: 377,
+  ConditionalExpression: 378,
+  NullCoalescingExpression: 379,
+  ImpliesExpressionReference: 380,
+  ImpliesExpressionMember: 381,
+  ImpliesExpression: 382,
+  OrExpressionReference: 383,
+  OrExpressionMember: 384,
+  OrExpression: 385,
+  XorExpressionReference: 386,
+  XorExpressionMember: 387,
+  XorExpression: 388,
+  AndExpression: 389,
+  EqualityExpressionReference: 390,
+  EqualityExpressionMember: 391,
+  EqualityExpression: 392,
+  EqualityOperator: 393,
+  ClassificationExpression: 394,
+  ClassificationTestOperator: 395,
+  MetadataReference: 396,
+  TypeReferenceMember: 397,
+  TypeResultMember: 398,
+  TypeReference: 399,
+  ReferenceTyping: 400,
+  RelationalExpression: 401,
+  RelationalOperator: 402,
+  RangeExpression: 403,
+  AdditiveExpression: 404,
+  AdditiveOperator: 405,
+  MultiplicativeExpression: 406,
+  MultiplicativeOperator: 407,
+  ExponentiationExpression: 408,
+  ExponentiationOperator: 409,
+  UnaryExpression: 410,
+  UnaryOperator: 411,
+  ExtentExpression: 412,
+  PostfixOperation: 413,
+  _postfix_operation: 413,
+  PrimaryExpression: 414,
+  FunctionReferenceExpression: 415,
+  FunctionReferenceMember: 416,
+  FunctionReference: 417,
+  FeatureChainMember: 418,
+  OwnedFeatureChain: 419,
+  BaseExpression: 420,
+  _BaseExpression: 420,
+  BodyExpression: 421,
+  ExpressionBodyMember: 422,
+  ExpressionBody: 423,
+  SequenceExpression: 424,
+  FeatureReferenceExpression: 425,
+  FeatureReferenceMember: 426,
+  MetadataAccessExpression: 427,
+  ElementReferenceMember: 428,
+  InvocationExpression: 429,
+  ConstructorExpression: 430,
+  ConstructorResultMember: 431,
+  ConstructorResult: 432,
+  InstantiatedTypeMember: 433,
+  FeatureChain: 434,
+  _FeatureChain: 434,
+  OwnedFeatureChaining: 435,
+  ArgumentList: 436,
+  _ArgumentList: 436,
+  PositionalArgumentList: 437,
+  _PositionalArgumentList: 437,
+  ArgumentMember: 438,
+  Argument: 439,
+  NamedArgumentList: 440,
+  _NamedArgumentList: 440,
+  NamedArgumentMember: 441,
+  NamedArgument: 442,
+  ParameterRedefinition: 443,
+  ArgumentValue: 444,
+  NullExpression: 445,
+  LiteralExpression: 446,
+  _LiteralExpression: 446,
+  LiteralBoolean: 447,
+  BooleanValue: 448,
+  LiteralString: 449,
+  LiteralInteger: 450,
+  LiteralReal: 451,
+  RealValue: 452,
+  Name: 453,
+  GlobalQualification: 454,
+  Qualification: 455,
+  QualifiedName: 456,
+  START: 457,
+  _START: 457,
+  MetaClassificationTestOperator: 629,
+  CastOperator: 630,
+  MetaCastOperator: 631,
+  LiteralInfinity: 666,
+  DECIMALVALUE: 671,
+  DECIMAL_VALUE: 671,
+  EXPVALUE: 672,
+  EXP_VALUE: 672,
+  ID: 673,
+  UNRESTRICTEDNAME: 674,
+  UNRESTRICTED_NAME: 674,
+  STRINGVALUE: 675,
+  STRING_VALUE: 675,
+  REGULARCOMMENT: 676,
+  REGULAR_COMMENT: 676,
+  MLNOTE: 677,
+  ML_NOTE: 677,
+  SLNOTE: 678,
+  SL_NOTE: 678,
   EOF: 1023,
 };
 
@@ -6012,730 +6012,730 @@ export function cstKind(node) {
   return node ? normalizeToken(node.type) : "";
 }
 export function isRootNamespace(node) {
-  return node != null && node.typeId === 189;
+  return node != null && node.typeId === 177;
 }
 export function isVisibilityIndicator(node) {
-  return node != null && node.typeId === 193;
+  return node != null && node.typeId === 181;
 }
 export function isDependency(node) {
-  return node != null && node.typeId === 194;
+  return node != null && node.typeId === 182;
 }
 export function isAnnotation(node) {
-  return node != null && node.typeId === 195;
+  return node != null && node.typeId === 183;
 }
 export function isOwnedAnnotation(node) {
-  return node != null && node.typeId === 196;
+  return node != null && node.typeId === 184;
 }
 export function isAnnotatingMember(node) {
-  return node != null && node.typeId === 197;
+  return node != null && node.typeId === 185;
 }
 export function isComment(node) {
-  return node != null && node.typeId === 199;
+  return node != null && node.typeId === 187;
 }
 export function isDocumentation(node) {
-  return node != null && node.typeId === 200;
+  return node != null && node.typeId === 188;
 }
 export function isTextualRepresentation(node) {
-  return node != null && node.typeId === 201;
+  return node != null && node.typeId === 189;
 }
 export function isPrefixMetadataAnnotation(node) {
-  return node != null && node.typeId === 202;
+  return node != null && node.typeId === 190;
 }
 export function isPrefixMetadataMember(node) {
-  return node != null && node.typeId === 203;
+  return node != null && node.typeId === 191;
 }
 export function isPrefixMetadataUsage(node) {
-  return node != null && node.typeId === 204;
+  return node != null && node.typeId === 192;
 }
 export function isMetadataUsage(node) {
-  return node != null && node.typeId === 205;
+  return node != null && node.typeId === 193;
 }
 export function isMetadataTyping(node) {
-  return node != null && node.typeId === 206;
+  return node != null && node.typeId === 194;
 }
 export function isMetadataBodyUsageMember(node) {
-  return node != null && node.typeId === 208;
+  return node != null && node.typeId === 196;
 }
 export function isMetadataBodyUsage(node) {
-  return node != null && node.typeId === 209;
+  return node != null && node.typeId === 197;
 }
 export function isMetadataDefinition(node) {
-  return node != null && node.typeId === 210;
+  return node != null && node.typeId === 198;
 }
 export function isPackage(node) {
-  return node != null && node.typeId === 211;
+  return node != null && node.typeId === 199;
 }
 export function isLibraryPackage(node) {
-  return node != null && node.typeId === 212;
+  return node != null && node.typeId === 200;
 }
 export function isPackageMember(node) {
-  return node != null && node.typeId === 214;
+  return node != null && node.typeId === 202;
 }
 export function isElementFilterMember(node) {
-  return node != null && node.typeId === 215;
+  return node != null && node.typeId === 203;
 }
 export function isAliasMember(node) {
-  return node != null && node.typeId === 216;
+  return node != null && node.typeId === 204;
 }
 export function isImport(node) {
-  return node != null && node.typeId === 218;
+  return node != null && node.typeId === 206;
 }
 export function isMembershipImport(node) {
-  return node != null && node.typeId === 219;
+  return node != null && node.typeId === 207;
 }
 export function isNamespaceImport(node) {
-  return node != null && node.typeId === 221;
+  return node != null && node.typeId === 209;
 }
 export function isFilterPackage(node) {
-  return node != null && node.typeId === 223;
+  return node != null && node.typeId === 211;
 }
 export function isFilterPackageImport(node) {
-  return node != null && node.typeId === 224;
+  return node != null && node.typeId === 212;
 }
 export function isFilterPackageMembershipImport(node) {
-  return node != null && node.typeId === 225;
+  return node != null && node.typeId === 213;
 }
 export function isFilterPackageNamespaceImport(node) {
-  return node != null && node.typeId === 226;
+  return node != null && node.typeId === 214;
 }
 export function isFilterPackageMember(node) {
-  return node != null && node.typeId === 227;
+  return node != null && node.typeId === 215;
 }
 export function isOwnedSubclassification(node) {
-  return node != null && node.typeId === 235;
+  return node != null && node.typeId === 223;
 }
 export function isFeatureTyping(node) {
-  return node != null && node.typeId === 245;
+  return node != null && node.typeId === 233;
 }
 export function isOwnedFeatureTyping(node) {
-  return node != null && node.typeId === 246;
+  return node != null && node.typeId === 234;
 }
 export function isOwnedSubsetting(node) {
-  return node != null && node.typeId === 247;
+  return node != null && node.typeId === 235;
 }
 export function isOwnedReferenceSubsetting(node) {
-  return node != null && node.typeId === 248;
+  return node != null && node.typeId === 236;
 }
 export function isOwnedCrossSubsetting(node) {
-  return node != null && node.typeId === 249;
+  return node != null && node.typeId === 237;
 }
 export function isOwnedRedefinition(node) {
-  return node != null && node.typeId === 250;
+  return node != null && node.typeId === 238;
 }
 export function isOwnedMultiplicity(node) {
-  return node != null && node.typeId === 251;
+  return node != null && node.typeId === 239;
 }
 export function isMultiplicityRange(node) {
-  return node != null && node.typeId === 252;
+  return node != null && node.typeId === 240;
 }
 export function isMultiplicityExpressionMember(node) {
-  return node != null && node.typeId === 253;
+  return node != null && node.typeId === 241;
 }
 export function isDefinitionMember(node) {
-  return node != null && node.typeId === 257;
+  return node != null && node.typeId === 245;
 }
 export function isVariantUsageMember(node) {
-  return node != null && node.typeId === 258;
+  return node != null && node.typeId === 246;
 }
 export function isNonOccurrenceUsageMember(node) {
-  return node != null && node.typeId === 259;
+  return node != null && node.typeId === 247;
 }
 export function isOccurrenceUsageMember(node) {
-  return node != null && node.typeId === 260;
+  return node != null && node.typeId === 248;
 }
 export function isFeatureValue(node) {
-  return node != null && node.typeId === 266;
+  return node != null && node.typeId === 254;
 }
 export function isDefaultReferenceUsage(node) {
-  return node != null && node.typeId === 267;
+  return node != null && node.typeId === 255;
 }
 export function isReferenceUsage(node) {
-  return node != null && node.typeId === 268;
+  return node != null && node.typeId === 256;
 }
 export function isAttributeDefinition(node) {
-  return node != null && node.typeId === 269;
+  return node != null && node.typeId === 257;
 }
 export function isAttributeUsage(node) {
-  return node != null && node.typeId === 270;
+  return node != null && node.typeId === 258;
 }
 export function isEnumerationDefinition(node) {
-  return node != null && node.typeId === 271;
+  return node != null && node.typeId === 259;
 }
 export function isEnumerationUsageMember(node) {
-  return node != null && node.typeId === 273;
+  return node != null && node.typeId === 261;
 }
 export function isEnumeratedValue(node) {
-  return node != null && node.typeId === 274;
+  return node != null && node.typeId === 262;
 }
 export function isEnumerationUsage(node) {
-  return node != null && node.typeId === 275;
+  return node != null && node.typeId === 263;
 }
 export function isOccurrenceDefinition(node) {
-  return node != null && node.typeId === 276;
+  return node != null && node.typeId === 264;
 }
 export function isOccurrenceUsage(node) {
-  return node != null && node.typeId === 277;
+  return node != null && node.typeId === 265;
 }
 export function isItemDefinition(node) {
-  return node != null && node.typeId === 278;
+  return node != null && node.typeId === 266;
 }
 export function isItemUsage(node) {
-  return node != null && node.typeId === 279;
+  return node != null && node.typeId === 267;
 }
 export function isPartDefinition(node) {
-  return node != null && node.typeId === 280;
+  return node != null && node.typeId === 268;
 }
 export function isPartUsage(node) {
-  return node != null && node.typeId === 281;
+  return node != null && node.typeId === 269;
 }
 export function isPortDefinition(node) {
-  return node != null && node.typeId === 282;
+  return node != null && node.typeId === 270;
 }
 export function isPortUsage(node) {
-  return node != null && node.typeId === 283;
+  return node != null && node.typeId === 271;
 }
 export function isConjugatedPortTyping(node) {
-  return node != null && node.typeId === 284;
+  return node != null && node.typeId === 272;
 }
 export function isConnectorEndMember(node) {
-  return node != null && node.typeId === 285;
+  return node != null && node.typeId === 273;
 }
 export function isConnectorEnd(node) {
-  return node != null && node.typeId === 286;
+  return node != null && node.typeId === 274;
 }
 export function isConnectionDefinition(node) {
-  return node != null && node.typeId === 287;
+  return node != null && node.typeId === 275;
 }
 export function isConnectionUsage(node) {
-  return node != null && node.typeId === 288;
+  return node != null && node.typeId === 276;
 }
 export function isBindingConnectorAsUsage(node) {
-  return node != null && node.typeId === 292;
+  return node != null && node.typeId === 280;
 }
 export function isSuccessionAsUsage(node) {
-  return node != null && node.typeId === 293;
+  return node != null && node.typeId === 281;
 }
 export function isInterfaceDefinition(node) {
-  return node != null && node.typeId === 294;
+  return node != null && node.typeId === 282;
 }
 export function isInterfaceUsage(node) {
-  return node != null && node.typeId === 295;
+  return node != null && node.typeId === 283;
 }
 export function isAllocationDefinition(node) {
-  return node != null && node.typeId === 296;
+  return node != null && node.typeId === 284;
 }
 export function isAllocationUsage(node) {
-  return node != null && node.typeId === 297;
+  return node != null && node.typeId === 285;
 }
 export function isFlowDefinition(node) {
-  return node != null && node.typeId === 298;
+  return node != null && node.typeId === 286;
 }
 export function isFlowUsage(node) {
-  return node != null && node.typeId === 299;
+  return node != null && node.typeId === 287;
 }
 export function isSuccessionFlowUsage(node) {
-  return node != null && node.typeId === 300;
+  return node != null && node.typeId === 288;
 }
 export function isPayloadFeatureMember(node) {
-  return node != null && node.typeId === 301;
+  return node != null && node.typeId === 289;
 }
 export function isPayloadFeature(node) {
-  return node != null && node.typeId === 302;
+  return node != null && node.typeId === 290;
 }
 export function isFlowEndMember(node) {
-  return node != null && node.typeId === 303;
+  return node != null && node.typeId === 291;
 }
 export function isFlowEnd(node) {
-  return node != null && node.typeId === 304;
+  return node != null && node.typeId === 292;
 }
 export function isFlowFeatureMember(node) {
-  return node != null && node.typeId === 305;
+  return node != null && node.typeId === 293;
 }
 export function isFlowFeature(node) {
-  return node != null && node.typeId === 306;
+  return node != null && node.typeId === 294;
 }
 export function isActionDefinition(node) {
-  return node != null && node.typeId === 307;
+  return node != null && node.typeId === 295;
 }
 export function isEmptySuccessionMember(node) {
-  return node != null && node.typeId === 310;
+  return node != null && node.typeId === 298;
 }
 export function isMultiplicitySourceEnd(node) {
-  return node != null && node.typeId === 311;
+  return node != null && node.typeId === 299;
 }
 export function isActionNodeMember(node) {
-  return node != null && node.typeId === 312;
+  return node != null && node.typeId === 300;
 }
 export function isIfNode(node) {
-  return node != null && node.typeId === 314;
+  return node != null && node.typeId === 302;
 }
 export function isActionBodyParameter(node) {
-  return node != null && node.typeId === 315;
+  return node != null && node.typeId === 303;
 }
 export function isWhileLoopNode(node) {
-  return node != null && node.typeId === 316;
+  return node != null && node.typeId === 304;
 }
 export function isForLoopNode(node) {
-  return node != null && node.typeId === 317;
+  return node != null && node.typeId === 305;
 }
 export function isForVariableDeclaration(node) {
-  return node != null && node.typeId === 318;
+  return node != null && node.typeId === 306;
 }
 export function isControlNode(node) {
-  return node != null && node.typeId === 319;
+  return node != null && node.typeId === 307;
 }
 export function isMergeNode(node) {
-  return node != null && node.typeId === 320;
+  return node != null && node.typeId === 308;
 }
 export function isDecisionNode(node) {
-  return node != null && node.typeId === 321;
+  return node != null && node.typeId === 309;
 }
 export function isJoinNode(node) {
-  return node != null && node.typeId === 322;
+  return node != null && node.typeId === 310;
 }
 export function isForkNode(node) {
-  return node != null && node.typeId === 323;
+  return node != null && node.typeId === 311;
 }
 export function isActionUsage(node) {
-  return node != null && node.typeId === 324;
+  return node != null && node.typeId === 312;
 }
 export function isAcceptActionNode(node) {
-  return node != null && node.typeId === 325;
+  return node != null && node.typeId === 313;
 }
 export function isSendActionNode(node) {
-  return node != null && node.typeId === 326;
+  return node != null && node.typeId === 314;
 }
 export function isAssignActionNode(node) {
-  return node != null && node.typeId === 327;
+  return node != null && node.typeId === 315;
 }
 export function isPerformActionUsage(node) {
-  return node != null && node.typeId === 328;
+  return node != null && node.typeId === 316;
 }
 export function isCalculationDefinition(node) {
-  return node != null && node.typeId === 329;
+  return node != null && node.typeId === 317;
 }
 export function isParameterMember(node) {
-  return node != null && node.typeId === 332;
+  return node != null && node.typeId === 320;
 }
 export function isReturnParameterMember(node) {
-  return node != null && node.typeId === 333;
+  return node != null && node.typeId === 321;
 }
 export function isResultExpressionMember(node) {
-  return node != null && node.typeId === 334;
+  return node != null && node.typeId === 322;
 }
 export function isCalculationUsage(node) {
-  return node != null && node.typeId === 335;
+  return node != null && node.typeId === 323;
 }
 export function isConstraintDefinition(node) {
-  return node != null && node.typeId === 336;
+  return node != null && node.typeId === 324;
 }
 export function isConstraintUsage(node) {
-  return node != null && node.typeId === 337;
+  return node != null && node.typeId === 325;
 }
 export function isAssertConstraintUsage(node) {
-  return node != null && node.typeId === 338;
+  return node != null && node.typeId === 326;
 }
 export function isRequirementDefinition(node) {
-  return node != null && node.typeId === 339;
+  return node != null && node.typeId === 327;
 }
 export function isSubjectMember(node) {
-  return node != null && node.typeId === 342;
+  return node != null && node.typeId === 330;
 }
 export function isSubjectUsage(node) {
-  return node != null && node.typeId === 343;
+  return node != null && node.typeId === 331;
 }
 export function isRequirementConstraintMember(node) {
-  return node != null && node.typeId === 344;
+  return node != null && node.typeId === 332;
 }
 export function isRequirementConstraintUsage(node) {
-  return node != null && node.typeId === 345;
+  return node != null && node.typeId === 333;
 }
 export function isActorMember(node) {
-  return node != null && node.typeId === 346;
+  return node != null && node.typeId === 334;
 }
 export function isActorUsage(node) {
-  return node != null && node.typeId === 347;
+  return node != null && node.typeId === 335;
 }
 export function isStakeholderMember(node) {
-  return node != null && node.typeId === 348;
+  return node != null && node.typeId === 336;
 }
 export function isStakeholderUsage(node) {
-  return node != null && node.typeId === 349;
+  return node != null && node.typeId === 337;
 }
 export function isRequirementUsage(node) {
-  return node != null && node.typeId === 350;
+  return node != null && node.typeId === 338;
 }
 export function isSatisfyRequirementUsage(node) {
-  return node != null && node.typeId === 351;
+  return node != null && node.typeId === 339;
 }
 export function isConcernDefinition(node) {
-  return node != null && node.typeId === 352;
+  return node != null && node.typeId === 340;
 }
 export function isConcernUsage(node) {
-  return node != null && node.typeId === 353;
+  return node != null && node.typeId === 341;
 }
 export function isCaseDefinition(node) {
-  return node != null && node.typeId === 354;
+  return node != null && node.typeId === 342;
 }
 export function isCaseUsage(node) {
-  return node != null && node.typeId === 356;
+  return node != null && node.typeId === 344;
 }
 export function isAnalysisCaseDefinition(node) {
-  return node != null && node.typeId === 357;
+  return node != null && node.typeId === 345;
 }
 export function isAnalysisCaseUsage(node) {
-  return node != null && node.typeId === 358;
+  return node != null && node.typeId === 346;
 }
 export function isVerificationCaseDefinition(node) {
-  return node != null && node.typeId === 359;
+  return node != null && node.typeId === 347;
 }
 export function isVerificationCaseUsage(node) {
-  return node != null && node.typeId === 360;
+  return node != null && node.typeId === 348;
 }
 export function isVerifyRequirementUsageMember(node) {
-  return node != null && node.typeId === 363;
+  return node != null && node.typeId === 351;
 }
 export function isVerifyRequirementUsage(node) {
-  return node != null && node.typeId === 364;
+  return node != null && node.typeId === 352;
 }
 export function isObjectiveMember(node) {
-  return node != null && node.typeId === 365;
+  return node != null && node.typeId === 353;
 }
 export function isObjectiveRequirementUsage(node) {
-  return node != null && node.typeId === 366;
+  return node != null && node.typeId === 354;
 }
 export function isUseCaseDefinition(node) {
-  return node != null && node.typeId === 367;
+  return node != null && node.typeId === 355;
 }
 export function isUseCaseUsage(node) {
-  return node != null && node.typeId === 368;
+  return node != null && node.typeId === 356;
 }
 export function isIncludeUseCaseUsage(node) {
-  return node != null && node.typeId === 369;
+  return node != null && node.typeId === 357;
 }
 export function isStateDefinition(node) {
-  return node != null && node.typeId === 370;
+  return node != null && node.typeId === 358;
 }
 export function isEntryActionMember(node) {
-  return node != null && node.typeId === 372;
+  return node != null && node.typeId === 360;
 }
 export function isDoActionMember(node) {
-  return node != null && node.typeId === 373;
+  return node != null && node.typeId === 361;
 }
 export function isExitActionMember(node) {
-  return node != null && node.typeId === 374;
+  return node != null && node.typeId === 362;
 }
 export function isStateActionUsage(node) {
-  return node != null && node.typeId === 375;
+  return node != null && node.typeId === 363;
 }
 export function isStateUsage(node) {
-  return node != null && node.typeId === 376;
+  return node != null && node.typeId === 364;
 }
 export function isExhibitStateUsage(node) {
-  return node != null && node.typeId === 377;
+  return node != null && node.typeId === 365;
 }
 export function isTransitionUsageMember(node) {
-  return node != null && node.typeId === 378;
+  return node != null && node.typeId === 366;
 }
 export function isTransitionUsage(node) {
-  return node != null && node.typeId === 379;
+  return node != null && node.typeId === 367;
 }
 export function isViewDefinition(node) {
-  return node != null && node.typeId === 380;
+  return node != null && node.typeId === 368;
 }
 export function isViewUsage(node) {
-  return node != null && node.typeId === 381;
+  return node != null && node.typeId === 369;
 }
 export function isViewpointDefinition(node) {
-  return node != null && node.typeId === 382;
+  return node != null && node.typeId === 370;
 }
 export function isViewpointUsage(node) {
-  return node != null && node.typeId === 383;
+  return node != null && node.typeId === 371;
 }
 export function isRenderingDefinition(node) {
-  return node != null && node.typeId === 384;
+  return node != null && node.typeId === 372;
 }
 export function isRenderingUsage(node) {
-  return node != null && node.typeId === 385;
+  return node != null && node.typeId === 373;
 }
 export function isOwnedExpressionMember(node) {
-  return node != null && node.typeId === 386;
+  return node != null && node.typeId === 374;
 }
 export function isOwnedExpression(node) {
-  return node != null && node.typeId === 387;
+  return node != null && node.typeId === 375;
 }
 export function isOwnedExpressionReference(node) {
-  return node != null && node.typeId === 389;
+  return node != null && node.typeId === 377;
 }
 export function isConditionalExpression(node) {
-  return node != null && node.typeId === 390;
+  return node != null && node.typeId === 378;
 }
 export function isNullCoalescingExpression(node) {
-  return node != null && node.typeId === 391;
+  return node != null && node.typeId === 379;
 }
 export function isImpliesExpressionReference(node) {
-  return node != null && node.typeId === 392;
+  return node != null && node.typeId === 380;
 }
 export function isImpliesExpressionMember(node) {
-  return node != null && node.typeId === 393;
+  return node != null && node.typeId === 381;
 }
 export function isImpliesExpression(node) {
-  return node != null && node.typeId === 394;
+  return node != null && node.typeId === 382;
 }
 export function isOrExpressionReference(node) {
-  return node != null && node.typeId === 395;
+  return node != null && node.typeId === 383;
 }
 export function isOrExpressionMember(node) {
-  return node != null && node.typeId === 396;
+  return node != null && node.typeId === 384;
 }
 export function isOrExpression(node) {
-  return node != null && node.typeId === 397;
+  return node != null && node.typeId === 385;
 }
 export function isXorExpressionReference(node) {
-  return node != null && node.typeId === 398;
+  return node != null && node.typeId === 386;
 }
 export function isXorExpressionMember(node) {
-  return node != null && node.typeId === 399;
+  return node != null && node.typeId === 387;
 }
 export function isXorExpression(node) {
-  return node != null && node.typeId === 400;
+  return node != null && node.typeId === 388;
 }
 export function isAndExpression(node) {
-  return node != null && node.typeId === 401;
+  return node != null && node.typeId === 389;
 }
 export function isEqualityExpressionReference(node) {
-  return node != null && node.typeId === 402;
+  return node != null && node.typeId === 390;
 }
 export function isEqualityExpressionMember(node) {
-  return node != null && node.typeId === 403;
+  return node != null && node.typeId === 391;
 }
 export function isEqualityExpression(node) {
-  return node != null && node.typeId === 404;
+  return node != null && node.typeId === 392;
 }
 export function isEqualityOperator(node) {
-  return node != null && node.typeId === 405;
+  return node != null && node.typeId === 393;
 }
 export function isClassificationExpression(node) {
-  return node != null && node.typeId === 406;
+  return node != null && node.typeId === 394;
 }
 export function isClassificationTestOperator(node) {
-  return node != null && node.typeId === 407;
+  return node != null && node.typeId === 395;
 }
 export function isMetadataReference(node) {
-  return node != null && node.typeId === 408;
+  return node != null && node.typeId === 396;
 }
 export function isTypeReferenceMember(node) {
-  return node != null && node.typeId === 409;
+  return node != null && node.typeId === 397;
 }
 export function isTypeResultMember(node) {
-  return node != null && node.typeId === 410;
+  return node != null && node.typeId === 398;
 }
 export function isTypeReference(node) {
-  return node != null && node.typeId === 411;
+  return node != null && node.typeId === 399;
 }
 export function isReferenceTyping(node) {
-  return node != null && node.typeId === 412;
+  return node != null && node.typeId === 400;
 }
 export function isRelationalExpression(node) {
-  return node != null && node.typeId === 413;
+  return node != null && node.typeId === 401;
 }
 export function isRelationalOperator(node) {
-  return node != null && node.typeId === 414;
+  return node != null && node.typeId === 402;
 }
 export function isRangeExpression(node) {
-  return node != null && node.typeId === 415;
+  return node != null && node.typeId === 403;
 }
 export function isAdditiveExpression(node) {
-  return node != null && node.typeId === 416;
+  return node != null && node.typeId === 404;
 }
 export function isAdditiveOperator(node) {
-  return node != null && node.typeId === 417;
+  return node != null && node.typeId === 405;
 }
 export function isMultiplicativeExpression(node) {
-  return node != null && node.typeId === 418;
+  return node != null && node.typeId === 406;
 }
 export function isMultiplicativeOperator(node) {
-  return node != null && node.typeId === 419;
+  return node != null && node.typeId === 407;
 }
 export function isExponentiationExpression(node) {
-  return node != null && node.typeId === 420;
+  return node != null && node.typeId === 408;
 }
 export function isExponentiationOperator(node) {
-  return node != null && node.typeId === 421;
+  return node != null && node.typeId === 409;
 }
 export function isUnaryExpression(node) {
-  return node != null && node.typeId === 422;
+  return node != null && node.typeId === 410;
 }
 export function isUnaryOperator(node) {
-  return node != null && node.typeId === 423;
+  return node != null && node.typeId === 411;
 }
 export function isExtentExpression(node) {
-  return node != null && node.typeId === 424;
+  return node != null && node.typeId === 412;
 }
 export function isPrimaryExpression(node) {
-  return node != null && node.typeId === 426;
+  return node != null && node.typeId === 414;
 }
 export function isFunctionReferenceExpression(node) {
-  return node != null && node.typeId === 427;
+  return node != null && node.typeId === 415;
 }
 export function isFunctionReferenceMember(node) {
-  return node != null && node.typeId === 428;
+  return node != null && node.typeId === 416;
 }
 export function isFunctionReference(node) {
-  return node != null && node.typeId === 429;
+  return node != null && node.typeId === 417;
 }
 export function isFeatureChainMember(node) {
-  return node != null && node.typeId === 430;
+  return node != null && node.typeId === 418;
 }
 export function isOwnedFeatureChain(node) {
-  return node != null && node.typeId === 431;
+  return node != null && node.typeId === 419;
 }
 export function isBodyExpression(node) {
-  return node != null && node.typeId === 433;
+  return node != null && node.typeId === 421;
 }
 export function isExpressionBodyMember(node) {
-  return node != null && node.typeId === 434;
+  return node != null && node.typeId === 422;
 }
 export function isExpressionBody(node) {
-  return node != null && node.typeId === 435;
+  return node != null && node.typeId === 423;
 }
 export function isSequenceExpression(node) {
-  return node != null && node.typeId === 436;
+  return node != null && node.typeId === 424;
 }
 export function isFeatureReferenceExpression(node) {
-  return node != null && node.typeId === 437;
+  return node != null && node.typeId === 425;
 }
 export function isFeatureReferenceMember(node) {
-  return node != null && node.typeId === 438;
+  return node != null && node.typeId === 426;
 }
 export function isMetadataAccessExpression(node) {
-  return node != null && node.typeId === 439;
+  return node != null && node.typeId === 427;
 }
 export function isElementReferenceMember(node) {
-  return node != null && node.typeId === 440;
+  return node != null && node.typeId === 428;
 }
 export function isInvocationExpression(node) {
-  return node != null && node.typeId === 441;
+  return node != null && node.typeId === 429;
 }
 export function isConstructorExpression(node) {
-  return node != null && node.typeId === 442;
+  return node != null && node.typeId === 430;
 }
 export function isConstructorResultMember(node) {
-  return node != null && node.typeId === 443;
+  return node != null && node.typeId === 431;
 }
 export function isConstructorResult(node) {
-  return node != null && node.typeId === 444;
+  return node != null && node.typeId === 432;
 }
 export function isInstantiatedTypeMember(node) {
-  return node != null && node.typeId === 445;
+  return node != null && node.typeId === 433;
 }
 export function isOwnedFeatureChaining(node) {
-  return node != null && node.typeId === 447;
+  return node != null && node.typeId === 435;
 }
 export function isArgumentMember(node) {
-  return node != null && node.typeId === 450;
+  return node != null && node.typeId === 438;
 }
 export function isArgument(node) {
-  return node != null && node.typeId === 451;
+  return node != null && node.typeId === 439;
 }
 export function isNamedArgumentMember(node) {
-  return node != null && node.typeId === 453;
+  return node != null && node.typeId === 441;
 }
 export function isNamedArgument(node) {
-  return node != null && node.typeId === 454;
+  return node != null && node.typeId === 442;
 }
 export function isParameterRedefinition(node) {
-  return node != null && node.typeId === 455;
+  return node != null && node.typeId === 443;
 }
 export function isArgumentValue(node) {
-  return node != null && node.typeId === 456;
+  return node != null && node.typeId === 444;
 }
 export function isNullExpression(node) {
-  return node != null && node.typeId === 457;
+  return node != null && node.typeId === 445;
 }
 export function isLiteralBoolean(node) {
-  return node != null && node.typeId === 459;
+  return node != null && node.typeId === 447;
 }
 export function isBooleanValue(node) {
-  return node != null && node.typeId === 460;
+  return node != null && node.typeId === 448;
 }
 export function isLiteralString(node) {
-  return node != null && node.typeId === 461;
+  return node != null && node.typeId === 449;
 }
 export function isLiteralInteger(node) {
-  return node != null && node.typeId === 462;
+  return node != null && node.typeId === 450;
 }
 export function isLiteralReal(node) {
-  return node != null && node.typeId === 463;
+  return node != null && node.typeId === 451;
 }
 export function isRealValue(node) {
-  return node != null && node.typeId === 464;
+  return node != null && node.typeId === 452;
 }
 export function isName(node) {
-  return node != null && node.typeId === 465;
+  return node != null && node.typeId === 453;
 }
 export function isGlobalQualification(node) {
-  return node != null && node.typeId === 466;
+  return node != null && node.typeId === 454;
 }
 export function isQualification(node) {
-  return node != null && node.typeId === 467;
+  return node != null && node.typeId === 455;
 }
 export function isQualifiedName(node) {
-  return node != null && node.typeId === 468;
+  return node != null && node.typeId === 456;
 }
 export function isMetaClassificationTestOperator(node) {
-  return node != null && node.typeId === 641;
+  return node != null && node.typeId === 629;
 }
 export function isCastOperator(node) {
-  return node != null && node.typeId === 642;
+  return node != null && node.typeId === 630;
 }
 export function isMetaCastOperator(node) {
-  return node != null && node.typeId === 643;
+  return node != null && node.typeId === 631;
 }
 export function isLiteralInfinity(node) {
-  return node != null && node.typeId === 678;
+  return node != null && node.typeId === 666;
 }
 export function isDECIMALVALUE(node) {
-  return node != null && node.typeId === 683;
+  return node != null && node.typeId === 671;
 }
 export function isEXPVALUE(node) {
-  return node != null && node.typeId === 684;
+  return node != null && node.typeId === 672;
 }
 export function isID(node) {
-  return node != null && node.typeId === 685;
+  return node != null && node.typeId === 673;
 }
 export function isUNRESTRICTEDNAME(node) {
-  return node != null && node.typeId === 686;
+  return node != null && node.typeId === 674;
 }
 export function isSTRINGVALUE(node) {
-  return node != null && node.typeId === 687;
+  return node != null && node.typeId === 675;
 }
 export function isREGULARCOMMENT(node) {
-  return node != null && node.typeId === 688;
+  return node != null && node.typeId === 676;
 }
 export function isMLNOTE(node) {
-  return node != null && node.typeId === 689;
+  return node != null && node.typeId === 677;
 }
 export function isSLNOTE(node) {
-  return node != null && node.typeId === 690;
+  return node != null && node.typeId === 678;
 }
 export const Cst = {
   kind: cstKind,
   normalize: normalizeToken,
   RootNamespace: {
-    typeId: 189,
+    typeId: 177,
     type: "RootNamespace",
-    is(node) { return node != null && node.typeId === 189; },
+    is(node) { return node != null && node.typeId === 177; },
   },
   VisibilityIndicator: {
-    typeId: 193,
+    typeId: 181,
     type: "VisibilityIndicator",
-    is(node) { return node != null && node.typeId === 193; },
+    is(node) { return node != null && node.typeId === 181; },
   },
   Dependency: {
-    typeId: 194,
+    typeId: 182,
     type: "Dependency",
-    is(node) { return node != null && node.typeId === 194; },
+    is(node) { return node != null && node.typeId === 182; },
     client(node) {
       return node ? (node.childForFieldId(3) || node.childForFieldName("client")) : null;
     },
@@ -6762,9 +6762,9 @@ export const Cst = {
     },
   },
   Annotation: {
-    typeId: 195,
+    typeId: 183,
     type: "Annotation",
-    is(node) { return node != null && node.typeId === 195; },
+    is(node) { return node != null && node.typeId === 183; },
     annotatedElement(node) {
       return node ? (node.childForFieldId(5) || node.childForFieldName("annotatedElement")) : null;
     },
@@ -6773,9 +6773,9 @@ export const Cst = {
     },
   },
   OwnedAnnotation: {
-    typeId: 196,
+    typeId: 184,
     type: "OwnedAnnotation",
-    is(node) { return node != null && node.typeId === 196; },
+    is(node) { return node != null && node.typeId === 184; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -6784,9 +6784,9 @@ export const Cst = {
     },
   },
   AnnotatingMember: {
-    typeId: 197,
+    typeId: 185,
     type: "AnnotatingMember",
-    is(node) { return node != null && node.typeId === 197; },
+    is(node) { return node != null && node.typeId === 185; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -6795,9 +6795,9 @@ export const Cst = {
     },
   },
   Comment: {
-    typeId: 199,
+    typeId: 187,
     type: "Comment",
-    is(node) { return node != null && node.typeId === 199; },
+    is(node) { return node != null && node.typeId === 187; },
     body(node) {
       return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
     },
@@ -6824,9 +6824,9 @@ export const Cst = {
     },
   },
   Documentation: {
-    typeId: 200,
+    typeId: 188,
     type: "Documentation",
-    is(node) { return node != null && node.typeId === 200; },
+    is(node) { return node != null && node.typeId === 188; },
     body(node) {
       return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
     },
@@ -6853,9 +6853,9 @@ export const Cst = {
     },
   },
   TextualRepresentation: {
-    typeId: 201,
+    typeId: 189,
     type: "TextualRepresentation",
-    is(node) { return node != null && node.typeId === 201; },
+    is(node) { return node != null && node.typeId === 189; },
     language(node) {
       return node ? (node.childForFieldId(9) || node.childForFieldName("language")) : null;
     },
@@ -6882,9 +6882,9 @@ export const Cst = {
     },
   },
   PrefixMetadataAnnotation: {
-    typeId: 202,
+    typeId: 190,
     type: "PrefixMetadataAnnotation",
-    is(node) { return node != null && node.typeId === 202; },
+    is(node) { return node != null && node.typeId === 190; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -6893,9 +6893,9 @@ export const Cst = {
     },
   },
   PrefixMetadataMember: {
-    typeId: 203,
+    typeId: 191,
     type: "PrefixMetadataMember",
-    is(node) { return node != null && node.typeId === 203; },
+    is(node) { return node != null && node.typeId === 191; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -6904,9 +6904,9 @@ export const Cst = {
     },
   },
   PrefixMetadataUsage: {
-    typeId: 204,
+    typeId: 192,
     type: "PrefixMetadataUsage",
-    is(node) { return node != null && node.typeId === 204; },
+    is(node) { return node != null && node.typeId === 192; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -6915,9 +6915,9 @@ export const Cst = {
     },
   },
   MetadataUsage: {
-    typeId: 205,
+    typeId: 193,
     type: "MetadataUsage",
-    is(node) { return node != null && node.typeId === 205; },
+    is(node) { return node != null && node.typeId === 193; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -6938,9 +6938,9 @@ export const Cst = {
     },
   },
   MetadataTyping: {
-    typeId: 206,
+    typeId: 194,
     type: "MetadataTyping",
-    is(node) { return node != null && node.typeId === 206; },
+    is(node) { return node != null && node.typeId === 194; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -6949,9 +6949,9 @@ export const Cst = {
     },
   },
   MetadataBodyUsageMember: {
-    typeId: 208,
+    typeId: 196,
     type: "MetadataBodyUsageMember",
-    is(node) { return node != null && node.typeId === 208; },
+    is(node) { return node != null && node.typeId === 196; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -6960,9 +6960,9 @@ export const Cst = {
     },
   },
   MetadataBodyUsage: {
-    typeId: 209,
+    typeId: 197,
     type: "MetadataBodyUsage",
-    is(node) { return node != null && node.typeId === 209; },
+    is(node) { return node != null && node.typeId === 197; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -6983,9 +6983,9 @@ export const Cst = {
     },
   },
   MetadataDefinition: {
-    typeId: 210,
+    typeId: 198,
     type: "MetadataDefinition",
-    is(node) { return node != null && node.typeId === 210; },
+    is(node) { return node != null && node.typeId === 198; },
     isEnd(node) {
       return node ? (node.childForFieldId(24) || node.childForFieldName("isEnd")) : null;
     },
@@ -7054,9 +7054,9 @@ export const Cst = {
     },
   },
   Package: {
-    typeId: 211,
+    typeId: 199,
     type: "Package",
-    is(node) { return node != null && node.typeId === 211; },
+    is(node) { return node != null && node.typeId === 199; },
     body(node) {
       return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
     },
@@ -7131,9 +7131,9 @@ export const Cst = {
     },
   },
   LibraryPackage: {
-    typeId: 212,
+    typeId: 200,
     type: "LibraryPackage",
-    is(node) { return node != null && node.typeId === 212; },
+    is(node) { return node != null && node.typeId === 200; },
     body(node) {
       return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
     },
@@ -7214,9 +7214,9 @@ export const Cst = {
     },
   },
   PackageMember: {
-    typeId: 214,
+    typeId: 202,
     type: "PackageMember",
-    is(node) { return node != null && node.typeId === 214; },
+    is(node) { return node != null && node.typeId === 202; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7225,9 +7225,9 @@ export const Cst = {
     },
   },
   ElementFilterMember: {
-    typeId: 215,
+    typeId: 203,
     type: "ElementFilterMember",
-    is(node) { return node != null && node.typeId === 215; },
+    is(node) { return node != null && node.typeId === 203; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7236,9 +7236,9 @@ export const Cst = {
     },
   },
   AliasMember: {
-    typeId: 216,
+    typeId: 204,
     type: "AliasMember",
-    is(node) { return node != null && node.typeId === 216; },
+    is(node) { return node != null && node.typeId === 204; },
     memberElement(node) {
       return node ? (node.childForFieldId(14) || node.childForFieldName("memberElement")) : null;
     },
@@ -7259,14 +7259,14 @@ export const Cst = {
     },
   },
   Import: {
-    typeId: 218,
+    typeId: 206,
     type: "Import",
-    is(node) { return node != null && node.typeId === 218; },
+    is(node) { return node != null && node.typeId === 206; },
   },
   MembershipImport: {
-    typeId: 219,
+    typeId: 207,
     type: "MembershipImport",
-    is(node) { return node != null && node.typeId === 219; },
+    is(node) { return node != null && node.typeId === 207; },
     isImportAll(node) {
       return node ? (node.childForFieldId(15) || node.childForFieldName("isImportAll")) : null;
     },
@@ -7287,9 +7287,9 @@ export const Cst = {
     },
   },
   NamespaceImport: {
-    typeId: 221,
+    typeId: 209,
     type: "NamespaceImport",
-    is(node) { return node != null && node.typeId === 221; },
+    is(node) { return node != null && node.typeId === 209; },
     isImportAll(node) {
       return node ? (node.childForFieldId(15) || node.childForFieldName("isImportAll")) : null;
     },
@@ -7316,19 +7316,19 @@ export const Cst = {
     },
   },
   FilterPackage: {
-    typeId: 223,
+    typeId: 211,
     type: "FilterPackage",
-    is(node) { return node != null && node.typeId === 223; },
+    is(node) { return node != null && node.typeId === 211; },
   },
   FilterPackageImport: {
-    typeId: 224,
+    typeId: 212,
     type: "FilterPackageImport",
-    is(node) { return node != null && node.typeId === 224; },
+    is(node) { return node != null && node.typeId === 212; },
   },
   FilterPackageMembershipImport: {
-    typeId: 225,
+    typeId: 213,
     type: "FilterPackageMembershipImport",
-    is(node) { return node != null && node.typeId === 225; },
+    is(node) { return node != null && node.typeId === 213; },
     importedMembership(node) {
       return node ? (node.childForFieldId(16) || node.childForFieldName("importedMembership")) : null;
     },
@@ -7343,9 +7343,9 @@ export const Cst = {
     },
   },
   FilterPackageNamespaceImport: {
-    typeId: 226,
+    typeId: 214,
     type: "FilterPackageNamespaceImport",
-    is(node) { return node != null && node.typeId === 226; },
+    is(node) { return node != null && node.typeId === 214; },
     importedNamespace(node) {
       return node ? (node.childForFieldId(18) || node.childForFieldName("importedNamespace")) : null;
     },
@@ -7360,9 +7360,9 @@ export const Cst = {
     },
   },
   FilterPackageMember: {
-    typeId: 227,
+    typeId: 215,
     type: "FilterPackageMember",
-    is(node) { return node != null && node.typeId === 227; },
+    is(node) { return node != null && node.typeId === 215; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7371,9 +7371,9 @@ export const Cst = {
     },
   },
   OwnedSubclassification: {
-    typeId: 235,
+    typeId: 223,
     type: "OwnedSubclassification",
-    is(node) { return node != null && node.typeId === 235; },
+    is(node) { return node != null && node.typeId === 223; },
     superclassifier(node) {
       return node ? (node.childForFieldId(19) || node.childForFieldName("superclassifier")) : null;
     },
@@ -7382,14 +7382,14 @@ export const Cst = {
     },
   },
   FeatureTyping: {
-    typeId: 245,
+    typeId: 233,
     type: "FeatureTyping",
-    is(node) { return node != null && node.typeId === 245; },
+    is(node) { return node != null && node.typeId === 233; },
   },
   OwnedFeatureTyping: {
-    typeId: 246,
+    typeId: 234,
     type: "OwnedFeatureTyping",
-    is(node) { return node != null && node.typeId === 246; },
+    is(node) { return node != null && node.typeId === 234; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -7404,9 +7404,9 @@ export const Cst = {
     },
   },
   OwnedSubsetting: {
-    typeId: 247,
+    typeId: 235,
     type: "OwnedSubsetting",
-    is(node) { return node != null && node.typeId === 247; },
+    is(node) { return node != null && node.typeId === 235; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -7421,9 +7421,9 @@ export const Cst = {
     },
   },
   OwnedReferenceSubsetting: {
-    typeId: 248,
+    typeId: 236,
     type: "OwnedReferenceSubsetting",
-    is(node) { return node != null && node.typeId === 248; },
+    is(node) { return node != null && node.typeId === 236; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -7438,9 +7438,9 @@ export const Cst = {
     },
   },
   OwnedCrossSubsetting: {
-    typeId: 249,
+    typeId: 237,
     type: "OwnedCrossSubsetting",
-    is(node) { return node != null && node.typeId === 249; },
+    is(node) { return node != null && node.typeId === 237; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -7455,9 +7455,9 @@ export const Cst = {
     },
   },
   OwnedRedefinition: {
-    typeId: 250,
+    typeId: 238,
     type: "OwnedRedefinition",
-    is(node) { return node != null && node.typeId === 250; },
+    is(node) { return node != null && node.typeId === 238; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -7472,9 +7472,9 @@ export const Cst = {
     },
   },
   OwnedMultiplicity: {
-    typeId: 251,
+    typeId: 239,
     type: "OwnedMultiplicity",
-    is(node) { return node != null && node.typeId === 251; },
+    is(node) { return node != null && node.typeId === 239; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7483,9 +7483,9 @@ export const Cst = {
     },
   },
   MultiplicityRange: {
-    typeId: 252,
+    typeId: 240,
     type: "MultiplicityRange",
-    is(node) { return node != null && node.typeId === 252; },
+    is(node) { return node != null && node.typeId === 240; },
     lowerBound(node) {
       return node ? (node.childForFieldId(22) || node.childForFieldName("lowerBound")) : null;
     },
@@ -7500,9 +7500,9 @@ export const Cst = {
     },
   },
   MultiplicityExpressionMember: {
-    typeId: 253,
+    typeId: 241,
     type: "MultiplicityExpressionMember",
-    is(node) { return node != null && node.typeId === 253; },
+    is(node) { return node != null && node.typeId === 241; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7511,9 +7511,9 @@ export const Cst = {
     },
   },
   DefinitionMember: {
-    typeId: 257,
+    typeId: 245,
     type: "DefinitionMember",
-    is(node) { return node != null && node.typeId === 257; },
+    is(node) { return node != null && node.typeId === 245; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7522,9 +7522,9 @@ export const Cst = {
     },
   },
   VariantUsageMember: {
-    typeId: 258,
+    typeId: 246,
     type: "VariantUsageMember",
-    is(node) { return node != null && node.typeId === 258; },
+    is(node) { return node != null && node.typeId === 246; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7533,9 +7533,9 @@ export const Cst = {
     },
   },
   NonOccurrenceUsageMember: {
-    typeId: 259,
+    typeId: 247,
     type: "NonOccurrenceUsageMember",
-    is(node) { return node != null && node.typeId === 259; },
+    is(node) { return node != null && node.typeId === 247; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7544,9 +7544,9 @@ export const Cst = {
     },
   },
   OccurrenceUsageMember: {
-    typeId: 260,
+    typeId: 248,
     type: "OccurrenceUsageMember",
-    is(node) { return node != null && node.typeId === 260; },
+    is(node) { return node != null && node.typeId === 248; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7555,9 +7555,9 @@ export const Cst = {
     },
   },
   FeatureValue: {
-    typeId: 266,
+    typeId: 254,
     type: "FeatureValue",
-    is(node) { return node != null && node.typeId === 266; },
+    is(node) { return node != null && node.typeId === 254; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7578,9 +7578,9 @@ export const Cst = {
     },
   },
   DefaultReferenceUsage: {
-    typeId: 267,
+    typeId: 255,
     type: "DefaultReferenceUsage",
-    is(node) { return node != null && node.typeId === 267; },
+    is(node) { return node != null && node.typeId === 255; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -7661,9 +7661,9 @@ export const Cst = {
     },
   },
   ReferenceUsage: {
-    typeId: 268,
+    typeId: 256,
     type: "ReferenceUsage",
-    is(node) { return node != null && node.typeId === 268; },
+    is(node) { return node != null && node.typeId === 256; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -7744,9 +7744,9 @@ export const Cst = {
     },
   },
   AttributeDefinition: {
-    typeId: 269,
+    typeId: 257,
     type: "AttributeDefinition",
-    is(node) { return node != null && node.typeId === 269; },
+    is(node) { return node != null && node.typeId === 257; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -7815,9 +7815,9 @@ export const Cst = {
     },
   },
   AttributeUsage: {
-    typeId: 270,
+    typeId: 258,
     type: "AttributeUsage",
-    is(node) { return node != null && node.typeId === 270; },
+    is(node) { return node != null && node.typeId === 258; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -7898,9 +7898,9 @@ export const Cst = {
     },
   },
   EnumerationDefinition: {
-    typeId: 271,
+    typeId: 259,
     type: "EnumerationDefinition",
-    is(node) { return node != null && node.typeId === 271; },
+    is(node) { return node != null && node.typeId === 259; },
     body(node) {
       return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
     },
@@ -7975,9 +7975,9 @@ export const Cst = {
     },
   },
   EnumerationUsageMember: {
-    typeId: 273,
+    typeId: 261,
     type: "EnumerationUsageMember",
-    is(node) { return node != null && node.typeId === 273; },
+    is(node) { return node != null && node.typeId === 261; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -7986,9 +7986,9 @@ export const Cst = {
     },
   },
   EnumeratedValue: {
-    typeId: 274,
+    typeId: 262,
     type: "EnumeratedValue",
-    is(node) { return node != null && node.typeId === 274; },
+    is(node) { return node != null && node.typeId === 262; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8069,9 +8069,9 @@ export const Cst = {
     },
   },
   EnumerationUsage: {
-    typeId: 275,
+    typeId: 263,
     type: "EnumerationUsage",
-    is(node) { return node != null && node.typeId === 275; },
+    is(node) { return node != null && node.typeId === 263; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8152,9 +8152,9 @@ export const Cst = {
     },
   },
   OccurrenceDefinition: {
-    typeId: 276,
+    typeId: 264,
     type: "OccurrenceDefinition",
-    is(node) { return node != null && node.typeId === 276; },
+    is(node) { return node != null && node.typeId === 264; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8223,9 +8223,9 @@ export const Cst = {
     },
   },
   OccurrenceUsage: {
-    typeId: 277,
+    typeId: 265,
     type: "OccurrenceUsage",
-    is(node) { return node != null && node.typeId === 277; },
+    is(node) { return node != null && node.typeId === 265; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8306,9 +8306,9 @@ export const Cst = {
     },
   },
   ItemDefinition: {
-    typeId: 278,
+    typeId: 266,
     type: "ItemDefinition",
-    is(node) { return node != null && node.typeId === 278; },
+    is(node) { return node != null && node.typeId === 266; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8377,9 +8377,9 @@ export const Cst = {
     },
   },
   ItemUsage: {
-    typeId: 279,
+    typeId: 267,
     type: "ItemUsage",
-    is(node) { return node != null && node.typeId === 279; },
+    is(node) { return node != null && node.typeId === 267; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8460,9 +8460,9 @@ export const Cst = {
     },
   },
   PartDefinition: {
-    typeId: 280,
+    typeId: 268,
     type: "PartDefinition",
-    is(node) { return node != null && node.typeId === 280; },
+    is(node) { return node != null && node.typeId === 268; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8531,9 +8531,9 @@ export const Cst = {
     },
   },
   PartUsage: {
-    typeId: 281,
+    typeId: 269,
     type: "PartUsage",
-    is(node) { return node != null && node.typeId === 281; },
+    is(node) { return node != null && node.typeId === 269; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8614,9 +8614,9 @@ export const Cst = {
     },
   },
   PortDefinition: {
-    typeId: 282,
+    typeId: 270,
     type: "PortDefinition",
-    is(node) { return node != null && node.typeId === 282; },
+    is(node) { return node != null && node.typeId === 270; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8685,9 +8685,9 @@ export const Cst = {
     },
   },
   PortUsage: {
-    typeId: 283,
+    typeId: 271,
     type: "PortUsage",
-    is(node) { return node != null && node.typeId === 283; },
+    is(node) { return node != null && node.typeId === 271; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8768,9 +8768,9 @@ export const Cst = {
     },
   },
   ConjugatedPortTyping: {
-    typeId: 284,
+    typeId: 272,
     type: "ConjugatedPortTyping",
-    is(node) { return node != null && node.typeId === 284; },
+    is(node) { return node != null && node.typeId === 272; },
     conjugatedPortDefinition(node) {
       return node ? (node.childForFieldId(35) || node.childForFieldName("conjugatedPortDefinition")) : null;
     },
@@ -8779,9 +8779,9 @@ export const Cst = {
     },
   },
   ConnectorEndMember: {
-    typeId: 285,
+    typeId: 273,
     type: "ConnectorEndMember",
-    is(node) { return node != null && node.typeId === 285; },
+    is(node) { return node != null && node.typeId === 273; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -8790,9 +8790,9 @@ export const Cst = {
     },
   },
   ConnectorEnd: {
-    typeId: 286,
+    typeId: 274,
     type: "ConnectorEnd",
-    is(node) { return node != null && node.typeId === 286; },
+    is(node) { return node != null && node.typeId === 274; },
     declaredName(node) {
       return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
     },
@@ -8801,9 +8801,9 @@ export const Cst = {
     },
   },
   ConnectionDefinition: {
-    typeId: 287,
+    typeId: 275,
     type: "ConnectionDefinition",
-    is(node) { return node != null && node.typeId === 287; },
+    is(node) { return node != null && node.typeId === 275; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8872,9 +8872,9 @@ export const Cst = {
     },
   },
   ConnectionUsage: {
-    typeId: 288,
+    typeId: 276,
     type: "ConnectionUsage",
-    is(node) { return node != null && node.typeId === 288; },
+    is(node) { return node != null && node.typeId === 276; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -8955,9 +8955,9 @@ export const Cst = {
     },
   },
   BindingConnectorAsUsage: {
-    typeId: 292,
+    typeId: 280,
     type: "BindingConnectorAsUsage",
-    is(node) { return node != null && node.typeId === 292; },
+    is(node) { return node != null && node.typeId === 280; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9038,9 +9038,9 @@ export const Cst = {
     },
   },
   SuccessionAsUsage: {
-    typeId: 293,
+    typeId: 281,
     type: "SuccessionAsUsage",
-    is(node) { return node != null && node.typeId === 293; },
+    is(node) { return node != null && node.typeId === 281; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9127,9 +9127,9 @@ export const Cst = {
     },
   },
   InterfaceDefinition: {
-    typeId: 294,
+    typeId: 282,
     type: "InterfaceDefinition",
-    is(node) { return node != null && node.typeId === 294; },
+    is(node) { return node != null && node.typeId === 282; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9198,9 +9198,9 @@ export const Cst = {
     },
   },
   InterfaceUsage: {
-    typeId: 295,
+    typeId: 283,
     type: "InterfaceUsage",
-    is(node) { return node != null && node.typeId === 295; },
+    is(node) { return node != null && node.typeId === 283; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9281,9 +9281,9 @@ export const Cst = {
     },
   },
   AllocationDefinition: {
-    typeId: 296,
+    typeId: 284,
     type: "AllocationDefinition",
-    is(node) { return node != null && node.typeId === 296; },
+    is(node) { return node != null && node.typeId === 284; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9352,9 +9352,9 @@ export const Cst = {
     },
   },
   AllocationUsage: {
-    typeId: 297,
+    typeId: 285,
     type: "AllocationUsage",
-    is(node) { return node != null && node.typeId === 297; },
+    is(node) { return node != null && node.typeId === 285; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9435,9 +9435,9 @@ export const Cst = {
     },
   },
   FlowDefinition: {
-    typeId: 298,
+    typeId: 286,
     type: "FlowDefinition",
-    is(node) { return node != null && node.typeId === 298; },
+    is(node) { return node != null && node.typeId === 286; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9506,9 +9506,9 @@ export const Cst = {
     },
   },
   FlowUsage: {
-    typeId: 299,
+    typeId: 287,
     type: "FlowUsage",
-    is(node) { return node != null && node.typeId === 299; },
+    is(node) { return node != null && node.typeId === 287; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9589,9 +9589,9 @@ export const Cst = {
     },
   },
   SuccessionFlowUsage: {
-    typeId: 300,
+    typeId: 288,
     type: "SuccessionFlowUsage",
-    is(node) { return node != null && node.typeId === 300; },
+    is(node) { return node != null && node.typeId === 288; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9672,9 +9672,9 @@ export const Cst = {
     },
   },
   PayloadFeatureMember: {
-    typeId: 301,
+    typeId: 289,
     type: "PayloadFeatureMember",
-    is(node) { return node != null && node.typeId === 301; },
+    is(node) { return node != null && node.typeId === 289; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -9683,9 +9683,9 @@ export const Cst = {
     },
   },
   PayloadFeature: {
-    typeId: 302,
+    typeId: 290,
     type: "PayloadFeature",
-    is(node) { return node != null && node.typeId === 302; },
+    is(node) { return node != null && node.typeId === 290; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9712,9 +9712,9 @@ export const Cst = {
     },
   },
   FlowEndMember: {
-    typeId: 303,
+    typeId: 291,
     type: "FlowEndMember",
-    is(node) { return node != null && node.typeId === 303; },
+    is(node) { return node != null && node.typeId === 291; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -9723,9 +9723,9 @@ export const Cst = {
     },
   },
   FlowEnd: {
-    typeId: 304,
+    typeId: 292,
     type: "FlowEnd",
-    is(node) { return node != null && node.typeId === 304; },
+    is(node) { return node != null && node.typeId === 292; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -9734,9 +9734,9 @@ export const Cst = {
     },
   },
   FlowFeatureMember: {
-    typeId: 305,
+    typeId: 293,
     type: "FlowFeatureMember",
-    is(node) { return node != null && node.typeId === 305; },
+    is(node) { return node != null && node.typeId === 293; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -9745,9 +9745,9 @@ export const Cst = {
     },
   },
   FlowFeature: {
-    typeId: 306,
+    typeId: 294,
     type: "FlowFeature",
-    is(node) { return node != null && node.typeId === 306; },
+    is(node) { return node != null && node.typeId === 294; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -9756,9 +9756,9 @@ export const Cst = {
     },
   },
   ActionDefinition: {
-    typeId: 307,
+    typeId: 295,
     type: "ActionDefinition",
-    is(node) { return node != null && node.typeId === 307; },
+    is(node) { return node != null && node.typeId === 295; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9827,9 +9827,9 @@ export const Cst = {
     },
   },
   EmptySuccessionMember: {
-    typeId: 310,
+    typeId: 298,
     type: "EmptySuccessionMember",
-    is(node) { return node != null && node.typeId === 310; },
+    is(node) { return node != null && node.typeId === 298; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -9838,9 +9838,9 @@ export const Cst = {
     },
   },
   MultiplicitySourceEnd: {
-    typeId: 311,
+    typeId: 299,
     type: "MultiplicitySourceEnd",
-    is(node) { return node != null && node.typeId === 311; },
+    is(node) { return node != null && node.typeId === 299; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -9849,9 +9849,9 @@ export const Cst = {
     },
   },
   ActionNodeMember: {
-    typeId: 312,
+    typeId: 300,
     type: "ActionNodeMember",
-    is(node) { return node != null && node.typeId === 312; },
+    is(node) { return node != null && node.typeId === 300; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -9860,9 +9860,9 @@ export const Cst = {
     },
   },
   IfNode: {
-    typeId: 314,
+    typeId: 302,
     type: "IfNode",
-    is(node) { return node != null && node.typeId === 314; },
+    is(node) { return node != null && node.typeId === 302; },
     condition(node) {
       return node ? (node.childForFieldId(37) || node.childForFieldName("condition")) : null;
     },
@@ -9961,9 +9961,9 @@ export const Cst = {
     },
   },
   ActionBodyParameter: {
-    typeId: 315,
+    typeId: 303,
     type: "ActionBodyParameter",
-    is(node) { return node != null && node.typeId === 315; },
+    is(node) { return node != null && node.typeId === 303; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -9990,9 +9990,9 @@ export const Cst = {
     },
   },
   WhileLoopNode: {
-    typeId: 316,
+    typeId: 304,
     type: "WhileLoopNode",
-    is(node) { return node != null && node.typeId === 316; },
+    is(node) { return node != null && node.typeId === 304; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10085,9 +10085,9 @@ export const Cst = {
     },
   },
   ForLoopNode: {
-    typeId: 317,
+    typeId: 305,
     type: "ForLoopNode",
-    is(node) { return node != null && node.typeId === 317; },
+    is(node) { return node != null && node.typeId === 305; },
     variable(node) {
       return node ? (node.childForFieldId(41) || node.childForFieldName("variable")) : null;
     },
@@ -10180,9 +10180,9 @@ export const Cst = {
     },
   },
   ForVariableDeclaration: {
-    typeId: 318,
+    typeId: 306,
     type: "ForVariableDeclaration",
-    is(node) { return node != null && node.typeId === 318; },
+    is(node) { return node != null && node.typeId === 306; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10209,14 +10209,14 @@ export const Cst = {
     },
   },
   ControlNode: {
-    typeId: 319,
+    typeId: 307,
     type: "ControlNode",
-    is(node) { return node != null && node.typeId === 319; },
+    is(node) { return node != null && node.typeId === 307; },
   },
   MergeNode: {
-    typeId: 320,
+    typeId: 308,
     type: "MergeNode",
-    is(node) { return node != null && node.typeId === 320; },
+    is(node) { return node != null && node.typeId === 308; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10297,9 +10297,9 @@ export const Cst = {
     },
   },
   DecisionNode: {
-    typeId: 321,
+    typeId: 309,
     type: "DecisionNode",
-    is(node) { return node != null && node.typeId === 321; },
+    is(node) { return node != null && node.typeId === 309; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10380,9 +10380,9 @@ export const Cst = {
     },
   },
   JoinNode: {
-    typeId: 322,
+    typeId: 310,
     type: "JoinNode",
-    is(node) { return node != null && node.typeId === 322; },
+    is(node) { return node != null && node.typeId === 310; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10463,9 +10463,9 @@ export const Cst = {
     },
   },
   ForkNode: {
-    typeId: 323,
+    typeId: 311,
     type: "ForkNode",
-    is(node) { return node != null && node.typeId === 323; },
+    is(node) { return node != null && node.typeId === 311; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10546,9 +10546,9 @@ export const Cst = {
     },
   },
   ActionUsage: {
-    typeId: 324,
+    typeId: 312,
     type: "ActionUsage",
-    is(node) { return node != null && node.typeId === 324; },
+    is(node) { return node != null && node.typeId === 312; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10629,9 +10629,9 @@ export const Cst = {
     },
   },
   AcceptActionNode: {
-    typeId: 325,
+    typeId: 313,
     type: "AcceptActionNode",
-    is(node) { return node != null && node.typeId === 325; },
+    is(node) { return node != null && node.typeId === 313; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10712,9 +10712,9 @@ export const Cst = {
     },
   },
   SendActionNode: {
-    typeId: 326,
+    typeId: 314,
     type: "SendActionNode",
-    is(node) { return node != null && node.typeId === 326; },
+    is(node) { return node != null && node.typeId === 314; },
     sentItem(node) {
       return node ? (node.childForFieldId(43) || node.childForFieldName("sentItem")) : null;
     },
@@ -10807,9 +10807,9 @@ export const Cst = {
     },
   },
   AssignActionNode: {
-    typeId: 327,
+    typeId: 315,
     type: "AssignActionNode",
-    is(node) { return node != null && node.typeId === 327; },
+    is(node) { return node != null && node.typeId === 315; },
     assignedValue(node) {
       return node ? (node.childForFieldId(45) || node.childForFieldName("assignedValue")) : null;
     },
@@ -10902,9 +10902,9 @@ export const Cst = {
     },
   },
   PerformActionUsage: {
-    typeId: 328,
+    typeId: 316,
     type: "PerformActionUsage",
-    is(node) { return node != null && node.typeId === 328; },
+    is(node) { return node != null && node.typeId === 316; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -10985,9 +10985,9 @@ export const Cst = {
     },
   },
   CalculationDefinition: {
-    typeId: 329,
+    typeId: 317,
     type: "CalculationDefinition",
-    is(node) { return node != null && node.typeId === 329; },
+    is(node) { return node != null && node.typeId === 317; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11056,9 +11056,9 @@ export const Cst = {
     },
   },
   ParameterMember: {
-    typeId: 332,
+    typeId: 320,
     type: "ParameterMember",
-    is(node) { return node != null && node.typeId === 332; },
+    is(node) { return node != null && node.typeId === 320; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -11067,9 +11067,9 @@ export const Cst = {
     },
   },
   ReturnParameterMember: {
-    typeId: 333,
+    typeId: 321,
     type: "ReturnParameterMember",
-    is(node) { return node != null && node.typeId === 333; },
+    is(node) { return node != null && node.typeId === 321; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -11078,9 +11078,9 @@ export const Cst = {
     },
   },
   ResultExpressionMember: {
-    typeId: 334,
+    typeId: 322,
     type: "ResultExpressionMember",
-    is(node) { return node != null && node.typeId === 334; },
+    is(node) { return node != null && node.typeId === 322; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -11089,9 +11089,9 @@ export const Cst = {
     },
   },
   CalculationUsage: {
-    typeId: 335,
+    typeId: 323,
     type: "CalculationUsage",
-    is(node) { return node != null && node.typeId === 335; },
+    is(node) { return node != null && node.typeId === 323; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11172,9 +11172,9 @@ export const Cst = {
     },
   },
   ConstraintDefinition: {
-    typeId: 336,
+    typeId: 324,
     type: "ConstraintDefinition",
-    is(node) { return node != null && node.typeId === 336; },
+    is(node) { return node != null && node.typeId === 324; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11243,9 +11243,9 @@ export const Cst = {
     },
   },
   ConstraintUsage: {
-    typeId: 337,
+    typeId: 325,
     type: "ConstraintUsage",
-    is(node) { return node != null && node.typeId === 337; },
+    is(node) { return node != null && node.typeId === 325; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11326,9 +11326,9 @@ export const Cst = {
     },
   },
   AssertConstraintUsage: {
-    typeId: 338,
+    typeId: 326,
     type: "AssertConstraintUsage",
-    is(node) { return node != null && node.typeId === 338; },
+    is(node) { return node != null && node.typeId === 326; },
     isNegated(node) {
       return node ? (node.childForFieldId(47) || node.childForFieldName("isNegated")) : null;
     },
@@ -11415,9 +11415,9 @@ export const Cst = {
     },
   },
   RequirementDefinition: {
-    typeId: 339,
+    typeId: 327,
     type: "RequirementDefinition",
-    is(node) { return node != null && node.typeId === 339; },
+    is(node) { return node != null && node.typeId === 327; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11486,9 +11486,9 @@ export const Cst = {
     },
   },
   SubjectMember: {
-    typeId: 342,
+    typeId: 330,
     type: "SubjectMember",
-    is(node) { return node != null && node.typeId === 342; },
+    is(node) { return node != null && node.typeId === 330; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -11497,9 +11497,9 @@ export const Cst = {
     },
   },
   SubjectUsage: {
-    typeId: 343,
+    typeId: 331,
     type: "SubjectUsage",
-    is(node) { return node != null && node.typeId === 343; },
+    is(node) { return node != null && node.typeId === 331; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11580,9 +11580,9 @@ export const Cst = {
     },
   },
   RequirementConstraintMember: {
-    typeId: 344,
+    typeId: 332,
     type: "RequirementConstraintMember",
-    is(node) { return node != null && node.typeId === 344; },
+    is(node) { return node != null && node.typeId === 332; },
     constraintKind(node) {
       return node ? (node.childForFieldId(48) || node.childForFieldName("constraintKind")) : null;
     },
@@ -11597,9 +11597,9 @@ export const Cst = {
     },
   },
   RequirementConstraintUsage: {
-    typeId: 345,
+    typeId: 333,
     type: "RequirementConstraintUsage",
-    is(node) { return node != null && node.typeId === 345; },
+    is(node) { return node != null && node.typeId === 333; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11680,9 +11680,9 @@ export const Cst = {
     },
   },
   ActorMember: {
-    typeId: 346,
+    typeId: 334,
     type: "ActorMember",
-    is(node) { return node != null && node.typeId === 346; },
+    is(node) { return node != null && node.typeId === 334; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -11691,9 +11691,9 @@ export const Cst = {
     },
   },
   ActorUsage: {
-    typeId: 347,
+    typeId: 335,
     type: "ActorUsage",
-    is(node) { return node != null && node.typeId === 347; },
+    is(node) { return node != null && node.typeId === 335; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11774,9 +11774,9 @@ export const Cst = {
     },
   },
   StakeholderMember: {
-    typeId: 348,
+    typeId: 336,
     type: "StakeholderMember",
-    is(node) { return node != null && node.typeId === 348; },
+    is(node) { return node != null && node.typeId === 336; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -11785,9 +11785,9 @@ export const Cst = {
     },
   },
   StakeholderUsage: {
-    typeId: 349,
+    typeId: 337,
     type: "StakeholderUsage",
-    is(node) { return node != null && node.typeId === 349; },
+    is(node) { return node != null && node.typeId === 337; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11868,9 +11868,9 @@ export const Cst = {
     },
   },
   RequirementUsage: {
-    typeId: 350,
+    typeId: 338,
     type: "RequirementUsage",
-    is(node) { return node != null && node.typeId === 350; },
+    is(node) { return node != null && node.typeId === 338; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -11951,9 +11951,9 @@ export const Cst = {
     },
   },
   SatisfyRequirementUsage: {
-    typeId: 351,
+    typeId: 339,
     type: "SatisfyRequirementUsage",
-    is(node) { return node != null && node.typeId === 351; },
+    is(node) { return node != null && node.typeId === 339; },
     isNegated(node) {
       return node ? (node.childForFieldId(47) || node.childForFieldName("isNegated")) : null;
     },
@@ -12046,9 +12046,9 @@ export const Cst = {
     },
   },
   ConcernDefinition: {
-    typeId: 352,
+    typeId: 340,
     type: "ConcernDefinition",
-    is(node) { return node != null && node.typeId === 352; },
+    is(node) { return node != null && node.typeId === 340; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12117,9 +12117,9 @@ export const Cst = {
     },
   },
   ConcernUsage: {
-    typeId: 353,
+    typeId: 341,
     type: "ConcernUsage",
-    is(node) { return node != null && node.typeId === 353; },
+    is(node) { return node != null && node.typeId === 341; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12200,9 +12200,9 @@ export const Cst = {
     },
   },
   CaseDefinition: {
-    typeId: 354,
+    typeId: 342,
     type: "CaseDefinition",
-    is(node) { return node != null && node.typeId === 354; },
+    is(node) { return node != null && node.typeId === 342; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12271,9 +12271,9 @@ export const Cst = {
     },
   },
   CaseUsage: {
-    typeId: 356,
+    typeId: 344,
     type: "CaseUsage",
-    is(node) { return node != null && node.typeId === 356; },
+    is(node) { return node != null && node.typeId === 344; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12354,9 +12354,9 @@ export const Cst = {
     },
   },
   AnalysisCaseDefinition: {
-    typeId: 357,
+    typeId: 345,
     type: "AnalysisCaseDefinition",
-    is(node) { return node != null && node.typeId === 357; },
+    is(node) { return node != null && node.typeId === 345; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12425,9 +12425,9 @@ export const Cst = {
     },
   },
   AnalysisCaseUsage: {
-    typeId: 358,
+    typeId: 346,
     type: "AnalysisCaseUsage",
-    is(node) { return node != null && node.typeId === 358; },
+    is(node) { return node != null && node.typeId === 346; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12508,9 +12508,9 @@ export const Cst = {
     },
   },
   VerificationCaseDefinition: {
-    typeId: 359,
+    typeId: 347,
     type: "VerificationCaseDefinition",
-    is(node) { return node != null && node.typeId === 359; },
+    is(node) { return node != null && node.typeId === 347; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12579,9 +12579,9 @@ export const Cst = {
     },
   },
   VerificationCaseUsage: {
-    typeId: 360,
+    typeId: 348,
     type: "VerificationCaseUsage",
-    is(node) { return node != null && node.typeId === 360; },
+    is(node) { return node != null && node.typeId === 348; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12662,9 +12662,9 @@ export const Cst = {
     },
   },
   VerifyRequirementUsageMember: {
-    typeId: 363,
+    typeId: 351,
     type: "VerifyRequirementUsageMember",
-    is(node) { return node != null && node.typeId === 363; },
+    is(node) { return node != null && node.typeId === 351; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -12673,9 +12673,9 @@ export const Cst = {
     },
   },
   VerifyRequirementUsage: {
-    typeId: 364,
+    typeId: 352,
     type: "VerifyRequirementUsage",
-    is(node) { return node != null && node.typeId === 364; },
+    is(node) { return node != null && node.typeId === 352; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12756,9 +12756,9 @@ export const Cst = {
     },
   },
   ObjectiveMember: {
-    typeId: 365,
+    typeId: 353,
     type: "ObjectiveMember",
-    is(node) { return node != null && node.typeId === 365; },
+    is(node) { return node != null && node.typeId === 353; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -12767,9 +12767,9 @@ export const Cst = {
     },
   },
   ObjectiveRequirementUsage: {
-    typeId: 366,
+    typeId: 354,
     type: "ObjectiveRequirementUsage",
-    is(node) { return node != null && node.typeId === 366; },
+    is(node) { return node != null && node.typeId === 354; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12850,9 +12850,9 @@ export const Cst = {
     },
   },
   UseCaseDefinition: {
-    typeId: 367,
+    typeId: 355,
     type: "UseCaseDefinition",
-    is(node) { return node != null && node.typeId === 367; },
+    is(node) { return node != null && node.typeId === 355; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -12921,9 +12921,9 @@ export const Cst = {
     },
   },
   UseCaseUsage: {
-    typeId: 368,
+    typeId: 356,
     type: "UseCaseUsage",
-    is(node) { return node != null && node.typeId === 368; },
+    is(node) { return node != null && node.typeId === 356; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13004,9 +13004,9 @@ export const Cst = {
     },
   },
   IncludeUseCaseUsage: {
-    typeId: 369,
+    typeId: 357,
     type: "IncludeUseCaseUsage",
-    is(node) { return node != null && node.typeId === 369; },
+    is(node) { return node != null && node.typeId === 357; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13087,9 +13087,9 @@ export const Cst = {
     },
   },
   StateDefinition: {
-    typeId: 370,
+    typeId: 358,
     type: "StateDefinition",
-    is(node) { return node != null && node.typeId === 370; },
+    is(node) { return node != null && node.typeId === 358; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13164,9 +13164,9 @@ export const Cst = {
     },
   },
   EntryActionMember: {
-    typeId: 372,
+    typeId: 360,
     type: "EntryActionMember",
-    is(node) { return node != null && node.typeId === 372; },
+    is(node) { return node != null && node.typeId === 360; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -13175,9 +13175,9 @@ export const Cst = {
     },
   },
   DoActionMember: {
-    typeId: 373,
+    typeId: 361,
     type: "DoActionMember",
-    is(node) { return node != null && node.typeId === 373; },
+    is(node) { return node != null && node.typeId === 361; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -13186,9 +13186,9 @@ export const Cst = {
     },
   },
   ExitActionMember: {
-    typeId: 374,
+    typeId: 362,
     type: "ExitActionMember",
-    is(node) { return node != null && node.typeId === 374; },
+    is(node) { return node != null && node.typeId === 362; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -13197,9 +13197,9 @@ export const Cst = {
     },
   },
   StateActionUsage: {
-    typeId: 375,
+    typeId: 363,
     type: "StateActionUsage",
-    is(node) { return node != null && node.typeId === 375; },
+    is(node) { return node != null && node.typeId === 363; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13226,9 +13226,9 @@ export const Cst = {
     },
   },
   StateUsage: {
-    typeId: 376,
+    typeId: 364,
     type: "StateUsage",
-    is(node) { return node != null && node.typeId === 376; },
+    is(node) { return node != null && node.typeId === 364; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13315,9 +13315,9 @@ export const Cst = {
     },
   },
   ExhibitStateUsage: {
-    typeId: 377,
+    typeId: 365,
     type: "ExhibitStateUsage",
-    is(node) { return node != null && node.typeId === 377; },
+    is(node) { return node != null && node.typeId === 365; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13404,9 +13404,9 @@ export const Cst = {
     },
   },
   TransitionUsageMember: {
-    typeId: 378,
+    typeId: 366,
     type: "TransitionUsageMember",
-    is(node) { return node != null && node.typeId === 378; },
+    is(node) { return node != null && node.typeId === 366; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -13415,9 +13415,9 @@ export const Cst = {
     },
   },
   TransitionUsage: {
-    typeId: 379,
+    typeId: 367,
     type: "TransitionUsage",
-    is(node) { return node != null && node.typeId === 379; },
+    is(node) { return node != null && node.typeId === 367; },
     source(node) {
       return node ? (node.childForFieldId(51) || node.childForFieldName("source")) : null;
     },
@@ -13468,9 +13468,9 @@ export const Cst = {
     },
   },
   ViewDefinition: {
-    typeId: 380,
+    typeId: 368,
     type: "ViewDefinition",
-    is(node) { return node != null && node.typeId === 380; },
+    is(node) { return node != null && node.typeId === 368; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13539,9 +13539,9 @@ export const Cst = {
     },
   },
   ViewUsage: {
-    typeId: 381,
+    typeId: 369,
     type: "ViewUsage",
-    is(node) { return node != null && node.typeId === 381; },
+    is(node) { return node != null && node.typeId === 369; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13622,9 +13622,9 @@ export const Cst = {
     },
   },
   ViewpointDefinition: {
-    typeId: 382,
+    typeId: 370,
     type: "ViewpointDefinition",
-    is(node) { return node != null && node.typeId === 382; },
+    is(node) { return node != null && node.typeId === 370; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13693,9 +13693,9 @@ export const Cst = {
     },
   },
   ViewpointUsage: {
-    typeId: 383,
+    typeId: 371,
     type: "ViewpointUsage",
-    is(node) { return node != null && node.typeId === 383; },
+    is(node) { return node != null && node.typeId === 371; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13776,9 +13776,9 @@ export const Cst = {
     },
   },
   RenderingDefinition: {
-    typeId: 384,
+    typeId: 372,
     type: "RenderingDefinition",
-    is(node) { return node != null && node.typeId === 384; },
+    is(node) { return node != null && node.typeId === 372; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13847,9 +13847,9 @@ export const Cst = {
     },
   },
   RenderingUsage: {
-    typeId: 385,
+    typeId: 373,
     type: "RenderingUsage",
-    is(node) { return node != null && node.typeId === 385; },
+    is(node) { return node != null && node.typeId === 373; },
     declaredShortName(node) {
       return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
     },
@@ -13930,9 +13930,9 @@ export const Cst = {
     },
   },
   OwnedExpressionMember: {
-    typeId: 386,
+    typeId: 374,
     type: "OwnedExpressionMember",
-    is(node) { return node != null && node.typeId === 386; },
+    is(node) { return node != null && node.typeId === 374; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -13941,14 +13941,14 @@ export const Cst = {
     },
   },
   OwnedExpression: {
-    typeId: 387,
+    typeId: 375,
     type: "OwnedExpression",
-    is(node) { return node != null && node.typeId === 387; },
+    is(node) { return node != null && node.typeId === 375; },
   },
   OwnedExpressionReference: {
-    typeId: 389,
+    typeId: 377,
     type: "OwnedExpressionReference",
-    is(node) { return node != null && node.typeId === 389; },
+    is(node) { return node != null && node.typeId === 377; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -13957,9 +13957,9 @@ export const Cst = {
     },
   },
   ConditionalExpression: {
-    typeId: 390,
+    typeId: 378,
     type: "ConditionalExpression",
-    is(node) { return node != null && node.typeId === 390; },
+    is(node) { return node != null && node.typeId === 378; },
     operator(node) {
       return node ? (node.childForFieldId(54) || node.childForFieldName("operator")) : null;
     },
@@ -13986,9 +13986,9 @@ export const Cst = {
     },
   },
   NullCoalescingExpression: {
-    typeId: 391,
+    typeId: 379,
     type: "NullCoalescingExpression",
-    is(node) { return node != null && node.typeId === 391; },
+    is(node) { return node != null && node.typeId === 379; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14003,9 +14003,9 @@ export const Cst = {
     },
   },
   ImpliesExpressionReference: {
-    typeId: 392,
+    typeId: 380,
     type: "ImpliesExpressionReference",
-    is(node) { return node != null && node.typeId === 392; },
+    is(node) { return node != null && node.typeId === 380; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14014,9 +14014,9 @@ export const Cst = {
     },
   },
   ImpliesExpressionMember: {
-    typeId: 393,
+    typeId: 381,
     type: "ImpliesExpressionMember",
-    is(node) { return node != null && node.typeId === 393; },
+    is(node) { return node != null && node.typeId === 381; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14025,9 +14025,9 @@ export const Cst = {
     },
   },
   ImpliesExpression: {
-    typeId: 394,
+    typeId: 382,
     type: "ImpliesExpression",
-    is(node) { return node != null && node.typeId === 394; },
+    is(node) { return node != null && node.typeId === 382; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14042,9 +14042,9 @@ export const Cst = {
     },
   },
   OrExpressionReference: {
-    typeId: 395,
+    typeId: 383,
     type: "OrExpressionReference",
-    is(node) { return node != null && node.typeId === 395; },
+    is(node) { return node != null && node.typeId === 383; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14053,9 +14053,9 @@ export const Cst = {
     },
   },
   OrExpressionMember: {
-    typeId: 396,
+    typeId: 384,
     type: "OrExpressionMember",
-    is(node) { return node != null && node.typeId === 396; },
+    is(node) { return node != null && node.typeId === 384; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14064,9 +14064,9 @@ export const Cst = {
     },
   },
   OrExpression: {
-    typeId: 397,
+    typeId: 385,
     type: "OrExpression",
-    is(node) { return node != null && node.typeId === 397; },
+    is(node) { return node != null && node.typeId === 385; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14081,9 +14081,9 @@ export const Cst = {
     },
   },
   XorExpressionReference: {
-    typeId: 398,
+    typeId: 386,
     type: "XorExpressionReference",
-    is(node) { return node != null && node.typeId === 398; },
+    is(node) { return node != null && node.typeId === 386; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14092,9 +14092,9 @@ export const Cst = {
     },
   },
   XorExpressionMember: {
-    typeId: 399,
+    typeId: 387,
     type: "XorExpressionMember",
-    is(node) { return node != null && node.typeId === 399; },
+    is(node) { return node != null && node.typeId === 387; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14103,9 +14103,9 @@ export const Cst = {
     },
   },
   XorExpression: {
-    typeId: 400,
+    typeId: 388,
     type: "XorExpression",
-    is(node) { return node != null && node.typeId === 400; },
+    is(node) { return node != null && node.typeId === 388; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14120,9 +14120,9 @@ export const Cst = {
     },
   },
   AndExpression: {
-    typeId: 401,
+    typeId: 389,
     type: "AndExpression",
-    is(node) { return node != null && node.typeId === 401; },
+    is(node) { return node != null && node.typeId === 389; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14137,9 +14137,9 @@ export const Cst = {
     },
   },
   EqualityExpressionReference: {
-    typeId: 402,
+    typeId: 390,
     type: "EqualityExpressionReference",
-    is(node) { return node != null && node.typeId === 402; },
+    is(node) { return node != null && node.typeId === 390; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14148,9 +14148,9 @@ export const Cst = {
     },
   },
   EqualityExpressionMember: {
-    typeId: 403,
+    typeId: 391,
     type: "EqualityExpressionMember",
-    is(node) { return node != null && node.typeId === 403; },
+    is(node) { return node != null && node.typeId === 391; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14159,9 +14159,9 @@ export const Cst = {
     },
   },
   EqualityExpression: {
-    typeId: 404,
+    typeId: 392,
     type: "EqualityExpression",
-    is(node) { return node != null && node.typeId === 404; },
+    is(node) { return node != null && node.typeId === 392; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14176,14 +14176,14 @@ export const Cst = {
     },
   },
   EqualityOperator: {
-    typeId: 405,
+    typeId: 393,
     type: "EqualityOperator",
-    is(node) { return node != null && node.typeId === 405; },
+    is(node) { return node != null && node.typeId === 393; },
   },
   ClassificationExpression: {
-    typeId: 406,
+    typeId: 394,
     type: "ClassificationExpression",
-    is(node) { return node != null && node.typeId === 406; },
+    is(node) { return node != null && node.typeId === 394; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14210,14 +14210,14 @@ export const Cst = {
     },
   },
   ClassificationTestOperator: {
-    typeId: 407,
+    typeId: 395,
     type: "ClassificationTestOperator",
-    is(node) { return node != null && node.typeId === 407; },
+    is(node) { return node != null && node.typeId === 395; },
   },
   MetadataReference: {
-    typeId: 408,
+    typeId: 396,
     type: "MetadataReference",
-    is(node) { return node != null && node.typeId === 408; },
+    is(node) { return node != null && node.typeId === 396; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14226,9 +14226,9 @@ export const Cst = {
     },
   },
   TypeReferenceMember: {
-    typeId: 409,
+    typeId: 397,
     type: "TypeReferenceMember",
-    is(node) { return node != null && node.typeId === 409; },
+    is(node) { return node != null && node.typeId === 397; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14237,9 +14237,9 @@ export const Cst = {
     },
   },
   TypeResultMember: {
-    typeId: 410,
+    typeId: 398,
     type: "TypeResultMember",
-    is(node) { return node != null && node.typeId === 410; },
+    is(node) { return node != null && node.typeId === 398; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14248,9 +14248,9 @@ export const Cst = {
     },
   },
   TypeReference: {
-    typeId: 411,
+    typeId: 399,
     type: "TypeReference",
-    is(node) { return node != null && node.typeId === 411; },
+    is(node) { return node != null && node.typeId === 399; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14259,9 +14259,9 @@ export const Cst = {
     },
   },
   ReferenceTyping: {
-    typeId: 412,
+    typeId: 400,
     type: "ReferenceTyping",
-    is(node) { return node != null && node.typeId === 412; },
+    is(node) { return node != null && node.typeId === 400; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -14270,9 +14270,9 @@ export const Cst = {
     },
   },
   RelationalExpression: {
-    typeId: 413,
+    typeId: 401,
     type: "RelationalExpression",
-    is(node) { return node != null && node.typeId === 413; },
+    is(node) { return node != null && node.typeId === 401; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14287,14 +14287,14 @@ export const Cst = {
     },
   },
   RelationalOperator: {
-    typeId: 414,
+    typeId: 402,
     type: "RelationalOperator",
-    is(node) { return node != null && node.typeId === 414; },
+    is(node) { return node != null && node.typeId === 402; },
   },
   RangeExpression: {
-    typeId: 415,
+    typeId: 403,
     type: "RangeExpression",
-    is(node) { return node != null && node.typeId === 415; },
+    is(node) { return node != null && node.typeId === 403; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14309,9 +14309,9 @@ export const Cst = {
     },
   },
   AdditiveExpression: {
-    typeId: 416,
+    typeId: 404,
     type: "AdditiveExpression",
-    is(node) { return node != null && node.typeId === 416; },
+    is(node) { return node != null && node.typeId === 404; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14326,14 +14326,14 @@ export const Cst = {
     },
   },
   AdditiveOperator: {
-    typeId: 417,
+    typeId: 405,
     type: "AdditiveOperator",
-    is(node) { return node != null && node.typeId === 417; },
+    is(node) { return node != null && node.typeId === 405; },
   },
   MultiplicativeExpression: {
-    typeId: 418,
+    typeId: 406,
     type: "MultiplicativeExpression",
-    is(node) { return node != null && node.typeId === 418; },
+    is(node) { return node != null && node.typeId === 406; },
     operand(node) {
       return node ? (node.childForFieldId(55) || node.childForFieldName("operand")) : null;
     },
@@ -14348,14 +14348,14 @@ export const Cst = {
     },
   },
   MultiplicativeOperator: {
-    typeId: 419,
+    typeId: 407,
     type: "MultiplicativeOperator",
-    is(node) { return node != null && node.typeId === 419; },
+    is(node) { return node != null && node.typeId === 407; },
   },
   ExponentiationExpression: {
-    typeId: 420,
+    typeId: 408,
     type: "ExponentiationExpression",
-    is(node) { return node != null && node.typeId === 420; },
+    is(node) { return node != null && node.typeId === 408; },
     base(node) {
       return node ? (node.childForFieldId(60) || node.childForFieldName("base")) : null;
     },
@@ -14376,14 +14376,14 @@ export const Cst = {
     },
   },
   ExponentiationOperator: {
-    typeId: 421,
+    typeId: 409,
     type: "ExponentiationOperator",
-    is(node) { return node != null && node.typeId === 421; },
+    is(node) { return node != null && node.typeId === 409; },
   },
   UnaryExpression: {
-    typeId: 422,
+    typeId: 410,
     type: "UnaryExpression",
-    is(node) { return node != null && node.typeId === 422; },
+    is(node) { return node != null && node.typeId === 410; },
     operator(node) {
       return node ? (node.childForFieldId(54) || node.childForFieldName("operator")) : null;
     },
@@ -14398,14 +14398,14 @@ export const Cst = {
     },
   },
   UnaryOperator: {
-    typeId: 423,
+    typeId: 411,
     type: "UnaryOperator",
-    is(node) { return node != null && node.typeId === 423; },
+    is(node) { return node != null && node.typeId === 411; },
   },
   ExtentExpression: {
-    typeId: 424,
+    typeId: 412,
     type: "ExtentExpression",
-    is(node) { return node != null && node.typeId === 424; },
+    is(node) { return node != null && node.typeId === 412; },
     operator(node) {
       return node ? (node.childForFieldId(54) || node.childForFieldName("operator")) : null;
     },
@@ -14420,9 +14420,9 @@ export const Cst = {
     },
   },
   PrimaryExpression: {
-    typeId: 426,
+    typeId: 414,
     type: "PrimaryExpression",
-    is(node) { return node != null && node.typeId === 426; },
+    is(node) { return node != null && node.typeId === 414; },
     base(node) {
       return node ? (node.childForFieldId(60) || node.childForFieldName("base")) : null;
     },
@@ -14497,9 +14497,9 @@ export const Cst = {
     },
   },
   FunctionReferenceExpression: {
-    typeId: 427,
+    typeId: 415,
     type: "FunctionReferenceExpression",
-    is(node) { return node != null && node.typeId === 427; },
+    is(node) { return node != null && node.typeId === 415; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14508,9 +14508,9 @@ export const Cst = {
     },
   },
   FunctionReferenceMember: {
-    typeId: 428,
+    typeId: 416,
     type: "FunctionReferenceMember",
-    is(node) { return node != null && node.typeId === 428; },
+    is(node) { return node != null && node.typeId === 416; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14519,9 +14519,9 @@ export const Cst = {
     },
   },
   FunctionReference: {
-    typeId: 429,
+    typeId: 417,
     type: "FunctionReference",
-    is(node) { return node != null && node.typeId === 429; },
+    is(node) { return node != null && node.typeId === 417; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14530,9 +14530,9 @@ export const Cst = {
     },
   },
   FeatureChainMember: {
-    typeId: 430,
+    typeId: 418,
     type: "FeatureChainMember",
-    is(node) { return node != null && node.typeId === 430; },
+    is(node) { return node != null && node.typeId === 418; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -14547,9 +14547,9 @@ export const Cst = {
     },
   },
   OwnedFeatureChain: {
-    typeId: 431,
+    typeId: 419,
     type: "OwnedFeatureChain",
-    is(node) { return node != null && node.typeId === 431; },
+    is(node) { return node != null && node.typeId === 419; },
     chaining(node) {
       return node ? (node.childForFieldId(70) || node.childForFieldName("chaining")) : null;
     },
@@ -14558,9 +14558,9 @@ export const Cst = {
     },
   },
   BodyExpression: {
-    typeId: 433,
+    typeId: 421,
     type: "BodyExpression",
-    is(node) { return node != null && node.typeId === 433; },
+    is(node) { return node != null && node.typeId === 421; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14569,9 +14569,9 @@ export const Cst = {
     },
   },
   ExpressionBodyMember: {
-    typeId: 434,
+    typeId: 422,
     type: "ExpressionBodyMember",
-    is(node) { return node != null && node.typeId === 434; },
+    is(node) { return node != null && node.typeId === 422; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14580,14 +14580,14 @@ export const Cst = {
     },
   },
   ExpressionBody: {
-    typeId: 435,
+    typeId: 423,
     type: "ExpressionBody",
-    is(node) { return node != null && node.typeId === 435; },
+    is(node) { return node != null && node.typeId === 423; },
   },
   SequenceExpression: {
-    typeId: 436,
+    typeId: 424,
     type: "SequenceExpression",
-    is(node) { return node != null && node.typeId === 436; },
+    is(node) { return node != null && node.typeId === 424; },
     operator(node) {
       return node ? (node.childForFieldId(54) || node.childForFieldName("operator")) : null;
     },
@@ -14602,9 +14602,9 @@ export const Cst = {
     },
   },
   FeatureReferenceExpression: {
-    typeId: 437,
+    typeId: 425,
     type: "FeatureReferenceExpression",
-    is(node) { return node != null && node.typeId === 437; },
+    is(node) { return node != null && node.typeId === 425; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14613,9 +14613,9 @@ export const Cst = {
     },
   },
   FeatureReferenceMember: {
-    typeId: 438,
+    typeId: 426,
     type: "FeatureReferenceMember",
-    is(node) { return node != null && node.typeId === 438; },
+    is(node) { return node != null && node.typeId === 426; },
     memberElement(node) {
       return node ? (node.childForFieldId(14) || node.childForFieldName("memberElement")) : null;
     },
@@ -14624,9 +14624,9 @@ export const Cst = {
     },
   },
   MetadataAccessExpression: {
-    typeId: 439,
+    typeId: 427,
     type: "MetadataAccessExpression",
-    is(node) { return node != null && node.typeId === 439; },
+    is(node) { return node != null && node.typeId === 427; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14635,9 +14635,9 @@ export const Cst = {
     },
   },
   ElementReferenceMember: {
-    typeId: 440,
+    typeId: 428,
     type: "ElementReferenceMember",
-    is(node) { return node != null && node.typeId === 440; },
+    is(node) { return node != null && node.typeId === 428; },
     memberElement(node) {
       return node ? (node.childForFieldId(14) || node.childForFieldName("memberElement")) : null;
     },
@@ -14646,9 +14646,9 @@ export const Cst = {
     },
   },
   InvocationExpression: {
-    typeId: 441,
+    typeId: 429,
     type: "InvocationExpression",
-    is(node) { return node != null && node.typeId === 441; },
+    is(node) { return node != null && node.typeId === 429; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -14669,9 +14669,9 @@ export const Cst = {
     },
   },
   ConstructorExpression: {
-    typeId: 442,
+    typeId: 430,
     type: "ConstructorExpression",
-    is(node) { return node != null && node.typeId === 442; },
+    is(node) { return node != null && node.typeId === 430; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -14686,9 +14686,9 @@ export const Cst = {
     },
   },
   ConstructorResultMember: {
-    typeId: 443,
+    typeId: 431,
     type: "ConstructorResultMember",
-    is(node) { return node != null && node.typeId === 443; },
+    is(node) { return node != null && node.typeId === 431; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14697,9 +14697,9 @@ export const Cst = {
     },
   },
   ConstructorResult: {
-    typeId: 444,
+    typeId: 432,
     type: "ConstructorResult",
-    is(node) { return node != null && node.typeId === 444; },
+    is(node) { return node != null && node.typeId === 432; },
     argument(node) {
       return node ? (node.childForFieldId(72) || node.childForFieldName("argument")) : null;
     },
@@ -14714,9 +14714,9 @@ export const Cst = {
     },
   },
   InstantiatedTypeMember: {
-    typeId: 445,
+    typeId: 433,
     type: "InstantiatedTypeMember",
-    is(node) { return node != null && node.typeId === 445; },
+    is(node) { return node != null && node.typeId === 433; },
     type(node) {
       return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
     },
@@ -14731,9 +14731,9 @@ export const Cst = {
     },
   },
   OwnedFeatureChaining: {
-    typeId: 447,
+    typeId: 435,
     type: "OwnedFeatureChaining",
-    is(node) { return node != null && node.typeId === 447; },
+    is(node) { return node != null && node.typeId === 435; },
     chainingFeature(node) {
       return node ? (node.childForFieldId(71) || node.childForFieldName("chainingFeature")) : null;
     },
@@ -14742,9 +14742,9 @@ export const Cst = {
     },
   },
   ArgumentMember: {
-    typeId: 450,
+    typeId: 438,
     type: "ArgumentMember",
-    is(node) { return node != null && node.typeId === 450; },
+    is(node) { return node != null && node.typeId === 438; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14753,9 +14753,9 @@ export const Cst = {
     },
   },
   Argument: {
-    typeId: 451,
+    typeId: 439,
     type: "Argument",
-    is(node) { return node != null && node.typeId === 451; },
+    is(node) { return node != null && node.typeId === 439; },
     ownedRelationship(node) {
       return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
     },
@@ -14764,9 +14764,9 @@ export const Cst = {
     },
   },
   NamedArgumentMember: {
-    typeId: 453,
+    typeId: 441,
     type: "NamedArgumentMember",
-    is(node) { return node != null && node.typeId === 453; },
+    is(node) { return node != null && node.typeId === 441; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14775,9 +14775,9 @@ export const Cst = {
     },
   },
   NamedArgument: {
-    typeId: 454,
+    typeId: 442,
     type: "NamedArgument",
-    is(node) { return node != null && node.typeId === 454; },
+    is(node) { return node != null && node.typeId === 442; },
     parameterRedefinition(node) {
       return node ? (node.childForFieldId(74) || node.childForFieldName("parameterRedefinition")) : null;
     },
@@ -14792,9 +14792,9 @@ export const Cst = {
     },
   },
   ParameterRedefinition: {
-    typeId: 455,
+    typeId: 443,
     type: "ParameterRedefinition",
-    is(node) { return node != null && node.typeId === 455; },
+    is(node) { return node != null && node.typeId === 443; },
     redefinedFeature(node) {
       return node ? (node.childForFieldId(76) || node.childForFieldName("redefinedFeature")) : null;
     },
@@ -14803,9 +14803,9 @@ export const Cst = {
     },
   },
   ArgumentValue: {
-    typeId: 456,
+    typeId: 444,
     type: "ArgumentValue",
-    is(node) { return node != null && node.typeId === 456; },
+    is(node) { return node != null && node.typeId === 444; },
     ownedRelatedElement(node) {
       return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
     },
@@ -14814,14 +14814,14 @@ export const Cst = {
     },
   },
   NullExpression: {
-    typeId: 457,
+    typeId: 445,
     type: "NullExpression",
-    is(node) { return node != null && node.typeId === 457; },
+    is(node) { return node != null && node.typeId === 445; },
   },
   LiteralBoolean: {
-    typeId: 459,
+    typeId: 447,
     type: "LiteralBoolean",
-    is(node) { return node != null && node.typeId === 459; },
+    is(node) { return node != null && node.typeId === 447; },
     value(node) {
       return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
@@ -14830,14 +14830,14 @@ export const Cst = {
     },
   },
   BooleanValue: {
-    typeId: 460,
+    typeId: 448,
     type: "BooleanValue",
-    is(node) { return node != null && node.typeId === 460; },
+    is(node) { return node != null && node.typeId === 448; },
   },
   LiteralString: {
-    typeId: 461,
+    typeId: 449,
     type: "LiteralString",
-    is(node) { return node != null && node.typeId === 461; },
+    is(node) { return node != null && node.typeId === 449; },
     value(node) {
       return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
@@ -14846,9 +14846,9 @@ export const Cst = {
     },
   },
   LiteralInteger: {
-    typeId: 462,
+    typeId: 450,
     type: "LiteralInteger",
-    is(node) { return node != null && node.typeId === 462; },
+    is(node) { return node != null && node.typeId === 450; },
     value(node) {
       return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
@@ -14857,9 +14857,9 @@ export const Cst = {
     },
   },
   LiteralReal: {
-    typeId: 463,
+    typeId: 451,
     type: "LiteralReal",
-    is(node) { return node != null && node.typeId === 463; },
+    is(node) { return node != null && node.typeId === 451; },
     value(node) {
       return node ? (node.childForFieldId(75) || node.childForFieldName("value")) : null;
     },
@@ -14868,29 +14868,29 @@ export const Cst = {
     },
   },
   RealValue: {
-    typeId: 464,
+    typeId: 452,
     type: "RealValue",
-    is(node) { return node != null && node.typeId === 464; },
+    is(node) { return node != null && node.typeId === 452; },
   },
   Name: {
-    typeId: 465,
+    typeId: 453,
     type: "Name",
-    is(node) { return node != null && node.typeId === 465; },
+    is(node) { return node != null && node.typeId === 453; },
   },
   GlobalQualification: {
-    typeId: 466,
+    typeId: 454,
     type: "GlobalQualification",
-    is(node) { return node != null && node.typeId === 466; },
+    is(node) { return node != null && node.typeId === 454; },
   },
   Qualification: {
-    typeId: 467,
+    typeId: 455,
     type: "Qualification",
-    is(node) { return node != null && node.typeId === 467; },
+    is(node) { return node != null && node.typeId === 455; },
   },
   QualifiedName: {
-    typeId: 468,
+    typeId: 456,
     type: "QualifiedName",
-    is(node) { return node != null && node.typeId === 468; },
+    is(node) { return node != null && node.typeId === 456; },
     name(node) {
       return node ? (node.childForFieldId(77) || node.childForFieldName("name")) : null;
     },
@@ -14899,63 +14899,63 @@ export const Cst = {
     },
   },
   MetaClassificationTestOperator: {
-    typeId: 641,
+    typeId: 629,
     type: "MetaClassificationTestOperator",
-    is(node) { return node != null && node.typeId === 641; },
+    is(node) { return node != null && node.typeId === 629; },
   },
   CastOperator: {
-    typeId: 642,
+    typeId: 630,
     type: "CastOperator",
-    is(node) { return node != null && node.typeId === 642; },
+    is(node) { return node != null && node.typeId === 630; },
   },
   MetaCastOperator: {
-    typeId: 643,
+    typeId: 631,
     type: "MetaCastOperator",
-    is(node) { return node != null && node.typeId === 643; },
+    is(node) { return node != null && node.typeId === 631; },
   },
   LiteralInfinity: {
-    typeId: 678,
+    typeId: 666,
     type: "LiteralInfinity",
-    is(node) { return node != null && node.typeId === 678; },
+    is(node) { return node != null && node.typeId === 666; },
   },
   DECIMALVALUE: {
-    typeId: 683,
+    typeId: 671,
     type: "DECIMAL_VALUE",
-    is(node) { return node != null && node.typeId === 683; },
+    is(node) { return node != null && node.typeId === 671; },
   },
   EXPVALUE: {
-    typeId: 684,
+    typeId: 672,
     type: "EXP_VALUE",
-    is(node) { return node != null && node.typeId === 684; },
+    is(node) { return node != null && node.typeId === 672; },
   },
   ID: {
-    typeId: 685,
+    typeId: 673,
     type: "ID",
-    is(node) { return node != null && node.typeId === 685; },
+    is(node) { return node != null && node.typeId === 673; },
   },
   UNRESTRICTEDNAME: {
-    typeId: 686,
+    typeId: 674,
     type: "UNRESTRICTED_NAME",
-    is(node) { return node != null && node.typeId === 686; },
+    is(node) { return node != null && node.typeId === 674; },
   },
   STRINGVALUE: {
-    typeId: 687,
+    typeId: 675,
     type: "STRING_VALUE",
-    is(node) { return node != null && node.typeId === 687; },
+    is(node) { return node != null && node.typeId === 675; },
   },
   REGULARCOMMENT: {
-    typeId: 688,
+    typeId: 676,
     type: "REGULAR_COMMENT",
-    is(node) { return node != null && node.typeId === 688; },
+    is(node) { return node != null && node.typeId === 676; },
   },
   MLNOTE: {
-    typeId: 689,
+    typeId: 677,
     type: "ML_NOTE",
-    is(node) { return node != null && node.typeId === 689; },
+    is(node) { return node != null && node.typeId === 677; },
   },
   SLNOTE: {
-    typeId: 690,
+    typeId: 678,
     type: "SL_NOTE",
-    is(node) { return node != null && node.typeId === 690; },
+    is(node) { return node != null && node.typeId === 678; },
   },
 };

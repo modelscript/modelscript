@@ -33,7 +33,11 @@ import { DAEBuilder } from "@modelscript/runtime";
 import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveDaeAdjoint } from "../../core/dae-adjoint-solver.js";
 import { ArenaSimulator, simulateArena } from "../../core/simulate-arena.js";
+import { type BlackBoxProblem } from "../solvers/blackbox.js";
+import { cmaesSolveSync } from "../solvers/cma-es.js";
+import { deSolveSync } from "../solvers/differential-evolution.js";
 import { lbfgsbSolve } from "../solvers/lbfgsb.js";
+import { psoSolveSync } from "../solvers/pso.js";
 
 // ── Public interfaces ──
 
@@ -56,7 +60,7 @@ export interface CalibrationProblem {
   /** Maximum iterations (default 100). */
   maxIterations?: number;
   /** Solver method (default: "lm", or "lbfgsb" for large parameter sets). */
-  method?: "lm" | "sqp" | "lbfgsb";
+  method?: "lm" | "sqp" | "lbfgsb" | "cmaes" | "de" | "pso" | "hybrid-cmaes-lm";
   /** Gradient method (default: "sensitivity" or "adjoint"). */
   gradient?: "sensitivity" | "finite-difference" | "adjoint";
   /** Optional progress callback invoked after each accepted iteration. */
@@ -106,7 +110,152 @@ export class ModelicaCalibrator {
     if (method === "lm") {
       return this.solveLM();
     }
+    if (method === "cmaes") {
+      return this.solveMetaheuristic("cmaes");
+    }
+    if (method === "de") {
+      return this.solveMetaheuristic("de");
+    }
+    if (method === "pso") {
+      return this.solveMetaheuristic("pso");
+    }
+    if (method === "hybrid-cmaes-lm") {
+      return this.solveHybridCmaesLM();
+    }
     return this.solveSQP();
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Metaheuristic Solvers (CMA-ES, DE, PSO)
+  // ────────────────────────────────────────────────────────────────────
+
+  private solveMetaheuristic(algo: "cmaes" | "de" | "pso"): CalibrationResult {
+    const { parameters, parameterBounds, measurements, weights } = this.problem;
+    const nParams = parameters.length;
+    const maxIter = this.problem.maxIterations ?? 60;
+    const tol = this.problem.tolerance ?? 1e-8;
+
+    const lb = new Float64Array(nParams);
+    const ub = new Float64Array(nParams);
+    const theta0 = new Float64Array(nParams);
+
+    for (let i = 0; i < nParams; i++) {
+      const pName = parameters[i]!;
+      const bounds = parameterBounds.get(pName);
+      lb[i] = bounds?.min ?? -1e4;
+      ub[i] = bounds?.max ?? 1e4;
+      theta0[i] = this.problem.initialGuess?.get(pName) ?? this.extractDefaultValue(pName);
+    }
+
+    const bbProblem: BlackBoxProblem = {
+      dimension: nParams,
+      bounds: { min: lb, max: ub },
+      initialGuess: theta0,
+      fitness: (theta: Float64Array) => this.evaluateCost(theta),
+    };
+
+    const opts = {
+      maxGenerations: maxIter,
+      tolerance: tol,
+      seed: 42,
+      onGeneration: (gen: number, cost: number, sol: Float64Array) => {
+        if (this.problem.onProgress) {
+          const pObj: Record<string, number> = {};
+          for (let i = 0; i < nParams; i++) pObj[parameters[i]!] = sol[i]!;
+          this.problem.onProgress({ iteration: gen, cost, parameters: pObj });
+        }
+      },
+    };
+
+    let result;
+    if (algo === "cmaes") {
+      result = cmaesSolveSync(bbProblem, opts);
+    } else if (algo === "pso") {
+      result = psoSolveSync(bbProblem, opts);
+    } else {
+      result = deSolveSync(bbProblem, opts);
+    }
+
+    return this.buildResult(
+      result.bestSolution,
+      result.bestFitness,
+      result.history,
+      result.iterations,
+      result.converged,
+      measurements,
+      weights,
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Hybrid CMA-ES + Levenberg-Marquardt Solver
+  // ────────────────────────────────────────────────────────────────────
+
+  private solveHybridCmaesLM(): CalibrationResult {
+    const { parameters, parameterBounds, measurements } = this.problem;
+    const nParams = parameters.length;
+    const maxIter = this.problem.maxIterations ?? 80;
+    const tol = this.problem.tolerance ?? 1e-8;
+
+    const lb = new Float64Array(nParams);
+    const ub = new Float64Array(nParams);
+    const theta0 = new Float64Array(nParams);
+
+    for (let i = 0; i < nParams; i++) {
+      const pName = parameters[i]!;
+      const bounds = parameterBounds.get(pName);
+      lb[i] = bounds?.min ?? -1e4;
+      ub[i] = bounds?.max ?? 1e4;
+      theta0[i] = this.problem.initialGuess?.get(pName) ?? this.extractDefaultValue(pName);
+    }
+
+    // Phase 1: Global exploration via CMA-ES
+    const globalGens = Math.min(35, Math.max(10, Math.floor(maxIter * 0.4)));
+    const cmaesRes = cmaesSolveSync(
+      {
+        dimension: nParams,
+        bounds: { min: lb, max: ub },
+        initialGuess: theta0,
+        fitness: (theta: Float64Array) => this.evaluateCost(theta),
+      },
+      {
+        maxGenerations: globalGens,
+        seed: 42,
+        targetFitness: tol,
+        onGeneration: (gen, cost, sol) => {
+          if (this.problem.onProgress) {
+            const pObj: Record<string, number> = {};
+            for (let i = 0; i < nParams; i++) pObj[parameters[i]!] = sol[i]!;
+            this.problem.onProgress({ iteration: gen, cost, parameters: pObj });
+          }
+        },
+      },
+    );
+
+    // Phase 2: Local refinement via Levenberg-Marquardt seeded with CMA-ES global solution
+    const warmStartMap = new Map<string, number>();
+    for (let i = 0; i < nParams; i++) {
+      warmStartMap.set(parameters[i]!, cmaesRes.bestSolution[i]!);
+    }
+
+    const originalGuess = this.problem.initialGuess;
+    const originalMaxIter = this.problem.maxIterations;
+    try {
+      this.problem.initialGuess = warmStartMap;
+      this.problem.maxIterations = Math.max(10, maxIter - globalGens);
+      const lmRes = this.solveLM();
+
+      const combinedCostHistory = [...cmaesRes.history, ...lmRes.costHistory];
+      return {
+        ...lmRes,
+        iterations: cmaesRes.iterations + lmRes.iterations,
+        costHistory: combinedCostHistory,
+        message: `Hybrid CMA-ES/LM: Global exploration (${cmaesRes.iterations} iters, residual ${cmaesRes.bestFitness.toExponential(3)}) + LM polishing (${lmRes.iterations} iters, final residual ${lmRes.residual.toExponential(4)}).`,
+      };
+    } finally {
+      this.problem.initialGuess = originalGuess;
+      this.problem.maxIterations = originalMaxIter;
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────

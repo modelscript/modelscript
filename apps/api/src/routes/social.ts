@@ -6,6 +6,7 @@ import { Router as createRouter } from "express";
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import type { FederationWorker } from "../services/federation-worker.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
@@ -19,7 +20,7 @@ const optionalAuth = (req: Request, res: Response, next: any) => {
   next();
 };
 
-export function socialRouter(database: LibraryDatabase): Router {
+export function socialRouter(database: LibraryDatabase, worker?: FederationWorker): Router {
   const router = createRouter();
 
   /**
@@ -144,8 +145,26 @@ export function socialRouter(database: LibraryDatabase): Router {
                     };
                   }
 
+                  if (artifact_view_id) {
+                    const artifact = database.getArtifactView(artifact_view_id);
+                    const { serializeArtifactAttachment } = await import("./federation.js");
+                    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+                    const attachment = serializeArtifactAttachment(artifact, publicUrl);
+                    if (attachment) {
+                      noteObject.attachment = [attachment];
+                    }
+                  }
+
                   const createActivity = {
-                    "@context": "https://www.w3.org/ns/activitystreams",
+                    "@context": [
+                      "https://www.w3.org/ns/activitystreams",
+                      {
+                        modelscript: "https://hub.modelscript.org/ns#",
+                        viewType: "modelscript:viewType",
+                        viewConfig: "modelscript:viewConfig",
+                        sourceType: "modelscript:sourceType",
+                      },
+                    ],
                     id: `${apPostId}/activity`,
                     type: "Create",
                     actor: fullAuthor.actor_url,
@@ -155,20 +174,9 @@ export function socialRouter(database: LibraryDatabase): Router {
                     object: noteObject,
                   };
 
-                  const { sendSignedRequest } = await import("../util/activitypub-crypto.js");
-
-                  // Use instance key for HTTP transport signature, falling back to legacy rsa_private_key
-                  const instanceKeys = database.getInstanceKeys();
-                  const transportKey = instanceKeys.privateKey;
-                  const transportKeyId = `${process.env.PUBLIC_URL || "https://hub.modelscript.org"}/actor#main-key`;
-
-                  for (const follower of remoteFollowers) {
-                    if (follower.inbox_url) {
-                      sendSignedRequest(follower.inbox_url, createActivity, transportKeyId, transportKey).catch((err) =>
-                        console.error("Failed to broadcast to", follower.inbox_url, err),
-                      );
-                    }
-                  }
+                  const { FederationWorker } = await import("../services/federation-worker.js");
+                  const fedWorker = worker || new FederationWorker(database);
+                  fedWorker.enqueueActivityBroadcast(createActivity, authorId);
                 }
               }
             } catch (err) {
@@ -282,6 +290,63 @@ export function socialRouter(database: LibraryDatabase): Router {
     } catch (err) {
       console.error("POST /posts error:", err);
       res.status(500).json({ error: "Failed to create post", details: String(err) });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/social/posts/:id
+   */
+  router.delete("/posts/:id", requireAuth, async (req: Request, res: Response) => {
+    const postId = Number(req.params.id);
+    const userId = req.user!.id;
+
+    try {
+      const existingPost = database.getPost(postId);
+      if (!existingPost) {
+        res.status(404).json({ error: "Post not found" });
+        return;
+      }
+
+      if (existingPost.author_id !== userId && req.user!.role !== "admin") {
+        res.status(403).json({ error: "You can only delete your own posts" });
+        return;
+      }
+
+      const deleteResult = database.deletePost(postId);
+      if (!deleteResult.success) {
+        res.status(404).json({ error: "Failed to delete post" });
+        return;
+      }
+
+      // Outbound ActivityPub Delete Tombstone
+      if (deleteResult.apId && deleteResult.authorId) {
+        const fullAuthor = database.db
+          .prepare(`SELECT actor_url FROM users WHERE id = ?`)
+          .get(deleteResult.authorId) as any;
+        if (fullAuthor?.actor_url) {
+          const tombstoneActivity = {
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: `${deleteResult.apId}#delete`,
+            type: "Delete",
+            actor: fullAuthor.actor_url,
+            to: ["https://www.w3.org/ns/activitystreams#Public"],
+            cc: [`${fullAuthor.actor_url}/followers`],
+            object: {
+              id: deleteResult.apId,
+              type: "Tombstone",
+            },
+          };
+
+          const { FederationWorker } = await import("../services/federation-worker.js");
+          const fedWorker = worker || new FederationWorker(database);
+          fedWorker.enqueueActivityBroadcast(tombstoneActivity, deleteResult.authorId);
+        }
+      }
+
+      res.json({ success: true, postId });
+    } catch (err: any) {
+      console.error("DELETE /posts/:id error:", err);
+      res.status(500).json({ error: err.message || "Failed to delete post" });
     }
   });
 
@@ -436,9 +501,10 @@ export function socialRouter(database: LibraryDatabase): Router {
     const username = req.params.username as string;
     const currentUserId = req.user?.id;
     const limit = Number(req.query.limit) || 20;
+    const type = req.query.type as string | undefined;
 
     try {
-      const posts = database.getUserTimeline(username, currentUserId, limit);
+      const posts = database.getUserTimeline(username, currentUserId, limit, type);
       res.json({ posts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get user timeline" });
@@ -484,6 +550,85 @@ export function socialRouter(database: LibraryDatabase): Router {
       res.json({ reposted });
     } catch (err) {
       res.status(500).json({ error: "Failed to toggle repost" });
+    }
+  });
+
+  /**
+   * POST /api/v1/social/posts/:id/report
+   * Allows users to report abusive posts, illegal content, or copyright violations
+   */
+  router.post("/posts/:id/report", requireAuth, (req: Request, res: Response) => {
+    const reporterId = req.user!.id;
+    const postId = Number(req.params.id);
+    const { reason, details } = req.body;
+
+    if (!reason || typeof reason !== "string") {
+      res.status(400).json({ error: "Report reason is required" });
+      return;
+    }
+
+    try {
+      const post = database.getPost(postId, reporterId);
+      if (!post) {
+        res.status(404).json({ error: "Post not found" });
+        return;
+      }
+
+      const report = database.createContentReport(reporterId, {
+        postId,
+        targetUserId: post.author_id,
+        reason,
+        details,
+      });
+
+      database.logAudit({
+        actorId: reporterId,
+        action: "post_reported",
+        resourceType: "post",
+        resourceId: String(postId),
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { reason, reportId: report.id },
+      });
+
+      res.status(201).json({
+        success: true,
+        reportId: report.id,
+        status: report.status,
+        message: "Report submitted successfully. Content will be reviewed by moderation.",
+      });
+    } catch (err: any) {
+      console.error("POST /posts/:id/report error:", err);
+      res.status(500).json({ error: err.message || "Failed to submit report" });
+    }
+  });
+
+  /**
+   * GET /api/v1/social/posts/:id/quotes
+   */
+  router.get("/posts/:id/quotes", optionalAuth, (req: Request, res: Response) => {
+    const postId = Number(req.params.id);
+    const userId = req.user?.id;
+    try {
+      const quotes = database.getQuotes(postId, userId);
+      res.json({ quotes });
+    } catch (err: any) {
+      console.error("GET /posts/:id/quotes error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch quotes" });
+    }
+  });
+
+  /**
+   * GET /api/v1/social/posts/:id/reposts
+   */
+  router.get("/posts/:id/reposts", optionalAuth, (req: Request, res: Response) => {
+    const postId = Number(req.params.id);
+    const userId = req.user?.id;
+    try {
+      const reposts = database.getReposts(postId, userId);
+      res.json({ reposts });
+    } catch (err: any) {
+      console.error("GET /posts/:id/reposts error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch reposts" });
     }
   });
 

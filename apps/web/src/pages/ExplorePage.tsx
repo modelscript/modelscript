@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ArrowLeftIcon, SearchIcon } from "@primer/octicons-react";
+import { ArrowLeftIcon, SearchIcon, XCircleFillIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -52,18 +52,18 @@ const SearchInputWrapper = styled.div`
   input {
     width: 100%;
     padding: 10px 16px 10px 40px;
-    border-radius: 9999px;
+    border-radius: 10px;
     background-color: var(--color-bg-primary);
     border: 1px solid var(--color-border-default, var(--color-border, #cfd9de));
-    font-size: 15px;
+    font-size: 14px;
     outline: none;
     box-sizing: border-box;
     color: var(--color-text-primary);
 
     &:focus {
       background-color: var(--color-bg-primary);
-      border-color: #1d9bf0;
-      box-shadow: 0 0 0 1px #1d9bf0;
+      border-color: var(--color-accent-cyan);
+      box-shadow: 0 0 0 1px var(--color-accent-cyan);
     }
   }
 `;
@@ -106,11 +106,12 @@ const TabButton = styled.button<{ $active?: boolean }>`
       content: '';
       position: absolute;
       bottom: 0;
-      left: 20%;
-      right: 20%;
-      height: 4px;
+      left: 15%;
+      right: 15%;
+      height: 3px;
       border-radius: 9999px;
-      background-color: #1d9bf0;
+      background: var(--gradient-cta);
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
     }
   `}
 `;
@@ -134,6 +135,9 @@ const ExplorePage: React.FC = () => {
 
   const [repos, setRepos] = useState<any[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
+
+  const [matchedPeople, setMatchedPeople] = useState<any[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
 
   useEffect(() => {
     setLocalQuery(query);
@@ -286,6 +290,27 @@ const ExplorePage: React.FC = () => {
     }
   }, [query, activeTab, token]);
 
+  useEffect(() => {
+    if (!query) return;
+    if (activeTab === "People") {
+      async function fetchPeople() {
+        setPeopleLoading(true);
+        try {
+          const res = await fetch(`${API_BASE_URL}/search/completions?q=${encodeURIComponent(query)}&limit=30`);
+          if (res.ok) {
+            const data = await res.json();
+            setMatchedPeople(data.users || []);
+          }
+        } catch (err) {
+          console.error("Failed to fetch search users:", err);
+        } finally {
+          setPeopleLoading(false);
+        }
+      }
+      fetchPeople();
+    }
+  }, [query, activeTab]);
+
   const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       if (localQuery.trim()) {
@@ -297,6 +322,7 @@ const ExplorePage: React.FC = () => {
   };
 
   const clearSearch = () => {
+    setLocalQuery("");
     setSearchParams({});
   };
 
@@ -312,25 +338,6 @@ const ExplorePage: React.FC = () => {
   const latestPosts = posts
     .filter((p) => p.content && p.content.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-  const seenUsers = new Set();
-  const matchedPeople: any[] = [];
-  posts.forEach((p) => {
-    if (!seenUsers.has(p.author_id)) {
-      seenUsers.add(p.author_id);
-      const nameMatch =
-        p.username.toLowerCase().includes(query.toLowerCase()) ||
-        (p.display_name && p.display_name.toLowerCase().includes(query.toLowerCase()));
-      if (nameMatch) {
-        matchedPeople.push({
-          id: p.author_id,
-          username: p.username,
-          display_name: p.display_name,
-          avatar_url: p.avatar_url,
-        });
-      }
-    }
-  });
 
   const artifactPosts = posts.filter(
     (p) => p.artifact_view_id !== null && p.content && p.content.toLowerCase().includes(query.toLowerCase()),
@@ -392,6 +399,24 @@ const ExplorePage: React.FC = () => {
               onKeyDown={handleSearchSubmit}
               placeholder="Search"
             />
+            {localQuery && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "var(--color-fg-muted)",
+                  padding: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                aria-label="Clear search"
+              >
+                <XCircleFillIcon size={16} />
+              </button>
+            )}
           </SearchInputWrapper>
         </SearchHeader>
 
@@ -437,62 +462,89 @@ const ExplorePage: React.FC = () => {
 
             {activeTab === "People" && (
               <>
-                {matchedPeople.map((u) => (
-                  <Box
-                    key={u.id}
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    p={3}
-                    borderBottom="1px solid var(--color-border-subtle)"
-                  >
-                    <Link
-                      to={`/${u.username}`}
-                      style={{
-                        textDecoration: "none",
-                        color: "inherit",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                      }}
-                    >
+                {peopleLoading ? (
+                  <Box p={4} display="flex" justifyContent="center">
+                    <Spinner size="medium" />
+                  </Box>
+                ) : (
+                  <>
+                    {matchedPeople.map((u) => (
                       <Box
-                        sx={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: "50%",
-                          backgroundColor: "var(--color-accent-emphasis)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "white",
-                          fontWeight: "bold",
-                          backgroundSize: "cover",
-                          backgroundImage: u.avatar_url ? `url(${u.avatar_url})` : "none",
-                          flexShrink: 0,
-                        }}
+                        key={u.id}
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="space-between"
+                        p={3}
+                        borderBottom="1px solid var(--color-border-subtle)"
                       >
-                        {!u.avatar_url && u.username.charAt(0).toUpperCase()}
-                      </Box>
-                      <Box>
-                        <Heading
-                          as="h4"
-                          style={{ fontSize: "15px", fontWeight: "bold", margin: 0, color: "var(--color-fg-default)" }}
+                        <Link
+                          to={`/${u.username}`}
+                          style={{
+                            textDecoration: "none",
+                            color: "inherit",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                            flex: 1,
+                          }}
                         >
-                          {u.display_name || u.username}
-                        </Heading>
-                        <Text color="var(--color-fg-muted)" style={{ fontSize: "14px" }}>
-                          @{u.username}
-                        </Text>
+                          <Box
+                            sx={{
+                              width: 44,
+                              height: 44,
+                              borderRadius: "50%",
+                              backgroundColor: "var(--color-accent-emphasis)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "white",
+                              fontWeight: "bold",
+                              backgroundSize: "cover",
+                              backgroundImage: u.avatar_url ? `url(${u.avatar_url})` : "none",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {!u.avatar_url && u.username.charAt(0).toUpperCase()}
+                          </Box>
+                          <Box flex={1}>
+                            <Heading
+                              as="h4"
+                              style={{
+                                fontSize: "15px",
+                                fontWeight: "bold",
+                                margin: 0,
+                                color: "var(--color-fg-default)",
+                              }}
+                            >
+                              {u.display_name || u.username}
+                            </Heading>
+                            <Text color="var(--color-fg-muted)" style={{ fontSize: "14px" }}>
+                              @{u.username}
+                            </Text>
+                            {u.bio && (
+                              <Text
+                                as="p"
+                                style={{
+                                  fontSize: "13px",
+                                  color: "var(--color-fg-default)",
+                                  margin: "4px 0 0 0",
+                                  lineHeight: 1.3,
+                                }}
+                              >
+                                {u.bio}
+                              </Text>
+                            )}
+                          </Box>
+                        </Link>
+                        <FollowButton username={u.username} initialIsFollowing={u.isFollowing || false} size="small" />
                       </Box>
-                    </Link>
-                    <FollowButton username={u.username} initialIsFollowing={false} size="small" />
-                  </Box>
-                ))}
-                {matchedPeople.length === 0 && (
-                  <Box p={6} textAlign="center" color="var(--color-fg-muted)">
-                    No users matching "{query}" found.
-                  </Box>
+                    ))}
+                    {matchedPeople.length === 0 && (
+                      <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                        No users matching "{query}" found.
+                      </Box>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -576,36 +628,24 @@ const ExplorePage: React.FC = () => {
                             </Text>
                           </Box>
                         </Link>
-                        <button
+                        <Link
+                          to={`/packages/${pkg.name}`}
                           style={{
-                            backgroundColor: "var(--color-fg-default)",
-                            color: "var(--color-canvas-default)",
-                            border: "none",
+                            backgroundColor: "var(--color-canvas-subtle)",
+                            color: "var(--color-fg-default)",
+                            border: "1px solid var(--color-border-default)",
                             borderRadius: "9999px",
                             padding: "6px 16px",
                             fontWeight: "bold",
                             fontSize: "14px",
-                            cursor: "pointer",
+                            textDecoration: "none",
                             marginLeft: "12px",
-                          }}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            const btn = e.currentTarget;
-                            if (btn.innerText === "Follow") {
-                              btn.innerText = "Following";
-                              btn.style.backgroundColor = "transparent";
-                              btn.style.color = "var(--color-fg-default)";
-                              btn.style.border = "1px solid var(--color-border-default)";
-                            } else {
-                              btn.innerText = "Follow";
-                              btn.style.backgroundColor = "var(--color-fg-default)";
-                              btn.style.color = "var(--color-canvas-default)";
-                              btn.style.border = "none";
-                            }
+                            display: "inline-flex",
+                            alignItems: "center",
                           }}
                         >
-                          Follow
-                        </button>
+                          View
+                        </Link>
                       </Box>
                     ))}
                     {packages.length === 0 && (
@@ -635,7 +675,10 @@ const ExplorePage: React.FC = () => {
                         p={3}
                         borderBottom="1px solid var(--color-border-subtle)"
                       >
-                        <Box display="flex" gap="12px" flex={1}>
+                        <Link
+                          to={`/repos/${r.provider}/${r.namespace}/${r.project}`}
+                          style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1 }}
+                        >
                           <Box
                             sx={{
                               width: 44,
@@ -681,37 +724,25 @@ const ExplorePage: React.FC = () => {
                               {r.description || "No description provided."}
                             </Text>
                           </Box>
-                        </Box>
-                        <button
+                        </Link>
+                        <Link
+                          to={`/repos/${r.provider}/${r.namespace}/${r.project}`}
                           style={{
-                            backgroundColor: "var(--color-fg-default)",
-                            color: "var(--color-canvas-default)",
-                            border: "none",
+                            backgroundColor: "var(--color-canvas-subtle)",
+                            color: "var(--color-fg-default)",
+                            border: "1px solid var(--color-border-default)",
                             borderRadius: "9999px",
                             padding: "6px 16px",
                             fontWeight: "bold",
                             fontSize: "14px",
-                            cursor: "pointer",
+                            textDecoration: "none",
                             marginLeft: "12px",
-                          }}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            const btn = e.currentTarget;
-                            if (btn.innerText === "Follow") {
-                              btn.innerText = "Following";
-                              btn.style.backgroundColor = "transparent";
-                              btn.style.color = "var(--color-fg-default)";
-                              btn.style.border = "1px solid var(--color-border-default)";
-                            } else {
-                              btn.innerText = "Follow";
-                              btn.style.backgroundColor = "var(--color-fg-default)";
-                              btn.style.color = "var(--color-canvas-default)";
-                              btn.style.border = "none";
-                            }
+                            display: "inline-flex",
+                            alignItems: "center",
                           }}
                         >
-                          Follow
-                        </button>
+                          Open
+                        </Link>
                       </Box>
                     ))}
                     {repos.length === 0 && (

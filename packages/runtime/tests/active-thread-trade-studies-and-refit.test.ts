@@ -90,6 +90,44 @@ describe("Phase 5: Active Digital Thread (Optimization Writeback, Branching, Tra
         assert.ok(branchId > 0, "Variant branches should be positive integers");
       }
     });
+
+    it("generatively breeds Pareto candidates via active NSGA-II evolution", async () => {
+      const engine = new TradeStudyEngine("GenerativeBracketOptimization", [
+        { name: "mass", sense: "minimize" },
+        { name: "compliance", sense: "minimize" },
+      ]);
+
+      const res = await engine.evolve({
+        variables: [
+          { name: "thickness", min: 1.0, max: 10.0 },
+          { name: "width", min: 10.0, max: 50.0 },
+        ],
+        generations: 15,
+        populationSize: 20,
+        seed: 42,
+        evaluate: (params) => {
+          const t = params["thickness"]!;
+          const w = params["width"]!;
+          // Competing physics:
+          // Mass increases with thickness and width
+          const mass = t * w * 0.0027; // aluminum density kg/cm^3 approx
+          // Compliance (inverse stiffness) decreases with thickness^3 * width
+          const compliance = 1000.0 / (w * Math.pow(t, 3));
+          return { mass, compliance };
+        },
+      });
+
+      assert.ok(res.totalCandidates >= 20, "Should have evolved at least 20 candidates");
+      assert.ok(res.paretoFront.length >= 5, `Expected >= 5 Pareto points, got ${res.paretoFront.length}`);
+      assert.ok(res.kneePoint !== undefined, "Should locate knee point on frontier");
+
+      // Verify that all points in paretoFront are non-dominated (rank === 0)
+      for (const pt of res.paretoFront) {
+        assert.strictEqual(pt.rank, 0, "Pareto points must have rank 0");
+        assert.ok(pt.parameters["thickness"] !== undefined);
+        assert.ok(pt.parameters["width"] !== undefined);
+      }
+    });
   });
 
   describe("ShapeRefitEngine & Geometric Writeback", () => {

@@ -347,6 +347,10 @@ export class LibraryDatabase {
         owner_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
         bot_token_hash  TEXT,
         credit_balance  REAL DEFAULT 100.0,
+        email_verified  INTEGER DEFAULT 0,
+        status          TEXT DEFAULT 'pending_verification',
+        terms_accepted_at TEXT,
+        registration_ip TEXT,
         created_at      TEXT DEFAULT (datetime('now'))
       );
 
@@ -494,6 +498,20 @@ export class LibraryDatabase {
         UNIQUE(user_id, provider, namespace, project)
       );
       CREATE INDEX IF NOT EXISTS idx_linked_repos_user ON linked_repos(user_id);
+
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (blocker_id, blocked_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS user_mutes (
+        muter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        muted_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (muter_id, muted_id)
+      );
 
       CREATE TABLE IF NOT EXISTS user_topics (
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -743,6 +761,78 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_sysml2_commits_project ON sysml2_commits(project_id);
       CREATE INDEX IF NOT EXISTS idx_sysml2_elements_commit ON sysml2_elements(commit_id);
       CREATE INDEX IF NOT EXISTS idx_sysml2_relationships_commit ON sysml2_relationships(commit_id);
+
+      CREATE TABLE IF NOT EXISTS federation_domains (
+        domain          TEXT PRIMARY KEY,
+        tier            TEXT NOT NULL DEFAULT 'allow',
+        reason          TEXT,
+        created_at      TEXT DEFAULT (datetime('now')),
+        updated_at      TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS federation_delivery_queue (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        activity_type   TEXT NOT NULL,
+        activity_id     TEXT NOT NULL,
+        payload         TEXT NOT NULL,
+        target_inbox_url TEXT NOT NULL,
+        target_domain   TEXT NOT NULL,
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        max_attempts    INTEGER NOT NULL DEFAULT 5,
+        next_retry_at   TEXT NOT NULL DEFAULT (datetime('now')),
+        last_error      TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        created_at      TEXT DEFAULT (datetime('now')),
+        updated_at      TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_fed_queue_status_retry ON federation_delivery_queue (status, next_retry_at);
+
+      CREATE TABLE IF NOT EXISTS content_reports (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        reporter_id     INTEGER NOT NULL,
+        post_id         INTEGER,
+        target_user_id  INTEGER,
+        reason          TEXT NOT NULL,
+        details         TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        resolution_notes TEXT,
+        created_at      TEXT DEFAULT (datetime('now')),
+        resolved_at     TEXT,
+        FOREIGN KEY (reporter_id) REFERENCES users(id),
+        FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
+        FOREIGN KEY (target_user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS dmca_notices (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        claimant_name   TEXT NOT NULL,
+        claimant_email  TEXT NOT NULL,
+        copyright_owner TEXT NOT NULL,
+        work_description TEXT NOT NULL,
+        infringing_url  TEXT NOT NULL,
+        resource_type   TEXT NOT NULL DEFAULT 'package',
+        resource_id     TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        action_taken    TEXT,
+        created_at      TEXT DEFAULT (datetime('now')),
+        resolved_at     TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_id        INTEGER,
+        action          TEXT NOT NULL,
+        resource_type   TEXT NOT NULL,
+        resource_id     TEXT,
+        ip_address      TEXT,
+        details         TEXT,
+        created_at      TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status);
+      CREATE INDEX IF NOT EXISTS idx_dmca_notices_status ON dmca_notices(status);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
     `);
 
     // Migrations
@@ -774,6 +864,12 @@ export class LibraryDatabase {
       "ALTER TABLE users ADD COLUMN inbox_url TEXT",
       "ALTER TABLE users ADD COLUMN outbox_url TEXT",
       "ALTER TABLE users ADD COLUMN remote_domain TEXT",
+      "ALTER TABLE users ADD COLUMN shared_inbox_url TEXT",
+      "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'pending_verification'",
+      "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
+      "ALTER TABLE users ADD COLUMN registration_ip TEXT",
+      "ALTER TABLE follows ADD COLUMN state TEXT DEFAULT 'accepted'",
     ];
     for (const sql of userColumns) {
       try {
@@ -864,6 +960,60 @@ export class LibraryDatabase {
     try {
       this.#db.exec(`ALTER TABLE jobs ADD COLUMN metadata TEXT`);
     } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE posts ADD COLUMN is_silenced INTEGER DEFAULT 0`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE packages ADD COLUMN quarantine_status TEXT DEFAULT 'clean'`);
+      this.#db.exec(`ALTER TABLE packages ADD COLUMN is_quarantined INTEGER DEFAULT 0`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE users ADD COLUMN ed25519_public_key TEXT`);
+      this.#db.exec(`ALTER TABLE users ADD COLUMN ed25519_private_key TEXT`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE artifact_views ADD COLUMN remote_origin_url TEXT`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS remote_packages (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          name            TEXT NOT NULL,
+          version         TEXT NOT NULL,
+          actor_url       TEXT NOT NULL,
+          download_url    TEXT NOT NULL,
+          checksum        TEXT NOT NULL,
+          license         TEXT,
+          description     TEXT,
+          metadata        TEXT,
+          is_deleted      INTEGER DEFAULT 0,
+          created_at      TEXT DEFAULT (datetime('now')),
+          updated_at      TEXT DEFAULT (datetime('now')),
+          UNIQUE(name, version, actor_url)
+        );
+        CREATE INDEX IF NOT EXISTS idx_remote_packages_name ON remote_packages(name);
+      `);
+    } catch (e) {}
+
+    try {
+      const usersWithoutEd = this.#db.prepare(`SELECT id FROM users WHERE ed25519_private_key IS NULL`).all() as Array<{
+        id: number;
+      }>;
+      const updateEdStmt = this.#db.prepare(
+        `UPDATE users SET ed25519_private_key = ?, ed25519_public_key = ? WHERE id = ?`,
+      );
+      this.#db.transaction(() => {
+        for (const u of usersWithoutEd) {
+          const keys = this.#generateEd25519Keys();
+          updateEdStmt.run(keys.privateKey, keys.publicKey, u.id);
+        }
+      })();
+    } catch (e) {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -912,10 +1062,16 @@ export class LibraryDatabase {
     const remoteUsername = `${username}@${domain}`;
 
     const keys = this.#generateRSAKeys();
+    const edKeys = this.#generateEd25519Keys();
+    const sharedInbox =
+      (profileData?.endpoints?.sharedInbox as string) ||
+      (profileData?.sharedInbox as string) ||
+      (profileData?.endpoints?.shared_inbox as string) ||
+      null;
 
     const result = this.#db
       .prepare(
-        `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url, remote_domain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, remote_domain, shared_inbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         remoteUsername,
@@ -926,10 +1082,13 @@ export class LibraryDatabase {
         profileData.icon?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUsername)}`,
         keys.privateKey,
         keys.publicKey,
+        edKeys.privateKey,
+        edKeys.publicKey,
         actorUrl,
         profileData.inbox || `${actorUrl}/inbox`,
         profileData.outbox || `${actorUrl}/outbox`,
         domain,
+        sharedInbox,
       );
     return { id: Number(result.lastInsertRowid) };
   }
@@ -937,6 +1096,13 @@ export class LibraryDatabase {
   #generateRSAKeys() {
     return crypto.generateKeyPairSync("rsa", {
       modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+  }
+
+  #generateEd25519Keys() {
+    return crypto.generateKeyPairSync("ed25519", {
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
@@ -952,48 +1118,263 @@ export class LibraryDatabase {
     return keys;
   }
 
+  getInstanceEd25519Keys(): { publicKey: string; privateKey: string } {
+    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_ed25519_keys'`).get() as any;
+    if (existing) {
+      return JSON.parse(existing.value);
+    }
+    const keys = this.#generateEd25519Keys();
+    this.#db
+      .prepare(`INSERT INTO settings (key, value) VALUES (?, ?)`)
+      .run("instance_ed25519_keys", JSON.stringify(keys));
+    return keys;
+  }
+
   createUser(
     username: string,
     email: string,
     passwordHash: string | null,
-  ): { id: number; username: string; email: string } {
+    options?: {
+      emailVerified?: boolean;
+      initialCredits?: number;
+      termsAcceptedAt?: string;
+      registrationIp?: string;
+      status?: string;
+      accountType?: string;
+    },
+  ): { id: number; username: string; email: string; account_type?: string; email_verified?: number; status?: string } {
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
     const keys = this.#generateRSAKeys();
+    const edKeys = this.#generateEd25519Keys();
     const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
     const actorUrl = `${publicUrl}/users/${username}`;
     const inboxUrl = `${actorUrl}/inbox`;
     const outboxUrl = `${actorUrl}/outbox`;
 
+    const accountType = options?.accountType || "user";
+    const emailVerified = options?.emailVerified !== undefined ? (options.emailVerified ? 1 : 0) : 1;
+    const status = options?.status || (emailVerified ? "active" : "pending_verification");
+    const termsAcceptedAt = options?.termsAcceptedAt || null;
+    const registrationIp = options?.registrationIp || null;
+    const initialCredits = options?.initialCredits !== undefined ? options.initialCredits : emailVerified ? 100.0 : 0.0;
+
     const result = this.#db
       .prepare(
-        `INSERT INTO users (username, email, password_hash, avatar_url, banner_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (username, email, password_hash, account_type, avatar_url, banner_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, credit_balance, email_verified, status, terms_accepted_at, registration_ip)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         username,
         email,
         passwordHash,
+        accountType,
         avatarUrl,
         bannerUrl,
         keys.privateKey,
         keys.publicKey,
+        edKeys.privateKey,
+        edKeys.publicKey,
         actorUrl,
         inboxUrl,
         outboxUrl,
+        initialCredits,
+        emailVerified,
+        status,
+        termsAcceptedAt,
+        registrationIp,
       );
     const userId = result.lastInsertRowid as number;
+    if (initialCredits > 0) {
+      try {
+        this.#db
+          .prepare(
+            `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
+             VALUES (?, NULL, ?, ?, 'initial_grant', 'Initial Welcome bonus compute credits')`,
+          )
+          .run(userId, initialCredits, initialCredits);
+      } catch {
+        // Non-fatal if table not yet initialized
+      }
+    }
+    return { id: userId, username, email, account_type: accountType, email_verified: emailVerified, status };
+  }
+
+  verifyUserEmail(userId: number, bonusCredits = 50.0): { success: boolean; creditsGranted: number; user?: any } {
+    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as any;
+    if (!user) {
+      return { success: false, creditsGranted: 0 };
+    }
+
+    if (user.email_verified === 1) {
+      return { success: true, creditsGranted: 0, user };
+    }
+
+    const existingGrant = this.#db
+      .prepare(`SELECT id FROM credit_transactions WHERE user_id = ? AND type = 'initial_grant'`)
+      .get(userId);
+
+    let creditsToGrant = 0;
+    let newBalance = user.credit_balance || 0;
+
+    if (!existingGrant && bonusCredits > 0) {
+      creditsToGrant = bonusCredits;
+      newBalance += creditsToGrant;
+    }
+
+    this.#db
+      .prepare(`UPDATE users SET email_verified = 1, status = 'active', credit_balance = ? WHERE id = ?`)
+      .run(newBalance, userId);
+
+    if (creditsToGrant > 0) {
+      try {
+        this.#db
+          .prepare(
+            `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
+             VALUES (?, NULL, ?, ?, 'initial_grant', 'Free tier activation compute credits')`,
+          )
+          .run(userId, creditsToGrant, newBalance);
+      } catch {
+        // ignore
+      }
+    }
+
+    const updatedUser = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId);
+    return { success: true, creditsGranted: creditsToGrant, user: updatedUser };
+  }
+
+  freezeUserForDispute(userId: number, reason: string): { success: boolean; previousBalance: number } {
+    const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as any;
+    if (!user) {
+      return { success: false, previousBalance: 0 };
+    }
+
+    const previousBalance = user.credit_balance || 0;
+
+    this.#db.prepare(`UPDATE users SET credit_balance = 0.0, status = 'suspended_dispute' WHERE id = ?`).run(userId);
+
     try {
       this.#db
         .prepare(
           `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
-           VALUES (?, NULL, 100.0, 100.0, 'initial_grant', 'Initial Welcome bonus compute credits')`,
+           VALUES (?, NULL, ?, 0.0, 'dispute_freeze', ?)`,
         )
-        .run(userId);
+        .run(userId, -previousBalance, `Dispute/Chargeback quarantine: ${reason}`);
     } catch {
-      // Non-fatal if table not yet initialized
+      // ignore
     }
-    return { id: userId, username, email };
+
+    return { success: true, previousBalance };
+  }
+
+  /**
+   * GDPR Article 17: Right to Erasure / Account Anonymization
+   * Redacts personal data, deletes session tokens and social links, and flags account as deleted.
+   */
+  anonymizeUser(userId: number): { success: boolean; actorUrl?: string } {
+    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as any;
+    if (!user) {
+      return { success: false };
+    }
+
+    const actorUrl = user.actor_url;
+    const redactedEmail = `deleted_${userId}@deleted.modelscript.local`;
+    const redactedName = `Deleted User #${userId}`;
+    const redactedBio = "This account has been deleted pursuant to GDPR Article 17 Right to Erasure.";
+
+    this.#db.transaction(() => {
+      this.#db
+        .prepare(
+          `UPDATE users 
+           SET email = ?,
+               username = 'deleted_' || id,
+               display_name = ?,
+               bio = ?,
+               avatar_url = NULL,
+               banner_url = NULL,
+               password_hash = 'REDACTED',
+               status = 'deleted',
+               registration_ip = NULL,
+               credit_balance = 0
+           WHERE id = ?`,
+        )
+        .run(redactedEmail, redactedName, redactedBio, userId);
+
+      try {
+        this.#db.prepare(`DELETE FROM bot_tokens WHERE user_id = ?`).run(userId);
+      } catch {}
+
+      try {
+        this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ?`).run(userId);
+        this.#db.prepare(`DELETE FROM likes WHERE user_id = ?`).run(userId);
+        this.#db.prepare(`DELETE FROM follows WHERE follower_id = ? OR following_id = ?`).run(userId, userId);
+        this.#db.prepare(`DELETE FROM notifications WHERE user_id = ? OR actor_id = ?`).run(userId, userId);
+      } catch {}
+
+      this.logAudit({
+        actorId: userId,
+        action: "user_account_deleted_gdpr",
+        resourceType: "user",
+        resourceId: String(userId),
+        details: { reason: "GDPR Article 17 Right to Erasure request executed" },
+      });
+    })();
+
+    return { success: true, actorUrl };
+  }
+
+  /**
+   * GDPR Article 20: Right to Data Portability
+   * Returns a complete machine-readable bundle of all user profile, post, library, and billing data.
+   */
+  exportUserData(userId: number): Record<string, unknown> | null {
+    const user = this.#db
+      .prepare(
+        `SELECT id, username, email, display_name, bio, actor_url, status, credit_balance, created_at FROM users WHERE id = ?`,
+      )
+      .get(userId) as any;
+    if (!user) return null;
+
+    let posts: any[] = [];
+    try {
+      posts = this.#db.prepare(`SELECT id, content, created_at, published_at FROM posts WHERE user_id = ?`).all(userId);
+    } catch {}
+
+    let libraries: any[] = [];
+    try {
+      libraries = this.#db
+        .prepare(`SELECT name, version, created_at FROM library_releases WHERE published_by = ?`)
+        .all(userId);
+    } catch {}
+
+    let transactions: any[] = [];
+    try {
+      transactions = this.#db
+        .prepare(
+          `SELECT id, amount, balance_after, type, description, created_at FROM credit_transactions WHERE user_id = ? ORDER BY id DESC`,
+        )
+        .all(userId);
+    } catch {}
+
+    let auditHistory: any[] = [];
+    try {
+      auditHistory = this.#db
+        .prepare(
+          `SELECT action, resource_type, resource_id, created_at FROM audit_logs WHERE actor_id = ? ORDER BY id DESC LIMIT 100`,
+        )
+        .all(userId);
+    } catch {}
+
+    return {
+      exportedAt: new Date().toISOString(),
+      regulation: "GDPR Article 20 / CCPA Data Portability Export",
+      profile: user,
+      posts,
+      libraries,
+      billingHistory: transactions,
+      auditHistory,
+    };
   }
 
   createBot(
@@ -1144,30 +1525,70 @@ export class LibraryDatabase {
         username: string;
         email: string;
         password_hash: string;
+        account_type?: string;
         avatar_url: string;
         display_name: string;
         bio: string;
+        email_verified?: number;
+        status?: string;
+        credit_balance?: number;
       }
     | undefined {
     return this.#db
-      .prepare(`SELECT id, username, email, password_hash, avatar_url, display_name, bio FROM users WHERE email = ?`)
+      .prepare(
+        `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance FROM users WHERE email = ?`,
+      )
       .get(email) as any;
   }
 
-  getUserByUsername(username: string): { id: number; username: string; email: string } | undefined {
-    return this.#db.prepare(`SELECT id, username, email FROM users WHERE username = ?`).get(username) as
-      | { id: number; username: string; email: string }
-      | undefined;
-  }
-
-  getUserById(
-    id: number,
-  ):
-    | { id: number; username: string; email: string; avatar_url: string; display_name: string; bio: string }
+  getUserByUsername(username: string):
+    | {
+        id: number;
+        username: string;
+        email: string;
+        account_type?: string;
+        email_verified?: number;
+        status?: string;
+        credit_balance?: number;
+      }
     | undefined {
     return this.#db
-      .prepare(`SELECT id, username, email, avatar_url, display_name, bio FROM users WHERE id = ?`)
+      .prepare(
+        `SELECT id, username, email, account_type, email_verified, status, credit_balance FROM users WHERE username = ?`,
+      )
+      .get(username) as any;
+  }
+
+  getUserById(id: number):
+    | {
+        id: number;
+        username: string;
+        email: string;
+        account_type?: string;
+        avatar_url: string;
+        display_name: string;
+        bio: string;
+        email_verified?: number;
+        status?: string;
+        credit_balance?: number;
+      }
+    | undefined {
+    return this.#db
+      .prepare(
+        `SELECT id, username, email, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance FROM users WHERE id = ?`,
+      )
       .get(id) as any;
+  }
+
+  setUserAccountType(userId: number, accountType: string): void {
+    this.#db.prepare(`UPDATE users SET account_type = ? WHERE id = ?`).run(accountType, userId);
+  }
+
+  hasAdminUser(): boolean {
+    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM users WHERE account_type = 'admin'`).get() as {
+      count: number;
+    };
+    return (row?.count ?? 0) > 0;
   }
 
   getFullProfileByUsername(username: string): any {
@@ -1229,9 +1650,11 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE users SET notification_settings = ? WHERE id = ?`).run(settings, userId);
   }
 
-  followUser(followerId: number, followingId: number) {
+  followUser(followerId: number, followingId: number, state: "pending" | "accepted" = "accepted") {
     try {
-      this.#db.prepare(`INSERT INTO follows (follower_id, following_id) VALUES (?, ?)`).run(followerId, followingId);
+      this.#db
+        .prepare(`INSERT INTO follows (follower_id, following_id, state) VALUES (?, ?, ?)`)
+        .run(followerId, followingId, state);
     } catch (err) {
       // ignore unique constraint
     }
@@ -1362,12 +1785,13 @@ export class LibraryDatabase {
     updatedAt?: string,
     metadata?: any,
     replyVisibility?: string,
+    isSilenced?: boolean | number,
   ): { id: number } {
     const res = this.#db
       .prepare(
         `
-      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, reply_visibility, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, reply_visibility, is_silenced, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
     `,
       )
       .run(
@@ -1381,6 +1805,7 @@ export class LibraryDatabase {
         url ?? null,
         metadata ? JSON.stringify(metadata) : null,
         replyVisibility ?? "everyone",
+        isSilenced ? 1 : 0,
         createdAt ?? null,
         updatedAt ?? null,
       );
@@ -1470,6 +1895,48 @@ export class LibraryDatabase {
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.reply_to_id = ?
       ORDER BY p.created_at ASC
+      LIMIT ?
+    `,
+      )
+      .all(postId, limit) as any[];
+    return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
+  getQuotes(postId: number, currentUserId?: number, limit: number = 50): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+      FROM posts p JOIN users u ON p.author_id = u.id
+      WHERE p.quote_post_id = ?
+      ORDER BY p.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(postId, limit) as any[];
+    return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
+  getReposts(postId: number, currentUserId?: number, limit: number = 50): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+      FROM posts p JOIN users u ON p.author_id = u.id
+      WHERE p.repost_of_id = ?
+      ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
@@ -1596,7 +2063,7 @@ export class LibraryDatabase {
           (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 20
         ) as engagement_score
       FROM posts p JOIN users u ON p.author_id = u.id
-      WHERE p.reply_to_id IS NULL
+      WHERE p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
       ORDER BY (engagement_score / (CAST((julianday('now') - julianday(p.created_at)) * 24 as REAL) + 2)) DESC, p.created_at DESC
       LIMIT ?
     `,
@@ -1606,7 +2073,16 @@ export class LibraryDatabase {
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 
-  getUserTimeline(username: string, currentUserId?: number, limit: number = 20): any[] {
+  getUserTimeline(username: string, currentUserId?: number, limit: number = 20, type?: string): any[] {
+    let typeFilter = "";
+    if (type === "replies") {
+      typeFilter = "AND p.reply_to_id IS NOT NULL";
+    } else if (type === "artifacts") {
+      typeFilter = "AND p.artifact_view_id IS NOT NULL";
+    } else if (type === "posts") {
+      typeFilter = "AND p.reply_to_id IS NULL";
+    }
+
     const posts = this.#db
       .prepare(
         `
@@ -1618,13 +2094,45 @@ export class LibraryDatabase {
         ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
         ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
-      WHERE u.username = ?
+      WHERE u.username = ? ${typeFilter}
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
       .all(username, limit) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
+  blockUser(blockerId: number, blockedId: number): void {
+    this.#db
+      .prepare(`INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?, ?)`)
+      .run(blockerId, blockedId);
+    this.unfollowUser(blockerId, blockedId);
+    this.unfollowUser(blockedId, blockerId);
+  }
+
+  unblockUser(blockerId: number, blockedId: number): void {
+    this.#db.prepare(`DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?`).run(blockerId, blockedId);
+  }
+
+  isUserBlocked(blockerId: number, blockedId: number): boolean {
+    const row = this.#db
+      .prepare(`SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?`)
+      .get(blockerId, blockedId);
+    return Boolean(row);
+  }
+
+  muteUser(muterId: number, mutedId: number): void {
+    this.#db.prepare(`INSERT OR IGNORE INTO user_mutes (muter_id, muted_id) VALUES (?, ?)`).run(muterId, mutedId);
+  }
+
+  unmuteUser(muterId: number, mutedId: number): void {
+    this.#db.prepare(`DELETE FROM user_mutes WHERE muter_id = ? AND muted_id = ?`).run(muterId, mutedId);
+  }
+
+  isUserMuted(muterId: number, mutedId: number): boolean {
+    const row = this.#db.prepare(`SELECT 1 FROM user_mutes WHERE muter_id = ? AND muted_id = ?`).get(muterId, mutedId);
+    return Boolean(row);
   }
 
   toggleLike(userId: number, postId: number): boolean {
@@ -1640,6 +2148,24 @@ export class LibraryDatabase {
       }
       return true; // liked
     }
+  }
+
+  likePost(userId: number, postId: number): boolean {
+    const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
+    if (!existing) {
+      this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as any;
+      if (post && post.author_id !== userId) {
+        this.createNotification(post.author_id, userId, "like", postId);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  unlikePost(userId: number, postId: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+    return res.changes > 0;
   }
 
   toggleBookmark(userId: number, postId: number): boolean {
@@ -1737,6 +2263,395 @@ export class LibraryDatabase {
       .prepare(`SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0`)
       .get(userId) as any;
     return row.count;
+  }
+
+  // ── Federation Domain Moderation ─────────────────────────────────
+
+  getDomainTier(domain: string): { domain: string; tier: "allow" | "silence" | "suspend"; reason?: string } {
+    const cleanDomain = domain.toLowerCase().trim();
+    const row = this.#db
+      .prepare(`SELECT domain, tier, reason FROM federation_domains WHERE domain = ?`)
+      .get(cleanDomain) as any;
+    if (!row) {
+      return { domain: cleanDomain, tier: "allow" };
+    }
+    return { domain: row.domain, tier: row.tier, reason: row.reason || undefined };
+  }
+
+  setDomainTier(domain: string, tier: "allow" | "silence" | "suspend", reason?: string): void {
+    const cleanDomain = domain.toLowerCase().trim();
+    this.#db
+      .prepare(
+        `INSERT INTO federation_domains (domain, tier, reason, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(domain) DO UPDATE SET
+           tier = excluded.tier,
+           reason = excluded.reason,
+           updated_at = datetime('now')`,
+      )
+      .run(cleanDomain, tier, reason ?? null);
+  }
+
+  deleteDomainTier(domain: string): void {
+    const cleanDomain = domain.toLowerCase().trim();
+    this.#db.prepare(`DELETE FROM federation_domains WHERE domain = ?`).run(cleanDomain);
+  }
+
+  listFederationDomains(): { domain: string; tier: string; reason?: string; created_at: string; updated_at: string }[] {
+    return this.#db
+      .prepare(`SELECT domain, tier, reason, created_at, updated_at FROM federation_domains ORDER BY created_at DESC`)
+      .all() as any[];
+  }
+
+  isDomainSuspended(domain: string): boolean {
+    return this.getDomainTier(domain).tier === "suspend";
+  }
+
+  isDomainSilenced(domain: string): boolean {
+    return this.getDomainTier(domain).tier === "silence";
+  }
+
+  // ── Federation Delivery Queue ─────────────────────────────────────
+
+  enqueueFederationDelivery(
+    activityType: string,
+    activityId: string,
+    payload: Record<string, unknown>,
+    targetInboxUrl: string,
+    targetDomain: string,
+  ): { id: number } {
+    const res = this.#db
+      .prepare(
+        `INSERT INTO federation_delivery_queue (activity_type, activity_id, payload, target_inbox_url, target_domain, status, next_retry_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'), datetime('now'))`,
+      )
+      .run(activityType, activityId, JSON.stringify(payload), targetInboxUrl, targetDomain.toLowerCase());
+    return { id: Number(res.lastInsertRowid) };
+  }
+
+  fetchPendingFederationDeliveries(limit: number = 25): Array<{
+    id: number;
+    activity_type: string;
+    activity_id: string;
+    payload: string;
+    target_inbox_url: string;
+    target_domain: string;
+    attempts: number;
+    max_attempts: number;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT * FROM federation_delivery_queue 
+         WHERE status = 'pending' AND datetime(next_retry_at) <= datetime('now')
+         ORDER BY id ASC LIMIT ?`,
+      )
+      .all(limit) as any[];
+  }
+
+  updateFederationDeliveryStatus(
+    id: number,
+    status: "pending" | "processing" | "completed" | "failed",
+    error?: string,
+    nextRetryMs?: number,
+  ): void {
+    if (status === "completed") {
+      this.#db
+        .prepare(`UPDATE federation_delivery_queue SET status = 'completed', updated_at = datetime('now') WHERE id = ?`)
+        .run(id);
+    } else if (status === "failed") {
+      this.#db
+        .prepare(
+          `UPDATE federation_delivery_queue SET status = 'failed', last_error = ?, updated_at = datetime('now') WHERE id = ?`,
+        )
+        .run(error || null, id);
+    } else if (status === "processing") {
+      this.#db
+        .prepare(
+          `UPDATE federation_delivery_queue SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now') WHERE id = ?`,
+        )
+        .run(id);
+    } else if (status === "pending" && nextRetryMs) {
+      const nextDate = new Date(Date.now() + nextRetryMs).toISOString();
+      this.#db
+        .prepare(
+          `UPDATE federation_delivery_queue SET status = 'pending', last_error = ?, next_retry_at = ?, updated_at = datetime('now') WHERE id = ?`,
+        )
+        .run(error || null, nextDate, id);
+    }
+  }
+
+  getFollowState(followerId: number, followingId: number): "pending" | "accepted" | "rejected" | null {
+    const row = this.#db
+      .prepare(`SELECT state FROM follows WHERE follower_id = ? AND following_id = ?`)
+      .get(followerId, followingId) as { state: "pending" | "accepted" | "rejected" } | undefined;
+    return row ? row.state : null;
+  }
+
+  updateFollowState(followerId: number, followingId: number, state: "pending" | "accepted" | "rejected"): void {
+    this.#db
+      .prepare(`UPDATE follows SET state = ? WHERE follower_id = ? AND following_id = ?`)
+      .run(state, followerId, followingId);
+  }
+
+  getUserOutboxCount(userId: number): number {
+    const row = this.#db
+      .prepare(`SELECT COUNT(*) as count FROM posts WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0`)
+      .get(userId) as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
+
+  getUserOutboxPosts(userId: number, limit: number = 20, offset: number = 0): any[] {
+    return this.#db
+      .prepare(
+        `SELECT id, author_id, content, artifact_view_id, ap_id, url, created_at, updated_at
+         FROM posts 
+         WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0
+         ORDER BY id DESC LIMIT ? OFFSET ?`,
+      )
+      .all(userId, limit, offset) as any[];
+  }
+
+  getUserFollowerActors(userId: number, limit: number = 50, offset: number = 0): string[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT u.actor_url, u.username
+         FROM follows f
+         JOIN users u ON f.follower_id = u.id
+         WHERE f.following_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
+         ORDER BY f.id DESC LIMIT ? OFFSET ?`,
+      )
+      .all(userId, limit, offset) as Array<{ actor_url?: string; username: string }>;
+    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+    return rows.map((r) => r.actor_url || `${publicUrl}/users/${r.username}`);
+  }
+
+  getUserFollowerActorsCount(userId: number): number {
+    const row = this.#db
+      .prepare(`SELECT COUNT(*) as count FROM follows WHERE following_id = ? AND (state = 'accepted' OR state IS NULL)`)
+      .get(userId) as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
+
+  getUserFollowingActors(userId: number, limit: number = 50, offset: number = 0): string[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT u.actor_url, u.username
+         FROM follows f
+         JOIN users u ON f.follower_id = u.id
+         WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
+         ORDER BY f.id DESC LIMIT ? OFFSET ?`,
+      )
+      .all(userId, limit, offset) as Array<{ actor_url?: string; username: string }>;
+    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+    return rows.map((r) => r.actor_url || `${publicUrl}/users/${r.username}`);
+  }
+
+  getUserFollowingActorsCount(userId: number): number {
+    const row = this.#db
+      .prepare(`SELECT COUNT(*) as count FROM follows WHERE follower_id = ? AND (state = 'accepted' OR state IS NULL)`)
+      .get(userId) as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
+
+  getPostByApId(apId: string): any {
+    return this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId);
+  }
+
+  deletePostByApId(apId: string): boolean {
+    const post = this.#db.prepare(`SELECT id FROM posts WHERE ap_id = ?`).get(apId) as any;
+    if (!post) return false;
+    return this.deletePost(post.id).success;
+  }
+
+  updatePostContentByApId(apId: string, content: string): boolean {
+    const res = this.#db
+      .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE ap_id = ?`)
+      .run(content, apId);
+    return res.changes > 0;
+  }
+
+  // ── Moderation & Content Reports ─────────────────────────────────
+
+  createContentReport(
+    reporterId: number,
+    data: { postId?: number; targetUserId?: number; reason: string; details?: string },
+  ): { id: number; status: string } {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO content_reports (reporter_id, post_id, target_user_id, reason, details)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(reporterId, data.postId ?? null, data.targetUserId ?? null, data.reason, data.details ?? null);
+    return { id: Number(result.lastInsertRowid), status: "pending" };
+  }
+
+  getContentReport(reportId: number): any {
+    return this.#db
+      .prepare(
+        `SELECT r.*, 
+                u.username as reporter_username, 
+                p.content as post_content,
+                p.author_id as post_author_id
+         FROM content_reports r
+         LEFT JOIN users u ON r.reporter_id = u.id
+         LEFT JOIN posts p ON r.post_id = p.id
+         WHERE r.id = ?`,
+      )
+      .get(reportId);
+  }
+
+  getModerationQueue(status?: string, limit: number = 50, offset: number = 0): any[] {
+    if (status) {
+      return this.#db
+        .prepare(
+          `SELECT r.*, 
+                  u.username as reporter_username, 
+                  p.content as post_content,
+                  p.author_id as post_author_id
+           FROM content_reports r
+           LEFT JOIN users u ON r.reporter_id = u.id
+           LEFT JOIN posts p ON r.post_id = p.id
+           WHERE r.status = ?
+           ORDER BY r.created_at DESC
+           LIMIT ? OFFSET ?`,
+        )
+        .all(status, limit, offset) as any[];
+    }
+    return this.#db
+      .prepare(
+        `SELECT r.*, 
+                u.username as reporter_username, 
+                p.content as post_content,
+                p.author_id as post_author_id
+         FROM content_reports r
+         LEFT JOIN users u ON r.reporter_id = u.id
+         LEFT JOIN posts p ON r.post_id = p.id
+         ORDER BY r.created_at DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(limit, offset) as any[];
+  }
+
+  resolveContentReport(reportId: number, status: "resolved" | "dismissed", resolutionNotes?: string): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE content_reports
+         SET status = ?, resolution_notes = ?, resolved_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(status, resolutionNotes ?? null, reportId);
+    return res.changes > 0;
+  }
+
+  deletePost(postId: number): { success: boolean; apId?: string; authorId?: number } {
+    const post = this.#db.prepare(`SELECT id, author_id, ap_id FROM posts WHERE id = ?`).get(postId) as any;
+    if (!post) {
+      return { success: false };
+    }
+    this.#db.prepare(`UPDATE content_reports SET post_id = NULL WHERE post_id = ?`).run(postId);
+    this.#db.prepare(`DELETE FROM notifications WHERE post_id = ?`).run(postId);
+    this.#db.prepare(`DELETE FROM likes WHERE post_id = ?`).run(postId);
+    this.#db.prepare(`DELETE FROM bookmarks WHERE post_id = ?`).run(postId);
+    this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
+    this.#db.prepare(`DELETE FROM post_location_stats WHERE post_id = ?`).run(postId);
+    this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(postId);
+    return { success: true, apId: post.ap_id, authorId: post.author_id };
+  }
+
+  // ── DMCA Notices ─────────────────────────────────────────────────
+
+  createDmcaNotice(data: {
+    claimantName: string;
+    claimantEmail: string;
+    copyrightOwner: string;
+    workDescription: string;
+    infringingUrl: string;
+    resourceType?: string;
+    resourceId?: string;
+  }): { id: number } {
+    const res = this.#db
+      .prepare(
+        `INSERT INTO dmca_notices (claimant_name, claimant_email, copyright_owner, work_description, infringing_url, resource_type, resource_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        data.claimantName,
+        data.claimantEmail,
+        data.copyrightOwner,
+        data.workDescription,
+        data.infringingUrl,
+        data.resourceType ?? "package",
+        data.resourceId ?? null,
+      );
+    return { id: Number(res.lastInsertRowid) };
+  }
+
+  listDmcaNotices(status?: string): any[] {
+    if (status) {
+      return this.#db.prepare(`SELECT * FROM dmca_notices WHERE status = ? ORDER BY created_at DESC`).all(status);
+    }
+    return this.#db.prepare(`SELECT * FROM dmca_notices ORDER BY created_at DESC`).all();
+  }
+
+  resolveDmcaNotice(id: number, actionTaken: string): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE dmca_notices SET status = 'resolved', action_taken = ?, resolved_at = datetime('now') WHERE id = ?`,
+      )
+      .run(actionTaken, id);
+    return res.changes > 0;
+  }
+
+  logAudit(data: {
+    actorId?: number | null | undefined;
+    action: string;
+    resourceType: string;
+    resourceId?: string | null | undefined;
+    ipAddress?: string | null | undefined;
+    details?: Record<string, any> | string | undefined;
+  }): void {
+    const detailsStr = typeof data.details === "object" ? JSON.stringify(data.details) : (data.details ?? null);
+    try {
+      this.#db
+        .prepare(
+          `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, ip_address, details)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          data.actorId ?? null,
+          data.action,
+          data.resourceType,
+          data.resourceId ?? null,
+          data.ipAddress ?? null,
+          detailsStr,
+        );
+    } catch (e) {
+      console.error("[AuditLog] Failed to insert audit log entry:", e);
+    }
+  }
+
+  getAuditLogs(limit: number = 50, offset: number = 0, action?: string): any[] {
+    if (action) {
+      return this.#db
+        .prepare(
+          `SELECT a.*, u.username as actor_username
+           FROM audit_logs a
+           LEFT JOIN users u ON a.actor_id = u.id
+           WHERE a.action = ?
+           ORDER BY a.created_at DESC
+           LIMIT ? OFFSET ?`,
+        )
+        .all(action, limit, offset) as any[];
+    }
+    return this.#db
+      .prepare(
+        `SELECT a.*, u.username as actor_username
+         FROM audit_logs a
+         LEFT JOIN users u ON a.actor_id = u.id
+         ORDER BY a.created_at DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(limit, offset) as any[];
   }
 
   // ── RSS Feeds ───────────────────────────────────────────────────
@@ -1910,15 +2825,84 @@ export class LibraryDatabase {
     viewConfig: string,
     title?: string,
     thumbnailUrl?: string,
+    remoteOriginUrl?: string,
   ): number {
     const res = this.#db
       .prepare(
         `
-      INSERT INTO artifact_views (creator_id, view_type, source_type, view_config, title, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO artifact_views (creator_id, view_type, source_type, view_config, title, thumbnail_url, remote_origin_url) VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
       )
-      .run(creatorId, type, source_type, viewConfig, title || null, thumbnailUrl || null);
+      .run(creatorId, type, source_type, viewConfig, title || null, thumbnailUrl || null, remoteOriginUrl || null);
     return Number(res.lastInsertRowid);
+  }
+
+  // ── Remote Packages (Federated Registry) ─────────────────────────
+
+  recordRemotePackage(pkg: {
+    name: string;
+    version: string;
+    actorUrl: string;
+    downloadUrl: string;
+    checksum: string;
+    license?: string | null;
+    description?: string | null;
+    metadata?: string | null;
+  }): { id: number } {
+    const res = this.#db
+      .prepare(
+        `
+      INSERT INTO remote_packages (name, version, actor_url, download_url, checksum, license, description, metadata, is_deleted, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
+      ON CONFLICT(name, version, actor_url) DO UPDATE SET
+        download_url = excluded.download_url,
+        checksum = excluded.checksum,
+        license = excluded.license,
+        description = excluded.description,
+        metadata = excluded.metadata,
+        is_deleted = 0,
+        updated_at = datetime('now')
+    `,
+      )
+      .run(
+        pkg.name,
+        pkg.version,
+        pkg.actorUrl,
+        pkg.downloadUrl,
+        pkg.checksum,
+        pkg.license || null,
+        pkg.description || null,
+        pkg.metadata || null,
+      );
+    return { id: Number(res.lastInsertRowid) };
+  }
+
+  getRemotePackage(name: string, version: string): any {
+    return this.#db
+      .prepare(`SELECT * FROM remote_packages WHERE name = ? AND version = ? AND is_deleted = 0`)
+      .get(name, version);
+  }
+
+  getRemotePackages(limit = 50, offset = 0): any[] {
+    return this.#db
+      .prepare(`SELECT * FROM remote_packages WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .all(limit, offset);
+  }
+
+  deleteRemotePackage(name: string, version: string, actorUrl?: string): void {
+    if (actorUrl) {
+      this.#db
+        .prepare(
+          `UPDATE remote_packages SET is_deleted = 1, updated_at = datetime('now') WHERE name = ? AND version = ? AND actor_url = ?`,
+        )
+        .run(name, version, actorUrl);
+    } else {
+      this.#db
+        .prepare(
+          `UPDATE remote_packages SET is_deleted = 1, updated_at = datetime('now') WHERE name = ? AND version = ?`,
+        )
+        .run(name, version);
+    }
   }
 
   // ── Trending Topics ─────────────────────────────────────────────
@@ -2537,6 +3521,17 @@ export class LibraryDatabase {
       WHERE library_name = ? AND library_version = ?
     `);
     return (stmt.get(libraryName, libraryVersion) as any) ?? null;
+  }
+
+  /**
+   * Get all releases for a library name.
+   */
+  getLibraryReleases(libraryName: string): any[] {
+    const stmt = this.#db.prepare(`
+      SELECT * FROM library_releases
+      WHERE library_name = ?
+    `);
+    return stmt.all(libraryName) as any[];
   }
 
   // ── npm registry methods ────────────────────────────────────────

@@ -10,6 +10,12 @@ import { LocalProcessDriver } from "../src/services/hpc/drivers/local-driver.js"
 import { parseMemoryStringToBytes, parseSacctOutput, SlurmDriver } from "../src/services/hpc/drivers/slurm-driver.js";
 import { HpcEngine } from "../src/services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../src/services/hpc/hpc-types.js";
+import {
+  calculateMaxAffordableDurationSeconds,
+  checkJobWalletDrain,
+  HARD_LIMITS,
+  validateResourceLimits,
+} from "../src/services/hpc/quota-guard.js";
 
 test("HPC Drivers & Cost Accounting", async (t) => {
   await t.test("parseMemoryStringToBytes handles various unit formats", () => {
@@ -196,6 +202,183 @@ test("HPC Drivers & Cost Accounting", async (t) => {
     assert.strictEqual(metrics.exitCode, 0);
     assert.ok(typeof metrics.cpuCoreSeconds === "number");
     assert.ok(typeof metrics.costCredits === "number");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  await t.test("validateResourceLimits enforces tier and platform limits", () => {
+    const std = COMPUTE_PROFILES["standard"]!;
+
+    // 1. Valid resources within limits
+    const valid = validateResourceLimits({ cpusPerTask: 4, memoryMb: 16384, timeLimitMinutes: 30 }, std);
+    assert.strictEqual(valid.valid, true);
+
+    // 2. Exceeding profile time ceiling (standard profile ceiling is 30m)
+    const tooLong = validateResourceLimits({ timeLimitMinutes: 120 }, std);
+    assert.strictEqual(tooLong.valid, false);
+    assert.ok(tooLong.reason?.includes("exceeds profile 'Standard Compute' ceiling"));
+
+    // 3. Exceeding max CPU cores ceiling
+    const tooManyCores = validateResourceLimits({ nodes: 2, tasksPerNode: 32, cpusPerTask: 2 }); // 128 cores > 64
+    assert.strictEqual(tooManyCores.valid, false);
+    assert.ok(tooManyCores.reason?.includes("exceeds hard platform ceiling of 64 cores"));
+
+    // 4. Exceeding max memory ceiling
+    const tooMuchMem = validateResourceLimits({ memoryMb: HARD_LIMITS.MAX_JOB_MEMORY_MB + 1000 });
+    assert.strictEqual(tooMuchMem.valid, false);
+    assert.ok(tooMuchMem.reason?.includes("exceeds hard platform ceiling"));
+  });
+
+  await t.test("calculateMaxAffordableDurationSeconds calculates sustainable duration", () => {
+    // 10 credits at 10 cr/hr = 1 hour = 3600 seconds
+    assert.strictEqual(calculateMaxAffordableDurationSeconds(10, 10), 3600);
+    // 5 credits at 10 cr/hr = 0.5 hour = 1800 seconds
+    assert.strictEqual(calculateMaxAffordableDurationSeconds(5, 10), 1800);
+    // 0 credits
+    assert.strictEqual(calculateMaxAffordableDurationSeconds(0, 10), 0);
+  });
+
+  await t.test("checkJobWalletDrain prevents negative balance", () => {
+    const mockDb = {
+      getUserBalance: (userId: number) => (userId === 1 ? 5 : 0),
+    };
+    const std = COMPUTE_PROFILES["standard"]!; // 10 cr/hr
+
+    // User 1 has 5 credits. At 900 seconds (0.25h), cost is 2.5 cr -> still positive
+    const okDrain = checkJobWalletDrain(1, mockDb as any, 900, std);
+    assert.strictEqual(okDrain.hasBalance, true);
+    assert.strictEqual(okDrain.remainingCredits, 2.5);
+
+    // At 3600 seconds (1h), cost is 10 cr -> exceeds 5 cr balance
+    const badDrain = checkJobWalletDrain(1, mockDb as any, 3600, std);
+    assert.strictEqual(badDrain.hasBalance, false);
+    assert.ok(badDrain.remainingCredits < 0);
+  });
+
+  await t.test("LocalProcessDriver resolves sandboxed Docker / Podman commands", () => {
+    const driver = new LocalProcessDriver();
+    const spec: HpcJobSpec = {
+      jobId: "sandbox-job-docker",
+      name: "DockerSandboxJob",
+      command: "omc",
+      args: ["simulate.mos"],
+      workingDir: "/tmp/sim-sandbox",
+      resources: { cpusPerTask: 4, memoryMb: 8192 },
+      sandbox: {
+        runtime: "docker",
+        networkIsolation: true,
+        readOnlyRoot: true,
+        tmpfsSizeMb: 1024,
+      },
+    };
+
+    const resolved = driver.resolveSandboxCommand(spec);
+    assert.strictEqual(resolved.runtime, "docker");
+    assert.strictEqual(resolved.execCmd, "docker");
+    assert.strictEqual(resolved.networkIsolation, true);
+
+    const argsStr = resolved.execArgs.join(" ");
+    assert.ok(argsStr.includes("--network none"), "Should isolate network");
+    assert.ok(argsStr.includes("--read-only"), "Should make root read-only");
+    assert.ok(argsStr.includes("--tmpfs /tmp:rw,size=1024m"), "Should mount capped tmpfs");
+    assert.ok(argsStr.includes("--cap-drop=ALL"), "Should drop capabilities");
+    assert.ok(argsStr.includes("--security-opt=no-new-privileges"), "Should prevent privilege escalation");
+    assert.ok(argsStr.includes("--cpus 4"), "Should set cpus limit");
+    assert.ok(argsStr.includes("--memory 8192m"), "Should set memory limit");
+    assert.ok(argsStr.includes("omc simulate.mos"), "Should pass original command");
+  });
+
+  await t.test("LocalProcessDriver resolves sandboxed unshare network isolation", () => {
+    const driver = new LocalProcessDriver();
+    const spec: HpcJobSpec = {
+      jobId: "sandbox-job-unshare",
+      name: "UnshareJob",
+      command: "ccx",
+      args: ["-i", "mesh"],
+      workingDir: "/tmp/ccx-sandbox",
+      resources: {},
+      sandbox: {
+        runtime: "unshare",
+        networkIsolation: true,
+      },
+    };
+
+    const resolved = driver.resolveSandboxCommand(spec);
+    if (process.platform === "linux") {
+      assert.strictEqual(resolved.runtime, "unshare");
+      assert.strictEqual(resolved.execCmd, "unshare");
+      assert.deepStrictEqual(resolved.execArgs, ["-n", "-r", "ccx", "-i", "mesh"]);
+      assert.strictEqual(resolved.networkIsolation, true);
+    }
+  });
+
+  await t.test("LocalProcessDriver wall-clock timeout watchdog terminates runaway jobs", async () => {
+    const driver = new LocalProcessDriver({ defaultMaxWallClockMinutes: 30 });
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hpc-test-timeout-"));
+
+    const spec: HpcJobSpec = {
+      jobId: "timeout-job-1",
+      name: "RunawayJob",
+      command: process.execPath,
+      // Sleep for 10 seconds, but set maxWallClockSeconds to 0.1s
+      args: ["-e", "setTimeout(() => {}, 10000)"],
+      workingDir: tmpDir,
+      resources: {
+        maxWallClockSeconds: 0.1,
+      },
+    };
+
+    await driver.submit(spec);
+
+    // Wait for timeout to fire
+    let status = await driver.pollStatus("timeout-job-1");
+    while (status.state === "RUNNING") {
+      await new Promise((r) => setTimeout(r, 50));
+      status = await driver.pollStatus("timeout-job-1");
+    }
+
+    assert.strictEqual(status.state, "FAILED");
+    assert.strictEqual(status.exitCode, 124);
+
+    const metrics = await driver.getMetrics("timeout-job-1", tmpDir, COMPUTE_PROFILES["standard"]!);
+    assert.strictEqual(metrics.suspiciousActivity, "timeout");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  await t.test("LocalProcessDriver wallet watchdog aborts job on credit exhaustion", async () => {
+    // Balance checker returns 0 balance (broke user)
+    const driver = new LocalProcessDriver({
+      walletBalanceChecker: (_userId) => -1, // already negative
+    });
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hpc-test-drain-"));
+
+    const spec: HpcJobSpec = {
+      jobId: "drain-job-1",
+      name: "DrainedJob",
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 10000)"],
+      workingDir: tmpDir,
+      userId: 42,
+      resources: {},
+    };
+
+    await driver.submit(spec);
+
+    // Wait for watchdog to trigger (periodic check at 1s)
+    let status = await driver.pollStatus("drain-job-1");
+    let attempts = 0;
+    while (status.state === "RUNNING" && attempts < 30) {
+      await new Promise((r) => setTimeout(r, 100));
+      status = await driver.pollStatus("drain-job-1");
+      attempts++;
+    }
+
+    assert.strictEqual(status.state, "FAILED");
+    assert.strictEqual(status.exitCode, 402);
+
+    const metrics = await driver.getMetrics("drain-job-1", tmpDir, COMPUTE_PROFILES["standard"]!);
+    assert.strictEqual(metrics.suspiciousActivity, "credit_exhausted");
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

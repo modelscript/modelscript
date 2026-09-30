@@ -6,6 +6,17 @@
 
 export type HpcJobState = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
 
+export interface HpcSandboxConfig {
+  enabled?: boolean | undefined;
+  runtime?: "auto" | "docker" | "podman" | "unshare" | "bwrap" | "none" | undefined;
+  networkIsolation?: boolean | undefined;
+  readOnlyRoot?: boolean | undefined;
+  tmpfsSizeMb?: number | undefined;
+  image?: string | undefined;
+  seccompProfile?: string | undefined;
+  dropCapabilities?: boolean | undefined;
+}
+
 export interface HpcResourceSpec {
   nodes?: number | undefined;
   tasksPerNode?: number | undefined;
@@ -14,6 +25,10 @@ export interface HpcResourceSpec {
   gpuType?: "a100" | "v100" | "t4" | "h100" | undefined;
   memoryMb?: number | undefined;
   timeLimitMinutes?: number | undefined;
+  maxWallClockSeconds?: number | undefined;
+  networkIsolation?: boolean | undefined;
+  cpuMaxLimitPercent?: number | undefined;
+  memoryMaxMb?: number | undefined;
   partition?: string | undefined;
   account?: string | undefined;
   qos?: string | undefined;
@@ -31,6 +46,7 @@ export interface ComputeProfile {
   tasksPerNode?: number | undefined;
   nodes?: number | undefined;
   costCreditsPerHour: number;
+  maxWallClockMinutes?: number | undefined;
 }
 
 import type { JobStagingManifest } from "./staging/staging-types.js";
@@ -41,8 +57,10 @@ export interface HpcJobSpec {
   command: string;
   args: string[];
   workingDir: string;
+  userId?: number | undefined;
   profileId?: string | undefined;
   resources: HpcResourceSpec;
+  sandbox?: HpcSandboxConfig | undefined;
   env?: Record<string, string> | undefined;
   modules?: string[] | undefined;
   apptainerImage?: string | undefined;
@@ -57,6 +75,9 @@ export interface HpcUsageMetrics {
   costCredits: number;
   nativeJobId?: string | undefined;
   exitCode?: number | undefined;
+  suspiciousActivity?: "potential_cryptomining" | "timeout" | "credit_exhausted" | undefined;
+  networkIsolationEnforced?: boolean | undefined;
+  sandboxRuntime?: string | undefined;
 }
 
 export interface HpcSubmissionResult {

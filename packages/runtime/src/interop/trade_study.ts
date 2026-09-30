@@ -50,6 +50,26 @@ export interface TradeStudyResult {
   hypervolumeEstimate: number;
 }
 
+export interface TradeStudyVariable {
+  name: string;
+  min: number;
+  max: number;
+}
+
+export interface EvolveTradeStudyOptions {
+  variables: TradeStudyVariable[];
+  evaluate: (params: Record<string, number>) => Promise<Record<string, number>> | Record<string, number>;
+  batchEvaluate?: (
+    paramsList: Record<string, number>[],
+  ) => Promise<Record<string, number>[]> | Record<string, number>[];
+  populationSize?: number;
+  generations?: number;
+  seed?: number;
+  crossoverProb?: number;
+  mutationProb?: number;
+  onGeneration?: (gen: number, paretoCount: number) => void;
+}
+
 export class TradeStudyEngine {
   public readonly studyName: string;
   public readonly objectives: ObjectiveDef[];
@@ -69,6 +89,285 @@ export class TradeStudyEngine {
 
   public addCandidates(candidates: TradeStudyCandidate[]): void {
     for (const c of candidates) this.addCandidate(c);
+  }
+
+  /**
+   * Generatively discovers Pareto trade-off candidates using active NSGA-II evolution
+   * across design variable parameter ranges.
+   */
+  public async evolve(options: EvolveTradeStudyOptions): Promise<TradeStudyResult> {
+    const { variables, evaluate, batchEvaluate } = options;
+    const nVars = variables.length;
+    if (nVars === 0) {
+      throw new Error("Must specify at least one design variable for trade study evolution");
+    }
+
+    const popSize = Math.max(10, (options.populationSize ?? 40) & ~1);
+    const maxGen = options.generations ?? 25;
+    const pCross = options.crossoverProb ?? 0.9;
+    const pMut = options.mutationProb ?? 1.0 / nVars;
+    const etaC = 20;
+    const etaM = 20;
+
+    let seed = options.seed ?? 12345;
+    const rng = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const evalCandidates = async (paramList: Record<string, number>[]): Promise<Record<string, number>[]> => {
+      if (batchEvaluate) {
+        return batchEvaluate(paramList);
+      }
+      return Promise.all(paramList.map((p) => evaluate(p)));
+    };
+
+    // 1. Initial population
+    const curPoints: Float64Array[] = [];
+    for (let i = 0; i < popSize; i++) {
+      const pt = new Float64Array(nVars);
+      for (let j = 0; j < nVars; j++) {
+        pt[j] = variables[j]!.min + rng() * (variables[j]!.max - variables[j]!.min);
+      }
+      curPoints.push(pt);
+    }
+
+    const pointsToRecords = (pts: Float64Array[]): Record<string, number>[] => {
+      return pts.map((pt) => {
+        const rec: Record<string, number> = {};
+        for (let j = 0; j < nVars; j++) {
+          rec[variables[j]!.name] = pt[j]!;
+        }
+        return rec;
+      });
+    };
+
+    const curParamRecords = pointsToRecords(curPoints);
+    const curObjectives = await evalCandidates(curParamRecords);
+
+    interface GenIndividual {
+      point: Float64Array;
+      params: Record<string, number>;
+      objectives: Record<string, number>;
+      rank: number;
+      crowdingDistance: number;
+    }
+
+    let population: GenIndividual[] = curPoints.map((pt, i) => ({
+      point: pt,
+      params: curParamRecords[i]!,
+      objectives: curObjectives[i]!,
+      rank: 0,
+      crowdingDistance: 0,
+    }));
+
+    const sortAndCrowd = (pop: GenIndividual[]): GenIndividual[][] => {
+      const N = pop.length;
+      const domCounts = new Int32Array(N);
+      const domSets: number[][] = Array.from({ length: N }, () => []);
+      const fronts: GenIndividual[][] = [[]];
+
+      for (let p = 0; p < N; p++) {
+        for (let q = p + 1; q < N; q++) {
+          const a = pop[p]!;
+          const b = pop[q]!;
+
+          let atLeastOneBetterA = false;
+          let aDominatesB = true;
+          let atLeastOneBetterB = false;
+          let bDominatesA = true;
+
+          for (const obj of this.objectives) {
+            const va = a.objectives[obj.name] ?? (obj.sense === "minimize" ? Infinity : -Infinity);
+            const vb = b.objectives[obj.name] ?? (obj.sense === "minimize" ? Infinity : -Infinity);
+
+            if (obj.sense === "minimize") {
+              if (va > vb) aDominatesB = false;
+              if (va < vb) atLeastOneBetterA = true;
+              if (vb > va) bDominatesA = false;
+              if (vb < va) atLeastOneBetterB = true;
+            } else {
+              if (va < vb) aDominatesB = false;
+              if (va > vb) atLeastOneBetterA = true;
+              if (vb > va) bDominatesA = false;
+              if (vb < va) atLeastOneBetterB = true;
+            }
+          }
+
+          if (aDominatesB && atLeastOneBetterA) {
+            domSets[p]!.push(q);
+            domCounts[q]++;
+          } else if (bDominatesA && atLeastOneBetterB) {
+            domSets[q]!.push(p);
+            domCounts[p]++;
+          }
+        }
+
+        if (domCounts[p] === 0) {
+          pop[p]!.rank = 0;
+          fronts[0]!.push(pop[p]!);
+        }
+      }
+
+      let curFrontIdx = 0;
+      while (fronts[curFrontIdx] && fronts[curFrontIdx]!.length > 0) {
+        const nextFront: GenIndividual[] = [];
+        for (const pInd of fronts[curFrontIdx]!) {
+          const pIdx = pop.indexOf(pInd);
+          for (const qIdx of domSets[pIdx]!) {
+            domCounts[qIdx]--;
+            if (domCounts[qIdx] === 0) {
+              pop[qIdx]!.rank = curFrontIdx + 1;
+              nextFront.push(pop[qIdx]!);
+            }
+          }
+        }
+        curFrontIdx++;
+        if (nextFront.length > 0) fronts.push(nextFront);
+      }
+
+      for (const front of fronts) {
+        const l = front.length;
+        if (l <= 2) {
+          for (const ind of front) ind.crowdingDistance = 1e14;
+          continue;
+        }
+
+        for (const ind of front) ind.crowdingDistance = 0;
+
+        for (const obj of this.objectives) {
+          front.sort((a, b) => (a.objectives[obj.name] ?? 0) - (b.objectives[obj.name] ?? 0));
+          front[0]!.crowdingDistance = 1e14;
+          front[l - 1]!.crowdingDistance = 1e14;
+
+          const minVal = front[0]!.objectives[obj.name] ?? 0;
+          const maxVal = front[l - 1]!.objectives[obj.name] ?? 0;
+          const span = maxVal - minVal;
+
+          if (span > 1e-12) {
+            for (let k = 1; k < l - 1; k++) {
+              if (front[k]!.crowdingDistance < 1e14) {
+                const diff = (front[k + 1]!.objectives[obj.name] ?? 0) - (front[k - 1]!.objectives[obj.name] ?? 0);
+                front[k]!.crowdingDistance += diff / span;
+              }
+            }
+          }
+        }
+      }
+
+      return fronts;
+    };
+
+    sortAndCrowd(population);
+
+    for (let gen = 0; gen < maxGen; gen++) {
+      const offspringPoints: Float64Array[] = [];
+
+      const selectTournament = (): GenIndividual => {
+        const i1 = Math.floor(rng() * population.length);
+        const i2 = Math.floor(rng() * population.length);
+        const a = population[i1]!;
+        const b = population[i2]!;
+        if (a.rank !== b.rank) {
+          return a.rank < b.rank ? a : b;
+        }
+        return a.crowdingDistance >= b.crowdingDistance ? a : b;
+      };
+
+      for (let i = 0; i < popSize; i += 2) {
+        const p1 = selectTournament().point;
+        const p2 = selectTournament().point;
+
+        const c1 = new Float64Array(nVars);
+        const c2 = new Float64Array(nVars);
+
+        if (rng() < pCross) {
+          for (let j = 0; j < nVars; j++) {
+            if (rng() <= 0.5) {
+              const u = rng();
+              const beta =
+                u <= 0.5
+                  ? Math.pow(2.0 * u, 1.0 / (etaC + 1.0))
+                  : Math.pow(1.0 / (2.0 * (1.0 - u)), 1.0 / (etaC + 1.0));
+              c1[j] = 0.5 * ((1.0 + beta) * p1[j]! + (1.0 - beta) * p2[j]!);
+              c2[j] = 0.5 * ((1.0 - beta) * p1[j]! + (1.0 + beta) * p2[j]!);
+            } else {
+              c1[j] = p1[j]!;
+              c2[j] = p2[j]!;
+            }
+          }
+        } else {
+          c1.set(p1);
+          c2.set(p2);
+        }
+
+        for (const child of [c1, c2]) {
+          for (let j = 0; j < nVars; j++) {
+            if (rng() < pMut) {
+              const u = rng();
+              const delta =
+                u < 0.5
+                  ? Math.pow(2.0 * u, 1.0 / (etaM + 1.0)) - 1.0
+                  : 1.0 - Math.pow(2.0 * (1.0 - u), 1.0 / (etaM + 1.0));
+              child[j] = child[j]! + delta * (variables[j]!.max - variables[j]!.min);
+            }
+            if (child[j]! < variables[j]!.min) child[j] = variables[j]!.min;
+            if (child[j]! > variables[j]!.max) child[j] = variables[j]!.max;
+          }
+        }
+
+        offspringPoints.push(c1, c2);
+      }
+
+      const offspringRecords = pointsToRecords(offspringPoints);
+      const offspringObjs = await evalCandidates(offspringRecords);
+
+      const offspring: GenIndividual[] = offspringPoints.map((pt, i) => ({
+        point: pt,
+        params: offspringRecords[i]!,
+        objectives: offspringObjs[i]!,
+        rank: 0,
+        crowdingDistance: 0,
+      }));
+
+      const combined = population.concat(offspring);
+      const fronts = sortAndCrowd(combined);
+
+      const nextPop: GenIndividual[] = [];
+      for (const front of fronts) {
+        if (nextPop.length + front.length <= popSize) {
+          nextPop.push(...front);
+        } else {
+          front.sort((a, b) => b.crowdingDistance - a.crowdingDistance);
+          const needed = popSize - nextPop.length;
+          for (let k = 0; k < needed; k++) {
+            nextPop.push(front[k]!);
+          }
+          break;
+        }
+      }
+
+      population = nextPop;
+
+      if (options.onGeneration) {
+        const paretoCount = population.filter((p) => p.rank === 0).length;
+        options.onGeneration(gen, paretoCount);
+      }
+    }
+
+    let candIdx = 1;
+    for (const ind of population) {
+      this.addCandidate({
+        id: `gen_alt_${candIdx++}`,
+        name: `${this.studyName} Variant ${candIdx}`,
+        parameters: ind.params,
+        objectives: ind.objectives,
+      });
+    }
+
+    return this.evaluate();
   }
 
   /**

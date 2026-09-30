@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "vitepress build docs",
+    "build:pdf": "tsx scripts/generate-pdf.ts",
     "clean": "rimraf docs/.vitepress/dist",
     "dev": "vitepress dev docs",
-    "preview": "vitepress preview docs"
+    "lint": "eslint docs",
+    "preview": "vitepress preview docs",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "vitepress": "^1.1.4"

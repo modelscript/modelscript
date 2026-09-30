@@ -160,4 +160,99 @@ describe("Polyglot MCP Host Engine", () => {
     registerTools(server, ctx);
     expect(server).toBeDefined();
   });
+
+  test("registers and executes modelscript_patch_code surgically on candidate files", async () => {
+    const server = new McpServer({
+      name: "test-patch-code",
+      version: "1.0.0",
+    });
+    const ctx: ServerContext = { current: null };
+    registerTools(server, ctx);
+
+    // Verify tool is registered
+    const tools = (server as any)._registeredTools;
+    expect(tools["modelscript_patch_code"]).toBeDefined();
+
+    // Test surgical patching via temporary scratch file in workspace
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const scratchDir = path.resolve(process.cwd(), "packages/mcp/tests/scratch");
+    await fs.mkdir(scratchDir, { recursive: true });
+    const scratchFile = path.join(scratchDir, "patch-test.mo");
+
+    const originalText = `model Resistor\n  parameter Real R = 100.0;\n  Real v;\nequation\n  v = 10.0;\nend Resistor;\n`;
+    await fs.writeFile(scratchFile, originalText, "utf-8");
+
+    const handler = tools["modelscript_patch_code"].handler;
+    const patchRes = await handler({
+      filePath: "packages/mcp/tests/scratch/patch-test.mo",
+      searchBlock: "  parameter Real R = 100.0;",
+      replaceBlock: "  parameter Real R = 220.0;\n  parameter Real tol = 0.05;",
+    });
+
+    expect(patchRes.isError).toBeFalsy();
+    const parsed = JSON.parse(patchRes.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.addedLines).toBe(2);
+    expect(parsed.deletedLines).toBe(1);
+
+    const patchedContent = await fs.readFile(scratchFile, "utf-8");
+    expect(patchedContent).toContain("parameter Real R = 220.0;");
+    expect(patchedContent).toContain("parameter Real tol = 0.05;");
+    expect(patchedContent).not.toContain("parameter Real R = 100.0;");
+
+    // Clean up scratch file
+    await fs.rm(scratchDir, { recursive: true, force: true });
+  });
+
+  test("registers and executes modelscript_read_file and modelscript_list_workspace_files", async () => {
+    const server = new McpServer({
+      name: "test-workspace-nav",
+      version: "1.0.0",
+    });
+    const ctx: ServerContext = { current: null };
+    registerTools(server, ctx);
+
+    const tools = (server as any)._registeredTools;
+    expect(tools["modelscript_read_file"]).toBeDefined();
+    expect(tools["modelscript_list_workspace_files"]).toBeDefined();
+
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const scratchDir = path.resolve(process.cwd(), "packages/mcp/tests/scratch-nav");
+    await fs.mkdir(scratchDir, { recursive: true });
+    const scratchFile = path.join(scratchDir, "nav-test.mo");
+
+    const fileContent = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+    await fs.writeFile(scratchFile, fileContent, "utf-8");
+
+    // Test read_file
+    const readHandler = tools["modelscript_read_file"].handler;
+    const readRes = await readHandler({
+      filePath: "packages/mcp/tests/scratch-nav/nav-test.mo",
+      startLine: 2,
+      endLine: 4,
+    });
+
+    expect(readRes.isError).toBeFalsy();
+    const readParsed = JSON.parse(readRes.content[0].text);
+    expect(readParsed.startLine).toBe(2);
+    expect(readParsed.endLine).toBe(4);
+    expect(readParsed.content).toBe("line 2\nline 3\nline 4");
+
+    // Test list_workspace_files
+    const listHandler = tools["modelscript_list_workspace_files"].handler;
+    const listRes = await listHandler({
+      directory: "packages/mcp/tests/scratch-nav",
+      extension: ".mo",
+    });
+
+    expect(listRes.isError).toBeFalsy();
+    const listParsed = JSON.parse(listRes.content[0].text);
+    expect(listParsed.count).toBeGreaterThanOrEqual(1);
+    expect(listParsed.files.some((f: string) => f.includes("nav-test.mo"))).toBe(true);
+
+    // Clean up
+    await fs.rm(scratchDir, { recursive: true, force: true });
+  });
 });
