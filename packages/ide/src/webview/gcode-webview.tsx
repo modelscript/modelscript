@@ -7,8 +7,8 @@ import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
 
-// @ts-expect-error acquireVsCodeApi is injected
-const vscode = (window as unknown as { acquireVsCodeApi?: () => unknown }).acquireVsCodeApi?.();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const vscode = (window as any).acquireVsCodeApi?.();
 
 function Loader() {
   const { progress } = useProgress();

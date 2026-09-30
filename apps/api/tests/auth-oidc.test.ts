@@ -111,4 +111,27 @@ test("Enterprise OIDC / SSO Authentication & RBAC Group Mapping", async (t) => {
     assert.strictEqual(res.body.user.email, "charlie@corporate.aerospace.com");
     assert.strictEqual(res.body.user.account_type, "user");
   });
+
+  await t.test("handleOidcLogin provisions username from email prefix when preferred_username is absent", async () => {
+    const claims = {
+      sub: "azure-sub-fallback-1",
+      email: "dan_fe@corporate.aerospace.com",
+    };
+
+    const result = await oidc.handleOidcLogin(db, claims);
+    assert.strictEqual(result.isNewUser, true);
+    assert.strictEqual(result.user.username, "dan_fe");
+  });
+
+  await t.test("handleOidcLogin throws error when both preferred_username and email prefix are empty", async () => {
+    const claims = {
+      sub: "azure-sub-fallback-2",
+      email: "@corporate.aerospace.com",
+    };
+
+    await assert.rejects(
+      async () => oidc.handleOidcLogin(db, claims),
+      /Unable to provision OIDC user: missing preferred_username and email prefix/,
+    );
+  });
 });

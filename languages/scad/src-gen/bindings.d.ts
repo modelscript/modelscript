@@ -164,7 +164,13 @@ export interface Diagnostic {
   message: string;
   severity: number;
   code?: number | string;
+  /** Character offset of the diagnostic start within the source text. */
+  startOffset?: number;
+  /** Character offset of the diagnostic end within the source text. */
+  endOffset?: number;
+  /** @deprecated Use {@link startOffset} instead. */
   startCharOffset?: number;
+  /** @deprecated Use {@link endOffset} instead. */
   endCharOffset?: number;
 }
 export declare const SYNTAX_NAMES: string[];
@@ -958,13 +964,29 @@ export declare class SyntaxNode {
   get grammarType(): string;
   /** Extracts the substring from the original source code corresponding to this node. */
   get text(): string;
-  /** The start character index of the node. */
+  /**
+   * The encoding divisor to convert raw WASM byte offsets to character offsets.
+   * UTF-16 (encoding 1 or 2) → div 2; UTF-32 (encoding 3 or 4) → div 4; else 1.
+   * Cached per-access via the facade; the encoding never changes mid-session.
+   */
+  private get _encodingDiv();
+  /** The start character offset of this node within the source text. */
+  get startOffset(): number;
+  /** The end character offset of this node within the source text. */
+  get endOffset(): number;
+  /** The start character index of the node. Alias for {@link startOffset}. */
   get startIndex(): number;
-  /** The end character index of the node. */
+  /** The end character index of the node. Alias for {@link endOffset}. */
   get endIndex(): number;
-  /** The start byte index of the node (character offset matching Tree-sitter JS). */
+  /**
+   * @deprecated Use {@link startOffset} instead. Despite the name, this returns a
+   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
+   */
   get startByte(): number;
-  /** The end byte index of the node (character offset matching Tree-sitter JS). */
+  /**
+   * @deprecated Use {@link endOffset} instead. Despite the name, this returns a
+   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
+   */
   get endByte(): number;
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.

@@ -2,7 +2,7 @@
 
 import { ContactShadows, GizmoHelper, GizmoViewport, OrbitControls } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 export interface StepMeshPayload {
@@ -23,10 +23,56 @@ interface StepViewerProps {
   isLoading?: boolean;
 }
 
+class ErrorBoundary extends Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("[StepViewer] Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <div
+            style={{
+              padding: "20px",
+              color: "#ff6b6b",
+              fontFamily: "system-ui, sans-serif",
+              textAlign: "center",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "100%",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: "8px" }}>Failed to render 3D CAD view</div>
+            <div style={{ fontSize: "12px", opacity: 0.8 }}>{this.state.error?.message}</div>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function StepModel({
   payload,
   selected,
   onSelect,
+  explosionFactor = 0,
+  assemblyCenter,
 }: {
   payload: StepMeshPayload;
   selected: boolean;
@@ -42,7 +88,9 @@ function StepModel({
     if (payload.normals && payload.normals.length > 0) {
       geo.setAttribute("normal", new THREE.BufferAttribute(payload.normals, 3));
     }
-    geo.setIndex(new THREE.BufferAttribute(payload.indices, 1));
+    if (payload.indices && payload.indices.length > 0) {
+      geo.setIndex(new THREE.BufferAttribute(payload.indices, 1));
+    }
     if (!payload.normals || payload.normals.length === 0) {
       geo.computeVertexNormals();
     }
@@ -86,6 +134,7 @@ function SceneContents({
   selectedId,
   onSelect,
   dark,
+  explosionFactor = 0,
 }: {
   meshes: StepMeshPayload[];
   selectedId?: number | null;
@@ -281,22 +330,24 @@ export default function StepViewer({ meshes, selectedId, onSelect, dark = false,
         />
       </div>
 
-      <Canvas
-        shadows
-        camera={{ position: [100, 100, 100], fov: 50 }}
-        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
-        style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
-      >
-        <Suspense fallback={null}>
-          <SceneContents
-            meshes={meshes}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            dark={dark}
-            explosionFactor={explosionFactor}
-          />
-        </Suspense>
-      </Canvas>
+      <ErrorBoundary>
+        <Canvas
+          shadows
+          camera={{ position: [100, 100, 100], fov: 50 }}
+          gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+          style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
+        >
+          <Suspense fallback={null}>
+            <SceneContents
+              meshes={meshes}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              dark={dark}
+              explosionFactor={explosionFactor}
+            />
+          </Suspense>
+        </Canvas>
+      </ErrorBoundary>
     </div>
   );
 }

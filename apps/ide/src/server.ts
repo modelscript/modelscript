@@ -99,6 +99,9 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   const config: Record<string, unknown> = {
     additionalBuiltinExtensions: extList,
     productConfiguration,
+    configurationDefaults: {
+      "editor.codeLens": false,
+    },
   };
 
   if (folderConfig) {

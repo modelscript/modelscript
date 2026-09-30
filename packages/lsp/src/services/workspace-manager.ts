@@ -686,21 +686,10 @@ export class WorkspaceManager {
           if (!cstNode && entry.resourceId) {
             let text = getSourceText(entry.resourceId);
             if (text) {
-              if (text.length > 30000 && entry.resourceId.endsWith(".mo")) {
-                const match = text.match(/package\s+([A-Za-z0-9_]+)/);
-                if (match) {
-                  const pkgName = match[1];
-                  const afterMatch = text.slice(match.index! + match[0].length);
-                  const nestedMatch = afterMatch.match(
-                    /\n\s*(model|block|connector|function|package|record|type)\s+[A-Za-z0-9_]+/,
-                  );
-                  if (nestedMatch && nestedMatch.index !== undefined) {
-                    const cutPos = match.index! + match[0].length + nestedMatch.index;
-                    const header = text.slice(0, cutPos);
-                    text = `${header}\nend ${pkgName};`;
-                  }
-                }
-              }
+              // NOTE: Do NOT truncate large .mo files here. The getSafePackageSource-style
+              // truncation strips the trailing annotation(Icon(...)) block, which breaks
+              // icon rendering for MSL packages. Annotation evaluation is a lazy background
+              // task, so the cost of parsing the full file is acceptable.
               const parser =
                 (globalThis as any).modelicaParser ??
                 (globalThis as any).parser ??

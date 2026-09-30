@@ -253,8 +253,8 @@ function App() {
         // We must map `dynamicPosition` and `dynamicRotation` to the `bindings` array expected by AnimationController.
         // Wait, AnimationController expects `property`, `index`, `variable`.
         // We will override AnimatedBody's useFrame to read the variables directly since R.T needs to be converted to a quaternion.
-        // For simplicity, we just inject the raw variables into the controller's tracking.
-        const bindings = parsedCad.map((c) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const bindings = parsedCad.map((c: any) => {
           const compBindings: { property: "position" | "rotation" | "scale"; index: number; variable: string }[] = [];
 
           if (c.cad.dynamicPosition) {

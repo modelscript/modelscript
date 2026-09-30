@@ -1660,13 +1660,17 @@ export class LspFacade {
         start: startPos,
         end: endPos,
       };
+      const startCharOff = Math.floor(startByte / charDiv);
+      const endCharOff = Math.floor(endByte / charDiv);
       diags.push({
         range,
         message: msg,
         severity: severity,
         code: codeStr,
-        startCharOffset: Math.floor(startByte / charDiv),
-        endCharOffset: Math.floor(endByte / charDiv),
+        startOffset: startCharOff,
+        endOffset: endCharOff,
+        startCharOffset: startCharOff,
+        endCharOffset: endCharOff,
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
@@ -4372,41 +4376,51 @@ export class SyntaxNode {
     if (!this.tree.sourceCode) return "";
     return this.tree.sourceCode.substring(this.startIndex, this.endIndex);
   }
-  /** The start character index of the node. */
+  /**
+   * The encoding divisor to convert raw WASM byte offsets to character offsets.
+   * UTF-16 (encoding 1 or 2) → div 2; UTF-32 (encoding 3 or 4) → div 4; else 1.
+   * Cached per-access via the facade; the encoding never changes mid-session.
+   */
+  get _encodingDiv() {
+    const enc = this.tree.facade?.getInputEncoding
+      ? this.tree.facade.getInputEncoding()
+      : 1;
+    return enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+  }
+  /** The start character offset of this node within the source text. */
+  get startOffset() {
+    return Math.floor(
+      (this._startOffset + this._cachedPad) / this._encodingDiv,
+    );
+  }
+  /** The end character offset of this node within the source text. */
+  get endOffset() {
+    return Math.floor(
+      (this._startOffset + this._cachedPad + this._cachedLen) /
+        this._encodingDiv,
+    );
+  }
+  /** The start character index of the node. Alias for {@link startOffset}. */
   get startIndex() {
-    const enc = this.tree.facade?.getInputEncoding
-      ? this.tree.facade.getInputEncoding()
-      : 1;
-    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
-    return Math.floor((this._startOffset + this._cachedPad) / div);
+    return this.startOffset;
   }
-  /** The end character index of the node. */
+  /** The end character index of the node. Alias for {@link endOffset}. */
   get endIndex() {
-    const enc = this.tree.facade?.getInputEncoding
-      ? this.tree.facade.getInputEncoding()
-      : 1;
-    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
-    return Math.floor(
-      (this._startOffset + this._cachedPad + this._cachedLen) / div,
-    );
+    return this.endOffset;
   }
-  /** The start byte index of the node (character offset matching Tree-sitter JS). */
+  /**
+   * @deprecated Use {@link startOffset} instead. Despite the name, this returns a
+   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
+   */
   get startByte() {
-    const enc = this.tree.facade?.getInputEncoding
-      ? this.tree.facade.getInputEncoding()
-      : 1;
-    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
-    return Math.floor((this._startOffset + this._cachedPad) / div);
+    return this.startOffset;
   }
-  /** The end byte index of the node (character offset matching Tree-sitter JS). */
+  /**
+   * @deprecated Use {@link endOffset} instead. Despite the name, this returns a
+   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
+   */
   get endByte() {
-    const enc = this.tree.facade?.getInputEncoding
-      ? this.tree.facade.getInputEncoding()
-      : 1;
-    const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
-    return Math.floor(
-      (this._startOffset + this._cachedPad + this._cachedLen) / div,
-    );
+    return this.endOffset;
   }
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.

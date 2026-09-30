@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import * as vscode from "vscode";
-import { CadViewerPanel } from "../src/cadViewerPanel.js";
+import { CadViewerPanel } from "../src/cad-viewer-panel.js";
 import { extractCadComponents } from "../src/webview/cad-viewer/parse-cad-annotations.js";
 
 describe("CAD Direct-Manipulation Gizmo & Live Writeback", () => {

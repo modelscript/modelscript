@@ -229,38 +229,10 @@ export async function scaffoldMultiDomain(targetUri?: vscode.Uri | string): Prom
  * CodeLens Provider offering one-click multi-domain scaffolding directly above SysML definitions.
  */
 export class SysmlScaffoldCodeLensProvider implements vscode.CodeLensProvider {
-  provideCodeLenses(document: vscode.TextDocument, _token: vscode.CancellationToken): vscode.CodeLens[] {
-    const lenses: vscode.CodeLens[] = [];
-    const text = document.getText();
-    const regex = /(?:part\s+def|package|block)\s+([A-Za-z0-9_]+)/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = regex.exec(text)) !== null) {
-      const line = document.positionAt(match.index).line;
-      const range = new vscode.Range(line, 0, line, 0);
-      const entityName = match[1];
-
-      lenses.push(
-        new vscode.CodeLens(range, {
-          title: `⚡ Scaffold Multi-Domain (${entityName}.mo, .scad, .fea.mo, .cfd.mo)`,
-          command: "modelscript.scaffoldMultiDomain",
-          arguments: [document.uri],
-        }),
-      );
-    }
-
-    // If no part def matched, offer at top of file
-    if (lenses.length === 0) {
-      lenses.push(
-        new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
-          title: "⚡ Scaffold Multi-Domain Models",
-          command: "modelscript.scaffoldMultiDomain",
-          arguments: [document.uri],
-        }),
-      );
-    }
-
-    return lenses;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  provideCodeLenses(_document: vscode.TextDocument, _token: vscode.CancellationToken): vscode.CodeLens[] {
+    // Disabled: code lens is messy in editor
+    return [];
   }
 }
 
@@ -277,15 +249,14 @@ export function registerMultiDomainScaffolding(context: vscode.ExtensionContext)
     }),
   );
 
-  // 2. CodeLens Provider registration for SysML v2
-  const documentSelector: vscode.DocumentFilter[] = [
-    { language: "sysml" },
-    { language: "sysml2" },
-    { pattern: "**/*.sysml" },
-    { pattern: "**/*.sysml2" },
-  ];
-
-  disposables.push(vscode.languages.registerCodeLensProvider(documentSelector, new SysmlScaffoldCodeLensProvider()));
+  // 2. CodeLens Provider registration for SysML v2 (disabled for now)
+  // const documentSelector: vscode.DocumentFilter[] = [
+  //   { language: "sysml" },
+  //   { language: "sysml2" },
+  //   { pattern: "**/*.sysml" },
+  //   { pattern: "**/*.sysml2" },
+  // ];
+  // disposables.push(vscode.languages.registerCodeLensProvider(documentSelector, new SysmlScaffoldCodeLensProvider()));
 
   return new vscode.Disposable(() => {
     while (disposables.length) {

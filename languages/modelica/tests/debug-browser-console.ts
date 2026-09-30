@@ -48,7 +48,7 @@ async function main() {
   console.log("Waiting 10 seconds for MSL loading...");
   await new Promise((resolve) => setTimeout(resolve, 10000));
 
-  // Collapse bouncing-ball pane and expand Modelica Library pane
+  // Collapse bouncing-ball pane and expand Library pane
   await page.evaluate(() => {
     const panes = Array.from(document.querySelectorAll(".pane"));
     const bbPane = panes.find((p) =>
@@ -61,13 +61,11 @@ async function main() {
         header.click();
       }
     }
-    const libPane = panes.find((p) =>
-      p.querySelector(".pane-header")?.textContent?.toLowerCase().includes("modelica library"),
-    );
+    const libPane = panes.find((p) => p.querySelector(".pane-header")?.textContent?.toLowerCase().includes("library"));
     if (libPane) {
       const header = libPane.querySelector(".pane-header") as HTMLElement | null;
       const isCollapsed = header?.getAttribute("aria-expanded") === "false" || !libPane.classList.contains("expanded");
-      console.log(`Modelica Library isCollapsed: ${isCollapsed}`);
+      console.log(`Library isCollapsed: ${isCollapsed}`);
       if (isCollapsed && header) {
         header.click();
       }
@@ -132,7 +130,7 @@ async function main() {
       await page.evaluate((dir) => {
         const panes = Array.from(document.querySelectorAll(".pane"));
         const libPane = panes.find((p) =>
-          p.querySelector(".pane-header")?.textContent?.toLowerCase().includes("modelica library"),
+          p.querySelector(".pane-header")?.textContent?.toLowerCase().includes("library"),
         );
         const scrollable = libPane?.querySelector(".monaco-scrollable-element") as HTMLElement | null;
         if (scrollable) {

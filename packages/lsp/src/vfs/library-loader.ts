@@ -29,8 +29,30 @@ export interface LoaderContext {
   registryUrl?: string;
   federatedEndpoints: string[];
 }
-function getSafePackageSource(text: string, fullPath: string): string {
-  if (text.length < 30000) return text;
+/**
+ * Largest file in the Modelica Standard Library (MSL 4.1.0) is
+ * `Modelica/Media/IdealGases/Common/SingleGasesData.mo` (649,910 bytes ≈ 635 KB).
+ */
+export const LARGEST_MSL_FILE_SIZE = 649_910;
+
+/** Multiplier for safe package size limit (3x largest MSL file). */
+export const SAFE_PACKAGE_SIZE_MULTIPLIER = 3;
+
+/**
+ * Safe package size limit set to 3x the largest MSL file (~1.95 MB).
+ * Files below this threshold will NOT be truncated, ensuring full indexation
+ * of all MSL packages, nested classes, and annotations.
+ */
+export const SAFE_PACKAGE_SIZE_LIMIT = LARGEST_MSL_FILE_SIZE * SAFE_PACKAGE_SIZE_MULTIPLIER; // 1,949,730 bytes (~1.95 MB)
+
+const warnedLargeFiles = new Set<string>();
+
+export function getSafePackageSource(text: string, fullPath: string, ctx?: LoaderContext): string {
+  if (text.length <= SAFE_PACKAGE_SIZE_LIMIT) return text;
+  // Don't truncate icon definition files — their nested class definitions
+  // (e.g. Icons.Package, Icons.ExamplesPackage) are essential for extends
+  // resolution during icon rendering of sub-packages.
+  if (fullPath.endsWith("/Icons.mo")) return text;
   const match = text.match(/package\s+([A-Za-z0-9_]+)/);
   if (!match) return text;
   const pkgName = match[1];
@@ -38,6 +60,20 @@ function getSafePackageSource(text: string, fullPath: string): string {
   const afterMatch = text.slice(match.index! + match[0].length);
   const nestedMatch = afterMatch.match(/\n\s*(model|block|connector|function|package|record|type)\s+[A-Za-z0-9_]+/);
   if (nestedMatch && nestedMatch.index !== undefined) {
+    if (!warnedLargeFiles.has(fullPath)) {
+      warnedLargeFiles.add(fullPath);
+      const sizeMB = (text.length / (1024 * 1024)).toFixed(2);
+      const limitMB = (SAFE_PACKAGE_SIZE_LIMIT / (1024 * 1024)).toFixed(2);
+      const msg = `Modelica file "${fullPath}" (${sizeMB} MB) exceeds the safe limit (${limitMB} MB). Nested package contents were truncated to maintain editor responsiveness.`;
+      ctx?.logger?.warn?.(msg);
+      ctx?.connectionState?.sendNotification?.("window/showMessage", {
+        type: 2, // MessageType.Warning
+        message: msg,
+      });
+      ctx?.connectionState?.sendNotification?.("modelscript/warning", {
+        message: msg,
+      });
+    }
     const cutPos = match.index! + match[0].length + nestedMatch.index;
     const header = text.slice(0, cutPos);
     return `${header}\nend ${pkgName};`;
@@ -210,8 +246,8 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
                 try {
                   let text = ctx.sharedFs.read(fullPath);
                   if (text) {
-                    if (text.length > 30000) {
-                      text = getSafePackageSource(text, fullPath);
+                    if (text.length > SAFE_PACKAGE_SIZE_LIMIT) {
+                      text = getSafePackageSource(text, fullPath, ctx);
                     }
                     tree = ctx.sharedContext.parse(".mo", text);
                   }
@@ -591,8 +627,8 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
           try {
             let text = ctx.sharedFs.read(file.fullPath);
             if (text) {
-              if (text.length > 30000) {
-                text = getSafePackageSource(text, file.fullPath);
+              if (text.length > SAFE_PACKAGE_SIZE_LIMIT) {
+                text = getSafePackageSource(text, file.fullPath, ctx);
               }
               tree = ctx.sharedContext.parse(".mo", text);
             }

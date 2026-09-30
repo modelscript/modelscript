@@ -21,10 +21,22 @@ export interface SymbolEntry {
   ruleName: string;
   /** Dot-path to the name field within the CST node (e.g. "name") */
   namePath: string;
-  /** CST node start byte offset */
+  /**
+   * CST node start character offset within the source text.
+   * Despite the name, this is a character offset (not a byte offset) — inherited
+   * from SyntaxNode.startByte which performs byte→char conversion internally.
+   * @deprecated Use {@link startOffset} for clarity.
+   */
   startByte: number;
-  /** CST node end byte offset */
+  /**
+   * CST node end character offset within the source text.
+   * @deprecated Use {@link endOffset} for clarity.
+   */
   endByte: number;
+  /** CST node start character offset within the source text. */
+  startOffset?: number;
+  /** CST node end character offset within the source text. */
+  endOffset?: number;
   /** Parent scope symbol, if any */
   parentId: SymbolId | null;
   /** Dot-paths of fields whose children are visible from this scope */

@@ -56,7 +56,6 @@ import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
 import { LspContext } from "./lsp-context.js";
-import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
 import { registerDefinitionProvider } from "./providers/definitionProvider.js";
@@ -477,7 +476,6 @@ export function startNodeServer(input?: any, output?: any) {
         codeActionKinds: [CodeActionKind.QuickFix],
       },
       workspaceSymbolProvider: true,
-      codeLensProvider: { resolveProvider: false },
       inlayHintProvider: true,
     };
 
@@ -569,7 +567,7 @@ export function startNodeServer(input?: any, output?: any) {
 
         if (tree) {
           documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
-          const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
+          const { syntaxDiags } = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
           const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
           // Surface syntax errors if errors are present or if previous errors were just cleared
@@ -749,7 +747,7 @@ export function startNodeServer(input?: any, output?: any) {
     parserService.getLineIndexForDoc.bind(parserService),
   );
 
-  registerCodeLensProvider(lspContext);
+  // registerCodeLensProvider(lspContext); // Disabled: code lens is messy in editor
   registerInlayHintProvider(lspContext);
 
   // 4. Register Custom Domain Handlers & RPC Endpoints

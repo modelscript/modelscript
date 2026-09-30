@@ -20,6 +20,8 @@ interface TreeNodeInfo {
   iconSvg?: string;
   iconUri?: vscode.Uri;
   language?: string;
+  /** True when the icon is being lazily fetched — show a spinner placeholder. */
+  pendingIcon?: boolean;
 }
 
 const KIND_TO_ICON_MAP: Record<string, string> = {
@@ -109,6 +111,9 @@ export class LibraryTreeItem extends vscode.TreeItem {
     } else if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
       this.iconPath = iconUri;
+    } else if (info.pendingIcon) {
+      // Show a spinner while the icon is being fetched in the background
+      this.iconPath = new vscode.ThemeIcon("loading~spin");
     } else {
       this.iconPath = classKindToIcon(info.classKind);
     }
@@ -216,11 +221,14 @@ export class LibraryTreeProvider
         nodes.map((n) => n.name),
       );
 
-      // Apply cached icons to nodes that have them
+      // Apply cached icons to nodes that have them, and mark pending ones for spinner display
       for (const node of nodes) {
         if (this.iconCache.has(node.compositeName)) {
           const cached = this.iconCache.get(node.compositeName);
           if (cached) node.iconSvg = cached;
+        } else if (!node.id.startsWith("__LIB__:") && node.compositeName && !node.icon) {
+          // Icon not yet in cache and not a structural container — show spinner
+          node.pendingIcon = true;
         }
         if (this.iconUriCache.has(node.compositeName)) {
           node.iconUri = this.iconUriCache.get(node.compositeName);
@@ -328,9 +336,8 @@ export class LibraryTreeProvider
       );
     }
 
-    // Refresh the tree to show the newly fetched icons
-    if (anyFetched) {
-      this.scheduleRefresh();
-    }
+    // Always refresh the tree after icon fetching completes, so spinners
+    // are replaced with either the actual SVG icon or the codicon fallback.
+    this.scheduleRefresh();
   }
 }

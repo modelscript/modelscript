@@ -91,10 +91,25 @@ export class ValidationService {
     }, 500);
   }
 
-  public collectSyntaxErrors(rootNode: any, textDocument: TextDocument, plugin?: LanguagePlugin): Diagnostic[] {
+  /**
+   * Collect syntax errors and lint diagnostics from the WASM parser.
+   *
+   * IMPORTANT: This is called synchronously right after parsing, while the WASM
+   * input buffer still contains this document's text. The returned `wasmLintDiags`
+   * must be captured here because the async semantic pipeline (Step 5a) cannot
+   * safely re-call `getDiagnostics` — by that time another document may have been
+   * parsed, overwriting the WASM input buffer and causing the linter to read
+   * garbled text at the old CST byte offsets.
+   */
+  public collectSyntaxErrors(
+    rootNode: any,
+    textDocument: TextDocument,
+    plugin?: LanguagePlugin,
+  ): { syntaxDiags: Diagnostic[]; wasmLintDiags: any[] } {
     const t0 = performance.now();
-    const diagnostics: Diagnostic[] = [];
-    if (!rootNode) return diagnostics;
+    const syntaxDiags: Diagnostic[] = [];
+    const wasmLintDiags: any[] = [];
+    if (!rootNode) return { syntaxDiags, wasmLintDiags };
 
     // 1. Native WASM GLR parser diagnostics
     const facade = plugin?.facade ?? rootNode?.tree?.facade ?? this.parserService.facade;
@@ -106,9 +121,8 @@ export class ValidationService {
           const wasmDiags = facade.getDiagnostics(rootPtr, 0, docLen);
           if (Array.isArray(wasmDiags)) {
             for (const d of wasmDiags) {
-              // Severity 1 = Error (Syntax Error).
-              // Linter warnings (severity 2 / lintId >= 1000) are handled by the semantic pipeline.
               if (d.severity === 1 || !d.code || d.code === "ERROR") {
+                // Severity 1 = Error (Syntax Error)
                 let range = d.range;
                 if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
                   range = {
@@ -122,15 +136,18 @@ export class ValidationService {
                     end: { line: range.start.line, character: range.start.character + 1 },
                   };
                 }
-                diagnostics.push({
+                syntaxDiags.push({
                   severity: DiagnosticSeverity.Error,
                   range,
                   message: d.message || "Syntax error",
                   source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
                 });
+              } else if (d.severity === 2 || (typeof d.code === "number" && d.code >= 1000)) {
+                // Lint diagnostics — capture now while WASM state is valid
+                wasmLintDiags.push(d);
               }
             }
-            return diagnostics;
+            return { syntaxDiags, wasmLintDiags };
           }
         }
       } catch (e) {
@@ -140,8 +157,8 @@ export class ValidationService {
 
     // 2. Fallback: CST tree walk (only if native WASM parser diagnostics unavailable and root has error)
     const hasError = typeof rootNode.hasError === "function" ? rootNode.hasError() : rootNode.hasError;
-    if (!hasError) return diagnostics;
-    if (typeof rootNode.walk !== "function") return diagnostics;
+    if (!hasError) return { syntaxDiags, wasmLintDiags };
+    if (typeof rootNode.walk !== "function") return { syntaxDiags, wasmLintDiags };
     const cursor = rootNode.walk();
     let didDescend = true;
 
@@ -168,7 +185,7 @@ export class ValidationService {
             end = { line: start.line, character: start.character + 1 };
           }
         }
-        diagnostics.push({
+        syntaxDiags.push({
           severity: DiagnosticSeverity.Error,
           range: { start, end },
           message: `Missing syntax element`,
@@ -179,7 +196,7 @@ export class ValidationService {
           end = { line: start.line, character: start.character + 1 };
         }
         const textSnippet = textDocument.getText({ start, end });
-        diagnostics.push({
+        syntaxDiags.push({
           severity: DiagnosticSeverity.Error,
           range: { start, end },
           message: textSnippet ? `Syntax error near '${textSnippet}'` : "Syntax error",
@@ -213,10 +230,10 @@ export class ValidationService {
     const totalMs = performance.now() - t0;
     if (totalMs > 100) {
       this.connection.console.warn(
-        `[perf] this.collectSyntaxErrors took ${totalMs.toFixed(2)}ms for ${diagnostics.length} diagnostics`,
+        `[perf] this.collectSyntaxErrors took ${totalMs.toFixed(2)}ms for ${syntaxDiags.length} diagnostics`,
       );
     }
-    return diagnostics;
+    return { syntaxDiags, wasmLintDiags };
   }
 
   public async flushValidation(uri: string): Promise<void> {
@@ -332,8 +349,8 @@ export class ValidationService {
       classCache: oldCached?.classCache ?? new Map(),
     });
 
-    // 3. Collect syntax diagnostics immediately
-    const syntaxDiags = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
+    // 3. Collect syntax + lint diagnostics immediately (while WASM state is valid)
+    const { syntaxDiags, wasmLintDiags } = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
     const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
     const initialDiags = [...syntaxDiags, ...cachedSemantic];
     if (initialDiags.length > 1000) initialDiags.length = 1000;
@@ -347,6 +364,7 @@ export class ValidationService {
       tree,
       editRanges,
       baseDiagnostics: syntaxDiags,
+      wasmLintDiags,
       revisionAtStart,
       plugin,
       langId,
@@ -369,12 +387,24 @@ export class ValidationService {
     tree: any;
     editRanges?: Array<{ startByte: number; endByte: number }>;
     baseDiagnostics: Diagnostic[];
+    wasmLintDiags?: any[];
     revisionAtStart: number | null;
     plugin?: LanguagePlugin;
     langId: string;
     textDocument?: TextDocument;
   }): Promise<void> {
-    const { uri, text, tree, editRanges, baseDiagnostics, revisionAtStart, plugin, langId, textDocument } = params;
+    const {
+      uri,
+      text,
+      tree,
+      editRanges,
+      baseDiagnostics,
+      wasmLintDiags,
+      revisionAtStart,
+      plugin,
+      langId,
+      textDocument,
+    } = params;
     const newSemanticDiagnostics: Diagnostic[] = [];
 
     const isStale = () => {
@@ -520,164 +550,135 @@ export class ValidationService {
         newSemanticDiagnostics.push(...cachedSemantic);
       }
 
-      // 5a. WASM Linear Memory CST Linter (evaluates equation & expression lints)
-      if (!hasSyntaxErrors) {
-        const facade =
-          plugin?.facade ??
-          tree?.facade ??
-          (tree.rootNode as any)?.tree?.facade ??
-          this.parserService.getFacade(langId) ??
-          this.parserService.facade;
-        const rootPtr = tree.rootNode?.id ?? tree.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+      // 5a. WASM Linear Memory CST Linter diagnostics (pre-collected synchronously in collectSyntaxErrors)
+      // NOTE: We use the pre-collected wasmLintDiags instead of re-calling facade.getDiagnostics(rootPtr)
+      // here because the WASM input buffer may have been overwritten by parsing another document
+      // during the async yields above. Using a stale rootPtr with a different input buffer would
+      // cause the linter to read garbled text at the old CST byte offsets.
+      if (!hasSyntaxErrors && wasmLintDiags && wasmLintDiags.length > 0) {
+        try {
+          const pluginLints = plugin?.languageDef?.lints;
+          const pluginSource = plugin?.name ? plugin.name.toLowerCase() : "modelscript";
 
-        if (facade && rootPtr && typeof facade.getDiagnostics === "function") {
-          try {
-            const wasmDiags = facade.getDiagnostics(rootPtr);
-            if (Array.isArray(wasmDiags)) {
-              for (const d of wasmDiags) {
-                // Collect linter warnings / errors (severity 2 or code >= 1000)
-                if (d.severity === 2 || (typeof d.code === "number" && d.code >= 1000)) {
-                  let range = d.range;
-                  if (d.startCharOffset !== undefined && d.endCharOffset !== undefined && currentDoc) {
-                    range = {
-                      start: currentDoc.positionAt(d.startCharOffset),
-                      end: currentDoc.positionAt(d.endCharOffset),
-                    };
-                  } else if (typeof d.startByte === "number" && typeof d.endByte === "number" && bridge) {
-                    const charDiv = (facade?.getInputEncoding ? facade.getInputEncoding() : 1) === 1 ? 2 : 1;
-                    range = {
-                      start: (bridge as any).positions.offsetToPosition(Math.floor(d.startByte / charDiv)),
-                      end: (bridge as any).positions.offsetToPosition(Math.floor(d.endByte / charDiv)),
-                    };
-                  }
+          for (const d of wasmLintDiags) {
+            // Resolve character offsets — prefer startOffset (new), fall back to startCharOffset (deprecated)
+            const startOff = d.startOffset ?? d.startCharOffset;
+            const endOff = d.endOffset ?? d.endCharOffset;
 
-                  if (range) {
-                    if (range.start.line === range.end.line && range.start.character === range.end.character) {
-                      range = {
-                        start: range.start,
-                        end: { line: range.start.line, character: range.start.character + 1 },
-                      };
-                    }
+            // Compute range from character offsets
+            let range = d.range;
+            if (startOff !== undefined && endOff !== undefined) {
+              if (bridge) {
+                range = (bridge as any).positions.rangeFromOffsets(startOff, endOff);
+              } else if (currentDoc) {
+                range = {
+                  start: currentDoc.positionAt(startOff),
+                  end: currentDoc.positionAt(endOff),
+                };
+              }
+            }
+            if (!range) continue;
 
-                    // Extract token text if offsets are present
-                    let tokenText = "";
-                    if (
-                      d.startCharOffset !== undefined &&
-                      d.endCharOffset !== undefined &&
-                      d.endCharOffset > d.startCharOffset
-                    ) {
-                      tokenText = currentText.slice(d.startCharOffset, d.endCharOffset).trim();
-                    } else if (
-                      typeof d.startByte === "number" &&
-                      typeof d.endByte === "number" &&
-                      d.endByte > d.startByte
-                    ) {
-                      const charDiv = (facade?.getInputEncoding ? facade.getInputEncoding() : 1) === 1 ? 2 : 1;
-                      tokenText = currentText
-                        .slice(Math.floor(d.startByte / charDiv), Math.floor(d.endByte / charDiv))
-                        .trim();
-                    }
+            // Ensure non-zero-width range
+            if (range.start.line === range.end.line && range.start.character === range.end.character) {
+              range = {
+                start: range.start,
+                end: { line: range.start.line, character: range.start.character + 1 },
+              };
+            }
 
-                    // Determine descriptive message
-                    let message = d.message;
-                    const code = d.code;
-                    const pluginLints = plugin?.languageDef?.lints;
-                    let matchedLint: any = null;
+            // Extract token text from character offsets
+            const tokenText =
+              startOff !== undefined && endOff !== undefined && endOff > startOff
+                ? currentText.slice(startOff, endOff).trim()
+                : "";
 
-                    if (pluginLints && code) {
-                      for (const lint of Object.values(pluginLints)) {
-                        if ((lint as any)?.code === code) {
-                          matchedLint = lint;
-                          break;
-                        }
-                      }
-                    }
+            // Determine message — use the WASM-provided message if available,
+            // otherwise look up the lint rule or fall back to a hardcoded message.
+            let message = d.message;
+            const code = d.code;
+            let matchedLint: any = null;
 
-                    if (!message || message.startsWith("Linter Rule ") || message.startsWith("Syntax Error")) {
-                      if (matchedLint && typeof matchedLint.message === "function") {
-                        try {
-                          message = matchedLint.message({ text: tokenText }, { text: "" });
-                        } catch {
-                          // Fallback
-                        }
-                      }
-                      if (!message || message.startsWith("Linter Rule ")) {
-                        if (code === 2001 || code === 2002) {
-                          message = tokenText
-                            ? `Variable '${tokenText}' not found in scope.`
-                            : "Variable not found in scope.";
-                        } else if (code === 2003) {
-                          message = tokenText
-                            ? `Class or type '${tokenText}' not found in scope.`
-                            : "Class or type not found in scope.";
-                        } else if (code === 3001) {
-                          message = tokenText
-                            ? `Type mismatch in binding or modification expression '${tokenText}'.`
-                            : "Type mismatch in binding.";
-                        } else if (code === 3009) {
-                          message = tokenText
-                            ? `Array index '${tokenText}' has invalid type: expected Integer or Boolean.`
-                            : "Invalid array index type.";
-                        } else if (code === 4031) {
-                          message = tokenText
-                            ? `Subscript '${tokenText}' is out of bounds.`
-                            : "Array index out of bounds.";
-                        } else if (code === 5001) {
-                          message = tokenText
-                            ? `Type mismatch in equation '${tokenText}'.`
-                            : "Type mismatch in equation.";
-                        } else if (code === 5005) {
-                          message = tokenText
-                            ? `Division by literal zero in '${tokenText}'.`
-                            : "Division by literal zero.";
-                        } else if (code === 5006) {
-                          message = tokenText
-                            ? `Type mismatch in assignment in '${tokenText}'.`
-                            : "Type mismatch in assignment.";
-                        } else {
-                          message = `Linter rule ${code}`;
-                        }
-                      }
-                    }
-
-                    // Determine severity
-                    let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-                    if (
-                      matchedLint?.severity === "error" ||
-                      code === 2001 ||
-                      code === 2002 ||
-                      code === 2003 ||
-                      code === 3001 ||
-                      code === 3009 ||
-                      code === 4031 ||
-                      code === 5001 ||
-                      code === 5005 ||
-                      code === 5006 ||
-                      code === 5008 ||
-                      code === 5009 ||
-                      code === 5013
-                    ) {
-                      severity = DiagnosticSeverity.Error;
-                    } else if (matchedLint?.severity === "info") {
-                      severity = DiagnosticSeverity.Information;
-                    }
-
-                    newSemanticDiagnostics.push({
-                      severity,
-                      range,
-                      message,
-                      source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
-                      code: code ?? d.lintName,
-                    });
-                  }
+            if (pluginLints && code) {
+              for (const lint of Object.values(pluginLints)) {
+                if ((lint as any)?.code === code) {
+                  matchedLint = lint;
+                  break;
                 }
               }
             }
-          } catch (e: any) {
-            this.connection.console.warn(
-              `[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e?.message ?? e}`,
-            );
+
+            if (!message || message.startsWith("Linter Rule ") || message.startsWith("Syntax Error")) {
+              if (matchedLint && typeof matchedLint.message === "function") {
+                try {
+                  message = matchedLint.message({ text: tokenText }, { text: "" });
+                } catch {
+                  // Fallback
+                }
+              }
+              if (!message || message.startsWith("Linter Rule ")) {
+                if (code === 2001 || code === 2002) {
+                  message = tokenText ? `Variable '${tokenText}' not found in scope.` : "Variable not found in scope.";
+                } else if (code === 2003) {
+                  message = tokenText
+                    ? `Class or type '${tokenText}' not found in scope.`
+                    : "Class or type not found in scope.";
+                } else if (code === 3001) {
+                  message = tokenText
+                    ? `Type mismatch in binding or modification expression '${tokenText}'.`
+                    : "Type mismatch in binding.";
+                } else if (code === 3009) {
+                  message = tokenText
+                    ? `Array index '${tokenText}' has invalid type: expected Integer or Boolean.`
+                    : "Invalid array index type.";
+                } else if (code === 4031) {
+                  message = tokenText ? `Subscript '${tokenText}' is out of bounds.` : "Array index out of bounds.";
+                } else if (code === 5001) {
+                  message = tokenText ? `Type mismatch in equation '${tokenText}'.` : "Type mismatch in equation.";
+                } else if (code === 5005) {
+                  message = tokenText ? `Division by literal zero in '${tokenText}'.` : "Division by literal zero.";
+                } else if (code === 5006) {
+                  message = tokenText
+                    ? `Type mismatch in assignment in '${tokenText}'.`
+                    : "Type mismatch in assignment.";
+                } else {
+                  message = `Linter rule ${code}`;
+                }
+              }
+            }
+
+            // Determine severity
+            let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+            if (
+              matchedLint?.severity === "error" ||
+              code === 2001 ||
+              code === 2002 ||
+              code === 2003 ||
+              code === 3001 ||
+              code === 3009 ||
+              code === 4031 ||
+              code === 5001 ||
+              code === 5005 ||
+              code === 5006 ||
+              code === 5008 ||
+              code === 5009 ||
+              code === 5013
+            ) {
+              severity = DiagnosticSeverity.Error;
+            } else if (matchedLint?.severity === "info") {
+              severity = DiagnosticSeverity.Information;
+            }
+
+            newSemanticDiagnostics.push({
+              severity,
+              range,
+              message,
+              source: pluginSource,
+              code: code ?? d.lintName,
+            });
           }
+        } catch (e: any) {
+          this.connection.console.warn(`[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e?.message ?? e}`);
         }
       }
 
@@ -689,8 +690,10 @@ export class ValidationService {
         if (isStale()) return;
 
         for (const d of engineDiags) {
-          const start = (bridge as any).positions.offsetToPosition(d.startByte);
-          const end = (bridge as any).positions.offsetToPosition(d.endByte);
+          const startOff = d.startOffset ?? d.startByte;
+          const endOff = d.endOffset ?? d.endByte;
+          const start = (bridge as any).positions.charOffsetToPosition(startOff);
+          const end = (bridge as any).positions.charOffsetToPosition(endOff);
           let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
           if (d.severity === "error") severity = DiagnosticSeverity.Error;
           if (d.severity === "info") severity = DiagnosticSeverity.Information;

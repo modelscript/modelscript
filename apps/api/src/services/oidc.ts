@@ -159,9 +159,14 @@ export class OidcService {
     }
 
     // 3. Provision new user from corporate OIDC identity
-    const baseUsername = (claims.preferred_username || claims.email.split("@")[0])
-      .replace(/[^a-zA-Z0-9_]/g, "_")
-      .toLowerCase();
+    const emailPrefix = claims.email.split("@")[0];
+    const candidate = claims.preferred_username || emailPrefix;
+    if (!candidate) {
+      throw new Error(
+        `Unable to provision OIDC user: missing preferred_username and email prefix for sub '${claims.sub}'`,
+      );
+    }
+    const baseUsername = candidate.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
     let finalUsername = baseUsername;
     let counter = 1;
     while (database.getUserByUsername(finalUsername)) {

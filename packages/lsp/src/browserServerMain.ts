@@ -247,7 +247,6 @@ import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
 import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
-import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerInlayHintProvider } from "./providers/inlayHintProvider.js";
 import { registerSignatureHelpProvider } from "./providers/signatureHelpProvider.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
@@ -631,7 +630,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       codeActionKinds: [CodeActionKind.QuickFix],
     },
     workspaceSymbolProvider: true,
-    codeLensProvider: { resolveProvider: false },
     inlayHintProvider: true,
   };
   return { capabilities };
@@ -778,7 +776,7 @@ documents.onDidChangeContent((change) => {
 
       if (tree) {
         documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
-        const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
+        const { syntaxDiags } = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
         const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
         // Surface syntax errors: clear immediately when 0, debounce by 180ms when editing
@@ -1237,7 +1235,7 @@ registerSignatureHelpProvider(
   () => parserService.getParser("modelica"),
   parserService.getLineIndexForDoc.bind(parserService),
 );
-registerCodeLensProvider(lspContext);
+// registerCodeLensProvider(lspContext); // Disabled: code lens is messy in editor
 registerInlayHintProvider(lspContext);
 connection.listen();
 

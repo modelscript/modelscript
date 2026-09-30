@@ -11,6 +11,8 @@ const vscode = (window as any).acquireVsCodeApi?.();
 interface MsimConfig {
   type?: string;
   stepFile?: string;
+  workflowClass?: string;
+  parameters?: Record<string, any>;
   mesh?: { min?: number; max?: number; algorithm?: string; order?: number };
   material?: { name?: string; E?: number; nu?: number; density?: number };
   loads?: { type?: string; face?: string; value?: number[] }[];

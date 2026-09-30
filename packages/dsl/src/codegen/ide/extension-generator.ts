@@ -571,6 +571,9 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
     languageModelTools,
     ...(keybindings.length > 0 ? { keybindings } : {}),
+    configurationDefaults: {
+      "editor.codeLens": false,
+    },
   };
 
   // Add notebook controller if enabled
@@ -613,7 +616,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     explorer: [
       {
         id: "modelscript.libraryTree",
-        name: "Modelica Library",
+        name: "Library",
       },
       {
         id: "modelscript.mqttTree",

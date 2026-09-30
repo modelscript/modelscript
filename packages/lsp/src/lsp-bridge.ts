@@ -113,6 +113,50 @@ export class PositionIndex {
     this.isPureAscii = pureAscii;
   }
 
+  // ── Canonical character-offset API ──────────────────────────────────────
+
+  /**
+   * Convert a character offset to an LSP line/character position.
+   * This is the preferred API — character offsets are the canonical
+   * representation used by SyntaxNode.startOffset, SymbolEntry, etc.
+   */
+  charOffsetToPosition(charOffset: number): { line: number; character: number } {
+    let lo = 0;
+    let hi = this.lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.lineStarts[mid] <= charOffset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return { line: lo, character: Math.max(0, charOffset - this.lineStarts[lo]) };
+  }
+
+  /**
+   * Convert an LSP line/character position back to a character offset.
+   */
+  positionToCharOffset(line: number, character: number): number {
+    if (line < 0 || line >= this.lineStarts.length) return 0;
+    return Math.min(this.lineStarts[line] + character, this.sourceText.length);
+  }
+
+  /**
+   * Convert a character offset range to an LSP range.
+   */
+  rangeFromOffsets(startOffset: number, endOffset: number): LSPRange {
+    return {
+      start: this.charOffsetToPosition(startOffset),
+      end: this.charOffsetToPosition(endOffset),
+    };
+  }
+
+  // ── Deprecated byte-based API ───────────────────────────────────────────
+  // These methods convert UTF-8 byte offsets to positions. Since the codebase
+  // is migrating to character offsets everywhere, prefer the methods above.
+
+  /** @deprecated Use {@link charOffsetToPosition} with character offsets instead. */
   offsetToPosition(offset: number): { line: number; character: number } {
     let lo = 0;
     let hi = this.byteLineStarts.length - 1;
@@ -155,7 +199,7 @@ export class PositionIndex {
     return { line: lo, character: charIdx - lineStartChar };
   }
 
-  /** Convert an LSP line/character position back to a byte offset. */
+  /** @deprecated Use {@link positionToCharOffset} instead. */
   positionToOffset(line: number, character: number): number {
     if (line < 0 || line >= this.lineStarts.length) return 0;
     if (this.isPureAscii) {
@@ -188,6 +232,7 @@ export class PositionIndex {
     return this.lineStarts.length;
   }
 
+  /** @deprecated Use {@link rangeFromOffsets} with character offsets instead. */
   rangeFromBytes(startByte: number, endByte: number): LSPRange {
     return {
       start: this.offsetToPosition(startByte),

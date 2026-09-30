@@ -3,8 +3,8 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import * as vscode from "vscode";
-import { PolyglotLiveSyncManager, TARGET_DOMAIN_OPTIONS, registerPolyglotActions } from "../src/polyglotActions.js";
-import { PolyglotVisualizerPanel } from "../src/polyglotVisualizerPanel.js";
+import { PolyglotLiveSyncManager, TARGET_DOMAIN_OPTIONS, registerPolyglotActions } from "../src/polyglot-actions.js";
+import { PolyglotVisualizerPanel } from "../src/polyglot-visualizer-panel.js";
 
 describe("Polyglot Live Model Sync & 3D Visualizer IDE Integration", () => {
   it("exposes all target engineering domains in quick-pick options", () => {

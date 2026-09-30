@@ -183,7 +183,8 @@ export class GenericModelicaBridge {
     const constraints: string[] = [];
 
     // Extract attributes
-    const attrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;\r\n]+))?;/g;
+    const attrRegex =
+      /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)(?:\s*=\s*([^;\s\r\n][^;\r\n]*))?\s*;/g;
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRegex.exec(targetSource)) !== null) {
       attributes.push({
@@ -319,7 +320,7 @@ export class GenericModelicaBridge {
 
     // Extract parameters and variables
     const declRegex =
-      /\b(?:(parameter)\s+)?(Real|Integer|Boolean|String)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;\r\n]+))?;/g;
+      /\b(?:(parameter)\s+)?(Real|Integer|Boolean|String)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*([^;\s\r\n][^;\r\n]*))?\s*;/g;
     let dMatch: RegExpExecArray | null;
     while ((dMatch = declRegex.exec(modelicaSource)) !== null) {
       attributes.push({

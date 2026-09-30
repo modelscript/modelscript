@@ -3,12 +3,12 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import * as vscode from "vscode";
-import { CandidateTradeStudyPanel } from "../src/candidateTradeStudyPanel.js";
+import { CandidateTradeStudyPanel } from "../src/candidate-trade-study-panel.js";
 import {
   generateMultiDomainScaffold,
   registerMultiDomainScaffolding,
   SysmlScaffoldCodeLensProvider,
-} from "../src/multiDomainScaffolding.js";
+} from "../src/multi-domain-scaffolding.js";
 
 describe("Phase 5: One-Click Multi-Domain Scaffolding & Browser Physics Confirmation", () => {
   const sampleSysml = `

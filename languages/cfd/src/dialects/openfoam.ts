@@ -36,7 +36,7 @@ export class OpenFoamDialect implements CfdDialect {
     };
 
     // Strip comments
-    const stripped = content.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\r\n]*/g, "");
+    const stripped = content.replace(/\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/|\/\/[^\r\n]*/g, "");
 
     const rootDict = this.parseDictionary(stripped);
 

@@ -165,7 +165,7 @@
   },
   "dependencies": {
     "helmlab": "^0.11.9",
-    "media-typer": "^1.1.0",
+    "media-typer": "^0.3.0",
     "pako": "^2.1.0",
     "parse-data-url": "^6.0.0",
     "typescript": "^5.9.3"

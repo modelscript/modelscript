@@ -11,7 +11,7 @@ import {
 } from "@modelscript/simulate";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { CaeCloudClient } from "../src/caeCloudClient.js";
+import { CaeCloudClient } from "../src/cae-cloud-client.js";
 
 describe("CAE Graphical Custom Editors (.inp / .cfg) Integration", () => {
   it("parses and executes in-WASM FEA solver from CalculiX deck (.inpt / .inp)", () => {

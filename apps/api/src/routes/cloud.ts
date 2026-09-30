@@ -227,8 +227,9 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           let safeGeometryPath: string | undefined;
           if (payload.geometryPath && typeof payload.geometryPath === "string") {
             const resolved = path.resolve(payload.geometryPath);
-            const allowedRoots = [path.resolve(process.cwd()), path.resolve(os.tmpdir())];
-            if (allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+            const cwdRoot = path.resolve(process.cwd());
+            const tmpRoot = path.resolve(os.tmpdir());
+            if (resolved.startsWith(cwdRoot + path.sep) || resolved.startsWith(tmpRoot + path.sep)) {
               safeGeometryPath = resolved;
             }
           }

@@ -699,13 +699,23 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
           const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
           if (targetApId) {
             db.deletePostByApId(targetApId);
-            const match = (targetApId as string).match(/\/libraries\/(.+)\/([^/#]+)(?:#.*)?$/);
-            if (match && match[1] && match[2]) {
-              db.deleteRemotePackage(
-                decodeURIComponent(match[1]),
-                decodeURIComponent(match[2]),
-                remoteActorUrl as string,
-              );
+            try {
+              const parsed = new URL(targetApId as string, "http://localhost");
+              const prefix = "/libraries/";
+              const idx = parsed.pathname.indexOf(prefix);
+              if (idx !== -1) {
+                const rest = parsed.pathname.slice(idx + prefix.length);
+                const lastSlash = rest.lastIndexOf("/");
+                if (lastSlash > 0 && lastSlash < rest.length - 1) {
+                  db.deleteRemotePackage(
+                    decodeURIComponent(rest.slice(0, lastSlash)),
+                    decodeURIComponent(rest.slice(lastSlash + 1)),
+                    remoteActorUrl as string,
+                  );
+                }
+              }
+            } catch {
+              // ignore invalid URI
             }
           }
         } else if (activity.type === "Update" && activity.object && activity.object.type === "Note") {
@@ -725,7 +735,14 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
           if (pkgObj.name && pkgObj.version) {
             let pkgName = pkgObj.name;
             const mode = process.env["FEDERATION_MODE"];
-            if (mode === "curated-hub" || publicUrl.includes("hub.modelscript.org")) {
+            let isHubDomain = false;
+            try {
+              const parsedHost = new URL(publicUrl).hostname;
+              isHubDomain = parsedHost === "hub.modelscript.org" || parsedHost.endsWith(".hub.modelscript.org");
+            } catch {
+              isHubDomain = false;
+            }
+            if (mode === "curated-hub" || isHubDomain) {
               if (!pkgName.startsWith("@")) {
                 try {
                   const originHost = new URL(remoteActorUrl as string).hostname;

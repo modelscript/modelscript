@@ -40,7 +40,7 @@ ModelScript is a completely web-native, polyglot incremental compiler and multi-
 │   Ontology ─── Constraint/Arithmetic ─── Abstract Domains ─── Continuous Safety ─── CAD  │
 ├──────────────────────────────────────────────────────────────────────────────────────────┤
 │                        Data-Oriented DAE Arena & Solvers                                 │
-│   DAEBuilder ── BLT ── SUNDIALS CVODE/IDA ── WebGPU Batched ── Direct Collocation Opt   │
+│   DAEBuilder ── BLT ── SUNDIALS CVODE/IDA ── WebGPU Batched ── Direct Collocation Opt    │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

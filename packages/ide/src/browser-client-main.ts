@@ -835,6 +835,10 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  client.onNotification("modelscript/warning", (params: { message: string }) => {
+    vscode.window.showWarningMessage(params.message);
+  });
+
   client.onNotification(
     "modelscript/cosimStream",
     async (msg: { type: string; participantId: string; time: number; data?: number[]; payload?: any }) => {
