@@ -8,7 +8,7 @@ import { registerCodeLensProvider } from "../src/providers/codeLensProvider.js";
 import { registerHoverProvider } from "../src/providers/hoverProvider.js";
 import { ValidationService } from "../src/services/validation-service.js";
 
-test("LSP Formal Verification: Polyspace-Style 4-Color Diagnostics, CodeLens, and Hovers", async (t) => {
+test("LSP Formal Verification: Sound 4-Color Diagnostics, CodeLens, and Hovers", async (t) => {
   const modelicaUri = "file:///workspace/FormalControl.mo";
   const modelicaContent = `
 package FormalControl
@@ -132,7 +132,7 @@ end FormalControl;
     assert.strictEqual(proofMap.get("unprovenSqrt")?.isCertifiedSafe, false);
   });
 
-  await t.test("should generate Polyspace-style CodeLens proof badges for verified and defective functions", () => {
+  await t.test("should generate formal verification CodeLens proof badges for verified and defective functions", () => {
     let codeLensHandler: any = null;
     const codeLensConnection: any = {
       onRequest: (method: string, handler: any) => {

@@ -438,20 +438,25 @@ export function registerSemanticTokensProvider(
     }
 
     const docTree = getDocumentTree(textDocument.uri);
-    if (!docTree || !docTree.tree) {
-      return builder.build();
-    }
+    let tree: any = (docTree as any)?.tree ?? docTree;
+    const treeText = (docTree as any)?.text ?? tree?.sourceCode;
 
-    let tree = docTree.tree;
-    if (docTree.text !== text && parseFallback) {
+    if ((!tree || !tree.rootNode || (treeText && treeText !== text)) && parseFallback) {
       try {
-        tree = parseFallback(
+        const fallbackTree = parseFallback(
           textDocument.uri.endsWith(".sysml") || textDocument.uri.endsWith(".sysml2") ? ".sysml" : ".mo",
           text,
         ) as any;
+        if (fallbackTree) {
+          tree = fallbackTree.tree ?? fallbackTree;
+        }
       } catch {
         // fallback to old tree, but it will cause invalid tokens
       }
+    }
+
+    if (!tree || !tree.rootNode) {
+      return builder.build();
     }
 
     const rawTokens: {
@@ -463,30 +468,30 @@ export function registerSemanticTokensProvider(
     }[] = [];
 
     const seenTokens = new Set<string>();
+    const plugin = globalLanguageRegistry.getPluginForUri(textDocument.uri);
+    const typeKws = (plugin?.monarch?.typeKeywords as string[]) ?? DEFAULT_TYPE_KEYWORDS;
 
     const traverseTree = (node: any) => {
       let tokenType: string | null = null;
-      const modifier = 0;
+      let modifier = 0;
 
       if (node.type === "IDENT" || node.type === "identifier") {
         const parent = node.parent;
         let p = parent;
-        while (p && (p.type === "Name" || p.type === "name")) {
+        while (p && (p.type === "Name" || p.type === "name" || p.type === "component_reference")) {
           p = p.parent;
         }
 
         let inError = false;
         let curr = node.parent;
         while (curr) {
-          if (curr.type === "ERROR") {
+          if (curr.type === "ERROR" || curr.isError) {
             inError = true;
             break;
           }
           curr = curr.parent;
         }
 
-        const plugin = globalLanguageRegistry.getPluginForUri(textDocument.uri);
-        const typeKws = (plugin?.monarch?.typeKeywords as string[]) ?? DEFAULT_TYPE_KEYWORDS;
         if (typeKws.includes(node.text)) {
           tokenType = "type";
         } else if (inError) {
@@ -497,7 +502,11 @@ export function registerSemanticTokensProvider(
           p?.type === "ShortClassSpecifier" ||
           p?.type === "short_class_specifier" ||
           p?.type === "DerClassSpecifier" ||
-          p?.type === "der_class_specifier" ||
+          p?.type === "der_class_specifier"
+        ) {
+          tokenType = "class";
+          modifier = 1; // declaration
+        } else if (
           p?.type === "WithinDirective" ||
           p?.type === "within_clause" ||
           p?.type === "ExtendsClause" ||
@@ -507,7 +516,23 @@ export function registerSemanticTokensProvider(
         ) {
           tokenType = "type";
         } else if (p?.type === "Declaration" || p?.type === "component_declaration" || p?.type === "declaration") {
-          tokenType = "variable";
+          let clause = p;
+          while (clause && clause.type !== "component_clause" && clause.type !== "element") {
+            clause = clause.parent;
+          }
+          const clauseText = clause?.text || "";
+          if (/\bparameter\b/.test(clauseText)) {
+            tokenType = "parameter";
+          } else {
+            tokenType = "variable";
+          }
+          modifier = 1; // declaration
+        } else if (
+          parent?.type === "function_call" ||
+          p?.type === "function_call" ||
+          parent?.type === "function_call_args"
+        ) {
+          tokenType = "function";
         } else {
           tokenType = "variable";
         }
@@ -520,29 +545,49 @@ export function registerSemanticTokensProvider(
         node.type === "unsigned_real"
       ) {
         tokenType = "number";
-      } else if (node.type === "comment") {
+      } else if (node.type === "comment" || node.type === "line_comment" || node.type === "block_comment") {
         tokenType = "comment";
-      } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>"].includes(node.type)) {
+      } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>", "!="].includes(node.type)) {
         tokenType = "operator";
       }
 
       if (tokenType !== null) {
         const typeIndex = tokenTypes.indexOf(tokenType);
         if (typeIndex >= 0) {
-          if (!seenTokens.has(`${node.startPosition.row}:${node.startPosition.column}`)) {
-            seenTokens.add(`${node.startPosition.row}:${node.startPosition.column}`);
-            rawTokens.push({
-              line: node.startPosition.row,
-              char: node.startPosition.column,
-              length: node.endPosition.column - node.startPosition.column,
-              typeIndex,
-              modifier,
-            });
+          if (node.startPosition.row === node.endPosition.row) {
+            const length = node.endPosition.column - node.startPosition.column;
+            if (length > 0 && !seenTokens.has(`${node.startPosition.row}:${node.startPosition.column}`)) {
+              seenTokens.add(`${node.startPosition.row}:${node.startPosition.column}`);
+              rawTokens.push({
+                line: node.startPosition.row,
+                char: node.startPosition.column,
+                length,
+                typeIndex,
+                modifier,
+              });
+            }
+          } else if (node.startPosition.row < node.endPosition.row) {
+            const lines = (node.text || "").split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const lineNum = node.startPosition.row + i;
+              const charStart = i === 0 ? node.startPosition.column : 0;
+              const length = lines[i].length;
+              if (length > 0 && !seenTokens.has(`${lineNum}:${charStart}`)) {
+                seenTokens.add(`${lineNum}:${charStart}`);
+                rawTokens.push({
+                  line: lineNum,
+                  char: charStart,
+                  length,
+                  typeIndex,
+                  modifier,
+                });
+              }
+            }
           }
         }
       }
 
-      for (const child of node.children) {
+      for (const child of node.children || []) {
         traverseTree(child);
       }
     };
@@ -556,8 +601,17 @@ export function registerSemanticTokensProvider(
       return a.line - b.line;
     });
 
+    let lastLine = -1;
+    let lastEndChar = -1;
     for (const token of rawTokens) {
-      builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+      if (token.line > lastLine) {
+        lastLine = token.line;
+        lastEndChar = token.char + token.length;
+        builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+      } else if (token.char >= lastEndChar) {
+        lastEndChar = token.char + token.length;
+        builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+      }
     }
 
     const result = builder.build();

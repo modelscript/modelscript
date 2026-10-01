@@ -10,7 +10,7 @@ import { modelicaLanguage } from "../src/language.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Phase 1: In-WASM Analytical Sparse Jacobian & Adjoint Tape Engine (CasADi-Grade AD)", () => {
+describe("Phase 1: In-WASM Analytical Sparse Jacobian & Adjoint Tape Engine (Reverse-Mode AD)", () => {
   it("should compile WASM runtime and verify analytical sparse Jacobian and reverse-mode AdTape", async () => {
     const result = buildParser(modelicaLanguage);
     const tmpDir = path.resolve(__dirname, "../build/tmp-analytical-jacobian-test");

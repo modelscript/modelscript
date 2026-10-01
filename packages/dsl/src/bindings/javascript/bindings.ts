@@ -875,6 +875,7 @@ export class LspFacade {
     } else {
       this.lastAstRoot = newAstRoot;
       if (uri) this.setDocumentRoot(uri, newAstRoot);
+      this.rootSourceCode.delete(newAstRoot);
     }
 
     // Trigger 2: Check memory quota after parse
@@ -1034,6 +1035,7 @@ export class LspFacade {
     } else {
       this.lastAstRoot = newAstRoot;
       if (uri) this.setDocumentRoot(uri, newAstRoot);
+      this.rootSourceCode.delete(newAstRoot);
     }
 
     this.checkMemoryQuota();

@@ -20,7 +20,7 @@ import { atomicChunkAlloc } from "../arena";
 import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 
 /**
- * JAX-Grade Vectorized Batch Simulation Engine in WASM Linear Memory.
+ * Vectorized Batch Simulation Engine in WASM Linear Memory.
  * Evaluates M independent parameter trajectories simultaneously with zero GC overhead.
  */
 

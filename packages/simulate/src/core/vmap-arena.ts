@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * JAX-Grade First-Class `vmap` (Batched Vectorized Simulation) for DAE Arenas.
+ * First-Class `vmap` (Batched Vectorized Simulation) for DAE Arenas.
  *
  * Transforms scalar simulation into batched execution across parameter spaces
  * and initial conditions in contiguous linear memory without intermediate wrapper allocations.

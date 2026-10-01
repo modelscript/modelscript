@@ -141,7 +141,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         type: "number",
       })
       .option("algorithms", {
-        description: "execute Astrée/Polyspace-grade algorithmic abstract interpretation",
+        description: "execute sound algorithmic abstract interpretation for zero RTEs",
         type: "boolean",
         default: true,
       })

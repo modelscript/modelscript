@@ -89,7 +89,7 @@ export function materializeFeaDeck(templateText: string, options: MaterializeOpt
 }
 
 /**
- * Synthesizes a syntactic boundary or load directive for FEA decks (CalculiX/Abaqus).
+ * Synthesizes a syntactic boundary or load directive for FEA decks (CalculiX / .inp).
  */
 export function synthesizeFeaBoundary(
   action: BoundaryActionPayload,

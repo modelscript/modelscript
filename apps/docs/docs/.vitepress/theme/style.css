@@ -1,4 +1,9 @@
 /* Custom aesthetic overrides to make the design more premium and dynamic */
+html,
+body {
+  overflow-x: clip;
+}
+
 :root {
   --vp-c-brand-1: #646cff;
   --vp-c-brand-2: #747bff;
@@ -63,4 +68,27 @@
   transform: translateY(-3px);
   border-color: var(--vp-c-brand-1) !important;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+}
+
+/* Allow hero 3D turbine model to overflow parent containers seamlessly */
+.VPHero,
+.VPHero .container,
+.VPHero .image,
+.VPHero .image-container {
+  overflow: visible !important;
+}
+
+@media (min-width: 960px) {
+  .VPHero .image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .VPHero .image-container {
+    width: 100%;
+    max-width: 620px;
+    height: 560px;
+    transform: none;
+  }
 }

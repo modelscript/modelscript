@@ -5,7 +5,7 @@ import assert from "node:assert";
 import { simulateVmap } from "../src/core/index.js";
 
 async function main() {
-  console.log("=== Testing JAX-Grade First-Class vmap (Vectorized Batched Simulation) ===");
+  console.log("=== Testing First-Class vmap (Vectorized Batched Simulation) ===");
   await initBltWasm();
 
   // Model: Newton's Law of Cooling

@@ -13,7 +13,7 @@ Currently, only the latest release is actively supported with security updates.
 
 Please **do not** report security vulnerabilities through public GitHub issues or discussions.
 
-If you believe you have found a security vulnerability in ModelScript (or any of its packages, components, and tools), please adhere to responsible disclosure principles and report it privately via email to **mnachawa@gmail.com**.
+If you believe you have found a security vulnerability in ModelScript (or any of its packages, components, and tools), please adhere to responsible disclosure principles and report it privately via email to **omar@modelscript.org**.
 
 When reporting a vulnerability, please include:
 

@@ -756,6 +756,8 @@ export class ValidationService {
             }
             wsIndex.getFileIndex?.(effectiveUri);
           }
+          this.workspaceManager.workspaceInstances.delete(uri);
+          this.workspaceManager.workspaceInstances.delete(effectiveUri);
           this.workspaceManager.documentInstances.delete(uri);
           this.workspaceManager.documentInstances.delete(effectiveUri);
           this.lastIndexedText.set(effectiveUri, text);
@@ -1809,24 +1811,56 @@ export class ValidationService {
   }
 
   private populateClassWrappers(effectiveUri: string, uri: string, unifiedIndex: any, engine: any, context: any): void {
-    const db = engine?.toQueryDB ? engine.toQueryDB() : null;
-    if (!db) return;
+    const db = engine?.toQueryDB
+      ? engine.toQueryDB()
+      : {
+          childrenOf: (id: number) => {
+            const childIds = unifiedIndex.childrenOf?.get(id) || [];
+            return childIds.map((cid: any) => unifiedIndex.symbols.get(cid)).filter(Boolean);
+          },
+          symbol: (id: number) => unifiedIndex.symbols.get(id) || null,
+          query: (_name: string, _id: number) => null,
+          cstNode: (id: number) => this.workspaceManager.getCstNodeForSymbol(unifiedIndex.symbols.get(id)),
+        };
 
     const thisDocInstances: any[] = [];
-    const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
-    const matchUri = normUri(effectiveUri);
+    const normUri = (u: string) => {
+      if (!u) return "";
+      let s = u;
+      try {
+        s = decodeURIComponent(u);
+      } catch {}
+      return s.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+    };
+    const matchEffective = normUri(effectiveUri);
+    const matchUri = normUri(uri);
+    const matchesResource = (resId: string) => {
+      if (!resId) return false;
+      if (resId === uri || resId === effectiveUri) return true;
+      const normRes = normUri(resId);
+      return (
+        normRes === matchEffective ||
+        normRes === matchUri ||
+        (matchEffective.startsWith("file:///") && normRes === matchEffective.substring(7)) ||
+        (matchUri.startsWith("file:///") && normRes === matchUri.substring(7))
+      );
+    };
 
-    const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
-    const symbolsToCheck = resourceSymbolIds
-      ? (resourceSymbolIds.map((id: any) => [id, unifiedIndex.symbols.get(id)]) as Iterable<[any, any]>)
-      : unifiedIndex.symbols;
+    const resourceSymbolIds =
+      unifiedIndex.symbolsByResource?.get(effectiveUri) ?? unifiedIndex.symbolsByResource?.get(uri);
+    const symbolsToCheck =
+      resourceSymbolIds && resourceSymbolIds.length > 0
+        ? (resourceSymbolIds.map((id: any) => [id, unifiedIndex.symbols.get(id)]).filter(([, e]: any) => e) as Iterable<
+            [any, any]
+          >)
+        : unifiedIndex.symbols;
 
     for (const [id, entry] of symbolsToCheck) {
-      if (!entry || !entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
-      if (entry.kind !== "Class") continue;
+      if (!entry || !entry.resourceId || !matchesResource(entry.resourceId)) continue;
+      if (entry.kind !== "Class" && entry.kind !== "Def") continue;
       if (entry.parentId !== null) {
         const parentEntry = unifiedIndex.symbols.get(entry.parentId);
-        if (parentEntry && parentEntry.resourceId && normUri(parentEntry.resourceId) === matchUri) continue;
+        if (parentEntry && parentEntry.resourceId && matchesResource(parentEntry.resourceId)) continue;
       }
       const wrapper = {
         id,
@@ -1842,8 +1876,12 @@ export class ValidationService {
       thisDocInstances.push(wrapper);
     }
     this.workspaceManager.workspaceInstances.set(uri, thisDocInstances);
+    this.workspaceManager.workspaceInstances.set(effectiveUri, thisDocInstances);
+    this.workspaceManager.documentInstances.set(uri, thisDocInstances);
+    this.workspaceManager.documentInstances.set(effectiveUri, thisDocInstances);
     if (context) {
       this.workspaceManager.documentContexts.set(uri, context);
+      this.workspaceManager.documentContexts.set(effectiveUri, context);
     }
   }
 

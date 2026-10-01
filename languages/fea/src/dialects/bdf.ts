@@ -4,11 +4,11 @@ import { materializeFeaDeck } from "../materializer.js";
 import type { FeaDialect, FeaModelData, FeaNode, MaterializeOptions } from "../types.js";
 
 /**
- * Nastran Bulk Data (.bdf / .dat) FEA deck dialect implementation.
+ * Bulk Data (.bdf / .dat) FEA deck dialect implementation.
  */
 export class BdfDialect implements FeaDialect {
   public readonly id = "bdf";
-  public readonly name = "Nastran Bulk Data Deck";
+  public readonly name = "FEA Bulk Data Deck (.bdf / .dat)";
   public readonly extensions = [".bdf", ".dat"];
 
   public materialize(templateText: string, options?: MaterializeOptions): string {

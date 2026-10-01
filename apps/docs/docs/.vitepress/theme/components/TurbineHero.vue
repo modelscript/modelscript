@@ -84,7 +84,7 @@ function resetView() {
   currentRotationY = -0.55;
   isAutoSpinning = true;
   if (camera) {
-    camera.position.set(0, 0.4, 7.8);
+    camera.position.set(0, 0.15, 8.8);
     camera.lookAt(0, 0, 0);
   }
 }
@@ -608,7 +608,7 @@ function initScene() {
 
   // Camera: 3/4 Perspective showcasing intake and cutaway
   camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-  camera.position.set(0, 0.4, 7.8);
+  camera.position.set(0, 0.15, 8.8);
   camera.lookAt(0, 0, 0);
 
   // WebGL Renderer with High-DPI & Anti-aliasing
@@ -950,9 +950,8 @@ onUnmounted(() => {
 .turbine-hero-wrapper {
   position: relative;
   width: 100%;
-  max-width: 520px;
-  height: 480px;
-  min-height: 380px;
+  height: 560px;
+  min-height: 460px;
   margin: 0 auto;
   user-select: none;
   touch-action: none;
@@ -960,6 +959,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
 
 .turbine-hero-wrapper.dragging {
@@ -972,16 +972,16 @@ onUnmounted(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 320px;
-  height: 320px;
+  width: 520px;
+  height: 520px;
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
-    rgba(14, 165, 233, 0.28) 0%,
-    rgba(124, 58, 237, 0.22) 45%,
+    rgba(14, 165, 233, 0.32) 0%,
+    rgba(124, 58, 237, 0.24) 45%,
     rgba(0, 0, 0, 0) 70%
   );
-  filter: blur(48px);
+  filter: blur(64px);
   pointer-events: none;
   z-index: 0;
   animation: pulse-aura 6s ease-in-out infinite alternate;
@@ -999,10 +999,16 @@ onUnmounted(() => {
 }
 
 .turbine-canvas-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 900px;
+  height: 720px;
+  max-width: 95vw;
   z-index: 1;
+  pointer-events: auto;
+  overflow: visible;
 }
 
 .turbine-canvas-container :deep(canvas) {
@@ -1198,9 +1204,33 @@ onUnmounted(() => {
   color: #94a3b8;
 }
 
+@media (max-width: 959px) {
+  .turbine-hero-wrapper {
+    height: 460px;
+  }
+  .turbine-canvas-container {
+    width: 720px;
+    height: 560px;
+    max-width: 100vw;
+  }
+  .turbine-aura {
+    width: 380px;
+    height: 380px;
+  }
+}
+
 @media (max-width: 640px) {
   .turbine-hero-wrapper {
-    height: 360px;
+    height: 380px;
+  }
+  .turbine-canvas-container {
+    width: 520px;
+    height: 440px;
+    max-width: 100vw;
+  }
+  .turbine-aura {
+    width: 300px;
+    height: 300px;
   }
   .hud-btn .mode-label {
     display: none;

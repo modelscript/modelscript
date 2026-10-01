@@ -35,7 +35,7 @@ export interface CfdSamplingOptions {
 
 export class CaeParametricSampler {
   /**
-   * Performs an automated parametric DoE sweep on a CalculiX / Abaqus (.inp) deck
+   * Performs an automated parametric DoE sweep on a CalculiX / FEA (.inp) deck
    * using the in-WASM linear tetrahedral FEA solver.
    */
   public static sampleFeaDeck(deckContent: string, options: FeaSamplingOptions = {}): CaeRunResult[] {

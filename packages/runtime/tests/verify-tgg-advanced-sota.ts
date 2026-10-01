@@ -239,7 +239,7 @@ async function runAdvancedSotaSuite() {
   const lossyRule = tggRule({
     name: "ResistorProjectionLossy",
     source: ($) => $.Resistor({ resistance: "R", tolerance: "tol", tempCoeff: "tc" }),
-    target: ($) => $.SimulinkResistor({ resistance: "R" }),
+    target: ($) => $.CausalBlockResistor({ resistance: "R" }),
   });
 
   const lossyReport = verifyRuleLosslessness(lossyRule, ["resistance", "tolerance", "tempCoeff"]);
@@ -256,7 +256,7 @@ async function runAdvancedSotaSuite() {
   const protectedRule = tggRule({
     name: "ResistorProjectionProtected",
     source: ($) => $.Resistor({ resistance: "R", tolerance: "tol", tempCoeff: "tc" }),
-    target: ($) => $.SimulinkResistor({ resistance: "R" }),
+    target: ($) => $.CausalBlockResistor({ resistance: "R" }),
     where: () => [tggComplement(["tolerance", "tempCoeff"])],
   });
 

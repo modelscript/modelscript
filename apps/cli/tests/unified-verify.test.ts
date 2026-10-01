@@ -209,9 +209,9 @@ describe("Unified Formal Verification & Multi-Format Reporting", () => {
     assert(termOutput.includes("Modelica Algorithmic Abstract Interpretation"));
     assert(termOutput.includes("STATUS: 100% CERTIFIED SAFE"));
 
-    // Check HTML Dashboard includes Polyspace matrix
+    // Check HTML Dashboard includes formal proof matrix
     const htmlOutput = UnifiedVerifier.formatHtml(report);
-    assert(htmlOutput.includes("Polyspace/Astrée Formal Proof Matrix"));
+    assert(htmlOutput.includes("Algorithmic Formal Proof Matrix"));
     assert(htmlOutput.includes("matrix-container"));
 
     // Check SARIF report generation

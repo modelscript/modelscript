@@ -308,7 +308,8 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       endByte: block.endPos,
     });
 
-    const caseRegex = /\b(?:case\s+([^;:\r\n=>]+?)|(else|default))\s*(?:=>|\bthen\b|:(?!=))\s*([^;\s\r\n][^;\r\n]*);/g;
+    const caseRegex =
+      /\b(?:case\s+((?:(?!=>|\bthen\b|:(?!=))[^;\r\n])+?)|(else|default))\s*(?:=>|\bthen\b|:(?!=))\s*([^;\s\r\n][^;\r\n]*);/g;
     let cm: RegExpExecArray | null;
     let caseIdx = 1;
     while ((cm = caseRegex.exec(block.body)) !== null) {

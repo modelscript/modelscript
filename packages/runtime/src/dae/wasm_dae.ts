@@ -796,6 +796,14 @@ export class WasmDaeBridge implements IDaeBuilder {
     this.setVarFlags(varIdx, isDer ? flags | FLAG_VAR_STATE_DER : flags & ~FLAG_VAR_STATE_DER);
   }
 
+  setVarDeriv(varIdx: number, isDer: boolean | number = true): void {
+    this.setVarStateDer(varIdx, Boolean(isDer));
+  }
+
+  setVarDerivative(varIdx: number, isDer: boolean | number = true): void {
+    this.setVarStateDer(varIdx, Boolean(isDer));
+  }
+
   isVarFlow(varIdx: number): boolean {
     return (this.getVarFlags(varIdx) & FLAG_VAR_FLOW) !== 0;
   }

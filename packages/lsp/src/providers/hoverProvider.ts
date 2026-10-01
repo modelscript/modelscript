@@ -172,7 +172,7 @@ export function registerHoverProvider(
               for (const state of entryStates.values()) {
                 const ival = state.intervals?.get?.(token);
                 if (ival && !ival.isTop?.() && !ival.isBottom?.()) {
-                  hoverContent += `\n\n---\n**Formal Invariant (Astrée/Polyspace Abstract Domain):**\n- \`${token} ∈ ${ival.toString()}\` (Verified Invariant in \`${fnName}\`)`;
+                  hoverContent += `\n\n---\n**Formal Invariant (Sound Abstract Domain):**\n- \`${token} ∈ ${ival.toString()}\` (Verified Invariant in \`${fnName}\`)`;
                   break;
                 }
               }

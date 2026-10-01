@@ -217,7 +217,7 @@ export class UnifiedVerifier {
       stages["b2b"] = await this.runB2BStage(ctx, options);
     }
 
-    // ── Stage 10: Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade) ─
+    // ── Stage 10: Modelica Algorithmic Abstract Interpretation (Sound RTE Verification) ─
     if (hasAlgorithms) {
       stages["algorithms"] = await this.runAlgorithmsStage(ctx, options);
     }
@@ -962,7 +962,7 @@ export class UnifiedVerifier {
       if (!modelicaModule || !modelicaModule.ModelicaAlgorithmAnalyzer) {
         return {
           stage: "algorithms",
-          name: "Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade)",
+          name: "Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)",
           passed: true,
           durationMs: Date.now() - t0,
           summary: "Algorithmic abstract interpretation skipped (@modelscript/modelica analyzer unavailable).",
@@ -989,7 +989,7 @@ export class UnifiedVerifier {
       if (!/\balgorithm\b/.test(text)) {
         return {
           stage: "algorithms",
-          name: "Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade)",
+          name: "Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)",
           passed: true,
           durationMs: Date.now() - t0,
           summary: "No algorithmic sections or functions found for abstract interpretation.",
@@ -1169,7 +1169,7 @@ export class UnifiedVerifier {
 
       return {
         stage: "algorithms",
-        name: "Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade)",
+        name: "Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)",
         passed,
         certified,
         durationMs: Date.now() - t0,
@@ -1188,7 +1188,7 @@ export class UnifiedVerifier {
     } catch (err: any) {
       return {
         stage: "algorithms",
-        name: "Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade)",
+        name: "Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)",
         passed: false,
         durationMs: Date.now() - t0,
         summary: `Algorithmic analysis error: ${err.message}`,

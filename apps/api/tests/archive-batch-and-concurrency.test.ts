@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test, { describe } from "node:test";
+import { fileURLToPath } from "node:url";
 import request from "supertest";
 
 process.env["NODE_ENV"] = "test";
@@ -140,14 +141,15 @@ describe("GDPR / CCPA Archive Async Queue & Batch Concurrency", () => {
   });
 
   test("CLI batch script exports all users with concurrency limits", async () => {
-    const scriptPath = path.resolve(process.cwd(), "scripts/export-user-data.ts");
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+    const scriptPath = path.resolve(repoRoot, "scripts/export-user-data.ts");
 
     // Run batch exporter with --all and --concurrency 2
     const stdout = execFileSync(
       "npx",
       ["tsx", scriptPath, "--all", "--concurrency", "2", "--output-dir", cliOutputDir, "--sqlite", dbDir, "--quiet"],
       {
-        cwd: process.cwd(),
+        cwd: repoRoot,
         encoding: "utf-8",
         env: { ...process.env, NO_COLOR: "1" },
       },

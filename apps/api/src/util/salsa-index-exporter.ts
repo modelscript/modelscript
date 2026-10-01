@@ -2,12 +2,15 @@
 
 import type { QueryEngine } from "@modelscript/runtime";
 import Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * Serializes a QueryEngine's state (SymbolIndex and Memos) into a SQLite database.
  * This generated artifact can be served by the registry and hydrated by edge clients.
  */
 export async function exportSalsaIndex(engine: QueryEngine, dbPath: string): Promise<void> {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
 

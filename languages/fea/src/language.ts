@@ -58,7 +58,7 @@ export const feaLanguage = language({
     {
       id: "materialize_deck",
       title: "Materialize FEA Deck (.inpt -> .inp)",
-      description: "Evaluates embedded expressions and expands parametric macros into a concrete CalculiX/Abaqus deck.",
+      description: "Evaluates embedded expressions and expands parametric macros into a concrete CalculiX / .inp deck.",
       category: "transform",
       ui: {
         editorTitle: {

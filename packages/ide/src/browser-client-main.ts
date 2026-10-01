@@ -1642,10 +1642,18 @@ END-ISO-10303-21;`;
         },
       );
     }),
-    commands.registerCommand("modelscript.exportFmi2", async () => {
+    commands.registerCommand("modelscript.exportFmi2", async (args?: any) => {
       if (!client) return;
+      const targetUri = args?.uri
+        ? typeof args.uri === "string"
+          ? vscode.Uri.parse(args.uri)
+          : args.uri
+        : args instanceof vscode.Uri
+          ? args
+          : undefined;
       const editor = vscode.window.activeTextEditor;
-      if (!editor) {
+      const docUri = targetUri ?? editor?.document?.uri;
+      if (!docUri) {
         vscode.window.showErrorMessage("Open a model file to export an FMU.");
         return;
       }
@@ -1654,11 +1662,16 @@ END-ISO-10303-21;`;
         async () => {
           if (!client) return;
           try {
+            if (editor?.document && editor.document.isDirty) {
+              await editor.document.save();
+            }
             const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
-              uri: editor.document.uri.toString(),
+              uri: docUri.toString(),
               fmiVersion: "2.0",
             });
-            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+            const folder =
+              vscode.workspace.workspaceFolders?.[0]?.uri ||
+              (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
             const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
             await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
             vscode.window.showInformationMessage(`Exported FMI 2.0 to ${res.fmuName}.fmu`);
@@ -1668,10 +1681,18 @@ END-ISO-10303-21;`;
         },
       );
     }),
-    commands.registerCommand("modelscript.exportFmi3", async () => {
+    commands.registerCommand("modelscript.exportFmi3", async (args?: any) => {
       if (!client) return;
+      const targetUri = args?.uri
+        ? typeof args.uri === "string"
+          ? vscode.Uri.parse(args.uri)
+          : args.uri
+        : args instanceof vscode.Uri
+          ? args
+          : undefined;
       const editor = vscode.window.activeTextEditor;
-      if (!editor) {
+      const docUri = targetUri ?? editor?.document?.uri;
+      if (!docUri) {
         vscode.window.showErrorMessage("Open a model file to export an FMU.");
         return;
       }
@@ -1680,11 +1701,16 @@ END-ISO-10303-21;`;
         async () => {
           if (!client) return;
           try {
+            if (editor?.document && editor.document.isDirty) {
+              await editor.document.save();
+            }
             const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
-              uri: editor.document.uri.toString(),
+              uri: docUri.toString(),
               fmiVersion: "3.0",
             });
-            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+            const folder =
+              vscode.workspace.workspaceFolders?.[0]?.uri ||
+              (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
             const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
             await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
             vscode.window.showInformationMessage(`Exported FMI 3.0 to ${res.fmuName}.fmu`);

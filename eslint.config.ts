@@ -122,7 +122,6 @@ export default defineConfig([
             "languages/fea/tests/*.ts",
             "languages/csv/tests/*.ts",
             "packages/mcp/tests/*.ts",
-            "packages/ide/tests/*.ts",
             "apps/api/tests/*.ts",
           ],
         },

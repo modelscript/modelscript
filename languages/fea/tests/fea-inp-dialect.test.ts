@@ -143,11 +143,11 @@ Cantilever Plate
     );
   });
 
-  it("parses Nastran BDF decks including CQUAD4, CTETRA, MAT1, SPC, and FORCE cards", () => {
+  it("parses BDF decks including CQUAD4, CTETRA, MAT1, SPC, and FORCE cards", () => {
     const dialect = getFeaDialect("bdf");
     assert.strictEqual(dialect.id, "bdf");
 
-    const bdfDeck = `$ Nastran Bulk Data Deck
+    const bdfDeck = `$ Bulk Data Deck
 GRID,1,,0.0,0.0,0.0
 GRID,2,,10.0,0.0,0.0
 GRID,3,,10.0,10.0,0.0

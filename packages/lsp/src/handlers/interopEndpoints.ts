@@ -6,24 +6,100 @@ import { buildFmuArchive, parseFmuModelDescription } from "@modelscript/exchange
 import { readZipTextEntry } from "@modelscript/runtime/wasm_container.js";
 import { ArenaSimulator } from "@modelscript/simulate";
 import { LspContext } from "../lsp-context.js";
+import { flattenTargetClass } from "./simulationEndpoints.js";
 
 export function registerInteropEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/exportFmu",
     async (params: { uri: string; fmiVersion: "2.0" | "3.0"; includeWasm?: boolean }) => {
-      const ctx = context.workspaceManager.documentContexts.get(params.uri);
-      const doc = context.documents.get(params.uri);
-      if (!ctx || !doc) throw new Error("Document not found or no context available.");
+      let doc = context.documents.get(params.uri);
+      if (!doc) {
+        for (const d of context.documents.all()) {
+          if (d.uri === params.uri || decodeURIComponent(d.uri) === decodeURIComponent(params.uri)) {
+            doc = d;
+            break;
+          }
+        }
+      }
 
-      // Get the first class defined in the document as the target for FMU generation
-      const instances = context.workspaceManager.documentInstances.get(params.uri);
-      if (!instances || instances.length === 0) throw new Error("No Modelica classes found in the active document.");
+      // Await any inflight validation
+      const pending =
+        context.state.activeValidationPromises?.get(params.uri) ??
+        (doc ? context.state.activeValidationPromises?.get(doc.uri) : undefined);
+      if (pending) {
+        await pending;
+      }
 
-      const targetInstance = instances[0];
-      const targetClass = targetInstance.name;
+      let instances =
+        context.workspaceManager.documentInstances.get(params.uri) ??
+        context.workspaceManager.workspaceInstances.get(params.uri) ??
+        (doc ? context.workspaceManager.documentInstances.get(doc.uri) : undefined) ??
+        (doc ? context.workspaceManager.workspaceInstances.get(doc.uri) : undefined);
+
+      if ((!instances || instances.length === 0) && doc) {
+        await context.validationService.validateTextDocument(doc);
+        const postPending =
+          context.state.activeValidationPromises?.get(doc.uri) ??
+          context.state.activeValidationPromises?.get(params.uri);
+        if (postPending) await postPending;
+        instances =
+          context.workspaceManager.documentInstances.get(params.uri) ??
+          context.workspaceManager.workspaceInstances.get(params.uri) ??
+          context.workspaceManager.documentInstances.get(doc.uri) ??
+          context.workspaceManager.workspaceInstances.get(doc.uri);
+      }
+
+      if (!instances || instances.length === 0) {
+        const resolved =
+          context.workspaceManager.resolveModelicaClassInstance(params.uri) ??
+          (doc ? context.workspaceManager.resolveModelicaClassInstance(doc.uri) : null);
+        if (resolved) {
+          instances = [resolved];
+        }
+      }
+
+      let arena: any = null;
+      let targetClass = "";
+
+      if (instances && instances.length > 0) {
+        const targetInstance = instances[0];
+        targetClass = targetInstance.name || targetInstance.compositeName || "";
+        const ctx =
+          context.workspaceManager.documentContexts.get(params.uri) ??
+          (doc ? context.workspaceManager.documentContexts.get(doc.uri) : undefined) ??
+          context.state.sharedContext ??
+          (context.parserService as any)?.sharedContext;
+        const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
+        if (typeof flattenFn === "function") {
+          try {
+            arena = flattenFn(targetInstance, ctx);
+          } catch {
+            arena = null;
+          }
+        }
+      }
+
+      if (!arena) {
+        try {
+          const flatRes = flattenTargetClass(context, params.uri);
+          if ("error" in flatRes) {
+            if (!instances || instances.length === 0) {
+              throw new Error("No Modelica classes found in the active document.");
+            }
+            throw new Error(flatRes.error);
+          }
+          arena = flatRes.arena;
+          targetClass = flatRes.target.className;
+        } catch (e: any) {
+          if (!instances || instances.length === 0) {
+            throw new Error("No Modelica classes found in the active document.", { cause: e });
+          }
+          throw e;
+        }
+      }
+
       if (!targetClass) throw new Error("Could not determine model name.");
 
-      const arena = flattenArenaFromInstance(targetInstance, ctx);
       const simulator = new ArenaSimulator(arena);
       simulator.prepare();
       const stateVars = new Set<string>();
@@ -31,10 +107,12 @@ export function registerInteropEndpoints(context: LspContext) {
         stateVars.add(arena.getVarName(varIdx));
       }
 
+      const fmiVer = params.fmiVersion === "3.0" ? "3" : "2";
       const { archive } = buildFmuArchive(
         arena,
         {
           modelIdentifier: targetClass,
+          fmiVersion: fmiVer,
           includeWasm: params.includeWasm,
         },
         stateVars,

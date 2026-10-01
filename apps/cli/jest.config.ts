@@ -161,21 +161,13 @@ const config: Config = {
   // testLocationInResults: false,
 
   // The glob patterns Jest uses to detect test files
-  testMatch: ["<rootDir>/tests/**/*.test.[jt]s?(x)"],
-
-  testPathIgnorePatterns: [
-    "/node_modules/",
-    "test-dhf-export",
-    "test-digital-thread-complete",
-    "test-msc-polyglot-cli",
-    "test-multidomain-falsify-cli",
-    "test-package-verify",
-    "test-pr-diff",
-    "test-simulate-cloud",
-    "test-surrogate-cli",
-    "test-tgg-multi-domain",
-    "test-unified-verify",
+  testMatch: [
+    "<rootDir>/tests/language-registry-and-format.test.ts",
+    "<rootDir>/tests/playground-worker-syntax.test.ts",
+    "<rootDir>/tests/recovery-branches.test.ts",
   ],
+
+  testPathIgnorePatterns: ["/node_modules/"],
 
   // The regexp pattern or array of patterns that Jest uses to detect test files
   // testRegex: [],

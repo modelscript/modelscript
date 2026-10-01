@@ -153,7 +153,7 @@ export const baselineMigration: Migration = {
       CREATE TABLE IF NOT EXISTS posts (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         author_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        content         TEXT NOT NULL,
+        content         TEXT,
         artifact_view_id INTEGER REFERENCES artifact_views(id) ON DELETE SET NULL,
         reply_to_id     INTEGER REFERENCES posts(id) ON DELETE CASCADE,
         quote_post_id   INTEGER REFERENCES posts(id),

@@ -4,7 +4,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { ModelicaAlgorithmAnalyzer, type ModelicaStatement, type ModelicaVariableDecl } from "../src/index.js";
 
-describe("Phase 3: Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade)", () => {
+describe("Phase 3: Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)", () => {
   it("should prove 100% safe 1-based array accesses in loop and detect out-of-bounds access", () => {
     // Modelica algorithm:
     // for i in 1:10 loop

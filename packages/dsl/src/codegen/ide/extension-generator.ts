@@ -648,9 +648,26 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       ...(commandPaletteMenus.length > 0 ? { commandPalette: commandPaletteMenus } : {}),
     },
     languageModelTools,
-    ...(keybindings.length > 0 ? { keybindings } : {}),
+    semanticTokenScopes: [
+      {
+        language: "modelica",
+        scopes: {
+          class: ["entity.name.type.class.modelica"],
+          type: ["entity.name.type.modelica", "support.type.modelica"],
+          variable: ["variable.other.modelica"],
+          parameter: ["variable.parameter.modelica"],
+          function: ["entity.name.function.modelica", "support.function.modelica"],
+          keyword: ["keyword.other.modelica"],
+          number: ["constant.numeric.modelica"],
+          string: ["string.quoted.double.modelica"],
+          comment: ["comment.modelica"],
+          operator: ["keyword.operator.modelica"],
+        },
+      },
+    ],
     configurationDefaults: {
       "editor.codeLens": false,
+      "editor.semanticHighlighting.enabled": true,
     },
   };
 

@@ -139,11 +139,12 @@ export class ModelicaAlgorithmAnalyzer {
 
     const isCertifiedSafe = definiteBugs.length === 0 && potentialBugs.length === 0;
 
-    // 6. Generate formatted Polyspace-style executive summary table
+    // 6. Generate formatted formal verification executive summary table
     const fnLabel = options?.functionName ? ` for '${options.functionName}'` : "";
+    const headerTitle = `Modelica Algorithmic Abstract Interpretation${fnLabel}`;
     const formattedMatrix = [
       `┌────────────────────────────────────────────────────────────────────────┐`,
-      `│ Modelica Algorithmic Abstract Interpretation (Astrée/Polyspace Grade)${fnLabel.padEnd(20)}│`,
+      `│ ${headerTitle.slice(0, 70).padEnd(70)} │`,
       `├─────────────────────────────┬──────────┬──────────┬──────────┬─────────┤`,
       `│ Check Category              │ Proven ✓ │ Defect ✗ │ Unproven │ Dead ◌  │`,
       `├─────────────────────────────┼──────────┼──────────┼──────────┼─────────┤`,

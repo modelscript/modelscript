@@ -83,7 +83,7 @@ export function generateHtmlReport(
       if (st.details?.formattedMatrix) {
         matrixSection = `
           <div class="matrix-container">
-            <div class="matrix-title">Polyspace/Astrée Formal Proof Matrix</div>
+            <div class="matrix-title">Algorithmic Formal Proof Matrix</div>
             <pre class="matrix-pre">${escapeHtml(st.details.formattedMatrix)}</pre>
           </div>
         `;

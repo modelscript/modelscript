@@ -79,6 +79,6 @@ We employ industry-standard security safeguards to protect your personal informa
 
 For privacy inquiries, Data Subject Access Requests (DSARs), or regulatory communications:
 
-- **Email**: `mnachawa@gmail.com`
+- **Email**: `omar@modelscript.org`
 - **Security Inquiries**: See [SECURITY.md](./SECURITY.md)
 - **Repository**: [https://github.com/modelscript/modelscript](https://github.com/modelscript/modelscript)

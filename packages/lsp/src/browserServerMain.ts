@@ -898,7 +898,10 @@ registerSemanticTokensProvider(
   parserService.getDocumentTree.bind(parserService),
   () => parserService.getParser("sysml2"),
   () => parserService.isParserReady("sysml2"),
-  (ext, text) => sharedContext?.parse(ext, text),
+  (ext, text) =>
+    sharedContext?.parse(ext, text) ??
+    parserService.getParserForUri(ext)?.parse(text) ??
+    parserService.getParser("modelica")?.parse(text),
 );
 
 // Completion provider — polyglot-driven scoped completion + keyword fallback

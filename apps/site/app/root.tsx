@@ -106,7 +106,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               author: {
                 "@type": "Person",
                 name: "Mohamad Omar Nachawati",
-                email: "mnachawa@gmail.com",
+                email: "omar@modelscript.org",
               },
               offers: {
                 "@type": "Offer",

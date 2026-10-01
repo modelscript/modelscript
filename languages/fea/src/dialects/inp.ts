@@ -4,11 +4,11 @@ import { materializeFeaDeck } from "../materializer.js";
 import type { FeaDialect, FeaElement, FeaMaterial, FeaModelData, FeaNode, MaterializeOptions } from "../types.js";
 
 /**
- * Abaqus / CalculiX (.inp) FEA deck dialect implementation.
+ * Standard FEA Input Deck (.inp) / CalculiX dialect implementation.
  */
 export class InpDialect implements FeaDialect {
   public readonly id = "inp";
-  public readonly name = "Abaqus / CalculiX Input Deck";
+  public readonly name = "Standard FEA Input Deck (.inp) / CalculiX";
   public readonly extensions = [".inp"];
 
   public materialize(templateText: string, options?: MaterializeOptions): string {
@@ -179,14 +179,14 @@ export class InpDialect implements FeaDialect {
 }
 
 /**
- * Convenience helper to parse an Abaqus / CalculiX (.inp) deck.
+ * Convenience helper to parse a standard FEA (.inp) / CalculiX deck.
  */
 export function parseInpDeck(deckText: string): FeaModelData {
   return new InpDialect().parse(deckText);
 }
 
 /**
- * Convenience helper to materialize an Abaqus / CalculiX (.inp) deck template.
+ * Convenience helper to materialize a standard FEA (.inp) / CalculiX deck template.
  */
 export function materializeCalculixDeck(templateText: string, options?: MaterializeOptions): string {
   return new InpDialect().materialize(templateText, options);

@@ -9,7 +9,7 @@ import { modelicaLanguage } from "../src/language.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Phase 3: Massive Parallel Batched Simulation Engine (JAX-Grade vmap)", () => {
+describe("Phase 3: Massive Parallel Batched Simulation Engine (Vectorized vmap)", () => {
   it("should compile WASM runtime and execute 100 parallel parameter sweep trajectories simultaneously", async () => {
     const result = buildParser(modelicaLanguage);
     const tmpDir = path.resolve(__dirname, "../build/tmp-batched-vmap-test");

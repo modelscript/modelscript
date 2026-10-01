@@ -31,7 +31,7 @@
 
 ## ModelScript Architectural Rationale
 
-Unlike classical block diagrams (such as Simulink) where connections represent directional causal signal flows ($y = f(u)$), ModelScript models **acausal physical interaction** across multi-energy domains:
+Unlike classical block diagrams (such as causal signal-flow block diagrams) where connections represent directional causal signal flows ($y = f(u)$), ModelScript models **acausal physical interaction** across multi-energy domains:
 
 - **Electrical**: Voltage $v$ (potential) and Current $i$ (flow).
 - **Hydraulic & Pneumatic**: Pressure $p$ (potential) and Volume/Mass flow rate $q$ (flow).

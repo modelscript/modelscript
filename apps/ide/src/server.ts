@@ -101,6 +101,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
     productConfiguration,
     configurationDefaults: {
       "editor.codeLens": false,
+      "editor.semanticHighlighting.enabled": true,
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
       "security.workspace.trust.banner": "never",
