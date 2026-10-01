@@ -783,7 +783,10 @@ export class Context {
     if (resourceUri) {
       const tree = this.#trees.get(resourceUri);
       if (tree && typeof (tree.rootNode as any)?.hasError === "function" && (tree.rootNode as any).hasError()) {
-        return null;
+        const cstNode = this.#queryEngine.toQueryDB().cstNode(firstId);
+        if (!cstNode || (typeof (cstNode as any)?.hasError === "function" && (cstNode as any).hasError())) {
+          return null;
+        }
       }
     }
     const backendKey = options?.backend ? `:${options.backend}` : "";

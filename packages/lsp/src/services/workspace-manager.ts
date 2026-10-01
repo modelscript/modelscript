@@ -501,38 +501,128 @@ export class WorkspaceManager {
       }
     }
 
-    const getEngine = (resourceId?: string) => {
-      if (!resourceId) return null;
-      const pluginEngine = globalLanguageRegistry.getQueryEngineForUri(resourceId);
-      if (pluginEngine) return pluginEngine;
-      const plugin = globalLanguageRegistry.getPluginForUri(resourceId);
-      if (plugin) {
-        const eng = this.getQueryEngine(plugin.id);
-        if (eng) return eng;
-      }
-      return null;
-    };
-
     // Wire up CST providers for cross-language polyglot queries
     this.unifiedWorkspace.cstNodeProvider = (id) => {
       const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
-      if (!entry || !entry.resourceId) return null;
-      const engine = getEngine(entry.resourceId);
-      return engine?.toQueryDB().cstNode(id) ?? null;
+      return this.getCstNodeForSymbol(entry);
     };
 
     this.unifiedWorkspace.cstTextProvider = (startByte, endByte, entry) => {
       if (!entry.resourceId) return null;
-      const engine = getEngine(entry.resourceId);
+      const engine = this.getEngine(entry.resourceId);
       return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
     };
 
     this.unifiedWorkspace.queryProvider = (queryName, id) => {
       const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const engine = getEngine(entry.resourceId);
+      const engine = this.getEngine(entry.resourceId);
       return engine?.query(queryName, id) ?? null;
     };
+  }
+
+  public getEngine(resourceId?: string): any {
+    if (!resourceId) return null;
+    const pluginEngine = globalLanguageRegistry.getQueryEngineForUri(resourceId);
+    if (pluginEngine) return pluginEngine;
+    const plugin = globalLanguageRegistry.getPluginForUri(resourceId);
+    if (plugin) {
+      const eng = this.getQueryEngine(plugin.id);
+      if (eng) return eng;
+    }
+    return null;
+  }
+
+  public getSourceText(resourceId: string): string | null {
+    const doc = this.documentManager?.documents?.get?.(resourceId);
+    if (doc) return doc.getText();
+    const docTree = this.documentManager?.documentTrees?.get?.(resourceId);
+    if (docTree?.text) return docTree.text;
+
+    const sfs =
+      (globalThis as any).sharedFs ?? (globalThis as any).sharedContext?.fs ?? this.documentManager?.sharedContext?.fs;
+    if (sfs) {
+      let fsPath = resourceId;
+      try {
+        fsPath = decodeURIComponent(fsPath);
+      } catch {}
+      if (fsPath.startsWith("modelica:")) {
+        fsPath = fsPath.replace(/^modelica:\/*/, "/");
+      } else if (fsPath.startsWith("file:")) {
+        fsPath = fsPath.replace(/^file:\/*/, "/");
+      }
+      try {
+        if (sfs.exists(fsPath)) return sfs.read(fsPath);
+        const noSlash = fsPath.replace(/^\/+/, "");
+        if (sfs.exists(noSlash)) return sfs.read(noSlash);
+        const withSlash = "/" + noSlash;
+        if (sfs.exists(withSlash)) return sfs.read(withSlash);
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      let fsPath = resourceId;
+      try {
+        fsPath = decodeURIComponent(fsPath);
+      } catch {}
+      if (fsPath.startsWith("file://")) fsPath = fsPath.substring("file://".length);
+      if (typeof process !== "undefined" && process.versions?.node) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { readFileSync, existsSync } = require("fs");
+        if (existsSync(fsPath)) return readFileSync(fsPath, "utf-8");
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  public getCstNodeForSymbol(entry: any): any {
+    if (!entry) return null;
+    if (entry.cstNode) return entry.cstNode;
+    if (!entry.resourceId) return null;
+    const engine = this.getEngine(entry.resourceId);
+    if (engine) {
+      try {
+        const n = engine.toQueryDB().cstNode(entry.id);
+        if (n) return n;
+      } catch {}
+    }
+    let tree =
+      this.documentManager?.getDocumentTree?.(entry.resourceId) ??
+      (this.unifiedWorkspace as any)?.getDocumentTree?.(entry.resourceId);
+    if (!tree || !tree.rootNode) {
+      const text = this.getSourceText(entry.resourceId);
+      if (text) {
+        const parser =
+          (globalThis as any).modelicaParser ??
+          (globalThis as any).parser ??
+          (globalThis as any).sharedContext?.parsers?.get?.(".mo");
+        if (parser) {
+          try {
+            tree = parser.parse(text);
+            this.documentManager?.documentTrees?.set(entry.resourceId, tree);
+          } catch {}
+        }
+      }
+    }
+    const root = tree?.rootNode ?? (tree as any)?.tree?.rootNode;
+    if (root) {
+      const startOff = entry.startOffset ?? entry.startByte;
+      const endOff = entry.endOffset ?? entry.endByte;
+      if (startOff != null && endOff != null) {
+        if (typeof root.descendantForIndex === "function") {
+          return root.descendantForIndex(startOff, endOff) || root;
+        } else if (typeof root.descendantForByteRange === "function") {
+          return root.descendantForByteRange(startOff, endOff) || root;
+        }
+        return root;
+      }
+      return root;
+    }
+    return null;
   }
 
   public resolveClassInstance(uri: string, className?: string): any | null {
@@ -561,47 +651,7 @@ export class WorkspaceManager {
 
     const annotationCache = new Map<number, Map<string, any>>();
 
-    const getSourceText = (resourceId: string): string | null => {
-      const doc = this.documentManager?.documents?.get?.(resourceId);
-      if (doc) return doc.getText();
-      const docTree = this.documentManager?.documentTrees?.get?.(resourceId);
-      if (docTree?.text) return docTree.text;
-
-      const sfs =
-        (globalThis as any).sharedFs ??
-        (globalThis as any).sharedContext?.fs ??
-        this.documentManager?.sharedContext?.fs;
-      if (sfs) {
-        let fsPath = resourceId;
-        if (fsPath.startsWith("modelica:")) {
-          fsPath = fsPath.replace(/^modelica:\/*/, "/");
-        } else if (fsPath.startsWith("file:")) {
-          fsPath = fsPath.replace(/^file:\/*/, "/");
-        }
-        try {
-          if (sfs.exists(fsPath)) return sfs.read(fsPath);
-          const noSlash = fsPath.replace(/^\/+/, "");
-          if (sfs.exists(noSlash)) return sfs.read(noSlash);
-          const withSlash = "/" + noSlash;
-          if (sfs.exists(withSlash)) return sfs.read(withSlash);
-        } catch {
-          // ignore
-        }
-      }
-
-      try {
-        let fsPath = resourceId;
-        if (fsPath.startsWith("file://")) fsPath = fsPath.substring("file://".length);
-        if (typeof process !== "undefined" && process.versions?.node) {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { readFileSync, existsSync } = require("fs");
-          if (existsSync(fsPath)) return readFileSync(fsPath, "utf-8");
-        }
-      } catch {
-        // ignore
-      }
-      return null;
-    };
+    const getSourceText = (resourceId: string): string | null => this.getSourceText(resourceId);
 
     const buildAdapter = (entry: any, db: any, compositeName: string): any => {
       const children = db.childrenOf ? (db.childrenOf(entry.id) ?? []) : [];
@@ -615,13 +665,57 @@ export class WorkspaceManager {
         if (child.kind === "Component" || child.kind === "Variable") {
           const childClassId = db.query ? db.query("classInstance", child.id) : null;
           const childClassEntry = childClassId ? db.symbol(childClassId) : null;
+          let componentClassInstance = childClassEntry ? buildAdapter(childClassEntry, db, childClassEntry.name) : null;
+          if (!componentClassInstance) {
+            let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
+            if (!typeSpec && db.query) {
+              try {
+                typeSpec = db.query("typeSpecifier", child.id);
+              } catch {}
+            }
+            if (!typeSpec) {
+              const compCst = (child.cstNode || (db.cstNode ? db.cstNode(child.id) : null)) as any;
+              let p = compCst?.parent;
+              while (p) {
+                if (p.type === "component_clause" || p.type === "ComponentClause") {
+                  const ts = p.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+                  if (ts) {
+                    typeSpec = ts.text?.trim() ?? null;
+                    break;
+                  }
+                }
+                p = p.parent;
+              }
+            }
+            if (!typeSpec && entry.resourceId) {
+              try {
+                const text = getSourceText(entry.resourceId);
+                const sOff = child.startOffset ?? child.startByte;
+                const eOff = child.endOffset ?? child.endByte;
+                if (text && sOff != null && eOff != null) {
+                  const lineStart = text.lastIndexOf("\n", sOff);
+                  const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
+                  const m = declLine.match(
+                    /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
+                  );
+                  if (m) {
+                    typeSpec = m[1].trim();
+                  }
+                }
+              } catch {}
+            }
+            if (typeSpec) {
+              componentClassInstance = this.resolveModelicaClassInstance(entry.resourceId, typeSpec);
+            }
+          }
+          const childCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
           components.push({
             name: child.name,
-            classInstance: childClassEntry ? buildAdapter(childClassEntry, db, childClassEntry.name) : null,
+            classInstance: componentClassInstance,
             annotations: [],
             declaration: child,
-            cstNode: db.cstNode ? db.cstNode(child.id) : null,
-            abstractSyntaxNode: db.cstNode ? db.cstNode(child.id) : null,
+            cstNode: childCst,
+            abstractSyntaxNode: childCst,
             annotation: (annName: string): any => {
               try {
                 let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
@@ -630,7 +724,7 @@ export class WorkspaceManager {
                     evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
                   } catch {}
                 }
-                const cst = db.cstNode ? db.cstNode(child.id) : null;
+                const cst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
                 if (cst && evaluatorClass) {
                   const evaluator = new evaluatorClass(classInstance);
                   return evaluator.evaluate(cst, annName);
@@ -651,6 +745,20 @@ export class WorkspaceManager {
                 currParent = currParent.parentId != null && db.symbol ? db.symbol(currParent.parentId) : null;
               }
             }
+            if (!baseInstance) {
+              // Try resolving relative to package hierarchy from compositeName or resourceId
+              const scopeParts = (compositeName ? compositeName.split(".") : []).slice(0, -1);
+              if (scopeParts.length === 0 && entry.resourceId) {
+                const clean = entry.resourceId.replace(/^[a-z]+:\/*(?:lib\/)?/, "").replace(/\/[^/]+$/, "");
+                scopeParts.push(...clean.split("/").filter(Boolean));
+                if (scopeParts[0]?.startsWith("Modelica")) scopeParts[0] = "Modelica";
+              }
+              while (scopeParts.length > 0 && !baseInstance) {
+                const qualifiedParentName = `${scopeParts.join(".")}.${child.name}`;
+                baseInstance = this.resolveModelicaClassInstance(entry.resourceId, qualifiedParentName);
+                scopeParts.pop();
+              }
+            }
             if (baseInstance) {
               extendsClassInstances.push({ classInstance: baseInstance });
             }
@@ -662,16 +770,14 @@ export class WorkspaceManager {
         ) {
           let lhsStr = (child.metadata?.lhs as string) ?? child.name ?? "";
           let rhsStr = (child.metadata?.rhs as string) ?? "";
-          if ((!lhsStr || !rhsStr) && db.cstNode) {
+          const connCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
+          if ((!lhsStr || !rhsStr) && connCst) {
             try {
-              const cst = db.cstNode(child.id);
-              if (cst) {
-                const cstText = cst.text ?? "";
-                const m = cstText.match(/connect\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)/);
-                if (m) {
-                  lhsStr = m[1].trim();
-                  rhsStr = m[2].trim();
-                }
+              const cstText = connCst.text ?? "";
+              const m = cstText.match(/connect\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)/);
+              if (m) {
+                lhsStr = m[1].trim();
+                rhsStr = m[2].trim();
               }
             } catch {
               // ignore
@@ -687,8 +793,8 @@ export class WorkspaceManager {
               componentReference2: {
                 parts: rhsStr.split(".").map((id: string) => ({ identifier: { text: id } })),
               },
-              cstNode: db.cstNode ? db.cstNode(child.id) : null,
-              ast: db.cstNode ? db.cstNode(child.id) : null,
+              cstNode: connCst,
+              ast: connCst,
               annotation: (annName: string): any => {
                 try {
                   let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
@@ -697,10 +803,9 @@ export class WorkspaceManager {
                       evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
                     } catch {}
                   }
-                  const cst = db.cstNode ? db.cstNode(child.id) : null;
-                  if (cst && evaluatorClass) {
+                  if (connCst && evaluatorClass) {
                     const evaluator = new evaluatorClass(classInstance);
-                    return evaluator.evaluate(cst, annName);
+                    return evaluator.evaluate(connCst, annName);
                   }
                 } catch {}
                 return null;
@@ -710,15 +815,16 @@ export class WorkspaceManager {
         }
       }
 
+      const classCstNode = (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
       classInstance = {
         id: entry.id,
         db,
         entry,
-        cstNode: db.cstNode ? db.cstNode(entry.id) : null,
-        abstractSyntaxNode: db.cstNode ? db.cstNode(entry.id) : null,
+        cstNode: classCstNode,
+        abstractSyntaxNode: classCstNode,
         name: entry.name ?? "",
         kind: entry.kind ?? "Class",
-        classKind: (entry.metadata as any)?.classKind ?? "class",
+        classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
         compositeName,
         description: (entry.metadata as any)?.description ?? null,
         isClassInstance: true,
@@ -747,70 +853,7 @@ export class WorkspaceManager {
             return classAnnCache.get(cacheKey);
           }
 
-          let cstNode: any = null;
-          if (db.cstNode) {
-            cstNode = db.cstNode(entry.id);
-          }
-          if (!cstNode && this.unifiedWorkspace) {
-            cstNode = this.unifiedWorkspace.getCstNode(entry.id);
-          }
-
-          if (!cstNode && entry.resourceId) {
-            const cachedDoc = this.documentManager?.getDocumentTree?.(entry.resourceId);
-            const root = cachedDoc?.rootNode ?? (cachedDoc as any)?.tree?.rootNode;
-            if (root) {
-              const startOff = entry.startOffset ?? entry.startByte;
-              const endOff = entry.endOffset ?? entry.endByte;
-              if (startOff != null && endOff != null) {
-                if (typeof root.descendantForIndex === "function") {
-                  cstNode = root.descendantForIndex(startOff, endOff) || root;
-                } else if (typeof root.descendantForByteRange === "function") {
-                  cstNode = root.descendantForByteRange(startOff, endOff) || root;
-                } else {
-                  cstNode = root;
-                }
-              } else {
-                cstNode = root;
-              }
-            }
-          }
-
-          if (!cstNode && entry.resourceId) {
-            let text = getSourceText(entry.resourceId);
-            if (text) {
-              // NOTE: Do NOT truncate large .mo files here. The getSafePackageSource-style
-              // truncation strips the trailing annotation(Icon(...)) block, which breaks
-              // icon rendering for MSL packages. Annotation evaluation is a lazy background
-              // task, so the cost of parsing the full file is acceptable.
-              const parser =
-                (globalThis as any).modelicaParser ??
-                (globalThis as any).parser ??
-                (globalThis as any).sharedContext?.parsers?.get?.(".mo");
-              try {
-                const tree = parser?.parse
-                  ? parser.parse(text)
-                  : (globalThis as any).sharedContext?.parse?.(".mo", text);
-                const root = tree?.rootNode;
-                if (root) {
-                  const startOff = entry.startOffset ?? entry.startByte;
-                  const endOff = entry.endOffset ?? entry.endByte;
-                  if (startOff != null && endOff != null && text.length === getSourceText(entry.resourceId)?.length) {
-                    if (typeof root.descendantForIndex === "function") {
-                      cstNode = root.descendantForIndex(startOff, endOff) || root;
-                    } else if (typeof root.descendantForByteRange === "function") {
-                      cstNode = root.descendantForByteRange(startOff, endOff) || root;
-                    } else {
-                      cstNode = root;
-                    }
-                  } else {
-                    cstNode = root;
-                  }
-                }
-              } catch {
-                // ignore
-              }
-            }
-          }
+          const cstNode: any = (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
 
           try {
             if (cstNode) {
@@ -983,6 +1026,7 @@ export class WorkspaceManager {
         },
         symbol: (id: number) => idx.symbols.get(id) || null,
         query: (_name: string, _id: number) => null,
+        cstNode: (id: number) => this.getCstNodeForSymbol(idx.symbols.get(id)),
       };
 
       const targetId = symbolIds[0];
@@ -1016,6 +1060,7 @@ export class WorkspaceManager {
       },
       symbol: (id: number) => idx.symbols.get(id) || null,
       query: (_name: string, _id: number) => null,
+      cstNode: (id: number) => this.getCstNodeForSymbol(idx.symbols.get(id)),
     };
 
     const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");

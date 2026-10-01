@@ -754,6 +754,18 @@ export function addArrayCtorFromChunked(dae: DaeBuilder, elements: ChunkedUint32
   return ctorId;
 }
 
+export function addArrayCtorFromStatic(dae: DaeBuilder, elements: StaticArray<u32>): u32 {
+  let count = elements.length;
+  if (count == 0) return dae.addExpression(ExprKind.ArrayCtor, 0, 0xffffffff, 0xffffffff);
+  let firstElem = unchecked(elements[0]);
+  let ctorId = dae.addExpression(ExprKind.ArrayCtor, count as u32, firstElem, 0xffffffff);
+  for (let i: i32 = 1; i < count; i++) {
+    let elem = unchecked(elements[i]);
+    dae.addExpression(ExprKind.Tuple, 0, elem, 0);
+  }
+  return ctorId;
+}
+
 export function expandColonToArrayCtor(dae: DaeBuilder, exprId: u32, tempBuffer: ChunkedUint32Array): u32 {
   if (exprId >= dae.exprCount) return 0xffffffff;
   let kind = dae.getExprKind(exprId);
@@ -790,20 +802,27 @@ export function expandColonToArrayCtor(dae: DaeBuilder, exprId: u32, tempBuffer:
                (Math.floor(startVal) != startVal) || (Math.floor(stepVal) != stepVal) || (Math.floor(stopVal) != stopVal);
 
   let elemStart = tempBuffer.length;
-  let count: u32 = 0;
-  for (let v: f64 = startVal; stepVal > 0.0 ? (v <= stopVal + 1e-9) : (v >= stopVal - 1e-9); v += stepVal) {
-    let elemId = isReal ? dae.addRealLiteral(v) : dae.addIntLiteral(Math.round(v) as i32);
-    tempBuffer.push(elemId);
-    count++;
-    if (count > 10000) {
-      tempBuffer.length = elemStart;
-      return 0xffffffff;
+  if ((stepVal > 0.0 && startVal <= stopVal + 1e-9) || (stepVal < 0.0 && startVal >= stopVal - 1e-9)) {
+    let nSteps = Math.floor((stopVal - startVal) / stepVal + 1e-9) as i32;
+    if (nSteps >= 0) {
+      if (nSteps > 10000) return 0xffffffff;
+      for (let k: i32 = 0; k <= nSteps; k++) {
+        let elemId: u32;
+        if (isReal) {
+          let v = startVal + (k as f64) * stepVal;
+          elemId = dae.addRealLiteral(v);
+        } else {
+          let iVal = (startVal as i32) + k * (stepVal as i32);
+          elemId = dae.addIntLiteral(iVal);
+        }
+        tempBuffer.push(elemId);
+      }
     }
   }
   let elemCount = tempBuffer.length - elemStart;
   if (elemCount == 0) {
     tempBuffer.length = elemStart;
-    return 0xffffffff;
+    return dae.addExpression(ExprKind.ArrayCtor, 0, 0xffffffff, 0xffffffff);
   }
   let ctorId = addArrayCtorFromChunked(dae, tempBuffer, elemStart, elemCount);
   tempBuffer.length = elemStart;
@@ -940,13 +959,57 @@ function findClassByPtr(rootLoc: u64, targetPtr: u32, maxDepth: i32 = 30): u64 {
   return 0;
 }
 
+function isConnectorClassLoc(classLoc: u64): boolean {
+  if (locIsNull(classLoc)) return false;
+  let prefixes = locFindChild(classLoc, SyntaxType.CLASS_PREFIXES);
+  if (locIsNull(prefixes)) prefixes = locFindDescendant(classLoc, SyntaxType.CLASS_PREFIXES);
+  if (!locIsNull(prefixes)) {
+    return !locIsNull(locFindDescendant(prefixes, SyntaxType.TOKEN_CONNECTOR));
+  }
+  return !locIsNull(locFindDescendant(classLoc, SyntaxType.TOKEN_CONNECTOR));
+}
+
+function isRecordClassLoc(classLoc: u64): boolean {
+  if (locIsNull(classLoc)) return false;
+  let prefixes = locFindChild(classLoc, SyntaxType.CLASS_PREFIXES);
+  if (locIsNull(prefixes)) prefixes = locFindDescendant(classLoc, SyntaxType.CLASS_PREFIXES);
+  if (!locIsNull(prefixes)) {
+    return !locIsNull(locFindDescendant(prefixes, SyntaxType.TOKEN_RECORD));
+  }
+  return !locIsNull(locFindDescendant(classLoc, SyntaxType.TOKEN_RECORD));
+}
+
+function getExprDimensions(dae: DaeBuilder, exprId: u32): u64 {
+  if (exprId >= dae.exprCount) return 0;
+  let kind = dae.getExprKind(exprId);
+  if (kind == ExprKind.ArrayCtor) {
+    let d1 = dae.getExprData1(exprId);
+    let d2: u32 = 0;
+    if (d1 > 0) {
+      let firstElem = getArrayCtorElement(dae, exprId, 0);
+      if (firstElem != 0xffffffff && dae.getExprKind(firstElem) == ExprKind.ArrayCtor) {
+        d2 = dae.getExprData1(firstElem);
+      }
+    }
+    return ((d1 as u64) << 32) | (d2 as u64);
+  }
+  if (kind == ExprKind.Unary) {
+    return getExprDimensions(dae, dae.getExprLeft(exprId));
+  }
+  if (kind == ExprKind.Binary) {
+    let d = getExprDimensions(dae, dae.getExprLeft(exprId));
+    if (d != 0) return d;
+    return getExprDimensions(dae, dae.getExprRight(exprId));
+  }
+  return 0;
+}
+
 export var g_lastParsedDim3: u32 = 0;
-
-
-
+export var g_hasExplicitZeroDim: boolean = false;
 
 function parseArrayDimensionsLoc(subscriptsLoc: u64): u64 {
   g_lastParsedDim3 = 0;
+  g_hasExplicitZeroDim = false;
   if (locIsNull(subscriptsLoc)) return 0;
   let src = locBytes(subscriptsLoc);
   let len = locLen(subscriptsLoc);
@@ -974,7 +1037,8 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64): u64 {
         currentVal = currentVal * 10 + ((b - 48) as i32);
         hasDigit = true;
       } else if (b == 44) { // ','
-        if (hasDigit && currentVal > 0) {
+        if (hasDigit) {
+          if (currentVal == 0) g_hasExplicitZeroDim = true;
           if (commaCount == 0) d1 = currentVal as u32;
           else if (commaCount == 1) d2 = currentVal as u32;
           else if (commaCount == 2) d3 = currentVal as u32;
@@ -985,7 +1049,8 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64): u64 {
       }
     }
   }
-  if (hasDigit && currentVal > 0) {
+  if (hasDigit) {
+    if (currentVal == 0) g_hasExplicitZeroDim = true;
     if (commaCount == 0) d1 = currentVal as u32;
     else if (commaCount == 1) d2 = currentVal as u32;
     else if (commaCount == 2) d3 = currentVal as u32;
@@ -1857,13 +1922,11 @@ export class WasmExprVisitor {
     if (kind == ExprKind.ArrayCtor) {
       let count = this.dae.getExprData1(exprId);
       if (count == 0) return exprId;
-      let firstElem = this.castToReal(getArrayCtorElement(this.dae, exprId, 0));
-      let ctorId = this.dae.addExpression(ExprKind.ArrayCtor, count, firstElem, 0xffffffff);
-      for (let i: u32 = 1; i < count; i++) {
-        let elem = this.castToReal(getArrayCtorElement(this.dae, exprId, i));
-        this.dae.addExpression(ExprKind.Tuple, 0, elem, 0);
+      let elems = new StaticArray<u32>(count);
+      for (let i: u32 = 0; i < count; i++) {
+        unchecked(elems[i] = this.castToReal(getArrayCtorElement(this.dae, exprId, i)));
       }
-      return ctorId;
+      return addArrayCtorFromStatic(this.dae, elems);
     }
     if (kind == ExprKind.IfElse) {
       let cond = this.dae.getExprData1(exprId);
@@ -1892,40 +1955,38 @@ export class WasmExprVisitor {
     let kLeft = this.dae.getExprKind(left);
     let kRight = this.dae.getExprKind(right);
 
+    if (baseOp == (BinOp.And as u16) || baseOp == (BinOp.Or as u16)) {
+      return this.dae.addBinaryExpr(baseOp, left, right);
+    }
+
     // Vector broadcasting: ArrayCtor with ArrayCtor or scalar with ArrayCtor
     if (kLeft == ExprKind.ArrayCtor && kRight == ExprKind.ArrayCtor) {
       let countLeft = this.dae.getExprData1(left);
       let countRight = this.dae.getExprData1(right);
       if (countLeft == countRight && countLeft > 0) {
-        let firstElem = this.lowerBinary(baseOp, getArrayCtorElement(this.dae, left, 0), getArrayCtorElement(this.dae, right, 0));
-        let ctorId = this.dae.addExpression(ExprKind.ArrayCtor, countLeft, firstElem, 0xffffffff);
-        for (let i: u32 = 1; i < countLeft; i++) {
-          let elem = this.lowerBinary(baseOp, getArrayCtorElement(this.dae, left, i), getArrayCtorElement(this.dae, right, i));
-          this.dae.addExpression(ExprKind.Tuple, 0, elem, 0);
+        let elems = new StaticArray<u32>(countLeft);
+        for (let i: u32 = 0; i < countLeft; i++) {
+          unchecked(elems[i] = this.lowerBinary(baseOp, getArrayCtorElement(this.dae, left, i), getArrayCtorElement(this.dae, right, i)));
         }
-        return ctorId;
+        return addArrayCtorFromStatic(this.dae, elems);
       }
     } else if (kLeft == ExprKind.ArrayCtor && kRight != ExprKind.ArrayCtor) {
       let countLeft = this.dae.getExprData1(left);
       if (countLeft > 0) {
-        let firstElem = this.lowerBinary(baseOp, getArrayCtorElement(this.dae, left, 0), right);
-        let ctorId = this.dae.addExpression(ExprKind.ArrayCtor, countLeft, firstElem, 0xffffffff);
-        for (let i: u32 = 1; i < countLeft; i++) {
-          let elem = this.lowerBinary(baseOp, getArrayCtorElement(this.dae, left, i), right);
-          this.dae.addExpression(ExprKind.Tuple, 0, elem, 0);
+        let elems = new StaticArray<u32>(countLeft);
+        for (let i: u32 = 0; i < countLeft; i++) {
+          unchecked(elems[i] = this.lowerBinary(baseOp, getArrayCtorElement(this.dae, left, i), right));
         }
-        return ctorId;
+        return addArrayCtorFromStatic(this.dae, elems);
       }
     } else if (kLeft != ExprKind.ArrayCtor && kRight == ExprKind.ArrayCtor) {
       let countRight = this.dae.getExprData1(right);
       if (countRight > 0) {
-        let firstElem = this.lowerBinary(baseOp, left, getArrayCtorElement(this.dae, right, 0));
-        let ctorId = this.dae.addExpression(ExprKind.ArrayCtor, countRight, firstElem, 0xffffffff);
-        for (let i: u32 = 1; i < countRight; i++) {
-          let elem = this.lowerBinary(baseOp, left, getArrayCtorElement(this.dae, right, i));
-          this.dae.addExpression(ExprKind.Tuple, 0, elem, 0);
+        let elems = new StaticArray<u32>(countRight);
+        for (let i: u32 = 0; i < countRight; i++) {
+          unchecked(elems[i] = this.lowerBinary(baseOp, left, getArrayCtorElement(this.dae, right, i)));
         }
-        return ctorId;
+        return addArrayCtorFromStatic(this.dae, elems);
       }
     }
 
@@ -2020,16 +2081,18 @@ export class WasmExprVisitor {
       let val = this.dae.getExprData1(operand) != 0;
       return this.dae.addExpression(ExprKind.BoolLiteral, val ? 0 : 1);
     }
+    if (k == ExprKind.Name) {
+      operand = resolveVarToArrayCtor(this.dae, this.dae.getStringPool(), operand, this.tempBuffer);
+      k = this.dae.getExprKind(operand);
+    }
     if (k == ExprKind.ArrayCtor && op == (UnaryOp.Negate as u16)) {
       let count = this.dae.getExprData1(operand);
       if (count > 0) {
-        let firstElem = this.lowerUnary(op, getArrayCtorElement(this.dae, operand, 0));
-        let ctorId = this.dae.addExpression(ExprKind.ArrayCtor, count, firstElem, 0xffffffff);
-        for (let i: u32 = 1; i < count; i++) {
-          let elem = this.lowerUnary(op, getArrayCtorElement(this.dae, operand, i));
-          this.dae.addExpression(ExprKind.Tuple, 0, elem, 0);
+        let elems = new StaticArray<u32>(count);
+        for (let i: u32 = 0; i < count; i++) {
+          unchecked(elems[i] = this.lowerUnary(op, getArrayCtorElement(this.dae, operand, i)));
         }
-        return ctorId;
+        return addArrayCtorFromStatic(this.dae, elems);
       }
     }
     return this.dae.addExpression(ExprKind.Unary, op as u32, operand);
@@ -2456,6 +2519,9 @@ export class WasmExprVisitor {
 
     if (poolMatchesSimple(pool, fnNameId, "fill") && argCount >= 2) {
       let valId = this.tempBuffer.get(argStart);
+      if (this.dae.getExprKind(valId) == ExprKind.Name) {
+        valId = resolveVarToArrayCtor(this.dae, pool, valId, this.tempBuffer);
+      }
       let a1 = this.tempBuffer.get(argStart + 1);
       if (this.dae.getExprKind(a1) == ExprKind.IntLiteral) {
         let d1 = this.dae.getExprData1(a1) as u32;
@@ -3886,46 +3952,46 @@ export class ModelicaFlattener {
     return 1;
   }
 
-  instantiateClass(classNodePtr: u32, prefixPathId: u32): u32 {
-    return this.instantiateClassLoc(locMakeRoot(classNodePtr), prefixPathId);
+  instantiateClass(classNodePtr: u32, prefixPathId: u32, isTopLevelInterface: boolean = false, parentCausality: i32 = 0): u32 {
+    return this.instantiateClassLoc(locMakeRoot(classNodePtr), prefixPathId, isTopLevelInterface, parentCausality);
   }
 
-  instantiateClassLoc(classLoc: u64, prefixPathId: u32): u32 {
+  instantiateClassLoc(classLoc: u64, prefixPathId: u32, isTopLevelInterface: boolean = false, parentCausality: i32 = 0): u32 {
     if (locIsNull(classLoc)) return 0;
     let pool = this.dae.getStringPool();
     let compLoc = findCompositionLoc(classLoc);
     if (locIsNull(compLoc)) return 0;
 
     let varCountBefore = this.dae.varCount;
-    this.instantiateCompositionElements(compLoc, prefixPathId, pool);
+    this.instantiateCompositionElements(compLoc, prefixPathId, pool, isTopLevelInterface, parentCausality);
     return this.dae.varCount - varCountBefore;
   }
 
-  instantiateCompositionElements(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool): u32 {
+  instantiateCompositionElements(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0): u32 {
     let parent = CstNodeView.at(parentLoc);
     let chLoc = parent.firstChildLoc;
     let count: u32 = 0;
     while (!locIsNull(chLoc)) {
       if (this.hasError) return 0;
-      count += this.instantiateCompositionElement(chLoc, prefixPathId, pool);
+      count += this.instantiateCompositionElement(chLoc, prefixPathId, pool, isTopLevelInterface, parentCausality);
       if (this.hasError) return 0;
       chLoc = locNextSibling(chLoc);
     }
     return count;
   }
 
-  instantiateCompositionElement(elementLoc: u64, prefixPathId: u32, pool: ArenaStringPool, maxDepth: i32 = 30): u32 {
+  instantiateCompositionElement(elementLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, maxDepth: i32 = 30): u32 {
     let el = CstNodeView.at(elementLoc);
     if (el.isNull || maxDepth <= 0) return 0;
     if (this.hasError) return 0;
     let t = el.type;
 
     if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
-      return this.instantiateComponentClause(elementLoc, prefixPathId, pool);
+      return this.instantiateComponentClause(elementLoc, prefixPathId, pool, isTopLevelInterface, parentCausality);
     }
 
     if (t == SyntaxType.EXTENDS_CLAUSE) {
-      return this.instantiateExtendsClause(elementLoc, prefixPathId, pool);
+      return this.instantiateExtendsClause(elementLoc, prefixPathId, pool, isTopLevelInterface, parentCausality);
     }
 
     if (t == SyntaxType.ALGORITHM_SECTION) {
@@ -3937,7 +4003,7 @@ export class ModelicaFlattener {
       let subLoc = el.firstChildLoc;
       let count: u32 = 0;
       while (!locIsNull(subLoc)) {
-        count += this.instantiateCompositionElement(subLoc, prefixPathId, pool, maxDepth - 1);
+        count += this.instantiateCompositionElement(subLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, maxDepth - 1);
         if (this.hasError) return 0;
         subLoc = locNextSibling(subLoc);
       }
@@ -3947,7 +4013,7 @@ export class ModelicaFlattener {
     return 0;
   }
 
-  instantiateExtendsClause(extLoc: u64, prefixPathId: u32, pool: ArenaStringPool): u32 {
+  instantiateExtendsClause(extLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0): u32 {
     let ext = CstNodeView.at(extLoc);
     let baseNameNode = ext.findDescendantLoc(SyntaxType.TYPE_SPECIFIER);
     if (locIsNull(baseNameNode)) baseNameNode = ext.findDescendantLoc(SyntaxType.NAME);
@@ -3962,7 +4028,7 @@ export class ModelicaFlattener {
           populateEnvFromClassModLoc(extEnvPtr, extModCur, pool, this.exprVisitor);
         }
         this.scopeStack.push(0, extEnvPtr, prefixPathId, 0);
-        let added = this.instantiateClassLoc(baseClassLoc, prefixPathId);
+        let added = this.instantiateClassLoc(baseClassLoc, prefixPathId, isTopLevelInterface, parentCausality);
         this.scopeStack.pop();
         return added;
       }
@@ -4006,7 +4072,7 @@ export class ModelicaFlattener {
     return 0;
   }
 
-  instantiateComponentClause(clauseLoc: u64, prefixPathId: u32, pool: ArenaStringPool): u32 {
+  instantiateComponentClause(clauseLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0): u32 {
     let typePrefixLoc = locFindDescendant(clauseLoc, SyntaxType.TYPE_PREFIX);
     let typeSpecLoc = locFindDescendant(clauseLoc, SyntaxType.TYPE_SPECIFIER);
     let clauseSubscriptsLoc = this.findClauseSubscripts(clauseLoc);
@@ -4105,6 +4171,7 @@ export class ModelicaFlattener {
     }
 
     let clauseDims = parseArrayDimensionsLoc(clauseSubscriptsLoc);
+    let clauseHasExplicitZero = g_hasExplicitZeroDim;
     if (clauseDims == 0xffffffffffffffff) {
       this.setError(3570);
       return 0;
@@ -4113,20 +4180,20 @@ export class ModelicaFlattener {
     let clauseDim2 = (clauseDims & 0xffffffff) as u32;
     let clauseDim3 = g_lastParsedDim3;
 
-    return this.instantiateDeclarationsUnder(clauseLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, subtypeUnitId);
+    return this.instantiateDeclarationsUnder(clauseLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero);
   }
 
-  instantiateDeclarationsUnder(parentLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, subtypeUnitId: u32 = 0xffffffff): u32 {
+  instantiateDeclarationsUnder(parentLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false): u32 {
     let ch = locFirstChild(parentLoc);
     let count: u32 = 0;
     while (!locIsNull(ch)) {
       if (this.hasError) return 0;
       let t = locType(ch);
       if (t == SyntaxType.DECLARATION) {
-        count += this.instantiateDeclaration(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, subtypeUnitId);
+        count += this.instantiateDeclaration(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero);
         if (this.hasError) return 0;
       } else if (t != SyntaxType.TYPE_SPECIFIER && t != SyntaxType.TYPE_PREFIX) {
-        count += this.instantiateDeclarationsUnder(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, subtypeUnitId);
+        count += this.instantiateDeclarationsUnder(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero);
         if (this.hasError) return 0;
       }
       ch = locNextSibling(ch);
@@ -4134,7 +4201,7 @@ export class ModelicaFlattener {
     return count;
   }
 
-  instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, subtypeUnitId: u32 = 0xffffffff): u32 {
+  instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false): u32 {
     let idLoc = locFirstNonEmptyChild(declLoc);
     if (locIsNull(idLoc)) return 0;
     let innerId = locFindDescendant(idLoc, SyntaxType.IDENTIFIER);
@@ -4145,6 +4212,7 @@ export class ModelicaFlattener {
 
     let declSubscripts = locFindDescendant(declLoc, SyntaxType.ARRAY_SUBSCRIPTS);
     let declDims = parseArrayDimensionsLoc(declSubscripts);
+    let declHasExplicitZero = g_hasExplicitZeroDim;
     if (declDims == 0xffffffffffffffff) {
       this.setError(3609);
       return 0;
@@ -4201,13 +4269,25 @@ export class ModelicaFlattener {
       }
     }
 
-    let hasSubscripts = !locIsNull(declSubscripts) || clauseDim1 > 0;
+    let hasSubscripts = !locIsNull(declSubscripts) || clauseDim1 > 0 || declHasExplicitZero || clauseHasExplicitZero;
+    let isExplicitZero = declHasExplicitZero || clauseHasExplicitZero;
     let isArrayCtor = valExprId != 0xffffffff && this.dae.getExprKind(valExprId) == ExprKind.ArrayCtor;
     let ctorCount: u32 = isArrayCtor ? getArrayCtorCount(this.dae, valExprId) : 0;
 
-    // Dimension deduction: if dim1 == 0 and hasSubscripts (e.g. unsized x[:]) and valExprId is ArrayCtor, infer dim1
-    if (hasSubscripts && dim1 == 0 && isArrayCtor) {
-      dim1 = this.dae.getExprData1(valExprId);
+    if (hasSubscripts) {
+      if (isExplicitZero || (isArrayCtor && ctorCount == 0)) {
+        return 0;
+      }
+      if ((dim1 == 0 || dim2 == 0) && valExprId != 0xffffffff) {
+        let inferred = getExprDimensions(this.dae, valExprId);
+        let infD1 = (inferred >> 32) as u32;
+        let infD2 = (inferred & 0xffffffff) as u32;
+        if (dim1 == 0 && infD1 > 0) dim1 = infD1;
+        if (dim2 == 0 && infD2 > 0) dim2 = infD2;
+      }
+      if (dim1 == 0 && !isExplicitZero) {
+        dim1 = 1;
+      }
     }
 
     // Scalar variable with ArrayCtor binding is invalid
@@ -4237,7 +4317,7 @@ export class ModelicaFlattener {
     }
 
     // Array variable with scalar/non-array modification without each
-    if (hasSubscripts && dim1 > 0 && valExprId != 0xffffffff && !isArrayCtor) {
+    if (hasSubscripts && dim1 > 0 && valExprId != 0xffffffff && !isArrayCtor && getExprDimensions(this.dae, valExprId) == 0) {
       if (!modHasEach(modLoc)) {
         this.setError(3626);
         return 0;
@@ -4255,6 +4335,17 @@ export class ModelicaFlattener {
     }
 
     let count: u32 = 0;
+    if (causality == (Causality.Local as i32) && parentCausality != (Causality.Local as i32)) {
+      causality = parentCausality;
+    }
+    let isParamOrConst = variability == (Variability.Parameter as i32) || variability == (Variability.Constant as i32);
+    let effectiveCausality = causality;
+    if (prefixPathId != 0 && !isTopLevelInterface) {
+      effectiveCausality = Causality.Local;
+    } else if (effectiveCausality == (Causality.Input as i32) && valExprId != 0xffffffff && !isParamOrConst) {
+      effectiveCausality = Causality.Local;
+    }
+
     if (isPrimitive) {
       if (dim1 > 0 && dim2 == 0 && dim3 == 0) {
         let isArrayCtor = valExprId != 0xffffffff && this.dae.getExprKind(valExprId) == ExprKind.ArrayCtor;
@@ -4274,7 +4365,7 @@ export class ModelicaFlattener {
               elemStartVal = this.dae.getExprData().get(elemExprId * EXPR_STRIDE + EXPR_DATA1) as f64;
             }
           }
-          let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, causality, elemStartVal, varFlags);
+          let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, effectiveCausality, elemStartVal, varFlags);
           if (elemExprId != 0xffffffff && isParamOrConst) {
             this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, elemExprId);
           }
@@ -4307,7 +4398,7 @@ export class ModelicaFlattener {
                 elemStartVal = this.dae.getExprData().get(elemExprId * EXPR_STRIDE + EXPR_DATA1) as f64;
               }
             }
-            let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, causality, elemStartVal, varFlags);
+            let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, effectiveCausality, elemStartVal, varFlags);
             if (elemExprId != 0xffffffff && isParamOrConst) {
               this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, elemExprId);
             }
@@ -4347,7 +4438,7 @@ export class ModelicaFlattener {
                   elemStartVal = this.dae.getExprData().get(elemExprId * EXPR_STRIDE + EXPR_DATA1) as f64;
                 }
               }
-              let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, causality, elemStartVal, varFlags);
+              let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, effectiveCausality, elemStartVal, varFlags);
               if (elemExprId != 0xffffffff && isParamOrConst) {
                 this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, elemExprId);
               }
@@ -4360,7 +4451,7 @@ export class ModelicaFlattener {
         }
       } else {
         let isParamOrConst = variability == (Variability.Parameter as i32) || variability == (Variability.Constant as i32);
-        let varIdx = this.dae.addVariable(fullVarNameId, varType, variability, causality, isParamOrConst ? startVal : 0.0, varFlags);
+        let varIdx = this.dae.addVariable(fullVarNameId, varType, variability, effectiveCausality, isParamOrConst ? startVal : 0.0, varFlags);
         if (valExprId != 0xffffffff && isParamOrConst) {
           this.dae.setVarAttrExpr(varIdx, VarAttrKind.Start as u32, valExprId);
         }
@@ -4378,6 +4469,26 @@ export class ModelicaFlattener {
     } else if (typeNameId != 0) {
       let subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
       if (!locIsNull(subClassLoc)) {
+        let isConn = isConnectorClassLoc(subClassLoc);
+        let isRec = isRecordClassLoc(subClassLoc);
+        let nextIsTopLevelInterface = false;
+        let nextParentCausality = Causality.Local;
+        if (prefixPathId == 0) {
+          if (isConn) {
+            nextIsTopLevelInterface = true;
+          } else if (isRec && causality != (Causality.Local as i32)) {
+            nextIsTopLevelInterface = true;
+            nextParentCausality = causality;
+          }
+        } else if (isTopLevelInterface) {
+          if (isConn) {
+            nextIsTopLevelInterface = true;
+          } else if (isRec && parentCausality != (Causality.Local as i32)) {
+            nextIsTopLevelInterface = true;
+            nextParentCausality = parentCausality;
+          }
+        }
+
         let subEnvPtr: u32 = 0;
         let classModLoc = findClassModificationLoc(modLoc);
         if (!locIsNull(classModLoc)) {
@@ -4388,12 +4499,12 @@ export class ModelicaFlattener {
           for (let i: u32 = 1; i <= dim1; i++) {
             let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
             this.scopeStack.push(0, subEnvPtr, subPrefix, 0);
-            count += this.instantiateClassLoc(subClassLoc, subPrefix);
+            count += this.instantiateClassLoc(subClassLoc, subPrefix, nextIsTopLevelInterface, nextParentCausality);
             this.scopeStack.pop();
           }
         } else {
           this.scopeStack.push(0, subEnvPtr, fullVarNameId, 0);
-          count += this.instantiateClassLoc(subClassLoc, fullVarNameId);
+          count += this.instantiateClassLoc(subClassLoc, fullVarNameId, nextIsTopLevelInterface, nextParentCausality);
           this.scopeStack.pop();
         }
       }
@@ -4549,8 +4660,8 @@ export class ModelicaFlattener {
     this.rootProgramLoc = rootProgramLoc;
 
     let varsBefore = this.dae.varCount;
-
-    this.instantiateClassLoc(rootClassLoc, 0);
+    let isConn = isConnectorClassLoc(rootClassLoc);
+    this.instantiateClassLoc(rootClassLoc, 0, isConn, Causality.Local);
     if (this.hasError) return 0;
     this.lowerAllClassEquationsLoc(rootClassLoc, 0);
     if (this.hasError) return 0;

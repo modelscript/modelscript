@@ -18,8 +18,8 @@ end ClassExtendsInvalid2;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/redeclare/ClassExtendsInvalid2.mo:11:12-11:33:writable] Error: Invalid redeclaration of class X, class extends only allowed on inherited classes.
-// [OpenModelica/flattening/modelica/redeclare/ClassExtendsInvalid2.mo:11:12-11:33:writable] Error: Illegal redeclare of element X, no inherited element with that name exists.
+// [OpenModelica/flattening/modelica/redeclare/ClassExtendsInvalid2.mo:12:12-12:33:writable] Error: Invalid redeclaration of class X, class extends only allowed on inherited classes.
+// [OpenModelica/flattening/modelica/redeclare/ClassExtendsInvalid2.mo:12:12-12:33:writable] Error: Illegal redeclare of element X, no inherited element with that name exists.
 // Error: Error occurred while flattening model ClassExtendsInvalid2
 //
 // Execution failed!

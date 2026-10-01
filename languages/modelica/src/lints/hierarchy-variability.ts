@@ -356,7 +356,11 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
             // Check for alias: import MyC = A.B2.C
             const aliasField = db.ast.getChildByFieldId(imp, "alias");
-            if (aliasField != 0 && db.ast.textEqualsNode(node, aliasField)) {
+            if (
+              aliasField != 0 &&
+              (db.ast.textEqualsNode(node, aliasField) ||
+                (firstIdent != 0 && db.ast.textEqualsNode(firstIdent, aliasField)))
+            ) {
               return;
             }
             // Check for simple import: import A.B.C → last segment matches
@@ -370,7 +374,11 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
                 for (const id of db.ast.getDescendants(nameField, $.identifier)) {
                   lastNameId = id;
                 }
-                if (lastNameId != 0 && db.ast.textEqualsNode(node, lastNameId)) {
+                if (
+                  lastNameId != 0 &&
+                  (db.ast.textEqualsNode(node, lastNameId) ||
+                    (firstIdent != 0 && db.ast.textEqualsNode(firstIdent, lastNameId)))
+                ) {
                   return;
                 }
               }
@@ -411,7 +419,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
               // identifier in the name matches node text.
               let anyIdentMatch = false;
               for (const id of db.ast.getDescendants(nameField2, $.identifier)) {
-                if (db.ast.textEqualsNode(node, id)) {
+                if (db.ast.textEqualsNode(node, id) || (firstIdent != 0 && db.ast.textEqualsNode(firstIdent, id))) {
                   anyIdentMatch = true;
                   break;
                 }
@@ -423,7 +431,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
               }
             }
           }
-          break; // Only check the nearest enclosing class
         }
       }
 
@@ -1166,16 +1173,45 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
    * M4030: Modifier applied directly to outer element.
    */
   outerModifier: {
-    nodes: ["component_clause"],
+    nodes: ["component_clause", "short_class_definition"],
     severity: "error",
     code: 4030,
-    message: (target) => `Modifier found on outer element '${target.text}'.`,
+    message: (target, modNode, nameNode) =>
+      `Modifier '${modNode ? modNode.text : ""}' found on outer element ${nameNode ? nameNode.text : target.text}.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const pfx of db.ast.getDescendants(node, $.type_prefix)) {
-        if (db.ast.textEquals(pfx, "outer")) {
-          for (const mod of db.ast.getDescendants(node, $.modification)) {
-            db.diagnostic(mod);
+      let isOuter = false;
+      for (const el of db.ast.getAncestors(node, $.element)) {
+        let ch = db.ast.getFirstChild(el);
+        while (ch != 0) {
+          if (db.ast.textEquals(ch, "outer")) {
+            isOuter = true;
             break;
+          }
+          ch = db.ast.getNextSibling(ch);
+        }
+        break;
+      }
+      if (!isOuter) return;
+
+      const t = db.ast.getType(node);
+      if (t == $.component_clause) {
+        for (const compDecl of db.ast.getDescendants(node, $.component_declaration)) {
+          let nameId = db.ast.getChildByFieldId(compDecl, "name");
+          if (nameId == 0) {
+            const decl = db.ast.getChildByFieldId(compDecl, "declaration");
+            if (decl != 0) nameId = db.ast.getChildByFieldId(decl, "name");
+          }
+          for (const mod of db.ast.getDescendants(compDecl, $.modification)) {
+            db.diagnostic(compDecl, mod, nameId != 0 ? nameId : compDecl);
+            return;
+          }
+        }
+      } else if ($.short_class_definition != 0 && t == $.short_class_definition) {
+        for (const scs of db.ast.getDescendants(node, $.short_class_specifier)) {
+          const nameId = db.ast.getChildByFieldId(scs, "name");
+          for (const mod of db.ast.getDescendants(scs, $.class_modification)) {
+            db.diagnostic(scs, mod, nameId != 0 ? nameId : scs);
+            return;
           }
         }
       }
@@ -1778,6 +1814,49 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           }
           return;
         }
+      }
+    },
+  },
+
+  /**
+   * M4067: Invalid variability on connector instance.
+   */
+  invalidConnectorVariability: {
+    nodes: ["component_clause"],
+    severity: "error",
+    code: 4067,
+    message: (target, compName) =>
+      `Invalid variability ${target.text} on connector '${compName ? compName.text : "unknown"}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let varPrefix: u32 = 0;
+      if ($.type_prefix != 0) {
+        for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
+          if (db.ast.textEquals(tp, "parameter") || db.ast.textEquals(tp, "constant")) {
+            varPrefix = tp;
+            break;
+          }
+        }
+      }
+      if (varPrefix == 0) return;
+      let typeSpec: u32 = 0;
+      if ($.type_specifier != 0) {
+        for (const ts of db.ast.getDescendants(node, $.type_specifier)) {
+          typeSpec = ts;
+          break;
+        }
+      }
+      if (typeSpec == 0) return;
+      const targetClass = findClassByName(db, typeSpec, $);
+      if (targetClass != 0 && isClassKind(db, targetClass, "connector")) {
+        let declNode: u32 = 0;
+        if ($.declaration != 0) {
+          for (const decl of db.ast.getDescendants(node, $.declaration)) {
+            const id = db.ast.getChildByFieldId(decl, "name");
+            declNode = id != 0 ? id : decl;
+            break;
+          }
+        }
+        db.diagnostic(node, varPrefix, declNode != 0 ? declNode : node);
       }
     },
   },

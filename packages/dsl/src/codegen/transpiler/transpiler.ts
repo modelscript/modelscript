@@ -38,7 +38,14 @@ export function transpileQuery(
   }
 
   // If it's already a string without arrow/function, just return it
-  if (typeof queryFn === "string" && !queryStr.includes("=>") && !queryStr.startsWith("function")) {
+  const trimmedQuery = queryStr.trim();
+  if (
+    typeof queryFn === "string" &&
+    !trimmedQuery.includes("=>") &&
+    !trimmedQuery.startsWith("function") &&
+    !trimmedQuery.startsWith("export function") &&
+    !trimmedQuery.startsWith("export default function")
+  ) {
     return { body: queryStr, params: ["queryArg"] };
   }
 

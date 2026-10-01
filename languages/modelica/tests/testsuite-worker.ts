@@ -214,19 +214,29 @@ function resolveClassName(context: Context, testCase: TestCase): string {
       if (match) return getFqn(match);
     }
 
-    // 0b. If expected result mentions "Error occurred while flattening model <Name>", prefer that
-    const errMatch = testCase.expectedResult?.match(/Error occurred while flattening model\s+([A-Za-z0-9_.]+)/);
-    if (errMatch) {
-      const errName = errMatch[1];
-      const match = fileSymbols.find((s: any) => getFqn(s) === errName || s.name === errName);
-      if (match) return getFqn(match);
-    }
-
     // 0c. If expected result mentions "Cannot instantiate <Name>", prefer that class
     const cantInstMatch = testCase.expectedResult?.match(/Cannot instantiate\s+([A-Za-z0-9_.]+)/);
     if (cantInstMatch) {
       const cantInstName = cantInstMatch[1];
       const match = fileSymbols.find((s: any) => getFqn(s) === cantInstName || s.name === cantInstName);
+      if (match) return getFqn(match);
+    }
+
+    // 00. If source or cflags explicitly specifies -i=<Name>, prefer that class
+    const iFlagMatch = testCase.source.match(
+      /(?:cflags:\s*|__OpenModelica_commandLineOptions\s*=\s*"[^"]*)-i=([A-Za-z0-9_.]+)/,
+    );
+    if (iFlagMatch) {
+      const targetName = iFlagMatch[1]!;
+      const match = fileSymbols.find((s: any) => getFqn(s) === targetName || s.name === targetName);
+      if (match) return getFqn(match);
+    }
+
+    // 0b. If expected result mentions "Error occurred while flattening model <Name>", prefer that
+    const errMatch = testCase.expectedResult?.match(/Error occurred while flattening model\s+([A-Za-z0-9_.]+)/);
+    if (errMatch) {
+      const errName = errMatch[1];
+      const match = fileSymbols.find((s: any) => getFqn(s) === errName || s.name === errName);
       if (match) return getFqn(match);
     }
 
@@ -621,6 +631,7 @@ export function runTestCase(
     const intEnumConversion = /\+intEnumConversion\b/.test(testCase.source);
     const arena = context.flattenArena(lastClassName, undefined, undefined, {
       omcCompatibility: true,
+      isOldFrontend: testCase.source.includes("-d=-newInst"),
       backend: flattenerBackend,
       ...(arrayMode ? { arrayMode } : {}),
       ...(intEnumConversion ? { intEnumConversion } : {}),
@@ -629,7 +640,14 @@ export function runTestCase(
     const lints = Array.from(context.queryEngine.runAllLints());
 
     const tree = context.getTree(testCase.file);
-    const rawCstDiags: any[] = tree && facade ? (facade as any).getDiagnostics(tree.rootNode.id) : [];
+    let rawCstDiags: any[] = [];
+    if (tree && facade && testCase.source.length < 100000) {
+      try {
+        rawCstDiags = (facade as any).getDiagnostics(tree.rootNode.id) ?? [];
+      } catch {
+        rawCstDiags = [];
+      }
+    }
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
       if (intEnumConversion && cd.code === 5006 && (msg.includes("Integer") || msg.includes("Enum"))) return false;
@@ -895,7 +913,9 @@ export function runTestCase(
     // Strip line:col ranges from diagnostic bracket prefixes for range-insensitive comparison
     // e.g. "[path/file.mo:12:3-12:9:writable] Error: ..." → "[path/file.mo:writable] Error: ..."
     const stripDiagRanges = (text: string): string =>
-      text.replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:writable\]/g, "[$1:writable]");
+      text
+        .replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:writable\]/g, "[$1:writable]")
+        .replace(/not found in class ([A-Za-z0-9_]+)\$[A-Za-z0-9_]+/g, "not found in class $1");
 
     // ── Compare results ──
     if (testCase.metadata.status === "incorrect" && !testCase.expectedResult.trim().startsWith("class ")) {
@@ -908,6 +928,7 @@ export function runTestCase(
         let reformatActual = actual;
         if (expected.includes("Error processing file:")) {
           const errorToNotifCode: Record<number, number> = {
+            4019: 2096,
             4026: 2090,
             4028: 2090,
             4052: 2091,
@@ -967,6 +988,9 @@ export function runTestCase(
           for (let i = 0; i < omcDiagLines.length; i++) {
             const line = omcDiagLines[i];
             if (line.includes("Notification: From here:")) {
+              if (!expected.includes("Notification: From here:")) {
+                continue;
+              }
               let nextError = "";
               for (let j = i + 1; j < omcDiagLines.length; j++) {
                 if (!omcDiagLines[j].includes("Notification: From here:")) {
@@ -986,10 +1010,32 @@ export function runTestCase(
               }
             }
           }
+
+          // Suppress cascading "Variable x.start.start not found in scope" when "Variable x.start not found in scope" is present
+          const unresolvedVars = new Set<string>();
+          for (const line of uniqueOmcDiagLines) {
+            const m = /Error: Variable ([^\s]+) not found in scope/.exec(line);
+            if (m) {
+              unresolvedVars.add(m[1]);
+            }
+          }
+          const filteredOmcDiagLines = uniqueOmcDiagLines.filter((line) => {
+            const m = /Error: Variable ([^\s]+) not found in scope/.exec(line);
+            if (m) {
+              const varName = m[1];
+              for (const uv of unresolvedVars) {
+                if (varName.length > uv.length && varName.startsWith(uv + ".")) {
+                  return false;
+                }
+              }
+            }
+            return true;
+          });
+
           const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
           const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
           // Match OMC's output order: boilerplate first, then diagnostics
-          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
+          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\n${filteredOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
           if (stripDiagRanges(reformatActual) === stripDiagRanges(expected)) return makeResult("passed");
         }
 

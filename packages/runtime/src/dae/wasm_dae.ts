@@ -821,6 +821,16 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   isVarFixed(varIdx: number): boolean {
+    const attr = this.getVarAttr(varIdx, "fixed");
+    if (attr !== undefined) {
+      if (this.getExprKind(attr) === ExprKind.BoolLiteral) {
+        return this.getExprData1(attr) !== 0;
+      }
+    }
+    const variability = this.getVarVariability(varIdx);
+    if (variability === Variability.Parameter || variability === Variability.Constant) {
+      return (this.getVarFlags(varIdx) & FLAG_VAR_FIXED) !== 0 || attr === undefined;
+    }
     return (this.getVarFlags(varIdx) & FLAG_VAR_FIXED) !== 0;
   }
 

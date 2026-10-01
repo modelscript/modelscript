@@ -269,8 +269,53 @@ export const ModelicaErrorCode = {
     code: 4019,
     rule: "redeclare-non-replaceable",
     severity: "error",
+    message: (elementName: string) => `Redeclaration with a new type requires '${elementName}' to be replaceable.`,
+  },
+  REDECLARE_NON_INHERITED: {
+    code: 4061,
+    rule: "redeclare-non-inherited",
+    severity: "error",
     message: (elementName: string) =>
-      `Trying to redeclare element '${elementName}' but it is not declared as replaceable.`,
+      `Illegal redeclare of element ${elementName}, no inherited element with that name exists.`,
+  },
+  INVALID_EXTERNAL_OBJECT: {
+    code: 4062,
+    rule: "invalid-external-object",
+    severity: "error",
+    message: (className: string, invalidElements: string) =>
+      `Invalid external object ${className}, contains invalid elements: ${invalidElements}.`,
+  },
+  CLASS_EXTENDS_NON_INHERITED: {
+    code: 4063,
+    rule: "class-extends-non-inherited",
+    severity: "error",
+    message: (className: string) =>
+      `Base class targeted by class extends ${className} not found in the inherited classes.`,
+  },
+  PROTECTED_IN_CONNECTOR: {
+    code: 4064,
+    rule: "protected-in-connector",
+    severity: "error",
+    message: () => `Protected sections are not allowed in connector.`,
+  },
+  EQUATIONS_IN_CONNECTOR: {
+    code: 4065,
+    rule: "equations-in-connector",
+    severity: "error",
+    message: () => `Equations are not allowed in connector.`,
+  },
+  ALGORITHM_IN_CONNECTOR: {
+    code: 4066,
+    rule: "algorithm-in-connector",
+    severity: "error",
+    message: () => `Algorithm sections are not allowed in connector.`,
+  },
+  INVALID_CONNECTOR_VARIABILITY: {
+    code: 4067,
+    rule: "invalid-connector-variability",
+    severity: "error",
+    message: (variability: string, compName: string) =>
+      `Invalid variability ${variability} on connector '${compName}'.`,
   },
   RANGE_STEP_TOO_SMALL: {
     code: 4021,

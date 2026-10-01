@@ -90,6 +90,27 @@ function formatPropertyValue(expr: any): string | undefined {
   return undefined;
 }
 
+function collectAllComponents(ci: ModelicaClassInstance, visited = new Set<any>()): ModelicaComponentInstance[] {
+  if (!ci || visited.has(ci)) return [];
+  visited.add(ci);
+  const byName = new Map<string, ModelicaComponentInstance>();
+  const extendsList = ci.extendsClassInstances ?? [];
+  for (const ext of extendsList) {
+    const base = (ext as any)?.classInstance ?? ext;
+    if (base && typeof base === "object") {
+      for (const comp of collectAllComponents(base, visited)) {
+        if (comp.name) byName.set(comp.name, comp);
+      }
+    }
+  }
+  if (ci.components) {
+    for (const comp of ci.components) {
+      if (comp.name) byName.set(comp.name, comp);
+    }
+  }
+  return Array.from(byName.values());
+}
+
 export async function buildDiagramData(classInstance: ModelicaClassInstance): Promise<DiagramData> {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
@@ -240,7 +261,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     // Build ports
     const ports: DiagramPort[] = [];
     const tpr0 = performance.now();
-    for (const connector of componentClassInstance.components ?? []) {
+    for (const connector of collectAllComponents(componentClassInstance)) {
       const connectorCondition = evaluateCondition(connector, component);
       if (connectorCondition === false) continue;
 

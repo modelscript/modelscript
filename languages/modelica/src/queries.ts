@@ -963,22 +963,26 @@ export function resolveSimpleNameHelper(
     const meta = self?.metadata as Record<string, unknown>;
     if (self && !meta?.isPredefined) {
       const cst = db.cstNode(classId) as any;
-      const classSpecifier = Cst.ClassDefinition.classSpecifier(cst);
-      if (
-        Cst.ShortClassSpecifier.is(classSpecifier) ||
-        classSpecifier?.type === "ShortClassSpecifier" ||
-        classSpecifier?.type === "short_class_specifier"
-      ) {
-        const typeSpec = Cst.ShortClassSpecifier.typeSpecifier(classSpecifier);
-        const typeName = typeSpec?.text;
-        if (typeName && self.parentId !== null) {
-          const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
-          if (parentResolver) {
-            const resolved = parentResolver(typeName);
-            if (resolved?.id && resolved.id !== classId && !visited.has(resolved.id)) {
-              const found = resolveSimpleNameHelper(db, resolved.id, name, encapsulated, skipInherited, visited);
-              if (found) return found;
+      const classSpecifier = getShortClassSpecifierNode(cst);
+      if (classSpecifier) {
+        const typeSpec =
+          Cst.ShortClassSpecifier.typeSpecifier(classSpecifier) ??
+          classSpecifier.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        const typeName = typeSpec?.text?.trim();
+        if (typeName) {
+          let resolved: { id: SymbolId } | null = null;
+          if (self.parentId !== null) {
+            const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
+            if (parentResolver) {
+              resolved = parentResolver(typeName);
             }
+          }
+          if (!resolved) {
+            resolved = db.byName(typeName)?.find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
+          }
+          if (resolved?.id && resolved.id !== classId && !visited.has(resolved.id)) {
+            const found = resolveSimpleNameHelper(db, resolved.id, name, encapsulated, skipInherited, visited);
+            if (found) return found;
           }
         }
       }
@@ -1596,6 +1600,39 @@ export const classDefinitionQueries: Record<string, any> = {
     return diags && diags.length > 0 ? diags : null;
   },
 
+  /** M4062: Invalid external object containing invalid elements. */
+  lint__invalidExternalObject: (db: QueryDB, self: SymbolEntry) => {
+    const children = db.childrenOf(self.id);
+    if (!children || children.length === 0) return null;
+    const extendsEntries = children.filter((c) => c.kind === "Extends");
+    const hasExternalObject = extendsEntries.some((e) => e.name === "ExternalObject");
+    if (!hasExternalObject) return null;
+
+    const invalidElements: string[] = [];
+    for (const child of children) {
+      if (child.kind === "Extends") {
+        if (child.name !== "ExternalObject" && child.name !== "Icon" && !child.name.toLowerCase().endsWith("icon")) {
+          invalidElements.push(`extends ${child.name}`);
+        }
+      } else if (child.kind === "Class") {
+        if (child.name !== "constructor" && child.name !== "destructor") {
+          invalidElements.push(child.name);
+        }
+      } else if (child.kind === "Component") {
+        invalidElements.push(child.name);
+      }
+    }
+
+    if (invalidElements.length === 0) return null;
+    return [
+      error(ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.message(self.name, invalidElements.join(", ")), {
+        startByte: self.startByte,
+        endByte: self.endByte,
+        code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
+      }),
+    ];
+  },
+
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
     if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
@@ -1717,21 +1754,29 @@ export const classDefinitionQueries: Record<string, any> = {
     const cst = db.cstNode(self.id) as any;
     if (!cst) return null;
     const classSpec = getShortClassSpecifierNode(cst);
-    if (!classSpec) return null;
-    const typeSpec =
-      Cst.ShortClassSpecifier.typeSpecifier(classSpec) ??
-      classSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
-    const typeName = typeSpec?.text?.trim();
-    if (!typeName) return null;
-    if (self.parentId !== null) {
-      const parentResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
-      if (parentResolver) {
-        const resolved = parentResolver(typeName);
-        if (resolved && resolved.id !== self.id) return resolved;
+    if (classSpec) {
+      const typeSpec =
+        Cst.ShortClassSpecifier.typeSpecifier(classSpec) ??
+        classSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      const typeName = typeSpec?.text?.trim();
+      if (typeName) {
+        if (self.parentId !== null) {
+          const parentResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
+          if (parentResolver) {
+            const resolved = parentResolver(typeName);
+            if (resolved && resolved.id !== self.id) return resolved;
+          }
+        }
+        const matches = db.byName(typeName);
+        return matches?.find((e) => (e.metadata as any)?.isPredefined || e.kind === "Class") ?? matches?.[0] ?? null;
       }
     }
-    const matches = db.byName(typeName);
-    return matches?.find((e) => (e.metadata as any)?.isPredefined || e.kind === "Class") ?? matches?.[0] ?? null;
+    const extClauses = db.childrenOf(self.id).filter((c) => c.kind === "Extends");
+    if (extClauses.length > 0) {
+      const base = db.query<SymbolEntry | null>("resolvedBaseClass", extClauses[0].id);
+      if (base) return base;
+    }
+    return null;
   },
   /** Only nested class definitions. */
   nestedClasses: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id).filter((c) => c.kind === "Class"),
@@ -2670,9 +2715,12 @@ export const extendsClauseQueries: Record<string, any> = {
         if (resolved && resolved.kind !== "Reference") return resolved;
       }
     }
-    // Fallback to global lookup, filtering out Reference entries
+    // Fallback to global lookup, filtering out Reference and Extends entries
     const entries = db.byName(baseName);
-    return entries?.find((e) => e.kind === "Class" || e.kind === "Package") ?? entries?.[0] ?? null;
+    return (
+      entries?.find((e) => e.kind === "Class" || e.kind === "Package") ??
+      (entries?.[0] && entries[0].kind !== "Extends" && entries[0].kind !== "Reference" ? entries[0] : null)
+    );
   },
   /**
    * Get the merged modification for this extends clause.
@@ -2919,7 +2967,41 @@ export const componentDeclarationQueries: Record<string, any> = {
       if (tpText.includes("stream")) return "stream";
       if (tpText.includes("flow")) return "flow";
     }
-    return (current?.children || []).find((c: any) => c.type === "flow" || c.text === "flow")?.text ?? null;
+    const direct = (current?.children || []).find((c: any) => c.type === "flow" || c.text === "flow")?.text ?? null;
+    if (direct) return direct;
+    const resType = db.query<any>("resolvedType", self.id);
+    if (resType) {
+      const typeCst = db.cstNode(resType.id ?? resType) as any;
+      if (typeCst) {
+        let shortClass =
+          Cst.ClassDefinition.classSpecifier(typeCst) ??
+          typeCst.children?.find(
+            (c: any) =>
+              c.type === "class_specifier" ||
+              c.type === "ClassSpecifier" ||
+              c.type === "short_class_specifier" ||
+              c.type === "ShortClassSpecifier",
+          ) ??
+          (typeCst.type === "short_class_specifier" || typeCst.type === "ShortClassSpecifier" ? typeCst : null);
+        if (shortClass) {
+          if (shortClass.type === "class_specifier" || shortClass.type === "ClassSpecifier") {
+            const innerShort = shortClass.children?.find(
+              (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+            );
+            if (innerShort) shortClass = innerShort;
+          }
+          const bp =
+            Cst.ShortClassSpecifier.basePrefix(shortClass) ??
+            shortClass.children?.find((c: any) => c.type === "base_prefix" || c.type === "BasePrefix");
+          if (bp) {
+            const bpText = bp.text?.trim() ?? "";
+            if (bpText.includes("stream")) return "stream";
+            if (bpText.includes("flow")) return "flow";
+          }
+        }
+      }
+    }
+    return null;
   },
 
   isFinal: (db: QueryDB, self: SymbolEntry) => {
@@ -3466,6 +3548,40 @@ export const componentDeclarationQueries: Record<string, any> = {
     let flowPrefix: string | null = null;
     if (tpText.includes("flow")) flowPrefix = "flow";
     else if (tpText.includes("stream")) flowPrefix = "stream";
+    if (!flowPrefix) {
+      const resType = db.query<any>("resolvedType", self.id);
+      if (resType) {
+        const typeCst = db.cstNode(resType.id ?? resType) as any;
+        if (typeCst) {
+          let shortClass =
+            Cst.ClassDefinition.classSpecifier(typeCst) ??
+            typeCst.children?.find(
+              (c: any) =>
+                c.type === "class_specifier" ||
+                c.type === "ClassSpecifier" ||
+                c.type === "short_class_specifier" ||
+                c.type === "ShortClassSpecifier",
+            ) ??
+            (typeCst.type === "short_class_specifier" || typeCst.type === "ShortClassSpecifier" ? typeCst : null);
+          if (shortClass) {
+            if (shortClass.type === "class_specifier" || shortClass.type === "ClassSpecifier") {
+              const innerShort = shortClass.children?.find(
+                (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+              );
+              if (innerShort) shortClass = innerShort;
+            }
+            const bp =
+              Cst.ShortClassSpecifier.basePrefix(shortClass) ??
+              shortClass.children?.find((c: any) => c.type === "base_prefix" || c.type === "BasePrefix");
+            if (bp) {
+              const bpText = bp.text?.trim() ?? "";
+              if (bpText.includes("stream")) flowPrefix = "stream";
+              else if (bpText.includes("flow")) flowPrefix = "flow";
+            }
+          }
+        }
+      }
+    }
 
     const elemParent = clause?.parent;
     let isProtected = false;

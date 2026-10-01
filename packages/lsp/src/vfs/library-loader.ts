@@ -591,6 +591,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     const moFiles: { fullPath: string; uri: string; parentFQN: string }[] = [];
     let modelicaPkgUri: string | null = null;
     let complexUri: string | null = null;
+    let iconsUri: string | null = null;
 
     for (const name of Object.keys(fileEntries)) {
       if (name.endsWith(".mo")) {
@@ -615,6 +616,8 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
           modelicaPkgUri = uri;
         } else if (name === "Complex.mo") {
           complexUri = uri;
+        } else if (name === "Modelica 4.1.0/Icons.mo" || name === "Modelica/Icons.mo") {
+          iconsUri = uri;
         }
       }
     }
@@ -650,7 +653,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       );
     }
 
-    // Eagerly index root packages so "Modelica" and "Complex" exist in byName immediately
+    // Eagerly index root packages so "Modelica", "Complex", and "Icons" exist in byName immediately
     if (modelicaPkgUri) {
       try {
         ctx.globalWorkspaceIndex.ensureIndexed(modelicaPkgUri);
@@ -661,6 +664,13 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     if (complexUri) {
       try {
         ctx.globalWorkspaceIndex.ensureIndexed(complexUri);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (iconsUri) {
+      try {
+        ctx.globalWorkspaceIndex.ensureIndexed(iconsUri);
       } catch {
         /* ignore */
       }

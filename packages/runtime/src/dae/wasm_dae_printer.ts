@@ -572,6 +572,8 @@ export class ArenaDAEPrinter {
                 return 4;
               }
               if (kind === ExprKind.Call) {
+                const callName = a.interner.resolve(a.getExprData1(nid));
+                if (callName === "$OMC$PositiveMax") return 0;
                 return 10;
               }
               return 5;
@@ -580,6 +582,12 @@ export class ArenaDAEPrinter {
               nonLiterals.sort((x, y) => {
                 const xKind = a.getExprKind(x);
                 const yKind = a.getExprKind(y);
+                const xIsPosMax =
+                  xKind === ExprKind.Call && a.interner.resolve(a.getExprData1(x)) === "$OMC$PositiveMax";
+                const yIsPosMax =
+                  yKind === ExprKind.Call && a.interner.resolve(a.getExprData1(y)) === "$OMC$PositiveMax";
+                if (xIsPosMax && yKind === ExprKind.Name) return -1;
+                if (xKind === ExprKind.Name && yIsPosMax) return 1;
                 if (xKind === ExprKind.Name && yKind === ExprKind.Name) {
                   const rx = getOperandRank(x);
                   const ry = getOperandRank(y);
@@ -668,8 +676,17 @@ export class ArenaDAEPrinter {
               }
             }
           } else if (op === BinOp.Mul && lKind === ExprKind.Call && rKind === ExprKind.Name) {
-            finalLhs = rhs;
-            finalRhs = lhs;
+            const callName = a.interner.resolve(a.getExprData1(lhs));
+            if (callName !== "$OMC$PositiveMax") {
+              finalLhs = rhs;
+              finalRhs = lhs;
+            }
+          } else if (op === BinOp.Mul && lKind === ExprKind.Name && rKind === ExprKind.Call) {
+            const callName = a.interner.resolve(a.getExprData1(rhs));
+            if (callName === "$OMC$PositiveMax") {
+              finalLhs = rhs;
+              finalRhs = lhs;
+            }
           }
         }
 
@@ -895,11 +912,20 @@ export class ArenaDAEPrinter {
 
     if (a.isVarProtected(idx)) this.out.write("protected ");
 
-    const variability = a.getVarVariability(idx);
-    const isFinal = a.isVarFinal(idx);
-    if (isFinal) this.out.write("final ");
+    const rawCustomType = a.getVarCustomType(idx);
+    const customType = rawCustomType && rawCustomType.startsWith(".") ? rawCustomType.slice(1) : rawCustomType;
 
     const type = a.getVarType(idx);
+    const variability = a.getVarVariability(idx);
+    const isFinal =
+      a.isVarFinal(idx) ||
+      (this.omcCompatibility &&
+        variability === Variability.Parameter &&
+        (type === VarType.Enumeration ||
+          rawCustomType?.startsWith("enumeration") ||
+          customType?.startsWith("enumeration")));
+    if (isFinal) this.out.write("final ");
+
     if (variability === Variability.Discrete) this.out.write("discrete ");
     else if (variability === Variability.Parameter) this.out.write("parameter ");
     else if (variability === Variability.Constant) this.out.write("constant ");
@@ -911,9 +937,6 @@ export class ArenaDAEPrinter {
     );
     if (causality === 1) this.out.write("input ");
     else if (causality === 2 || isStateOutput) this.out.write("output ");
-
-    const rawCustomType = a.getVarCustomType(idx);
-    const customType = rawCustomType && rawCustomType.startsWith(".") ? rawCustomType.slice(1) : rawCustomType;
     if (
       customType &&
       type !== VarType.Integer &&
@@ -1011,10 +1034,7 @@ export class ArenaDAEPrinter {
       };
       const sortedKeys = [...attrs.keys()]
         .filter(
-          (k) =>
-            k !== "unbounded" &&
-            !(type === VarType.String && k === "fixed") &&
-            !(k === "start" && hasBindingExpr && (isStartSameAsBinding(attrs.get("start"), expr) || isParamOrConst)),
+          (k) => k !== "unbounded" && !(type === VarType.String && k === "fixed") && !(k === "start" && hasBindingExpr),
         )
         .sort((a, b) => {
           const ai = ORDER.indexOf(a);
@@ -1033,6 +1053,18 @@ export class ArenaDAEPrinter {
           this.out.write(key + " = ");
           const exprId = attrs.get(key);
           if (exprId !== undefined) {
+            if (key === "stateSelect") {
+              const k = a.getExprKind(exprId);
+              if (k === ExprKind.RealLiteral || k === ExprKind.IntLiteral) {
+                const val = k === ExprKind.RealLiteral ? a.getExprRealValue(exprId) : a.getExprData1(exprId);
+                const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
+                const roundVal = Math.round(val);
+                if (roundVal >= 1 && roundVal <= 5) {
+                  this.out.write(`StateSelect.${ssLiterals[roundVal - 1]}`);
+                  continue;
+                }
+              }
+            }
             this.printExpr(exprId);
           }
         }
@@ -1493,6 +1525,37 @@ export class ArenaDAEPrinter {
       collectCalls(fn);
     }
 
+    const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+
+    // Collect custom types used by variables in dae and in functions
+    const usedTypeNames = new Set<string>();
+    for (let i = 0; i < dae.varCount; i++) {
+      const ct = dae.getVarCustomType(i);
+      if (ct) {
+        usedTypeNames.add(ct);
+        const base = ct.split(".").pop();
+        if (base) usedTypeNames.add(base);
+      }
+    }
+    for (const fn of dae.functions.values()) {
+      const isRecordCtor = fn.description?.startsWith("Automatically generated record constructor");
+      if (
+        !isRecordCtor ||
+        isOldFrontend ||
+        calledFnNames.has(fn.name) ||
+        calledFnNames.has(fn.name.split(".").pop()!)
+      ) {
+        for (let i = 0; i < fn.varCount; i++) {
+          const ct = fn.getVarCustomType(i);
+          if (ct) {
+            usedTypeNames.add(ct);
+            const base = ct.split(".").pop();
+            if (base) usedTypeNames.add(base);
+          }
+        }
+      }
+    }
+
     const uniqueFns = Array.from(new Set(dae.functions.values())).filter((fn) => {
       if (
         (fn as any).wasInlined ||
@@ -1512,6 +1575,24 @@ export class ArenaDAEPrinter {
         !calledFnNames.has(fn.name.split(".").pop()!)
       ) {
         return false;
+      }
+      if (this.omcCompatibility && !isOldFrontend) {
+        const isRecordCtor = Boolean(fn.description?.startsWith("Automatically generated record constructor"));
+        if (isRecordCtor) {
+          if (fn.name.includes("$")) {
+            return false;
+          }
+          const baseName = fn.name.split(".").pop()!;
+          const isCalled =
+            (fn as any).wasCalled ||
+            calledFnNames.has(fn.name) ||
+            calledFnNames.has(baseName) ||
+            Array.from(calledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
+          const isTypeUsed = usedTypeNames.has(fn.name) || usedTypeNames.has(baseName);
+          if (!isCalled && !isTypeUsed) {
+            return false;
+          }
+        }
       }
       return true;
     });

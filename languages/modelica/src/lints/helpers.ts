@@ -243,6 +243,160 @@ export function findInnerClassInClass(db: CodeGraph, classNode: u32, targetId: u
   return 0;
 }
 
+export function getRedeclName(db: CodeGraph, node: u32, $: Record<string, u16>): u32 {
+  if (node == 0) return 0;
+  for (const decl of db.ast.getDescendants(node, $.declaration)) {
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      return id;
+    }
+  }
+  for (const spec of db.ast.getDescendants(node, $.short_class_specifier)) {
+    const n = db.ast.getChildByFieldId(spec, "name");
+    if (n != 0) return n;
+  }
+  for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
+    const n = db.ast.getChildByFieldId(spec, "name");
+    if (n != 0) return n;
+  }
+  return 0;
+}
+
+function findTargetElementInClassRecursive(
+  db: CodeGraph,
+  targetClass: u32,
+  redeclName: u32,
+  $: Record<string, u16>,
+  depth: u32,
+): u32 {
+  if (targetClass == 0 || redeclName == 0 || depth > 20) return 0;
+
+  // 1. Direct component declaration in targetClass (excluding declarations inside extends_clause modifications)
+  for (const el of db.ast.getDescendants(targetClass, $.element)) {
+    if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
+    let isExtends = false;
+    for (const ext of db.ast.getDescendants(el, $.extends_clause)) {
+      isExtends = true;
+      break;
+    }
+    if (isExtends) continue;
+
+    let declId: u32 = 0;
+    for (const decl of db.ast.getDescendants(el, $.declaration)) {
+      for (const id of db.ast.getDescendants(decl, $.identifier)) {
+        declId = id;
+        break;
+      }
+      break;
+    }
+    if (declId != 0 && db.ast.textEqualsNode(redeclName, declId)) {
+      return el;
+    }
+  }
+
+  // 2. Direct inner class definition in targetClass
+  for (const cDef of db.ast.getDescendants(targetClass, $.class_definition)) {
+    if (cDef == targetClass) continue;
+    if (isDescendantOfInnerClass(db, cDef, targetClass, $)) continue;
+    let nameId: u32 = 0;
+    for (const spec of db.ast.getDescendants(cDef, $.long_class_specifier)) {
+      const n = db.ast.getChildByFieldId(spec, "name");
+      if (n != 0) {
+        nameId = n;
+        break;
+      }
+    }
+    if (nameId == 0) {
+      for (const spec of db.ast.getDescendants(cDef, $.short_class_specifier)) {
+        const n = db.ast.getChildByFieldId(spec, "name");
+        if (n != 0) {
+          nameId = n;
+          break;
+        }
+      }
+    }
+    if (nameId != 0 && db.ast.textEqualsNode(redeclName, nameId)) {
+      return cDef;
+    }
+  }
+
+  // 3. Redeclarations inside extends_clauses of targetClass
+  const comp = findComposition(db, targetClass, $);
+  const searchRoot = comp != 0 ? comp : targetClass;
+  for (const ext of db.ast.getDescendants(searchRoot, $.extends_clause)) {
+    if (isDescendantOfInnerClass(db, ext, targetClass, $)) continue;
+
+    for (const repl of db.ast.getDescendants(ext, $.element_replaceable)) {
+      const rName = getRedeclName(db, repl, $);
+      if (rName != 0 && db.ast.textEqualsNode(redeclName, rName)) {
+        return repl;
+      }
+    }
+    for (const redecl of db.ast.getDescendants(ext, $.element_redeclaration)) {
+      const rName = getRedeclName(db, redecl, $);
+      if (rName != 0 && db.ast.textEqualsNode(redeclName, rName)) {
+        return redecl;
+      }
+    }
+  }
+
+  // 4. Inherited from base classes
+  for (const ext of db.ast.getDescendants(searchRoot, $.extends_clause)) {
+    if (isDescendantOfInnerClass(db, ext, targetClass, $)) continue;
+    for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
+      const baseClass = findClassByName(db, ts, $);
+      if (baseClass != 0) {
+        const found = findTargetElementInClassRecursive(db, baseClass, redeclName, $, depth + 1);
+        if (found != 0) return found;
+      }
+    }
+  }
+
+  return 0;
+}
+
+export function findTargetElementInClass(
+  db: CodeGraph,
+  targetClass: u32,
+  redeclName: u32,
+  $: Record<string, u16>,
+): u32 {
+  return findTargetElementInClassRecursive(db, targetClass, redeclName, $, 0);
+}
+
+export function classContainsElementRecursive(
+  db: CodeGraph,
+  classNode: u32,
+  targetId: u32,
+  $: Record<string, u16>,
+  depth: u32 = 0,
+): boolean {
+  if (classNode == 0 || targetId == 0 || depth > 20) return false;
+  if (findDeclInClass(db, classNode, targetId, $) != 0) return true;
+  if (findInnerClassInClass(db, classNode, targetId, $) != 0) return true;
+  const comp = findComposition(db, classNode, $);
+  const searchRoot = comp != 0 ? comp : classNode;
+  for (const ext of db.ast.getDescendants(searchRoot, $.extends_clause)) {
+    if (isDescendantOfInnerClass(db, ext, classNode, $)) continue;
+    for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
+      const baseClass = findClassByName(db, ts, $);
+      if (baseClass != 0 && classContainsElementRecursive(db, baseClass, targetId, $, depth + 1)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function isDirectModificationChild(db: CodeGraph, redecl: u32, node: u32, $: Record<string, u16>): boolean {
+  for (const anc of db.ast.getAncestors(redecl, 0)) {
+    if (anc == node) break;
+    if (db.ast.getType(anc) == $.element_modification) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function getCallArguments(db: CodeGraph, sib: u32, $: Record<string, u16>): u32[] {
   const args: u32[] = [];
   if (sib == 0) return args;
@@ -885,6 +1039,41 @@ export function isElementProtected(db: CodeGraph, node: u32, $: Record<string, u
 }
 
 /**
+ * Checks if an element has the 'final' prefix.
+ */
+export function isElementFinal(db: CodeGraph, node: u32, $: Record<string, u16>): boolean {
+  if (node == 0) return false;
+  if (db.ast.startsWith(node, "final")) return true;
+  let ch = db.ast.getFirstChild(node);
+  while (ch != 0) {
+    if (db.ast.textEquals(ch, "final")) return true;
+    ch = db.ast.getNextSibling(ch);
+  }
+  return false;
+}
+
+/**
+ * Checks if an element is replaceable (either element_replaceable or has 'replaceable' prefix).
+ */
+export function isElementReplaceable(db: CodeGraph, node: u32, $: Record<string, u16>): boolean {
+  if (node == 0) return false;
+  const t = db.ast.getType(node);
+  if ($.element_replaceable != 0 && t == $.element_replaceable) return true;
+  if (db.ast.startsWith(node, "replaceable")) return true;
+  let ch = db.ast.getFirstChild(node);
+  while (ch != 0) {
+    if (db.ast.textEquals(ch, "replaceable")) return true;
+    ch = db.ast.getNextSibling(ch);
+  }
+  if ($.element_replaceable != 0) {
+    for (const repl of db.ast.getDescendants(node, $.element_replaceable)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Checks whether an actual type is compatible with (or a subtype of) an expected type.
  */
 export function isTypeCompatible(actualType: u16, expectedType: u16): boolean {
@@ -1393,7 +1582,19 @@ export function isDottedVariableDeclared(
           nextClass = findClassByName(db, id, $);
         }
       }
-      if (nextClass == 0) return false;
+      if (nextClass == 0) {
+        const compType = findComponentTypeInClass(db, currClass, id, $);
+        if (compType != 0) {
+          // If the component's type is a primitive (Real, Integer, etc.), it cannot have fields
+          if (resolveBasePrimitiveType(db, compType, $) != TYPE_UNKNOWN) {
+            return false;
+          }
+          // The component is declared and has an external / non-primitive type whose definition
+          // is outside this file (e.g. Modelica Standard Library components like SineVoltage, Inductor).
+          return true;
+        }
+        return false;
+      }
       currClass = nextClass;
       idx++;
     }

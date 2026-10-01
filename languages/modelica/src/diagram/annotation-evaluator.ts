@@ -865,6 +865,17 @@ export class AnnotationEvaluator {
       }
     }
 
+    if (
+      obj.points === undefined &&
+      node.text &&
+      (funcName === "Polygon" || funcName === "Line" || node.text.includes("points="))
+    ) {
+      const recovered = extractPointsFromText(node.text);
+      if (recovered) {
+        obj.points = recovered;
+      }
+    }
+
     return obj;
   }
 
@@ -942,4 +953,32 @@ export class AnnotationEvaluator {
     }
     return null;
   }
+}
+
+function extractPointsFromText(text: string): [number, number][] | null {
+  const idx = text.search(/\bpoints\s*=\s*\{/);
+  if (idx === -1) return null;
+  const startBrace = text.indexOf("{", idx);
+  if (startBrace === -1) return null;
+  let depth = 0;
+  let endBrace = -1;
+  for (let i = startBrace; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        endBrace = i;
+        break;
+      }
+    }
+  }
+  const inner = text.substring(startBrace + 1, endBrace === -1 ? text.length : endBrace);
+  const pairs: [number, number][] = [];
+  const pairRegex =
+    /\{\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*,\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = pairRegex.exec(inner)) !== null) {
+    pairs.push([parseFloat(m[1]), parseFloat(m[2])]);
+  }
+  return pairs.length > 0 ? pairs : null;
 }

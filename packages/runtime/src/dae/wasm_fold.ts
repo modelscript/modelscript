@@ -59,6 +59,12 @@ function evalMathBuiltin(funcName: string, arg1: number, arg2: number): number |
       return Math.ceil(arg1);
     case "pow":
       return Math.pow(arg1, arg2);
+    case "noEvent":
+      return arg1;
+    case "smooth":
+      return arg2 !== undefined && !isNaN(arg2) ? arg2 : arg1;
+    case "homotopy":
+      return arg1;
     default:
       return null;
   }
@@ -162,6 +168,9 @@ export function evaluateConstantArenaExpression(
           onlyConstants,
         );
         if (val !== null) return val;
+      }
+      if (variability === Variability.Constant || onlyConstants) {
+        return null;
       }
       return arena.getVarStartValue(varIdx);
     }
@@ -874,9 +883,10 @@ export function substituteArenaConstants(
           return arena.addIntLiteral(Math.trunc(val));
         } else if (varType === VarType.Boolean) {
           return arena.addBoolLiteral(Boolean(val));
-        } else {
+        } else if (varType === VarType.Real) {
           return arena.addRealLiteral(val);
         }
+        return exprId;
       }
       return exprId;
     }
@@ -1145,7 +1155,12 @@ export function foldSingleArenaEquation(
       }
       const constMap = new Map<string, number>();
       for (let i = 0; i < arena.varCount; i++) {
-        if (!arena.isVarRemoved(i) && arena.getVarVariability(i) === Variability.Constant) {
+        if (
+          !arena.isVarRemoved(i) &&
+          arena.getVarVariability(i) === Variability.Constant &&
+          arena.getVarType(i) !== VarType.String &&
+          arena.hasExplicitVarExpression(i)
+        ) {
           constMap.set(arena.getVarName(i), arena.getVarStartValue(i));
         }
       }
@@ -1295,9 +1310,11 @@ export function foldArenaConstants(
           }
         }
         if (v === Variability.Constant) {
-          paramMap.set(name, arena.getVarStartValue(i));
-          constMap.set(name, arena.getVarStartValue(i));
-          finalParamOrConstMap.set(name, arena.getVarStartValue(i));
+          if (arena.getVarType(i) !== VarType.String && arena.hasExplicitVarExpression(i)) {
+            paramMap.set(name, arena.getVarStartValue(i));
+            constMap.set(name, arena.getVarStartValue(i));
+            finalParamOrConstMap.set(name, arena.getVarStartValue(i));
+          }
         } else if (v === Variability.Parameter && arena.isVarFinal(i)) {
           finalParamOrConstMap.set(name, arena.getVarStartValue(i));
         }
@@ -2888,13 +2905,15 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       if (!isPlugCompatible) {
         const lhsName = dae.getExprKind(lhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(lhsId)) : "";
         const rhsName = dae.getExprKind(rhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(rhsId)) : "";
-        const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
-        out.diagnostics.push({
-          severity: "error",
-          code: 3003, // NOT_PLUG_COMPATIBLE
-          message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
-          range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
-        });
+        if (lhsName && rhsName) {
+          const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
+          out.diagnostics.push({
+            severity: "error",
+            code: 3003, // NOT_PLUG_COMPATIBLE
+            message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
+            range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+          });
+        }
         return;
       }
     }
