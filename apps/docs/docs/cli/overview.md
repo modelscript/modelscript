@@ -2,7 +2,7 @@
 
 The ModelScript unified command-line interface, `msc`, is published as [`@modelscript/cli`](https://www.npmjs.com/package/@modelscript/cli).
 
-It provides an all-in-one developer tool for parsing, linting, compiling, flattening, simulating, optimizing, and packaging engineering models.
+It provides an all-in-one developer tool for parsing, linting, compiling, flattening, simulating, optimizing, and verifying models across the **computable digital thread**.
 
 ---
 

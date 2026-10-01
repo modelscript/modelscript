@@ -130,8 +130,7 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 | [`@modelscript/ide`](./apps/ide/)       | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                     |
 | [`@modelscript/web`](./apps/web/)       | Web frontend for browsing and exploring libraries (NPM-style registry)                                    |
 | [`@modelscript/morsel`](./apps/morsel/) | Interactive visual editor — code editing, diagram viewer, simulation, and plotting                        |
-| [`@modelscript/site`](./apps/site/)     | Main modelscript.org website                                                                              |
-| [`@modelscript/docs`](./apps/docs/)     | VitePress documentation website                                                                           |
+| [`@modelscript/docs`](./apps/docs/)     | Unified modelscript.org website and documentation portal (VitePress)                                      |
 
 ---
 
@@ -192,17 +191,13 @@ npm run dev
 
 This launches the primary development stack:
 
-| Service | Port / URL              | Description                        |
-| ------- | ----------------------- | ---------------------------------- |
-| **API** | `http://localhost:3000` | REST / GraphQL / SPARQL API server |
-| **Web** | `http://localhost:3001` | Package registry & model browser   |
-| **IDE** | `http://localhost:3003` | Browser-based VS Code Web IDE      |
-
-To start the Morsel visual editor:
-
-```bash
-npm run dev --workspace=@modelscript/morsel # http://localhost:3002
-```
+| Service    | Port / URL              | Description                        |
+| ---------- | ----------------------- | ---------------------------------- |
+| **API**    | `http://localhost:3000` | REST / GraphQL / SPARQL API server |
+| **Web**    | `http://localhost:3001` | Package registry & model browser   |
+| **Morsel** | `http://localhost:3002` | Visual Modelica diagram editor     |
+| **IDE**    | `http://localhost:3003` | Browser-based VS Code Web IDE      |
+| **Docs**   | `http://localhost:5173` | VitePress documentation portal     |
 
 #### Browser-Local AI Assistant (Optional)
 

@@ -4,10 +4,17 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
+import { defaultArchiveExportLimiter } from "../middleware/archive-limiter.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
+import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
 
-export function usersRouter(database: LibraryDatabase, worker?: FederationWorker): Router {
+export function usersRouter(
+  database: LibraryDatabase,
+  worker?: FederationWorker,
+  archiveQueue: ArchiveQueue = defaultArchiveQueue,
+): Router {
   const router = createRouter();
 
   /**
@@ -153,18 +160,133 @@ export function usersRouter(database: LibraryDatabase, worker?: FederationWorker
   });
 
   /**
-   * GET /api/v1/users/me/export
-   * GDPR Article 20: Right to Data Portability.
-   * Exports a machine-readable JSON archive containing profile, posts, releases, and billing history.
+   * POST /api/v1/users/me/export
+   * Asynchronous queue trigger for GDPR Art. 20 / CCPA data archives.
    */
-  router.get("/me/export", requireAuth, (req: Request, res: Response) => {
+  router.post("/me/export", requireAuth, defaultArchiveExportLimiter.middleware(), (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const exportBundle = database.exportUserData(userId);
-    if (!exportBundle) {
+    const user = database.getUserById(userId);
+    if (!user) {
       res.status(404).json({ error: "User not found" });
       return;
     }
 
+    const format = (req.body?.format || req.query.format || "zip") === "json" ? "json" : "zip";
+    const job = archiveQueue.enqueue(database, userId, user.username, format);
+
+    database.logAudit({
+      actorId: userId,
+      action: "gdpr_data_archive_job_enqueued",
+      resourceType: "user",
+      resourceId: String(userId),
+      details: { jobId: job.id, format, queuePosition: job.queuePosition },
+    });
+
+    res.status(202).json({
+      success: true,
+      job: {
+        id: job.id,
+        status: job.status,
+        queuePosition: job.queuePosition,
+        format: job.format,
+        createdAt: job.createdAt,
+        concurrency: archiveQueue.getConcurrency(),
+      },
+      concurrency: archiveQueue.getConcurrency(),
+    });
+  });
+
+  /**
+   * GET /api/v1/users/me/export/status
+   * Polls the status of the user's latest asynchronous archive job.
+   */
+  router.get("/me/export/status", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const jobId = req.query.jobId as string | undefined;
+    const job = jobId ? archiveQueue.getJob(jobId) : archiveQueue.getLatestUserJob(userId);
+
+    if (!job || job.userId !== userId) {
+      res.json({ job: null });
+      return;
+    }
+
+    res.json({
+      job: {
+        id: job.id,
+        status: job.status,
+        format: job.format,
+        queuePosition: job.queuePosition,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        expiresAt: job.expiresAt,
+        fileSizeBytes: job.fileSizeBytes,
+        error: job.error,
+        downloadUrl: job.status === "completed" ? `/api/v1/users/me/export/download?jobId=${job.id}` : undefined,
+        concurrency: archiveQueue.getConcurrency(),
+      },
+      concurrency: archiveQueue.getConcurrency(),
+    });
+  });
+
+  /**
+   * GET /api/v1/users/me/export/download
+   * Streams a completed asynchronous archive from staging storage.
+   */
+  router.get("/me/export/download", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const jobId = req.query.jobId as string | undefined;
+    const job = jobId ? archiveQueue.getJob(jobId) : archiveQueue.getLatestUserJob(userId);
+
+    if (!job || job.userId !== userId || job.status !== "completed" || !job.filePath) {
+      res.status(404).json({ error: "No completed archive found or archive has expired." });
+      return;
+    }
+
+    const filename = `modelscript-archive-${job.username}.${job.format}`;
+    res.setHeader("Content-Type", job.format === "zip" ? "application/zip" : "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.sendFile(job.filePath);
+  });
+
+  /**
+   * GET /api/v1/users/me/export
+   * GDPR Article 20: Right to Data Portability (synchronous download route).
+   * Exports an interactive Twitter-style ZIP archive with offline HTML viewer or raw JSON.
+   */
+  router.get("/me/export", requireAuth, defaultArchiveExportLimiter.middleware(), (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const format = (req.query.format as string)?.toLowerCase();
+    const isZip = format === "zip" || (!format && req.headers.accept === "application/zip");
+
+    database.logAudit({
+      actorId: userId,
+      action: "gdpr_data_archive_exported",
+      resourceType: "user",
+      resourceId: String(userId),
+      details: { format: isZip ? "zip" : "json" },
+    });
+
+    if (isZip) {
+      const zipBuffer = generateUserArchiveZip(database, userId);
+      if (!zipBuffer) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const user = database.getUserById(userId);
+      const username = user?.username || `user-${userId}`;
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="modelscript-archive-${username}.zip"`);
+      res.send(zipBuffer);
+      return;
+    }
+
+    const exportBundle = gatherUserDataBundle(database, userId);
+    if (!exportBundle) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
     res.setHeader("Content-Disposition", `attachment; filename="modelscript-user-export-${userId}.json"`);
     res.json(exportBundle);
   });
@@ -187,15 +309,13 @@ export function usersRouter(database: LibraryDatabase, worker?: FederationWorker
       return;
     }
 
-    const fullTarget = database.db
-      .prepare(`SELECT id, actor_url, inbox_url, remote_domain FROM users WHERE id = ?`)
-      .get(targetUser.id) as any;
+    const fullTarget = database.getUserFederationInfo(targetUser.id);
     const isRemote = Boolean(fullTarget?.remote_domain);
 
     database.followUser(followerId, targetUser.id, isRemote ? "pending" : "accepted");
 
     if (isRemote && fullTarget?.actor_url) {
-      const fullFollower = database.db.prepare(`SELECT actor_url FROM users WHERE id = ?`).get(followerId) as any;
+      const fullFollower = database.getUserFederationInfo(followerId);
       if (fullFollower?.actor_url) {
         const followActivity = {
           "@context": "https://www.w3.org/ns/activitystreams",
@@ -211,7 +331,7 @@ export function usersRouter(database: LibraryDatabase, worker?: FederationWorker
           followActivity.id,
           followActivity,
           targetInbox,
-          fullTarget.remote_domain,
+          fullTarget.remote_domain!,
         );
         if (worker && process.env["NODE_ENV"] !== "test") {
           void worker.processQueue();
@@ -235,15 +355,13 @@ export function usersRouter(database: LibraryDatabase, worker?: FederationWorker
       return;
     }
 
-    const fullTarget = database.db
-      .prepare(`SELECT id, actor_url, inbox_url, remote_domain FROM users WHERE id = ?`)
-      .get(targetUser.id) as any;
+    const fullTarget = database.getUserFederationInfo(targetUser.id);
     const isRemote = Boolean(fullTarget?.remote_domain);
 
     database.unfollowUser(followerId, targetUser.id);
 
     if (isRemote && fullTarget?.actor_url) {
-      const fullFollower = database.db.prepare(`SELECT actor_url FROM users WHERE id = ?`).get(followerId) as any;
+      const fullFollower = database.getUserFederationInfo(followerId);
       if (fullFollower?.actor_url) {
         const undoActivity = {
           "@context": "https://www.w3.org/ns/activitystreams",
@@ -264,7 +382,7 @@ export function usersRouter(database: LibraryDatabase, worker?: FederationWorker
           undoActivity.id,
           undoActivity,
           targetInbox,
-          fullTarget.remote_domain,
+          fullTarget.remote_domain!,
         );
         if (worker && process.env["NODE_ENV"] !== "test") {
           void worker.processQueue();

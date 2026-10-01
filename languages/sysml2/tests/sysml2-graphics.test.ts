@@ -81,4 +81,35 @@ describe("SysML v2 Graphics & 9-View Diagram Coverage", () => {
       assert(Array.isArray(data.edges), `Edges for view ${view} should be an array`);
     }
   });
+
+  it("should not emit image icon markup or empty attrs.icon when no icon is configured", () => {
+    const partDefGfx = gfxConfig["PartDefinition"];
+    assert.ok(partDefGfx);
+    assert.strictEqual(partDefGfx.node.attrs.icon, undefined);
+    assert.ok(
+      !Array.isArray(partDefGfx.node.markup) ||
+        !partDefGfx.node.markup.some((m: any) => m.selector === "icon" || m.tagName === "image"),
+    );
+
+    const fakeIndex = {
+      symbols: new Map([
+        ["s1", { id: "s1", ruleName: "PartDefinition", name: "Engine", parentId: null, metadata: {} }],
+        ["s2", { id: "s2", ruleName: "PartUsage", name: "engine", parentId: null, metadata: {} }],
+      ]),
+      childrenOf: new Map(),
+    };
+
+    const data = buildSysML2DiagramData(fakeIndex as any, "file:///test.sysml", undefined, "BDD");
+    for (const node of data.nodes) {
+      assert.strictEqual(node.attrs?.icon, undefined, `Node ${node.id} should not have attrs.icon`);
+      assert.strictEqual(node.properties?.icon, undefined, `Node ${node.id} should not have properties.icon`);
+      assert.strictEqual(node.data?.icon, undefined, `Node ${node.id} should not have data.icon`);
+      if (Array.isArray(node.markup)) {
+        assert.ok(
+          !node.markup.some((m: any) => m.selector === "icon" || m.tagName === "image"),
+          `Node ${node.id} should not contain image markup`,
+        );
+      }
+    }
+  });
 });

@@ -57,6 +57,7 @@ export interface OWL2EquivalentClasses {
 export interface OWL2DisjointClasses {
   readonly type: "DisjointClasses";
   readonly classIris: readonly string[];
+  readonly subClassIri?: string;
   readonly sourceLang?: string;
 }
 
@@ -2806,19 +2807,23 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
   private checkConsistencyInternal(): ConsistencyResult {
     const conflicts: OWL2Axiom[] = [];
+    const explanations: string[] = [];
 
     for (const pairKey of this.disjointPairs) {
       const [aIri, bIri] = pairKey.split("|");
       if (!aIri || !bIri) continue;
 
-      const aNode = this.classes.get(aIri);
-      const bNode = this.classes.get(bIri);
+      const aSuper = this.computeAllSuperClasses(aIri);
+      const bSuper = this.computeAllSuperClasses(bIri);
 
-      let hasClassConflict = aNode?.allSuperClasses?.has(bIri) || bNode?.allSuperClasses?.has(aIri);
+      let hasClassConflict = aSuper.has(bIri) || bSuper.has(aIri);
+      let candIri: string | null = null;
       if (!hasClassConflict) {
-        for (const [, candNode] of this.classes) {
-          if (candNode.allSuperClasses?.has(aIri) && candNode.allSuperClasses?.has(bIri)) {
+        for (const [cIri] of this.classes) {
+          const cSuper = this.computeAllSuperClasses(cIri);
+          if (cSuper.has(aIri) && cSuper.has(bIri)) {
             hasClassConflict = true;
+            candIri = cIri;
             break;
           }
         }
@@ -2828,8 +2833,18 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         conflicts.push({
           type: "DisjointClasses",
           classIris: [aIri, bIri],
+          subClassIri: candIri ?? undefined,
           sourceLang: "inferred",
         });
+        if (candIri) {
+          explanations.push(
+            `Class '${candIri}' cannot inherit from both '${aIri}' and '${bIri}' because they are declared disjoint.`,
+          );
+        } else {
+          explanations.push(
+            `Classes '${aIri}' and '${bIri}' are declared disjoint, but one is a superclass of the other.`,
+          );
+        }
       }
 
       for (const [indIri, types] of this.individualTypes) {
@@ -2840,6 +2855,9 @@ export class WasmOntologyReasoner implements IOWLReasoner {
             individualIri: indIri,
             sourceLang: "inferred",
           });
+          explanations.push(
+            `Individual '${indIri}' cannot be an instance of both '${aIri}' and '${bIri}' because they are declared disjoint.`,
+          );
         }
       }
     }
@@ -3195,7 +3213,10 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       return {
         isConsistent: false,
         conflictingAxioms: conflicts,
-        explanation: `Found ${conflicts.length} consistency violation(s) in the ontology.`,
+        explanation:
+          explanations.length > 0
+            ? explanations.join("; ")
+            : `Found ${conflicts.length} consistency violation(s) in the ontology.`,
       };
     }
 
@@ -4559,9 +4580,28 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
 
     const projected: OWL2Axiom[] = [];
     const prefix = language === "sysml2" ? "sysml:" : language === "modelica" ? "mo:" : `${language}:`;
+    const formatIri = (name: string) => (name.startsWith(prefix) || name.includes(":") ? name : `${prefix}${name}`);
 
     for (const [id, entry] of unified.symbols.entries()) {
-      if (entry.language !== language && (!entry.resourceId || !entry.resourceId.includes(`.${language}`))) {
+      let entryLang = entry.language;
+      if (
+        !entryLang &&
+        entry.resourceId &&
+        this._workspace &&
+        typeof (this._workspace as any).detectLanguage === "function"
+      ) {
+        entryLang = (this._workspace as any).detectLanguage(entry.resourceId);
+      }
+      if (!entryLang && entry.resourceId) {
+        if (entry.resourceId.endsWith(".mo") || entry.resourceId.endsWith(".msim")) entryLang = "modelica";
+        else if (entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")) entryLang = "sysml2";
+      }
+
+      if (
+        entryLang !== language &&
+        entry.language !== language &&
+        (!entry.resourceId || !entry.resourceId.includes(`.${language}`))
+      ) {
         continue;
       }
 
@@ -4583,7 +4623,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
                 projected.push({
                   type: "SubClassOf",
                   subClassIri: iri,
-                  superClassIri: `${prefix}${child.name}`,
+                  superClassIri: formatIri(child.name),
                   sourceLang: "sysml2",
                 });
               } else if (
@@ -4657,7 +4697,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
                 projected.push({
                   type: "SubClassOf",
                   subClassIri: iri,
-                  superClassIri: `${prefix}${sup}`,
+                  superClassIri: formatIri(sup),
                   sourceLang: "modelica",
                 });
               }
@@ -4666,7 +4706,19 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
           const children = unified.childrenOf?.get(id) ?? [];
           for (const childId of children) {
             const child = unified.symbols.get(childId);
-            if (child && (child.kind === "Component" || child.kind === "Variable" || child.kind === "Connector")) {
+            if (child && (child.kind === "Extends" || child.ruleName === "extends_clause")) {
+              if (child.name) {
+                projected.push({
+                  type: "SubClassOf",
+                  subClassIri: iri,
+                  superClassIri: formatIri(child.name),
+                  sourceLang: "modelica",
+                });
+              }
+            } else if (
+              child &&
+              (child.kind === "Component" || child.kind === "Variable" || child.kind === "Connector")
+            ) {
               const compIri = `${prefix}${entry.name}.${child.name}`;
               projected.push({
                 type: "ClassDeclaration",
@@ -4685,11 +4737,14 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
                 projected.push({
                   type: "ClassAssertion",
                   individualIri: compIri,
-                  classIri: `${prefix}${typeName}`,
+                  classIri: formatIri(typeName),
                   sourceLang: "modelica",
                 });
               }
-            } else if (child && (child.kind === "Connect" || child.ruleName === "ConnectEquation")) {
+            } else if (
+              child &&
+              (child.kind === "Connect" || child.kind === "ConnectEquation" || child.ruleName === "ConnectEquation")
+            ) {
               const lhs = (child as any).lhs || (child as any).left;
               const rhs = (child as any).rhs || (child as any).right;
               if (lhs && rhs) {
@@ -4725,7 +4780,12 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
 
   update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {
     let changed = false;
-    for (const lang of this._sourceLanguages) {
+    const assertions: OWL2Axiom[] = [];
+    const retractions: OWL2Axiom[] = [];
+
+    const languagesToCheck = new Set<string>([...this._sourceLanguages, ...workspaceVersions.keys()]);
+
+    for (const lang of languagesToCheck) {
       const currentVersion = workspaceVersions.get(lang);
       if (currentVersion === undefined) continue;
 
@@ -4733,11 +4793,17 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
       if (lastVersion === undefined || currentVersion !== lastVersion) {
         changed = true;
         this._projectedVersions.set(lang, currentVersion);
+        this.registerSourceLanguage(lang);
+        const delta = this.projectLanguage(lang);
+        assertions.push(...delta.assertions);
+        retractions.push(...delta.retractions);
       }
     }
 
     if (!changed) return null;
-    return this._lastDelta;
+    const combinedDelta: OWL2AxiomDelta = { assertions, retractions };
+    this._lastDelta = combinedDelta;
+    return combinedDelta;
   }
 
   isSubClassOf(subClassHash: number, superClassHash: number): boolean {

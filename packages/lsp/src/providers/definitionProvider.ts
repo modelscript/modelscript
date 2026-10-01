@@ -76,7 +76,7 @@ export function registerDefinitionProvider(
       return null;
     }
 
-    const rawTarget = (bridge as any).definitionRaw(offset);
+    const rawTarget = (bridge as any).definitionRaw(offset, document.getText());
     if (!rawTarget) return null;
     return symbolEntryToLocation(rawTarget, documentLSPBridges, documentTrees) as any;
   });
@@ -88,7 +88,7 @@ export function registerDefinitionProvider(
     if (!document || !bridge) return null;
 
     const offset = document.offsetAt(params.position);
-    const typeTarget = (bridge as any).typeDefinitionRaw(offset);
+    const typeTarget = (bridge as any).typeDefinitionRaw(offset, document.getText());
     if (!typeTarget) return null;
 
     return symbolEntryToLocation(typeTarget, documentLSPBridges, documentTrees) as any;

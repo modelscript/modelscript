@@ -403,11 +403,7 @@ export function authRouter(database: LibraryDatabase): Router {
         if (existingLink) {
           database.updateOAuthTokens(userId, provider, accessToken, refreshToken, expiresAt);
         } else {
-          database.db
-            .prepare(
-              `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
-            )
-            .run(userId, provider, providerUserId, accessToken, refreshToken, expiresAt);
+          database.linkOAuthAccount(userId, provider, providerUserId, accessToken, refreshToken, expiresAt);
         }
 
         res.redirect(`http://localhost:3000/settings?success=Linked${provider}`);
@@ -427,11 +423,7 @@ export function authRouter(database: LibraryDatabase): Router {
         const existing = database.getUserByEmail(email);
         if (existing) {
           user = existing;
-          database.db
-            .prepare(
-              `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
-            )
-            .run(user.id, provider, providerUserId, accessToken, refreshToken, expiresAt);
+          database.linkOAuthAccount(user.id, provider, providerUserId, accessToken, refreshToken, expiresAt);
         } else {
           user = database.createOAuthUser(username, email, provider, providerUserId);
           database.updateOAuthTokens(user.id, provider, accessToken, refreshToken, expiresAt);

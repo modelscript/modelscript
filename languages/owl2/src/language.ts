@@ -15,6 +15,11 @@ import {
 
 export const owl2Language = language({
   name: "owl2",
+  displayName: "OWL 2",
+  fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
+  lsp: {
+    fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
+  },
 
   writeback: (ctx) => {
     const { entry, fullText, newValue } = ctx;
@@ -38,6 +43,95 @@ export const owl2Language = language({
     }
     return null;
   },
+
+  actions: [
+    {
+      id: "validate_consistency",
+      title: "Validate Ontology Consistency",
+      description:
+        "Validates the logical consistency and satisfiability of the active OWL 2 ontology using the tableau reasoner.",
+      category: "verify",
+      ui: {
+        editorTitle: {
+          icon: "$(check)",
+          group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
+        languageModelTool: {
+          name: "owl2_validate_consistency",
+          displayName: "Validate OWL2 Ontology Consistency",
+          modelDescription: "Validates the logical consistency and satisfiability of an OWL 2 ontology.",
+        },
+      },
+    },
+    {
+      id: "open_ontology_diagram",
+      title: "Open Ontology Graph Diagram",
+      description: "Renders an interactive 2D node-link graph diagram of classes, properties, and axioms.",
+      category: "query",
+      ui: {
+        editorTitle: {
+          icon: "$(organization)",
+          group: "navigation@0",
+        },
+        editorContextMenu: {
+          group: "3_analysis@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@1",
+        },
+        languageModelTool: {
+          name: "owl2_open_ontology_diagram",
+          displayName: "Open OWL2 Graph Diagram",
+          modelDescription: "Renders an interactive 2D graph diagram of classes and relations.",
+        },
+      },
+    },
+    {
+      id: "explain_inferences",
+      title: "Explain Inferences & Justifications",
+      description: "Computes the minimal conflict cores and axiom justifications for inferred class subsumptions.",
+      category: "query",
+      inputs: {
+        subClass: { type: "string", description: "Subclass IRI" },
+        superClass: { type: "string", description: "Superclass IRI" },
+      },
+      ui: {
+        editorContextMenu: {
+          group: "3_analysis@1",
+        },
+        languageModelTool: {
+          name: "owl2_explain_inferences",
+          displayName: "Explain OWL2 Inferences",
+          modelDescription: "Extracts axiom justification trees explaining inferred subclass relationships.",
+        },
+      },
+    },
+    {
+      id: "query_sparql",
+      title: "Query with SPARQL-DL",
+      description: "Executes a SPARQL-DL graph pattern query against the active polyglot knowledge graph.",
+      category: "query",
+      inputs: {
+        query: { type: "string", description: "SPARQL-DL query expression" },
+      },
+      ui: {
+        editorContextMenu: {
+          group: "3_analysis@2",
+        },
+        languageModelTool: {
+          name: "owl2_query_sparql",
+          displayName: "Query OWL2 with SPARQL-DL",
+          modelDescription: "Executes a SPARQL-DL graph query against the active ontology.",
+        },
+      },
+    },
+  ],
 
   mcp: {
     serverName: "owl2-mcp",

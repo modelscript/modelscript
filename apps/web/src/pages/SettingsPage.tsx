@@ -8,14 +8,19 @@ import {
   ChevronRightIcon,
   CpuIcon,
   CreditCardIcon,
+  DownloadIcon,
+  FileCodeIcon,
   FilterIcon,
   GlobeIcon,
   HubotIcon,
   KeyIcon,
+  PackageIcon,
   PaintbrushIcon,
   PersonIcon,
   PlusIcon,
   ServerIcon,
+  ShieldCheckIcon,
+  SyncIcon,
   TrashIcon,
   ZapIcon,
 } from "@primer/octicons-react";
@@ -24,18 +29,24 @@ import styled from "styled-components";
 import {
   addPublicKey,
   createBot,
+  deleteAccount,
   deleteBot,
+  downloadUserDataArchiveJob,
+  exportUserDataArchive,
   getBots,
   getNotificationSettings,
   getPublicKeys,
   getUserBillingSummary,
+  getUserDataArchiveStatus,
   getUserTopics,
+  requestUserDataArchiveJob,
   revokePublicKey,
   topUpCredits,
   updateAccount,
   updateNotificationSettings,
   updatePassword,
   updateUserTopic,
+  type ArchiveJobInfo,
   type PublicKeyInfo,
   type UserBillingSummary,
 } from "../api";
@@ -177,6 +188,74 @@ const SaveButton = styled.button`
   align-self: flex-end;
   &:hover {
     background-color: var(--color-accent-fg);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const PrimaryButton = styled.button`
+  background-color: var(--color-accent-emphasis, #0969da);
+  color: white;
+  border: none;
+  border-radius: 9999px;
+  padding: 10px 20px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease-in-out;
+  &:hover:not(:disabled) {
+    background-color: var(--color-accent-fg, #218bff);
+    transform: translateY(-1px);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const SecondaryButton = styled.button`
+  background-color: var(--color-canvas-subtle, #f6f8fa);
+  color: var(--color-text-primary, #24292f);
+  border: 1px solid var(--color-border-default, #d0d7de);
+  border-radius: 9999px;
+  padding: 10px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease-in-out;
+  &:hover:not(:disabled) {
+    background-color: var(--color-border-subtle, #eaeef2);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const DangerButton = styled.button`
+  background-color: var(--color-danger-fg, #cf222e);
+  color: white;
+  border: none;
+  border-radius: 9999px;
+  padding: 10px 20px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.15s ease-in-out;
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
   }
   &:disabled {
     opacity: 0.5;
@@ -326,7 +405,11 @@ type TabType =
   | "connectedAccounts"
   | "security"
   | "billing"
-  | "bots";
+  | "bots"
+  | "privacy"
+  | "dataArchive"
+  | "deleteAccount"
+  | "notificationFilters";
 
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("account");
@@ -340,6 +423,21 @@ const SettingsPage: React.FC = () => {
   const [billingSummary, setBillingSummary] = useState<UserBillingSummary | null>(null);
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
+
+  // Data Archive states
+  const [archiveJob, setArchiveJob] = useState<ArchiveJobInfo | null>(null);
+  const [isSubmittingArchiveJob, setIsSubmittingArchiveJob] = useState(false);
+  const [isDownloadingFinishedArchive, setIsDownloadingFinishedArchive] = useState(false);
+  const [isDownloadingArchive, setIsDownloadingArchive] = useState(false);
+  const [archiveSuccess, setArchiveSuccess] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  // Account Erasure states
+  const [deleteConfirmUsername, setDeleteConfirmUsername] = useState("");
+  const [deleteConsentUnderstood, setDeleteConsentUnderstood] = useState(false);
+  const [deleteConsentBackedUp, setDeleteConsentBackedUp] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Bot forms
   const [botUsername, setBotUsername] = useState("");
@@ -363,7 +461,7 @@ const SettingsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [qualityFilter, setQualityFilter] = useState(true);
@@ -399,7 +497,38 @@ const SettingsPage: React.FC = () => {
         .then((data) => setBillingSummary(data))
         .catch(() => {});
     }
+    if (activeTab === "dataArchive") {
+      getUserDataArchiveStatus()
+        .then((job) => {
+          if (job) setArchiveJob(job);
+        })
+        .catch(() => {});
+    }
   }, [activeTab]);
+
+  // Polling effect while archive job is queued or processing
+  React.useEffect(() => {
+    if (activeTab !== "dataArchive") return;
+    if (!archiveJob || (archiveJob.status !== "queued" && archiveJob.status !== "processing")) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const updated = await getUserDataArchiveStatus(archiveJob.id);
+        if (updated) {
+          setArchiveJob(updated);
+          if (updated.status === "completed") {
+            setArchiveSuccess(
+              `Your archive (${updated.format.toUpperCase()}) has been compiled and is ready for download!`,
+            );
+          } else if (updated.status === "failed") {
+            setArchiveError(updated.error || "Archive compilation failed in worker pool.");
+          }
+        }
+      } catch {}
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [activeTab, archiveJob]);
 
   // Reset states when changing tabs
   const handleTabChange = (tab: TabType) => {
@@ -424,6 +553,115 @@ const SettingsPage: React.FC = () => {
       getUserBillingSummary()
         .then((data) => setBillingSummary(data))
         .catch(() => {});
+    }
+    if (tab === "dataArchive") {
+      setArchiveError(null);
+      setArchiveSuccess(null);
+      getUserDataArchiveStatus()
+        .then((job) => {
+          if (job) setArchiveJob(job);
+        })
+        .catch(() => {});
+    }
+    if (tab === "deleteAccount") {
+      setDeleteConfirmUsername("");
+      setDeleteConsentUnderstood(false);
+      setDeleteConsentBackedUp(false);
+      setDeleteError(null);
+    }
+  };
+
+  const handleRequestArchiveJob = async (format: "zip" | "json" = "zip") => {
+    setIsSubmittingArchiveJob(true);
+    setArchiveError(null);
+    setArchiveSuccess(null);
+    try {
+      const job = await requestUserDataArchiveJob(format);
+      setArchiveJob(job);
+      setArchiveSuccess(
+        job.status === "completed"
+          ? "Your archive is ready for download!"
+          : `Archive request queued (Position #${job.queuePosition || 1}). Processing asynchronously in worker queue...`,
+      );
+    } catch (err: any) {
+      setArchiveError(err.response?.data?.error || "Failed to enqueue archive job. Please try again.");
+    } finally {
+      setIsSubmittingArchiveJob(false);
+    }
+  };
+
+  const handleDownloadCompletedArchive = async () => {
+    if (!archiveJob) return;
+    setIsDownloadingFinishedArchive(true);
+    setArchiveError(null);
+    try {
+      const blob = await downloadUserDataArchiveJob(archiveJob.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `modelscript-archive-${user?.username || "user"}.${archiveJob.format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setArchiveError(err.response?.data?.error || "Failed to download completed archive.");
+    } finally {
+      setIsDownloadingFinishedArchive(false);
+    }
+  };
+
+  const handleDownloadArchive = async (format: "zip" | "json" = "zip") => {
+    setIsDownloadingArchive(true);
+    setArchiveError(null);
+    setArchiveSuccess(null);
+    try {
+      const blob = await exportUserDataArchive(format);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        format === "zip"
+          ? `modelscript-archive-${user?.username || "user"}.zip`
+          : `modelscript-data-${user?.username || "user"}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setArchiveSuccess(
+        format === "zip"
+          ? "Your archive has been downloaded successfully. Extract the ZIP and open index.html in any browser to inspect your data offline."
+          : "Your data has been exported as JSON successfully.",
+      );
+    } catch (err: any) {
+      setArchiveError(err.response?.data?.error || "Failed to download data archive. Please try again.");
+    } finally {
+      setIsDownloadingArchive(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (deleteConfirmUsername.trim() !== user.username) {
+      setDeleteError(`Please type your exact username ("${user.username}") to confirm.`);
+      return;
+    }
+    if (!deleteConsentUnderstood || !deleteConsentBackedUp) {
+      setDeleteError("Please confirm both acknowledgment checkboxes before proceeding.");
+      return;
+    }
+    setIsDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount();
+      alert(
+        "Your account and associated personal data have been permanently erased. You will now be redirected to the home page.",
+      );
+      logout();
+      window.location.href = "/";
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.error || "Failed to delete account. Please try again or contact support.");
+      setIsDeletingAccount(false);
     }
   };
 
@@ -550,10 +788,10 @@ const SettingsPage: React.FC = () => {
             },
             {
               id: "privacy",
-              label: "Privacy and safety",
-              tab: "other" as TabType,
-              keywords: "privacy safety mute block data",
-              isActive: false,
+              label: "Privacy & Data Protection",
+              tab: "privacy" as TabType,
+              keywords: "privacy safety gdpr ccpa data export archive delete erasure protection tracking cookies",
+              isActive: activeTab === "privacy" || activeTab === "dataArchive" || activeTab === "deleteAccount",
             },
             {
               id: "notifications",
@@ -657,13 +895,27 @@ const SettingsPage: React.FC = () => {
               </DetailText>
               <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
             </DetailItem>
-            <DetailItem $clickable>
+            <DetailItem $clickable onClick={() => handleTabChange("dataArchive")}>
               <DetailIcon>
-                <AlertIcon size={20} />
+                <DownloadIcon size={20} />
               </DetailIcon>
               <DetailText>
-                <DetailTitle>Deactivate your account</DetailTitle>
-                <DetailSubtitle>Find out how you can deactivate your account.</DetailSubtitle>
+                <DetailTitle>Download an archive of your data</DetailTitle>
+                <DetailSubtitle>
+                  Get an interactive ZIP archive and offline HTML viewer of your personal data.
+                </DetailSubtitle>
+              </DetailText>
+              <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+            </DetailItem>
+            <DetailItem $clickable onClick={() => handleTabChange("deleteAccount")}>
+              <DetailIcon>
+                <TrashIcon size={20} />
+              </DetailIcon>
+              <DetailText>
+                <DetailTitle>Deactivate or delete your account</DetailTitle>
+                <DetailSubtitle>
+                  Permanently erase your account and personal data (GDPR Art. 17 / CCPA § 1798.105).
+                </DetailSubtitle>
               </DetailText>
               <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
             </DetailItem>
@@ -1067,6 +1319,657 @@ const SettingsPage: React.FC = () => {
             <Header>Settings</Header>
             <Box p={3} display="flex" justifyContent="center">
               <DetailSubtitle>This setting section is under development.</DetailSubtitle>
+            </Box>
+          </>
+        )}
+
+        {activeTab === "privacy" && (
+          <>
+            <Header>
+              <CircleIconButton onClick={() => handleTabChange("account")} style={{ marginRight: "8px" }}>
+                <ArrowLeftIcon size={20} />
+              </CircleIconButton>
+              Privacy &amp; Data Protection
+            </Header>
+            <Box px={4} pb={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "24px" }}>
+                Manage your personal data, exercise your privacy rights under GDPR and CCPA, and review how ModelScript
+                safeguards your data with zero third-party tracking.
+              </DetailSubtitle>
+
+              {/* GDPR & CCPA Subject Rights Card */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontSize: "18px", fontWeight: "bold", display: "block", marginBottom: "12px" }}>
+                  Your Rights Under GDPR &amp; CCPA
+                </DetailTitle>
+                <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(280px, 1fr))" gap={3}>
+                  <Box
+                    p={4}
+                    bg="var(--color-canvas-subtle)"
+                    border="1px solid var(--color-border-default)"
+                    borderRadius="12px"
+                    display="flex"
+                    flexDirection="column"
+                    justifyContent="space-between"
+                  >
+                    <Box>
+                      <Box display="flex" alignItems="center" gap={2} mb={2}>
+                        <Box color="var(--color-accent-fg)">
+                          <DownloadIcon size={20} />
+                        </Box>
+                        <Text fontWeight="bold" fontSize="16px">
+                          Data Portability
+                        </Text>
+                      </Box>
+                      <DetailSubtitle
+                        style={{ fontSize: "13px", lineHeight: "1.5", display: "block", marginBottom: "16px" }}
+                      >
+                        Download a complete, offline-browsable archive (.ZIP) of your models, posts, profile, compute
+                        ledger, and activity history (GDPR Art. 20 / CCPA § 1798.100).
+                      </DetailSubtitle>
+                    </Box>
+                    <PrimaryButton type="button" onClick={() => handleTabChange("dataArchive")}>
+                      <DownloadIcon size={16} />
+                      Download Data Archive
+                    </PrimaryButton>
+                  </Box>
+
+                  <Box
+                    p={4}
+                    bg="var(--color-canvas-subtle)"
+                    border="1px solid var(--color-border-default)"
+                    borderRadius="12px"
+                    display="flex"
+                    flexDirection="column"
+                    justifyContent="space-between"
+                  >
+                    <Box>
+                      <Box display="flex" alignItems="center" gap={2} mb={2}>
+                        <Box color="var(--color-danger-fg)">
+                          <TrashIcon size={20} />
+                        </Box>
+                        <Text fontWeight="bold" fontSize="16px">
+                          Right to Erasure
+                        </Text>
+                      </Box>
+                      <DetailSubtitle
+                        style={{ fontSize: "13px", lineHeight: "1.5", display: "block", marginBottom: "16px" }}
+                      >
+                        Permanently anonymize or delete your account, authored content, credentials, and telemetry
+                        records from our active databases (GDPR Art. 17 / CCPA § 1798.105).
+                      </DetailSubtitle>
+                    </Box>
+                    <DangerButton type="button" onClick={() => handleTabChange("deleteAccount")}>
+                      <TrashIcon size={16} />
+                      Delete Account &amp; Data
+                    </DangerButton>
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Data Processing & Compliance Architecture */}
+              <Box
+                mb={4}
+                p={4}
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+                borderRadius="12px"
+              >
+                <Box display="flex" alignItems="center" gap={2} mb={3}>
+                  <Box color="var(--color-success-fg)">
+                    <ShieldCheckIcon size={22} />
+                  </Box>
+                  <Text fontWeight="bold" fontSize="17px">
+                    First-Party Privacy Architecture
+                  </Text>
+                </Box>
+                <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.6", display: "block", marginBottom: "16px" }}>
+                  ModelScript is built around strict data minimization and user sovereignty:
+                </DetailSubtitle>
+
+                <Box display="flex" flexDirection="column" gap={3}>
+                  <Box display="flex" gap={3}>
+                    <Box color="var(--color-accent-fg)" mt={1}>
+                      <CheckCircleIcon size={18} />
+                    </Box>
+                    <Box>
+                      <Text fontWeight="600" fontSize="14px" display="block">
+                        Zero Third-Party Trackers
+                      </Text>
+                      <DetailSubtitle style={{ fontSize: "13px", lineHeight: "1.4" }}>
+                        We do not load external analytics libraries (Google Analytics, Meta Pixel, Hotjar) or sell user
+                        data to advertising brokers.
+                      </DetailSubtitle>
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" gap={3}>
+                    <Box color="var(--color-accent-fg)" mt={1}>
+                      <CheckCircleIcon size={18} />
+                    </Box>
+                    <Box>
+                      <Text fontWeight="600" fontSize="14px" display="block">
+                        Scrubbed &amp; Ephemeral Geo-Metrics
+                      </Text>
+                      <DetailSubtitle style={{ fontSize: "13px", lineHeight: "1.4" }}>
+                        To provide post creators with aggregated viewer geographic heatmaps, client IP addresses are
+                        resolved to country/region ISO codes purely in-memory. Raw IP addresses are scrubbed immediately
+                        and never saved to the database.
+                      </DetailSubtitle>
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" gap={3}>
+                    <Box color="var(--color-accent-fg)" mt={1}>
+                      <CheckCircleIcon size={18} />
+                    </Box>
+                    <Box>
+                      <Text fontWeight="600" fontSize="14px" display="block">
+                        Automated 30-Day Log Rotation
+                      </Text>
+                      <DetailSubtitle style={{ fontSize: "13px", lineHeight: "1.4" }}>
+                        Security audit events, authentication attempts, and operational server logs are kept for a
+                        maximum of 30 days, after which they are systematically purged by automated background routines.
+                      </DetailSubtitle>
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" gap={3}>
+                    <Box color="var(--color-accent-fg)" mt={1}>
+                      <CheckCircleIcon size={18} />
+                    </Box>
+                    <Box>
+                      <Text fontWeight="600" fontSize="14px" display="block">
+                        Self-Contained Data Archives
+                      </Text>
+                      <DetailSubtitle style={{ fontSize: "13px", lineHeight: "1.4" }}>
+                        Exported archives contain a standalone HTML viewer with zero external CDN dependencies, ensuring
+                        your historical data can be inspected completely offline for decades.
+                      </DetailSubtitle>
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Policy Reference */}
+              <Box
+                p={3}
+                bg="var(--color-canvas-default)"
+                border="1px solid var(--color-border-subtle)"
+                borderRadius="8px"
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Box>
+                  <Text fontWeight="600" fontSize="14px" display="block">
+                    Full Legal Documentation
+                  </Text>
+                  <DetailSubtitle style={{ fontSize: "13px" }}>
+                    Read our full terms and transparent data retention policy in the repository's PRIVACY.md.
+                  </DetailSubtitle>
+                </Box>
+                <a
+                  href="/PRIVACY.md"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    color: "var(--color-accent-emphasis)",
+                    fontWeight: 600,
+                    fontSize: "14px",
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  View Privacy Policy &rarr;
+                </a>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        {activeTab === "dataArchive" && (
+          <>
+            <Header>
+              <CircleIconButton onClick={() => handleTabChange("privacy")} style={{ marginRight: "8px" }}>
+                <ArrowLeftIcon size={20} />
+              </CircleIconButton>
+              Download Your Data Archive
+            </Header>
+            <Box px={4} pb={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
+                Request an archive of your ModelScript data under GDPR Article 20 (Right to Data Portability) and CCPA §
+                1798.100. Your archive is compiled directly in real-time.
+              </DetailSubtitle>
+
+              {archiveSuccess && (
+                <Box
+                  mb={4}
+                  p={3}
+                  bg="var(--color-success-subtle)"
+                  color="var(--color-success-fg)"
+                  borderRadius="8px"
+                  display="flex"
+                  gap={2}
+                  alignItems="flex-start"
+                >
+                  <CheckCircleIcon size={20} style={{ marginTop: "2px", flexShrink: 0 }} />
+                  <Box>
+                    <Text fontWeight="bold" display="block" mb={1}>
+                      Download Complete!
+                    </Text>
+                    <Text fontSize="14px" display="block">
+                      {archiveSuccess}
+                    </Text>
+                  </Box>
+                </Box>
+              )}
+
+              {archiveError && (
+                <Box
+                  mb={4}
+                  p={3}
+                  bg="var(--color-danger-subtle)"
+                  color="var(--color-danger-fg)"
+                  borderRadius="8px"
+                  display="flex"
+                  gap={2}
+                  alignItems="flex-start"
+                >
+                  <AlertIcon size={20} style={{ marginTop: "2px", flexShrink: 0 }} />
+                  <Text fontSize="14px">{archiveError}</Text>
+                </Box>
+              )}
+
+              {/* What's in the Archive Card */}
+              <Box
+                mb={4}
+                p={4}
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+                borderRadius="12px"
+              >
+                <Box display="flex" alignItems="center" gap={2} mb={2}>
+                  <PackageIcon size={20} />
+                  <Text fontWeight="bold" fontSize="16px">
+                    What's Included in Your Archive
+                  </Text>
+                </Box>
+                <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5", display: "block", marginBottom: "16px" }}>
+                  Similar to Twitter/X, your data is packaged with both a self-contained local viewer and raw JSON
+                  files:
+                </DetailSubtitle>
+
+                <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(260px, 1fr))" gap={3}>
+                  <Box
+                    p={3}
+                    bg="var(--color-canvas-default)"
+                    border="1px solid var(--color-border-subtle)"
+                    borderRadius="8px"
+                  >
+                    <Text fontWeight="bold" fontSize="14px" display="block" mb={1} color="var(--color-accent-fg)">
+                      index.html (Local Viewer)
+                    </Text>
+                    <DetailSubtitle style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                      Open in any browser offline. View your profile, social posts, models, compute billing ledger, and
+                      security logs with search &amp; dark mode.
+                    </DetailSubtitle>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    bg="var(--color-canvas-default)"
+                    border="1px solid var(--color-border-subtle)"
+                    borderRadius="8px"
+                  >
+                    <Text fontWeight="bold" fontSize="14px" display="block" mb={1} color="var(--color-accent-fg)">
+                      profile.json &amp; manifest.json
+                    </Text>
+                    <DetailSubtitle style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                      Account credentials summary, public SSH keys, verification status, SHA-256 archive checksums, and
+                      export timestamps.
+                    </DetailSubtitle>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    bg="var(--color-canvas-default)"
+                    border="1px solid var(--color-border-subtle)"
+                    borderRadius="8px"
+                  >
+                    <Text fontWeight="bold" fontSize="14px" display="block" mb={1} color="var(--color-accent-fg)">
+                      posts.json &amp; libraries.json
+                    </Text>
+                    <DetailSubtitle style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                      Authored social posts, comments, models, packages, and simulation scripts.
+                    </DetailSubtitle>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    bg="var(--color-canvas-default)"
+                    border="1px solid var(--color-border-subtle)"
+                    borderRadius="8px"
+                  >
+                    <Text fontWeight="bold" fontSize="14px" display="block" mb={1} color="var(--color-accent-fg)">
+                      billing.json &amp; compliance.json
+                    </Text>
+                    <DetailSubtitle style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                      Transaction receipts, credit top-ups, compute consumption, and GDPR Art. 20 legal compliance
+                      certificates.
+                    </DetailSubtitle>
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Active / In-Progress Job Card */}
+              {archiveJob && (archiveJob.status === "queued" || archiveJob.status === "processing") && (
+                <Box
+                  mb={4}
+                  p={4}
+                  bg="rgba(56, 139, 253, 0.08)"
+                  border="1px solid var(--color-accent-emphasis)"
+                  borderRadius="12px"
+                  display="flex"
+                  gap={3}
+                  alignItems="flex-start"
+                >
+                  <Box mt={1} color="var(--color-accent-fg)">
+                    <SyncIcon size={24} style={{ animation: "rotate 1.5s linear infinite" }} />
+                  </Box>
+                  <Box flex={1}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                      <Text fontWeight="bold" fontSize="16px">
+                        {archiveJob.status === "queued"
+                          ? `Archive Queued (Position #${archiveJob.queuePosition || 1}${archiveJob.concurrency ? ` • Concurrency: ${archiveJob.concurrency}` : ""})`
+                          : `Compiling Data Archive in Background Worker...`}
+                      </Text>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          padding: "2px 8px",
+                          borderRadius: "12px",
+                          backgroundColor: "rgba(56, 139, 253, 0.2)",
+                          color: "var(--color-accent-fg)",
+                        }}
+                      >
+                        {archiveJob.status}
+                      </span>
+                    </Box>
+                    <DetailSubtitle
+                      style={{ fontSize: "14px", lineHeight: "1.5", display: "block", marginBottom: "12px" }}
+                    >
+                      {archiveJob.status === "queued"
+                        ? `Your archive request has been placed in the worker queue. It will begin compiling automatically once a worker slot opens up (pool concurrency limit: ${archiveJob.concurrency || 2} jobs to prevent server memory pressure).`
+                        : `Background worker is compiling your models, posts, and compute ledger into a self-contained offline package (processing in concurrency-controlled worker pool of ${archiveJob.concurrency || 2}). You can stay on this page or leave and return anytime.`}
+                    </DetailSubtitle>
+                    <Box display="flex" gap={3} flexWrap="wrap" fontSize="12px" color="var(--color-text-muted)">
+                      <span>
+                        Format: <strong>{archiveJob.format.toUpperCase()}</strong>
+                      </span>
+                      <span>
+                        Job ID: <code style={{ fontSize: "11px" }}>{archiveJob.id}</code>
+                      </span>
+                      <span>
+                        Concurrency Limit: <strong>{archiveJob.concurrency || 2} jobs</strong>
+                      </span>
+                      <span>Enqueued: {new Date(archiveJob.createdAt).toLocaleTimeString()}</span>
+                    </Box>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Completed Ready for Download Card */}
+              {archiveJob && archiveJob.status === "completed" && (
+                <Box
+                  mb={4}
+                  p={4}
+                  bg="rgba(46, 160, 67, 0.1)"
+                  border="1px solid var(--color-success-fg)"
+                  borderRadius="12px"
+                >
+                  <Box display="flex" alignItems="center" gap={2} mb={2} color="var(--color-success-fg)">
+                    <CheckCircleIcon size={22} />
+                    <Text fontWeight="bold" fontSize="17px">
+                      Archive Ready for Download
+                    </Text>
+                  </Box>
+                  <DetailSubtitle
+                    style={{ fontSize: "14px", lineHeight: "1.5", display: "block", marginBottom: "16px" }}
+                  >
+                    Your {archiveJob.format.toUpperCase()} data archive was generated successfully on{" "}
+                    {new Date(archiveJob.completedAt || "").toLocaleString()}
+                    {archiveJob.fileSizeBytes ? ` (${(archiveJob.fileSizeBytes / 1024).toFixed(1)} KB)` : ""}. Staged
+                    securely on our server for 24 hours.
+                  </DetailSubtitle>
+                  <Box display="flex" gap={3} flexWrap="wrap">
+                    <PrimaryButton
+                      type="button"
+                      onClick={handleDownloadCompletedArchive}
+                      disabled={isDownloadingFinishedArchive}
+                    >
+                      <DownloadIcon size={16} />
+                      {isDownloadingFinishedArchive
+                        ? "Downloading..."
+                        : `Download Ready Archive (.${archiveJob.format.toUpperCase()})`}
+                    </PrimaryButton>
+                    <SecondaryButton type="button" onClick={() => setArchiveJob(null)}>
+                      Request New Archive
+                    </SecondaryButton>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Actions / Enqueue Options */}
+              <Box
+                p={4}
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+                borderRadius="12px"
+                display="flex"
+                flexDirection="column"
+                gap={3}
+              >
+                <Text fontWeight="bold" fontSize="16px">
+                  Request Archive (Asynchronous Worker Queue)
+                </Text>
+                <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5" }}>
+                  To guarantee system availability and prevent DoS memory spikes, archives are generated in a background
+                  worker pool with controlled concurrency. Select your format to queue a job:
+                </DetailSubtitle>
+
+                <Box display="flex" flexWrap="wrap" gap={3} mt={2}>
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => handleRequestArchiveJob("zip")}
+                    disabled={
+                      isSubmittingArchiveJob ||
+                      (archiveJob && (archiveJob.status === "queued" || archiveJob.status === "processing"))
+                    }
+                  >
+                    <DownloadIcon size={16} />
+                    {isSubmittingArchiveJob ? "Queueing..." : "Queue Complete Archive (.ZIP with HTML Viewer)"}
+                  </PrimaryButton>
+
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => handleRequestArchiveJob("json")}
+                    disabled={
+                      isSubmittingArchiveJob ||
+                      (archiveJob && (archiveJob.status === "queued" || archiveJob.status === "processing"))
+                    }
+                  >
+                    <FileCodeIcon size={16} />
+                    Queue Raw Data (.JSON)
+                  </SecondaryButton>
+
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => handleDownloadArchive("zip")}
+                    disabled={isDownloadingArchive}
+                    style={{ fontSize: "12px", opacity: 0.8 }}
+                    title="Direct synchronous export for testing"
+                  >
+                    Direct Download (.ZIP)
+                  </SecondaryButton>
+                </Box>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        {activeTab === "deleteAccount" && (
+          <>
+            <Header>
+              <CircleIconButton onClick={() => handleTabChange("privacy")} style={{ marginRight: "8px" }}>
+                <ArrowLeftIcon size={20} />
+              </CircleIconButton>
+              Deactivate or Delete Account
+            </Header>
+            <Box px={4} pb={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
+                Permanently erase your account and personal data pursuant to GDPR Article 17 (Right to Erasure) and CCPA
+                § 1798.105.
+              </DetailSubtitle>
+
+              {/* Danger Warning Box */}
+              <Box
+                mb={4}
+                p={4}
+                bg="rgba(218, 54, 51, 0.08)"
+                border="1px solid var(--color-danger-fg, #cf222e)"
+                borderRadius="12px"
+              >
+                <Box display="flex" alignItems="center" gap={2} mb={2} color="var(--color-danger-fg, #cf222e)">
+                  <AlertIcon size={22} />
+                  <Text fontWeight="bold" fontSize="17px">
+                    Warning: Irreversible Action
+                  </Text>
+                </Box>
+                <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.6", display: "block", marginBottom: "16px" }}>
+                  Deleting your account permanently anonymizes and erases your profile, email, authentication tokens,
+                  published posts, comments, models, and personal records. This action cannot be reversed.
+                </DetailSubtitle>
+
+                <Box
+                  p={3}
+                  bg="var(--color-canvas-default)"
+                  borderRadius="8px"
+                  border="1px solid var(--color-border-subtle)"
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Box>
+                    <Text fontWeight="600" fontSize="13px" display="block">
+                      Have you backed up your data?
+                    </Text>
+                    <DetailSubtitle style={{ fontSize: "12px" }}>
+                      You can download a complete ZIP archive with an offline HTML viewer before deleting.
+                    </DetailSubtitle>
+                  </Box>
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => handleTabChange("dataArchive")}
+                    style={{ padding: "6px 14px", fontSize: "13px" }}
+                  >
+                    <DownloadIcon size={14} />
+                    Download Archive First
+                  </SecondaryButton>
+                </Box>
+              </Box>
+
+              {deleteError && (
+                <Box
+                  mb={4}
+                  p={3}
+                  bg="var(--color-danger-subtle)"
+                  color="var(--color-danger-fg)"
+                  borderRadius="8px"
+                  display="flex"
+                  gap={2}
+                  alignItems="center"
+                >
+                  <AlertIcon size={18} />
+                  <Text fontSize="14px">{deleteError}</Text>
+                </Box>
+              )}
+
+              {/* Confirmation Form */}
+              <Box
+                p={4}
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+                borderRadius="12px"
+              >
+                <Text fontWeight="bold" fontSize="16px" display="block" mb={3}>
+                  Confirm Permanent Erasure
+                </Text>
+
+                <Box display="flex" flexDirection="column" gap={3} mb={4}>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={deleteConsentUnderstood}
+                      onChange={(e) => setDeleteConsentUnderstood(e.target.checked)}
+                      style={{ marginTop: "3px", width: "18px", height: "18px", cursor: "pointer" }}
+                    />
+                    <Text fontSize="14px" style={{ lineHeight: "1.4" }}>
+                      I understand that this action is permanent and my account, posts, models, and credits will be
+                      permanently destroyed.
+                    </Text>
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={deleteConsentBackedUp}
+                      onChange={(e) => setDeleteConsentBackedUp(e.target.checked)}
+                      style={{ marginTop: "3px", width: "18px", height: "18px", cursor: "pointer" }}
+                    />
+                    <Text fontSize="14px" style={{ lineHeight: "1.4" }}>
+                      I have exported any data archives I wish to keep or confirm that I do not need them.
+                    </Text>
+                  </label>
+                </Box>
+
+                <Box mb={4}>
+                  <FormLabel style={{ display: "block", marginBottom: "6px" }}>
+                    Type your username{" "}
+                    <span style={{ fontFamily: "monospace", color: "var(--color-danger-fg)" }}>"{user?.username}"</span>{" "}
+                    to confirm:
+                  </FormLabel>
+                  <FormInput
+                    placeholder={user?.username || "username"}
+                    value={deleteConfirmUsername}
+                    onChange={(e) => setDeleteConfirmUsername(e.target.value)}
+                    style={{ marginTop: 0 }}
+                  />
+                </Box>
+
+                <Box display="flex" justifyContent="flex-end" gap={3}>
+                  <SecondaryButton type="button" onClick={() => handleTabChange("privacy")}>
+                    Cancel
+                  </SecondaryButton>
+                  <DangerButton
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={
+                      isDeletingAccount ||
+                      deleteConfirmUsername.trim() !== user?.username ||
+                      !deleteConsentUnderstood ||
+                      !deleteConsentBackedUp
+                    }
+                  >
+                    <TrashIcon size={16} />
+                    {isDeletingAccount ? "Erasing Account..." : "Permanently Delete My Account"}
+                  </DangerButton>
+                </Box>
+              </Box>
             </Box>
           </>
         )}

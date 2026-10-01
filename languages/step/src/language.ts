@@ -34,6 +34,112 @@ export const stepLanguage = language({
     return null;
   },
 
+  actions: [
+    {
+      id: "open_cad_viewer",
+      title: "Open 3D CAD Viewer",
+      description: "Opens the interactive 3D WebGL assembly and solid geometry viewer.",
+      category: "query",
+      ui: {
+        editorTitle: {
+          icon: "$(package)",
+          group: "navigation@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_cae@0",
+        },
+        languageModelTool: {
+          name: "step_open_cad_viewer",
+          displayName: "Open 3D CAD Viewer",
+          modelDescription: "Opens the interactive 3D WebGL assembly and solid geometry viewer.",
+        },
+      },
+    },
+    {
+      id: "generate_multibody",
+      title: "Translate CAD Assembly to Modelica MultiBody",
+      description: "Extracts kinematic joints and mass properties to generate a Modelica MultiBody simulation model.",
+      category: "transform",
+      ui: {
+        editorTitle: {
+          icon: "$(symbol-structure)",
+          group: "navigation@2",
+        },
+        editorContextMenu: {
+          group: "2_transform@1",
+        },
+        explorerContextMenu: {
+          group: "modelscript_cae@1",
+        },
+        languageModelTool: {
+          name: "step_to_multibody",
+          displayName: "Translate STEP to Modelica MultiBody",
+          modelDescription: "Translates STEP geometry entities into Modelica MultiBody kinematic frames.",
+        },
+      },
+    },
+    {
+      id: "generate_fea_mesh",
+      title: "Discretize CAD to FEA Mesh (.inp)",
+      description: "Discretizes 3D CAD boundary surfaces and volumes into an FEA tetrahedral mesh deck.",
+      category: "transform",
+      ui: {
+        editorContextMenu: {
+          group: "2_transform@2",
+        },
+        explorerContextMenu: {
+          group: "modelscript_cae@2",
+        },
+        languageModelTool: {
+          name: "step_discretize_fea",
+          displayName: "Discretize CAD to FEA Mesh",
+          modelDescription: "Discretizes 3D CAD geometry into an FEA mesh deck (.inp).",
+        },
+      },
+    },
+    {
+      id: "generate_cfd_mesh",
+      title: "Discretize CAD to CFD Mesh (.su2)",
+      description: "Generates aerodynamic surface and volume computational meshes for SU2 CFD analysis.",
+      category: "transform",
+      ui: {
+        editorContextMenu: {
+          group: "2_transform@3",
+        },
+        explorerContextMenu: {
+          group: "modelscript_cae@3",
+        },
+        languageModelTool: {
+          name: "step_discretize_cfd",
+          displayName: "Discretize CAD to CFD Mesh",
+          modelDescription: "Discretizes CAD geometry into an SU2 CFD volume mesh (.su2).",
+        },
+      },
+    },
+    {
+      id: "create_fea_setup",
+      title: "Create FEA Simulation Study (.fea.mo)",
+      category: "transform",
+      description: "Scaffolds a Modelica static structural FEA study targeting this CAD model.",
+      ui: {
+        explorerContextMenu: {
+          group: "modelscript_cae@4",
+        },
+      },
+    },
+    {
+      id: "create_cfd_setup",
+      title: "Create CFD Simulation Study (.cfd.mo)",
+      category: "transform",
+      description: "Scaffolds a Modelica steady-state CFD study targeting this CAD model.",
+      ui: {
+        explorerContextMenu: {
+          group: "modelscript_cae@5",
+        },
+      },
+    },
+  ],
+
   mcp: {
     serverName: "step-mcp",
     serverVersion: "1.0.0",
@@ -116,7 +222,7 @@ export const stepLanguage = language({
   },
 
   lsp: {
-    fileExtension: ".step",
+    fileExtensions: [".step", ".stp", ".p21"],
     handlers: {
       "modelscript/generateMultiBody": async (ctx: any, params: { uri: string }) => {
         const model = ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel(params.uri);

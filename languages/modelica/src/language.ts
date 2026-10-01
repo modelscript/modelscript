@@ -64,6 +64,9 @@ export const modelicaLanguage = language({
         editorContextMenu: {
           group: "1_transform",
         },
+        explorerContextMenu: {
+          group: "modelscript_convert@0",
+        },
         languageModelTool: {
           name: "modelscript_flatten",
           displayName: "Flatten Modelica Model to DAE",
@@ -102,6 +105,9 @@ export const modelicaLanguage = language({
         editorContextMenu: {
           group: "1_run",
         },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
         keybinding: {
           key: "f5",
         },
@@ -110,6 +116,60 @@ export const modelicaLanguage = language({
           displayName: "Simulate Modelica Model",
           modelDescription:
             "Flattens and simulates a Modelica model with initial conditions and numerical integration.",
+        },
+      },
+    },
+    {
+      id: "export_fmu",
+      title: "Export FMU (FMI 2.0 / 3.0)",
+      description: "Exports a Modelica model as a Functional Mock-up Unit (FMU).",
+      category: "export",
+      inputs: {
+        name: { type: "string", description: "Fully qualified Modelica class name" },
+        version: { type: "string", enum: ["2.0", "3.0"], default: "2.0", description: "FMI specification version" },
+      },
+      ui: {
+        editorContextMenu: {
+          group: "2_transform@2",
+        },
+        explorerContextMenu: {
+          group: "modelscript_convert@1",
+        },
+        languageModelTool: {
+          name: "modelscript_export_fmu",
+          displayName: "Export Modelica Model to FMU",
+          modelDescription: "Exports a Modelica model as a Functional Mock-up Unit (FMU 2.0 or 3.0).",
+        },
+      },
+    },
+    {
+      id: "compile_wasm",
+      title: "Compile to WebAssembly",
+      description: "Compiles a Modelica model into a standalone WebAssembly module.",
+      category: "transform",
+      inputs: {
+        name: { type: "string", description: "Fully qualified Modelica class name" },
+      },
+      ui: {
+        editorContextMenu: {
+          group: "2_transform@3",
+        },
+        explorerContextMenu: {
+          group: "modelscript_convert@2",
+        },
+      },
+    },
+    {
+      id: "analyze_blt",
+      title: "Analyze BLT Structure",
+      description: "Analyzes Block Lower Triangular (BLT) partitioning and algebraic loops for a Modelica model.",
+      category: "query",
+      inputs: {
+        name: { type: "string", description: "Fully qualified Modelica class name" },
+      },
+      ui: {
+        editorContextMenu: {
+          group: "3_analysis@1",
         },
       },
     },

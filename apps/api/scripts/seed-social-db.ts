@@ -210,16 +210,18 @@ console.log("Creating dummy packages...");
 db.db.exec(`
   INSERT OR IGNORE INTO packages (name, description, repository_type, repository_url) VALUES ('Modelica', 'The Standard Modelica Library', 'git', 'https://github.com/modelica/ModelicaStandardLibrary');
 `);
-const pkg = db.db.prepare(`SELECT id FROM packages WHERE name = 'Modelica'`).get() as { id: number };
-db.db.exec(`
-  INSERT OR IGNORE INTO package_versions (package_id, version, tarball_path, tarball_shasum, tarball_size, manifest, published_by) 
-  VALUES (${pkg.id}, '4.0.0', '/tmp/dummy.tgz', 'dummy_sha', 1024, '{}', ${createdUsers["modelica"]});
+const pkg = db.getPackage("Modelica");
+if (pkg) {
+  db.db.exec(`
+    INSERT OR IGNORE INTO package_versions (package_id, version, tarball_path, tarball_shasum, tarball_size, manifest, published_by) 
+    VALUES (${pkg.id}, '4.0.0', '/tmp/dummy.tgz', 'dummy_sha', 1024, '{}', ${createdUsers["modelica"]});
   
   INSERT OR IGNORE INTO package_versions (package_id, version, tarball_path, tarball_shasum, tarball_size, manifest, published_by) 
   VALUES (${pkg.id}, '3.2.3', '/tmp/dummy2.tgz', 'dummy_sha2', 1024, '{}', ${createdUsers["modelica"]});
 
   INSERT OR IGNORE INTO dist_tags (package_id, tag, version) VALUES (${pkg.id}, 'latest', '4.0.0');
 `);
+}
 
 // 7. Linked Repositories for Dev User
 console.log("Linking repositories to dev user...");

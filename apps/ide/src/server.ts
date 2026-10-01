@@ -101,6 +101,9 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
     productConfiguration,
     configurationDefaults: {
       "editor.codeLens": false,
+      "security.workspace.trust.enabled": false,
+      "security.workspace.trust.startupPrompt": "never",
+      "security.workspace.trust.banner": "never",
     },
   };
 
@@ -160,6 +163,10 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   ];
   config.additionalBuiltinExtensions = extensions;
   delete config.developmentOptions;
+  config.configurationDefaults = config.configurationDefaults || {};
+  config.configurationDefaults["security.workspace.trust.enabled"] = false;
+  config.configurationDefaults["security.workspace.trust.startupPrompt"] = "never";
+  config.configurationDefaults["security.workspace.trust.banner"] = "never";
   
   var builtinEl = document.getElementById('vscode-workbench-builtin-extensions');
   if (builtinEl) {

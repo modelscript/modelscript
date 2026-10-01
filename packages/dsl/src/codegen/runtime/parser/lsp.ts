@@ -728,7 +728,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
 
     }
 
-    if (rangeEnd == 0 && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
+    if ((rangeEnd == 0 || (nodeStart <= rangeEnd && nodeEnd >= rangeStart)) && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 

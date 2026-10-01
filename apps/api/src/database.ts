@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 
 const DEFAULT_DB_DIR = "data";
@@ -201,10 +202,13 @@ export interface ScriptTemplateRow {
  */
 export class LibraryDatabase {
   readonly #db: Database.Database;
+  readonly #dbPath: string;
+  readonly #runner: SqliteMigrationRunner;
 
   constructor(dbDir?: string) {
     const dir = dbDir ?? DEFAULT_DB_DIR;
     const dbPath = path.join(dir, "modelscript.db");
+    this.#dbPath = dbPath;
 
     // Ensure directory exists
     if (!fs.existsSync(dir)) {
@@ -213,11 +217,17 @@ export class LibraryDatabase {
 
     this.#db = new Database(dbPath);
     this.#db.pragma("journal_mode = WAL");
+    this.#runner = new SqliteMigrationRunner(this.#db, dbPath);
+    this.#runner.runPendingSync(allMigrations);
     this.#initialize();
   }
 
   get db(): Database.Database {
     return this.#db;
+  }
+
+  get migrationRunner(): SqliteMigrationRunner {
+    return this.#runner;
   }
 
   resetDevData() {
@@ -1519,6 +1529,21 @@ export class LibraryDatabase {
       .run(accessToken, refreshToken ?? null, expiresAt ?? null, userId, provider);
   }
 
+  linkOAuthAccount(
+    userId: number,
+    provider: string,
+    providerUserId: string,
+    accessToken?: string,
+    refreshToken?: string,
+    expiresAt?: string,
+  ): void {
+    this.#db
+      .prepare(
+        `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(userId, provider, providerUserId, accessToken ?? null, refreshToken ?? null, expiresAt ?? null);
+  }
+
   getUserByEmail(email: string):
     | {
         id: number;
@@ -1589,6 +1614,66 @@ export class LibraryDatabase {
       count: number;
     };
     return (row?.count ?? 0) > 0;
+  }
+
+  isOpen(): boolean {
+    return this.#db.open;
+  }
+
+  getUserFederationInfo(userId: number):
+    | {
+        id: number;
+        actor_url?: string | null;
+        inbox_url?: string | null;
+        outbox_url?: string | null;
+        remote_domain?: string | null;
+        rsa_public_key?: string | null;
+        rsa_private_key?: string | null;
+      }
+    | undefined {
+    return this.#db
+      .prepare(
+        `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key FROM users WHERE id = ?`,
+      )
+      .get(userId) as any;
+  }
+
+  getRemoteFollowersInboxes(authorId: number): Array<{ inbox_url: string }> {
+    return this.#db
+      .prepare(
+        `SELECT u.inbox_url FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ? AND u.remote_domain IS NOT NULL`,
+      )
+      .all(authorId) as Array<{ inbox_url: string }>;
+  }
+
+  getTotalUsersCount(): number {
+    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM users`).get() as { count: number };
+    return row?.count ?? 0;
+  }
+
+  getAllUsers(): Array<{
+    id: number;
+    username: string;
+    email: string;
+    display_name?: string;
+    account_type: string;
+    status: string;
+    created_at: string;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT id, username, email, display_name, account_type, status, created_at FROM users WHERE status != 'deleted' ORDER BY id ASC`,
+      )
+      .all() as any[];
+  }
+
+  getTotalPostsCount(): number {
+    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM posts`).get() as { count: number };
+    return row?.count ?? 0;
+  }
+
+  setUserCreditBalance(userId: number, balance: number): void {
+    this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(balance, userId);
   }
 
   getFullProfileByUsername(username: string): any {
@@ -1844,6 +1929,20 @@ export class LibraryDatabase {
     `,
       )
       .all(postId) as { country: string; views: number }[];
+  }
+
+  getPostRegionStats(postId: number): { country: string; region: string; views: number }[] {
+    return this.#db
+      .prepare(
+        `
+      SELECT country_code as country, region_code as region, SUM(view_count) as views 
+      FROM post_location_stats 
+      WHERE post_id = ? AND region_code IS NOT NULL AND region_code != ''
+      GROUP BY country_code, region_code
+      ORDER BY views DESC
+    `,
+      )
+      .all(postId) as { country: string; region: string; views: number }[];
   }
 
   private hydratePost(p: any, currentUserId?: number): any {
@@ -2654,6 +2753,16 @@ export class LibraryDatabase {
       .all(limit, offset) as any[];
   }
 
+  /**
+   * GDPR / Security Compliance: Purges audit and operational security logs
+   * older than the specified retention window (default: 30 days).
+   */
+  purgeExpiredLogs(retentionDays: number = 30): { deletedCount: number } {
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.#db.prepare(`DELETE FROM audit_logs WHERE created_at < ?`).run(cutoffDate);
+    return { deletedCount: Number(result.changes) };
+  }
+
   // ── RSS Feeds ───────────────────────────────────────────────────
 
   createRssProfile(
@@ -2835,6 +2944,85 @@ export class LibraryDatabase {
       )
       .run(creatorId, type, source_type, viewConfig, title || null, thumbnailUrl || null, remoteOriginUrl || null);
     return Number(res.lastInsertRowid);
+  }
+
+  getAllArtifactViews(): any[] {
+    return this.#db.prepare(`SELECT id, view_type, view_config FROM artifact_views`).all();
+  }
+
+  updateArtifactViewConfig(id: number, viewConfig: string): void {
+    this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
+  }
+
+  getUserArchiveData(userId: number): {
+    posts: any[];
+    libraries: any[];
+    billingHistory: any[];
+    auditHistory: any[];
+    bookmarks: any[];
+    following: string[];
+    followers: string[];
+  } {
+    let posts: any[] = [];
+    try {
+      posts = this.#db
+        .prepare(
+          `SELECT id, content, created_at, published_at, like_count, reply_count, repost_count FROM posts WHERE user_id = ? ORDER BY id DESC`,
+        )
+        .all(userId);
+    } catch {}
+
+    let libraries: any[] = [];
+    try {
+      libraries = this.#db
+        .prepare(`SELECT name, version, created_at FROM library_releases WHERE published_by = ? ORDER BY id DESC`)
+        .all(userId);
+    } catch {}
+
+    let billingHistory: any[] = [];
+    try {
+      billingHistory = this.#db
+        .prepare(
+          `SELECT id, amount, balance_after, type, description, created_at FROM credit_transactions WHERE user_id = ? ORDER BY id DESC`,
+        )
+        .all(userId);
+    } catch {}
+
+    let auditHistory: any[] = [];
+    try {
+      auditHistory = this.#db
+        .prepare(
+          `SELECT action, resource_type, resource_id, created_at FROM audit_logs WHERE actor_id = ? ORDER BY id DESC LIMIT 200`,
+        )
+        .all(userId);
+    } catch {}
+
+    let bookmarks: any[] = [];
+    try {
+      bookmarks = this.#db
+        .prepare(
+          `SELECT b.post_id, p.content, b.created_at FROM bookmarks b LEFT JOIN posts p ON b.post_id = p.id WHERE b.user_id = ? ORDER BY b.id DESC`,
+        )
+        .all(userId);
+    } catch {}
+
+    let following: string[] = [];
+    try {
+      const rows = this.#db
+        .prepare(`SELECT u.username FROM follows f JOIN users u ON f.following_id = u.id WHERE f.follower_id = ?`)
+        .all(userId) as any[];
+      following = rows.map((r) => r.username);
+    } catch {}
+
+    let followers: string[] = [];
+    try {
+      const rows = this.#db
+        .prepare(`SELECT u.username FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ?`)
+        .all(userId) as any[];
+      followers = rows.map((r) => r.username);
+    } catch {}
+
+    return { posts, libraries, billingHistory, auditHistory, bookmarks, following, followers };
   }
 
   // ── Remote Packages (Federated Registry) ─────────────────────────

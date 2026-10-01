@@ -30,7 +30,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       for (const [uri, instances] of context.workspaceManager.documentInstances) {
         for (const instance of instances) {
-          if (!instance.instantiated) {
+          if (instance && !instance.instantiated && typeof instance.instantiate === "function") {
             try {
               instance.instantiate();
             } catch {
@@ -38,10 +38,14 @@ export function registerClassQueryEndpoints(context: LspContext) {
             }
           }
 
+          const kind = String(instance.classKind ?? instance.kind ?? "").toLowerCase();
           const isSimulatable =
-            instance.classKind === ModelicaClassKind.MODEL ||
-            instance.classKind === ModelicaClassKind.BLOCK ||
-            instance.classKind === ModelicaClassKind.CLASS;
+            kind === "model" ||
+            kind === "block" ||
+            kind === "class" ||
+            instance.classKind === ModelicaClassKind?.MODEL ||
+            instance.classKind === ModelicaClassKind?.BLOCK ||
+            instance.classKind === ModelicaClassKind?.CLASS;
           if (!isSimulatable) continue;
 
           // Check for experiment annotation
@@ -402,16 +406,29 @@ export function registerClassQueryEndpoints(context: LspContext) {
         };
         walk(tree.rootNode);
 
-        const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
         const classes: { name: string; kind: string }[] = [];
-        if (storedDef) {
-          for (const classDef of storedDef.classDefinitions) {
+        const findClassDefs = (n: any) => {
+          if (!n) return;
+          if (n.type === "class_definition" || n.type === "ClassDefinition") {
+            const spec = n.children?.find((c: any) => c.type === "class_specifier" || c.type === "ClassSpecifier") ?? n;
+            const longSpec =
+              spec.children?.find((c: any) => c.type === "long_class_specifier" || c.type === "LongClassSpecifier") ??
+              spec;
+            const idNode =
+              longSpec.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier") ??
+              n.childForFieldName?.("identifier");
+            const prefixes = n.children?.find((c: any) => c.type === "class_prefixes" || c.type === "ClassPrefixes");
             classes.push({
-              name: classDef.identifier?.text ?? "<anonymous>",
-              kind: String(classDef.classPrefixes?.classKind ?? "class"),
+              name: idNode?.text?.trim() ?? "<anonymous>",
+              kind: prefixes?.text?.trim() ?? "class",
             });
+            return;
           }
-        }
+          for (const ch of n.children || []) {
+            findClassDefs(ch);
+          }
+        };
+        findClassDefs(tree.rootNode);
         return { classes, syntaxErrors: errors };
       } catch (e) {
         return { classes: [], syntaxErrors: [e instanceof Error ? e.message : String(e)] };

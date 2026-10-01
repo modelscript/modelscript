@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/three": "^0.184.0",
+    "mermaid": "^11.16.1",
+    "three": "^0.184.0",
     "vitepress": "^1.1.4"
   }
 }

@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { disposeDiagram, dropComponentGhost, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram";
+import {
+  disposeDiagram,
+  dropComponentGhost,
+  getGraph,
+  initGraph,
+  renderDiagram,
+  setDiagramOptions,
+} from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
@@ -59,19 +66,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     propsRef.current = props;
   }, [props]);
 
-  useImperativeHandle(ref, () => ({
-    fitContent: () => {
-      const g = initGraph(props.theme === "vs-dark");
-      if (g) g.zoomToFit({ maxScale: 1, padding: 20 });
-    },
-    layout: () => {
-      if (typeof window !== "undefined") {
-        window.postMessage({ type: "autoLayout" }, "*");
-      }
-    },
-  }));
-
-  useEffect(() => {
+  const syncDiagramOptions = () => {
     if (!containerRef.current) return;
 
     setDiagramOptions({
@@ -124,22 +119,46 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       onUndo: () => propsRef.current.onUndo?.(),
       onRedo: () => propsRef.current.onRedo?.(),
     });
+  };
+
+  useImperativeHandle(ref, () => ({
+    fitContent: () => {
+      syncDiagramOptions();
+      const g = getGraph() ?? (containerRef.current ? initGraph(props.theme === "vs-dark") : null);
+      if (g) {
+        try {
+          g.zoomToFit({ maxScale: 1, padding: 20 });
+        } catch {
+          // ignore if zoom fails before layout
+        }
+      }
+    },
+    layout: () => {
+      if (typeof window !== "undefined") {
+        window.postMessage({ type: "autoLayout" }, "*");
+      }
+    },
+  }));
+
+  useEffect(() => {
+    syncDiagramOptions();
 
     return () => {
       disposeDiagram();
     };
-  }, []);
+  }, [props.theme]);
 
   useEffect(() => {
     if (props.diagramData && containerRef.current) {
+      syncDiagramOptions();
       renderDiagram(props.diagramData, props.theme === "vs-dark");
       if (props.onRenderComplete) props.onRenderComplete(props.diagramData);
     }
   }, [props.diagramData, props.theme]);
 
   useEffect(() => {
-    if (props.selectedName !== undefined && containerRef.current) {
-      const g = initGraph(props.theme === "vs-dark");
+    if (props.selectedName !== undefined) {
+      const g = getGraph();
       if (!g) return;
       if (!props.selectedName) {
         g.cleanSelection();
@@ -169,7 +188,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconsvg");
 
           if (className && containerRef.current) {
-            const g = initGraph(props.theme === "vs-dark");
+            syncDiagramOptions();
+            const g = getGraph() ?? initGraph(props.theme === "vs-dark");
             if (!g) return;
             const p = g.clientToLocal(e.clientX, e.clientY);
 

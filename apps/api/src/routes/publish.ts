@@ -201,9 +201,7 @@ export function publishRouter(
         // Broadcast ActivityPub Package Release Activity
         if (req.user?.id) {
           try {
-            const author = database.db.prepare("SELECT id, actor_url FROM users WHERE id = ?").get(req.user.id) as
-              | { id: number; actor_url?: string }
-              | undefined;
+            const author = database.getUserFederationInfo(req.user.id);
             if (author && author.actor_url) {
               const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
               const packageId = `${publicUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
@@ -300,9 +298,7 @@ export function publishRouter(
     // Broadcast ActivityPub Package Tombstone Activity
     if (req.user?.id) {
       try {
-        const author = database.db.prepare("SELECT id, actor_url FROM users WHERE id = ?").get(req.user.id) as
-          | { id: number; actor_url?: string }
-          | undefined;
+        const author = database.getUserFederationInfo(req.user.id);
         if (author && author.actor_url) {
           const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
           const packageId = `${publicUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;

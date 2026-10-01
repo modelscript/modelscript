@@ -1239,7 +1239,13 @@ end Manufacturing;
             },
             {
               cell_type: "code",
+              language: "modelica",
               source: ["model Simple", "  Real x(start = 1);", "equation", "  der(x) = -x;", "end Simple;"],
+            },
+            {
+              cell_type: "code",
+              language: "modelica",
+              source: ["simulate(Simple, stopTime = 5.0);"],
             },
           ],
         },
@@ -1413,9 +1419,6 @@ end Manufacturing;
         "  Declaration(Class(mo:ElectricalDevice))",
         "  Declaration(Class(mo:MechanicalDevice))",
         "  DisjointClasses(mo:ElectricalDevice mo:MechanicalDevice)",
-        "  Declaration(Class(mo:ElectroMechanicalDevice))",
-        "  SubClassOf(mo:ElectroMechanicalDevice mo:ElectricalDevice)",
-        "  SubClassOf(mo:ElectroMechanicalDevice mo:MechanicalDevice)",
         ")",
       ].join("\n"),
       "system.mo": [

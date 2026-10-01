@@ -135,6 +135,13 @@ export class PositionIndex {
   }
 
   /**
+   * Get the underlying source text.
+   */
+  getSourceText(): string {
+    return this.sourceText;
+  }
+
+  /**
    * Convert an LSP line/character position back to a character offset.
    */
   positionToCharOffset(line: number, character: number): number {
@@ -452,12 +459,19 @@ export class LSPBridge {
     const buildLevel = (parentId: SymbolId | null): LSPDocumentSymbol[] => {
       const entries = childrenOf.get(parentId) || [];
       return entries.map((entry) => {
-        const range = this.positions.rangeFromBytes(entry.startByte, entry.endByte);
+        const range = this.positions.rangeFromOffsets(
+          entry.startOffset ?? entry.startByte,
+          entry.endOffset ?? entry.endByte,
+        );
 
         let name = entry.name;
         if (name === "<anonymous>") {
           try {
-            const source = this.engine.cstText(entry.startByte, entry.endByte, entry);
+            const source = this.engine.cstText(
+              entry.startOffset ?? entry.startByte,
+              entry.endOffset ?? entry.endByte,
+              entry,
+            );
             if (source) {
               const firstLine = source.trim().split("\n")[0].trim();
               name = firstLine.length > 40 ? firstLine.substring(0, 37) + "..." : firstLine;
@@ -467,11 +481,33 @@ export class LSPBridge {
           }
         }
 
+        let selectionRange = range;
+        const nameField =
+          entry.fieldRanges?.name ??
+          (entry.fieldRanges ? entry.fieldRanges[entry.namePath] || entry.fieldRanges["identifier"] : undefined);
+        if (nameField) {
+          selectionRange = this.positions.rangeFromOffsets(
+            nameField.startOffset ?? nameField.startByte,
+            nameField.endOffset ?? nameField.endByte,
+          );
+        } else {
+          const text = this.positions.getSourceText();
+          if (text && entry.name && entry.name !== "<anonymous>") {
+            const startOff = entry.startOffset ?? entry.startByte;
+            const endOff = entry.endOffset ?? entry.endByte;
+            const slice = text.slice(startOff, Math.min(startOff + 300, endOff));
+            const idx = slice.indexOf(entry.name);
+            if (idx !== -1) {
+              selectionRange = this.positions.rangeFromOffsets(startOff + idx, startOff + idx + entry.name.length);
+            }
+          }
+        }
+
         const symbol: LSPDocumentSymbol = {
           name,
           kind: this.mapSymbolKind(entry.kind),
           range,
-          selectionRange: range, // Could be narrowed to name range
+          selectionRange,
           children: buildLevel(entry.id),
         };
         return symbol;
@@ -483,19 +519,78 @@ export class LSPBridge {
 
   // =========================================================================
   // textDocument/definition
-  definition(byteOffset: number): LSPLocation | null {
-    const target = this.definitionRaw(byteOffset);
+  definition(byteOffset: number, sourceText?: string): LSPLocation | null {
+    const target = this.definitionRaw(byteOffset, sourceText);
     if (!target) return null;
+
+    const nameField =
+      target.fieldRanges?.name ??
+      (target.fieldRanges ? target.fieldRanges[target.namePath] || target.fieldRanges["identifier"] : undefined);
+    let startOff = target.startOffset ?? target.startByte;
+    let endOff = target.endOffset ?? target.endByte;
+    if (nameField) {
+      startOff = nameField.startOffset ?? nameField.startByte;
+      endOff = nameField.endOffset ?? nameField.endByte;
+    } else {
+      const text = sourceText ?? this.positions.getSourceText();
+      if (text && target.name && target.name !== "<anonymous>") {
+        const baseStart = target.startOffset ?? target.startByte;
+        const baseEnd = target.endOffset ?? target.endByte;
+        const slice = text.slice(baseStart, Math.min(baseStart + 300, baseEnd));
+        const idx = slice.indexOf(target.name);
+        if (idx !== -1) {
+          startOff = baseStart + idx;
+          endOff = startOff + target.name.length;
+        }
+      }
+    }
+
     return {
-      uri: this.documentUri,
-      range: this.positions.rangeFromBytes(target.startByte, target.endByte),
+      uri: target.resourceId || this.documentUri,
+      range: this.positions.rangeFromOffsets(startOff, endOff),
     };
   }
 
   /** Returns the raw resolved symbol entry, preserving cross-document resourceIds */
-  definitionRaw(byteOffset: number): SymbolEntry | null {
+  definitionRaw(byteOffset: number, sourceText?: string): SymbolEntry | null {
+    const text = sourceText ?? this.positions.getSourceText();
+    let word = "";
+    if (text) {
+      let ws = byteOffset;
+      if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
+      while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
+      let we = ws;
+      while (we < text.length && /[a-zA-Z0-9_]/.test(text[we]!)) we++;
+      if (ws >= we || byteOffset < ws || byteOffset > we) {
+        return null;
+      }
+      word = text.slice(ws, we);
+    }
+
     const refEntry = this.findEntryAtOffset(byteOffset);
     if (!refEntry) return null;
+
+    if (word && (refEntry.kind === "Class" || refEntry.ruleName === "SourceFile")) {
+      const nameRange = refEntry.fieldRanges?.name;
+      const isOverClassName = nameRange
+        ? byteOffset >= (nameRange.startOffset ?? nameRange.startByte) &&
+          byteOffset <= (nameRange.endOffset ?? nameRange.endByte)
+        : word === refEntry.name && byteOffset < (refEntry.startOffset ?? refEntry.startByte) + 200;
+
+      if (!isOverClassName) {
+        // Cursor is inside the class body — resolve the word within this class scope
+        const targets = this.resolveName(word, refEntry.id);
+        if (targets.length > 0) return targets[0];
+        return null;
+      }
+    } else if (word && refEntry.kind === "Component") {
+      if (word !== refEntry.name) {
+        // Cursor is on component type or modifier
+        const targets = this.resolveName(word, refEntry.parentId);
+        if (targets.length > 0) return targets[0];
+        return null;
+      }
+    }
 
     const targets = this.resolveRef(refEntry);
     if (targets.length === 0) return null;
@@ -770,35 +865,92 @@ export class LSPBridge {
   // =========================================================================
 
   hover(byteOffset: number, sourceText?: string): LSPHover | null {
+    const text = sourceText ?? this.positions.getSourceText();
     if (sourceText) {
       const modHover = this.hoverModificationContext(byteOffset, sourceText);
       if (modHover) return modHover;
     }
 
-    const entry = this.findEntryAtOffset(byteOffset);
-    if (!entry) return null;
+    if (!text) return null;
 
-    let targetDecl = entry;
-    if (entry.kind === "Reference") {
-      const resolved = this.resolveRef(entry);
+    let wordStart = byteOffset;
+    if (wordStart > 0 && !/[a-zA-Z0-9_]/.test(text[wordStart]!) && /[a-zA-Z0-9_]/.test(text[wordStart - 1]!)) {
+      wordStart--;
+    }
+    while (wordStart > 0 && /[a-zA-Z0-9_]/.test(text[wordStart - 1]!)) wordStart--;
+    let wordEnd = wordStart;
+    while (wordEnd < text.length && /[a-zA-Z0-9_]/.test(text[wordEnd]!)) wordEnd++;
+
+    if (wordStart >= wordEnd || byteOffset < wordStart || byteOffset > wordEnd) {
+      return null;
+    }
+
+    const word = text.slice(wordStart, wordEnd);
+    const hoverRange = this.positions.rangeFromOffsets(wordStart, wordEnd);
+
+    const entry = this.findEntryAtOffset(byteOffset);
+    let targetDecl: SymbolEntry | null = null;
+
+    if (entry) {
+      if (entry.kind === "Class" || entry.ruleName === "SourceFile") {
+        const nameRange = entry.fieldRanges?.name;
+        const isOverClassName = nameRange
+          ? wordStart >= (nameRange.startOffset ?? nameRange.startByte) &&
+            wordEnd <= (nameRange.endOffset ?? nameRange.endByte)
+          : word === entry.name && wordStart < (entry.startOffset ?? entry.startByte) + 200;
+
+        if (isOverClassName) {
+          targetDecl = entry;
+        } else {
+          // Inside class body — resolve the word within this class scope
+          const resolved = this.resolveName(word, entry.id);
+          if (resolved.length > 0) {
+            targetDecl = resolved[0];
+          }
+        }
+      } else if (entry.kind === "Component") {
+        if (word === entry.name) {
+          targetDecl = entry;
+        } else {
+          const resolved = this.resolveName(word, entry.parentId);
+          if (resolved.length > 0) {
+            targetDecl = resolved[0];
+          }
+        }
+      } else if (entry.kind === "Reference") {
+        const resolved = this.resolveRef(entry);
+        if (resolved.length > 0) {
+          targetDecl = resolved[0];
+        }
+      } else {
+        targetDecl = entry;
+      }
+    }
+
+    if (!targetDecl) {
+      const scopeEntry = this.findScopeAtOffset(byteOffset);
+      const scopeId = scopeEntry?.id ?? null;
+      const resolved = this.resolveName(word, scopeId);
       if (resolved.length > 0) {
         targetDecl = resolved[0];
       }
     }
 
-    let startByte = entry.startByte;
-    let endByte = entry.endByte;
-    if (entry.fieldRanges) {
-      const nameRange =
-        entry.fieldRanges[entry.namePath] || entry.fieldRanges["name"] || entry.fieldRanges["identifier"];
-      if (nameRange) {
-        startByte = nameRange.startByte;
-        endByte = nameRange.endByte;
+    if (!targetDecl) {
+      // Check if word is a predefined type in the index
+      const predefinedIds = this.index.byName.get(word);
+      if (predefinedIds && predefinedIds.length > 0) {
+        const candidate = this.index.symbols.get(predefinedIds[0]!);
+        if (candidate?.metadata?.isPredefined) {
+          targetDecl = candidate;
+        }
       }
     }
-    const hoverRange = this.positions.rangeFromBytes(startByte, endByte);
+
+    if (!targetDecl) return null;
 
     const md = this.hoverEntry(targetDecl);
+    if (!md) return null;
 
     return {
       contents: md,
@@ -844,7 +996,7 @@ export class LSPBridge {
       return declStr;
     }
 
-    const source = this.engine.cstText(entry.startByte, entry.endByte, entry);
+    const source = this.engine.cstText(entry.startOffset ?? entry.startByte, entry.endOffset ?? entry.endByte, entry);
     if (source) {
       declStr = source
         .replace(/\s*"[^"]*"\s*;\s*$/, "")
@@ -925,7 +1077,7 @@ export class LSPBridge {
     if (typeDecls.length === 0) return null;
 
     const typeEntry = typeDecls[0];
-    const hoverRange = this.positions.rangeFromBytes(start, end);
+    const hoverRange = this.positions.rangeFromOffsets(start, end);
 
     const children = this.getExportedChildren(typeEntry.id);
     for (const child of children) {
@@ -959,14 +1111,37 @@ export class LSPBridge {
   // =========================================================================
 
   /** Returns the raw symbol entry for the type of the element at the offset, preserving cross-document resourceIds */
-  typeDefinitionRaw(byteOffset: number): SymbolEntry | null {
+  typeDefinitionRaw(byteOffset: number, sourceText?: string): SymbolEntry | null {
+    const text = sourceText ?? this.positions.getSourceText();
+    let word = "";
+    if (text) {
+      let ws = byteOffset;
+      if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
+      while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
+      let we = ws;
+      while (we < text.length && /[a-zA-Z0-9_]/.test(text[we]!)) we++;
+      if (ws >= we || byteOffset < ws || byteOffset > we) {
+        return null;
+      }
+      word = text.slice(ws, we);
+    }
+
     const refEntry = this.findEntryAtOffset(byteOffset);
     if (!refEntry) return null;
 
     let targetDecl = refEntry;
-    const resolved = this.resolveRef(refEntry);
-    if (resolved.length > 0) {
-      targetDecl = resolved[0];
+    if (word && (refEntry.kind === "Class" || refEntry.ruleName === "SourceFile")) {
+      const resolved = this.resolveName(word, refEntry.id);
+      if (resolved.length > 0) {
+        targetDecl = resolved[0];
+      } else {
+        return null;
+      }
+    } else {
+      const resolved = this.resolveRef(refEntry);
+      if (resolved.length > 0) {
+        targetDecl = resolved[0];
+      }
     }
 
     try {
@@ -1018,7 +1193,7 @@ export class LSPBridge {
       .filter((ref) => ref.resourceId === this.documentUri)
       .map((ref) => ({
         uri: this.documentUri,
-        range: this.positions.rangeFromBytes(ref.startByte, ref.endByte),
+        range: this.positions.rangeFromOffsets(ref.startOffset ?? ref.startByte, ref.endOffset ?? ref.endByte),
       }));
   }
 
@@ -1079,8 +1254,10 @@ export class LSPBridge {
     for (const id of this.getDocumentSymbolIds()) {
       const entry = this.index.symbols.get(id);
       if (!entry) continue;
-      if (entry.startByte <= offset && offset < entry.endByte) {
-        const size = entry.endByte - entry.startByte;
+      const start = entry.startOffset ?? entry.startByte;
+      const end = entry.endOffset ?? entry.endByte;
+      if (start <= offset && offset < end) {
+        const size = end - start;
         if (size < bestSize) {
           best = entry;
           bestSize = size;
@@ -1103,8 +1280,10 @@ export class LSPBridge {
     for (const id of this.getDocumentSymbolIds()) {
       const entry = this.index.symbols.get(id);
       if (!entry) continue;
-      if (entry.startByte <= offset && offset <= entry.endByte) {
-        const size = entry.endByte - entry.startByte;
+      const start = entry.startOffset ?? entry.startByte;
+      const end = entry.endOffset ?? entry.endByte;
+      if (start <= offset && offset <= end) {
+        const size = end - start;
         if (size < bestSize) {
           // Check if this entry is a scope-creator (has children in the index)
           const childIds = this.index.childrenOf.get(entry.id);

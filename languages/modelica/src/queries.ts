@@ -418,7 +418,10 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
             } else {
               subs.push({
                 kind: "expression",
-                cstBytes: [exprChild.startIndex ?? exprChild.startByte, exprChild.endIndex ?? exprChild.endByte],
+                cstBytes: [
+                  exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startByte,
+                  exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endByte,
+                ],
                 text: exprChild.text,
               });
             }
@@ -662,7 +665,12 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
   const nt = node.type.toLowerCase();
   if (nt === "modification" || nt === "elementmodification" || nt === "element_modification") {
     const expr = Cst.Modification.modificationExpression(node);
-    if (expr) bindingExpression = { kind: "expression", cstBytes: [expr.startIndex, expr.endIndex], text: expr.text };
+    if (expr)
+      bindingExpression = {
+        kind: "expression",
+        cstBytes: [expr.startOffset ?? expr.startIndex, expr.endOffset ?? expr.endIndex],
+        text: expr.text,
+      };
   }
 
   let finalMod: ModelicaModArgs = { args: [], bindingExpression, evaluationScopeId: scopeId };
@@ -1650,7 +1658,10 @@ export const classDefinitionQueries: Record<string, any> = {
         } else {
           subscripts.push({
             kind: "expression",
-            cstBytes: [exprChild.startIndex ?? exprChild.startByte, exprChild.endIndex ?? exprChild.endByte],
+            cstBytes: [
+              exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startByte,
+              exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endByte,
+            ],
             text: exprChild.text,
           });
         }
@@ -3185,7 +3196,10 @@ export const componentDeclarationQueries: Record<string, any> = {
           } else {
             subs.push({
               kind: "expression",
-              cstBytes: [exprChild.startIndex ?? exprChild.startByte, exprChild.endIndex ?? exprChild.endByte],
+              cstBytes: [
+                exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startByte,
+                exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endByte,
+              ],
               text: exprChild.text,
             });
           }

@@ -28,7 +28,7 @@ const dslGrammar = {
     Equation: ($: any) => seq($.Expr, "=", $.Expr, ";"),
     Expr: ($: any) => choice($.Identifier, $.Number),
     Identifier: () => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
-    Number: () => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
+    Number: () => semanticToken("number", /[0-9]+(?:\.[0-9]*)?/),
   },
   extras: () => [/\s/],
 };

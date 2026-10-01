@@ -48,6 +48,8 @@ export default defineConfig([
   {
     ignores: [
       "**/.react-router/**",
+      "**/.vitepress/cache/**",
+      "**/.vitepress/dist/**",
       "**/dist/**",
       "**/build/**",
       "**/coverage/**",

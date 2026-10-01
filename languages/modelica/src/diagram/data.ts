@@ -559,31 +559,39 @@ export function renderIconX6(
     children: [],
   };
 
+  const hasExtends = classInstance.extendsClassInstances?.some((e: any) => e.classInstance);
   for (const extendsClassInstance of classInstance.extendsClassInstances) {
     if (extendsClassInstance.classInstance && svg.children) {
       svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports, localDefs));
     }
   }
 
-  const icon: IIcon | null = classInstance.annotation("Icon", componentInstance);
+  const ownIcon: IIcon | null = hasExtends
+    ? classInstance.annotation("Icon", {
+        ...(typeof componentInstance === "object" ? componentInstance : {}),
+        ownOnly: true,
+      })
+    : classInstance.annotation("Icon", componentInstance);
+  const icon: IIcon | null = ownIcon ?? (hasExtends ? null : classInstance.annotation("Icon", componentInstance));
+  const coordSys = ownIcon?.coordinateSystem ?? classInstance.annotation("Icon", componentInstance)?.coordinateSystem;
+
   if (isRoot) {
-    applyCoordinateSystemX6(svg, icon?.coordinateSystem, true);
+    applyCoordinateSystemX6(svg, coordSys, true);
   }
 
-  if (!icon) {
+  if (!icon && (!hasExtends || !svg.children || svg.children.length === 0)) {
     if (isRoot && localDefs.length > 0 && svg.children) {
       svg.children.unshift({ tagName: "defs", children: localDefs });
     }
     return svg;
   }
 
-  if (!isRoot) {
-    applyCoordinateSystemX6(svg, icon.coordinateSystem, false);
+  if (!isRoot && coordSys) {
+    applyCoordinateSystemX6(svg, coordSys, false);
   }
 
   const group: X6Markup = { tagName: "g", children: [] };
-  if (svg.children) svg.children.push(group);
-  if (group.children) {
+  if (group.children && icon?.graphics) {
     for (const graphicItem of icon.graphics ?? []) {
       group.children.push(renderGraphicItemX6(graphicItem, localDefs, classInstance, componentInstance));
     }
@@ -648,6 +656,10 @@ export function renderIconX6(
         }
       }
     }
+  }
+
+  if (svg.children && group.children && group.children.length > 0) {
+    svg.children.push(group);
   }
 
   if (isRoot && localDefs.length > 0 && svg.children) {
@@ -1581,9 +1593,13 @@ export function buildComponentProperties(
           // ignore
         }
       }
-      if (!dialogAnn && element.abstractSyntaxNode) {
+      const compCst =
+        element.cstNode ??
+        element.abstractSyntaxNode ??
+        (element.id && (element as any).db?.cstNode ? (element as any).db.cstNode(element.id) : null);
+      if (!dialogAnn && compCst) {
         try {
-          dialogAnn = evaluator.evaluate(element.abstractSyntaxNode, "Dialog");
+          dialogAnn = evaluator.evaluate(compCst, "Dialog");
         } catch {
           // ignore
         }
@@ -1615,9 +1631,9 @@ export function buildComponentProperties(
           // ignore
         }
       }
-      if (!choicesAnn && element.abstractSyntaxNode) {
+      if (!choicesAnn && compCst) {
         try {
-          choicesAnn = evaluator.evaluate(element.abstractSyntaxNode, "choices");
+          choicesAnn = evaluator.evaluate(compCst, "choices");
         } catch {
           // ignore
         }

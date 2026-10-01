@@ -89,6 +89,10 @@ apps/api/public/thumbnails
 apps/morsel/.react-router/
 apps/ide/vscode-web/
 
+# VitePress
+**/.vitepress/cache/
+**/.vitepress/dist/
+
 # COIN-OR build artifacts
 Couenne/
 ThirdParty/

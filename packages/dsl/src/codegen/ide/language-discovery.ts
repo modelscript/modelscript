@@ -61,34 +61,38 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     const pkgName = pkg.name || `@modelscript/${dirent.name}`;
     let langDef: any = null;
 
-    // 1. Try importing via package name
-    try {
-      const mod = await dynamicImport(`${pkgName}/language`);
-      langDef =
-        mod.default ||
-        mod[`${dirent.name}Language`] ||
-        Object.values(mod).find((v: any) => v && typeof v === "object" && v.name);
-    } catch {
-      // 2. Fallback to direct file paths
-      const fileCandidates = [
-        path.join(langDir, "src", "language.ts"),
-        path.join(langDir, "language.ts"),
-        path.join(langDir, "dist", "src", "language.js"),
-        path.join(langDir, "dist", "language.js"),
-      ];
-      for (const candidate of fileCandidates) {
-        if (fs.existsSync(candidate)) {
-          try {
-            const mod = await dynamicImport(candidate);
-            langDef =
-              mod.default ||
-              mod[`${dirent.name}Language`] ||
-              Object.values(mod).find((v: any) => v && typeof v === "object" && v.name);
-            if (langDef) break;
-          } catch {
-            // continue
-          }
+    // 1. Try importing directly from workspace source files first (preserves recent edits under tsx)
+    const fileCandidates = [
+      path.join(langDir, "src", "language.ts"),
+      path.join(langDir, "language.ts"),
+      path.join(langDir, "dist", "src", "language.js"),
+      path.join(langDir, "dist", "language.js"),
+    ];
+    for (const candidate of fileCandidates) {
+      if (fs.existsSync(candidate)) {
+        try {
+          const mod = await dynamicImport(candidate);
+          langDef =
+            mod.default ||
+            mod[`${dirent.name}Language`] ||
+            Object.values(mod).find((v: any) => v && typeof v === "object" && v.name);
+          if (langDef) break;
+        } catch {
+          // continue
         }
+      }
+    }
+
+    // 2. Fallback to package import
+    if (!langDef) {
+      try {
+        const mod = await dynamicImport(`${pkgName}/language`);
+        langDef =
+          mod.default ||
+          mod[`${dirent.name}Language`] ||
+          Object.values(mod).find((v: any) => v && typeof v === "object" && v.name);
+      } catch {
+        // continue
       }
     }
 

@@ -29,6 +29,57 @@ const PREC = {
 
 export const cfdLanguage = language({
   name: "cfd",
+  fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2"],
+  lsp: {
+    fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2"],
+  },
+
+  actions: [
+    {
+      id: "open_cfd_viewer",
+      title: "Open 3D Aerodynamics Viewer",
+      description: "Opens the 3D surface mesh and boundary marker viewer for SU2 aerodynamic configurations.",
+      category: "query",
+      ui: {
+        editorTitle: {
+          icon: "$(package)",
+          group: "navigation@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_cae@0",
+        },
+        languageModelTool: {
+          name: "cfd_open_viewer",
+          displayName: "Open 3D CFD Aerodynamics Viewer",
+          modelDescription: "Renders 3D aerodynamic surface meshes, boundary markers, and pressure field probes.",
+        },
+      },
+    },
+    {
+      id: "materialize_config",
+      title: "Materialize CFD Config (.cfgt -> .cfg)",
+      description: "Evaluates embedded parameter expressions to generate a concrete SU2 configuration file.",
+      category: "transform",
+      ui: {
+        editorTitle: {
+          icon: "$(file-code)",
+          group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "2_transform@1",
+        },
+        explorerContextMenu: {
+          group: "modelscript_cae@1",
+        },
+        languageModelTool: {
+          name: "cfd_materialize_config",
+          displayName: "Materialize SU2 CFD Config",
+          modelDescription:
+            "Evaluates template parameter expressions in a CFD config template (.cfgt) to generate a concrete .cfg file.",
+        },
+      },
+    },
+  ],
 
   polyglot: {
     languages: ["modelica", "sysml2"],

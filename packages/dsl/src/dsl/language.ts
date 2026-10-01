@@ -156,6 +156,9 @@ export interface LanguageOptions<
   /** Diagnostic Rules (imperative AssemblyScript methods) */
   lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName, ModelAttrs>>;
 
+  /** Canonical Diagnostic / Error Codes Dictionary */
+  errorCodes?: Record<string, any>;
+
   /**
    * First-Class AssemblyScript / TypeScript Custom Classes
    * Injected as zero-GC `@unmanaged export class` definitions into WebAssembly linear memory.

@@ -41,7 +41,7 @@ declare global {
   var verificationResultsByUri: any;
   var simpleHash: (str: string) => number;
   // Hierarchy utility functions
-  var getTreeChildrenFast: (index: any, parentId?: string) => any[];
+  var getTreeChildrenFast: (index: any, parentId?: string, workspace?: any) => any[] | Promise<any[]>;
   var classKindFromEntry: (entry: any) => string;
   var isTreeVisible: (entry: any) => boolean;
   var getCompositeName: (entry: any, index: any) => string;

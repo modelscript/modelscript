@@ -38,6 +38,11 @@ export class DiagramService {
   public validationService?: any;
   public parserService?: any;
 
+  clearCache(): void {
+    this.diagramCache.clear();
+    (globalThis as any).diagramCache?.clear();
+  }
+
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
@@ -47,6 +52,7 @@ export class DiagramService {
   ) {
     this.validationService = validationService;
     this.parserService = parserService;
+    (globalThis as any).clearDiagramCache = () => this.clearCache();
   }
 
   async handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }): Promise<any> {
@@ -80,19 +86,20 @@ export class DiagramService {
       return cached.data;
     }
 
+    if (!dependenciesReady) {
+      return {
+        nodes: [],
+        edges: [],
+        coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
+        diagramBackground: null,
+        isLoading: true,
+      };
+    }
+
     const t0 = performance.now();
     const classInstance = this.workspaceManager.resolveClassInstance(params.uri, params.className);
 
     if (!classInstance) {
-      if (!dependenciesReady) {
-        return {
-          nodes: [],
-          edges: [],
-          coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
-          diagramBackground: null,
-          isLoading: true,
-        };
-      }
       // Dependencies are ready but class instance not yet available (re-validation in progress).
       // Return last cached data to avoid blanking the diagram during the brief window
       // between dependencies loading and re-validation completing.
@@ -130,7 +137,16 @@ export class DiagramService {
   getDiagramDispatch() {
     if (!this.diagramDispatch) {
       const modelicaBackend = new ModelicaDiagramBackend({
-        getDocumentInstances: (uri) => this.workspaceManager.documentInstances.get(uri),
+        getDocumentInstances: (uri) => {
+          let insts = this.workspaceManager.documentInstances.get(uri);
+          if (!insts || insts.length === 0 || typeof insts[0].annotation !== "function") {
+            const resolved = this.workspaceManager.resolveClassInstance(uri);
+            if (resolved) {
+              insts = [resolved];
+            }
+          }
+          return insts;
+        },
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
         flushValidation: async (uri: string) => {
@@ -278,8 +294,10 @@ export class DiagramService {
                 // Try to extract doc comment from source text
                 let description: string | undefined;
                 const docText = this.documentManager.documents.get(uri)?.getText();
-                if (docText && typeof sym.startByte === "number" && typeof sym.endByte === "number") {
-                  const snippet = docText.substring(sym.startByte, sym.endByte);
+                const startOff = sym.startOffset ?? sym.startByte;
+                const endOff = sym.endOffset ?? sym.endByte;
+                if (docText && typeof startOff === "number" && typeof endOff === "number") {
+                  const snippet = docText.substring(startOff, endOff);
                   const docMatch = snippet.match(/doc\s*\/\*\s*(.*?)\s*\*\//);
                   if (docMatch) description = docMatch[1];
                 }

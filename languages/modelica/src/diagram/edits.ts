@@ -10,6 +10,107 @@ import { Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
 
+function getNodeRange(node: any): { startLine: number; startCol: number; endLine: number; endCol: number } | null {
+  if (!node) return null;
+  if (node.startPosition && node.endPosition) {
+    return {
+      startLine: node.startPosition.row,
+      startCol: node.startPosition.column,
+      endLine: node.endPosition.row,
+      endCol: node.endPosition.column,
+    };
+  }
+  if (node.sourceRange) {
+    const sr = node.sourceRange;
+    return {
+      startLine: sr.startPosition?.row ?? sr.startRow ?? 0,
+      startCol: sr.startPosition?.column ?? sr.startCol ?? 0,
+      endLine: sr.endPosition?.row ?? sr.endRow ?? 0,
+      endCol: sr.endPosition?.column ?? sr.endCol ?? 0,
+    };
+  }
+  return null;
+}
+
+function getAnnotationClauseNode(node: any): any {
+  if (!node) return null;
+  if (node.annotationClause) return node.annotationClause;
+  const findAnn = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "annotation_clause" || n.type === "AnnotationClause") return n;
+    for (const ch of n.children || []) {
+      const res = findAnn(ch);
+      if (res) return res;
+    }
+    return null;
+  };
+  return findAnn(node);
+}
+
+function getDeclarationNode(node: any): any {
+  if (!node) return null;
+  if (node.declaration) return node.declaration;
+  const findDecl = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "declaration" || n.type === "Declaration") return n;
+    for (const ch of n.children || []) {
+      const res = findDecl(ch);
+      if (res) return res;
+    }
+    return null;
+  };
+  return findDecl(node);
+}
+
+function getDeclarationIdentNode(node: any): any {
+  if (!node) return null;
+  if (node.declaration?.identifier) return node.declaration.identifier;
+  if (node.identifier) return node.identifier;
+  const decl = getDeclarationNode(node) ?? node;
+  const findIdent = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "identifier" || n.type === "Identifier") return n;
+    for (const ch of n.children || []) {
+      const res = findIdent(ch);
+      if (res) return res;
+    }
+    return null;
+  };
+  return findIdent(decl);
+}
+
+function getModificationNode(node: any): any {
+  if (!node) return null;
+  const decl = getDeclarationNode(node) ?? node;
+  if (decl.modification) return decl.modification;
+  const findMod = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "modification" || n.type === "Modification") return n;
+    for (const ch of n.children || []) {
+      const res = findMod(ch);
+      if (res) return res;
+    }
+    return null;
+  };
+  return findMod(decl);
+}
+
+function getSubscriptsNode(node: any): any {
+  if (!node) return null;
+  const decl = getDeclarationNode(node) ?? node;
+  if (decl.arraySubscripts) return decl.arraySubscripts;
+  const findSub = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "array_subscripts" || n.type === "ArraySubscripts") return n;
+    for (const ch of n.children || []) {
+      const res = findSub(ch);
+      if (res) return res;
+    }
+    return null;
+  };
+  return findSub(decl);
+}
+
 // ── Placement edits (move / resize / rotate) ──
 
 export function computePlacementEdits(
@@ -51,13 +152,11 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const h = Math.round(item.height);
   const r = Math.round(-(item.rotation ?? 0));
 
-  const abstractNode = (component as any).abstractSyntaxNode;
-  if (!abstractNode?.sourceRange) return null;
+  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+  const compRange = getNodeRange(abstractNode);
+  if (!compRange) return null;
 
-  const startLine = abstractNode.startPosition.row;
-  const startCol = abstractNode.startPosition.column;
-  const endLine = abstractNode.endPosition.row;
-  const endCol = abstractNode.endPosition.column;
+  const { startLine, startCol, endLine, endCol } = compRange;
 
   const range = Range.create(startLine, startCol, endLine, endCol);
   const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
@@ -86,21 +185,22 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const newTransformationCore = `origin={${originX},${originY}}, extent={{${ex1},${ey1}},{${ex2},${ey2}}}${rotationPart}`;
   const newPlacement = `Placement(transformation(${newTransformationCore}))`;
 
-  const annotationClause = abstractNode.annotationClause;
+  const annotationClause = getAnnotationClauseNode(abstractNode);
+  const annRangeInfo = getNodeRange(annotationClause);
 
-  if (annotationClause?.sourceRange) {
+  if (annRangeInfo) {
     const annRange = Range.create(
-      annotationClause.startPosition.row,
-      annotationClause.startPosition.column,
-      annotationClause.endPosition.row,
-      annotationClause.endPosition.column,
+      annRangeInfo.startLine,
+      annRangeInfo.startCol,
+      annRangeInfo.endLine,
+      annRangeInfo.endCol,
     );
     const annText = getTextInRange(
       lines,
-      annotationClause.startPosition.row,
-      annotationClause.startPosition.column,
-      annotationClause.endPosition.row,
-      annotationClause.endPosition.column,
+      annRangeInfo.startLine,
+      annRangeInfo.startCol,
+      annRangeInfo.endLine,
+      annRangeInfo.endCol,
     );
 
     const annotationMatch = annText.match(/annotation\s*\(/);
@@ -168,14 +268,11 @@ function getPlacementEditIfMissing(
   const component = Array.from(classInstance.components).find((c: any) => c.name === item.name);
   if (!component) return null;
 
-  const abstractNode = (component as any).abstractSyntaxNode;
-  if (!abstractNode?.sourceRange) return null;
+  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+  const compRange = getNodeRange(abstractNode);
+  if (!compRange) return null;
 
-  const startLine = abstractNode.startPosition.row;
-  const startCol = abstractNode.startPosition.column;
-  const endLine = abstractNode.endPosition.row;
-  const endCol = abstractNode.endPosition.column;
-
+  const { startLine, startCol, endLine, endCol } = compRange;
   const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
 
   // If the component already has a Placement annotation, skip — no edit needed
@@ -201,17 +298,40 @@ export function computeConnectInsert(
     : " annotation(Line(color={0, 0, 255}))";
   const connectEq = `  connect(${source}, ${target})${annotation};\n`;
 
-  const astNode = (classInstance as any).abstractSyntaxNode;
-  const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
-  const modelEndLine = astNode?.sourceRange ? astNode.endPosition.row : lines.length - 1;
+  const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;
+  const classRange = getNodeRange(astNode);
+  const modelStartLine = classRange ? classRange.startLine : 0;
+  const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
 
   if (astNode) {
-    const classSpecifier = astNode.classOrInheritanceModification?.classSpecifier || astNode.classSpecifier;
+    const findEquationSection = (node: any): any => {
+      if (!node) return null;
+      if (node.type === "equation_section" || node.type === "EquationSection") {
+        return node;
+      }
+      for (const child of node.children || []) {
+        const found = findEquationSection(child);
+        if (found) return found;
+      }
+      return null;
+    };
+
+    const eqSection = findEquationSection(astNode);
+    if (eqSection) {
+      const eqRange = getNodeRange(eqSection);
+      if (eqRange) {
+        return [TextEdit.insert({ line: eqRange.endLine, character: 0 }, connectEq)];
+      }
+    }
+
+    const classSpecifier =
+      astNode.classOrInheritanceModification?.classSpecifier ||
+      astNode.classSpecifier ||
+      astNode.children?.find?.((c: any) => c.type === "class_specifier" || c.type === "long_class_specifier");
 
     const sections: any[] = classSpecifier?.sections ?? [];
 
     let lastEquationSection: any = null;
-
     let baseEquationSection: any = null;
 
     for (const section of sections) {
@@ -226,12 +346,9 @@ export function computeConnectInsert(
     }
 
     const targetSection = lastEquationSection || baseEquationSection;
-    if (targetSection && targetSection.sourceRange) {
-      // Insert at the end of the section, just before its end line.
-      // Wait, sourceRange has startPosition and endPosition.
-      // It's safer to just insert at its endPosition (before the next section or end).
-      const endLine = targetSection.endPosition.row;
-      return [TextEdit.insert({ line: endLine, character: 0 }, connectEq)];
+    const targetRange = getNodeRange(targetSection);
+    if (targetRange) {
+      return [TextEdit.insert({ line: targetRange.endLine, character: 0 }, connectEq)];
     }
 
     // No equation section exists. Insert just before the class specifies 'end'.
@@ -305,15 +422,11 @@ export function computeConnectRemove(
     return (c1 === source && c2 === target) || (c1 === target && c2 === source);
   });
 
-  if (!connectEq || !connectEq.ast?.sourceRange) return [];
+  const eqNode = connectEq?.cstNode ?? connectEq?.ast;
+  const eqRange = getNodeRange(eqNode);
+  if (!eqRange) return [];
 
-  const sr = connectEq.ast.sourceRange;
-  const startLine = sr.startPosition?.row ?? sr.startRow;
-  const startCol = sr.startPosition?.column ?? sr.startCol;
-  const endLine = sr.endPosition?.row ?? sr.endRow;
-  const endCol = sr.endPosition?.column ?? sr.endCol;
-
-  return [makeDeleteRange(lines, startLine, startCol, endLine, endCol)];
+  return [makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol)];
 }
 
 // ── Remove component(s) and their connect equations ──
@@ -339,17 +452,10 @@ export function computeComponentsDelete(
     const involvesComponent = [...nameSet].some(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
     );
-    if (involvesComponent && ce.ast?.sourceRange) {
-      const sr = ce.ast.sourceRange;
-      edits.push(
-        makeDeleteRange(
-          lines,
-          sr.startPosition?.row ?? sr.startRow,
-          sr.startPosition?.column ?? sr.startCol,
-          sr.endPosition?.row ?? sr.endRow,
-          sr.endPosition?.column ?? sr.endCol,
-        ),
-      );
+    const eqNode = ce.cstNode ?? ce.ast;
+    const eqRange = getNodeRange(eqNode);
+    if (involvesComponent && eqRange) {
+      edits.push(makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol));
     }
   });
 
@@ -358,17 +464,11 @@ export function computeComponentsDelete(
     const component = Array.from(classInstance.components).find((c: any) => c.name === name);
     if (!component) continue;
 
-    const node = (component as any).abstractSyntaxNode?.parent;
-    if (node?.sourceRange) {
-      edits.push(
-        makeDeleteRange(
-          lines,
-          node.startPosition.row,
-          node.startPosition.column,
-          node.endPosition.row,
-          node.endPosition.column,
-        ),
-      );
+    const compNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+    const parentNode = compNode?.parent ?? compNode;
+    const compRange = getNodeRange(parentNode);
+    if (compRange) {
+      edits.push(makeDeleteRange(lines, compRange.startLine, compRange.startCol, compRange.endLine, compRange.endCol));
     }
   }
 
@@ -396,13 +496,11 @@ export function computeEdgePointEdits(
       return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
     });
 
-    if (!connectEq?.ast?.sourceRange) continue;
+    const eqNode = connectEq?.cstNode ?? connectEq?.ast;
+    const eqRange = getNodeRange(eqNode);
+    if (!eqRange) continue;
 
-    const sr = connectEq.ast.sourceRange;
-    const startLine = sr.startPosition?.row ?? sr.startRow;
-    const startCol = sr.startPosition?.column ?? sr.startCol;
-    const endLine = sr.endPosition?.row ?? sr.endRow;
-    const endCol = sr.endPosition?.column ?? sr.endCol;
+    const { startLine, startCol, endLine, endCol } = eqRange;
 
     const key = `${startLine}:${startCol}`;
     if (seen.has(key)) continue;
@@ -421,21 +519,22 @@ export function computeEdgePointEdits(
 
     let newText = text;
 
-    const annotationClause = (connectEq.ast as any).annotationClause;
+    const annotationClause = getAnnotationClauseNode(eqNode);
+    const annRangeInfo = getNodeRange(annotationClause);
 
-    if (annotationClause?.sourceRange) {
+    if (annRangeInfo) {
       const annRange = Range.create(
-        annotationClause.startPosition.row,
-        annotationClause.startPosition.column,
-        annotationClause.endPosition.row,
-        annotationClause.endPosition.column,
+        annRangeInfo.startLine,
+        annRangeInfo.startCol,
+        annRangeInfo.endLine,
+        annRangeInfo.endCol,
       );
       const annText = getTextInRange(
         lines,
-        annotationClause.startPosition.row,
-        annotationClause.startPosition.column,
-        annotationClause.endPosition.row,
-        annotationClause.endPosition.column,
+        annRangeInfo.startLine,
+        annRangeInfo.startCol,
+        annRangeInfo.endLine,
+        annRangeInfo.endCol,
       );
 
       const annotationMatch = annText.match(/annotation\s*\(/);
@@ -477,42 +576,6 @@ export function computeEdgePointEdits(
             continue;
           }
         }
-      }
-    }
-
-    // Fallback if annotationClause doesn't exist
-    const annotationMatch = text.match(/annotation\s*\(/);
-    if (annotationMatch) {
-      const annStartIndex = annotationMatch.index ?? 0;
-      const annContentStart = annStartIndex + annotationMatch[0].length;
-      const annEndIndex = findMatchingParen(text, annContentStart);
-      if (annEndIndex !== -1) {
-        let annotationContent = text.substring(annContentStart, annEndIndex);
-
-        // Remove any existing Line(...)
-        const lineMatch = annotationContent.match(/Line\s*\(/);
-        if (lineMatch) {
-          const lineStart = lineMatch.index ?? 0;
-          const lineInner = lineStart + lineMatch[0].length;
-          const lineEnd = findMatchingParen(annotationContent, lineInner);
-          if (lineEnd !== -1) {
-            const before = annotationContent.substring(0, lineStart);
-            const after = annotationContent.substring(lineEnd + 1);
-            if (before.trimEnd().endsWith(",")) {
-              annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-            } else if (after.trimStart().startsWith(",")) {
-              annotationContent = before + after.trimStart().slice(1).trimStart();
-            } else {
-              annotationContent = before + after;
-            }
-          }
-        }
-
-        // Re-insert Line with new data
-        const trimmed = annotationContent.trim();
-        const separator = trimmed.length > 0 ? ", " : "";
-        newText =
-          text.substring(0, annContentStart) + trimmed + separator + newLineAnnotation + text.substring(annEndIndex);
       }
     } else {
       // No annotation: insert before semicolon
@@ -630,17 +693,13 @@ export function computeNameEdit(classInstance: ModelicaClassInstance, oldName: s
   const component = Array.from(classInstance.components).find((c: any) => c.name === oldName);
   if (!component) return [];
 
-  const abstractNode = (component as any).abstractSyntaxNode;
-  const identNode = abstractNode?.declaration?.identifier;
-  if (identNode?.sourceRange) {
+  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+  const identNode = getDeclarationIdentNode(abstractNode);
+  const identRange = getNodeRange(identNode);
+  if (identRange) {
     return [
       TextEdit.replace(
-        Range.create(
-          identNode.startPosition.row,
-          identNode.startPosition.column,
-          identNode.endPosition.row,
-          identNode.endPosition.column,
-        ),
+        Range.create(identRange.startLine, identRange.startCol, identRange.endLine, identRange.endCol),
         newName,
       ),
     ];
@@ -657,17 +716,22 @@ export function computeDescriptionEdit(
   const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
   if (!component) return [];
 
-  const abstractNode = (component as any).abstractSyntaxNode;
-  const descriptionNode = abstractNode?.description;
+  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+  const descriptionNode =
+    abstractNode?.description ??
+    abstractNode?.children?.find?.(
+      (c: any) => c.type === "comment" || c.type === "string_comment" || c.type === "description",
+    );
   const escapedDescription = newDescription.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
-  if (descriptionNode?.sourceRange) {
+  const descRange = getNodeRange(descriptionNode);
+  if (descRange) {
     if (newDescription === "") {
       const lines = docText.split("\n");
-      const descStartLine = descriptionNode.startPosition.row;
-      const descStartCol = descriptionNode.startPosition.column;
-      const descEndLine = descriptionNode.endPosition.row;
-      const descEndCol = descriptionNode.endPosition.column;
+      const descStartLine = descRange.startLine;
+      const descStartCol = descRange.startCol;
+      const descEndLine = descRange.endLine;
+      const descEndCol = descRange.endCol;
       const lineContent = lines[descStartLine];
       let col = descStartCol - 1;
       while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
@@ -678,28 +742,27 @@ export function computeDescriptionEdit(
     }
     return [
       TextEdit.replace(
-        Range.create(
-          descriptionNode.startPosition.row,
-          descriptionNode.startPosition.column,
-          descriptionNode.endPosition.row,
-          descriptionNode.endPosition.column,
-        ),
+        Range.create(descRange.startLine, descRange.startCol, descRange.endLine, descRange.endCol),
         `"${escapedDescription}"`, // no leading space when replacing
       ),
     ];
   } else {
     if (newDescription === "") return [];
-    const identNode = abstractNode?.declaration?.identifier;
-    const modificationNode = abstractNode?.declaration?.modification;
-    const subscriptsNode = abstractNode?.declaration?.arraySubscripts;
+    const identNode = getDeclarationIdentNode(abstractNode);
+    const modificationNode = getModificationNode(abstractNode);
+    const subscriptsNode = getSubscriptsNode(abstractNode);
 
-    let pos = null;
-    if (modificationNode?.sourceRange) {
-      pos = modificationNode.endPosition;
-    } else if (subscriptsNode?.sourceRange) {
-      pos = subscriptsNode.endPosition;
-    } else if (identNode?.sourceRange) {
-      pos = identNode.endPosition;
+    let pos: { row: number; column: number } | null = null;
+    const modRange = getNodeRange(modificationNode);
+    const subRange = getNodeRange(subscriptsNode);
+    const idRange = getNodeRange(identNode);
+
+    if (modRange) {
+      pos = { row: modRange.endLine, column: modRange.endCol };
+    } else if (subRange) {
+      pos = { row: subRange.endLine, column: subRange.endCol };
+    } else if (idRange) {
+      pos = { row: idRange.endLine, column: idRange.endCol };
     }
 
     if (pos) {
@@ -718,11 +781,11 @@ export function computeParameterEdit(
   const component = Array.from(classInstance.components).find((c: any) => c.name === componentName);
   if (!component) return [];
 
-  const abstractNode = (component as any).abstractSyntaxNode;
+  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
   if (!abstractNode) return [];
 
-  const declNode = abstractNode.declaration;
-  const modification = declNode?.modification;
+  const declNode = getDeclarationNode(abstractNode) ?? abstractNode;
+  const modification = getModificationNode(declNode);
 
   const shouldRemove = newValue === "";
 
@@ -738,33 +801,36 @@ export function computeParameterEdit(
 
     if (argIndex !== -1) {
       const existingArg = classMod.modificationArguments[argIndex];
+      const argRange = getNodeRange(existingArg);
       if (shouldRemove) {
-        let startLine = existingArg.startPosition.row;
-        let startCol = existingArg.startPosition.column;
-        let endLine = existingArg.endPosition.row;
-        let endCol = existingArg.endPosition.column;
+        let startLine = argRange?.startLine ?? existingArg.startPosition.row;
+        let startCol = argRange?.startCol ?? existingArg.startPosition.column;
+        let endLine = argRange?.endLine ?? existingArg.endPosition.row;
+        let endCol = argRange?.endCol ?? existingArg.endPosition.column;
 
         const nextArg = classMod.modificationArguments[argIndex + 1];
-        if (nextArg) {
-          endLine = nextArg.startPosition.row;
-          endCol = nextArg.startPosition.column;
+        const nextRange = getNodeRange(nextArg);
+        if (nextRange) {
+          endLine = nextRange.startLine;
+          endCol = nextRange.startCol;
         } else if (argIndex > 0) {
           const prevArg = classMod.modificationArguments[argIndex - 1];
-          startLine = prevArg.endPosition.row;
-          startCol = prevArg.endPosition.column;
+          const prevRange = getNodeRange(prevArg);
+          if (prevRange) {
+            startLine = prevRange.endLine;
+            startCol = prevRange.endCol;
+          }
         } else {
           // Only argument — remove the entire class modification
-          return [
-            TextEdit.replace(
-              Range.create(
-                classMod.startPosition.row,
-                classMod.startPosition.column,
-                classMod.endPosition.row,
-                classMod.endPosition.column,
+          const modRange = getNodeRange(classMod);
+          if (modRange) {
+            return [
+              TextEdit.replace(
+                Range.create(modRange.startLine, modRange.startCol, modRange.endLine, modRange.endCol),
+                "",
               ),
-              "",
-            ),
-          ];
+            ];
+          }
         }
 
         return [TextEdit.replace(Range.create(startLine, startCol, endLine, endCol), "")];
@@ -772,27 +838,18 @@ export function computeParameterEdit(
 
       // Update existing argument value
       const existingMod = existingArg.modification;
-      if (existingMod) {
+      const modRange = getNodeRange(existingMod);
+      if (modRange) {
         return [
           TextEdit.replace(
-            Range.create(
-              existingMod.startPosition.row,
-              existingMod.startPosition.column,
-              existingMod.endPosition.row,
-              existingMod.endPosition.column,
-            ),
+            Range.create(modRange.startLine, modRange.startCol, modRange.endLine, modRange.endCol),
             `=${newValue}`,
           ),
         ];
-      } else {
+      } else if (argRange) {
         return [
           TextEdit.replace(
-            Range.create(
-              existingArg.startPosition.row,
-              existingArg.startPosition.column,
-              existingArg.endPosition.row,
-              existingArg.endPosition.column,
-            ),
+            Range.create(argRange.startLine, argRange.startCol, argRange.endLine, argRange.endCol),
             `${parameterName}=${newValue}`,
           ),
         ];
@@ -801,24 +858,25 @@ export function computeParameterEdit(
       // Add new argument to existing modification
       if (shouldRemove) return [];
       const hasArgs = classMod.modificationArguments.length > 0;
-      const endPos = classMod.endPosition;
+      const modRange = getNodeRange(classMod);
+      const endLine = modRange?.endLine ?? classMod.endPosition.row;
+      const endCol = modRange?.endCol ?? classMod.endPosition.column;
       return [
-        TextEdit.insert(
-          { line: endPos.row, character: endPos.column - 1 },
-          `${hasArgs ? ", " : ""}${parameterName}=${newValue}`,
-        ),
+        TextEdit.insert({ line: endLine, character: endCol - 1 }, `${hasArgs ? ", " : ""}${parameterName}=${newValue}`),
       ];
     }
   } else {
     // No existing modification — insert after identifier
     if (shouldRemove) return [];
-    const identNode = declNode?.identifier;
-    const subscriptsNode = declNode?.arraySubscripts;
-    let pos = null;
-    if (subscriptsNode?.sourceRange) {
-      pos = subscriptsNode.endPosition;
-    } else if (identNode?.sourceRange) {
-      pos = identNode.endPosition;
+    const identNode = getDeclarationIdentNode(declNode);
+    const subscriptsNode = getSubscriptsNode(declNode);
+    let pos: { row: number; column: number } | null = null;
+    const subRange = getNodeRange(subscriptsNode);
+    const idRange = getNodeRange(identNode);
+    if (subRange) {
+      pos = { row: subRange.endLine, column: subRange.endCol };
+    } else if (idRange) {
+      pos = { row: idRange.endLine, column: idRange.endCol };
     }
 
     if (pos) {
@@ -858,9 +916,10 @@ export function computeComponentInsert(
 
   const lines = docText.split("\n");
 
-  const astNode = (classInstance as any).abstractSyntaxNode;
-  const modelStartLine = astNode?.sourceRange ? astNode.startPosition.row : 0;
-  const modelEndLine = astNode?.sourceRange ? astNode.endPosition.row : lines.length - 1;
+  const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;
+  const classRange = getNodeRange(astNode);
+  const modelStartLine = classRange ? classRange.startLine : 0;
+  const modelEndLine = classRange ? classRange.endLine : lines.length - 1;
 
   const keywords = ["protected", "initial equation", "initial algorithm", "equation", "algorithm", "end"];
   let insertLine = -1;

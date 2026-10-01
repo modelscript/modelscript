@@ -283,16 +283,10 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
   if (nodeType == $.string_literal) return TYPE_STRING;
   const firstChild = db.ast.getFirstChild(exprNode);
   if (firstChild == 0) {
-    if (
-      nodeType == 94 ||
-      nodeType == 93 ||
-      db.ast.textEquals(exprNode, "true") ||
-      db.ast.textEquals(exprNode, "false")
-    ) {
+    if (db.ast.textEquals(exprNode, "true") || db.ast.textEquals(exprNode, "false")) {
       return TYPE_BOOLEAN;
     }
     if (
-      nodeType == 95 ||
       db.ast.textEquals(exprNode, "time") ||
       db.ast.textEquals(exprNode, "der") ||
       db.ast.startsWith(exprNode, "der(")
@@ -366,15 +360,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     if (c2 != 0) {
       const c3 = db.ast.getNextSibling(c2);
       if (c3 != 0) {
-        let opType = db.ast.getType(c2);
-        const opChild = db.ast.getFirstChild(c2);
-        if (opChild != 0) {
-          opType = db.ast.getType(opChild);
-        }
         if (
-          (opType >= 78 && opType <= 83) ||
-          opType == 75 ||
-          opType == 76 ||
           db.ast.textEquals(c2, "==") ||
           db.ast.textEquals(c2, "<>") ||
           db.ast.textEquals(c2, "<") ||
@@ -387,8 +373,6 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
           return TYPE_BOOLEAN;
         }
         if (
-          opType == 84 ||
-          opType == 85 ||
           db.ast.textEquals(c2, "+") ||
           db.ast.textEquals(c2, "-") ||
           db.ast.textEquals(c2, "*") ||
@@ -409,17 +393,12 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
           if (rType != TYPE_UNKNOWN) return rType;
         }
       } else {
-        let opType = db.ast.getType(c1);
-        const opChild = db.ast.getFirstChild(c1);
-        if (opChild != 0) {
-          opType = db.ast.getType(opChild);
-        }
-        if (opType == 77 || db.ast.textEquals(c1, "not")) {
+        if (db.ast.textEquals(c1, "not")) {
           const operandType = inferExprType(db, c2, $);
           if (operandType >= 0x8000) return operandType;
           return TYPE_BOOLEAN;
         }
-        if (opType == 85 || opType == 84 || db.ast.textEquals(c1, "-") || db.ast.textEquals(c1, "+")) {
+        if (db.ast.textEquals(c1, "-") || db.ast.textEquals(c1, "+")) {
           return inferExprType(db, c2, $);
         }
       }
@@ -442,11 +421,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
       }
       let opSibling = db.ast.getNextSibling(leftChild);
       while (opSibling != 0 && opSibling != rightChild) {
-        const sType = db.ast.getType(opSibling);
         if (
-          (sType >= 78 && sType <= 83) ||
-          sType == 75 ||
-          sType == 76 ||
           db.ast.textEquals(opSibling, "==") ||
           db.ast.textEquals(opSibling, "<>") ||
           db.ast.textEquals(opSibling, "<") ||

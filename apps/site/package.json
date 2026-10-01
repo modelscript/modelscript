@@ -6,9 +6,9 @@
   "scripts": {
     "build": "react-router build",
     "clean": "rimraf build .react-router",
-    "dev": "react-router dev",
+    "dev": "react-router dev --port 3004",
     "lint": "eslint app",
-    "start": "react-router-serve ./build/server/index.js",
+    "start": "PORT=3004 react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {

@@ -120,9 +120,18 @@ test("test-package-icon", async () => {
   const cls = wm.resolveModelicaClassInstance("modelica:/lib/Modelica/Electrical/package.mo", "Modelica.Electrical");
 
   assert(cls, "Resolved class instance for Modelica.Electrical must not be null");
+  assert(cls.extendsClassInstances?.length > 0, "Modelica.Electrical must have extendsClassInstances");
+  assert.strictEqual(
+    cls.extendsClassInstances[0]?.classInstance?.name,
+    "Package",
+    "Base class must resolve to Modelica.Icons.Package",
+  );
   const icon = cls.annotation("Icon");
-  assert(icon, "Modelica.Electrical must have an Icon annotation (inherited from Modelica.Icons.Package)");
+  assert(icon, "Modelica.Electrical must have an Icon annotation");
   const svg = getClassIconSvg(cls, 20, false);
   assert(svg && svg.startsWith("<svg"), "Modelica.Electrical must produce a valid SVG icon");
+  assert(svg.includes("linearGradient"), "SVG must include gradient definition for cylinder fill");
+  assert(svg.includes("A 25 25"), "SVG must include rounded corners (radius 25) from Modelica.Icons.Package");
+  assert(svg.includes("<line"), "SVG must include electrical circuit line graphics");
   console.log("test-package-icon passed successfully! SVG length:", svg.length);
 });

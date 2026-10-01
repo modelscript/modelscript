@@ -348,13 +348,28 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
 const conditionCache = new WeakMap<any, boolean | undefined>();
 
 export function evaluateCondition(component: any, parentContext?: any): boolean | undefined {
-  const node = component.abstractSyntaxNode;
-  if (!node || !("conditionAttribute" in node) || !node.conditionAttribute?.condition) return true;
+  const node = component.cstNode ?? component.abstractSyntaxNode;
+  if (!node) return true;
+
+  let condition: any = null;
+  if ("conditionAttribute" in node) {
+    condition = node.conditionAttribute?.condition;
+  } else if (node.type === "component_declaration" || node.type === "ComponentDeclaration") {
+    const condAttr = node.children?.find(
+      (c: any) => c.type === "condition_attribute" || c.type === "ConditionAttribute",
+    );
+    condition = condAttr?.children?.find((c: any) => c.type === "expression") ?? condAttr?.children?.[1];
+  } else if (node.type === "component_clause" || node.type === "ComponentClause") {
+    const condAttr = node.children?.find(
+      (c: any) => c.type === "condition_attribute" || c.type === "ConditionAttribute",
+    );
+    condition = condAttr?.children?.find((c: any) => c.type === "expression") ?? condAttr?.children?.[1];
+  }
+  if (!condition) return true;
 
   const cached = conditionCache.get(component);
   if (cached !== undefined) return cached;
 
-  const condition = node.conditionAttribute.condition;
   const scope = parentContext ?? component.parent ?? component;
   try {
     const result = evaluateCSTExpression(condition, scope);

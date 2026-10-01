@@ -22,10 +22,16 @@ export function registerInlayHintProvider(context: LspContext) {
 
       for (const [, symbol] of fileIndex.symbols.entries()) {
         const sym = symbol as any;
-        if (!sym.name || (!sym.selectionRange && !sym.range)) continue;
+        if (!sym.name) continue;
 
-        const symStart = sym.selectionRange?.start ?? sym.range?.start;
-        const symEnd = sym.selectionRange?.end ?? sym.range?.end;
+        let symStart = sym.selectionRange?.start ?? sym.range?.start;
+        let symEnd = sym.selectionRange?.end ?? sym.range?.end;
+        if (!symStart && (sym.startOffset !== undefined || sym.startByte !== undefined)) {
+          symStart = document.positionAt(sym.startOffset ?? sym.startByte);
+        }
+        if (!symEnd && (sym.endOffset !== undefined || sym.endByte !== undefined)) {
+          symEnd = document.positionAt(sym.endOffset ?? sym.endByte);
+        }
         if (!symStart || !symEnd) continue;
 
         // Filter to requested visible range

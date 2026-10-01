@@ -10,7 +10,6 @@ const _filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
 
 const database = new LibraryDatabase();
-const db = database.db;
 
 // Global limit to prevent multiple puppeteer instances from crashing the server
 let isGenerating = false;
@@ -87,13 +86,13 @@ export async function generateThumbnail(artifactId: number): Promise<string | nu
 
     // 5. Update Database
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const row = db.prepare(`SELECT view_config FROM artifact_views WHERE id = ?`).get(artifactId) as any;
+    const row = database.getArtifactView(artifactId) as any;
     if (row && row.view_config) {
       const config = JSON.parse(row.view_config);
       config.thumbnailUrl = thumbnailUrlLight; // fallback
       config.thumbnailUrlLight = thumbnailUrlLight;
       config.thumbnailUrlDark = thumbnailUrlDark;
-      db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(JSON.stringify(config), artifactId);
+      database.updateArtifactViewConfig(artifactId, JSON.stringify(config));
       console.log(`[Thumbnail Worker] Successfully updated database for artifact ${artifactId}`);
     }
 

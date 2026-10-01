@@ -65,7 +65,7 @@ test("Unified Cloud Gateway API Lifecycle", async (t) => {
   });
 
   await t.test("POST /api/v1/cloud/dispatch rejects insufficient credits with 402", async () => {
-    db.db.prepare("UPDATE users SET credit_balance = 0.01 WHERE id = ?").run(devUser.id);
+    db.setUserCreditBalance(devUser.id, 0.01);
     const res = await request(app).post("/api/v1/cloud/dispatch").send({
       domain: "modelica",
       name: "HighEndClusterSim",
@@ -78,7 +78,7 @@ test("Unified Cloud Gateway API Lifecycle", async (t) => {
   });
 
   await t.test("POST /api/v1/cloud/dispatch accepts valid submission with 202 and returns jobId", async () => {
-    db.db.prepare("UPDATE users SET credit_balance = 100.0 WHERE id = ?").run(devUser.id);
+    db.setUserCreditBalance(devUser.id, 100.0);
     const res = await request(app).post("/api/v1/cloud/dispatch").send({
       domain: "modelica",
       name: "RC_Circuit",

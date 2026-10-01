@@ -32,8 +32,58 @@ const PREC = {
 
 export const scadLanguage = language({
   name: "scad",
+  fileExtensions: [".scad"],
+  lsp: {
+    fileExtensions: [".scad"],
+  },
 
   writeback: scadWriteback,
+
+  actions: [
+    {
+      id: "preview_csg",
+      title: "Preview 3D CSG Model",
+      description: "Evaluates constructive solid geometry boolean trees and renders 3D polygonal meshes.",
+      category: "geometry",
+      ui: {
+        editorTitle: {
+          icon: "$(package)",
+          group: "navigation@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
+        languageModelTool: {
+          name: "scad_preview_csg",
+          displayName: "Preview OpenSCAD CSG Model",
+          modelDescription: "Evaluates CSG booleans and renders 3D geometry from OpenSCAD source.",
+        },
+      },
+    },
+    {
+      id: "export_step",
+      title: "Export Shape to STEP CAD (.step)",
+      description: "Converts OpenSCAD boundary representations into standard ISO 10303 STEP solid bodies.",
+      category: "export",
+      ui: {
+        editorTitle: {
+          icon: "$(export)",
+          group: "navigation@2",
+        },
+        editorContextMenu: {
+          group: "2_transform@1",
+        },
+        explorerContextMenu: {
+          group: "modelscript_convert@1",
+        },
+        languageModelTool: {
+          name: "scad_export_step",
+          displayName: "Export OpenSCAD to STEP CAD",
+          modelDescription: "Converts OpenSCAD shapes into standard STEP CAD (.step) solid geometry.",
+        },
+      },
+    },
+  ],
 
   polyglot: {
     languages: ["sysml2", "step", "modelica"],

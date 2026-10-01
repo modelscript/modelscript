@@ -209,6 +209,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "db <action>",
+      "Database schema migration, health verification, and pre-flight snapshot management",
+      () => import("./commands/db.js"),
+      "Db",
+    ),
+  )
+  .command(
+    lazy(
       "cosim",
       "Co-simulation management (sessions, participants, FMUs, replay)",
       () => import("./commands/cosim.js"),
@@ -407,6 +415,14 @@ await yargs(rawArgs)
       "Manage, configure, and inspect ModelScript hub nodes",
       () => import("./commands/hub.js"),
       "Hub",
+    ),
+  )
+  .command(
+    lazy(
+      "archive [action] [users..]",
+      "GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits",
+      () => import("./commands/archive.js"),
+      "Archive",
     ),
   )
   .strictCommands()

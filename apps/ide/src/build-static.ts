@@ -140,6 +140,12 @@ function renderStaticWorkbench(): string {
         controlUrl: "",
       },
     },
+    configurationDefaults: {
+      "editor.codeLens": false,
+      "security.workspace.trust.enabled": false,
+      "security.workspace.trust.startupPrompt": "never",
+      "security.workspace.trust.banner": "never",
+    },
   };
 
   const template = getWorkbenchTemplate();

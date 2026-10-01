@@ -20,6 +20,7 @@ interface TreeNodeInfo {
   iconSvg?: string;
   iconUri?: vscode.Uri;
   language?: string;
+  description?: string;
   /** True when the icon is being lazily fetched — show a spinner placeholder. */
   pendingIcon?: boolean;
 }
@@ -96,11 +97,29 @@ export class LibraryTreeItem extends vscode.TreeItem {
   ) {
     super(info.name, collapsibleState);
     this.tooltip = info.compositeName;
-    this.description = info.classKind;
+    this.description = info.description ?? info.classKind;
     this.contextValue = info.classKind;
 
-    // Use explicit icon from DSL symbol config if present, or SVG icon file / data URI from LSP, otherwise fall back to codicons
-    if (info.icon) {
+    // Use OWL2 themed icons for ontology items
+    if (info.language === "owl2") {
+      if (info.classKind === "owl2-defined-class") {
+        this.iconPath = new vscode.ThemeIcon("symbol-class", new vscode.ThemeColor("charts.yellow"));
+      } else if (info.classKind === "owl2-class") {
+        this.iconPath = new vscode.ThemeIcon("symbol-class", new vscode.ThemeColor("charts.orange"));
+      } else if (info.classKind === "owl2-object-property") {
+        this.iconPath = new vscode.ThemeIcon("symbol-property", new vscode.ThemeColor("charts.blue"));
+      } else if (info.classKind === "owl2-data-property") {
+        this.iconPath = new vscode.ThemeIcon("symbol-field", new vscode.ThemeColor("charts.green"));
+      } else if (info.classKind === "owl2-individual") {
+        this.iconPath = new vscode.ThemeIcon("symbol-misc", new vscode.ThemeColor("charts.purple"));
+      } else if (info.classKind === "ontology") {
+        this.iconPath = new vscode.ThemeIcon("symbol-namespace", new vscode.ThemeColor("charts.cyan"));
+      } else if (info.icon) {
+        this.iconPath = new vscode.ThemeIcon(info.icon);
+      } else {
+        this.iconPath = classKindToIcon(info.classKind);
+      }
+    } else if (info.icon) {
       try {
         this.iconPath = new vscode.ThemeIcon(info.icon);
       } catch {
@@ -118,15 +137,30 @@ export class LibraryTreeItem extends vscode.TreeItem {
       this.iconPath = classKindToIcon(info.classKind);
     }
 
-    // For leaf items that can be added to a diagram, double-click triggers addToDiagram.
-    const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder"]);
-    const isAddable = !nonAddableKinds.has(info.classKind.toLowerCase());
-    if (isAddable && !info.hasChildren) {
+    // For OWL 2 items (classes, properties, individuals), clicking navigates to declaration
+    if (
+      info.language === "owl2" &&
+      (info.id.startsWith("__OWL_CLASS__:") ||
+        info.id.startsWith("__OWL_OBJ_PROP__:") ||
+        info.id.startsWith("__OWL_DATA_PROP__:") ||
+        info.id.startsWith("__OWL_INDIVIDUAL__:"))
+    ) {
       this.command = {
-        command: "modelscript.addToDiagram",
-        title: "Add to Diagram",
-        arguments: [info.compositeName, info.classKind, info.iconSvg],
+        command: "modelscript.owl2.goToDeclaration",
+        title: "Go to Declaration",
+        arguments: [info.compositeName],
       };
+    } else {
+      // For leaf items that can be added to a diagram, double-click triggers addToDiagram.
+      const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology"]);
+      const isAddable = !nonAddableKinds.has(info.classKind.toLowerCase());
+      if (isAddable && !info.hasChildren) {
+        this.command = {
+          command: "modelscript.addToDiagram",
+          title: "Add to Diagram",
+          arguments: [info.compositeName, info.classKind, info.iconSvg],
+        };
+      }
     }
   }
 }
@@ -226,7 +260,14 @@ export class LibraryTreeProvider
         if (this.iconCache.has(node.compositeName)) {
           const cached = this.iconCache.get(node.compositeName);
           if (cached) node.iconSvg = cached;
-        } else if (!node.id.startsWith("__LIB__:") && node.compositeName && !node.icon) {
+        } else if (
+          !node.id.startsWith("__LIB__:") &&
+          !node.id.startsWith("__ONTOLOGY__:") &&
+          !node.id.startsWith("__OWL_") &&
+          node.language !== "owl2" &&
+          node.compositeName &&
+          !node.icon
+        ) {
           // Icon not yet in cache and not a structural container — show spinner
           node.pendingIcon = true;
         }
@@ -244,10 +285,13 @@ export class LibraryTreeProvider
       );
 
       // Lazily fetch icons for nodes that don't have them yet.
-      // Exclude virtual library root containers (e.g. __LIB__:Modelica) which are structural groupings.
+      // Exclude virtual library root containers (e.g. __LIB__:Modelica, __ONTOLOGY__:) which are structural groupings.
       const nodesNeedingIcons = nodes.filter(
         (n) =>
           !n.id.startsWith("__LIB__:") &&
+          !n.id.startsWith("__ONTOLOGY__:") &&
+          !n.id.startsWith("__OWL_") &&
+          n.language !== "owl2" &&
           n.compositeName &&
           !this.iconCache.has(n.compositeName) &&
           !this.iconFetchPending.has(n.compositeName),

@@ -16,7 +16,10 @@ export class ReasonerService {
     this.workspaceManager = workspaceManager;
 
     this.reasoner = new TableauReasoner();
-    this.ontologyBuilder = new OntologyBuilder(this.reasoner, this.workspaceManager.unifiedWorkspace.owl2Store);
+    this.ontologyBuilder = new OntologyBuilder(
+      this.reasoner,
+      this.workspaceManager?.unifiedWorkspace?.owl2Store ?? (new Map() as any),
+    );
 
     this.initialize();
   }
@@ -32,13 +35,22 @@ export class ReasonerService {
    * and update the taxonomy natively without parsing full OWL2 strings.
    */
   public updateAndReason(workspaceVersions: Map<string, number>) {
+    if (this.reasoner.status === "idle") {
+      this.reasoner.init();
+    }
+    const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+    if (store && this.reasoner.axiomCount === 0 && store.axioms.length > 0) {
+      this.reasoner.loadOntology(store.axioms);
+    }
+
     // 1. Ask the store to compute the delta (if any) based on workspace versions
-    const delta = this.workspaceManager.unifiedWorkspace.owl2Store.update(workspaceVersions);
+    const delta = typeof store?.update === "function" ? store.update(workspaceVersions) : null;
 
     if (delta && (delta.assertions.length > 0 || delta.retractions.length > 0)) {
       const startTime = performance.now();
 
       // 2. Apply delta to the reasoner and re-classify
+      this.reasoner.applyDelta(delta);
       this.ontologyBuilder.applyDelta(delta);
       this.reasoner.classify();
 
@@ -61,6 +73,9 @@ export class ReasonerService {
           );
         }
       }
+      return consistency;
     }
+
+    return this.reasoner.checkConsistency();
   }
 }

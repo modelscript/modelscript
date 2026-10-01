@@ -20,9 +20,6 @@ import {
 import type { ParticipantMetadata } from "../mqtt/protocol.js";
 import { BaseCfdProvider } from "./cfd-provider.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 export interface NativeShmPatchConfig {
   name: string;
   patchId: number;
@@ -157,7 +154,20 @@ export class NativeShmCfdProvider extends BaseCfdProvider {
   }
 
   private async ensureDaemonRunning(): Promise<void> {
-    const defaultDaemon = path.resolve(__dirname, "../ipc/openfoam-daemon.py");
+    let defaultDaemon = "";
+    try {
+      if (
+        typeof fileURLToPath === "function" &&
+        typeof import.meta?.url === "string" &&
+        import.meta.url.startsWith("file:") &&
+        typeof path?.resolve === "function" &&
+        typeof path?.dirname === "function"
+      ) {
+        defaultDaemon = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../ipc/openfoam-daemon.py");
+      }
+    } catch {
+      // Non-file URL or browser environment
+    }
     const scriptPath = this.config.daemonScriptPath ?? defaultDaemon;
 
     // Check if socket already exists and is connectable

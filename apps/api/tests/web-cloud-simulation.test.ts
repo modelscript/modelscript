@@ -44,7 +44,7 @@ test("Web Cloud Simulation Lifecycle & Telemetry", async (t) => {
 
   await t.test("rejects submission with 402 when user has insufficient compute credits", async () => {
     // Drop user balance to 0.05 credits
-    db.db.prepare("UPDATE users SET credit_balance = 0.05 WHERE id = ?").run(devUser.id);
+    db.setUserCreditBalance(devUser.id, 0.05);
 
     // hpc-mpi-64 costs 150 credits/hr -> min charge 7.5 credits, dev user only has 0.05
     const res = await request(app).post("/api/v1/simulate").send({
@@ -63,7 +63,7 @@ test("Web Cloud Simulation Lifecycle & Telemetry", async (t) => {
 
   await t.test("submits simulation job and tracks status in jobQueue", async () => {
     // Restore user balance to 100 credits
-    db.db.prepare("UPDATE users SET credit_balance = 100.0 WHERE id = ?").run(devUser.id);
+    db.setUserCreditBalance(devUser.id, 100.0);
 
     const res = await request(app).post("/api/v1/simulate").send({
       modelName: "SimpleModel",

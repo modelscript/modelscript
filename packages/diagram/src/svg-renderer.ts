@@ -288,11 +288,12 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const labelText = (node.attrs?.label?.text as string) || (node.properties?.description as string) || node.id;
     const stereotype = (node.data?.ruleName as string) || (node.properties?.className as string);
     const multiplicity = (node.data?.multiplicity as number) || 1;
-    const iconUrl =
+    const rawIconUrl =
       (node.attrs?.icon?.href as string) ||
       (node.attrs?.icon?.["xlink:href"] as string) ||
       (node.data?.icon as string) ||
       (node.properties?.icon as string);
+    const iconUrl = typeof rawIconUrl === "string" && rawIconUrl.trim().length > 0 ? rawIconUrl.trim() : undefined;
 
     bodyParts.push(`<g id="${node.id}" transform="translate(${nx}, ${ny})" filter="url(#shadow)">`);
 

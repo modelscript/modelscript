@@ -17,6 +17,7 @@ import {
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
+import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
 import scadLangFallback from "@modelscript/scad/language";
@@ -127,10 +128,16 @@ export function startNodeServer(input?: any, output?: any) {
   globalThis.clearIconCache = clearIconCache;
   (globalThis as any).create_modelica_workspace_index = createModelicaWorkspaceIndex;
   (globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
+  (globalThis as any).create_owl2_workspace_index = createOWL2WorkspaceIndex;
   (globalThis as any).create_modelica_query_engine = createModelicaQueryEngine;
   (globalThis as any).create_sysml2_query_engine = createSysML2QueryEngine;
+  (globalThis as any).create_owl2_query_engine = createOWL2QueryEngine;
+  (globalThis as any).createModelicaWorkspaceIndex = createModelicaWorkspaceIndex;
+  (globalThis as any).createSysML2WorkspaceIndex = createSysML2WorkspaceIndex;
+  (globalThis as any).createOWL2WorkspaceIndex = createOWL2WorkspaceIndex;
   (globalThis as any).createModelicaQueryEngine = createModelicaQueryEngine;
   (globalThis as any).createSysML2QueryEngine = createSysML2QueryEngine;
+  (globalThis as any).createOWL2QueryEngine = createOWL2QueryEngine;
   (globalThis as any).injectPredefinedTypes = injectPredefinedTypes;
   (globalThis as any).AnnotationEvaluator = AnnotationEvaluator;
   (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
@@ -497,6 +504,7 @@ export function startNodeServer(input?: any, output?: any) {
 
   const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const activeShortDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const activeSyntaxDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const lastSyntaxErrorsCount = new Map<string, number>();
 
   documents.onDidChangeContent((change) => {
@@ -530,7 +538,13 @@ export function startNodeServer(input?: any, output?: any) {
       validationService.revalidationTimer = null;
     }
 
-    // Cancel active Tier 2 and Tier 3 timers for this URI
+    // Cancel active Tier 1 syntax, Tier 2, and Tier 3 timers for this URI
+    const existingSyntaxTimer = activeSyntaxDebounceTimers.get(uri);
+    if (existingSyntaxTimer) {
+      clearTimeout(existingSyntaxTimer);
+      activeSyntaxDebounceTimers.delete(uri);
+    }
+
     const existingTier2 = activeShortDebounceTimers.get(uri);
     if (existingTier2) {
       clearTimeout(existingTier2);
@@ -558,6 +572,7 @@ export function startNodeServer(input?: any, output?: any) {
 
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
+          validationService.adjustDiagnostics(uri, edit);
           tree = parser.parse(text, oldCached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
         } else if (oldCached) {
           tree = oldCached.tree;
@@ -570,13 +585,24 @@ export function startNodeServer(input?: any, output?: any) {
           const { syntaxDiags } = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
           const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
-          // Surface syntax errors if errors are present or if previous errors were just cleared
-          if (syntaxDiags.length > 0 || lastCount > 0) {
-            lastSyntaxErrorsCount.set(uri, syntaxDiags.length);
+          // Surface syntax errors: clear immediately when 0, debounce by 180ms when editing
+          if (syntaxDiags.length === 0 && lastCount > 0) {
+            lastSyntaxErrorsCount.set(uri, 0);
             const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-            const allDiags = [...syntaxDiags, ...cachedSemantic];
-            if (allDiags.length > 1000) allDiags.length = 1000;
-            connection.sendDiagnostics({ uri, diagnostics: allDiags });
+            connection.sendDiagnostics({ uri, diagnostics: cachedSemantic });
+          } else if (syntaxDiags.length > 0) {
+            activeSyntaxDebounceTimers.set(
+              uri,
+              setTimeout(() => {
+                activeSyntaxDebounceTimers.delete(uri);
+                if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
+                lastSyntaxErrorsCount.set(uri, syntaxDiags.length);
+                const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
+                const allDiags = [...syntaxDiags, ...cachedSemantic];
+                if (allDiags.length > 1000) allDiags.length = 1000;
+                connection.sendDiagnostics({ uri, diagnostics: allDiags });
+              }, 180),
+            );
           }
         }
       } catch (e: any) {
@@ -638,22 +664,25 @@ export function startNodeServer(input?: any, output?: any) {
   });
 
   documents.onDidClose((e) => {
+    const syntaxTimer = activeSyntaxDebounceTimers.get(e.document.uri);
+    if (syntaxTimer) {
+      clearTimeout(syntaxTimer);
+      activeSyntaxDebounceTimers.delete(e.document.uri);
+    }
     activeShortDebounceTimers.delete(e.document.uri);
     lastSyntaxErrorsCount.delete(e.document.uri);
-    const timer = validationService.activeValidationTimers.get(e.document.uri);
-    if (timer) {
-      clearTimeout(timer);
-      validationService.activeValidationTimers.delete(e.document.uri);
-    }
-    workspaceManager.workspaceInstances.delete(e.document.uri);
-    workspaceManager.documentInstances.delete(e.document.uri);
-    workspaceManager.documentContexts.delete(e.document.uri);
+    validationService.disposeDocument(e.document.uri);
+    workspaceManager.disposeDocument(e.document.uri);
     const oldTree = documentManager.documentTrees.get(e.document.uri);
     if (oldTree) {
       oldTree.tree.delete();
       documentManager.documentTrees.delete(e.document.uri);
     }
-    connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
+    const persistentDiags = [
+      ...(validationService.reasonerDiagnosticsByUri?.get(e.document.uri) || []),
+      ...(validationService.verificationDiagnosticsByUri?.get(e.document.uri) || []),
+    ];
+    connection.sendDiagnostics({ uri: e.document.uri, diagnostics: persistentDiags });
 
     // Re-validate remaining open documents
     for (const doc of documents.all()) {
@@ -672,7 +701,13 @@ export function startNodeServer(input?: any, output?: any) {
     diagramService,
     state: {
       activeValidationPromises: validationService.activeValidationPromises,
-      sharedContext: parserService.sharedContext,
+      get sharedContext() {
+        return parserService.sharedContext ?? (globalThis as any).sharedContext;
+      },
+      set sharedContext(v) {
+        parserService.sharedContext = v;
+        (globalThis as any).sharedContext = v;
+      },
       fqnCache: new Map(),
       fqnCacheIndex: new Map(),
       documentRevisions: validationService.documentRevisions,

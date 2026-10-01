@@ -268,10 +268,18 @@ export class ParserService {
       getText: (startByte: number, endByte: number, entry?: any): string | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
-        const docTree = this.documentManager.documentTrees.get(uri);
+        const docTrees =
+          this.documentManager?.documentTrees ??
+          (this.workspaceManager as any)?.documentManager?.documentTrees ??
+          (this.documentManager as any)?.documentManager?.documentTrees;
+        const docTree = docTrees?.get(uri);
         if (docTree && docTree.tree && docTree.text) return docTree.text.substring(startByte, endByte);
 
-        let lazyCache = this.documentManager.lazyLibTrees.get(uri);
+        const lazyLibTrees =
+          this.documentManager?.lazyLibTrees ??
+          (this.workspaceManager as any)?.documentManager?.lazyLibTrees ??
+          (this.documentManager as any)?.documentManager?.lazyLibTrees;
+        let lazyCache = lazyLibTrees?.get(uri);
         if (!lazyCache && this.sharedContext) {
           try {
             const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
@@ -286,10 +294,10 @@ export class ParserService {
                 text,
               );
               lazyCache = { tree, text };
-              this.documentManager.lazyLibTrees.set(uri, lazyCache);
-              if (this.documentManager.lazyLibTrees.size > 50) {
-                const oldest = this.documentManager.lazyLibTrees.keys().next().value;
-                const oldCache = this.documentManager.lazyLibTrees.get(oldest);
+              lazyLibTrees?.set(uri, lazyCache);
+              if (lazyLibTrees && lazyLibTrees.size > 50) {
+                const oldest = lazyLibTrees.keys().next().value;
+                const oldCache = lazyLibTrees.get(oldest);
                 if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
                   try {
                     oldCache.tree.delete();
@@ -297,7 +305,7 @@ export class ParserService {
                     /* ignore */
                   }
                 }
-                this.documentManager.lazyLibTrees.delete(oldest);
+                lazyLibTrees.delete(oldest);
               }
             }
           } catch {
@@ -310,7 +318,11 @@ export class ParserService {
       getNode: (startByte: number, endByte: number, entry?: any): any | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
-        const docTree = this.documentManager.documentTrees.get(uri);
+        const docTrees =
+          this.documentManager?.documentTrees ??
+          (this.workspaceManager as any)?.documentManager?.documentTrees ??
+          (this.documentManager as any)?.documentManager?.documentTrees;
+        const docTree = docTrees?.get(uri);
         if (docTree && docTree.tree) {
           let n = docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
           if (n && n.type === "source_file") {
@@ -324,7 +336,11 @@ export class ParserService {
           return n;
         }
 
-        let lazyCache = this.documentManager.lazyLibTrees.get(uri);
+        const lazyLibTrees =
+          this.documentManager?.lazyLibTrees ??
+          (this.workspaceManager as any)?.documentManager?.lazyLibTrees ??
+          (this.documentManager as any)?.documentManager?.lazyLibTrees;
+        let lazyCache = lazyLibTrees?.get(uri);
         if (!lazyCache && this.sharedContext) {
           try {
             const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
@@ -565,7 +581,7 @@ export class ParserService {
           { id: "modelica", wasm: "modelica.wasm", displayName: "Modelica", fileExtensions: [".mo"] },
           { id: "sysml2", wasm: "sysml2.wasm", displayName: "SysML v2", fileExtensions: [".sysml", ".sysml2"] },
           { id: "step", wasm: "step.wasm", displayName: "Step", fileExtensions: [".step"] },
-          { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl2"] },
+          { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"] },
           { id: "csv", wasm: "csv.wasm", displayName: "Csv", fileExtensions: [".csv"] },
           { id: "scad", wasm: "scad.wasm", displayName: "Scad", fileExtensions: [".scad"] },
         ];
@@ -815,6 +831,7 @@ export class ParserService {
 
       this.connection.console.info(`[lsp] Dependencies loaded. Re-validating open documents.`);
       (globalThis as any).clearIconCache?.();
+      (globalThis as any).clearDiagramCache?.();
       (globalThis as any).diagramCache?.clear();
 
       for (const doc of this.documents.all()) {
@@ -824,6 +841,8 @@ export class ParserService {
           this.connection.console.warn(`[lsp] Failed to validate open document on init: ${err}`);
         }
       }
+
+      this.sendProjectTreeChanged();
 
       this.connection.sendNotification("modelscript/status", {
         state: "ready",

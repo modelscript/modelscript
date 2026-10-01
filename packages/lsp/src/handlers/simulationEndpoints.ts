@@ -872,13 +872,48 @@ export function registerSimulationEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
     const qe = context.workspaceManager.getQueryEngine("modelica");
     const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
-    if (!context.state.sharedContext || !qe || !InterpreterClass) {
+    const sharedContext =
+      context.state.sharedContext ?? context.parserService.sharedContext ?? (globalThis as any).sharedContext;
+    const parser =
+      (globalThis as any).parser ?? (globalThis as any).modelicaParser ?? context.parserService.getParser("modelica");
+
+    if ((!sharedContext && !parser) || !qe || !InterpreterClass) {
       return { output: "", error: "Language server not fully initialized." };
     }
 
-    const tree = context.state.sharedContext.parse(".mos", params.code);
+    const trimmed = (params.code || "").trim();
+    if (!trimmed) {
+      return { output: "" };
+    }
+
+    // Distinguish between class declarations (model, package, record, function...) vs script statements
+    const isClassDef =
+      /^\s*(within\b|model\b|class\b|block\b|record\b|connector\b|type\b|package\b|pure\s+function\b|impure\s+function\b|function\b)/.test(
+        trimmed,
+      );
+    const codeToParse = isClassDef ? trimmed + "\n" : `function _script\nalgorithm\n${trimmed}\nend _script;\n`;
+
+    const tree = sharedContext ? sharedContext.parse(".mo", codeToParse) : parser.parse(codeToParse);
     if (!tree || !tree.rootNode) {
       return { output: "", error: "Failed to parse cell." };
+    }
+
+    // If it's a class definition, index it into the workspace so the query engine and flattener know about it
+    if (isClassDef) {
+      const wsIndex = context.workspaceManager.getWorkspaceIndex("modelica");
+      if (wsIndex) {
+        const cellUri = `notebook://${params.sessionId}/cell_${Date.now()}.mo`;
+        try {
+          wsIndex.indexDocument(cellUri, () => tree.rootNode, undefined, undefined, false);
+          if (typeof qe.updateTree === "function") {
+            qe.updateTree(tree);
+          }
+        } catch {
+          // ignore indexing errors
+        }
+      }
+    } else if (typeof qe.updateTree === "function" && !qe.getTree?.()) {
+      qe.updateTree(tree);
     }
 
     let interpreter = notebookSessions.get(params.sessionId);

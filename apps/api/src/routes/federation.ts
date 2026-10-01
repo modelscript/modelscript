@@ -99,9 +99,7 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
     }
 
     // Retrieve the full user with federation fields
-    const fullUser = db.db.prepare(`SELECT actor_url, rsa_public_key FROM users WHERE id = ?`).get(user.id) as
-      | Record<string, unknown>
-      | undefined;
+    const fullUser = db.getUserFederationInfo(user.id);
 
     if (!fullUser || !fullUser.actor_url) {
       res.status(404).json({ error: "User not federated" });
@@ -138,8 +136,8 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
   });
 
   const handleNodeInfo = (_req: Request, res: Response) => {
-    const totalUsers = (db.db.prepare("SELECT COUNT(*) as count FROM users").get() as any)?.count ?? 0;
-    const totalPosts = (db.db.prepare("SELECT COUNT(*) as count FROM posts").get() as any)?.count ?? 0;
+    const totalUsers = db.getTotalUsersCount();
+    const totalPosts = db.getTotalPostsCount();
 
     res.type('application/json; profile="http://nodeinfo.diaspora.software/ns/schema/2.1#"').json({
       version: "2.1",
@@ -331,9 +329,7 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
       return;
     }
 
-    const fullUser = db.db.prepare(`SELECT id, actor_url, outbox_url FROM users WHERE id = ?`).get(user.id) as
-      | Record<string, unknown>
-      | undefined;
+    const fullUser = db.getUserFederationInfo(user.id);
 
     if (!fullUser || !fullUser.actor_url) {
       res.status(404).json({ error: "User not federated" });
@@ -421,9 +417,7 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
       return;
     }
 
-    const fullUser = db.db.prepare(`SELECT id, actor_url FROM users WHERE id = ?`).get(user.id) as
-      | Record<string, unknown>
-      | undefined;
+    const fullUser = db.getUserFederationInfo(user.id);
 
     if (!fullUser || !fullUser.actor_url) {
       res.status(404).json({ error: "User not federated" });
@@ -467,9 +461,7 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
       return;
     }
 
-    const fullUser = db.db.prepare(`SELECT id, actor_url FROM users WHERE id = ?`).get(user.id) as
-      | Record<string, unknown>
-      | undefined;
+    const fullUser = db.getUserFederationInfo(user.id);
 
     if (!fullUser || !fullUser.actor_url) {
       res.status(404).json({ error: "User not federated" });
@@ -608,9 +600,7 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
         return;
       }
 
-      const fullLocalUser = db.db.prepare(`SELECT id, actor_url FROM users WHERE id = ?`).get(localUser.id) as
-        | Record<string, unknown>
-        | undefined;
+      const fullLocalUser = db.getUserFederationInfo(localUser.id);
 
       if (!fullLocalUser || !fullLocalUser.actor_url) {
         res.status(400).json({ error: "User not federated" });

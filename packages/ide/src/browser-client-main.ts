@@ -34,9 +34,7 @@ import { ThreadExplorerPanel } from "./thread-explorer-panel.js";
 import { TraceReplayPanel } from "./trace-replay-panel";
 import { VerificationPanel } from "./verification-panel";
 
-import { OWL2ClassHierarchyProvider } from "./owl2-class-hierarchy-provider";
 import { OWL2DiagramPanel } from "./owl2-diagram-panel";
-import { OWL2PropertyHierarchyProvider } from "./owl2-property-hierarchy-provider";
 
 import { materializeCfdConfig } from "@modelscript/cfd";
 import { materializeFeaDeck } from "@modelscript/fea";
@@ -555,7 +553,8 @@ export async function activate(context: vscode.ExtensionContext) {
             const cmdId = `modelscript.action.${action.id}`;
             const handler = async (args?: any) => {
               const activeDoc = vscode.window.activeTextEditor?.document;
-              const inputs = typeof args === "object" && args ? { ...args } : {};
+              const targetUri = (args instanceof vscode.Uri ? args.toString() : args?.uri) ?? activeDoc?.uri.toString();
+              const inputs = typeof args === "object" && args && !(args instanceof vscode.Uri) ? { ...args } : {};
               if (!inputs.documentText && activeDoc) {
                 inputs.documentText = activeDoc.getText();
               }
@@ -565,11 +564,56 @@ export async function activate(context: vscode.ExtensionContext) {
                 if (m) inputs.name = m[1];
               }
               if (action.id === "open_diagram" || action.id === "diagram" || action.id === "openDiagram") {
-                return await vscode.commands.executeCommand("modelscript.openDiagram");
+                return await vscode.commands.executeCommand("modelscript.openDiagram", args);
+              }
+              if (action.id === "open_cad_viewer") {
+                return await vscode.commands.executeCommand("modelscript.openStepViewer", args);
+              }
+              if (action.id === "open_requirements_matrix") {
+                return await vscode.commands.executeCommand("modelscript.openRequirements", args);
+              }
+              if (action.id === "export_fmu") {
+                return await vscode.commands.executeCommand("modelscript.exportFmi2", args);
+              }
+              if (action.id === "compile_wasm") {
+                return await vscode.commands.executeCommand("modelscript.compileWasm", args);
+              }
+              if (action.id === "analyze_blt") {
+                return await vscode.commands.executeCommand("modelscript.analyzeBlt", args);
+              }
+              if (action.id === "generate_multibody") {
+                return await vscode.commands.executeCommand("modelscript.generateMultiBody", args);
+              }
+              if (action.id === "generate_fea_mesh" || action.id === "discretize_fea") {
+                return await vscode.commands.executeCommand("modelscript.generateFeaMesh", args);
+              }
+              if (action.id === "generate_cfd_mesh" || action.id === "discretize_cfd") {
+                return await vscode.commands.executeCommand("modelscript.generateCfdMesh", args);
+              }
+              if (action.id === "create_fea_setup") {
+                return await vscode.commands.executeCommand("modelscript.createFeaSetup", args);
+              }
+              if (action.id === "create_cfd_setup") {
+                return await vscode.commands.executeCommand("modelscript.createCfdSetup", args);
+              }
+              if (action.id === "export_step") {
+                return await vscode.commands.executeCommand("modelscript.exportShapeToStep", args);
+              }
+              if (action.id === "materialize_deck") {
+                return await vscode.commands.executeCommand("modelscript.materializeCalculixDeck", args);
+              }
+              if (action.id === "materialize_config") {
+                return await vscode.commands.executeCommand("modelscript.materializeSu2Config", args);
+              }
+              if (action.id === "open_ontology_diagram") {
+                return await vscode.commands.executeCommand("modelscript.owl2.openDiagram", args);
+              }
+              if (action.id === "launch_cosimulation") {
+                return await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", args);
               }
               return await client?.sendRequest("modelscript/executeAction", {
                 actionId: action.id,
-                uri: args?.uri ?? activeDoc?.uri.toString(),
+                uri: targetUri,
                 languageId: action.languageId ?? activeDoc?.languageId,
                 inputs,
               });
@@ -709,8 +753,9 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   // Register MQTT participant tree view
+  let mqttTreeProvider: MqttTreeProvider | undefined;
   try {
-    const mqttTreeProvider = new MqttTreeProvider(client, context);
+    mqttTreeProvider = new MqttTreeProvider(client, context);
     const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
       treeDataProvider: mqttTreeProvider,
       dragAndDropController: mqttTreeProvider,
@@ -733,30 +778,6 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(experimentsTreeView);
   } catch (e) {
     console.warn("Could not register modelscript.experimentsView view:", e);
-  }
-
-  // Register OWL2 Protégé-style class hierarchy tree view
-  try {
-    const owl2ClassProvider = new OWL2ClassHierarchyProvider(client);
-    const owl2ClassTreeView = vscode.window.createTreeView("modelscript.owl2ClassHierarchy", {
-      treeDataProvider: owl2ClassProvider,
-      canSelectMany: false,
-    });
-    context.subscriptions.push(owl2ClassTreeView);
-  } catch (e) {
-    console.warn("Could not register modelscript.owl2ClassHierarchy view:", e);
-  }
-
-  // Register OWL2 Protégé-style property hierarchy tree view
-  try {
-    const owl2PropProvider = new OWL2PropertyHierarchyProvider(client);
-    const owl2PropTreeView = vscode.window.createTreeView("modelscript.owl2PropertyHierarchy", {
-      treeDataProvider: owl2PropProvider,
-      canSelectMany: false,
-    });
-    context.subscriptions.push(owl2PropTreeView);
-  } catch (e) {
-    console.warn("Could not register modelscript.owl2PropertyHierarchy view:", e);
   }
 
   // Register ModelScript package registry tree view (Extensions-bar style)
@@ -871,12 +892,6 @@ export async function activate(context: vscode.ExtensionContext) {
       if (editor?.document && editor.document.uri.scheme !== "output") {
         treeProvider.setDocumentUri(editor.document.uri.toString());
       }
-      // Refresh OWL2 hierarchy views when an OWL2 file is active
-      if (editor?.document.languageId === "owl2") {
-        const uri = editor.document.uri.toString();
-        owl2ClassProvider.setDocumentUri(uri);
-        owl2PropProvider.setDocumentUri(uri);
-      }
       // Set context keys for palette visibility
       const langId = editor?.document.languageId;
       vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", langId);
@@ -913,7 +928,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Trigger once for the initially active editor (since the event doesn't fire for the first tab)
   if (vscode.window.activeTextEditor?.document && vscode.window.activeTextEditor.document.uri.scheme !== "output") {
-    treeProvider.setDocumentUri(vscode.window.activeTextEditor.document.uri.toString());
+    const initDoc = vscode.window.activeTextEditor.document;
+    const initUri = initDoc.uri.toString();
+    treeProvider.setDocumentUri(initUri);
+    const initLangId = initDoc.languageId;
+    vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", initLangId);
+    vscode.commands.executeCommand(
+      "setContext",
+      "modelscript.sysml2Active",
+      initLangId === "sysml" || initLangId === "sysml2",
+    );
+    vscode.commands.executeCommand("setContext", "modelscript.owl2Active", initLangId === "owl2");
+    if (initLangId) {
+      vscode.commands.executeCommand("setContext", `modelscript.${initLangId}Active`, true);
+    }
   }
 
   // Register commands
@@ -1105,10 +1133,10 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
     commands.registerCommand("modelscript.owl2.refreshClassHierarchy", () => {
-      owl2ClassProvider.refresh();
+      treeProvider.refresh();
     }),
     commands.registerCommand("modelscript.owl2.refreshPropertyHierarchy", () => {
-      owl2PropProvider.refresh();
+      treeProvider.refresh();
     }),
     commands.registerCommand("modelscript.openCadExample", async () => {
       // 1. Get the example file path
@@ -1892,7 +1920,7 @@ END-ISO-10303-21;`;
     // ── Co-Simulation commands ──
     commands.registerCommand("modelscript.cosimConnect", () => {
       cosimProvider.refresh();
-      mqttTreeProvider.refresh();
+      mqttTreeProvider?.refresh();
       vscode.window.showInformationMessage("Refreshing co-simulation connections…");
     }),
     commands.registerCommand("modelscript.cosimDisconnect", () => {
@@ -1922,7 +1950,7 @@ END-ISO-10303-21;`;
     }),
     commands.registerCommand("modelscript.cosimRefresh", () => {
       cosimProvider.refresh();
-      mqttTreeProvider.refresh();
+      mqttTreeProvider?.refresh();
     }),
     // ── Analytical commands ──
     commands.registerCommand("modelscript.showClassHierarchy", () => {

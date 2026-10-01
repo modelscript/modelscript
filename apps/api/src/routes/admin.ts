@@ -3,6 +3,7 @@
 import express, { type Request, type Response, type Router } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { requireAdmin } from "../middleware/auth-middleware.js";
+import { allMigrations } from "../migrations/index.js";
 import { FederationWorker } from "../services/federation-worker.js";
 
 // Enforce admin privileges
@@ -349,6 +350,49 @@ export function adminRouter(database: LibraryDatabase, worker?: FederationWorker
     } catch (err: any) {
       console.error("[AdminRouter] Resolve DMCA notice error:", err);
       res.status(500).json({ error: err.message || "Failed to resolve DMCA notice" });
+    }
+  });
+
+  // ── Database Operations & Migration Management ──
+
+  /**
+   * GET /api/v1/admin/db/status
+   */
+  router.get("/admin/db/status", adminAuth, (_req: Request, res: Response) => {
+    try {
+      const runner = database.migrationRunner;
+      const status = runner.getStatus(allMigrations);
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch migration status" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/db/upgrade
+   */
+  router.post("/admin/db/upgrade", adminAuth, express.json(), async (req: Request, res: Response) => {
+    try {
+      const dryRun = Boolean(req.body.dryRun);
+      const skipBackup = Boolean(req.body.skipBackup);
+      const runner = database.migrationRunner;
+      const result = await runner.runPending(allMigrations, { dryRun, skipBackup });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to execute database upgrade" });
+    }
+  });
+
+  /**
+   * GET /api/v1/admin/db/verify
+   */
+  router.get("/admin/db/verify", adminAuth, (_req: Request, res: Response) => {
+    try {
+      const runner = database.migrationRunner;
+      const check = runner.verifyIntegrity();
+      res.json(check);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to verify database integrity" });
     }
   });
 

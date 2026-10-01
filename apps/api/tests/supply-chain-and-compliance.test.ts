@@ -272,6 +272,14 @@ test("Package Supply Chain Security & OFAC Compliance", async (t) => {
     assert.ok(Array.isArray(exportRes.body.posts));
     assert.ok(Array.isArray(exportRes.body.libraries));
 
+    // 1b. Offline HTML viewer and ZIP export (GET /api/v1/users/me/export?format=zip)
+    const exportZipRes = await request(app)
+      .get("/api/v1/users/me/export?format=zip")
+      .set("Authorization", `Bearer ${gdprToken}`)
+      .expect(200);
+    assert.strictEqual(exportZipRes.headers["content-type"], "application/zip");
+    assert.ok(exportZipRes.headers["content-disposition"]?.includes("modelscript-archive-gdpr_user.zip"));
+
     // 2. Right to erasure (DELETE /api/v1/users/me)
     const deleteRes = await request(app)
       .delete("/api/v1/users/me")

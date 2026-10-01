@@ -1,6 +1,6 @@
 # Polyglot Engineering Languages
 
-ModelScript breaks down domain silos by providing first-class compiler and language server support for nine engineering languages. Every language features a native WebAssembly GLR incremental parser, shared CST arenas, and unified semantic queries.
+ModelScript breaks down domain silos by providing first-class compiler and language server support for nine engineering languages. Every language features a native WebAssembly GLR incremental parser, shared CST arenas, and unified semantic queries — weaving together a cohesive **computable digital thread**.
 
 ---
 
@@ -48,3 +48,19 @@ flowchart TD
     WI --> QE
     QE --> TGG
 ```
+
+---
+
+## The 9-Domain Computable Digital Thread
+
+Rather than maintaining distinct files in isolation, ModelScript indexes these languages into a shared, linear-memory alignment hypergraph (`@modelscript/runtime/interop/thread_hypergraph`):
+
+1. **Architecture & Requirements**: SysML v2 part usages define requirements and structural hierarchies.
+2. **Physical Dynamics**: Modelica models define differential algebraic equations and power-conserving connections.
+3. **Geometric CAD**: STEP (ISO 10303) solids define mass properties, bounding volumes, and kinematic visual components.
+4. **Continuum Fields**: CFD and FEA dialects define boundary flow conditions and structural stress limits.
+5. **Ontologies & Taxonomies**: OWL2 knowledge bases formalize domain axioms and component classifications.
+6. **Telemetry & Calibration**: CSV streams feed empirical sensor data into parameter estimation and trade studies.
+7. **Packaging & Co-Simulation**: SSP topologies define FMI multi-model orchestration.
+
+Because the digital thread is **computable**, modifying a geometry file or parameter triggers automatic Salsa cache invalidation, TGG synchronization, and Nelson-Oppen verification across all connected domains.

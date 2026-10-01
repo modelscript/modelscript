@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { SyntaxNode } from "./tree-sitter.js";
+import type { SyntaxNode } from "./cst-facade.js";
 
 export function isClassInstance(obj: any): boolean {
   return obj && "classKind" in obj;
@@ -67,80 +67,6 @@ export function computeTreeEdit(
       return indexToPoint(newText, newSuffix);
     },
   };
-}
-
-/* Resolve a modification/annotation path element to its named element */
-export function resolvePathElement(node: SyntaxNode, scope: any): any | null {
-  let pathNode: SyntaxNode | null = node;
-  const parameterPath: string[] = [];
-  let baseElement: any = null;
-  let foundBase = false;
-
-  while (pathNode) {
-    if (pathNode.type === "ElementModification") {
-      const nameNode = pathNode.children.find((c: SyntaxNode) => c.type === "Name");
-      if (nameNode) {
-        parameterPath.unshift(...nameNode.text.split("."));
-      }
-    } else if (pathNode.type === "NamedArgument") {
-      const identNode = pathNode.childForFieldName("identifier");
-      if (identNode) {
-        parameterPath.unshift(identNode.text);
-      }
-    }
-
-    // If we hit a FunctionCall, it's a base (potential record constructor)
-    if (pathNode.type === "FunctionCall") {
-      const refNode = pathNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
-      if (refNode) {
-        const funcRef = refNode.text;
-        baseElement = scope.resolveName(funcRef.split("."));
-        if (!baseElement) {
-          const annotationClass = (scope as any).annotationClassInstance;
-          if (annotationClass) {
-            baseElement = annotationClass.resolveSimpleName(funcRef);
-            if (!baseElement && funcRef.includes(".")) {
-              baseElement = annotationClass.resolveName(funcRef.split("."));
-            }
-          }
-        }
-        if (baseElement) {
-          foundBase = true;
-          break;
-        }
-      }
-    }
-
-    if (pathNode.type === "AnnotationClause") {
-      baseElement = (scope as any).annotationClassInstance;
-      foundBase = true;
-      break;
-    }
-
-    if (
-      pathNode.type === "ComponentClause" ||
-      pathNode.type === "ShortClassSpecifier" ||
-      pathNode.type === "ExtendsClause"
-    ) {
-      const typeSpecNode = pathNode.children.find((c: SyntaxNode) => c.type === "TypeSpecifier");
-      if (typeSpecNode) {
-        baseElement = scope.resolveName(typeSpecNode.text.split("."));
-        foundBase = true;
-        break;
-      }
-    }
-
-    pathNode = pathNode.parent;
-  }
-
-  if (foundBase && baseElement) {
-    return isClassInstance(baseElement)
-      ? baseElement.resolveName(parameterPath)
-      : baseElement.isComponentInstance
-        ? (baseElement.classInstance?.resolveName(parameterPath) ?? null)
-        : null;
-  }
-  return null;
 }
 
 export function nodeRange(node: SyntaxNode): {

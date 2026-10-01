@@ -23,40 +23,62 @@ export function registerColorProvider(
     const colors: ColorInformation[] = [];
 
     const traverse = (node: SyntaxNode) => {
-      if (node.type === "ElementModification" || node.type === "NamedArgument") {
-        const nameNode = node.childForFieldName("name") || node.childForFieldName("identifier");
-        const name = nameNode?.text;
+      const isElemMod = node.type === "element_modification" || node.type === "ElementModification";
+      const isNamedArg = node.type === "named_argument" || node.type === "NamedArgument";
+
+      if (isElemMod || isNamedArg) {
+        const nameNode =
+          node.childForFieldName?.("name") ||
+          node.childForFieldName?.("identifier") ||
+          node.children?.find(
+            (c: any) => c.type === "name" || c.type === "identifier" || c.type === "component_reference",
+          );
+        const name = nameNode?.text?.trim();
         if (name && COLOR_FIELDS.has(name)) {
-          let exprNode;
-          if (node.type === "ElementModification") {
-            const modNode = node.childForFieldName("modification");
-            exprNode = modNode?.childForFieldName("modificationExpression")?.childForFieldName("expression");
+          let exprNode: any = null;
+          if (isElemMod) {
+            const modNode =
+              node.childForFieldName?.("modification") ?? node.children?.find((c: any) => c.type === "modification");
+            const modExpr =
+              modNode?.childForFieldName?.("modificationExpression") ??
+              modNode?.children?.find((c: any) => c.type === "modification_expression");
+            exprNode =
+              modExpr?.childForFieldName?.("expression") ??
+              modExpr?.children?.find((c: any) => c.type === "expression") ??
+              modNode?.children?.find((c: any) => c.type === "expression");
           } else {
-            exprNode = node.childForFieldName("argument")?.childForFieldName("expression");
+            const argNode =
+              node.childForFieldName?.("argument") ??
+              node.children?.find((c: any) => c.type === "function_argument" || c.type === "argument");
+            exprNode =
+              argNode?.childForFieldName?.("expression") ??
+              argNode?.children?.find((c: any) => c.type === "expression") ??
+              argNode;
+          }
+          if (!exprNode) {
+            exprNode = node.children?.find((c: any) => c.type === "expression" || c.type === "primary");
           }
 
-          if (exprNode?.type === "ArrayConstructor") {
-            const listNode = exprNode.childForFieldName("expressionList");
-            if (listNode) {
-              const exprs = listNode.namedChildren;
-              if (exprs.length === 3) {
-                const r = parseInt(exprs[0].text);
-                const g = parseInt(exprs[1].text);
-                const b = parseInt(exprs[2].text);
-                if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
-                  colors.push({
-                    range: {
-                      start: { line: exprNode.startPosition.row, character: exprNode.startPosition.column },
-                      end: { line: exprNode.endPosition.row, character: exprNode.endPosition.column },
-                    },
-                    color: Color.create(
-                      Math.max(0, Math.min(255, r)) / 255.0,
-                      Math.max(0, Math.min(255, g)) / 255.0,
-                      Math.max(0, Math.min(255, b)) / 255.0,
-                      1.0,
-                    ),
-                  });
-                }
+          if (exprNode) {
+            const text = exprNode.text ?? "";
+            const match = text.match(/\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}/);
+            if (match) {
+              const r = parseInt(match[1], 10);
+              const g = parseInt(match[2], 10);
+              const b = parseInt(match[3], 10);
+              if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+                colors.push({
+                  range: {
+                    start: { line: exprNode.startPosition.row, character: exprNode.startPosition.column },
+                    end: { line: exprNode.endPosition.row, character: exprNode.endPosition.column },
+                  },
+                  color: Color.create(
+                    Math.max(0, Math.min(255, r)) / 255.0,
+                    Math.max(0, Math.min(255, g)) / 255.0,
+                    Math.max(0, Math.min(255, b)) / 255.0,
+                    1.0,
+                  ),
+                });
               }
             }
           }

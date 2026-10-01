@@ -47,6 +47,7 @@ import { seedCfdAnimation } from "./seed-cfd-animation.js";
 import { seedDroneCfd } from "./seed-drone-cfd.js";
 import { seedDroneFea } from "./seed-drone-fea.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
+import { defaultArchiveQueue } from "./services/archive-queue.js";
 import { FederationWorker } from "./services/federation-worker.js";
 import { locationService } from "./services/location.js";
 import { defaultMailer } from "./services/mailer.js";
@@ -339,6 +340,28 @@ graph TD
     runRssWorker();
     const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
     app.locals.rssWorkerInterval = rssWorkerInterval;
+
+    // Automated GDPR / Security Log Retention Worker (Daily purge of expired logs > 30 days)
+    const runLogPurgeWorker = () => {
+      try {
+        const { deletedCount } = database.purgeExpiredLogs(30);
+        if (deletedCount > 0) {
+          console.log(
+            `[LogRetentionWorker] Purged ${deletedCount} expired audit/operational log records (> 30 days retention policy).`,
+          );
+        }
+        const { removedCount } = defaultArchiveQueue.cleanupExpiredArchives();
+        if (removedCount > 0) {
+          console.log(`[ArchiveRetentionWorker] Cleaned up ${removedCount} expired data archive files (> 24h TTL).`);
+        }
+      } catch (err) {
+        console.error("[LogRetentionWorker] Error executing retention log purge:", err);
+      }
+    };
+
+    runLogPurgeWorker();
+    const logPurgeInterval = setInterval(runLogPurgeWorker, 24 * 60 * 60 * 1000);
+    app.locals.logPurgeInterval = logPurgeInterval;
   }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
@@ -491,7 +514,7 @@ graph TD
             driver: defaultMailer.getDriver(),
           },
           database: {
-            connected: Boolean(database && database.db && database.db.open),
+            connected: Boolean(database && database.isOpen()),
             hasAdminUser: hasAdmin,
           },
         },

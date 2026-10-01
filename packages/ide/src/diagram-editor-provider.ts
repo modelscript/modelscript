@@ -468,6 +468,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       const data = await this.client.sendRequest(DiagramMethods.getData, { uri, diagramType });
       if (cancelToken?.isCanceled()) return;
       if (data) {
+        if ((data as any).isLoading) {
+          webviewPanel.webview.postMessage({ type: "loading" });
+          setTimeout(() => {
+            if (!cancelToken?.isCanceled()) {
+              this.requestDiagramData(webviewPanel, uri, diagramType, cancelToken);
+            }
+          }, 1500);
+          return;
+        }
         const isDark =
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;

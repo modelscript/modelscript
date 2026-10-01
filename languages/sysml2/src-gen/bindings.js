@@ -489,6 +489,8 @@ export class LspFacade {
   }
   _childTailCache = new Map();
   currentInputLength = 0;
+  rootSourceCode = new Map();
+  uriSourceCode = new Map();
   constructor(wasmMemoryOrInstance, exports) {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
       this.wasmMemory =
@@ -564,6 +566,36 @@ export class LspFacade {
     }
     // Trigger 3: Document lifecycle event (cleanup on close)
     this.scheduleCompaction(true);
+    this.uriSourceCode.delete(uri);
+  }
+  /**
+   * Loads document text into the WASM input buffer without triggering a parse.
+   * This ensures that subsequent calls to `getDiagnostics`, `getSemanticTokens`, or CST inspection
+   * read the correct source characters even if another document was parsed in the interim.
+   */
+  loadSource(text) {
+    const getInputBuf =
+      this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    if (!getInputBuf) return;
+    const lenBytes = text.length * 2;
+    const textPtr = this.exports.ensureInputBuffer
+      ? this.exports.ensureInputBuffer(lenBytes)
+      : getInputBuf();
+    const memArray16 = new Uint16Array(
+      this.wasmMemory.buffer,
+      textPtr,
+      text.length,
+    );
+    for (let i = 0; i < text.length; i++) {
+      memArray16[i] = text.charCodeAt(i);
+    }
+    if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+    else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
+    if (this.exports.lsp_setInputLength)
+      this.exports.lsp_setInputLength(lenBytes);
+    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+    this.currentInputLength = text.length;
+    this._cachedLineStarts = null;
   }
   /**
    * Returns all active document roots across open files in the workspace.
@@ -1165,7 +1197,12 @@ export class LspFacade {
    * Complex diagnostics with contextual formatting strings (e.g. "Expected '}' but got {0}")
    * are resolved by extracting the underlying text from the source buffer.
    */
-  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0) {
+  getDiagnostics(astRoot, rangeStart = 0, rangeEnd = 0, sourceCode) {
+    if (sourceCode !== undefined && typeof sourceCode === "string") {
+      this.loadSource(sourceCode);
+    } else if (this.rootSourceCode.has(astRoot)) {
+      this.loadSource(this.rootSourceCode.get(astRoot));
+    }
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
     const encoding =
@@ -1695,15 +1732,11 @@ export class LspFacade {
         const prev = mergedDiags[mergedDiags.length - 1];
         const isStartSameLine = prev.range.start.line === d.range.start.line;
         const isOverlapping =
-          (prev.endCharOffset !== undefined &&
+          isStartSameLine &&
+          ((prev.endCharOffset !== undefined &&
             d.startCharOffset !== undefined &&
-            (d.startCharOffset <= prev.endCharOffset ||
-              (isStartSameLine &&
-                d.startCharOffset <= prev.endCharOffset + 1))) ||
-          (isStartSameLine &&
-            prev.range.end.character + 1 >= d.range.start.character) ||
-          (prev.range.start.line <= d.range.start.line &&
-            prev.range.end.line >= d.range.start.line);
+            d.startCharOffset <= prev.endCharOffset + 1) ||
+            prev.range.end.character + 1 >= d.range.start.character);
         if (isOverlapping && prev.code === undefined && d.code === undefined) {
           const prevIsSpecific =
             prev.message.startsWith("Expected ") ||
@@ -1752,7 +1785,12 @@ export class LspFacade {
    * Returns a raw `Uint32Array` mapped directly from WASM memory for speed.
    * Array layout is: [lineDelta, charDelta, length, typeId] repeating.
    */
-  getSemanticTokens(astRoot) {
+  getSemanticTokens(astRoot, sourceCode) {
+    if (sourceCode !== undefined && typeof sourceCode === "string") {
+      this.loadSource(sourceCode);
+    } else if (this.rootSourceCode.has(astRoot)) {
+      this.loadSource(this.rootSourceCode.get(astRoot));
+    }
     if (
       !this.exports.lsp_semanticTokens_full ||
       !this.exports.lsp_getBinaryBuffer
@@ -3894,7 +3932,17 @@ export class LspFacade {
       }
     }
     this.lastAstRoot = newAstRoot;
-    if (uri) this.setDocumentRoot(uri, newAstRoot);
+    if (uri) {
+      this.setDocumentRoot(uri, newAstRoot);
+      this.uriSourceCode.set(uri, text);
+    }
+    if (newAstRoot > 0) {
+      this.rootSourceCode.set(newAstRoot, text);
+      if (this.rootSourceCode.size > 100) {
+        const firstKey = this.rootSourceCode.keys().next().value;
+        if (firstKey !== undefined) this.rootSourceCode.delete(firstKey);
+      }
+    }
     this.checkMemoryQuota();
     this.scheduleCompaction(false);
     return newAstRoot;
@@ -5074,6 +5122,13 @@ export class Tree {
       ? this.facade.getInputEncoding()
       : 1;
     const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    if (
+      facade &&
+      rootPtr > 0 &&
+      typeof facade.rootSourceCode?.set === "function"
+    ) {
+      facade.rootSourceCode.set(rootPtr, sourceCode);
+    }
     this.lineStarts = [0];
     for (let i = 0; i < sourceCode.length; i++) {
       if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * mult);

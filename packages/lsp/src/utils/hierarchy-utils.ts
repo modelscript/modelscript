@@ -2,6 +2,14 @@
 
 import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import {
+  getOntologyCategoryNodes,
+  getOntologyRootNodes,
+  getOwlClassTreeNodes,
+  getOwlIndividualTreeNodes,
+  getOwlPropertyTreeNodes,
+  getOwlSubPropertyTreeNodes,
+} from "./owl2-tree-utils.js";
 
 export const CLASS_KIND_KEYWORDS = [
   "class",
@@ -85,6 +93,9 @@ export function isTreeVisible(entry: any): boolean {
   if (entry?.metadata?.isPredefined) return false;
   if (entry?.name?.startsWith("'") || entry?.name?.startsWith('"')) return false;
   if (entry?.language) {
+    if (entry.language === "owl2") {
+      return false; // Handled structurally via ontology nodes
+    }
     const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
     const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
     if (symConfig?.treeVisible !== undefined) return symConfig.treeVisible;
@@ -124,9 +135,41 @@ function getLibraryName(resourceId?: string): string | null {
   return null;
 }
 
-export function getTreeChildrenFast(index: any, parentId?: string, workspace?: any): TreeNodeInfo[] {
+export async function getTreeChildrenFast(index: any, parentId?: string, workspace?: any): Promise<TreeNodeInfo[]> {
   const nodes: TreeNodeInfo[] = [];
   const seen = new Set<string>();
+
+  // OWL 2 Ontology subtree navigation
+  if (parentId) {
+    const store = workspace?.owl2Store;
+    if (parentId.startsWith("__ONTOLOGY__:")) {
+      return getOntologyCategoryNodes(parentId, store);
+    }
+    if (parentId.startsWith("__OWL_CLASSES__:")) {
+      return await getOwlClassTreeNodes(store, null);
+    }
+    if (parentId.startsWith("__OWL_CLASS__:")) {
+      const classIri = parentId.substring("__OWL_CLASS__:".length);
+      return await getOwlClassTreeNodes(store, classIri);
+    }
+    if (parentId.startsWith("__OWL_OBJ_PROPS__:")) {
+      return getOwlPropertyTreeNodes(store, "object");
+    }
+    if (parentId.startsWith("__OWL_OBJ_PROP__:")) {
+      const propIri = parentId.substring("__OWL_OBJ_PROP__:".length);
+      return getOwlSubPropertyTreeNodes(store, propIri, "object");
+    }
+    if (parentId.startsWith("__OWL_DATA_PROPS__:")) {
+      return getOwlPropertyTreeNodes(store, "data");
+    }
+    if (parentId.startsWith("__OWL_DATA_PROP__:")) {
+      const propIri = parentId.substring("__OWL_DATA_PROP__:".length);
+      return getOwlSubPropertyTreeNodes(store, propIri, "data");
+    }
+    if (parentId.startsWith("__OWL_INDIVIDUALS__:")) {
+      return getOwlIndividualTreeNodes(store);
+    }
+  }
 
   if (!parentId) {
     // Root level: group by library or show workspace files directly
@@ -167,6 +210,14 @@ export function getTreeChildrenFast(index: any, parentId?: string, workspace?: a
         hasChildren: true,
         language: libName.includes("SysML") ? "sysml2" : "modelica",
       });
+    }
+
+    // Add OWL 2 ontology root containers
+    if (workspace) {
+      const ontologyRoots = getOntologyRootNodes(workspace, workspace?.owl2Store);
+      for (const ontNode of ontologyRoots) {
+        nodes.push(ontNode);
+      }
     }
   } else if (parentId.startsWith("__LIB__:")) {
     // Return root children belonging to this library

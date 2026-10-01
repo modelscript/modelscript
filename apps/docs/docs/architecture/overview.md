@@ -1,6 +1,6 @@
 # Compiler Architecture Overview
 
-ModelScript is an open-source, web-native polyglot compiler and multi-domain engineering intelligence platform. Designed to bridge the historical silos between system architecture, physical simulation, 3D CAD geometry, continuum analysis (FEA/CFD), and formal verification, ModelScript operates on a unified, high-performance digital thread.
+ModelScript is an open-source, web-native polyglot compiler and multi-domain engineering intelligence platform. Designed to bridge the historical silos between system architecture, physical simulation, 3D CAD geometry, continuum analysis (FEA/CFD), and formal verification, ModelScript operates on a unified, high-performance **computable digital thread**.
 
 ---
 
@@ -85,6 +85,10 @@ Modifying a single parameter or equation re-evaluates only transitively invalida
 ### 4. Coordinated Nelson-Oppen Multi-Theory Solvers
 
 Formal verification combines distinct formal domains (Description Logic, non-linear interval arithmetic, continuous zonotope reachability, and 3D CAD collision checks) through an extensible Nelson-Oppen theory coordinator using CDCL(T) case splitting.
+
+### 5. N-Ary Computable Digital Thread Hypergraph
+
+Unlike legacy point-to-point integrations or passive PLM metadata links, ModelScript connects all engineering domains through a linear-memory alignment hypergraph (`@modelscript/runtime/interop/thread_hypergraph`). Hyperedges link requirements (SysML v2), physical states (Modelica), 3D solid geometry (STEP), continuum patches (CFD/FEA), and domain ontologies (OWL2). The thread is _computable_: changes propagate automatically via TGG graph rewrite rules, physical states drive dynamic CAD transformations, and multi-theory oracles verify cross-domain contracts with cryptographically verifiable proof manifests.
 
 ---
 

@@ -11,7 +11,7 @@ export const iconCache = new Map<string, string | null>();
 export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getLibraryTree",
-    (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
+    async (params: { uri: string; parentId?: string }): Promise<TreeNodeInfo[]> => {
       console.log(`[LSP treeHandler] getLibraryTree parentId=${params.parentId}`);
       // Use the unified workspace — merges all language indices
       const uw = context.workspaceManager.unifiedWorkspace;
@@ -38,7 +38,7 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
-      const res = getTreeChildrenFast(unifiedIndex, params.parentId, uw);
+      const res = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
       console.log(
         `[LSP treeHandler] getLibraryTree parentId=${params.parentId} returning ${res.length} nodes:`,
         res.map((n) => n.name),

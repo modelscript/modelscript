@@ -2,7 +2,7 @@
 
 ModelScript provides declarative, ahead-of-time (AOT) compiled **Triple Graph Grammars (TGG)** and Double-Pushout (DPO) algebraic graph rewriting via `@modelscript/dsl/tgg`.
 
-TGG serves as the foundational synchronization mechanism across the polyglot digital thread, enabling bidirectional transformations between disparate engineering models (such as architectural SysML v2 specifications and 1D Modelica physical simulations).
+TGG serves as the foundational synchronization mechanism across the **computable digital thread**, enabling bidirectional transformations between disparate engineering models (such as architectural SysML v2 specifications and 1D Modelica physical simulations).
 
 ---
 

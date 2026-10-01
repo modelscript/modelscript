@@ -36,7 +36,7 @@ export interface ActionUIManifest {
   /** Context menu item in file explorer tree */
   explorerContextMenu?: {
     group?: string; // e.g. "navigation"
-    when?: string; // e.g. `resourceExt == .mo`
+    when?: string; // e.g. `resourceExtname == .mo`
   };
   /** Command palette item */
   commandPalette?: {

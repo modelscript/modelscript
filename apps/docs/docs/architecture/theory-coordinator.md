@@ -1,6 +1,6 @@
 # Nelson-Oppen Semantic Theory Coordinator
 
-Cross-domain engineering verification requires proving invariants that span discrete taxonomies, non-linear physical dynamics, spatial CAD envelopes, and numerical constraints simultaneously.
+Cross-domain engineering verification requires proving invariants that span discrete taxonomies, non-linear physical dynamics, spatial CAD envelopes, and numerical constraints simultaneously across the **computable digital thread**.
 
 ModelScript solves this through a generalized **Nelson-Oppen Semantic Theory Coordinator** (`@modelscript/runtime/formal/theory_coordinator`).
 

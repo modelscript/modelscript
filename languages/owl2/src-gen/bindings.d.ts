@@ -246,6 +246,8 @@ export declare class LspFacade {
   getStringFromPool(id: number): string;
   private _childTailCache;
   private currentInputLength;
+  readonly rootSourceCode: Map<number, string>;
+  readonly uriSourceCode: Map<string, string>;
   constructor(wasmMemoryOrInstance: any, exports?: any);
   /**
    * Retrieves the AST root for a specific document URI or numeric fileId (or the default/active document).
@@ -259,6 +261,12 @@ export declare class LspFacade {
    * Closes a document, unregistering its root from GC and triggering compaction.
    */
   removeDocument(uri: string): void;
+  /**
+   * Loads document text into the WASM input buffer without triggering a parse.
+   * This ensures that subsequent calls to `getDiagnostics`, `getSemanticTokens`, or CST inspection
+   * read the correct source characters even if another document was parsed in the interim.
+   */
+  loadSource(text: string): void;
   /**
    * Returns all active document roots across open files in the workspace.
    */
@@ -353,13 +361,14 @@ export declare class LspFacade {
     astRoot: number,
     rangeStart?: number,
     rangeEnd?: number,
+    sourceCode?: string,
   ): Diagnostic[];
   /**
    * Retrieves semantic tokens for syntax highlighting.
    * Returns a raw `Uint32Array` mapped directly from WASM memory for speed.
    * Array layout is: [lineDelta, charDelta, length, typeId] repeating.
    */
-  getSemanticTokens(astRoot: number): Uint32Array;
+  getSemanticTokens(astRoot: number, sourceCode?: string): Uint32Array;
   /**
    * Retrieves semantic tokens delta edits (LSP 3.16+ textDocument/semanticTokens/full/delta).
    */

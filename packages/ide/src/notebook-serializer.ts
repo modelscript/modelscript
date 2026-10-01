@@ -41,8 +41,10 @@ export class ModelScriptNotebookSerializer implements vscode.NotebookSerializer 
     }
 
     const cells = raw.map((cell) => {
-      const kind = cell.cell_type === "markdown" ? vscode.NotebookCellKind.Markup : vscode.NotebookCellKind.Code;
-      const language = cell.cell_type === "markdown" ? "markdown" : cell.language || "modelscript";
+      let language = cell.cell_type === "markdown" ? "markdown" : cell.language || "modelica";
+      if (language === "modelscript") {
+        language = "modelica";
+      }
       const cellData = new vscode.NotebookCellData(kind, cell.source.join("\n"), language);
 
       // Restore persisted outputs
@@ -71,7 +73,7 @@ export class ModelScriptNotebookSerializer implements vscode.NotebookSerializer 
       const raw: RawNotebookCell = {
         cell_type: cell.kind === vscode.NotebookCellKind.Code ? "code" : "markdown",
         source: cell.value.split(/\r?\n/),
-        language: cell.languageId,
+        language: cell.languageId === "modelscript" ? "modelica" : cell.languageId,
       };
 
       // Persist outputs (optional — keeps notebook state across saves)

@@ -81,6 +81,8 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
       extensions = [".sysml", ".sysml2"];
     } else if (id === "step") {
       extensions = [".step", ".stp", ".p21"];
+    } else if (id === "owl2" || id === "owl") {
+      extensions = [".owl", ".owl2", ".ofn", ".ttl"];
     } else {
       extensions = [`.${id}`];
     }
@@ -251,27 +253,103 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       title: "ModelScript: Discretize CAD to CFD Mesh (.su2)",
       category: "ModelScript CAE",
     },
+    {
+      command: "modelscript.generateMultiBody",
+      title: "ModelScript: Translate CAD Assembly to Modelica MultiBody",
+      category: "ModelScript CAE",
+      icon: "$(symbol-structure)",
+    },
+    {
+      command: "modelscript.createFeaSetup",
+      title: "ModelScript: Create FEA Simulation Study (.fea.mo)",
+      category: "ModelScript CAE",
+    },
+    {
+      command: "modelscript.createCfdSetup",
+      title: "ModelScript: Create CFD Simulation Study (.cfd.mo)",
+      category: "ModelScript CAE",
+    },
+    {
+      command: "modelscript.projectModel",
+      title: "ModelScript: Project Model to Target Engineering Domain...",
+      category: "ModelScript Polyglot",
+      icon: "$(arrow-swap)",
+    },
+    {
+      command: "modelscript.openPolyglotVisualizer",
+      title: "ModelScript: Open 3D Polyglot Visualizer",
+      category: "ModelScript Polyglot",
+      icon: "$(symbol-misc)",
+    },
+    {
+      command: "modelscript.openRequirements",
+      title: "ModelScript: Open Requirements Matrix",
+      category: "ModelScript SysML",
+      icon: "$(checklist)",
+    },
+    {
+      command: "modelscript.exportFmi2",
+      title: "ModelScript: Export FMU (FMI 2.0)",
+      category: "ModelScript FMI",
+    },
+    {
+      command: "modelscript.exportFmi3",
+      title: "ModelScript: Export FMU (FMI 3.0)",
+      category: "ModelScript FMI",
+    },
+    {
+      command: "modelscript.compileWasm",
+      title: "ModelScript: Compile Model to WebAssembly (.wasm)",
+      category: "ModelScript",
+    },
+    {
+      command: "modelscript.materializeCalculixDeck",
+      title: "ModelScript: Materialize FEA Deck (.inpt -> .inp)",
+      category: "ModelScript CAE",
+      icon: "$(file-code)",
+    },
+    {
+      command: "modelscript.materializeSu2Config",
+      title: "ModelScript: Materialize CFD Config (.cfgt -> .cfg)",
+      category: "ModelScript CAE",
+      icon: "$(file-code)",
+    },
+    {
+      command: "modelscript.exportShapeToStep",
+      title: "ModelScript: Export Shape to STEP CAD (.step)",
+      category: "ModelScript CAD",
+      icon: "$(export)",
+    },
+    {
+      command: "modelscript.owl2.openDiagram",
+      title: "ModelScript: Open OWL2 Ontology Graph Diagram",
+      category: "ModelScript OWL2",
+      icon: "$(organization)",
+    },
+    {
+      command: "modelscript.cosimOpenLivePlot",
+      title: "ModelScript: Launch Multi-FMU Co-Simulation Master",
+      category: "ModelScript Co-Simulation",
+      icon: "$(play)",
+    },
   ];
 
   const editorTitleMenus: any[] = [];
   const editorContextMenus: any[] = [];
   const explorerContextMenus: any[] = [];
-  if (languages.some((l) => l.id === "step") || options?.features?.cad3dViewer) {
-    explorerContextMenus.push(
+
+  const polyglotWhen = languages.map((l) => `editorLangId == ${l.id} || resourceLangId == ${l.id}`).join(" || ");
+  if (polyglotWhen) {
+    editorContextMenus.push(
       {
-        command: "modelscript.openStepViewer",
-        when: "resourceExtname == .step || resourceExtname == .stp",
-        group: "modelscript_cae@0",
+        command: "modelscript.projectModel",
+        when: polyglotWhen,
+        group: "4_polyglot@1",
       },
       {
-        command: "modelscript.generateFeaMesh",
-        when: "resourceExtname == .step || resourceExtname == .stp",
-        group: "modelscript_cae@1",
-      },
-      {
-        command: "modelscript.generateCfdMesh",
-        when: "resourceExtname == .step || resourceExtname == .stp",
-        group: "modelscript_cae@2",
+        command: "modelscript.openPolyglotVisualizer",
+        when: polyglotWhen,
+        group: "4_polyglot@2",
       },
     );
   }
@@ -402,7 +480,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       if (action.ui?.explorerContextMenu) {
         const defaultWhen =
           lang.fileExtensions.length > 0
-            ? lang.fileExtensions.map((ext) => `resourceExt == ${ext}`).join(" || ")
+            ? lang.fileExtensions.map((ext) => `resourceExtname == ${ext}`).join(" || ")
             : `resourceLangId == ${lang.id}`;
         explorerContextMenus.push({
           command: commandId,
@@ -625,14 +703,6 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       {
         id: "modelscript.experimentsView",
         name: "Experiments",
-      },
-      {
-        id: "modelscript.owl2ClassHierarchy",
-        name: "OWL2 Classes",
-      },
-      {
-        id: "modelscript.owl2PropertyHierarchy",
-        name: "OWL2 Properties",
       },
     ],
     scm: [
@@ -1518,6 +1588,19 @@ module.exports = {
   randomBytes: (n) => new Uint8Array(n),
   createHash: () => ({ update: () => {}, digest: () => '' }),
 };
+module.exports.default = module.exports;
+`,
+            loader: "js",
+          };
+        }
+        if (mod === "module") {
+          return {
+            contents: `
+function createRequire() {
+  return function() { return {}; };
+}
+module.exports = { createRequire };
+module.exports.createRequire = createRequire;
 module.exports.default = module.exports;
 `,
             loader: "js",

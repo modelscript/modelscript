@@ -106,22 +106,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
           // Broadcast to remote followers via ActivityPub
           (async () => {
             try {
-              const fullAuthor = database.db
-                .prepare(`SELECT rsa_private_key, actor_url FROM users WHERE id = ?`)
-                .get(authorId) as Record<string, unknown> | undefined;
+              const fullAuthor = database.getUserFederationInfo(authorId);
 
               if (fullAuthor && content) {
                 // Find remote followers
-                const remoteFollowers = database.db
-                  .prepare(
-                    `
-                  SELECT u.inbox_url 
-                  FROM follows f
-                  JOIN users u ON f.follower_id = u.id
-                  WHERE f.following_id = ? AND u.remote_domain IS NOT NULL
-                `,
-                  )
-                  .all(authorId) as Array<{ inbox_url: string }>;
+                const remoteFollowers = database.getRemoteFollowersInboxes(authorId);
 
                 if (remoteFollowers.length > 0) {
                   const apPostId = `${fullAuthor.actor_url}/posts/${id}`;
@@ -320,9 +309,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 
       // Outbound ActivityPub Delete Tombstone
       if (deleteResult.apId && deleteResult.authorId) {
-        const fullAuthor = database.db
-          .prepare(`SELECT actor_url FROM users WHERE id = ?`)
-          .get(deleteResult.authorId) as any;
+        const fullAuthor = database.getUserFederationInfo(deleteResult.authorId);
         if (fullAuthor?.actor_url) {
           const tombstoneActivity = {
             "@context": "https://www.w3.org/ns/activitystreams",
@@ -374,21 +361,46 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.post("/posts/:id/view", optionalAuth, (req: Request, res: Response) => {
     const postId = Number(req.params.id);
     try {
-      const ip = locationService.extractIp(req);
-      const loc = locationService.lookupIp(ip);
+      // Check CDN headers first (Cloudflare, AWS CloudFront, Nginx reverse proxy)
+      const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
+      const cfRegion = (req.headers["cf-region-code"] || req.headers["cf-region"]) as string | undefined;
+      const xCountry = (req.headers["x-country-code"] || req.headers["x-country"]) as string | undefined;
+      const xRegion = (req.headers["x-region-code"] || req.headers["x-region"]) as string | undefined;
 
-      let countryCode = loc?.countryCode;
-      let regionCode = loc?.regionCode;
+      let countryCode = (cfCountry && cfCountry !== "XX" ? cfCountry : undefined) || xCountry;
+      let regionCode = cfRegion || xRegion;
+
+      if (!countryCode) {
+        const ip = locationService.extractIp(req);
+        const loc = locationService.lookupIp(ip);
+        if (loc) {
+          countryCode = loc.countryCode;
+          regionCode = loc.regionCode;
+        }
+      }
 
       if (!countryCode && req.user) {
         const user = database.getUserById(req.user.id);
         if (user) {
           const profile = database.getFullProfileByUsername(user.username);
           if (profile?.location) {
-            // Try to extract alpha-2 or alpha-3 from location string if needed,
-            // but we'll just pass the string directly and let the frontend map handle it
             countryCode = profile.location.toUpperCase();
           }
+        }
+      }
+
+      // Offline / Local development fallback so heat maps display correctly when testing locally
+      if (!countryCode) {
+        const ip = locationService.extractIp(req);
+        if (
+          ip === "127.0.0.1" ||
+          ip === "::1" ||
+          ip.startsWith("192.168.") ||
+          ip.startsWith("10.") ||
+          ip.startsWith("::ffff:127.")
+        ) {
+          countryCode = "US";
+          regionCode = "CA";
         }
       }
 
@@ -411,12 +423,14 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
       const locationStats = database.getPostLocationStats(postId);
+      const regionStats = database.getPostRegionStats(postId);
       res.json({
         view_count: post.view_count,
         like_count: post.like_count,
         reply_count: post.reply_count,
         repost_count: post.repost_count,
         location_stats: locationStats,
+        region_stats: regionStats,
       });
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch analytics" });

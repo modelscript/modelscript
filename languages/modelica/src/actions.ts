@@ -41,90 +41,119 @@ function ensureClassIndexed(
   className: string,
   queryEngine: any,
 ): { firstId: number | undefined; queryDB: any } {
-  let queryDB = queryEngine.toQueryDB();
-  let firstId = resolveClassId(queryEngine, queryDB, className);
-  if (firstId === undefined) {
+  let docText = context.documentText;
+  let uri = context.uri;
+
+  if (!docText && uri && typeof (context as any).documents?.get === "function") {
+    const doc = (context as any).documents.get(uri);
+    if (doc) docText = doc.getText();
+  }
+
+  if (!docText && typeof (context as any).documents?.all === "function") {
+    for (const d of (context as any).documents.all()) {
+      const t = d.getText();
+      if (t.includes(className)) {
+        docText = t;
+        if (!uri) uri = d.uri;
+        break;
+      }
+    }
+  }
+
+  const ws =
+    (context.workspaceManager as any)?.globalWorkspaceIndex ??
+    (context.workspaceManager as any)?.getWorkspaceIndex?.("modelica");
+  const sharedCtx =
+    (globalThis as any).sharedContext ??
+    (context as any).sharedContext ??
+    (context as any).state?.sharedContext ??
+    (context as any).parserService?.sharedContext ??
+    (context.workspaceManager as any)?.sharedContext;
+
+  let parseFn = sharedCtx?.parse;
+  if (typeof parseFn !== "function") {
+    const parser =
+      (globalThis as any).modelicaParser ??
+      (context as any).parserService?.getParser?.("modelica") ??
+      (context as any).parserService?.parser ??
+      (context.workspaceManager as any)?.parserService?.getParser?.("modelica") ??
+      (context.workspaceManager as any)?.parserService?.parser;
+    if (parser && typeof parser.parse === "function") {
+      parseFn = (_ext: string, input: string) => parser.parse(input);
+    }
+  }
+
+  if (docText && typeof parseFn === "function" && ws) {
     try {
-      let docText = context.documentText;
-      let uri = context.uri;
-
-      if (!docText && typeof (context as any).documents?.all === "function") {
-        for (const d of (context as any).documents.all()) {
-          const t = d.getText();
-          if (t.includes(className)) {
-            docText = t;
-            if (!uri) uri = d.uri;
-            break;
-          }
+      const tree = parseFn(".mo", docText);
+      if (tree) {
+        const effectiveUri = uri ?? "file:///unnamed.mo";
+        const docTrees =
+          (context as any).documentManager?.documentTrees ??
+          (context.workspaceManager as any)?.documentManager?.documentTrees;
+        if (docTrees && typeof docTrees.set === "function") {
+          docTrees.set(effectiveUri, { text: docText, tree });
         }
-      }
-
-      if (docText) {
-        const ws =
-          (context.workspaceManager as any)?.globalWorkspaceIndex ??
-          (context.workspaceManager as any)?.getWorkspaceIndex?.("modelica");
-        const sharedCtx =
-          (globalThis as any).sharedContext ??
-          (context as any).sharedContext ??
-          (context as any).state?.sharedContext ??
-          (context as any).parserService?.sharedContext ??
-          (context.workspaceManager as any)?.sharedContext;
-
-        let parseFn = sharedCtx?.parse;
-        if (typeof parseFn !== "function") {
-          const parser =
-            (globalThis as any).modelicaParser ??
-            (context as any).parserService?.getParser?.("modelica") ??
-            (context as any).parserService?.parser ??
-            (context.workspaceManager as any)?.parserService?.getParser?.("modelica") ??
-            (context.workspaceManager as any)?.parserService?.parser;
-          if (parser && typeof parser.parse === "function") {
-            parseFn = (_ext: string, input: string) => parser.parse(input);
-          }
+        if (typeof (context as any).parserService?.getSharedCstTreeWrapper === "function") {
+          queryEngine.updateTree?.((context as any).parserService.getSharedCstTreeWrapper());
+        } else if (typeof queryEngine.updateTree === "function") {
+          queryEngine.updateTree({
+            getText: (s: number, e: number) => docText!.substring(s, e),
+            getNode: (s: number, e: number) =>
+              typeof tree.rootNode?.descendantForIndex === "function"
+                ? tree.rootNode.descendantForIndex(s, e)
+                : typeof tree.getNode === "function"
+                  ? tree.getNode(s, e)
+                  : null,
+          });
         }
-
-        if (typeof parseFn === "function" && ws) {
-          const tree = parseFn(".mo", docText);
-          if (tree) {
-            ws.indexDocument(uri ?? "file:///unnamed.mo", () => tree.rootNode);
-            const unified = ws.toUnified();
-            if (typeof queryEngine.updateIndex === "function") {
-              queryEngine.updateIndex(unified);
-              queryDB = queryEngine.toQueryDB();
-              firstId = resolveClassId(queryEngine, queryDB, className);
-            }
-          }
-        }
-
-        if (firstId === undefined && ws?.unifiedIndex) {
-          const entries = ws.unifiedIndex.byName?.get(className) || [];
-          firstId = entries[0];
-          if (firstId === undefined && ws.unifiedIndex.symbols) {
-            for (const [id, entry] of ws.unifiedIndex.symbols.entries()) {
-              if (entry.name === className || entry.qualifiedName === className) {
-                firstId = id;
-                break;
-              }
-            }
-          }
-          if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
-            queryEngine.updateIndex(ws.toUnified());
-            queryDB = queryEngine.toQueryDB();
-          }
-        }
-      }
-
-      if (firstId === undefined && (context.workspaceManager as any)?.unifiedWorkspace) {
-        const uws = (context.workspaceManager as any).unifiedWorkspace.toUnifiedPartial();
-        if (uws?.byName) {
-          const entries = uws.byName.get(className) || [];
-          firstId = entries[0];
+        ws.indexDocument(effectiveUri, () => tree.rootNode);
+        const unified = ws.toUnified();
+        const injectFn = (globalThis as any).injectPredefinedTypes;
+        if (typeof injectFn === "function") injectFn(unified);
+        const changedInfo = ws.takeGlobalChangedIds?.();
+        if (typeof queryEngine.updateIndex === "function") {
+          queryEngine.updateIndex(unified, effectiveUri, changedInfo?.changedIds, changedInfo?.structuralChangedIds);
         }
       }
     } catch (err) {
-      console.warn("[ensureClassIndexed] Error during fallback indexing:", err);
+      console.warn("[ensureClassIndexed] Error reindexing documentText:", err);
     }
   }
+
+  let queryDB = queryEngine.toQueryDB();
+  let firstId = resolveClassId(queryEngine, queryDB, className);
+
+  if (firstId !== undefined && typeof queryEngine.invalidate === "function") {
+    queryEngine.invalidate([firstId]);
+  }
+
+  if (firstId === undefined && ws?.unifiedIndex) {
+    const entries = ws.unifiedIndex.byName?.get(className) || [];
+    firstId = entries[0];
+    if (firstId === undefined && ws.unifiedIndex.symbols) {
+      for (const [id, entry] of ws.unifiedIndex.symbols.entries()) {
+        if (entry.name === className || entry.qualifiedName === className) {
+          firstId = id;
+          break;
+        }
+      }
+    }
+    if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
+      queryEngine.updateIndex(ws.toUnified());
+      queryDB = queryEngine.toQueryDB();
+      queryEngine.invalidate([firstId]);
+    }
+  }
+
+  if (firstId === undefined && (context.workspaceManager as any)?.unifiedWorkspace) {
+    const uws = (context.workspaceManager as any).unifiedWorkspace.toUnifiedPartial();
+    if (uws?.byName) {
+      const entries = uws.byName.get(className) || [];
+      firstId = entries[0];
+    }
+  }
+
   return { firstId, queryDB };
 }
 

@@ -57,6 +57,8 @@ export interface LintResult {
   severity: "error" | "warning" | "info" | "hint";
   startByte?: number;
   endByte?: number;
+  startOffset?: number;
+  endOffset?: number;
   field?: string;
   code?: number;
 }
@@ -72,6 +74,8 @@ export interface LintDiagnostic {
   symbolId: SymbolId;
   startByte: number;
   endByte: number;
+  startOffset?: number;
+  endOffset?: number;
   message: string;
   severity: "error" | "warning" | "info" | "hint";
   lintName: string;
@@ -211,6 +215,7 @@ export class WasmQueryEngine {
 
   private activeTracker: DependencyTracker | null = null;
   private executionStack: { key: number; queryName: string; symbolId: SymbolId }[] = [];
+  private activeVerifications = new Set<number>();
   private hooksByRule: Map<string, QueryHooks>;
 
   // Virtual entry infrastructure (specialization)
@@ -324,7 +329,7 @@ export class WasmQueryEngine {
   public getCstNode(id: SymbolId): unknown | null {
     const entry = this.resolveEntry(id);
     if (!entry) return null;
-    return this.getCstNodeRange(entry.startByte, entry.endByte, entry);
+    return this.getCstNodeRange(entry.startOffset ?? entry.startByte, entry.endOffset ?? entry.endByte, entry);
   }
 
   public getCstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
@@ -348,11 +353,13 @@ export class WasmQueryEngine {
         return root.descendantForByteRange(startByte, endByte);
       }
       const findNode = (n: any): any | null => {
-        const s = n.startIndex ?? n.startByte ?? -1;
-        const e = n.endIndex ?? n.endByte ?? -1;
+        const s = n.startOffset ?? n.startIndex ?? n.startByte ?? -1;
+        const e = n.endOffset ?? n.endIndex ?? n.endByte ?? -1;
         if (s === startByte && e === endByte) return n;
         for (const c of n.children || []) {
-          if (c.startIndex <= startByte && c.endIndex >= endByte) {
+          const cs = c.startOffset ?? c.startIndex ?? c.startByte ?? -1;
+          const ce = c.endOffset ?? c.endIndex ?? c.endByte ?? -1;
+          if (cs <= startByte && ce >= endByte) {
             const found = findNode(c);
             if (found) return found;
           }
@@ -443,15 +450,6 @@ export class WasmQueryEngine {
 
     for (const id of ids) {
       this.inputRevisions.set(id, this.currentRevision);
-      const dependentKeys = this.inputReverseDependencies.get(id);
-      if (dependentKeys) {
-        for (const key of dependentKeys) {
-          const memo = this.memos.get(key);
-          if (memo) {
-            memo.verified_at = -1;
-          }
-        }
-      }
     }
 
     if (structuralChangedIds) {
@@ -475,7 +473,7 @@ export class WasmQueryEngine {
   public swapIndex(newIndex: SymbolIndex, changedSymbolIds: Set<SymbolId>, structuralChangedIds?: Set<SymbolId>): void {
     this.index = newIndex;
     if (structuralChangedIds) {
-      this.invalidate(structuralChangedIds, changedSymbolIds);
+      this.invalidate(changedSymbolIds, structuralChangedIds);
     } else {
       this.invalidate(changedSymbolIds);
     }
@@ -500,8 +498,8 @@ export class WasmQueryEngine {
             results.push({ lintName, result });
           }
         }
-      } catch (e) {
-        console.warn(`[lint] ${lintName} failed for ${entry.name}: ${e}`);
+      } catch (e: any) {
+        console.warn(`[lint] ${lintName} failed for ${entry.name}: ${e?.stack ?? e}`);
       }
     }
     return results;
@@ -547,17 +545,23 @@ export class WasmQueryEngine {
       for (const { lintName, result } of this.runLints(id)) {
         let startByte = result.startByte ?? entry.startByte;
         let endByte = result.endByte ?? entry.endByte;
+        let startOffset = result.startOffset ?? entry.startOffset ?? startByte;
+        let endOffset = result.endOffset ?? entry.endOffset ?? endByte;
         if (result.field && !result.startByte && !result.endByte) {
           const fieldRange = entry.fieldRanges?.[result.field];
           if (fieldRange) {
             startByte = fieldRange.startByte;
             endByte = fieldRange.endByte;
+            startOffset = fieldRange.startOffset ?? fieldRange.startByte;
+            endOffset = fieldRange.endOffset ?? fieldRange.endByte;
           }
         }
         diagnostics.push({
           symbolId: id,
           startByte,
           endByte,
+          startOffset,
+          endOffset,
           message: result.message,
           severity: result.severity,
           lintName,
@@ -591,9 +595,13 @@ export class WasmQueryEngine {
       const entry = this.index.symbols.get(id);
       if (!entry) {
         cacheDirtySet.delete(id);
+        perSymbolCache.delete(id);
         continue;
       }
-      if (resourceId && entry.resourceId !== resourceId) continue;
+      if (resourceId && entry.resourceId !== resourceId) {
+        const norm = (u: string) => u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+        if (!entry.resourceId || norm(entry.resourceId) !== norm(resourceId)) continue;
+      }
       symbolsToRelint.push([id, entry]);
       relintIds.add(id);
     }
@@ -622,17 +630,23 @@ export class WasmQueryEngine {
       for (const { lintName, result } of this.runLints(id)) {
         let startByte = result.startByte ?? entry.startByte;
         let endByte = result.endByte ?? entry.endByte;
+        let startOffset = result.startOffset ?? (result as any).startOffset ?? entry.startOffset ?? startByte;
+        let endOffset = result.endOffset ?? (result as any).endOffset ?? entry.endOffset ?? endByte;
         if (result.field && !result.startByte && !result.endByte) {
           const fieldRange = entry.fieldRanges?.[result.field];
           if (fieldRange) {
             startByte = fieldRange.startByte;
             endByte = fieldRange.endByte;
+            startOffset = fieldRange.startOffset ?? fieldRange.startByte;
+            endOffset = fieldRange.endOffset ?? fieldRange.endByte;
           }
         }
         diags.push({
           symbolId: id,
           startByte,
           endByte,
+          startOffset,
+          endOffset,
           message: result.message,
           severity: result.severity,
           lintName,
@@ -648,6 +662,14 @@ export class WasmQueryEngine {
       allDiags.push(...diags);
     }
     return allDiags;
+  }
+
+  /**
+   * Purges cached diagnostics and dirty sets for a closed or deleted document.
+   */
+  public disposeDocument(resourceId: string): void {
+    this.lintCache.delete(resourceId);
+    this.dirtyLintSymbols.delete(resourceId);
   }
 
   /**
@@ -725,12 +747,7 @@ export class WasmQueryEngine {
       return memo.value;
     }
 
-    if (memo && memo.verified_at !== -1) {
-      memo.verified_at = this.currentRevision;
-      return memo.value;
-    }
-
-    if (memo && this.deepVerify(memo)) {
+    if (memo && this.deepVerify(memo, key)) {
       memo.verified_at = this.currentRevision;
       return memo.value;
     }
@@ -738,19 +755,34 @@ export class WasmQueryEngine {
     return this.execute(queryName, symbolId, argsHash, args);
   }
 
-  private deepVerify(memo: Memo): boolean {
-    for (const dep of memo.dependencies) {
-      if (dep.kind === "input") {
-        const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
-        if (rev > memo.verified_at) return false;
-      } else if (dep.kind === "query") {
-        const depKey = this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
-        const depMemo = this.memos.get(depKey);
-        if (!depMemo) return false;
-        if (depMemo.changed_at > memo.verified_at) return false;
+  private deepVerify(memo: Memo, memoKey: number): boolean {
+    if (this.activeVerifications.has(memoKey)) return false;
+    this.activeVerifications.add(memoKey);
+    const prevTracker = this.activeTracker;
+    this.activeTracker = null;
+    try {
+      for (const dep of memo.dependencies) {
+        if (dep.kind === "input") {
+          const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
+          if (rev > memo.verified_at) return false;
+        } else if (dep.kind === "query") {
+          try {
+            this.fetch(dep.queryName, dep.symbolId, dep.argsHash);
+          } catch (e) {
+            if (e instanceof QueryCancelledError) throw e;
+            return false;
+          }
+          const depKey = this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
+          const depMemo = this.memos.get(depKey);
+          if (!depMemo) return false;
+          if (depMemo.changed_at > memo.verified_at) return false;
+        }
       }
+      return true;
+    } finally {
+      this.activeTracker = prevTracker;
+      this.activeVerifications.delete(memoKey);
     }
-    return true;
   }
 
   private execute(queryName: string, symbolId: SymbolId, argsHash?: string, args?: Record<string, unknown>): unknown {

@@ -13,9 +13,75 @@ import { parseSsd } from "./ssd-parser.js";
 
 export const sspLanguage = language({
   name: "ssp",
+  fileExtensions: [".ssp", ".ssd"],
+  lsp: {
+    fileExtensions: [".ssp", ".ssd"],
+  },
   rules: {
     Root: () => "ssp",
   },
+
+  actions: [
+    {
+      id: "open_ssp_editor",
+      title: "Inspect System Structure (.ssd)",
+      description: "Opens the visual SystemStructure.ssd diagram showing FMU component blocks and connections.",
+      category: "query",
+      ui: {
+        editorTitle: {
+          icon: "$(symbol-structure)",
+          group: "navigation@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
+        languageModelTool: {
+          name: "ssp_open_editor",
+          displayName: "Inspect SSP System Structure",
+          modelDescription: "Inspects SystemStructure.ssd FMU components and connections.",
+        },
+      },
+    },
+    {
+      id: "launch_cosimulation",
+      title: "Launch Multi-FMU Co-Simulation Master",
+      description: "Launches the distributed co-simulation master orchestrating multiple FMUs.",
+      category: "simulate",
+      ui: {
+        editorTitle: {
+          icon: "$(play)",
+          group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@1",
+        },
+        languageModelTool: {
+          name: "ssp_launch_cosimulation",
+          displayName: "Launch Multi-FMU Co-Simulation",
+          modelDescription: "Launches distributed Co-Simulation master orchestrating multiple FMUs.",
+        },
+      },
+    },
+    {
+      id: "project_to_modelica",
+      title: "Project System to Modelica Model",
+      description: "Translates the SSP system network of FMUs and connections into a native Modelica block model.",
+      category: "transform",
+      ui: {
+        editorContextMenu: {
+          group: "2_transform@1",
+        },
+        languageModelTool: {
+          name: "ssp_to_modelica",
+          displayName: "Project SSP to Modelica",
+          modelDescription: "Translates SSP system structure to a native Modelica model.",
+        },
+      },
+    },
+  ],
 
   container: {
     extensions: [".ssp"],

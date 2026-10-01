@@ -204,17 +204,17 @@ jobs:
           key: ${{ runner.os }}-nx-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-nx-
-      - name: Build Site
-        run: npx nx build @modelscript/site
-      - name: SPA fallback for GitHub Pages
-        run: |
-          cp apps/site/build/client/index.html apps/site/build/client/404.html
+      - name: Build PDF Manual
+        run: npm run build:pdf --workspace=@modelscript/docs
+      - name: Build Unified Site
+        run: npx nx build @modelscript/docs
       - name: Deploy Site
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
           external_repository: modelscript/modelscript.github.io
-          publish_dir: ./apps/site/build/client
+          publish_dir: ./apps/docs/docs/.vitepress/dist
+          cname: modelscript.org
 
   deploy_docs:
     needs: [build, test, lint]

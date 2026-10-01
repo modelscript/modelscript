@@ -2323,20 +2323,25 @@ const packageTraceabilityLints = {
 import type { GraphicsConfig } from "@modelscript/diagram";
 import type { X6Markup } from "@modelscript/diagram/builder";
 
-/** Standard SysML block-style node markup: header + separator + label + icon */
+/** Standard SysML block-style node markup: header + separator + label */
 const blockMarkup: X6Markup[] = [
   { tagName: "rect", selector: "body" },
   { tagName: "text", selector: "header" },
   { tagName: "line", selector: "separator" },
   { tagName: "text", selector: "label" },
-  { tagName: "image", selector: "icon" },
 ];
+
+/** Standard SysML block-style node markup with icon */
+const blockMarkupWithIcon: X6Markup[] = [...blockMarkup, { tagName: "image", selector: "icon" }];
 
 /** Minimal node markup for simpler nodes */
 const simpleMarkup: X6Markup[] = [
   { tagName: "rect", selector: "body" },
   { tagName: "text", selector: "label" },
 ];
+
+/** Minimal node markup with icon */
+const simpleMarkupWithIcon: X6Markup[] = [...simpleMarkup, { tagName: "image", selector: "icon" }];
 
 /** Create a SysML block-style node GraphicsConfig */
 const sysmlNodeGraphics = (opts: {
@@ -2351,7 +2356,7 @@ const sysmlNodeGraphics = (opts: {
   role: "node",
   node: {
     shape: "rect",
-    markup: blockMarkup,
+    markup: opts.iconHref ? blockMarkupWithIcon : blockMarkup,
     attrs: {
       body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 2, rx: 4, ry: 4 },
       header: {
@@ -2372,9 +2377,11 @@ const sysmlNodeGraphics = (opts: {
         refX: 0.5,
         refY: 40,
       },
-      icon: {
-        ...(opts.iconHref ? { href: opts.iconHref, width: 16, height: 16, x: 6, y: 4 } : {}),
-      },
+      ...(opts.iconHref
+        ? {
+            icon: { href: opts.iconHref, width: 16, height: 16, x: 6, y: 4 },
+          }
+        : {}),
     },
     size: { width: opts.width ?? 180, height: opts.height ?? 60 },
     ports: {
@@ -2397,7 +2404,7 @@ const sysmlUsageGraphics = (opts: {
   role: "node",
   node: {
     shape: "rect",
-    markup: simpleMarkup,
+    markup: opts.iconHref ? simpleMarkupWithIcon : simpleMarkup,
     attrs: {
       body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 1.5, rx: 4, ry: 4, strokeDasharray: "6 3" },
       label: {
@@ -2408,6 +2415,11 @@ const sysmlUsageGraphics = (opts: {
         refX: 0.5,
         refY: 0.5,
       },
+      ...(opts.iconHref
+        ? {
+            icon: { href: opts.iconHref, width: 16, height: 16, x: 6, y: 4 },
+          }
+        : {}),
     },
     size: { width: 140, height: 40 },
   },
@@ -2521,6 +2533,32 @@ export const sysml2Language = language({
 
   actions: [
     {
+      id: "open_requirements_matrix",
+      title: "Open Requirements Matrix",
+      description: "Opens the visual SysML v2 Requirements Verification & Traceability matrix editor.",
+      category: "query",
+      inputs: {
+        partName: { type: "string", description: "Part name to inspect" },
+      },
+      ui: {
+        editorTitle: {
+          icon: "$(checklist)",
+          group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
+        languageModelTool: {
+          name: "sysml2_open_requirements_matrix",
+          displayName: "Open SysML v2 Requirements Matrix",
+          modelDescription: "Opens the visual SysML v2 Requirements Verification & Traceability matrix editor.",
+        },
+      },
+    },
+    {
       id: "extract_topology",
       title: "Extract Part Topology",
       description: "Extracts physical connection and port topology from a SysML v2 part definition.",
@@ -2532,6 +2570,9 @@ export const sysml2Language = language({
         editorTitle: {
           icon: "$(type-hierarchy)",
           group: "navigation@2",
+        },
+        editorContextMenu: {
+          group: "3_analysis@0",
         },
         languageModelTool: {
           name: "sysml2_extract_topology",
@@ -2558,6 +2599,12 @@ export const sysml2Language = language({
         editorTitle: {
           icon: "$(checklist)",
           group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run@1",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@1",
         },
         languageModelTool: {
           name: "sysml2_verify_requirements",
@@ -2586,6 +2633,9 @@ export const sysml2Language = language({
           icon: "$(debug-rerun)",
           group: "navigation@1",
         },
+        editorContextMenu: {
+          group: "1_run@2",
+        },
         languageModelTool: {
           name: "sysml2_verify_state_machine",
           displayName: "Verify SysML v2 State Machine",
@@ -2612,6 +2662,9 @@ export const sysml2Language = language({
           icon: "$(check-all)",
           group: "navigation@1",
         },
+        editorContextMenu: {
+          group: "1_run@3",
+        },
         languageModelTool: {
           name: "sysml2_verify_contracts",
           displayName: "Verify SysML v2 Interface Contracts",
@@ -2634,6 +2687,12 @@ export const sysml2Language = language({
         return exportToSmtLib(queryDB, { scopeFilter: params?.scope });
       },
       ui: {
+        editorContextMenu: {
+          group: "2_transform@1",
+        },
+        explorerContextMenu: {
+          group: "modelscript_convert@1",
+        },
         languageModelTool: {
           name: "sysml2_export_smtlib",
           displayName: "Export SysML v2 to SMT-LIB v2",
@@ -2656,6 +2715,12 @@ export const sysml2Language = language({
         return exportToNuXmv(queryDB, { stateMachineName: params?.stateMachineName });
       },
       ui: {
+        editorContextMenu: {
+          group: "2_transform@2",
+        },
+        explorerContextMenu: {
+          group: "modelscript_convert@2",
+        },
         languageModelTool: {
           name: "sysml2_export_nuxmv",
           displayName: "Export SysML v2 to nuXmv",
@@ -2684,6 +2749,9 @@ export const sysml2Language = language({
         editorTitle: {
           icon: "$(shield)",
           group: "navigation@2",
+        },
+        editorContextMenu: {
+          group: "3_analysis@1",
         },
         languageModelTool: {
           name: "sysml2_synthesize_fault_tree",
@@ -2729,6 +2797,9 @@ export const sysml2Language = language({
         editorTitle: {
           icon: "$(graph-line)",
           group: "navigation@2",
+        },
+        editorContextMenu: {
+          group: "1_run@4",
         },
         languageModelTool: {
           name: "sysml2_verify_hybrid_flowpipe",
@@ -2784,6 +2855,9 @@ export const sysml2Language = language({
         editorContextMenu: {
           group: "1_run",
         },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
         languageModelTool: {
           name: "sysml2_hybrid_simulate",
           displayName: "Simulate Hybrid SysML v2 / Modelica System",
@@ -2817,6 +2891,9 @@ export const sysml2Language = language({
         editorTitle: {
           icon: "$(check-all)",
           group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run@5",
         },
         languageModelTool: {
           name: "sysml2_verify_activity_soundness",

@@ -14,11 +14,13 @@ export interface SymbolEntry {
   namePath: string;
   startByte: number;
   endByte: number;
+  startOffset?: number;
+  endOffset?: number;
   parentId: SymbolId | null;
   exports: string[];
   inherits: string[];
   metadata: Record<string, unknown>;
-  fieldRanges?: Record<string, { startByte: number; endByte: number }>;
+  fieldRanges?: Record<string, { startByte: number; endByte: number; startOffset?: number; endOffset?: number }>;
   fieldName: string | null;
   resourceId?: string;
   language?: string;

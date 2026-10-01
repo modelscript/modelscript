@@ -10,22 +10,29 @@ import {
   DOMAIN_INDEX_TO_NAME,
   DOMAIN_NAME_TO_INDEX,
   FlowAlgebraOracle,
+  LanguageWorkspaceIndex,
   OntologyTheoryOracle,
   QueryEngine,
   SemanticTheoryCoordinator,
   ThreadDomain,
   UnifiedWorkspace,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { AlignedDomainElement } from "../providers/threadDiagnosticsProvider.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
+import { extractIndexerHooks } from "../utils/hook-extractor.js";
 import { DocumentManager } from "./DocumentManager.js";
 
 let nodeRequire: ((id: string) => any) | null = null;
 try {
-  if (typeof createRequire === "function" && typeof process !== "undefined" && process.versions?.node) {
-    nodeRequire = createRequire(import.meta.url);
+  if (typeof process !== "undefined" && process.versions?.node) {
+    const req = (globalThis as any).require ?? (typeof module !== "undefined" ? (module as any).require : null);
+    if (typeof req === "function") {
+      const nm = req("node:module");
+      if (nm?.createRequire) {
+        nodeRequire = nm.createRequire(import.meta.url);
+      }
+    }
   }
 } catch {
   // Non-node environment
@@ -267,6 +274,25 @@ export class WorkspaceManager {
             this.setWorkspaceIndex(norm, idx);
             return idx;
           }
+        } else if (norm === "owl2" || norm === "owl") {
+          const mod = nodeRequire("@modelscript/owl2/factory");
+          if (mod?.createOWL2WorkspaceIndex) {
+            const idx = mod.createOWL2WorkspaceIndex();
+            this.setWorkspaceIndex(norm, idx);
+            return idx;
+          }
+        }
+      } catch {
+        // Fallback failed
+      }
+    }
+    if (plugin?.languageDef) {
+      try {
+        const hooks = extractIndexerHooks(plugin.languageDef);
+        if (hooks && hooks.length > 0) {
+          const idx = new LanguageWorkspaceIndex(hooks);
+          this.setWorkspaceIndex(norm, idx);
+          return idx;
         }
       } catch {
         // Fallback failed
@@ -283,6 +309,9 @@ export class WorkspaceManager {
     existing.index = index;
     this.languageContexts.set(norm, existing);
     this.allWorkspaceIndices.set(norm, index);
+    if (this.unifiedWorkspace && typeof (this.unifiedWorkspace as any).registerWorkspace === "function") {
+      this.unifiedWorkspace.registerWorkspace(norm, index);
+    }
 
     const alt = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
     if (alt) {
@@ -290,6 +319,9 @@ export class WorkspaceManager {
       altExisting.index = index;
       this.languageContexts.set(alt, altExisting);
       this.allWorkspaceIndices.set(alt, index);
+      if (this.unifiedWorkspace && typeof (this.unifiedWorkspace as any).registerWorkspace === "function") {
+        this.unifiedWorkspace.registerWorkspace(alt, index);
+      }
     }
   }
 
@@ -438,6 +470,19 @@ export class WorkspaceManager {
     this.setQueryEngine("step", val);
   }
 
+  /**
+   * Cleans up cached instances, contexts, and query engine caches for a closed document.
+   */
+  public disposeDocument(uri: string): void {
+    this.workspaceInstances.delete(uri);
+    this.documentInstances.delete(uri);
+    this.documentContexts.delete(uri);
+    const eng = globalLanguageRegistry.getQueryEngineForUri(uri);
+    (eng as any)?.disposeDocument?.(uri);
+    (this.globalModelicaQueryEngine as any)?.disposeDocument?.(uri);
+    (this.globalSysML2QueryEngine as any)?.disposeDocument?.(uri);
+  }
+
   private documentManager?: DocumentManager;
 
   constructor(documentManager?: DocumentManager) {
@@ -498,14 +543,19 @@ export class WorkspaceManager {
     // 1. Check documentInstances first for rich AST models
     const docInsts = this.documentInstances.get(uri);
     if (docInsts && docInsts.length > 0) {
-      if (className) {
-        const found = docInsts.find(
-          (ci: any) =>
-            ci.name === className || ci.compositeName === className || ci.compositeName?.endsWith(`.${className}`),
-        );
-        if (found) return found;
-      } else {
-        return docInsts[docInsts.length - 1];
+      const richInsts = docInsts.filter(
+        (ci: any) => typeof ci.annotation === "function" || (Array.isArray(ci.components) && ci.components.length > 0),
+      );
+      if (richInsts.length > 0) {
+        if (className) {
+          const found = richInsts.find(
+            (ci: any) =>
+              ci.name === className || ci.compositeName === className || ci.compositeName?.endsWith(`.${className}`),
+          );
+          if (found) return found;
+        } else {
+          return richInsts[richInsts.length - 1];
+        }
       }
     }
 
@@ -559,6 +609,8 @@ export class WorkspaceManager {
       const extendsClassInstances: any[] = [];
       const connectEquations: any[] = [];
 
+      let classInstance: any;
+
       for (const child of children) {
         if (child.kind === "Component" || child.kind === "Variable") {
           const childClassId = db.query ? db.query("classInstance", child.id) : null;
@@ -568,6 +620,24 @@ export class WorkspaceManager {
             classInstance: childClassEntry ? buildAdapter(childClassEntry, db, childClassEntry.name) : null,
             annotations: [],
             declaration: child,
+            cstNode: db.cstNode ? db.cstNode(child.id) : null,
+            abstractSyntaxNode: db.cstNode ? db.cstNode(child.id) : null,
+            annotation: (annName: string): any => {
+              try {
+                let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
+                if (!evaluatorClass && nodeRequire) {
+                  try {
+                    evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
+                  } catch {}
+                }
+                const cst = db.cstNode ? db.cstNode(child.id) : null;
+                if (cst && evaluatorClass) {
+                  const evaluator = new evaluatorClass(classInstance);
+                  return evaluator.evaluate(cst, annName);
+                }
+              } catch {}
+              return null;
+            },
           });
         } else if (child.kind === "Extends" && child.name) {
           if (child.name !== entry.name && child.name !== compositeName) {
@@ -617,16 +687,35 @@ export class WorkspaceManager {
               componentReference2: {
                 parts: rhsStr.split(".").map((id: string) => ({ identifier: { text: id } })),
               },
+              cstNode: db.cstNode ? db.cstNode(child.id) : null,
+              ast: db.cstNode ? db.cstNode(child.id) : null,
+              annotation: (annName: string): any => {
+                try {
+                  let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
+                  if (!evaluatorClass && nodeRequire) {
+                    try {
+                      evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
+                    } catch {}
+                  }
+                  const cst = db.cstNode ? db.cstNode(child.id) : null;
+                  if (cst && evaluatorClass) {
+                    const evaluator = new evaluatorClass(classInstance);
+                    return evaluator.evaluate(cst, annName);
+                  }
+                } catch {}
+                return null;
+              },
             });
           }
         }
       }
 
-      let classInstance: any;
       classInstance = {
         id: entry.id,
         db,
         entry,
+        cstNode: db.cstNode ? db.cstNode(entry.id) : null,
+        abstractSyntaxNode: db.cstNode ? db.cstNode(entry.id) : null,
         name: entry.name ?? "",
         kind: entry.kind ?? "Class",
         classKind: (entry.metadata as any)?.classKind ?? "class",
@@ -649,12 +738,13 @@ export class WorkspaceManager {
           return null;
         },
         annotation: (name: string, _ctx?: any): any => {
+          const cacheKey = _ctx?.ownOnly ? `${name}:own` : name;
           if (!annotationCache.has(entry.id)) {
             annotationCache.set(entry.id, new Map());
           }
           const classAnnCache = annotationCache.get(entry.id)!;
-          if (classAnnCache.has(name)) {
-            return classAnnCache.get(name);
+          if (classAnnCache.has(cacheKey)) {
+            return classAnnCache.get(cacheKey);
           }
 
           let cstNode: any = null;
@@ -669,11 +759,13 @@ export class WorkspaceManager {
             const cachedDoc = this.documentManager?.getDocumentTree?.(entry.resourceId);
             const root = cachedDoc?.rootNode ?? (cachedDoc as any)?.tree?.rootNode;
             if (root) {
-              if (entry.startByte != null && entry.endByte != null) {
-                if (typeof root.descendantForByteRange === "function") {
-                  cstNode = root.descendantForByteRange(entry.startByte, entry.endByte) || root;
-                } else if (typeof root.descendantForIndex === "function") {
-                  cstNode = root.descendantForIndex(entry.startByte, entry.endByte) || root;
+              const startOff = entry.startOffset ?? entry.startByte;
+              const endOff = entry.endOffset ?? entry.endByte;
+              if (startOff != null && endOff != null) {
+                if (typeof root.descendantForIndex === "function") {
+                  cstNode = root.descendantForIndex(startOff, endOff) || root;
+                } else if (typeof root.descendantForByteRange === "function") {
+                  cstNode = root.descendantForByteRange(startOff, endOff) || root;
                 } else {
                   cstNode = root;
                 }
@@ -700,15 +792,13 @@ export class WorkspaceManager {
                   : (globalThis as any).sharedContext?.parse?.(".mo", text);
                 const root = tree?.rootNode;
                 if (root) {
-                  if (
-                    entry.startByte != null &&
-                    entry.endByte != null &&
-                    text.length === getSourceText(entry.resourceId)?.length
-                  ) {
-                    if (typeof root.descendantForByteRange === "function") {
-                      cstNode = root.descendantForByteRange(entry.startByte, entry.endByte) || root;
-                    } else if (typeof root.descendantForIndex === "function") {
-                      cstNode = root.descendantForIndex(entry.startByte, entry.endByte) || root;
+                  const startOff = entry.startOffset ?? entry.startByte;
+                  const endOff = entry.endOffset ?? entry.endByte;
+                  if (startOff != null && endOff != null && text.length === getSourceText(entry.resourceId)?.length) {
+                    if (typeof root.descendantForIndex === "function") {
+                      cstNode = root.descendantForIndex(startOff, endOff) || root;
+                    } else if (typeof root.descendantForByteRange === "function") {
+                      cstNode = root.descendantForByteRange(startOff, endOff) || root;
                     } else {
                       cstNode = root;
                     }
@@ -723,11 +813,6 @@ export class WorkspaceManager {
           }
 
           try {
-            console.log("annotation debug:", {
-              entryName: entry.name,
-              hasCst: !!cstNode,
-              extendsCount: extendsClassInstances.length,
-            });
             if (cstNode) {
               let evaluatorClass =
                 (globalThis as any).AnnotationEvaluator ??
@@ -744,25 +829,27 @@ export class WorkspaceManager {
                 const evaluator = new evaluatorClass(classInstance);
                 const evaluated = evaluator.evaluate(cstNode, name);
                 if (evaluated) {
-                  classAnnCache.set(name, evaluated);
+                  classAnnCache.set(cacheKey, evaluated);
                   return evaluated;
                 }
               }
             }
 
-            // Fall back to inherited annotations from extends clauses
-            for (const ext of extendsClassInstances) {
-              const inherited = ext.classInstance?.annotation?.(name, _ctx);
-              if (inherited) {
-                classAnnCache.set(name, inherited);
-                return inherited;
+            // Fall back to inherited annotations from extends clauses unless caller requested own annotations only
+            if (!_ctx?.ownOnly) {
+              for (const ext of extendsClassInstances) {
+                const inherited = ext.classInstance?.annotation?.(name, _ctx);
+                if (inherited) {
+                  classAnnCache.set(cacheKey, inherited);
+                  return inherited;
+                }
               }
             }
 
-            classAnnCache.set(name, null);
+            classAnnCache.set(cacheKey, null);
             return null;
           } catch {
-            classAnnCache.set(name, null);
+            classAnnCache.set(cacheKey, null);
             return null;
           }
         },
@@ -793,43 +880,99 @@ export class WorkspaceManager {
       // Try multi-part resolution for fully qualified names ("A.B.C")
       if (symbolIds.length === 0 && className.includes(".")) {
         const parts = className.split(".");
-        let currentIds = (idx.byName.get(parts[0]) || []).filter((id: number) => {
-          const e = idx.symbols.get(id);
-          return e && (e.kind === "Class" || e.kind === "Def");
-        });
-        for (let i = 1; i < parts.length && currentIds.length > 0; i++) {
-          const part = parts[i];
-          const nextIds: any[] = [];
-          for (const parentId of currentIds) {
-            const children = idx.childrenOf.get(parentId);
-            if (children) {
-              for (const childId of children) {
-                const childEntry = idx.symbols.get(childId);
-                if (
-                  childEntry &&
-                  childEntry.name === part &&
-                  (childEntry.kind === "Class" || childEntry.kind === "Def")
-                ) {
-                  nextIds.push(childId);
+
+        // 1. Try resolving starting from longest matched prefix in byName (e.g. "Modelica.Icons" -> "Package")
+        for (let prefixLen = parts.length - 1; prefixLen >= 1 && symbolIds.length === 0; prefixLen--) {
+          const prefix = parts.slice(0, prefixLen).join(".");
+          let currentIds = (idx.byName.get(prefix) || []).filter((id: number) => {
+            const e = idx.symbols.get(id);
+            return e && (e.kind === "Class" || e.kind === "Def");
+          });
+          if (currentIds.length === 0) continue;
+
+          for (let i = prefixLen; i < parts.length && currentIds.length > 0; i++) {
+            const part = parts[i];
+            const nextIds: number[] = [];
+            for (const parentId of currentIds) {
+              const children = idx.childrenOf.get(parentId);
+              if (children) {
+                for (const childId of children) {
+                  const childEntry = idx.symbols.get(childId);
+                  if (
+                    childEntry &&
+                    childEntry.name === part &&
+                    (childEntry.kind === "Class" || childEntry.kind === "Def")
+                  ) {
+                    nextIds.push(childId);
+                  }
                 }
               }
             }
+            currentIds = nextIds;
           }
-          currentIds = nextIds;
+          if (currentIds.length > 0) {
+            symbolIds = currentIds;
+            break;
+          }
         }
-        symbolIds = currentIds;
+
+        // 2. Fall back to part-by-part traversal from each segment
+        if (symbolIds.length === 0) {
+          for (let startIdx = 0; startIdx < parts.length && symbolIds.length === 0; startIdx++) {
+            let currentIds = (idx.byName.get(parts[startIdx]) || []).filter((id: number) => {
+              const e = idx.symbols.get(id);
+              return e && (e.kind === "Class" || e.kind === "Def");
+            });
+            if (currentIds.length === 0) continue;
+            for (let i = startIdx + 1; i < parts.length && currentIds.length > 0; i++) {
+              const part = parts[i];
+              const nextIds: number[] = [];
+              for (const parentId of currentIds) {
+                const children = idx.childrenOf.get(parentId);
+                if (children) {
+                  for (const childId of children) {
+                    const childEntry = idx.symbols.get(childId);
+                    if (
+                      childEntry &&
+                      childEntry.name === part &&
+                      (childEntry.kind === "Class" || childEntry.kind === "Def")
+                    ) {
+                      nextIds.push(childId);
+                    }
+                  }
+                }
+              }
+              currentIds = nextIds;
+            }
+            if (currentIds.length > 0) {
+              symbolIds = currentIds;
+              break;
+            }
+          }
+        }
       }
 
       // If still not found, try matching by composite name
       if (symbolIds.length === 0) {
+        let bestMatchLen = 0;
+        let bestMatchId: number | null = null;
         for (const [id, e] of idx.symbols) {
           if ((e.kind === "Class" || e.kind === "Def") && e.name === className.split(".").pop()) {
             const fqn = getCompositeName(e, idx);
-            if (fqn === className || fqn.endsWith(`.${className}`)) {
-              symbolIds = [id];
+            if (fqn === className) {
+              bestMatchId = id;
+              bestMatchLen = fqn.length;
               break;
+            } else if (fqn.endsWith(`.${className}`) || className.endsWith(`.${fqn}`)) {
+              if (fqn.length > bestMatchLen) {
+                bestMatchLen = fqn.length;
+                bestMatchId = id;
+              }
             }
           }
+        }
+        if (bestMatchId != null) {
+          symbolIds = [bestMatchId];
         }
       }
 
@@ -842,7 +985,8 @@ export class WorkspaceManager {
         query: (_name: string, _id: number) => null,
       };
 
-      const targetId = symbolIds[0] ?? rawSymbolIds[0];
+      const targetId = symbolIds[0];
+      if (targetId == null) return null;
       const entry = idx.symbols.get(targetId);
       if (entry && entry.resourceId) {
         let engine =
@@ -851,7 +995,15 @@ export class WorkspaceManager {
             : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
         const db = engine ? (engine.toQueryDB() as any) : fallbackDb;
-        return buildAdapter(entry, db, className);
+        const inst = buildAdapter(entry, db, className);
+        if (inst && entry.resourceId) {
+          const existing = this.documentInstances.get(entry.resourceId) ?? [];
+          if (!existing.some((x: any) => x.id === inst.id)) {
+            existing.push(inst);
+            this.documentInstances.set(entry.resourceId, existing);
+          }
+        }
+        return inst;
       }
       return null;
     }
@@ -866,15 +1018,29 @@ export class WorkspaceManager {
       query: (_name: string, _id: number) => null,
     };
 
+    const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+    const targetNorm = normUri(uri);
     for (const [id, entry] of idx.symbols.entries()) {
-      if (entry.resourceId === uri && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+      if (
+        (entry.resourceId === uri || (entry.resourceId && normUri(entry.resourceId) === targetNorm)) &&
+        (entry.kind === "Class" || entry.kind === "Def") &&
+        entry.parentId === null
+      ) {
         let engine =
           entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")
             ? this.globalSysML2QueryEngine
             : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
         const db = engine ? (engine.toQueryDB() as any) : fallbackDb;
-        return buildAdapter(entry, db, entry.name ?? "");
+        const inst = buildAdapter(entry, db, entry.name ?? "");
+        if (inst) {
+          const existing = this.documentInstances.get(uri) ?? [];
+          if (!existing.some((x: any) => x.id === inst.id)) {
+            existing.push(inst);
+            this.documentInstances.set(uri, existing);
+          }
+        }
+        return inst;
       }
     }
 

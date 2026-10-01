@@ -55,9 +55,9 @@ export interface SymbolEntry {
   /**
    * Byte ranges of named CST fields, stored at index time.
    * Used by lint rules to narrow diagnostic ranges to specific fields.
-   * Maps field name → { startByte, endByte }.
+   * Maps field name → { startByte, endByte, startOffset?, endOffset? }.
    */
-  fieldRanges?: Record<string, { startByte: number; endByte: number }>;
+  fieldRanges?: Record<string, { startByte: number; endByte: number; startOffset?: number; endOffset?: number }>;
   /**
    * The CST field name under which this entry was indexed in its parent.
    * E.g., "body" for a component inside a class_definition's body field.

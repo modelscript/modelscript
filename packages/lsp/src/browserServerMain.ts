@@ -45,6 +45,7 @@ import {
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
 
+import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
@@ -133,8 +134,12 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 (globalThis as any).ArenaQueryFlattener = ArenaQueryFlattener;
 (globalThis as any).create_modelica_workspace_index = createModelicaWorkspaceIndex;
 (globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
+(globalThis as any).create_owl2_workspace_index = createOWL2WorkspaceIndex;
 (globalThis as any).createModelicaWorkspaceIndex = createModelicaWorkspaceIndex;
 (globalThis as any).createSysML2WorkspaceIndex = createSysML2WorkspaceIndex;
+(globalThis as any).createOWL2WorkspaceIndex = createOWL2WorkspaceIndex;
+(globalThis as any).create_owl2_query_engine = createOWL2QueryEngine;
+(globalThis as any).createOWL2QueryEngine = createOWL2QueryEngine;
 (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
 (globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
 (globalThis as any).extractSysML2Constraints = extractSysML2Constraints;
@@ -494,7 +499,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       set facade(val: any) {
         owl2Facade = val;
       },
-      workspaceIndex: workspaceManager.getWorkspaceIndex("owl2"),
+      get workspaceIndex() {
+        return workspaceManager.getWorkspaceIndex("owl2");
+      },
       get queryEngine() {
         return workspaceManager.getQueryEngine("owl2") ?? undefined;
       },
@@ -767,6 +774,7 @@ documents.onDidChangeContent((change) => {
 
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
+        validationService.adjustDiagnostics(uri, edit);
         tree = parser.parse(text, oldCached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
       } else if (oldCached) {
         tree = oldCached.tree;
@@ -866,20 +874,18 @@ documents.onDidClose((event) => {
   }
   activeShortDebounceTimers.delete(event.document.uri);
   lastSyntaxErrorsCount.delete(event.document.uri);
-  const timer = validationService.activeValidationTimers.get(event.document.uri);
-  if (timer) {
-    clearTimeout(timer);
-    validationService.activeValidationTimers.delete(event.document.uri);
-  }
-  workspaceManager.workspaceInstances.delete(event.document.uri);
-  workspaceManager.documentInstances.delete(event.document.uri);
-  workspaceManager.documentContexts.delete(event.document.uri);
+  validationService.disposeDocument(event.document.uri);
+  workspaceManager.disposeDocument(event.document.uri);
   const oldTree = documentManager.documentTrees.get(event.document.uri);
   if (oldTree) {
     oldTree.tree.delete();
     documentManager.documentTrees.delete(event.document.uri);
   }
-  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+  const persistentDiags = [
+    ...(validationService.reasonerDiagnosticsByUri?.get(event.document.uri) || []),
+    ...(validationService.verificationDiagnosticsByUri?.get(event.document.uri) || []),
+  ];
+  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: persistentDiags });
 
   // Re-validate remaining open documents
   for (const doc of documents.all()) {
@@ -1204,7 +1210,13 @@ const lspContext: LspContext = {
   diagramService,
   state: {
     activeValidationPromises: validationService.activeValidationPromises,
-    sharedContext: (globalThis as any).sharedContext,
+    get sharedContext() {
+      return parserService.sharedContext ?? (globalThis as any).sharedContext;
+    },
+    set sharedContext(v) {
+      parserService.sharedContext = v;
+      (globalThis as any).sharedContext = v;
+    },
     fqnCache: new Map(),
     fqnCacheIndex: new Map(),
     documentRevisions: validationService.documentRevisions,

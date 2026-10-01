@@ -599,6 +599,52 @@ export const updatePassword = async (data: { oldPassword?: string; newPassword?:
   return resData;
 };
 
+export interface ArchiveJobInfo {
+  id: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  format: "zip" | "json";
+  queuePosition?: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  expiresAt?: string;
+  fileSizeBytes?: number;
+  error?: string;
+  downloadUrl?: string;
+  concurrency?: number;
+}
+
+export const requestUserDataArchiveJob = async (format: "zip" | "json" = "zip"): Promise<ArchiveJobInfo> => {
+  const { data } = await api.post<{ success: boolean; job: ArchiveJobInfo }>("/users/me/export", { format });
+  return data.job;
+};
+
+export const getUserDataArchiveStatus = async (jobId?: string): Promise<ArchiveJobInfo | null> => {
+  const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
+  const { data } = await api.get<{ job: ArchiveJobInfo | null }>(`/users/me/export/status${query}`);
+  return data.job;
+};
+
+export const downloadUserDataArchiveJob = async (jobId?: string): Promise<Blob> => {
+  const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
+  const response = await api.get(`/users/me/export/download${query}`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
+export const exportUserDataArchive = async (format: "zip" | "json" = "zip"): Promise<Blob> => {
+  const response = await api.get(`/users/me/export?format=${format}`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
+export const deleteAccount = async () => {
+  const { data } = await api.delete("/users/me");
+  return data;
+};
+
 export const getNotificationSettings = async () => {
   const { data } = await api.get("/auth/notifications");
   return data;

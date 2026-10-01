@@ -250,12 +250,35 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
   }
 
   // 2. Icon / Bitmap Raster Asset Embedding
-  const iconSrc =
-    (nodeConfig.attrs as any)?.icon ||
-    (sym.metadata as any)?.imageSource ||
-    (sym.metadata as any)?.icon ||
-    (config as any)?.icon ||
-    (nodeConfig as any)?.icon;
+  const rawAttrsIcon = (nodeConfig.attrs as any)?.icon;
+  const iconFromAttrs =
+    typeof rawAttrsIcon === "string" && rawAttrsIcon.trim().length > 0
+      ? rawAttrsIcon.trim()
+      : typeof rawAttrsIcon === "object" && rawAttrsIcon !== null
+        ? typeof rawAttrsIcon.href === "string" && rawAttrsIcon.href.trim().length > 0
+          ? rawAttrsIcon.href.trim()
+          : typeof rawAttrsIcon["xlink:href"] === "string" && rawAttrsIcon["xlink:href"].trim().length > 0
+            ? rawAttrsIcon["xlink:href"].trim()
+            : undefined
+        : undefined;
+
+  const rawMetadataImage = (sym.metadata as any)?.imageSource;
+  const imageSource =
+    typeof rawMetadataImage === "string" && rawMetadataImage.trim().length > 0 ? rawMetadataImage.trim() : undefined;
+
+  const rawMetadataIcon = (sym.metadata as any)?.icon;
+  const metadataIcon =
+    typeof rawMetadataIcon === "string" && rawMetadataIcon.trim().length > 0 ? rawMetadataIcon.trim() : undefined;
+
+  const rawConfigIcon = (config as any)?.icon;
+  const configIcon =
+    typeof rawConfigIcon === "string" && rawConfigIcon.trim().length > 0 ? rawConfigIcon.trim() : undefined;
+
+  const rawNodeConfigIcon = (nodeConfig as any)?.icon;
+  const nodeConfigIcon =
+    typeof rawNodeConfigIcon === "string" && rawNodeConfigIcon.trim().length > 0 ? rawNodeConfigIcon.trim() : undefined;
+
+  const iconSrc = iconFromAttrs || imageSource || metadataIcon || configIcon || nodeConfigIcon;
 
   if (iconSrc) {
     if (!Array.isArray(node.markup)) {
@@ -265,20 +288,36 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
       node.markup.push({ tagName: "image", selector: "icon" });
     }
     if (!node.attrs) node.attrs = {};
+    const existingIconAttrs = typeof rawAttrsIcon === "object" && rawAttrsIcon !== null ? rawAttrsIcon : {};
     node.attrs.icon = {
-      "xlink:href": iconSrc,
-      href: iconSrc,
       refWidth: "24",
       refHeight: "24",
       refX: 8,
       refY: 8,
       preserveAspectRatio: "xMidYMid meet",
+      ...existingIconAttrs,
+      "xlink:href": iconSrc,
+      href: iconSrc,
     };
     if (node.properties) {
       node.properties.icon = iconSrc;
     }
     if (node.data) {
       node.data.icon = iconSrc;
+    }
+  } else {
+    // Clean up any empty or unconfigured icon markup/attrs to avoid browser image placeholder artifacts
+    if (Array.isArray(node.markup)) {
+      node.markup = node.markup.filter((m: any) => m.selector !== "icon" && m.tagName !== "image");
+    }
+    if (node.attrs && (node.attrs as any).icon) {
+      delete (node.attrs as any).icon;
+    }
+    if (node.properties && "icon" in node.properties) {
+      delete (node.properties as any).icon;
+    }
+    if (node.data && "icon" in node.data) {
+      delete (node.data as any).icon;
     }
   }
 

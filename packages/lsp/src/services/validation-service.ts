@@ -8,9 +8,9 @@ import { DocumentManager } from "./DocumentManager.js";
 import { ParserService } from "./ParserService.js";
 import { WorkspaceManager } from "./WorkspaceManager.js";
 
+import { getModelicaErrorCodeDef } from "@modelscript/modelica";
 import { lowerCstToAxioms } from "@modelscript/owl2/cst-lowering";
 import { QueryEngine, VerificationRunner } from "@modelscript/runtime";
-import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { simulateArena } from "@modelscript/simulate";
 import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -24,6 +24,209 @@ import { globalLanguageRegistry, type LanguagePlugin } from "../registry/Languag
 let verificationTimer: any = undefined;
 let activeVerification: any = undefined;
 let flattenArenaFromInstance: any = undefined;
+
+/**
+ * Canonical error code information extracted from diagnostic code or lint name.
+ */
+export function extractCanonicalErrorInfo(
+  code: string | number | undefined,
+  lintName?: string,
+  plugin?: any,
+): { codeNum?: number; ruleName?: string; raw: string } {
+  const raw = String(code ?? lintName ?? "").trim();
+  if (!raw) return { raw: "" };
+
+  if (typeof code === "number") {
+    const def = plugin?.languageDef?.errorCodes?.[code] ?? getModelicaErrorCodeDef(code);
+    const rule = def?.rule ? def.rule.toLowerCase().replace(/[-_]/g, "") : undefined;
+    return { codeNum: code, ruleName: rule, raw };
+  }
+
+  const numMatch = /^M?(\d+)$/i.exec(raw);
+  if (numMatch) {
+    const num = Number(numMatch[1]);
+    const def = plugin?.languageDef?.errorCodes?.[num] ?? getModelicaErrorCodeDef(num);
+    const rule = def?.rule ? def.rule.toLowerCase().replace(/[-_]/g, "") : undefined;
+    return { codeNum: num, ruleName: rule, raw };
+  }
+
+  // Rule name string
+  const normalizedRule = raw.toLowerCase().replace(/[-_]/g, "");
+  const def = getModelicaErrorCodeDef(raw);
+  if (def) {
+    return {
+      codeNum: def.code,
+      ruleName: def.rule ? def.rule.toLowerCase().replace(/[-_]/g, "") : normalizedRule,
+      raw,
+    };
+  }
+
+  return { ruleName: normalizedRule, raw };
+}
+
+/**
+ * Deduplicate or merge a semantic diagnostic from Step 5b into the existing Step 5a diagnostics list.
+ * Returns true if the diagnostic was merged or recognized as a duplicate.
+ */
+export function tryDeduplicateOrMergeSemanticDiagnostic(
+  existingList: Diagnostic[],
+  incoming: Diagnostic,
+  plugin?: any,
+): boolean {
+  const incomingInfo = extractCanonicalErrorInfo(incoming.code, undefined, plugin);
+
+  for (const existing of existingList) {
+    // 1. Line match or overlap
+    const sameLine = existing.range.start.line === incoming.range.start.line;
+    const linesOverlap =
+      Math.max(existing.range.start.line, incoming.range.start.line) <=
+      Math.min(existing.range.end.line, incoming.range.end.line);
+
+    if (!sameLine && !linesOverlap) continue;
+
+    // 2. Code match
+    const existingInfo = extractCanonicalErrorInfo(existing.code, undefined, plugin);
+    const codesMatch =
+      (existingInfo.codeNum !== undefined &&
+        incomingInfo.codeNum !== undefined &&
+        existingInfo.codeNum === incomingInfo.codeNum) ||
+      (existingInfo.ruleName !== undefined &&
+        incomingInfo.ruleName !== undefined &&
+        existingInfo.ruleName === incomingInfo.ruleName) ||
+      (existingInfo.raw.length > 0 &&
+        incomingInfo.raw.length > 0 &&
+        existingInfo.raw.toLowerCase() === incomingInfo.raw.toLowerCase());
+
+    // 3. Horizontal range relationship
+    const charOverlap =
+      Math.max(existing.range.start.character, incoming.range.start.character) <=
+      Math.min(existing.range.end.character, incoming.range.end.character);
+
+    const charAdjacent =
+      Math.abs(existing.range.start.character - incoming.range.start.character) <= 15 ||
+      Math.abs(existing.range.end.character - incoming.range.end.character) <= 15;
+
+    // 4. Duplicate decision
+    let isMatch = false;
+    if (codesMatch) {
+      // If error codes match on the same line, it's the same error
+      if (sameLine || charOverlap || charAdjacent) {
+        isMatch = true;
+      }
+    } else if (charOverlap) {
+      // Overlapping character range on the same line: check if messages are identical or share category
+      if (existing.message === incoming.message) {
+        isMatch = true;
+      } else {
+        const m1 = existing.message.toLowerCase();
+        const m2 = incoming.message.toLowerCase();
+        if (
+          (m1.startsWith("type mismatch") && m2.startsWith("type mismatch")) ||
+          (m1.startsWith("variable") && m2.startsWith("variable")) ||
+          (m1.startsWith("duplicate") && m2.startsWith("duplicate")) ||
+          (m1.startsWith("syntax error") && m2.startsWith("syntax error"))
+        ) {
+          isMatch = true;
+        }
+      }
+    }
+
+    if (isMatch) {
+      // Merge / enrich existing diagnostic with incoming diagnostic details
+      const existingIsGeneric =
+        !existing.message ||
+        existing.message.startsWith("Linter Rule ") ||
+        existing.message.startsWith("Linter rule ") ||
+        existing.message === "Syntax Error";
+
+      const incomingIsSpecific =
+        incoming.message &&
+        !incoming.message.startsWith("Linter Rule ") &&
+        !incoming.message.startsWith("Linter rule ");
+
+      if (existingIsGeneric && incomingIsSpecific) {
+        existing.message = incoming.message;
+        existing.code = incoming.code ?? existing.code;
+        existing.range = incoming.range;
+      } else if (incomingIsSpecific && incoming.message.length > existing.message.length) {
+        // Incoming Salsa diagnostic usually contains more specific details (e.g. types, scopes)
+        existing.message = incoming.message;
+        if (incoming.code) existing.code = incoming.code;
+      }
+
+      // Upgrade severity if incoming is higher
+      if (incoming.severity === DiagnosticSeverity.Error) {
+        existing.severity = DiagnosticSeverity.Error;
+      }
+
+      // If existing had a 1-character dummy range, take the better range
+      if (
+        existing.range.start.line === existing.range.end.line &&
+        existing.range.end.character - existing.range.start.character <= 1 &&
+        incoming.range.end.character - incoming.range.start.character > 1
+      ) {
+        existing.range = incoming.range;
+      }
+
+      return true; // Successfully deduplicated / merged
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Clean deduplication pass over a list of diagnostics to remove exact or shadowed duplicates.
+ */
+export function deduplicateAllDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
+  const result: Diagnostic[] = [];
+  for (const d of diagnostics) {
+    const isDup = result.some((existing, idx) => {
+      const sameStart =
+        existing.range.start.line === d.range.start.line && existing.range.start.character === d.range.start.character;
+      const sameEnd =
+        existing.range.end.line === d.range.end.line && existing.range.end.character === d.range.end.character;
+
+      if (sameStart && sameEnd) {
+        // 1. Exact range and message
+        if (existing.message === d.message) {
+          return true;
+        }
+        // 2. Exact range and code
+        if (existing.code !== undefined && d.code !== undefined && String(existing.code) === String(d.code)) {
+          return true;
+        }
+        // 3. Symmetrical generic syntax error shadowing
+        const existingIsGeneric = existing.message === "Syntax Error" || existing.message === "Syntax error";
+        const dIsGeneric = d.message === "Syntax Error" || d.message === "Syntax error";
+        if (existingIsGeneric && !dIsGeneric) {
+          result[idx] = d;
+          return true;
+        }
+        if (!existingIsGeneric && dIsGeneric) {
+          return true;
+        }
+      }
+
+      // Same start position + same error code duplicate
+      if (
+        sameStart &&
+        existing.code !== undefined &&
+        d.code !== undefined &&
+        String(existing.code) === String(d.code)
+      ) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (!isDup) {
+      result.push(d);
+    }
+  }
+  return result;
+}
 
 export class ValidationService {
   // Instance state (previously module-level variables in browserServerMain.ts)
@@ -40,6 +243,7 @@ export class ValidationService {
   public verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
   public verificationResultsByUri = new Map<string, any[]>();
   public modelicaProofResultsByUri = new Map<string, Map<string, any>>();
+  public reasonerDiagnosticsByUri = new Map<string, Diagnostic[]>();
 
   get dependenciesReady(): boolean {
     return this.declaredDependencies.every((dep) => this.loadedDependencies.has(`${dep.name}@${dep.version}`));
@@ -47,6 +251,10 @@ export class ValidationService {
 
   markDependencyLoaded(name: string, version: string): void {
     this.loadedDependencies.add(`${name}@${version}`);
+    if (this.dependenciesReady) {
+      (globalThis as any).clearDiagramCache?.();
+      (globalThis as any).clearIconCache?.();
+    }
   }
 
   /**
@@ -92,6 +300,93 @@ export class ValidationService {
   }
 
   /**
+   * Adjusts line/column positions of cached semantic diagnostics during keystrokes,
+   * preventing squiggles from displaying on wrong lines before asynchronous re-validation completes.
+   */
+  public adjustDiagnostics(
+    uri: string,
+    edit: {
+      startPosition: { row: number; column: number };
+      oldEndPosition: { row: number; column: number };
+      newEndPosition: { row: number; column: number };
+    },
+  ): void {
+    const cached = this.lastSemanticDiagnostics.get(uri);
+    if (!cached || cached.length === 0) return;
+
+    const startRow = edit.startPosition.row;
+    const oldEndRow = edit.oldEndPosition.row;
+    const newEndRow = edit.newEndPosition.row;
+    const rowDelta = newEndRow - oldEndRow;
+    const colDelta = edit.newEndPosition.column - edit.oldEndPosition.column;
+
+    const adjusted: Diagnostic[] = [];
+    for (const d of cached) {
+      // 1. Diagnostic completely before the edit range — unaffected
+      if (d.range.end.line < startRow) {
+        adjusted.push(d);
+        continue;
+      }
+
+      // 2. Diagnostic strictly after the edit range — shift rows
+      if (d.range.start.line > oldEndRow) {
+        adjusted.push({
+          ...d,
+          range: {
+            start: { line: d.range.start.line + rowDelta, character: d.range.start.character },
+            end: { line: d.range.end.line + rowDelta, character: d.range.end.character },
+          },
+        });
+        continue;
+      }
+
+      // 3. Single-line edit on the same line as diagnostic
+      if (startRow === oldEndRow && rowDelta === 0 && d.range.start.line === startRow) {
+        if (d.range.start.character >= edit.oldEndPosition.column) {
+          // Diagnostic is to the right of the edit point — shift columns
+          adjusted.push({
+            ...d,
+            range: {
+              start: { line: d.range.start.line, character: Math.max(0, d.range.start.character + colDelta) },
+              end: { line: d.range.end.line, character: Math.max(0, d.range.end.character + colDelta) },
+            },
+          });
+        } else if (d.range.end.character <= edit.startPosition.column) {
+          // Diagnostic is to the left of the edit point — unaffected
+          adjusted.push(d);
+        }
+        // If it intersects the edited token, drop it until revalidation completes
+      }
+    }
+
+    this.lastSemanticDiagnostics.set(uri, adjusted);
+  }
+
+  /**
+   * Purges cached state, diagnostics, revisions, and timers when a document is closed.
+   */
+  public disposeDocument(uri: string): void {
+    const eff = uri.startsWith("modelscript-lib://global")
+      ? "file://" + uri.substring("modelscript-lib://global".length)
+      : uri;
+    this.lastSemanticDiagnostics.delete(uri);
+    this.lastSemanticDiagnostics.delete(eff);
+    this.lastIndexedText.delete(uri);
+    this.lastIndexedText.delete(eff);
+    this.documentRevisions.delete(uri);
+    this.documentRevisions.delete(eff);
+    this.documentViewports.delete(uri);
+    this.documentViewports.delete(eff);
+    const timer = this.activeValidationTimers.get(uri);
+    if (timer) {
+      clearTimeout(timer);
+      this.activeValidationTimers.delete(uri);
+    }
+    this.activeValidationPromises.delete(uri);
+    this.activeValidationPromises.delete(eff);
+  }
+
+  /**
    * Collect syntax errors and lint diagnostics from the WASM parser.
    *
    * IMPORTANT: This is called synchronously right after parsing, while the WASM
@@ -117,17 +412,23 @@ export class ValidationService {
       try {
         const rootPtr = rootNode.id ?? rootNode.ptr ?? rootNode?.tree?.rootPtr ?? 0;
         if (rootPtr) {
-          const docLen = textDocument.getText().length;
-          const wasmDiags = facade.getDiagnostics(rootPtr, 0, docLen);
+          const docText = textDocument ? textDocument.getText() : (rootNode?.tree?.sourceCode ?? "");
+          if (docText && typeof facade.loadSource === "function") {
+            facade.loadSource(docText);
+          }
+          const wasmDiags = facade.getDiagnostics(rootPtr, 0, 0, docText);
           if (Array.isArray(wasmDiags)) {
             for (const d of wasmDiags) {
-              if (d.severity === 1 || !d.code || d.code === "ERROR") {
-                // Severity 1 = Error (Syntax Error)
+              const isSyntax = !d.code || d.code === "ERROR" || d.code === 1001 || d.code === 1002;
+              if (isSyntax) {
+                // Syntax Error
                 let range = d.range;
-                if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
+                const startOff = d.startOffset ?? d.startCharOffset;
+                const endOff = d.endOffset ?? d.endCharOffset;
+                if (startOff !== undefined && endOff !== undefined) {
                   range = {
-                    start: textDocument.positionAt(d.startCharOffset),
-                    end: textDocument.positionAt(d.endCharOffset),
+                    start: textDocument.positionAt(startOff),
+                    end: textDocument.positionAt(endOff),
                   };
                 }
                 if (range.start.line === range.end.line && range.start.character === range.end.character) {
@@ -142,7 +443,7 @@ export class ValidationService {
                   message: d.message || "Syntax error",
                   source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
                 });
-              } else if (d.severity === 2 || (typeof d.code === "number" && d.code >= 1000)) {
+              } else {
                 // Lint diagnostics — capture now while WASM state is valid
                 wasmLintDiags.push(d);
               }
@@ -327,6 +628,10 @@ export class ValidationService {
         editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
       } else if (oldCached) {
         tree = oldCached.tree;
+        const facade = plugin?.facade ?? tree?.facade ?? tree?.rootNode?.tree?.facade ?? this.parserService.facade;
+        if (facade && typeof facade.loadSource === "function") {
+          facade.loadSource(text);
+        }
       } else {
         if (parser) {
           tree = parser.parse(processedText);
@@ -451,6 +756,8 @@ export class ValidationService {
             }
             wsIndex.getFileIndex?.(effectiveUri);
           }
+          this.workspaceManager.documentInstances.delete(uri);
+          this.workspaceManager.documentInstances.delete(effectiveUri);
           this.lastIndexedText.set(effectiveUri, text);
         }
 
@@ -594,7 +901,7 @@ export class ValidationService {
                 : "";
 
             // Determine message — use the WASM-provided message if available,
-            // otherwise look up the lint rule or fall back to a hardcoded message.
+            // otherwise look up the lint rule or dynamic error code definition.
             let message = d.message;
             const code = d.code;
             let matchedLint: any = null;
@@ -608,7 +915,19 @@ export class ValidationService {
               }
             }
 
-            if (!message || message.startsWith("Linter Rule ") || message.startsWith("Syntax Error")) {
+            const codeNum = typeof code === "number" ? code : typeof code === "string" ? Number(code) : undefined;
+            const matchedCodeDef =
+              codeNum !== undefined
+                ? ((plugin?.languageDef?.errorCodes ? (plugin.languageDef.errorCodes as any)[codeNum] : undefined) ??
+                  getModelicaErrorCodeDef(codeNum))
+                : undefined;
+
+            if (
+              !message ||
+              message.startsWith("Linter Rule ") ||
+              message.startsWith("Linter rule ") ||
+              message.startsWith("Syntax Error")
+            ) {
               if (matchedLint && typeof matchedLint.message === "function") {
                 try {
                   message = matchedLint.message({ text: tokenText }, { text: "" });
@@ -616,57 +935,65 @@ export class ValidationService {
                   // Fallback
                 }
               }
-              if (!message || message.startsWith("Linter Rule ")) {
-                if (code === 2001 || code === 2002) {
+
+              if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
+                if (codeNum === 2001 || codeNum === 2002) {
                   message = tokenText ? `Variable '${tokenText}' not found in scope.` : "Variable not found in scope.";
-                } else if (code === 2003) {
+                } else if (codeNum === 2003) {
                   message = tokenText
                     ? `Class or type '${tokenText}' not found in scope.`
                     : "Class or type not found in scope.";
-                } else if (code === 3001) {
+                } else if (codeNum === 3001) {
                   message = tokenText
                     ? `Type mismatch in binding or modification expression '${tokenText}'.`
                     : "Type mismatch in binding.";
-                } else if (code === 3009) {
+                } else if (codeNum === 3009) {
                   message = tokenText
                     ? `Array index '${tokenText}' has invalid type: expected Integer or Boolean.`
                     : "Invalid array index type.";
-                } else if (code === 4031) {
+                } else if (codeNum === 4031) {
                   message = tokenText ? `Subscript '${tokenText}' is out of bounds.` : "Array index out of bounds.";
-                } else if (code === 5001) {
+                } else if (codeNum === 5001) {
                   message = tokenText ? `Type mismatch in equation '${tokenText}'.` : "Type mismatch in equation.";
-                } else if (code === 5005) {
+                } else if (codeNum === 5005) {
                   message = tokenText ? `Division by literal zero in '${tokenText}'.` : "Division by literal zero.";
-                } else if (code === 5006) {
+                } else if (codeNum === 5006) {
                   message = tokenText
                     ? `Type mismatch in assignment in '${tokenText}'.`
                     : "Type mismatch in assignment.";
+                } else if (matchedCodeDef) {
+                  try {
+                    const formatted = matchedCodeDef.message(tokenText || "");
+                    if (formatted && !formatted.includes("undefined")) {
+                      message = formatted;
+                    }
+                  } catch {
+                    // Fallback
+                  }
+                  if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
+                    const ruleDisplay = matchedCodeDef.rule ? matchedCodeDef.rule.replace(/-/g, " ") : `rule ${code}`;
+                    const capitalizedRule = ruleDisplay.charAt(0).toUpperCase() + ruleDisplay.slice(1);
+                    message = tokenText ? `${capitalizedRule} for '${tokenText}'.` : `${capitalizedRule}.`;
+                  }
                 } else {
                   message = `Linter rule ${code}`;
                 }
               }
             }
 
-            // Determine severity
+            // Determine severity dynamically
             let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-            if (
-              matchedLint?.severity === "error" ||
-              code === 2001 ||
-              code === 2002 ||
-              code === 2003 ||
-              code === 3001 ||
-              code === 3009 ||
-              code === 4031 ||
-              code === 5001 ||
-              code === 5005 ||
-              code === 5006 ||
-              code === 5008 ||
-              code === 5009 ||
-              code === 5013
-            ) {
+            const defSeverity = matchedCodeDef?.severity ?? matchedLint?.severity;
+
+            if (d.severity === 1 || defSeverity === "error") {
               severity = DiagnosticSeverity.Error;
-            } else if (matchedLint?.severity === "info") {
+            } else if (defSeverity === "info") {
               severity = DiagnosticSeverity.Information;
+            } else if (defSeverity === "warning") {
+              severity = DiagnosticSeverity.Warning;
+            } else if (typeof codeNum === "number" && codeNum >= 1000 && codeNum < 6000) {
+              // Standard compiler error code numbering ranges (1xxx-5xxx)
+              severity = DiagnosticSeverity.Error;
             }
 
             newSemanticDiagnostics.push({
@@ -686,7 +1013,7 @@ export class ValidationService {
       const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
       if (!skipHeavyLints && engine && typeof (engine as any).runAllLintsAsync === "function") {
         const viewportRange = this.documentViewports.get(uri) ?? undefined;
-        const engineDiags = await (engine as any).runAllLintsAsync(uri, yieldAndCheckStale, viewportRange);
+        const engineDiags = await (engine as any).runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
         if (isStale()) return;
 
         for (const d of engineDiags) {
@@ -699,21 +1026,18 @@ export class ValidationService {
           if (d.severity === "info") severity = DiagnosticSeverity.Information;
 
           const diagCode = d.code ?? d.lintName;
-          const isDuplicate = newSemanticDiagnostics.some(
-            (existing) =>
-              existing.range.start.line === start.line &&
-              existing.range.start.character === start.character &&
-              existing.code === diagCode,
-          );
+          const incomingDiag: Diagnostic = {
+            severity,
+            range: { start, end },
+            message: d.message,
+            source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
+            code: diagCode,
+          };
+
+          const isDuplicate = tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, incomingDiag, plugin);
 
           if (!isDuplicate) {
-            newSemanticDiagnostics.push({
-              severity,
-              range: { start, end },
-              message: d.message,
-              source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
-              code: diagCode,
-            });
+            newSemanticDiagnostics.push(incomingDiag);
           }
         }
       }
@@ -731,12 +1055,29 @@ export class ValidationService {
           this.checkAutoVerify(effectiveUri);
         } else if (langId === "modelica" && !hasSyntaxErrors && textDocument) {
           await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
+          this.postValidateModelicaReasoner(effectiveUri, newSemanticDiagnostics);
         }
       }
 
       const vDiags = this.verificationDiagnosticsByUri.get(uri) ?? this.verificationDiagnosticsByUri.get(effectiveUri);
       if (vDiags) {
         newSemanticDiagnostics.push(...vDiags);
+      }
+
+      const rDiags = this.reasonerDiagnosticsByUri.get(uri) ?? this.reasonerDiagnosticsByUri.get(effectiveUri);
+      if (rDiags && rDiags.length > 0) {
+        for (const rd of rDiags) {
+          if (
+            !newSemanticDiagnostics.some(
+              (d) =>
+                d.range.start.line === rd.range.start.line &&
+                d.range.start.character === rd.range.start.character &&
+                d.message === rd.message,
+            )
+          ) {
+            newSemanticDiagnostics.push(rd);
+          }
+        }
       }
 
       // Digital Thread Cross-Domain Diagnostics
@@ -751,14 +1092,16 @@ export class ValidationService {
       // ── Step 8: Deliver Diagnostics and Notify UI ────────────────────────
       if (isStale()) return;
       this.lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
-      const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+      const rawDiagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+      const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
       if (diagnostics.length > 1000) diagnostics.length = 1000;
       this.connection.sendDiagnostics({ uri, diagnostics });
       this.sendProjectTreeChanged();
     } catch (e: any) {
       this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
-        const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+        const rawDiagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+        const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
         if (diagnostics.length > 1000) diagnostics.length = 1000;
         this.connection.sendDiagnostics({ uri, diagnostics });
       }
@@ -1069,65 +1412,26 @@ export class ValidationService {
   ): Promise<void> {
     try {
       const axioms = lowerCstToAxioms(tree.rootNode, text);
-      const store = this.workspaceManager.unifiedWorkspace.owl2Store;
-      store.setAxioms(effectiveUri, axioms);
-
-      const reasoner = new TableauReasoner();
-      await reasoner.init();
-      reasoner.loadOntology(store.axioms);
-      const consistency = reasoner.checkConsistency();
-
-      if (!consistency.isConsistent) {
-        const explanation = consistency.explanation || "Ontology inconsistency detected";
-        let reported = false;
-        if (consistency.conflictingAxioms) {
-          for (const axiom of consistency.conflictingAxioms) {
-            let targetIri: string | null = null;
-            if (axiom.type === "SubClassOf") {
-              targetIri = axiom.subClassIri;
-            } else if (axiom.type === "DisjointClasses" && axiom.classIris && axiom.classIris.length > 0) {
-              for (const iri of axiom.classIris) {
-                if (this.findRangeForIri(iri, effectiveUri)) {
-                  targetIri = iri;
-                  break;
-                }
-              }
-              if (!targetIri) targetIri = axiom.classIris[0];
-            } else if (axiom.type === "ClassAssertion") {
-              targetIri = axiom.individualIri;
-            } else if (axiom.type === "ObjectPropertyAssertion") {
-              targetIri = axiom.subjectIri;
-            } else if ((axiom as any).iri) {
-              targetIri = (axiom as any).iri;
-            }
-
-            if (targetIri) {
-              const range = this.findRangeForIri(targetIri, effectiveUri);
-              if (range) {
-                diagnostics.push({
-                  severity: DiagnosticSeverity.Error,
-                  range,
-                  message: `Ontology inconsistency: ${explanation}`,
-                  source: "owl2-reasoner",
-                });
-                reported = true;
-              }
-            }
-          }
-        }
-
-        if (!reported) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            range: {
-              start: { line: 0, character: 0 },
-              end: { line: 0, character: 10 },
-            },
-            message: `Ontology inconsistency: ${explanation}`,
-            source: "owl2-reasoner",
-          });
-        }
+      const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+      if (store && typeof store.setAxioms === "function") {
+        store.setAxioms(effectiveUri, axioms);
       }
+
+      const versions = new Map<string, number>();
+      const mIndex = this.workspaceManager.getWorkspaceIndex?.("modelica");
+      if (mIndex) versions.set("modelica", mIndex.version);
+      const sIndex = this.workspaceManager.getWorkspaceIndex?.("sysml2");
+      if (sIndex) versions.set("sysml2", sIndex.version);
+
+      if (store?.axioms && typeof this.reasonerService?.reasoner?.loadOntology === "function") {
+        this.reasonerService.reasoner.loadOntology(store.axioms);
+      }
+
+      const consistency = this.reasonerService?.updateAndReason
+        ? this.reasonerService.updateAndReason(versions)
+        : this.reasonerService?.reasoner?.checkConsistency();
+
+      this.routeReasonerDiagnostics(effectiveUri, consistency, diagnostics, "owl2-reasoner");
     } catch (reasonerError: any) {
       this.connection.console.error(`[owl2-reasoner] Reasoner failed: ${reasonerError.message}`);
     }
@@ -1136,33 +1440,227 @@ export class ValidationService {
   private postValidateSysml2(effectiveUri: string, diagnostics: Diagnostic[]): void {
     try {
       const versions = new Map<string, number>();
-      const sysml2Index = this.workspaceManager.getWorkspaceIndex("sysml2");
+      const sysml2Index = this.workspaceManager.getWorkspaceIndex?.("sysml2");
       if (sysml2Index) versions.set("sysml2", sysml2Index.version);
-      this.reasonerService.updateAndReason(versions);
 
-      const consistency = this.reasonerService.reasoner.checkConsistency();
-      if (!consistency.isConsistent) {
-        for (const axiom of consistency.conflictingAxioms || []) {
-          let targetIri: string | null = null;
-          if (axiom.type === "SubClassOf") targetIri = axiom.subClassIri;
-          else if (axiom.type === "ClassAssertion") targetIri = axiom.individualIri;
-          else if ((axiom as any).iri) targetIri = (axiom as any).iri;
+      const consistency = this.reasonerService?.updateAndReason
+        ? this.reasonerService.updateAndReason(versions)
+        : this.reasonerService?.reasoner?.checkConsistency();
 
-          if (targetIri) {
-            const range = this.findRangeForIri(targetIri, effectiveUri);
-            if (range) {
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                range,
-                message: `Logical contradiction: ${this.reasonerService.reasoner.explain(targetIri, "satisfiability")}`,
-                source: "sysml2-reasoner",
-              });
+      this.routeReasonerDiagnostics(effectiveUri, consistency, diagnostics, "sysml2-reasoner");
+    } catch (e: any) {
+      this.connection.console.error(`[sysml2-reasoner] Update failed: ${e.message}`);
+    }
+  }
+
+  private postValidateModelicaReasoner(effectiveUri: string, diagnostics: Diagnostic[]): void {
+    try {
+      const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+      if (!store || !store.axioms || store.axioms.length === 0) return;
+
+      const versions = new Map<string, number>();
+      const mIndex = this.workspaceManager.getWorkspaceIndex?.("modelica");
+      if (mIndex) versions.set("modelica", mIndex.version);
+
+      const consistency = this.reasonerService?.updateAndReason
+        ? this.reasonerService.updateAndReason(versions)
+        : this.reasonerService?.reasoner?.checkConsistency();
+
+      this.routeReasonerDiagnostics(effectiveUri, consistency, diagnostics, "modelica-reasoner");
+    } catch (e: any) {
+      this.connection.console.error(`[modelica-reasoner] Update failed: ${e.message}`);
+    }
+  }
+
+  private routeReasonerDiagnostics(
+    currentUri: string,
+    consistency: any,
+    currentSemanticDiagnostics: Diagnostic[],
+    source: string,
+  ): void {
+    if (!consistency) return;
+
+    const newDiagsByUri = new Map<string, Diagnostic[]>();
+
+    if (!consistency.isConsistent) {
+      const explanation = consistency.explanation || "Ontology inconsistency detected";
+      const candidateAxioms: any[] = [];
+      if (consistency.minimalConflictCore && consistency.minimalConflictCore.length > 0) {
+        candidateAxioms.push(...consistency.minimalConflictCore);
+      }
+      if (consistency.conflictingAxioms && consistency.conflictingAxioms.length > 0) {
+        candidateAxioms.push(...consistency.conflictingAxioms);
+      }
+
+      const targetIris: string[] = [];
+      for (const axiom of candidateAxioms) {
+        if (axiom.type === "SubClassOf") {
+          if (axiom.subClassIri) targetIris.push(axiom.subClassIri);
+          if (axiom.superClassIri) targetIris.push(axiom.superClassIri);
+        } else if (axiom.type === "DisjointClasses") {
+          if (axiom.subClassIri) targetIris.push(axiom.subClassIri);
+          if (Array.isArray(axiom.classIris)) targetIris.push(...axiom.classIris);
+        } else if (axiom.type === "ClassAssertion") {
+          if (axiom.individualIri) targetIris.push(axiom.individualIri);
+          if (axiom.classIri) targetIris.push(axiom.classIri);
+        } else if (axiom.type === "EquivalentClasses") {
+          if (Array.isArray(axiom.classIris)) targetIris.push(...axiom.classIris);
+        } else if (axiom.type === "ObjectPropertyAssertion") {
+          if (axiom.subjectIri) targetIris.push(axiom.subjectIri);
+          if (axiom.objectIri) targetIris.push(axiom.objectIri);
+          if (axiom.propertyIri) targetIris.push(axiom.propertyIri);
+        } else if (axiom.iri) {
+          targetIris.push(axiom.iri);
+        }
+      }
+
+      const seenRangesByUri = new Map<string, Set<string>>();
+
+      const addDiag = (locUri: string, range: any) => {
+        if (!locUri || !range) return;
+        let uriSeen = seenRangesByUri.get(locUri);
+        if (!uriSeen) {
+          uriSeen = new Set<string>();
+          seenRangesByUri.set(locUri, uriSeen);
+        }
+        const rangeKey = `${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`;
+        if (!uriSeen.has(rangeKey)) {
+          uriSeen.add(rangeKey);
+          let uriDiags = newDiagsByUri.get(locUri);
+          if (!uriDiags) {
+            uriDiags = [];
+            newDiagsByUri.set(locUri, uriDiags);
+          }
+          const msgPrefix =
+            locUri.endsWith(".owl") || locUri.endsWith(".ofn") || locUri.endsWith(".ttl")
+              ? "Ontology inconsistency: "
+              : "Logical contradiction: ";
+          uriDiags.push({
+            severity: DiagnosticSeverity.Error,
+            range,
+            message: `${msgPrefix}${explanation}`,
+            source,
+          });
+        }
+      };
+
+      const candidateUris = new Set<string>([currentUri, ...this.documentManager.documents.keys()]);
+
+      const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
+      if (store && (store as any)._axiomsBySource) {
+        for (const k of (store as any)._axiomsBySource.keys()) {
+          if (k.includes(":") || k.includes("/")) {
+            candidateUris.add(k);
+          }
+        }
+      }
+
+      for (const targetIri of targetIris) {
+        const declLoc = this.findDeclarationLocation(targetIri);
+        if (declLoc) {
+          addDiag(declLoc.uri, declLoc.range);
+        }
+
+        for (const cUri of candidateUris) {
+          const r = this.findRangeForIri(targetIri, cUri);
+          if (r) {
+            addDiag(cUri, r);
+          }
+        }
+      }
+
+      if (store && (store as any)._axiomsBySource) {
+        for (const [sourceKey, sourceAxioms] of (store as any)._axiomsBySource.entries()) {
+          if (sourceKey.includes(":") || sourceKey.includes("/")) {
+            const hasConflict = sourceAxioms.some((sa: any) =>
+              candidateAxioms.some(
+                (ca: any) =>
+                  ca.type === sa.type &&
+                  (ca.type === "DisjointClasses"
+                    ? Array.isArray(ca.classIris) &&
+                      Array.isArray(sa.classIris) &&
+                      ca.classIris.every((i: string) => sa.classIris.includes(i))
+                    : ca.subClassIri === sa.subClassIri && ca.superClassIri === sa.superClassIri),
+              ),
+            );
+            if (hasConflict) {
+              let r: any = null;
+              const doc = this.documentManager.documents.get(sourceKey);
+              if (doc) {
+                const text = doc.getText();
+                const idx = text.indexOf("DisjointClasses");
+                if (idx !== -1) {
+                  r = {
+                    start: doc.positionAt(idx),
+                    end: doc.positionAt(idx + "DisjointClasses".length),
+                  };
+                }
+              }
+              if (!r && candidateAxioms[0]?.classIris?.[0]) {
+                r = this.findRangeForIri(candidateAxioms[0].classIris[0], sourceKey);
+              }
+              if (r) {
+                addDiag(sourceKey, r);
+              }
             }
           }
         }
       }
-    } catch (e: any) {
-      this.connection.console.error(`[sysml2-reasoner] Update failed: ${e.message}`);
+
+      const isOwlFile = currentUri.endsWith(".owl") || currentUri.endsWith(".ofn") || currentUri.endsWith(".ttl");
+      if (isOwlFile && (!newDiagsByUri.has(currentUri) || (newDiagsByUri.get(currentUri)?.length ?? 0) === 0)) {
+        let fallbackRange = {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 10 },
+        };
+        const doc = this.documentManager.documents.get(currentUri);
+        if (doc) {
+          const docText = doc.getText();
+          const ontologyIdx = docText.indexOf("Ontology(");
+          if (ontologyIdx !== -1) {
+            fallbackRange = {
+              start: doc.positionAt(ontologyIdx),
+              end: doc.positionAt(ontologyIdx + "Ontology(".length),
+            };
+          }
+        }
+        let uriDiags = newDiagsByUri.get(currentUri);
+        if (!uriDiags) {
+          uriDiags = [];
+          newDiagsByUri.set(currentUri, uriDiags);
+        }
+        uriDiags.push({
+          severity: DiagnosticSeverity.Error,
+          range: fallbackRange,
+          message: `Ontology inconsistency: ${explanation}`,
+          source,
+        });
+      }
+    }
+
+    const allKnownUris = new Set<string>([...this.reasonerDiagnosticsByUri.keys(), ...newDiagsByUri.keys()]);
+
+    for (const uri of allKnownUris) {
+      const newDiags = newDiagsByUri.get(uri) || [];
+      if (newDiags.length === 0) {
+        const hadPrevious = this.reasonerDiagnosticsByUri.has(uri);
+        this.reasonerDiagnosticsByUri.delete(uri);
+        if (hadPrevious && uri !== currentUri) {
+          const base = (this.lastSemanticDiagnostics.get(uri) || []).filter((d) => !d.source?.includes("reasoner"));
+          this.lastSemanticDiagnostics.set(uri, base);
+          this.connection.sendDiagnostics({ uri, diagnostics: base });
+        }
+      } else {
+        this.reasonerDiagnosticsByUri.set(uri, newDiags);
+        if (uri === currentUri) {
+          currentSemanticDiagnostics.push(...newDiags);
+        } else {
+          const existing = (this.lastSemanticDiagnostics.get(uri) || []).filter((d) => !d.source?.includes("reasoner"));
+          const merged = deduplicateAllDiagnostics([...existing, ...newDiags]);
+          this.lastSemanticDiagnostics.set(uri, merged);
+          this.connection.sendDiagnostics({ uri, diagnostics: merged });
+        }
+      }
     }
   }
 
@@ -1239,8 +1737,10 @@ export class ValidationService {
         // Map proof results to 4-color LSP diagnostics
         // 1. Definite Bugs (Red)
         for (const bug of result.definiteBugs) {
-          const startPos = textDocument.positionAt(bug.startByte ?? algOffset);
-          const endPos = textDocument.positionAt(bug.endByte ?? (bug.startByte ? bug.startByte + 10 : algOffset + 10));
+          const bugStart = (bug as any).startOffset ?? bug.startByte ?? algOffset;
+          const bugEnd = (bug as any).endOffset ?? bug.endByte ?? bugStart + 10;
+          const startPos = textDocument.positionAt(bugStart);
+          const endPos = textDocument.positionAt(bugEnd);
 
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -1253,10 +1753,10 @@ export class ValidationService {
 
         // 2. Potential Bugs / Warnings (Orange)
         for (const warn of result.potentialBugs) {
-          const startPos = textDocument.positionAt(warn.startByte ?? algOffset);
-          const endPos = textDocument.positionAt(
-            warn.endByte ?? (warn.startByte ? warn.startByte + 10 : algOffset + 10),
-          );
+          const warnStart = (warn as any).startOffset ?? warn.startByte ?? algOffset;
+          const warnEnd = (warn as any).endOffset ?? warn.endByte ?? warnStart + 10;
+          const startPos = textDocument.positionAt(warnStart);
+          const endPos = textDocument.positionAt(warnEnd);
 
           diagnostics.push({
             severity: DiagnosticSeverity.Warning,
@@ -1342,7 +1842,6 @@ export class ValidationService {
       thisDocInstances.push(wrapper);
     }
     this.workspaceManager.workspaceInstances.set(uri, thisDocInstances);
-    this.workspaceManager.documentInstances.set(uri, thisDocInstances);
     if (context) {
       this.workspaceManager.documentContexts.set(uri, context);
     }
@@ -1488,7 +1987,7 @@ export class ValidationService {
 
         if (targetEntry) {
           for (const entry of db.symbols.values()) {
-            const text = sysmlDB.cstText(entry.startByte, entry.endByte, entry);
+            const text = sysmlDB.cstText(entry.startOffset ?? entry.startByte, entry.endOffset ?? entry.endByte, entry);
             if (
               text &&
               (text.includes(`implements="${targetEntry.name}"`) || text.includes(`::${targetEntry.name}"`))
@@ -1599,31 +2098,168 @@ export class ValidationService {
     iri: string,
     currentUri: string,
   ): { start: { line: number; character: number }; end: { line: number; character: number } } | null {
+    if (!iri) return null;
+
+    const candidates: string[] = [iri];
+    if (iri.includes("#")) {
+      const frag = iri.split("#").pop()!;
+      if (frag && !candidates.includes(frag)) candidates.push(frag);
+    }
+    if (iri.includes("/")) {
+      const segment = iri.split("/").pop()!;
+      if (segment && !candidates.includes(segment)) candidates.push(segment);
+    }
+    if (iri.includes(":")) {
+      const local = iri.split(":").pop()!;
+      if (local && !candidates.includes(local)) candidates.push(local);
+    }
+
     const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-    const nameIds = db.byName.get(iri);
-    if (nameIds && nameIds.length > 0) {
-      for (const id of nameIds) {
-        const entry = db.symbols.get(id);
-        if (
-          entry &&
-          entry.resourceId === currentUri &&
-          typeof entry.startByte === "number" &&
-          typeof entry.endByte === "number"
-        ) {
-          const docTree = this.documentManager.documentTrees.get(currentUri);
-          if (docTree && docTree.tree) {
-            const node = docTree.tree.rootNode.descendantForIndex(
-              entry.startByte,
-              Math.max(entry.startByte, entry.endByte - 1),
-            );
-            return {
-              start: { line: node.startPosition.row, character: node.startPosition.column },
-              end: { line: node.endPosition.row, character: node.endPosition.column },
-            };
+    for (const cand of candidates) {
+      const nameIds = db.byName.get(cand);
+      if (nameIds && nameIds.length > 0) {
+        for (const id of nameIds) {
+          const entry = db.symbols.get(id);
+          if (
+            entry &&
+            (typeof entry.startOffset === "number" || typeof entry.startByte === "number") &&
+            (typeof entry.endOffset === "number" || typeof entry.endByte === "number")
+          ) {
+            const matchesUri =
+              entry.resourceId === currentUri ||
+              (entry.resourceId && currentUri.endsWith(entry.resourceId)) ||
+              (entry.resourceId && entry.resourceId.endsWith(currentUri));
+            if (matchesUri) {
+              const startOff = entry.startOffset ?? entry.startByte;
+              const endOff = entry.endOffset ?? entry.endByte;
+              const docTree = this.documentManager.documentTrees.get(currentUri);
+              if (docTree && docTree.tree) {
+                const node = docTree.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff - 1));
+                return {
+                  start: { line: node.startPosition.row, character: node.startPosition.column },
+                  end: { line: node.endPosition.row, character: node.endPosition.column },
+                };
+              }
+              const doc = this.documentManager.documents.get(currentUri);
+              if (doc) {
+                return {
+                  start: doc.positionAt(startOff),
+                  end: doc.positionAt(endOff),
+                };
+              }
+            }
           }
         }
       }
     }
+
+    // Direct document text fallback
+    const doc = this.documentManager.documents.get(currentUri);
+    if (doc) {
+      const text = doc.getText();
+      for (const cand of candidates) {
+        const idx = text.indexOf(cand);
+        if (idx !== -1) {
+          return {
+            start: doc.positionAt(idx),
+            end: doc.positionAt(idx + cand.length),
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  public findDeclarationLocation(iri: string): {
+    uri: string;
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  } | null {
+    if (!iri) return null;
+
+    const candidates: string[] = [iri];
+    if (iri.includes("#")) {
+      const frag = iri.split("#").pop()!;
+      if (frag && !candidates.includes(frag)) candidates.push(frag);
+    }
+    if (iri.includes("/")) {
+      const segment = iri.split("/").pop()!;
+      if (segment && !candidates.includes(segment)) candidates.push(segment);
+    }
+    if (iri.includes(":")) {
+      const local = iri.split(":").pop()!;
+      if (local && !candidates.includes(local)) candidates.push(local);
+    }
+
+    const db = this.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+    if (!db || !db.byName || !db.symbols) return null;
+
+    for (const cand of candidates) {
+      const nameIds = db.byName.get(cand);
+      if (nameIds && nameIds.length > 0) {
+        for (const id of nameIds) {
+          const entry = db.symbols.get(id);
+          if (
+            entry &&
+            entry.resourceId &&
+            (typeof entry.startOffset === "number" || typeof entry.startByte === "number") &&
+            (typeof entry.endOffset === "number" || typeof entry.endByte === "number")
+          ) {
+            const entryUri = entry.resourceId;
+            const startOff = entry.startOffset ?? entry.startByte;
+            const endOff = entry.endOffset ?? entry.endByte;
+
+            const docTree = this.documentManager.documentTrees.get(entryUri);
+            if (docTree && docTree.tree) {
+              const node = docTree.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff - 1));
+              return {
+                uri: entryUri,
+                range: {
+                  start: { line: node.startPosition.row, character: node.startPosition.column },
+                  end: { line: node.endPosition.row, character: node.endPosition.column },
+                },
+              };
+            }
+
+            const doc = this.documentManager.documents.get(entryUri);
+            if (doc) {
+              return {
+                uri: entryUri,
+                range: {
+                  start: doc.positionAt(startOff),
+                  end: doc.positionAt(endOff),
+                },
+              };
+            }
+
+            let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
+            if (!lazyCache && this.parserService?.sharedContext) {
+              try {
+                const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
+                const text = this.parserService.sharedContext.fs.read(fsPath);
+                if (text) {
+                  const ext = entryUri.includes(".") ? entryUri.substring(entryUri.lastIndexOf(".")) : ".mo";
+                  const tree = this.parserService.sharedContext.parse(ext, text);
+                  lazyCache = { tree, text };
+                  this.documentManager.lazyLibTrees.set(entryUri, lazyCache);
+                }
+              } catch (e) {}
+            }
+            if (lazyCache && lazyCache.tree) {
+              const node = lazyCache.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff - 1));
+              return {
+                uri: entryUri,
+                range: {
+                  start: { line: node.startPosition.row, character: node.startPosition.column },
+                  end: { line: node.endPosition.row, character: node.endPosition.column },
+                },
+              };
+            }
+          }
+        }
+      }
+    }
+
     return null;
   }
 }

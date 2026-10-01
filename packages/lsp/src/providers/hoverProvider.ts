@@ -93,8 +93,16 @@ export function registerHoverProvider(
           try {
             const hoverText = plugin.facade.getHover(0, offset);
             if (hoverText) {
+              let tokenStart = offset;
+              while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
+              let tokenEnd = offset;
+              while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
               return {
                 contents: { kind: "markdown", value: hoverText },
+                range: {
+                  start: document.positionAt(tokenStart),
+                  end: document.positionAt(tokenEnd),
+                },
               };
             }
           } catch {}

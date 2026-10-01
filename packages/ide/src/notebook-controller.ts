@@ -32,6 +32,7 @@ export class ModelicaNotebookController implements vscode.Disposable {
 
     this._controller.supportedLanguages = [
       "modelica",
+      "modelscript",
       "sysml",
       "sysml2",
       "step",

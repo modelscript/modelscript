@@ -25,6 +25,10 @@ interface CsvMetadata {
 
 export const csvLanguage = language({
   name: "csv",
+  fileExtensions: [".csv"],
+  lsp: {
+    fileExtensions: [".csv"],
+  },
 
   writeback: (ctx) => {
     const { entry, newValue } = ctx;
@@ -33,6 +37,51 @@ export const csvLanguage = language({
     }
     return null;
   },
+
+  actions: [
+    {
+      id: "plot_telemetry",
+      title: "Plot CSV Telemetry Data",
+      description: "Visualizes tabular time-series columns in the simulation plotting panel.",
+      category: "simulate",
+      ui: {
+        editorTitle: {
+          icon: "$(graph)",
+          group: "navigation@1",
+        },
+        editorContextMenu: {
+          group: "1_run@0",
+        },
+        explorerContextMenu: {
+          group: "modelscript_run@0",
+        },
+        languageModelTool: {
+          name: "csv_plot_telemetry",
+          displayName: "Plot CSV Telemetry",
+          modelDescription: "Visualizes tabular time-series data from CSV in the simulation plot panel.",
+        },
+      },
+    },
+    {
+      id: "import_as_modelica",
+      title: "Import as Modelica Parameter Package",
+      description: "Generates a strongly-typed Modelica package defining parameters and constants from table rows.",
+      category: "transform",
+      ui: {
+        editorContextMenu: {
+          group: "2_transform@1",
+        },
+        explorerContextMenu: {
+          group: "modelscript_convert@0",
+        },
+        languageModelTool: {
+          name: "csv_to_modelica",
+          displayName: "Import CSV as Modelica Package",
+          modelDescription: "Transforms CSV parameters and tabular rows into a Modelica package.",
+        },
+      },
+    },
+  ],
 
   rules: {
     // =====================================================================

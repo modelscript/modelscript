@@ -237,17 +237,27 @@ export function registerDocumentFeaturesProvider(
       }
 
       // Build the chain from innermost to outermost
-      let current: any = null;
       const ancestors: SyntaxNode[] = [];
       while (node) {
         ancestors.push(node);
         node = node.parent;
       }
 
-      // Build linked list from outermost to innermost
-      for (const ancestor of ancestors) {
+      // Build linked list from outermost to innermost so innermost is at the head
+      let current: any = undefined;
+      for (let i = ancestors.length - 1; i >= 0; i--) {
+        const r = nodeRange(ancestors[i] as any);
+        if (
+          current &&
+          current.range.start.line === r.start.line &&
+          current.range.start.character === r.start.character &&
+          current.range.end.line === r.end.line &&
+          current.range.end.character === r.end.character
+        ) {
+          continue;
+        }
         current = {
-          range: nodeRange(ancestor as any),
+          range: r,
           parent: current,
         };
       }
@@ -286,7 +296,7 @@ export function registerDocumentFeaturesProvider(
     }[] = [];
 
     for (const node of indexData.tokens) {
-      if (node.type === "IDENT" && node.text === word) {
+      if ((node.type === "IDENT" || node.type === "identifier") && node.text === word) {
         highlights.push({
           range: nodeRange(node),
           kind: DocumentHighlightKind.Text,

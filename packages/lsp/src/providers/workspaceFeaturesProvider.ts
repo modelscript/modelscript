@@ -61,6 +61,17 @@ export function registerWorkspaceFeaturesProvider(
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
 
     const offset = document.offsetAt(params.position);
+    const text = document.getText();
+    let ws = offset;
+    if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
+    while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
+    let we = ws;
+    while (we < text.length && /[a-zA-Z0-9_]/.test(text[we]!)) we++;
+    if (ws >= we || offset < ws || offset > we) {
+      return [];
+    }
+    const word = text.slice(ws, we);
+
     let targetEntry: any = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
@@ -72,6 +83,15 @@ export function registerWorkspaceFeaturesProvider(
     }
 
     if (!targetEntry) return [];
+
+    if (targetEntry.kind === "Class" && word !== targetEntry.name) {
+      const child = Array.from(unifiedIndex.symbols.values()).find(
+        (s: any) => s.resourceId === params.textDocument.uri && s.parentId === targetEntry.id && s.name === word,
+      );
+      if (child) {
+        targetEntry = child;
+      }
+    }
 
     // Find the declarations this symbol refers to (or itself if it is a declaration)
     let declarationIds: number[] = [];
@@ -108,7 +128,24 @@ export function registerWorkspaceFeaturesProvider(
       // Include declaration
       const declEntry = unifiedIndex.symbols.get(declId);
       if (declEntry && declEntry.resourceId) {
-        addLocation(declEntry.resourceId, declEntry.startByte, declEntry.endByte);
+        const nameField = declEntry.fieldRanges?.name;
+        if (nameField) {
+          addLocation(declEntry.resourceId, nameField.startByte, nameField.endByte);
+        } else {
+          let sByte = declEntry.startByte;
+          let eByte = declEntry.endByte;
+          const declText =
+            documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
+          if (declText && declEntry.name && declEntry.name !== "<anonymous>") {
+            const slice = declText.slice(sByte, Math.min(sByte + 300, eByte));
+            const idx = slice.indexOf(declEntry.name);
+            if (idx !== -1) {
+              sByte += idx;
+              eByte = sByte + declEntry.name.length;
+            }
+          }
+          addLocation(declEntry.resourceId, sByte, eByte);
+        }
       }
       // Include references
       const refs = findRefs(declId, unifiedIndex);

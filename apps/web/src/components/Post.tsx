@@ -41,7 +41,6 @@ import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
 import ComposeModal from "./ComposeModal";
 import ProfileHoverCard from "./ProfileHoverCard";
-import type { LocationStat } from "./WorldMap";
 import WorldMap from "./WorldMap";
 
 function formatRelativeTime(dateString: string): string {
@@ -637,17 +636,8 @@ const RenderContent = ({ text }: { text: string | null }) => {
   );
 };
 
-// Mock locations for WorldMap
-const mockLocationStats: LocationStat[] = [
-  { country: "US", views: Math.floor(Math.random() * 500) + 100 },
-  { country: "GB", views: Math.floor(Math.random() * 200) + 50 },
-  { country: "DE", views: Math.floor(Math.random() * 300) + 50 },
-  { country: "FR", views: Math.floor(Math.random() * 150) + 20 },
-  { country: "IN", views: Math.floor(Math.random() * 400) + 50 },
-  { country: "AU", views: Math.floor(Math.random() * 100) + 10 },
-  { country: "BR", views: Math.floor(Math.random() * 100) + 10 },
-  { country: "JP", views: Math.floor(Math.random() * 200) + 30 },
-];
+// Session cache to prevent duplicate view increments in the same session
+const viewedPostIds = new Set<number>();
 
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
@@ -669,6 +659,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [pendingPin, setPendingPin] = useState<SpatialPin | undefined>(undefined);
+
+  // Automatically record view once per post per session
+  useEffect(() => {
+    if (displayPost?.id && !viewedPostIds.has(displayPost.id)) {
+      viewedPostIds.add(displayPost.id);
+      fetch(`${API_BASE_URL}/social/posts/${displayPost.id}/view`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        keepalive: true,
+      }).catch(() => {});
+    }
+  }, [displayPost?.id, token]);
 
   useEffect(() => {
     if (showAnalyticsModal) {
@@ -1987,7 +1989,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
               <Box mb={4}>
                 <WorldMap
-                  data={analyticsData?.location_stats?.length > 0 ? analyticsData.location_stats : mockLocationStats}
+                  data={analyticsData?.location_stats || []}
+                  regionData={analyticsData?.region_stats || []}
+                  totalViews={impressions}
                 />
               </Box>
               <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>

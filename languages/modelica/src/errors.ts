@@ -877,3 +877,36 @@ export function formatDiagnostic(diag: ModelicaDiagnostic, resource?: string | n
   }
   return `[M${diag.code}] ${severity}: ${diag.message}`;
 }
+
+const modelicaErrorCodeByCode = new Map<number, ErrorCodeDef>();
+const modelicaErrorCodeByRule = new Map<string, ErrorCodeDef>();
+
+for (const def of Object.values(ModelicaErrorCode)) {
+  if (!modelicaErrorCodeByCode.has(def.code)) {
+    modelicaErrorCodeByCode.set(def.code, def);
+  }
+  if (def.rule) {
+    const normalized = def.rule.toLowerCase().replace(/[-_]/g, "");
+    if (!modelicaErrorCodeByRule.has(normalized)) {
+      modelicaErrorCodeByRule.set(normalized, def);
+    }
+  }
+}
+
+/**
+ * Look up a Modelica error code definition by numeric code or rule name.
+ */
+export function getModelicaErrorCodeDef(codeOrRule: number | string): ErrorCodeDef | undefined {
+  if (typeof codeOrRule === "number") {
+    return modelicaErrorCodeByCode.get(codeOrRule);
+  }
+  if (typeof codeOrRule === "string") {
+    const num = Number(codeOrRule.replace(/^M/i, ""));
+    if (!isNaN(num) && modelicaErrorCodeByCode.has(num)) {
+      return modelicaErrorCodeByCode.get(num);
+    }
+    const normalized = codeOrRule.toLowerCase().replace(/[-_]/g, "");
+    return modelicaErrorCodeByRule.get(normalized);
+  }
+  return undefined;
+}

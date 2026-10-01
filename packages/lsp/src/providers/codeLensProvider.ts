@@ -25,12 +25,18 @@ export function registerCodeLensProvider(context: LspContext) {
         const proofMap = context.validationService.modelicaProofResultsByUri?.get(uri);
         const proof = proofMap?.get(sym.name);
 
-        const range = Range.create(
-          sym.selectionRange?.start.line ?? sym.range?.start?.line ?? 0,
-          sym.selectionRange?.start.character ?? sym.range?.start?.character ?? 0,
-          sym.selectionRange?.start.line ?? sym.range?.start?.line ?? 0,
-          sym.selectionRange?.start.character ?? sym.range?.start?.character ?? 0,
-        );
+        const doc = context.documents.get(uri);
+        let startLine = sym.selectionRange?.start.line ?? sym.range?.start?.line;
+        let startChar = sym.selectionRange?.start.character ?? sym.range?.start?.character;
+        if (startLine === undefined && doc && (sym.startOffset !== undefined || sym.startByte !== undefined)) {
+          const pos = doc.positionAt(sym.startOffset ?? sym.startByte);
+          startLine = pos.line;
+          startChar = pos.character;
+        }
+        startLine = startLine ?? 0;
+        startChar = startChar ?? 0;
+
+        const range = Range.create(startLine, startChar, startLine, startChar);
 
         if (isSimulatable) {
           const title = kind === "study" ? "▶ Run Study" : `▶ Simulate ${kind}`;

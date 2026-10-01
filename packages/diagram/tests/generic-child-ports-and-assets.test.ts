@@ -182,3 +182,50 @@ test("DynamicSelect simulation animation channels extraction", () => {
   assert.strictEqual(motorNode.animations[0].property, "fillColor");
   assert.ok(motorNode.animations[0].variableName.includes("speed"));
 });
+
+test("Ignores empty icon objects and strips orphaned image markup", () => {
+  const graphicsConfig = {
+    Block: {
+      role: "node" as const,
+      node: {
+        shape: "rect",
+        markup: [
+          { tagName: "rect", selector: "body" },
+          { tagName: "image", selector: "icon" },
+        ],
+        attrs: {
+          body: { fill: "#ffffff" },
+          icon: {}, // Empty icon attribute object
+        },
+      },
+    },
+  };
+
+  const symbols = new Map<SymbolId, SymbolEntry>();
+  symbols.set(
+    1 as SymbolId,
+    {
+      id: 1 as SymbolId,
+      name: "engine",
+      ruleName: "Block",
+      parentId: null,
+    } as SymbolEntry,
+  );
+
+  const index: SymbolIndex = {
+    symbols,
+    byName: new Map([["engine", [1 as SymbolId]]]),
+    childrenOf: new Map(),
+  };
+
+  const diagram = buildPolyglotDiagram(index, graphicsConfig as any);
+  assert.strictEqual(diagram.nodes.length, 1);
+  const node = diagram.nodes[0];
+  // Must NOT contain image/icon markup
+  assert.ok(Array.isArray(node.markup));
+  assert.ok(!node.markup.some((m: any) => m.selector === "icon" || m.tagName === "image"));
+  // Must NOT have icon in attrs, properties, or data
+  assert.strictEqual(node.attrs?.icon, undefined);
+  assert.strictEqual(node.properties?.icon, undefined);
+  assert.strictEqual(node.data?.icon, undefined);
+});

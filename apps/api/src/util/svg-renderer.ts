@@ -79,13 +79,21 @@ function extractComponentMetadata(component: any): ComponentMetadata | null {
   const typeName = component.classInstance?.compositeName ?? component.declaredType?.compositeName ?? "unknown";
   const description = component.description ?? null;
 
-  // Get causality and variability from the AST node's parent component clause
-  const astNode = component.abstractSyntaxNode;
-  const parentClause = astNode?.parent;
+  // Get causality and variability from component properties, symbol metadata, or AST node
   const causality =
-    (parentClause as { causality?: { toString(): string } | null } | undefined)?.causality?.toString() ?? null;
+    component.causality?.toString() ??
+    component.declaration?.metadata?.causality?.toString() ??
+    (
+      component.abstractSyntaxNode?.parent as { causality?: { toString(): string } | null } | undefined
+    )?.causality?.toString() ??
+    null;
   const variability =
-    (parentClause as { variability?: { toString(): string } | null } | undefined)?.variability?.toString() ?? null;
+    component.variability?.toString() ??
+    component.declaration?.metadata?.variability?.toString() ??
+    (
+      component.abstractSyntaxNode?.parent as { variability?: { toString(): string } | null } | undefined
+    )?.variability?.toString() ??
+    null;
 
   const modifiers = extractModifiers(component.modification);
 

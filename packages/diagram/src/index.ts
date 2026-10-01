@@ -170,9 +170,12 @@ function getConnectedEdges(
   });
 }
 
-export function initGraph(isDark: boolean): Graph {
+export function initGraph(isDark: boolean): Graph | null {
   const container = currentOptions?.container;
-  if (!container) throw new Error("DiagramRendererOptions.container must be provided");
+  if (!container) {
+    if (graph) return graph;
+    return null;
+  }
   const placeholder = document.getElementById("placeholder");
   if (placeholder) placeholder.style.display = "none";
 
@@ -902,6 +905,7 @@ export function initGraph(isDark: boolean): Graph {
 
 export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any, isDark: boolean) {
   const g = initGraph(isDark);
+  if (!g) return;
 
   // Build nodes from diagram data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
