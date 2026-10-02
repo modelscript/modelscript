@@ -49,5 +49,5 @@ Proves whether safety property $P$ holds across all reachable states of a discre
   - State machine models from [`SysML v2`](../languages/sysml2.md).
   - Mode switching and discrete `when` / `if` clauses lowered from [`Modelica`](../languages/modelica.md).
 - **Downstream Consumers**:
-  - Verifies architectural safety contracts in `msc verify`.
+  - Verifies architectural safety contracts in `msx verify`.
   - Feeds lemmas into [`Nelson-Oppen Coordinator`](./theory-coordinator.md).

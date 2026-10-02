@@ -68,14 +68,14 @@ Open the `BouncingBall.mo` file and click the **Open 3D Viewer** icon in the edi
 
 ## 4. Simulating via the CLI
 
-Execute the model using the unified `msc` command-line tool:
+Execute the model using the unified `msx` command-line tool:
 
 ```bash
 # Flatten to linear DAE arena and simulate
-msc simulate BouncingBall BouncingBall.mo --stop-time 3.0 --step-size 0.01
+msx simulate BouncingBall BouncingBall.mo --stop-time 3.0 --step-size 0.01
 
 # Render the interactive SVG schematic diagram
-msc render BouncingBall BouncingBall.mo > schematic.svg
+msx render BouncingBall BouncingBall.mo > schematic.svg
 ```
 
 ---

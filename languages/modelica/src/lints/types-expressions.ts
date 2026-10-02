@@ -647,7 +647,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (lhs != 0 && rhs != 0) {
         const lhsType = inferExprType(db, lhs, $);
         const rhsType = inferExprType(db, rhs, $);
-        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN) {
+        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && lhsType < 0x8000 && rhsType < 0x8000) {
           if (!isTypeCompatible(rhsType, lhsType) && !isTypeCompatible(lhsType, rhsType)) {
             let isOldFrontend: u32 = 0;
             const docRoot = db.ast.getRootNode();

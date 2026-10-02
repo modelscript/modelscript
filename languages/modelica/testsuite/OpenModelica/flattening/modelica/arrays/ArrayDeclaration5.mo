@@ -1,7 +1,6 @@
 // name: ArrayDeclaration5
 // keywords: array
 // status: correct
-// xfail:    true
 //
 // Tests declaring arrays with unspecified dimensions
 //

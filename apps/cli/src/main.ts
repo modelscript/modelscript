@@ -60,8 +60,11 @@ if (rawArgs.includes("--daemon")) {
   }
 }
 
+const binName = path.basename(process.argv[1] ?? "").replace(/\.[cm]?[jt]s$/, "");
+const scriptName = binName === "msx" ? "msx" : "modelscript";
+
 await yargs(rawArgs)
-  .scriptName("msc")
+  .scriptName(scriptName)
   .usage(`CLI for ModelScript ${pkgVersion}`)
   .option("daemon", {
     description: "Execute command using background compiler daemon for instant speed",

@@ -1,7 +1,6 @@
 // name:     ScopeDeclaration1
 // keywords: scoping,declaration
 // status:   correct
-// xfail:    true
 //
 // Modelica was a originally defined as a strict define-before-use language.
 // That was changed in Modelica 1.4, and thus the following is legal.

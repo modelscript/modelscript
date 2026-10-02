@@ -31,7 +31,7 @@ import {
   setNodeFlags,
   setNodePadding,
 } from "../arena";
-import { ChunkedUint32Array, UnmanagedInt32Array, UnmanagedUint32Array, createChunkedUint32Array } from "../core/array";
+import { ChunkedUint32Array, UnmanagedInt32Array, UnmanagedUint32Array, UnmanagedUint16Array, UnmanagedUint8Array, createChunkedUint32Array } from "../core/array";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
 import {
   action_data as _action_data,
@@ -383,24 +383,50 @@ export function commitDiagnostics(tailPtr: u32): void {
   }
 }
 
-export function getExpectedTokensForState(state: i32, depth: i32 = 0): u64 {
-  if (depth > 2 || state < 0 || state >= action_offsets.length) return 0;
+export let t_diagExpectedPool: UnmanagedUint16Array = changetype<UnmanagedUint16Array>(0);
+export let t_diagExpectedPoolCapacity: u32 = 0;
+export let t_diagExpectedPoolLen: u32 = 0;
+
+let t_diagExpectedBitset: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
+let t_diagVisitedStates: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
+
+export function getExpectedTokensPoolPtr(): u32 {
+  if (changetype<usize>(t_diagExpectedPool) == 0) {
+    t_diagExpectedPoolCapacity = 8192;
+    let ptr = atomicChunkAlloc(t_diagExpectedPoolCapacity * 2);
+    t_diagExpectedPool = changetype<UnmanagedUint16Array>(ptr);
+  }
+  return changetype<u32>(t_diagExpectedPool);
+}
+
+export function getExpectedTokensPoolLen(): u32 {
+  return t_diagExpectedPoolLen;
+}
+
+export function resetExpectedTokensPool(): void {
+  t_diagExpectedPoolLen = 0;
+}
+
+function crawlStateExpectedTokens(state: i32, depth: i32): void {
+  if (depth > 4 || state < 0 || state >= action_offsets.length || state >= goto_offsets.length) return;
+  if (state < 2048) {
+    if (t_diagVisitedStates[state] == 1) return;
+    t_diagVisitedStates[state] = 1;
+  }
   let gOffset = action_offsets[state];
-  if (gOffset < 0 || gOffset >= action_data.length) return 0;
+  if (gOffset < 0 || gOffset >= action_data.length) return;
   let actionCount = action_data[gOffset];
   let idx = gOffset + 1;
-  let first: u32 = 0;
-  let second: u32 = 0;
+
   for (let j = 0; j < actionCount; j++) {
     let sym = action_data[idx++];
     let actCount = action_data[idx++];
     if (sym > 0 && sym <= (MAX_TERMINAL_ID as i32)) {
-      if (first == 0) {
-        first = sym as u32;
-      } else if (second == 0 && (sym as u32) != first) {
-        second = sym as u32;
+      if (sym < 2048) {
+        t_diagExpectedBitset[sym] = 1;
       }
-    } else if (sym == 0 && first == 0 && depth < 2) {
+    }
+    if (sym == 0) {
       for (let na = 0; na < actCount; na++) {
         let aType = action_data[idx + na * 2];
         let aTarget = action_data[idx + na * 2 + 1];
@@ -411,12 +437,10 @@ export function getExpectedTokensForState(state: i32, depth: i32 = 0): u64 {
             let gCount = goto_data[gotoOffset];
             let gIdx = gotoOffset + 1;
             for (let k = 0; k < gCount; k++) {
+              if (gIdx + 1 >= goto_data.length) break;
               if (goto_data[gIdx++] == lhs) {
                 let nextSt = goto_data[gIdx++];
-                let subExp = getExpectedTokensForState(nextSt, depth + 1);
-                if (subExp != 0) {
-                  return subExp;
-                }
+                crawlStateExpectedTokens(nextSt, depth + 1);
                 break;
               } else gIdx++;
             }
@@ -426,7 +450,57 @@ export function getExpectedTokensForState(state: i32, depth: i32 = 0): u64 {
     }
     idx += actCount * 2;
   }
-  return ((first as u64) | ((second as u64) << 32));
+}
+
+export function getExpectedTokensForState(state: i32, depth: i32 = 0): u64 {
+  if (state < 0 || state >= action_offsets.length) return 0;
+
+  if (changetype<usize>(t_diagExpectedPool) == 0) {
+    t_diagExpectedPoolCapacity = 8192;
+    t_diagExpectedPool = changetype<UnmanagedUint16Array>(atomicChunkAlloc(t_diagExpectedPoolCapacity * 2));
+  }
+  if (changetype<usize>(t_diagExpectedBitset) == 0) {
+    t_diagExpectedBitset = changetype<UnmanagedUint8Array>(atomicChunkAlloc(2048));
+  }
+  if (changetype<usize>(t_diagVisitedStates) == 0) {
+    t_diagVisitedStates = changetype<UnmanagedUint8Array>(atomicChunkAlloc(2048));
+  }
+
+  let maxSym = (MAX_TERMINAL_ID as i32) + 1;
+  if (maxSym > 2048) maxSym = 2048;
+  memory.fill(changetype<usize>(t_diagExpectedBitset), 0, maxSym);
+  memory.fill(changetype<usize>(t_diagVisitedStates), 0, 2048);
+
+  crawlStateExpectedTokens(state, 0);
+
+  let poolStart = t_diagExpectedPoolLen;
+
+  // Pass 1: Words & identifiers first
+  for (let s: i32 = 1; s < maxSym; s++) {
+    if (t_diagExpectedBitset[s] == 1) {
+      let isWord = token_is_word.length > s && token_is_word[s] == 1;
+      if (isWord) {
+        if (t_diagExpectedPoolLen < t_diagExpectedPoolCapacity) {
+          t_diagExpectedPool[t_diagExpectedPoolLen++] = s as u16;
+        }
+      }
+    }
+  }
+
+  // Pass 2: Delimiters, operators, and symbols
+  for (let s: i32 = 1; s < maxSym; s++) {
+    if (t_diagExpectedBitset[s] == 1) {
+      let isWord = token_is_word.length > s && token_is_word[s] == 1;
+      if (!isWord) {
+        if (t_diagExpectedPoolLen < t_diagExpectedPoolCapacity) {
+          t_diagExpectedPool[t_diagExpectedPoolLen++] = s as u16;
+        }
+      }
+    }
+  }
+
+  let poolCount = t_diagExpectedPoolLen - poolStart;
+  return (poolStart as u64) | ((poolCount as u64) << 32);
 }
 
 
@@ -652,6 +726,7 @@ export function resetParser(): void {
   lexPos = 0;
   lexLen = 0;
   errorCount = 0;
+  resetExpectedTokensPool();
 }
 
 export function getActiveHeadsCount(): u32 {

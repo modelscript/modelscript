@@ -1,14 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-import { KebabHorizontalIcon, MarkGithubIcon, SearchIcon } from "@primer/octicons-react";
+import {
+  ArrowRightIcon,
+  KebabHorizontalIcon,
+  MarkGithubIcon,
+  PlayIcon,
+  PlusIcon,
+  ServerIcon,
+  SyncIcon,
+  ZapIcon,
+} from "@primer/octicons-react";
 import { Button, Dialog, Heading, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
+import { getClusterStatus, getUnifiedUserJobs, type ClusterStatus, type UnifiedJob } from "../api";
 import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
 import Box from "./Box";
+import CloudSimulationModal from "./CloudSimulationModal";
 import FollowButton from "./FollowButton";
 import ProfileHoverCard from "./ProfileHoverCard";
 
@@ -168,6 +179,35 @@ const Card = styled.div`
   }
 `;
 
+const WalletCard = styled(Card)`
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.45) 0%, rgba(15, 23, 42, 0.75) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #06b6d4, #8b5cf6, #3b82f6);
+  }
+`;
+
+const SpinSyncIcon = styled(SyncIcon)<{ $isSpinning: boolean }>`
+  animation: ${(props) => (props.$isSpinning ? "spin 1s linear infinite" : "none")};
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
   width: 40px;
   height: 40px;
@@ -275,11 +315,14 @@ const KebabButton = styled.button`
 `;
 
 const RightPanel: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token, user, creditBalance, refreshWallet } = useAuth();
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [popularRepos, setPopularRepos] = useState<any[]>([]);
-  const [hpcJobs, setHpcJobs] = useState<any[]>([]);
+  const [hpcJobs, setHpcJobs] = useState<UnifiedJob[]>([]);
+  const [isHpcLoading, setIsHpcLoading] = useState(false);
+  const [clusterInfo, setClusterInfo] = useState<ClusterStatus | null>(null);
+  const [isSimModalOpen, setIsSimModalOpen] = useState(false);
   const [legalModal, setLegalModal] = useState<"terms" | "privacy" | "cookies" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
@@ -335,19 +378,24 @@ const RightPanel: React.FC = () => {
     }
   }, [query]);
 
+  const fetchJobsAndCluster = React.useCallback(async () => {
+    setIsHpcLoading(true);
+    try {
+      const [jobs, cluster] = await Promise.all([getUnifiedUserJobs(), getClusterStatus()]);
+      setHpcJobs(jobs.slice(0, 4));
+      setClusterInfo(cluster);
+    } catch {
+      // ignore
+    } finally {
+      setIsHpcLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!token) return;
-    fetch("/api/v1/jobs", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.jobs && Array.isArray(data.jobs)) {
-          setHpcJobs(data.jobs.slice(0, 3));
-        }
-      })
-      .catch(() => {});
-  }, [token]);
+    fetchJobsAndCluster();
+    const interval = setInterval(fetchJobsAndCluster, 10000);
+    return () => clearInterval(interval);
+  }, [fetchJobsAndCluster, token]);
 
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
@@ -426,7 +474,7 @@ const RightPanel: React.FC = () => {
         top: panelTop < 0 ? `calc(${panelTop}px + var(--dev-header-height, 0px))` : "var(--dev-header-height, 0px)",
       }}
     >
-      {location.pathname === "/explore" || query ? (
+      {(location.pathname === "/explore" || query) && (
         <Card style={{ padding: "16px" }}>
           <Heading
             as="h3"
@@ -552,242 +600,286 @@ const RightPanel: React.FC = () => {
             </a>
           </div>
         </Card>
-      ) : (
-        <SearchContainer>
-          <SearchWrapper>
-            <SearchIcon size={16} />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearch}
-            />
-            {searchCompletions &&
-              (searchCompletions.topics.length > 0 ||
-                searchCompletions.users.length > 0 ||
-                searchCompletions.packages.length > 0 ||
-                searchCompletions.repositories.length > 0) && (
-                <DropdownWrapper>
-                  {searchCompletions.topics.length > 0 && (
-                    <DropdownSection>
-                      <DropdownTitle>Topics</DropdownTitle>
-                      {searchCompletions.topics.map((t, i) => (
-                        <DropdownItem
-                          key={`topic-${i}`}
-                          onClick={() => navigate(`/explore?topic=${encodeURIComponent(t.concept)}`)}
-                        >
-                          <SearchIcon size={16} />
-                          <Text style={{ fontWeight: "bold" }}>{t.display_name}</Text>
-                        </DropdownItem>
-                      ))}
-                    </DropdownSection>
-                  )}
-                  {searchCompletions.users.length > 0 && (
-                    <DropdownSection>
-                      <DropdownTitle>People</DropdownTitle>
-                      {searchCompletions.users.map((u, i) => (
-                        <DropdownItem key={`user-${i}`} onClick={() => navigate(`/${u.username}`)}>
-                          <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
-                          <Box display="flex" flexDirection="column">
-                            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{u.display_name || u.username}</Text>
-                            <Text color="var(--color-fg-muted)">@{u.username}</Text>
-                          </Box>
-                        </DropdownItem>
-                      ))}
-                    </DropdownSection>
-                  )}
-                  {searchCompletions.packages.length > 0 && (
-                    <DropdownSection>
-                      <DropdownTitle>Artifacts</DropdownTitle>
-                      {searchCompletions.packages.map((p, i) => (
-                        <DropdownItem key={`pkg-${i}`} onClick={() => navigate(`/packages/${p.name}`)}>
-                          <Box display="flex" flexDirection="column">
-                            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{p.name}</Text>
-                            <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
-                              {p.description || "No description"}
-                            </Text>
-                          </Box>
-                        </DropdownItem>
-                      ))}
-                    </DropdownSection>
-                  )}
-                  {searchCompletions.repositories.length > 0 && (
-                    <DropdownSection>
-                      <DropdownTitle>Repositories</DropdownTitle>
-                      {searchCompletions.repositories.map((r, i) => (
-                        <DropdownItem
-                          key={`repo-${i}`}
-                          onClick={() => window.open(`https://gitlab.com/${r.repo_full_name}`, "_blank")}
-                        >
-                          <Avatar $url={r.avatar_url} $letter={r.project.charAt(0).toUpperCase()} />
-                          <Box display="flex" flexDirection="column">
-                            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{r.project}</Text>
-                            <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
-                              {r.namespace}
-                            </Text>
-                          </Box>
-                        </DropdownItem>
-                      ))}
-                    </DropdownSection>
-                  )}
-                </DropdownWrapper>
-              )}
-          </SearchWrapper>
-        </SearchContainer>
       )}
-
       {!user && (
         <Card>
-          <Heading as="h2" style={{ fontSize: "20px", marginBottom: "8px", fontWeight: 800 }}>
-            New to ModelScript?
+          <Heading as="h2" style={{ fontSize: "16px", marginBottom: "6px", fontWeight: 700 }}>
+            Engineering Platform
           </Heading>
           <Text
             as="p"
-            color="var(--color-fg-muted)"
-            style={{ fontSize: "14px", marginBottom: "16px", lineHeight: 1.4 }}
+            color="var(--color-text-muted)"
+            style={{ fontSize: "13px", marginBottom: "12px", lineHeight: 1.4 }}
           >
-            Sign up now to get your own personalized timeline!
+            Simulate physical systems, export FMUs, and collaborate with engineers worldwide.
           </Text>
           <Box display="flex" flexDirection="column" gap={2}>
             <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
               <MarkGithubIcon size={16} />
-              Sign up with GitHub
+              Continue with GitHub
             </ProviderButton>
-            <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
-              <GitLabIcon />
-              Sign up with GitLab
-            </ProviderButton>
-            <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
-              <XIcon />
-              Sign up with X
-            </ProviderButton>
-            <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "#536471" }}>
-              <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
-              <span style={{ margin: "0 8px", fontSize: "13px", color: "#536471" }}>or</span>
-              <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
-            </div>
             <button
               onClick={() => navigate("/signup")}
               style={{
-                height: 40,
-                backgroundColor: "var(--color-fg-default, #fff)",
-                color: "var(--color-canvas-default, #000)",
+                height: 36,
+                background: "var(--gradient-cta)",
+                color: "white",
                 border: "none",
                 borderRadius: 9999,
-                fontSize: 15,
-                fontWeight: "bold",
+                fontSize: 13,
+                fontWeight: 600,
                 cursor: "pointer",
                 width: "100%",
+                boxShadow: "0 0 10px rgba(139, 92, 246, 0.25)",
               }}
             >
-              Create account
+              Create Free Account
             </button>
           </Box>
-          <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "12px", marginTop: "16px", lineHeight: 1.4 }}>
-            By signing up, you agree to the{" "}
-            <a
-              href="#terms"
-              onClick={(e) => {
-                e.preventDefault();
-                setLegalModal("terms");
-              }}
-              style={{ color: "var(--color-accent-fg, #1d9bf0)", textDecoration: "none" }}
-            >
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a
-              href="#privacy"
-              onClick={(e) => {
-                e.preventDefault();
-                setLegalModal("privacy");
-              }}
-              style={{ color: "var(--color-accent-fg, #1d9bf0)", textDecoration: "none" }}
-            >
-              Privacy Policy
-            </a>
-            , including{" "}
-            <a
-              href="#cookies"
-              onClick={(e) => {
-                e.preventDefault();
-                setLegalModal("cookies");
-              }}
-              style={{ color: "var(--color-accent-fg, #1d9bf0)", textDecoration: "none" }}
-            >
-              Cookie Use
-            </a>
-            .
-          </Text>
-          <Box mt={4} pt={3} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <Text style={{ fontSize: "15px", fontWeight: "bold", color: "var(--color-fg-default)" }}>
-              Already have an account?
-            </Text>
+          <Box
+            mt={3}
+            pt={2}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderTop: "1px solid var(--color-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Have an account?</span>
             <button
               onClick={() => navigate("/login")}
               style={{
-                height: 40,
-                backgroundColor: "transparent",
-                color: "#1d9bf0",
-                border: "1px solid var(--color-border)",
-                borderRadius: 9999,
-                fontSize: 15,
-                fontWeight: "bold",
+                background: "none",
+                border: "none",
+                color: "var(--color-accent-cyan)",
+                fontSize: "12px",
+                fontWeight: 600,
                 cursor: "pointer",
-                width: "100%",
+                padding: 0,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(29, 155, 240, 0.1)")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
             >
-              Sign in
+              Sign in →
             </button>
           </Box>
         </Card>
       )}
 
+      {user && (
+        <WalletCard>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <ZapIcon size={14} fill="#8b5cf6" style={{ color: "var(--color-accent-purple)" }} />
+              <Text
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  color: "var(--color-text-muted)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                Compute Wallet
+              </Text>
+            </Box>
+            <span
+              style={{
+                fontSize: "10px",
+                color: "var(--color-accent-purple)",
+                fontFamily: "var(--font-mono)",
+                background: "rgba(139, 92, 246, 0.15)",
+                border: "1px solid rgba(139, 92, 246, 0.3)",
+                padding: "1px 6px",
+                borderRadius: "4px",
+                fontWeight: 600,
+              }}
+            >
+              RESEARCH TIER
+            </span>
+          </Box>
+
+          <Box display="flex" justifyContent="space-between" alignItems="baseline" mb={2}>
+            <div>
+              <span
+                style={{
+                  fontSize: "26px",
+                  fontWeight: 800,
+                  fontFamily: "var(--font-mono)",
+                  background: "linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  letterSpacing: "-0.5px",
+                }}
+              >
+                {creditBalance.toFixed(2)}
+              </span>
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "var(--color-accent-purple)",
+                  marginLeft: "4px",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                cr
+              </span>
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-topup"))}
+              style={{
+                background: "rgba(139, 92, 246, 0.15)",
+                border: "1px solid rgba(139, 92, 246, 0.4)",
+                color: "var(--color-text-primary)",
+                borderRadius: "6px",
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontFamily: "var(--font-mono)",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <PlusIcon size={12} />
+              <span>Top Up</span>
+            </button>
+          </Box>
+
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            pt={2}
+            style={{
+              borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+              fontSize: "11px",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            <span style={{ color: "var(--color-text-muted)" }}>Auto-Allocation: Active</span>
+            <Link
+              to="/settings/billing"
+              style={{
+                color: "var(--color-accent-cyan)",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "3px",
+                fontSize: "11px",
+              }}
+            >
+              <span>Usage Log</span>
+              <ArrowRightIcon size={10} />
+            </Link>
+          </Box>
+        </WalletCard>
+      )}
+
       <Card>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Text
-            style={{
-              fontSize: "13px",
-              fontWeight: "bold",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              color: "var(--color-text-muted)",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            Cloud / HPC Queues
-          </Text>
-          <span
-            style={{
-              fontSize: "11px",
-              color: "var(--color-status-verified)",
-              fontFamily: "var(--font-mono)",
-              background: "rgba(16, 185, 129, 0.12)",
-              padding: "2px 6px",
-              borderRadius: "4px",
-            }}
-          >
-            ● ONLINE
-          </span>
+          <Box display="flex" alignItems="center" gap={2}>
+            <ServerIcon size={14} style={{ color: "var(--color-text-muted)" }} />
+            <Text
+              style={{
+                fontSize: "12px",
+                fontWeight: "bold",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                color: "var(--color-text-muted)",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              Cloud &amp; HPC Queue
+            </Text>
+          </Box>
+          <Box display="flex" alignItems="center" gap={2}>
+            <span
+              style={{
+                fontSize: "10px",
+                color: clusterInfo?.slurmRunning ? "var(--color-status-verified)" : "var(--color-accent-cyan)",
+                fontFamily: "var(--font-mono)",
+                background: clusterInfo?.slurmRunning ? "rgba(16, 185, 129, 0.12)" : "rgba(6, 182, 212, 0.12)",
+                border: `1px solid ${clusterInfo?.slurmRunning ? "rgba(16, 185, 129, 0.3)" : "rgba(6, 182, 212, 0.3)"}`,
+                padding: "1px 6px",
+                borderRadius: "4px",
+                fontWeight: 600,
+              }}
+            >
+              ● {clusterInfo?.slurmRunning ? `${clusterInfo.nodes} NODES` : "ONLINE"}
+            </span>
+            <button
+              onClick={() => fetchJobsAndCluster()}
+              disabled={isHpcLoading}
+              title="Refresh queue"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--color-text-muted)",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <SpinSyncIcon size={12} $isSpinning={isHpcLoading} />
+            </button>
+          </Box>
         </Box>
 
         <Box display="flex" flexDirection="column" gap={3} style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>
           {hpcJobs.length > 0 ? (
             hpcJobs.map((job) => {
-              const progress = Math.min(100, Math.max(0, job.progress || (job.status === "completed" ? 100 : 45)));
+              const isRunning = job.status === "running" || job.status === "processing";
+              const isDone = job.status === "completed" || job.status === "SUCCESS";
+              const isFailed = job.status === "failed" || job.status === "FAILED";
+              const progress = Math.min(100, Math.max(0, job.progress || (isDone ? 100 : isRunning ? 55 : 0)));
+
               return (
-                <div key={job.id}>
-                  <Box display="flex" justifyContent="space-between" mb={1}>
-                    <span style={{ fontWeight: 600 }}>
-                      Job #{job.id}: {job.name || job.template_name || "Compute Job"}
+                <div key={job.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color: "var(--color-text-primary)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "190px",
+                      }}
+                      title={job.name}
+                    >
+                      #{String(job.id).slice(0, 6)} {job.name}
                     </span>
-                    <span style={{ color: "var(--color-accent-cyan)" }}>
-                      {job.status === "completed" ? "Done" : `${progress}%`}
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        padding: "1px 5px",
+                        borderRadius: "3px",
+                        background: isDone
+                          ? "rgba(16, 185, 129, 0.15)"
+                          : isFailed
+                            ? "rgba(239, 68, 68, 0.15)"
+                            : isRunning
+                              ? "rgba(6, 182, 212, 0.15)"
+                              : "rgba(245, 158, 11, 0.15)",
+                        color: isDone
+                          ? "var(--color-status-verified)"
+                          : isFailed
+                            ? "#ef4444"
+                            : isRunning
+                              ? "var(--color-accent-cyan)"
+                              : "#f59e0b",
+                      }}
+                    >
+                      {job.status.toUpperCase()}
                     </span>
                   </Box>
+
                   <div
                     style={{
                       height: "4px",
@@ -800,72 +892,77 @@ const RightPanel: React.FC = () => {
                       style={{
                         height: "100%",
                         width: `${progress}%`,
-                        background: "var(--gradient-ai)",
+                        background: isFailed
+                          ? "#ef4444"
+                          : isDone
+                            ? "var(--color-status-verified)"
+                            : "var(--gradient-ai)",
                         borderRadius: "9999px",
-                        boxShadow: "0 0 8px rgba(6, 182, 212, 0.5)",
+                        boxShadow: isRunning ? "0 0 8px rgba(6, 182, 212, 0.5)" : "none",
+                        transition: "width 0.4s ease",
                       }}
                     />
                   </div>
-                  <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
-                    Status: {job.status?.toUpperCase() || "RUNNING"} · Slurm Node: {job.cluster || "compute-gpu-04"}
-                  </span>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
+                      {job.domain.toUpperCase()} · {job.profile || "standard"}
+                    </span>
+                    {job.costCredits != null && (
+                      <span style={{ fontSize: "10px", color: "var(--color-accent-purple)" }}>
+                        {job.costCredits.toFixed(2)} cr
+                      </span>
+                    )}
+                  </Box>
                 </div>
               );
             })
           ) : (
-            <>
-              <div>
-                <Box display="flex" justifyContent="space-between" mb={1}>
-                  <span style={{ fontWeight: 600 }}>Job #8412: CFD Wingtip</span>
-                  <span style={{ color: "var(--color-accent-cyan)" }}>78%</span>
-                </Box>
-                <div
-                  style={{
-                    height: "4px",
-                    background: "rgba(255, 255, 255, 0.08)",
-                    borderRadius: "9999px",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: "78%",
-                      background: "var(--gradient-ai)",
-                      borderRadius: "9999px",
-                      boxShadow: "0 0 8px rgba(6, 182, 212, 0.5)",
-                    }}
-                  />
-                </div>
-                <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>Slurm Node: compute-gpu-04</span>
+            <Box display="flex" flexDirection="column" alignItems="center" py={3} textAlign="center" gap={2}>
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  background: "rgba(6, 182, 212, 0.08)",
+                  border: "1px solid rgba(6, 182, 212, 0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--color-accent-cyan)",
+                }}
+              >
+                <ServerIcon size={18} />
               </div>
-
-              <div>
-                <Box display="flex" justifyContent="space-between" mb={1}>
-                  <span style={{ fontWeight: 600 }}>Job #8416: Monte Carlo 10k</span>
-                  <span style={{ color: "var(--color-accent-purple)" }}>94%</span>
-                </Box>
-                <div
-                  style={{
-                    height: "4px",
-                    background: "rgba(255, 255, 255, 0.08)",
-                    borderRadius: "9999px",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: "94%",
-                      background: "var(--gradient-ai)",
-                      borderRadius: "9999px",
-                      boxShadow: "0 0 8px rgba(139, 92, 246, 0.5)",
-                    }}
-                  />
-                </div>
-                <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>SUNDIALS CVODE Batched</span>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+                Cluster Ready &amp; Idle
               </div>
-            </>
+              <div style={{ fontSize: "11px", color: "var(--color-text-muted)", maxWidth: 220, lineHeight: 1.4 }}>
+                No active simulations. Run batched SUNDIALS CVODE, SU2 CFD, or CalculiX FEA.
+              </div>
+              <button
+                onClick={() => setIsSimModalOpen(true)}
+                style={{
+                  marginTop: "6px",
+                  background: "rgba(6, 182, 212, 0.1)",
+                  border: "1px solid rgba(6, 182, 212, 0.3)",
+                  color: "var(--color-accent-cyan)",
+                  borderRadius: "6px",
+                  padding: "5px 12px",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <PlayIcon size={12} />
+                <span>Launch Cloud Run</span>
+              </button>
+            </Box>
           )}
         </Box>
       </Card>
@@ -874,26 +971,29 @@ const RightPanel: React.FC = () => {
         <Heading
           as="h2"
           style={{
-            fontSize: "20px",
-            fontWeight: 800,
-            marginBottom: "16px",
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+            fontSize: "15px",
+            fontWeight: 700,
+            marginBottom: "12px",
+            fontFamily: "var(--font-mono)",
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+            color: "var(--color-text-muted)",
           }}
         >
-          What's happening
+          Trending Models & Topics
         </Heading>
         <Box display="flex" flexDirection="column">
           {trending.length > 0 ? (
             trending.map((topic) => (
               <TrendingItem key={topic.id}>
                 <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
-                  <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
                     {topic.location ? `Trending in ${topic.location}` : "Trending"}
                   </div>
                   <Text
                     as="div"
                     fontWeight="bold"
-                    style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-text-primary)" }}
+                    style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}
                   >
                     {topic.display_name}
                   </Text>
@@ -975,12 +1075,35 @@ const RightPanel: React.FC = () => {
               </TrendingItem>
             ))
           ) : (
-            <Text color="var(--color-fg-muted)" sx={{ fontSize: "14px" }}>
-              No trending topics yet.
-            </Text>
+            <Box display="flex" flexDirection="column" gap={1} py={1}>
+              {[
+                { concept: "modelica", tag: "#Modelica 3.4", category: "Physical Systems" },
+                { concept: "cfd", tag: "#CFD Aerodynamics", category: "Finite Volume" },
+                { concept: "cvode", tag: "#SUNDIALS CVODE", category: "Stiff DAE Integrators" },
+                { concept: "fmu", tag: "#FMI 3.0 Standard", category: "Co-Simulation" },
+              ].map((topic, i) => (
+                <Box
+                  key={i}
+                  onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}
+                  style={{
+                    cursor: "pointer",
+                    padding: "6px 8px",
+                    borderRadius: "6px",
+                    transition: "background-color 0.2s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.04)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  <div style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{topic.category}</div>
+                  <Text style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-primary)" }}>
+                    {topic.tag}
+                  </Text>
+                </Box>
+              ))}
+            </Box>
           )}
 
-          <ShowMoreLink to="/explore">Show more</ShowMoreLink>
+          <ShowMoreLink to="/explore">Explore all models →</ShowMoreLink>
         </Box>
       </Card>
 
@@ -1167,6 +1290,16 @@ const RightPanel: React.FC = () => {
             </Box>
           </Box>
         </Dialog>
+      )}
+
+      {isSimModalOpen && (
+        <CloudSimulationModal
+          isOpen={isSimModalOpen}
+          onClose={() => {
+            setIsSimModalOpen(false);
+            fetchJobsAndCluster();
+          }}
+        />
       )}
     </PanelContainer>
   );

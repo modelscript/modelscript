@@ -1,7 +1,6 @@
 // name:     Constant8
 // keywords: Constant package lookup
 // status:   correct
-// xfail:    true
 //
 // Constants can be looked up in parent scopes, also throug base classs.
 //

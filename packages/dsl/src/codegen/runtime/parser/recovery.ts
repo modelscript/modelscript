@@ -692,7 +692,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
       let aType = action_data[rIdx++];
       let aTarget = action_data[rIdx++];
       let firstCh = peekChar(curSrcLexPos);
-      let isInputWord = (firstCh >= 65 && firstCh <= 90) || (firstCh >= 97 && firstCh <= 122) || firstCh == 95;
+      let isInputWord = (firstCh >= 65 && firstCh <= 90) || (firstCh >= 97 && firstCh <= 122) || firstCh == 95 || (firstCh >= 48 && firstCh <= 57);
       let isWordSym = sym > 0 && sym <= MAX_TERMINAL_ID && token_is_word.length > sym ? (token_is_word[sym] == 1) : false;
 
       // Strategy A: Keyword / Token Substitution (handling both direct shifts and epsilon-reduction paths)
@@ -784,7 +784,9 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
       }
 
       if (aType == ACTION_SHIFT && sym > 0 && sym <= MAX_TERMINAL_ID) {
-        if (!isInputWord) {
+        let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
+        let isDelimSym = token_insert_costs.length > sym && token_insert_costs[sym] == 1;
+        if (!isInputWord && isDelimLookahead && isDelimSym) {
           let nextPosAfterTok = curSrcLexPos + curTLen;
           let nextTok = peekNextTokenInState(nextPosAfterTok, aTarget);
           let canAcceptAfterSubst = stateCanAccept(head, aTarget, nextTok, 0, 1);
@@ -818,7 +820,6 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
         // Strategy B: Missing Token Insertion (0-width sym, keeping current token in stream)
         let insCost: i32 = token_insert_costs.length > sym ? (token_insert_costs[sym] as i32) : 1;
-        let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
         if (insCost < 50 || (isDelimLookahead && insCost <= 50) || sym == 1 || pos == 0) {
           let canAcceptNext = stateCanAccept(head, aTarget, token, 0, 1);
           if (canAcceptNext > 0) {

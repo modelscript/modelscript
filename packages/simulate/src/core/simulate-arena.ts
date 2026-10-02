@@ -35,6 +35,7 @@ import {
   type ArenaWhenClause,
   type SimulationDebugger,
 } from "./simulation.js";
+import { OnlineSTLMonitor, type STLStepResult } from "./stl_monitor.js";
 
 /** Maximum Newton iterations for algebraic loop solving. */
 const NEWTON_MAX_ITER = 20;
@@ -46,6 +47,17 @@ const SQRT_EPS = 1.4901161193847656e-8;
 export class ArenaSimulator {
   public parameters = new Map<string, number>();
   public debuggerHook?: SimulationDebugger;
+
+  /** Recorded safety barrier violations during simulation. */
+  public safetyViolations: {
+    t: number;
+    monitorName?: string;
+    robustness: number;
+    details?: string;
+  }[] = [];
+
+  /** Recorded interval / DAE singularity issues. */
+  public intervalIssues: string[] = [];
 
   // Sets of VarIdx for fast arena-native processing
   public parameterVars = new Set<number>();
@@ -1228,6 +1240,78 @@ export class ArenaSimulator {
     };
   }
 
+  /**
+   * Checks numerical variables against interval bounds, min/max attributes, and domain singularities.
+   */
+  public checkIntervalSafetyBarriers(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    currentTime: number,
+  ): void {
+    // Check state variables for NaN/Infinity
+    for (const sid of stateStringIds) {
+      const val = valuesByStringId[sid] ?? 0;
+      if (!Number.isFinite(val)) {
+        const name = this.arena.interner.resolve(sid) ?? `var_${sid}`;
+        this.intervalIssues.push(
+          `Numerical singularity at t=${currentTime.toFixed(4)}s: variable '${name}' is ${isNaN(val) ? "NaN" : "Infinity"}`,
+        );
+      }
+    }
+
+    // Check variable min/max attribute bounds
+    for (let i = 0; i < this.arena.varCount; i++) {
+      if (this.arena.isVarRemoved(i)) continue;
+      const minExpr = this.arena.getVarAttrExprId(i, "min");
+      const maxExpr = this.arena.getVarAttrExprId(i, "max");
+      if (minExpr === undefined && maxExpr === undefined) continue;
+
+      const nameId = this.arena.getVarNameId(i);
+      const val = valuesByStringId[nameId];
+      if (val === undefined || !Number.isFinite(val)) continue;
+
+      let minVal = -Infinity;
+      let maxVal = Infinity;
+      if (minExpr !== undefined) {
+        minVal = evaluateArenaRuntime(this.arena, minExpr, valuesByStringId);
+      }
+      if (maxExpr !== undefined) {
+        maxVal = evaluateArenaRuntime(this.arena, maxExpr, valuesByStringId);
+      }
+
+      if (typeof this.arena.exports?.dae_checkVarBounds === "function") {
+        const mask = this.arena.exports.dae_checkVarBounds(i, val, val, minVal, maxVal);
+        const MIN_BOUND_VIOLATION = 1 << 8;
+        const MAX_BOUND_VIOLATION = 1 << 9;
+        if ((mask & MIN_BOUND_VIOLATION) !== 0) {
+          const varName = this.arena.getVarName(i);
+          this.intervalIssues.push(
+            `Variable '${varName}' breached minimum bound ${minVal} (value=${val.toFixed(4)}) at t=${currentTime.toFixed(4)}s`,
+          );
+        }
+        if ((mask & MAX_BOUND_VIOLATION) !== 0) {
+          const varName = this.arena.getVarName(i);
+          this.intervalIssues.push(
+            `Variable '${varName}' breached maximum bound ${maxVal} (value=${val.toFixed(4)}) at t=${currentTime.toFixed(4)}s`,
+          );
+        }
+      } else {
+        if (minVal > -Infinity && val < minVal) {
+          const varName = this.arena.getVarName(i);
+          this.intervalIssues.push(
+            `Variable '${varName}' breached minimum bound ${minVal} (value=${val.toFixed(4)}) at t=${currentTime.toFixed(4)}s`,
+          );
+        }
+        if (maxVal < Infinity && val > maxVal) {
+          const varName = this.arena.getVarName(i);
+          this.intervalIssues.push(
+            `Variable '${varName}' breached maximum bound ${maxVal} (value=${val.toFixed(4)}) at t=${currentTime.toFixed(4)}s`,
+          );
+        }
+      }
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Simulation (multi-solver: Euler, RK4, Dopri5, BDF)
   // ─────────────────────────────────────────────────────────────────────────
@@ -1243,6 +1327,10 @@ export class ArenaSimulator {
       atol?: number;
       rtol?: number;
       outputStringIds?: number[];
+      stlMonitors?: OnlineSTLMonitor[];
+      earlyTerminateOnViolation?: boolean;
+      intervalBarrierCheck?: boolean;
+      onStepViolation?: (t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void;
     },
   ) {
     const solver = options?.solver ?? "rk4";
@@ -1300,6 +1388,12 @@ export class ArenaSimulator {
     const y_out: Float64Array[] = [];
     let currentTime = startTime;
 
+    this.safetyViolations = [];
+    this.intervalIssues = [];
+    const stlMonitors = options?.stlMonitors ?? [];
+    for (const m of stlMonitors) m.reset();
+    let terminatedEarly = false;
+
     for (let s = 0; s <= steps; s++) {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
@@ -1324,6 +1418,40 @@ export class ArenaSimulator {
       t_out.push(currentTime);
       y_out.push(currentState);
 
+      // ── Safety barrier monitoring (STL) ──
+      if (stlMonitors.length > 0) {
+        for (const mon of stlMonitors) {
+          const stepRes = mon.step(currentTime, currentState);
+          if (stepRes.isViolated) {
+            this.safetyViolations.push({
+              t: currentTime,
+              monitorName: mon.options.requirementName ?? "STL Safety Barrier",
+              robustness: stepRes.robustness,
+              details: `Safety barrier breached at t=${currentTime.toFixed(4)}s: rho=${stepRes.robustness.toFixed(4)} < 0`,
+            });
+            if (options?.onStepViolation) {
+              options.onStepViolation(currentTime, currentState, mon, stepRes);
+            }
+            if (stepRes.shouldTerminate || options?.earlyTerminateOnViolation) {
+              terminatedEarly = true;
+              break;
+            }
+          }
+        }
+        if (terminatedEarly) break;
+      }
+
+      // ── Interval / singularity barrier check ──
+      if (options?.intervalBarrierCheck) {
+        this.checkIntervalSafetyBarriers(valuesByStringId, stateStringIds, currentTime);
+        if (this.intervalIssues.length > 0 && options?.earlyTerminateOnViolation) {
+          terminatedEarly = true;
+          break;
+        }
+      }
+
+      if (s === steps) break;
+
       // Integrate state variables
       if (solver === "rk4") {
         this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
@@ -1341,7 +1469,13 @@ export class ArenaSimulator {
       currentTime += step;
     }
 
-    return { t: t_out, y: y_out };
+    return {
+      t: t_out,
+      y: y_out,
+      terminatedEarly,
+      safetyViolations: this.safetyViolations,
+      intervalIssues: this.intervalIssues,
+    };
   }
 
   /**
@@ -1415,7 +1549,15 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     timeId: number,
-    options?: { atol?: number; rtol?: number; outputStringIds?: number[] },
+    options?: {
+      atol?: number;
+      rtol?: number;
+      outputStringIds?: number[];
+      stlMonitors?: OnlineSTLMonitor[];
+      earlyTerminateOnViolation?: boolean;
+      intervalBarrierCheck?: boolean;
+      onStepViolation?: (t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void;
+    },
   ) {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
@@ -1509,7 +1651,65 @@ export class ArenaSimulator {
       return fa;
     });
 
-    return { t: t_out, y: y_out };
+    this.safetyViolations = [];
+    this.intervalIssues = [];
+    const stlMonitors = options?.stlMonitors ?? [];
+    for (const m of stlMonitors) m.reset();
+    let terminatedEarly = false;
+    let cutIdx = t_out.length;
+
+    if (stlMonitors.length > 0 || options?.intervalBarrierCheck) {
+      for (let k = 0; k < t_out.length; k++) {
+        const tCurr = t_out[k]!;
+        const yCurr = y_out[k]!;
+
+        if (stlMonitors.length > 0) {
+          for (const mon of stlMonitors) {
+            const stepRes = mon.step(tCurr, yCurr);
+            if (stepRes.isViolated) {
+              this.safetyViolations.push({
+                t: tCurr,
+                monitorName: mon.options.requirementName ?? "STL Safety Barrier",
+                robustness: stepRes.robustness,
+                details: `Safety barrier breached at t=${tCurr.toFixed(4)}s: rho=${stepRes.robustness.toFixed(4)} < 0`,
+              });
+              if (options?.onStepViolation) {
+                options.onStepViolation(tCurr, yCurr, mon, stepRes);
+              }
+              if (stepRes.shouldTerminate || options?.earlyTerminateOnViolation) {
+                terminatedEarly = true;
+                cutIdx = k + 1;
+                break;
+              }
+            }
+          }
+          if (terminatedEarly) break;
+        }
+
+        if (options?.intervalBarrierCheck) {
+          for (let i = 0; i < n; i++) {
+            valuesByStringId[stateStringIds[i] ?? -1] = rawResult.states[k]?.[i] ?? 0;
+          }
+          this.checkIntervalSafetyBarriers(valuesByStringId, stateStringIds, tCurr);
+          if (this.intervalIssues.length > 0 && options?.earlyTerminateOnViolation) {
+            terminatedEarly = true;
+            cutIdx = k + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    const finalT = terminatedEarly ? t_out.slice(0, cutIdx) : t_out;
+    const finalY = terminatedEarly ? y_out.slice(0, cutIdx) : y_out;
+
+    return {
+      t: finalT,
+      y: finalY,
+      terminatedEarly,
+      safetyViolations: this.safetyViolations,
+      intervalIssues: this.intervalIssues,
+    };
   }
 
   /**
@@ -2198,6 +2398,17 @@ export interface ArenaSimulationResult {
   y: number[][];
   /** Names of state variables (column headers for y). */
   states: string[];
+  /** Whether simulation was terminated early by safety barrier monitor. */
+  terminatedEarly?: boolean;
+  /** Recorded safety barrier violations. */
+  safetyViolations?: {
+    t: number;
+    monitorName?: string;
+    robustness: number;
+    details?: string;
+  }[];
+  /** Recorded interval domain and singularity issues. */
+  intervalIssues?: string[];
 }
 
 /** Options for `simulateArena()`. */
@@ -2230,6 +2441,14 @@ export interface ArenaSimulateOptions {
   debug?: boolean;
   /** When true, only solves the steady-state initial equilibrium and returns immediately at startTime. */
   steadyStateOnly?: boolean;
+  /** Real-time STL safety barrier monitors to evaluate during integration. */
+  stlMonitors?: OnlineSTLMonitor[];
+  /** Immediately halt integration if an STL monitor detects safety violation (rho < 0). */
+  earlyTerminateOnViolation?: boolean;
+  /** Check variable min/max bounds and DAE singularities at each step. */
+  intervalBarrierCheck?: boolean;
+  /** Callback invoked on safety violation. */
+  onStepViolation?: (t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void;
 }
 
 /**
@@ -2395,6 +2614,12 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     atol: options?.atol ?? exp.tolerance,
     rtol: options?.rtol ?? exp.tolerance,
     ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
+    ...(options?.stlMonitors !== undefined && { stlMonitors: options.stlMonitors }),
+    ...(options?.earlyTerminateOnViolation !== undefined && {
+      earlyTerminateOnViolation: options.earlyTerminateOnViolation,
+    }),
+    ...(options?.intervalBarrierCheck !== undefined && { intervalBarrierCheck: options.intervalBarrierCheck }),
+    ...(options?.onStepViolation !== undefined && { onStepViolation: options.onStepViolation }),
   });
 
   // ── Step 7.5: Terminate FMU subsystems ──
@@ -2424,7 +2649,18 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     }
   }
 
-  return { t, y: outY, states: outNames };
+  return {
+    t,
+    y: outY,
+    states: outNames,
+    ...(rawResult.terminatedEarly ? { terminatedEarly: true } : {}),
+    ...(rawResult.safetyViolations && rawResult.safetyViolations.length > 0
+      ? { safetyViolations: rawResult.safetyViolations }
+      : {}),
+    ...(rawResult.intervalIssues && rawResult.intervalIssues.length > 0
+      ? { intervalIssues: rawResult.intervalIssues }
+      : {}),
+  };
 }
 
 /**

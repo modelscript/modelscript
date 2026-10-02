@@ -33,9 +33,9 @@ difference() {
 
 ---
 
-## Evaluating with `msc`
+## Evaluating with `msx`
 
 ```bash
 # Evaluate OpenSCAD and generate a watertight STEP solid
-npx msc csg evaluate bracket.scad --output bracket.step
+npx msx csg evaluate bracket.scad --output bracket.step
 ```

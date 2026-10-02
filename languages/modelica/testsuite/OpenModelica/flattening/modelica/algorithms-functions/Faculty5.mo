@@ -1,7 +1,6 @@
 // name:     Faculty5
 // keywords: recursive function, Real->Int conversion
 // status:   correct
-// xfail:    true
 //
 // Recursive function that results in very large integers.
 //

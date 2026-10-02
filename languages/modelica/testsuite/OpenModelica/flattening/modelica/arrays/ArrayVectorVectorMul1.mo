@@ -1,7 +1,6 @@
 // name:     ArrayVectorVectorMul1
 // keywords: expression simplification array multiplication
 // status:   correct
-// xfail:    true
 //
 // Checks simplification of vector-vector multiplication.
 //

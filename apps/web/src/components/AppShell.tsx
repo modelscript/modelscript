@@ -3,11 +3,22 @@
 /* eslint-disable */
 import Box from "./Box";
 
-import { BellIcon, HomeIcon, MoonIcon, PersonIcon, PlusIcon, SearchIcon, SunIcon, XIcon } from "@primer/octicons-react";
+import {
+  BellIcon,
+  HomeIcon,
+  MoonIcon,
+  PersonIcon,
+  PlusIcon,
+  SearchIcon,
+  SunIcon,
+  XIcon,
+  ZapIcon,
+} from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { getClusterStatus, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
 import { CommandPalette } from "./CommandPalette";
@@ -127,6 +138,29 @@ const PillTelemetry = styled.div`
   color: var(--color-status-verified);
 `;
 
+const WalletPill = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: var(--color-accent-purple);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(139, 92, 246, 0.22);
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+    transform: translateY(-1px);
+  }
+`;
+
 const PulseDot = styled.div`
   width: 6px;
   height: 6px;
@@ -172,10 +206,22 @@ const RightPanelWrapper = styled.div`
   max-width: 350px;
 `;
 
-const MainColumn = styled.main<{ $isWideLayout?: boolean; $isFullScreenLayout?: boolean }>`
-  flex: ${(props) => (props.$isWideLayout || props.$isFullScreenLayout ? "1" : "0 1 740px")};
+const MainColumn = styled.main<{
+  $isWideLayout?: boolean;
+  $isFullScreenLayout?: boolean;
+  $isInspectorLayout?: boolean;
+}>`
+  flex: ${(props) =>
+    props.$isWideLayout || props.$isFullScreenLayout || props.$isInspectorLayout ? "1" : "0 1 740px"};
   width: 100%;
-  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : props.$isWideLayout ? "1150px" : "740px")};
+  max-width: ${(props) =>
+    props.$isFullScreenLayout
+      ? "100%"
+      : props.$isInspectorLayout
+        ? "1140px"
+        : props.$isWideLayout
+          ? "1150px"
+          : "740px"};
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
@@ -261,13 +307,20 @@ const Banner = styled.div`
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: #1f1f1f;
+  background-color: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--color-border-glass);
   color: #fff;
   padding: 12px 24px;
   display: flex;
   justify-content: center;
   z-index: 100;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+
+  @media (min-width: 900px) {
+    display: none;
+  }
 `;
 
 const BannerContent = styled.div`
@@ -286,10 +339,31 @@ const AppShell: React.FC = () => {
   const [isResettingDb, setIsResettingDb] = React.useState(false);
   const [resetError, setResetError] = React.useState<string | null>(null);
   const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(true);
-  const { user, isLoading: loading, login, logout, unreadCount } = useAuth();
+  const { user, isLoading: loading, login, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
+  const [clusterStatus, setClusterStatus] = React.useState<ClusterStatus | null>(null);
+  const [isTopUpModalOpen, setIsTopUpModalOpen] = React.useState(false);
+  const [isTopUpLoading, setIsTopUpLoading] = React.useState(false);
+  const [topUpSuccess, setTopUpSuccess] = React.useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+
+  React.useEffect(() => {
+    let mounted = true;
+    const fetchCluster = () => {
+      getClusterStatus()
+        .then((data) => {
+          if (mounted) setClusterStatus(data);
+        })
+        .catch(() => {});
+    };
+    fetchCluster();
+    const interval = setInterval(fetchCluster, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -306,14 +380,24 @@ const AppShell: React.FC = () => {
     const handleOpenCompose = () => {
       setIsComposeOpen(true);
     };
+    const handleOpenTopUp = () => {
+      setIsTopUpModalOpen(true);
+    };
     window.addEventListener("modelscript:open-compose", handleOpenCompose);
-    return () => window.removeEventListener("modelscript:open-compose", handleOpenCompose);
+    window.addEventListener("modelscript:open-topup", handleOpenTopUp);
+    return () => {
+      window.removeEventListener("modelscript:open-compose", handleOpenCompose);
+      window.removeEventListener("modelscript:open-topup", handleOpenTopUp);
+    };
   }, []);
 
   const isDev = import.meta.env.DEV;
 
   // Make wide layout for /settings/*
   const isWideLayout = location.pathname.startsWith("/settings");
+
+  // Make workbench layout for post detail/inspector (/status/:id)
+  const isInspectorLayout = location.pathname.includes("/status/");
 
   // Make full screen layout for /packages/*, /repos/*, and /ide/*
   const isFullScreenLayout =
@@ -479,23 +563,88 @@ const AppShell: React.FC = () => {
               <kbd>⌘ K</kbd>
             </Omnibar>
             <HudTelemetry>
-              <PillTelemetry>
+              <PillTelemetry
+                title={
+                  clusterStatus
+                    ? `Backend: ${clusterStatus.backend} | Latency: ${clusterStatus.latencyMs}ms | Nodes: ${clusterStatus.nodesCount}`
+                    : "Connecting to compute cluster..."
+                }
+              >
                 <PulseDot />
-                <span>SLURM 94% IDLE</span>
+                <span>
+                  {clusterStatus
+                    ? clusterStatus.connected
+                      ? clusterStatus.backend === "slurm-rest" || clusterStatus.backend === "slurm"
+                        ? `SLURM ${clusterStatus.nodesCount > 0 ? `${clusterStatus.nodesCount} NODES ` : ""}ONLINE`
+                        : "COMPUTE CLUSTER READY"
+                      : "CLUSTER OFFLINE"
+                    : "CONNECTING..."}
+                </span>
               </PillTelemetry>
               <span style={{ color: "var(--color-accent-cyan)" }}>WASM v3.4</span>
+              {user && (
+                <WalletPill
+                  onClick={() => setIsTopUpModalOpen(true)}
+                  title="Compute Wallet Balance (Click to Top Up credits)"
+                >
+                  <ZapIcon size={12} />
+                  <span>{creditBalance.toFixed(1)} cr</span>
+                  <PlusIcon size={10} style={{ opacity: 0.8 }} />
+                </WalletPill>
+              )}
+              {!user && (
+                <div style={{ display: "flex", gap: "8px", marginLeft: "10px", alignItems: "center" }}>
+                  <button
+                    onClick={() => navigate("/login")}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid var(--color-border-glass)",
+                      color: "var(--color-text-primary)",
+                      borderRadius: "6px",
+                      padding: "4px 12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    Log in
+                  </button>
+                  <button
+                    onClick={() => navigate("/signup")}
+                    style={{
+                      background: "var(--gradient-cta)",
+                      border: "none",
+                      color: "white",
+                      borderRadius: "6px",
+                      padding: "4px 12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: "0 0 10px rgba(139, 92, 246, 0.3)",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    Sign up
+                  </button>
+                </div>
+              )}
             </HudTelemetry>
           </TopGlobalHud>
           <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
             <SidebarWrapper>
               <Sidebar onPostClick={() => setIsComposeOpen(true)} />
             </SidebarWrapper>
-            <MainColumn $isWideLayout={isWideLayout} $isFullScreenLayout={isFullScreenLayout}>
+            <MainColumn
+              $isWideLayout={isWideLayout}
+              $isFullScreenLayout={isFullScreenLayout}
+              $isInspectorLayout={isInspectorLayout}
+            >
               <ErrorBoundary>
                 <Outlet context={{ openCompose: () => setIsComposeOpen(true) }} />
               </ErrorBoundary>
             </MainColumn>
-            {!isWideLayout && !isFullScreenLayout && (
+            {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
               <RightPanelWrapper>
                 <RightPanel />
               </RightPanelWrapper>
@@ -670,6 +819,126 @@ const AppShell: React.FC = () => {
                 >
                   {isResettingDb ? "Resetting..." : "Reset Database"}
                 </Button>
+              </Box>
+            </Box>
+          </Dialog>
+        )}
+
+        {isTopUpModalOpen && (
+          <Dialog
+            isOpen={isTopUpModalOpen}
+            onDismiss={() => {
+              setIsTopUpModalOpen(false);
+              setTopUpSuccess(null);
+            }}
+            aria-labelledby="wallet-topup-title"
+          >
+            <Dialog.Header id="wallet-topup-title">Compute Wallet &amp; Cloud Credits</Dialog.Header>
+            <Box p={3} display="flex" flexDirection="column" gap={3}>
+              <Box
+                p={3}
+                borderRadius="8px"
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+              >
+                <Text style={{ fontSize: "12px", color: "var(--color-text-muted)", display: "block" }}>
+                  Current Credit Balance
+                </Text>
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "800",
+                    color: "var(--color-accent-purple)",
+                    marginTop: "4px",
+                  }}
+                >
+                  {creditBalance.toFixed(2)} cr
+                </div>
+                <span style={{ fontSize: "11px", color: "var(--color-status-verified)" }}>
+                  ● Active for Cloud Simulation, SU2 CFD, and CalculiX FEA
+                </span>
+              </Box>
+
+              {topUpSuccess && (
+                <Box
+                  p={2}
+                  bg="rgba(16, 185, 129, 0.15)"
+                  border="1px solid rgba(16, 185, 129, 0.3)"
+                  borderRadius="6px"
+                  color="var(--color-status-verified)"
+                  fontSize="13px"
+                >
+                  ✓ {topUpSuccess}
+                </Box>
+              )}
+
+              <Text style={{ fontSize: "13px", fontWeight: 600 }}>Quick Credit Reload (Instant Sandbox / Dev):</Text>
+              <Box display="flex" gap={2}>
+                {[50, 200, 500].map((amt) => (
+                  <button
+                    key={amt}
+                    disabled={isTopUpLoading}
+                    onClick={async () => {
+                      setIsTopUpLoading(true);
+                      setTopUpSuccess(null);
+                      try {
+                        const res = await topUpCredits(amt);
+                        await refreshWallet();
+                        setTopUpSuccess(`Added +${amt} credits! New balance: ${res.newBalance.toFixed(2)} cr`);
+                      } catch (err: any) {
+                        setTopUpSuccess(`Error: ${err.message || String(err)}`);
+                      } finally {
+                        setIsTopUpLoading(false);
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--color-border-glass)",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      color: "var(--color-text-primary)",
+                      fontWeight: 600,
+                      cursor: isTopUpLoading ? "not-allowed" : "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "4px",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <span style={{ fontSize: "15px", color: "var(--color-accent-purple)" }}>+{amt} cr</span>
+                    <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                      ${(amt * 0.1).toFixed(2)}
+                    </span>
+                  </button>
+                ))}
+              </Box>
+
+              <Box
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+                pt={2}
+                borderTop="1px solid var(--color-border-subtle)"
+              >
+                <button
+                  onClick={() => {
+                    setIsTopUpModalOpen(false);
+                    navigate("/settings");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-accent-cyan)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  View Full Usage &amp; Ledger →
+                </button>
+                <Button onClick={() => setIsTopUpModalOpen(false)}>Done</Button>
               </Box>
             </Box>
           </Dialog>

@@ -115,4 +115,4 @@ Set-based reachability analysis under bounded initial states and parameter uncer
   - Trajectories simulated by [`Numerical Solvers`](./solvers-ode-dae.md).
   - Spatial boundaries provided by [`STEP CAD`](../languages/step.md).
 - **Downstream Consumers**:
-  - Powers `msc verify`, generates compliance certificates, and exports mathematical proofs in [`LaTeX format`](../reference/export-formats.md).
+  - Powers `msx verify`, generates compliance certificates, and exports mathematical proofs in [`LaTeX format`](../reference/export-formats.md).

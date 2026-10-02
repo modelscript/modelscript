@@ -91,22 +91,32 @@ export class FixpointSolver {
       blockVisitCounts.set(bId, 0);
     }
 
-    // Worklist prioritized by RPO index
+    // Worklist prioritized by RPO index using an O(1) bitset/bucket queue
+    const M = rpo.length;
     const rpoOrder = new Map<number, number>();
     rpo.forEach((id, idx) => rpoOrder.set(id, idx));
 
-    const worklist: number[] = [...rpo];
-    const inWorklist = new Set<number>(rpo);
+    const inWorklist = new Uint8Array(M);
+    inWorklist.fill(1);
+    let worklistCount = M;
+    let minRpoIdx = 0;
 
-    const checkCollector = (c: RTECheckResult) => {
-      checks.push(c);
-    };
+    const noopCollector = () => {};
 
-    while (worklist.length > 0) {
-      // Pick smallest RPO index
-      worklist.sort((a, b) => (rpoOrder.get(a) ?? 0) - (rpoOrder.get(b) ?? 0));
-      const bId = worklist.shift()!;
-      inWorklist.delete(bId);
+    while (worklistCount > 0) {
+      // Pick smallest RPO index in O(1) amortized
+      while (minRpoIdx < M && inWorklist[minRpoIdx] === 0) {
+        minRpoIdx++;
+      }
+      if (minRpoIdx >= M) {
+        minRpoIdx = 0;
+        while (minRpoIdx < M && inWorklist[minRpoIdx] === 0) {
+          minRpoIdx++;
+        }
+      }
+      const bId = rpo[minRpoIdx]!;
+      inWorklist[minRpoIdx] = 0;
+      worklistCount--;
 
       const block = this.cfg.getBlock(bId);
       if (!block) continue;
@@ -146,7 +156,7 @@ export class FixpointSolver {
       let currentOut = currentIn.clone();
       if (!this.domain.isBottom(currentIn)) {
         for (const inst of block.instructions) {
-          currentOut = this.transferFn(inst, currentOut, checkCollector);
+          currentOut = this.transferFn(inst, currentOut, noopCollector);
           if (this.domain.isBottom(currentOut)) break;
         }
       }
@@ -156,9 +166,13 @@ export class FixpointSolver {
       if (!this.domain.equals(prevOut, currentOut)) {
         outStates.set(bId, currentOut);
         for (const sId of block.successors) {
-          if (!inWorklist.has(sId)) {
-            worklist.push(sId);
-            inWorklist.add(sId);
+          const sIdx = rpoOrder.get(sId);
+          if (sIdx !== undefined && inWorklist[sIdx] === 0) {
+            inWorklist[sIdx] = 1;
+            worklistCount++;
+            if (sIdx < minRpoIdx) {
+              minRpoIdx = sIdx;
+            }
           }
         }
       }
@@ -206,6 +220,9 @@ export class FixpointSolver {
 
     // 3. Final Verification Pass: collect definitive RTE checks on stabilized invariants
     checks.length = 0;
+    const checkCollector = (c: RTECheckResult) => {
+      checks.push(c);
+    };
     for (const bId of rpo) {
       const block = this.cfg.getBlock(bId);
       if (!block) continue;

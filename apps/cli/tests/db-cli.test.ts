@@ -5,14 +5,14 @@ import http from "node:http";
 import test, { describe } from "node:test";
 import { Db } from "../src/commands/db.js";
 
-describe("CLI Database Management (msc db)", () => {
+describe("CLI Database Management (msx db)", () => {
   let server: http.Server;
   let serverPort = 0;
   let receivedMethod = "";
   let receivedUrl = "";
   let receivedBody = "";
 
-  test("msc db status queries /api/v1/admin/db/status", async () => {
+  test("msx db status queries /api/v1/admin/db/status", async () => {
     server = http.createServer((req, res) => {
       receivedMethod = req.method ?? "";
       receivedUrl = req.url ?? "";
@@ -52,7 +52,7 @@ describe("CLI Database Management (msc db)", () => {
     }
   });
 
-  test("msc db upgrade triggers POST /api/v1/admin/db/upgrade with options", async () => {
+  test("msx db upgrade triggers POST /api/v1/admin/db/upgrade with options", async () => {
     server = http.createServer((req, res) => {
       receivedMethod = req.method ?? "";
       receivedUrl = req.url ?? "";
@@ -97,7 +97,7 @@ describe("CLI Database Management (msc db)", () => {
     }
   });
 
-  test("msc db verify checks physical and foreign key integrity", async () => {
+  test("msx db verify checks physical and foreign key integrity", async () => {
     server = http.createServer((req, res) => {
       receivedMethod = req.method ?? "";
       receivedUrl = req.url ?? "";

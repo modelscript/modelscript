@@ -2804,6 +2804,10 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
       return specArgs.data.redeclaredTypeSpecifier;
     }
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.typeSpecifier && typeof meta.typeSpecifier === "string") {
+      return meta.typeSpecifier.trim();
+    }
     const cstNode = db.cstNode(self.id);
     let current = cstNode as any;
     while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
@@ -3635,9 +3639,22 @@ export const componentDeclarationQueries: Record<string, any> = {
       let currProt = false;
       for (const child of sec.children || []) {
         const t = child.text?.trim();
-        if (child.type === "protected" || t === "protected") {
+        const firstTok = child.children?.[0]?.text?.trim() ?? "";
+        if (
+          child.type === "protected" ||
+          child.type === "Protected" ||
+          t === "protected" ||
+          firstTok === "protected" ||
+          child.text?.startsWith("protected")
+        ) {
           currProt = true;
-        } else if (child.type === "public" || t === "public") {
+        } else if (
+          child.type === "public" ||
+          child.type === "Public" ||
+          t === "public" ||
+          firstTok === "public" ||
+          child.text?.startsWith("public")
+        ) {
           currProt = false;
         }
         const start = child.startIndex ?? child.startByte;

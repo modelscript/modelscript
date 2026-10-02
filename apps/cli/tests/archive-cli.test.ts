@@ -8,15 +8,15 @@ import path from "node:path";
 import test, { describe } from "node:test";
 import { Archive } from "../src/commands/archive.js";
 
-describe("CLI Archive Management (msc archive)", () => {
+describe("CLI Archive Management (msx archive)", () => {
   let server: http.Server;
   let serverPort = 0;
   const requests: { method: string; url: string; body: string }[] = [];
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-archive-test-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-archive-test-"));
   const outputFile = path.join(tmpDir, "test-archive.zip");
 
-  test("msc archive status queries /api/v1/users/me/export/status", async () => {
+  test("msx archive status queries /api/v1/users/me/export/status", async () => {
     requests.length = 0;
     server = http.createServer((req, res) => {
       let body = "";
@@ -62,7 +62,7 @@ describe("CLI Archive Management (msc archive)", () => {
     }
   });
 
-  test("msc archive request enqueues, polls, and downloads archive", async () => {
+  test("msx archive request enqueues, polls, and downloads archive", async () => {
     requests.length = 0;
     let pollCount = 0;
 

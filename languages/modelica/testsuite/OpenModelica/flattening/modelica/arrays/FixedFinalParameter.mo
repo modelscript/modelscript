@@ -1,7 +1,6 @@
 // name:     FixedFinalParameter
 // keywords: fixed, final, parameter, array, initial equation
 // status:   correct
-// xfail:    true
 //
 // Tests fixed=false for final array parameters with initial equations.
 //

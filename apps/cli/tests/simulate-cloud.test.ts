@@ -9,8 +9,8 @@ import test, { describe } from "node:test";
 import { simulateCloud } from "../src/commands/simulate-cloud.js";
 import type { SimulateArgs } from "../src/commands/simulate.js";
 
-describe("CLI Cloud Bursting (msc simulate --cloud)", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-cloud-test-"));
+describe("CLI Cloud Bursting (msx simulate --cloud)", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-cloud-test-"));
   const modelFile = path.join(tempDir, "SimpleRLC.mo");
   fs.writeFileSync(
     modelFile,

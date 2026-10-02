@@ -148,18 +148,46 @@ const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warni
           : "var(--color-status-warning)"};
 `;
 
+const ModelSpecTag = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border-glass);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  user-select: none;
+
+  .verified-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-status-verified);
+    box-shadow: 0 0 6px var(--color-status-verified);
+  }
+`;
+
 const AiInsightRibbon = styled.div`
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(6, 182, 212, 0.08));
-  border: 1px solid rgba(139, 92, 246, 0.28);
-  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(6, 182, 212, 0.05));
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 8px;
   padding: 8px 12px;
   font-size: 12.5px;
   line-height: 1.5;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   margin: 10px 0;
   color: var(--color-text-secondary);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.4);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(6, 182, 212, 0.08));
+  }
 
   strong {
     color: var(--color-accent-purple);
@@ -659,6 +687,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [pendingPin, setPendingPin] = useState<SpatialPin | undefined>(undefined);
+  const [showAiDetails, setShowAiDetails] = useState(false);
 
   // Automatically record view once per post per session
   useEffect(() => {
@@ -860,13 +889,21 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               </Text>
               <Box display="flex" gap={1} flexWrap="wrap" mt={1}>
                 {displayPost.artifact_view_id && (
-                  <>
-                    <EngBadge $variant="verified">✓ Modelica 3.4</EngBadge>
-                    <EngBadge $variant="solver">⚡ CVODE</EngBadge>
-                    <EngBadge $variant="fmu">📦 FMU 3.0</EngBadge>
-                  </>
+                  <ModelSpecTag>
+                    <span className="verified-dot" />
+                    <span>Modelica 3.4</span>
+                    <span style={{ opacity: 0.4 }}>·</span>
+                    <span>CVODE</span>
+                    <span style={{ opacity: 0.4 }}>·</span>
+                    <span>FMU 3.0</span>
+                  </ModelSpecTag>
                 )}
-                {displayPost.account_type === "bot" && <EngBadge $variant="fmu">🤖 AI Agent</EngBadge>}
+                {displayPost.account_type === "bot" && (
+                  <ModelSpecTag style={{ borderColor: "rgba(139, 92, 246, 0.3)" }}>
+                    <span style={{ color: "var(--color-accent-purple)" }}>🤖</span>
+                    <span>AI Agent</span>
+                  </ModelSpecTag>
+                )}
               </Box>
             </Box>
             <Box position="relative" mr={1}>
@@ -1016,12 +1053,41 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   setShowReplyModal(true);
                 }}
               />
-              <AiInsightRibbon>
-                <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
-                <div>
-                  <strong>AI Diagnostics:</strong> Verified AST and differential equations in linear DAE arena.
-                  Numerical convergence guaranteed with CVODE integrator.
-                </div>
+              <AiInsightRibbon onClick={() => setShowAiDetails(!showAiDetails)} style={{ cursor: "pointer" }}>
+                <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
+                    <span style={{ fontWeight: 600, fontSize: "12.5px", color: "var(--color-text-primary)" }}>
+                      AI Verified · Linear DAE Arena
+                    </span>
+                  </Box>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--color-status-verified)",
+                      fontFamily: "var(--font-mono)",
+                      background: "rgba(16, 185, 129, 0.12)",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
+                  </span>
+                </Box>
+                {showAiDetails && (
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-text-muted)",
+                      borderTop: "1px solid rgba(139, 92, 246, 0.15)",
+                      paddingTop: "6px",
+                      marginTop: "4px",
+                    }}
+                  >
+                    Verified AST and differential equations in linear DAE arena. No algebraic loops detected. Numerical
+                    convergence guaranteed with CVODE integrator.
+                  </div>
+                )}
               </AiInsightRibbon>
             </Box>
           )}
@@ -1109,7 +1175,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             width="100%"
             style={{ color: "var(--color-fg-muted)" }}
           >
-            {displayPost.artifact_view_id && (
+            {!isDetail && displayPost.artifact_view_id && (
               <EngActionButton
                 onClick={(e) => {
                   e.stopPropagation();

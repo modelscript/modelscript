@@ -29,7 +29,7 @@ export async function simulateCloud(
 
   if (!token) {
     const msg =
-      "Error: Authentication required for cloud bursting. Please log in using 'msc login' or set MODELSCRIPT_API_TOKEN.";
+      "Error: Authentication required for cloud bursting. Please log in using 'msx login' or set MODELSCRIPT_API_TOKEN.";
     if (options.exitOnError) {
       console.error(msg);
       process.exit(1);
@@ -109,7 +109,7 @@ export async function simulateCloud(
   }
 
   if (res.status === 401) {
-    const msg = "Error: Unauthorized (401). Your session token is invalid or expired. Please run 'msc login'.";
+    const msg = "Error: Unauthorized (401). Your session token is invalid or expired. Please run 'msx login'.";
     if (options.exitOnError) {
       console.error(msg);
       process.exit(1);

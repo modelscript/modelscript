@@ -19,6 +19,7 @@ function collectTsFiles(dir, baseDir = dir) {
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (entry.name === "formal") continue;
       results.push(...collectTsFiles(fullPath, baseDir));
     } else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
       results.push({

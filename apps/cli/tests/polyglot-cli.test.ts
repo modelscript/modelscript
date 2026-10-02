@@ -7,7 +7,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { parseSourceToPolyglotNode } from "../src/commands/polyglot.js";
 
-describe("Polyglot CLI Command Suite (`msc polyglot`)", () => {
+describe("Polyglot CLI Command Suite (`msx polyglot`)", () => {
   const scratchDir = path.resolve(import.meta.dirname, "scratch_polyglot");
   const cliPath = path.resolve(import.meta.dirname, "../src/main.ts");
 
@@ -88,7 +88,7 @@ PropellerGuard();`,
     assert.ok(node.components && node.components.length >= 2);
   });
 
-  it("should execute `msc polyglot verify` across all 8 polyglot domains", () => {
+  it("should execute `msx polyglot verify` across all 8 polyglot domains", () => {
     const stdout = execFileSync("npx", ["tsx", cliPath, "polyglot", "verify"], {
       encoding: "utf-8",
       timeout: 30000,
@@ -102,7 +102,7 @@ PropellerGuard();`,
     assert.ok(stdout.includes("Formal confluence and bidirectional consistency verified successfully"));
   });
 
-  it("should project Modelica model to SysML v2 via CLI `msc polyglot project`", () => {
+  it("should project Modelica model to SysML v2 via CLI `msx polyglot project`", () => {
     const outPath = path.join(scratchDir, "DroneMotor_Projected.sysml");
     const stdout = execFileSync(
       "npx",
@@ -117,7 +117,7 @@ PropellerGuard();`,
     assert.ok(generated.includes("attribute torque: Real = 2.5;"));
   });
 
-  it("should project SysML v2 to OWL 2 ontology via CLI `msc polyglot project`", () => {
+  it("should project SysML v2 to OWL 2 ontology via CLI `msx polyglot project`", () => {
     const outPath = path.join(scratchDir, "FlightController_Projected.owl");
     const stdout = execFileSync(
       "npx",
@@ -132,7 +132,7 @@ PropellerGuard();`,
     assert.ok(generated.includes("DataPropertyAssertion(:has_sampleRate"));
   });
 
-  it("should project OpenSCAD to STEP CAD via CLI `msc polyglot project`", () => {
+  it("should project OpenSCAD to STEP CAD via CLI `msx polyglot project`", () => {
     const outPath = path.join(scratchDir, "PropellerGuard_Projected.step");
     const stdout = execFileSync(
       "npx",
@@ -147,7 +147,7 @@ PropellerGuard();`,
     assert.ok(generated.includes("PRODUCT('PropellerGuard'"));
   });
 
-  it("should project Modelica to CSV parameter specs via CLI `msc polyglot project`", () => {
+  it("should project Modelica to CSV parameter specs via CLI `msx polyglot project`", () => {
     const outPath = path.join(scratchDir, "DroneMotor_Specs.csv");
     const stdout = execFileSync(
       "npx",
@@ -162,7 +162,7 @@ PropellerGuard();`,
     assert.ok(generated.includes("torque,Real,2.5,attribute"));
   });
 
-  it("should inspect digital thread alignment graph via `msc polyglot thread`", () => {
+  it("should inspect digital thread alignment graph via `msx polyglot thread`", () => {
     const stdout = execFileSync("npx", ["tsx", cliPath, "polyglot", "thread", sampleMoPath], {
       encoding: "utf-8",
       timeout: 30000,

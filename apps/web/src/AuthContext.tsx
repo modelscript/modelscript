@@ -22,6 +22,8 @@ interface AuthContextType {
   unreadCount: number;
   setUnreadCount: (c: number) => void;
   refreshUnreadCount: () => void;
+  creditBalance: number;
+  refreshWallet: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -34,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(!!token);
 
   const [unreadCount, setUnreadCount] = useState(0);
+  const [creditBalance, setCreditBalance] = useState<number>(100);
 
   // Set/clear the axios default header whenever token changes
   useEffect(() => {
@@ -56,18 +59,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {});
   }, [token]);
 
+  const refreshWallet = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await api.get("/billing/wallet");
+      if (typeof res.data?.creditBalance === "number") {
+        setCreditBalance(res.data.creditBalance);
+      } else if (typeof res.data?.balance === "number") {
+        setCreditBalance(res.data.balance);
+      }
+    } catch {}
+  }, [token]);
+
   useEffect(() => {
     refreshUnreadCount();
     const interval = setInterval(refreshUnreadCount, 5000);
     return () => clearInterval(interval);
   }, [refreshUnreadCount]);
 
+  useEffect(() => {
+    if (token) {
+      void refreshWallet();
+    }
+  }, [token, refreshWallet]);
+
+  useEffect(() => {
+    const handleWalletUpdate = () => {
+      void refreshWallet();
+    };
+    window.addEventListener("modelscript:wallet-update", handleWalletUpdate);
+    return () => window.removeEventListener("modelscript:wallet-update", handleWalletUpdate);
+  }, [refreshWallet]);
+
   // On mount, validate stored token
   useEffect(() => {
     if (!token) return;
     api
       .get("/auth/me")
-      .then((res) => setUser(res.data.user))
+      .then((res) => {
+        setUser(res.data.user);
+        if (typeof res.data.user?.credit_balance === "number") {
+          setCreditBalance(res.data.user.credit_balance);
+        }
+      })
       .catch(() => {
         setToken(null);
         setUser(null);
@@ -79,12 +113,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data } = await api.post("/auth/login", { email, password });
     setToken(data.token);
     setUser(data.user);
+    if (typeof data.user?.credit_balance === "number") {
+      setCreditBalance(data.user.credit_balance);
+    }
   }, []);
 
   const register = useCallback(async (username: string, email: string, password: string) => {
     const { data } = await api.post("/auth/register", { username, email, password });
     setToken(data.token);
     setUser(data.user);
+    if (typeof data.user?.credit_balance === "number") {
+      setCreditBalance(data.user.credit_balance);
+    }
   }, []);
 
   const logout = useCallback(() => {
@@ -105,6 +145,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unreadCount,
         setUnreadCount,
         refreshUnreadCount,
+        creditBalance,
+        refreshWallet,
       }}
     >
       {children}
@@ -112,7 +154,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

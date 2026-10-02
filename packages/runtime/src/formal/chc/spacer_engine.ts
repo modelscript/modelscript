@@ -378,13 +378,13 @@ export class SpacerEngine {
               const bpQueries = queries.filter((bq) => bq.bodyPredicates.some((b) => b.name === bp.name));
               for (const bq of bpQueries) {
                 for (const bc of bq.bodyConstraints) {
-                  if (bc.rel === ">=") {
+                  if (bc.rel === ">=" || bc.rel === ">") {
                     bodyGuarantees.push(
-                      substituteConstraint({ expr: bc.expr, rel: "<=", rhs: bc.rhs - 0.01 }, substToBodyArgs),
+                      substituteConstraint({ expr: bc.expr, rel: "<=", rhs: bc.rhs }, substToBodyArgs),
                     );
-                  } else if (bc.rel === "<=") {
+                  } else if (bc.rel === "<=" || bc.rel === "<") {
                     bodyGuarantees.push(
-                      substituteConstraint({ expr: bc.expr, rel: ">=", rhs: bc.rhs + 0.01 }, substToBodyArgs),
+                      substituteConstraint({ expr: bc.expr, rel: ">=", rhs: bc.rhs }, substToBodyArgs),
                     );
                   }
                 }

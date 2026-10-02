@@ -1,7 +1,6 @@
 // name:     Type4
 // keywords: type,declaration
 // status:   correct
-// xfail:    true
 //
 // Simple variable declarations.
 //

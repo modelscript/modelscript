@@ -1,7 +1,6 @@
 // name:     RangeVector
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 //
 // Drmodelica: 7.2  Array Constructor (p. 210)
 //

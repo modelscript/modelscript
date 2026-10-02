@@ -284,9 +284,22 @@ export function getDefaultWasmExports(): any {
   if (cachedWasmExports) return cachedWasmExports;
   if (typeof process !== "undefined" && process.versions?.node != null) {
     try {
-      const candidate1 = join(import.meta.dirname, "..", "build", "release.wasm");
-      const candidate2 = join(import.meta.dirname, "..", "..", "build", "release.wasm");
-      const wasmPath = existsSync(candidate1) ? candidate1 : existsSync(candidate2) ? candidate2 : null;
+      const dir = typeof import.meta.dirname === "string" ? import.meta.dirname : "";
+      const candidates = [
+        dir ? join(dir, "..", "build", "release.wasm") : null,
+        dir ? join(dir, "..", "..", "build", "release.wasm") : null,
+        join(process.cwd(), "packages", "runtime", "build", "release.wasm"),
+        join(process.cwd(), "build", "release.wasm"),
+      ].filter((p): p is string => Boolean(p));
+
+      let wasmPath: string | null = null;
+      for (const cand of candidates) {
+        if (existsSync(cand)) {
+          wasmPath = cand;
+          break;
+        }
+      }
+
       if (wasmPath) {
         const bytes = readFileSync(wasmPath);
         const mod = new WebAssembly.Module(bytes);

@@ -51,5 +51,5 @@ SysML v2 requirements are mapped into the Nelson-Oppen Theory Coordinator:
 
 ```bash
 # Verify SysML v2 requirements against Modelica physical behavior
-npx msc verify MaxSpeedRequirement powertrain.sysml --modelica VehicleDynamics.mo
+npx msx verify MaxSpeedRequirement powertrain.sysml --modelica VehicleDynamics.mo
 ```

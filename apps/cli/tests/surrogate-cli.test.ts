@@ -7,7 +7,7 @@ import path from "node:path";
 import test, { after, before, describe } from "node:test";
 import { Surrogate } from "../src/commands/surrogate.js";
 
-describe("MSC CLI Surrogate Command (Export Formats, Guardrails, ONNX Import)", () => {
+describe("ModelScript CLI Surrogate Command (Export Formats, Guardrails, ONNX Import)", () => {
   const tmpDir = path.resolve(process.cwd(), "scratch_test_surrogate_cli");
   const onnxPath = path.join(tmpDir, "test_model.onnx.json");
   const moPath = path.join(tmpDir, "Cooler_Surrogate.mo");

@@ -1,7 +1,6 @@
 // name:     ArrayIndex
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 //
 // MORE WORK HAS TO BE DONE ON THIS FILE!
 // Drmodelica: 7.4 Array Indexing operator (p. 216)

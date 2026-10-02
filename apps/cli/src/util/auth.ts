@@ -72,7 +72,7 @@ export function requireToken(): string {
   const token = getToken();
   if (!token) {
     console.error("Error: You must be logged in to perform this action.");
-    console.error("Run: msc login");
+    console.error("Run: msx login");
     process.exit(1);
   }
   return token;

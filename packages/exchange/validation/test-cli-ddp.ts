@@ -5,7 +5,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-console.log("=== Testing msc ddp CLI Commands End-to-End ===");
+console.log("=== Testing msx ddp CLI Commands End-to-End ===");
 
 const testDir = path.resolve(process.cwd(), "packages/exchange/validation/.tmp_ddp_cli");
 fs.mkdirSync(testDir, { recursive: true });
@@ -95,7 +95,7 @@ const aasxOutput = path.join(testDir, "spoiler.aasx");
 
 try {
   // 1. Pack
-  console.log("\n[1] Testing: msc ddp pack");
+  console.log("\n[1] Testing: msx ddp pack");
   const packCmd = `npx tsx apps/cli/src/main.ts ddp pack "${manifestPath}" -o "${ddpOutput}"`;
   const packOut = execSync(packCmd, { encoding: "utf-8" });
   console.log(packOut.trim());
@@ -103,7 +103,7 @@ try {
   assert(fs.statSync(ddpOutput).size > 0, "Output .ddp must have non-zero size");
 
   // 2. Inspect
-  console.log("\n[2] Testing: msc ddp inspect");
+  console.log("\n[2] Testing: msx ddp inspect");
   const inspectCmd = `npx tsx apps/cli/src/main.ts ddp inspect "${ddpOutput}"`;
   const inspectOut = execSync(inspectCmd, { encoding: "utf-8" });
   console.log(inspectOut.trim());
@@ -112,7 +112,7 @@ try {
   assert(inspectOut.includes("verifies"), "Inspection must display relations");
 
   // 3. To-AASX
-  console.log("\n[3] Testing: msc ddp to-aasx");
+  console.log("\n[3] Testing: msx ddp to-aasx");
   const toAasxCmd = `npx tsx apps/cli/src/main.ts ddp to-aasx "${ddpOutput}" -o "${aasxOutput}"`;
   const toAasxOut = execSync(toAasxCmd, { encoding: "utf-8" });
   console.log(toAasxOut.trim());

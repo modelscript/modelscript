@@ -76,7 +76,7 @@ flowchart TD
 To prove an end-to-end requirement:
 
 ```bash
-npx msc verify SystemRequirement model.mo --sysml architecture.sysml --cad chassis.step
+npx msx verify SystemRequirement model.mo --sysml architecture.sysml --cad chassis.step
 ```
 
 1. **System Architecture** is ingested from SysML v2.

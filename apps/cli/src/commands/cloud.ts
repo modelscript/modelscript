@@ -113,7 +113,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           const res = await fetch(`${apiUrl}/api/v1/cloud/balance`, { headers });
           if (!res.ok) {
             if (res.status === 401) {
-              console.error("Error: Authentication required. Please run 'msc login' or set MODELSCRIPT_API_TOKEN.");
+              console.error("Error: Authentication required. Please run 'msx login' or set MODELSCRIPT_API_TOKEN.");
             } else {
               console.error(`Error: Failed to fetch balance (${res.status} ${res.statusText})`);
             }
@@ -181,7 +181,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
       case "status": {
         const jobId = args.target;
         if (!jobId) {
-          console.error("Error: Job ID required. Usage: msc cloud status <jobId>");
+          console.error("Error: Job ID required. Usage: msx cloud status <jobId>");
           process.exit(1);
         }
         try {
@@ -201,7 +201,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.log(`  Credits Billed: ${data.usage.costCredits.toFixed(2)}`);
           }
           if (data.hasResult) {
-            console.log(`  Result Ready:   Yes (Download: 'msc cloud download ${jobId}')`);
+            console.log(`  Result Ready:   Yes (Download: 'msx cloud download ${jobId}')`);
           }
           if (data.error) {
             console.log(`  ${c.red(`Error:          ${data.error}`)}`);
@@ -217,7 +217,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
       case "logs": {
         const jobId = args.target;
         if (!jobId) {
-          console.error("Error: Job ID required. Usage: msc cloud logs <jobId>");
+          console.error("Error: Job ID required. Usage: msx cloud logs <jobId>");
           process.exit(1);
         }
         try {
@@ -242,7 +242,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
       case "cancel": {
         const jobId = args.target;
         if (!jobId) {
-          console.error("Error: Job ID required. Usage: msc cloud cancel <jobId>");
+          console.error("Error: Job ID required. Usage: msx cloud cancel <jobId>");
           process.exit(1);
         }
         try {
@@ -265,7 +265,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
       case "download": {
         const jobId = args.target;
         if (!jobId) {
-          console.error("Error: Job ID required. Usage: msc cloud download <jobId>");
+          console.error("Error: Job ID required. Usage: msx cloud download <jobId>");
           process.exit(1);
         }
         try {
@@ -296,7 +296,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
         const filePath = args.target;
         if (!filePath || !fs.existsSync(filePath)) {
           console.error(
-            "Error: Valid file required. Usage: msc cloud dispatch <file.mo|file.cfg|file.inp> [--profile=standard]",
+            "Error: Valid file required. Usage: msx cloud dispatch <file.mo|file.cfg|file.inp> [--profile=standard]",
           );
           process.exit(1);
         }
@@ -345,8 +345,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           const data = (await res.json()) as { jobId: string };
           console.log(c.green(`✔ Job dispatched successfully!`));
           console.log(`  Job ID: ${data.jobId}`);
-          console.log(`  Check status: msc cloud status ${data.jobId}`);
-          console.log(`  View logs:    msc cloud logs ${data.jobId}`);
+          console.log(`  Check status: msx cloud status ${data.jobId}`);
+          console.log(`  View logs:    msx cloud logs ${data.jobId}`);
         } catch (err: any) {
           console.error(`Dispatch failed: ${err.message}`);
           process.exit(1);
@@ -355,7 +355,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
       }
 
       default: {
-        console.log("Usage: msc cloud <action> [options]");
+        console.log("Usage: msx cloud <action> [options]");
         console.log("Actions:");
         console.log("  profiles               List cloud compute hardware tiers & costs");
         console.log("  balance                View account credits and wallet status");

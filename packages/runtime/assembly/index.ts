@@ -30,6 +30,10 @@ export * from "../src/wasm/autodiff/tape";
 export * from "../src/wasm/structural/tearing";
 export * from "../src/wasm/ontology_module/ontology";
 export * from "../src/wasm/storage/paged_btree";
+export * from "../src/wasm/formal/stl_monitor";
+export * from "../src/wasm/formal/octagon";
+export * from "../src/wasm/dae/interval_eval";
+export * from "../src/wasm/formal/sat";
 
 
 // We will use Typed Arrays instead of Map/Set for much higher performance

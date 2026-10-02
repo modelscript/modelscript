@@ -23,7 +23,7 @@ describe("Visual PR Diff CLI Suite", () => {
     }
   });
 
-  test("1. msc diff generates valid standalone visual-html file", () => {
+  test("1. msx diff generates valid standalone visual-html file", () => {
     const outFile = path.join(outDir, "diff.html");
     const cmd = `node "${cliPath}" diff "${testSysml}" "${testSysml}" --format visual-html --output "${outFile}"`;
     const out = execSync(cmd, { encoding: "utf-8" });
@@ -38,7 +38,7 @@ describe("Visual PR Diff CLI Suite", () => {
     assert.ok(content.includes("<svg"), "Must embed vector SVG diagram");
   });
 
-  test("2. msc diff generates valid standalone visual-svg file", () => {
+  test("2. msx diff generates valid standalone visual-svg file", () => {
     const outFile = path.join(outDir, "diff.svg");
     const cmd = `node "${cliPath}" diff "${testSysml}" "${testSysml}" --format visual-svg --output "${outFile}"`;
     const out = execSync(cmd, { encoding: "utf-8" });
@@ -51,7 +51,7 @@ describe("Visual PR Diff CLI Suite", () => {
     assert.ok(content.includes("<svg"), "Must have SVG root element");
   });
 
-  test("3. msc diff generates GitHub PR review comment markdown", () => {
+  test("3. msx diff generates GitHub PR review comment markdown", () => {
     const outFile = path.join(outDir, "pr-comment.md");
     const cmd = `node "${cliPath}" diff "${testSysml}" "${testSysml}" --format pr-comment --output "${outFile}"`;
     execSync(cmd, { encoding: "utf-8" });
@@ -62,7 +62,7 @@ describe("Visual PR Diff CLI Suite", () => {
     assert.ok(content.includes("| Added | Deleted | Modified |"), "Must contain markdown metrics table");
   });
 
-  test("4. msc pr-diff --help prints comprehensive documentation", () => {
+  test("4. msx pr-diff --help prints comprehensive documentation", () => {
     const cmd = `node "${cliPath}" pr-diff --help`;
     const out = execSync(cmd, { encoding: "utf-8" });
 

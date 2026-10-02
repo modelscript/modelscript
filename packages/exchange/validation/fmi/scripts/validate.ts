@@ -155,7 +155,7 @@ async function runCrossSimulationMatrix() {
     let nativeCsvStr = "";
     try {
       console.log(`  [~] ModelScript natively simulating .mo file...`);
-      const refCsv = path.join(outDir, `${model.name}_msc.csv`);
+      const refCsv = path.join(outDir, `${model.name}_msx.csv`);
       const moPath = path.join(MODELS_DIR, model.file);
       const solverArg = `--engine arena --solver ${model.solver || "cvode"}`;
       const stdout = await runCmd(
@@ -264,7 +264,7 @@ async function runCrossSimulationMatrix() {
         // 3. Simulate ModelScript FMU with fmusim
         if (fmusimCmd) {
           try {
-            console.log(`    [~] fmusim simulating msc-FMU...`);
+            console.log(`    [~] fmusim simulating msx-FMU...`);
             const fmusimBuildDir = path.join(outDir, `build_fmusim_${fmiVer}_${iface}`);
             await fs.mkdir(fmusimBuildDir, { recursive: true });
 
@@ -313,7 +313,7 @@ async function runCrossSimulationMatrix() {
 
         // 4. Simulate ModelScript FMU with OMSimulator
         try {
-          console.log(`    [~] OMSimulator simulating msc-FMU...`);
+          console.log(`    [~] OMSimulator simulating msx-FMU...`);
           const omBuildDir = path.join(outDir, `build_oms_${fmiVer}_${iface}`);
           await fs.mkdir(omBuildDir, { recursive: true });
 
@@ -359,10 +359,10 @@ async function runCrossSimulationMatrix() {
   );
   mdLines.push("### Options & Terminology");
   mdLines.push(
-    "- **Native msc:** The ModelScript Arena Simulator running the source `.mo` file directly. Uses the internal WASM CVODE solver by default.",
+    "- **Native msx:** The ModelScript Arena Simulator running the source `.mo` file directly. Uses the internal WASM CVODE solver by default.",
   );
   mdLines.push(
-    "- **msc-FMU (fmusim):** The exported ModelScript FMU (`.fmu`) simulated using the official FMI standard `fmusim` C-binary. We explicitly pass `--output-interval` to ensure exact parity with the Reference FMU execution.",
+    "- **msx-FMU (fmusim):** The exported ModelScript FMU (`.fmu`) simulated using the official FMI standard `fmusim` C-binary. We explicitly pass `--output-interval` to ensure exact parity with the Reference FMU execution.",
   );
   mdLines.push(
     "  - **Model Exchange (ME):** The FMU only supplies state derivatives. The host (`fmusim`) integrates the equations. We explicitly configure `fmusim` to use the **CVODE** algorithm (`--solver cvode`).",
@@ -371,7 +371,7 @@ async function runCrossSimulationMatrix() {
     "  - **Co-Simulation (CS):** The FMU contains its own embedded solver. ModelScript natively compiles a custom **4th-order Runge-Kutta (RK4)** integration algorithm directly into the FMU binary to advance the state.",
   );
   mdLines.push(
-    "- **msc-FMU (omsim):** The exported ModelScript FMU (`.fmu`) simulated using OpenModelica's `OMSimulator` binary (which also utilizes CVODE/KINSOL algorithms internally).\n",
+    "- **msx-FMU (omsim):** The exported ModelScript FMU (`.fmu`) simulated using OpenModelica's `OMSimulator` binary (which also utilizes CVODE/KINSOL algorithms internally).\n",
   );
   mdLines.push("### Error Metric");
   mdLines.push(
@@ -386,7 +386,7 @@ async function runCrossSimulationMatrix() {
   );
   mdLines.push("## Simulation Matrix\n");
 
-  const header = `| ${"Model".padEnd(16)} | FMI | Mode | ${"Native msc".padEnd(20)} | ${"msc-FMU (fmusim)".padEnd(20)} | ${"msc-FMU (omsim)".padEnd(20)} |`;
+  const header = `| ${"Model".padEnd(16)} | FMI | Mode | ${"Native msx".padEnd(20)} | ${"msx-FMU (fmusim)".padEnd(20)} | ${"msx-FMU (omsim)".padEnd(20)} |`;
   const divider = `|${"".padEnd(18, "-")}|-----|------|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|`;
 
   mdLines.push(header);
@@ -400,7 +400,7 @@ async function runCrossSimulationMatrix() {
     "=======================================================================================================================",
   );
   console.log(
-    ` ${"Model".padEnd(16)} | FMI | Mode | ${"Native msc".padEnd(20)} | ${"msc-FMU (fmusim)".padEnd(20)} | ${"msc-FMU (omsim)".padEnd(20)}`,
+    ` ${"Model".padEnd(16)} | FMI | Mode | ${"Native msx".padEnd(20)} | ${"msx-FMU (fmusim)".padEnd(20)} | ${"msx-FMU (omsim)".padEnd(20)}`,
   );
   console.log("".padEnd(113, "-"));
 

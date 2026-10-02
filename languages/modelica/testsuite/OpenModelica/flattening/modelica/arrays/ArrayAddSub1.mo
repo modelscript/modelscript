@@ -1,7 +1,6 @@
 // name:     ArrayAddSub1
 // keywords: array
 // status:   correct
-// xfail:    true
 //
 // Addition and substraction ops applied on arrays
 //

@@ -1,7 +1,6 @@
 // name: InputDeclRecord
 // keywords: input
 // status: correct
-// xfail:    true
 //
 // Tests the input prefix on a record type
 //

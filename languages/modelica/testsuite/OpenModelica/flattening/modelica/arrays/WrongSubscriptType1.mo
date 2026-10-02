@@ -1,7 +1,6 @@
 // name:     WrongSubscriptType1
 // keywords: array subscript type
 // status:   incorrect
-// xfail:    true
 //
 // Tests that invalid subscript types are caught.
 //

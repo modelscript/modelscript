@@ -278,21 +278,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
 
       if (
-        db.ast.startsWith(node, "Real") ||
         db.ast.textEquals(node, "Real") ||
-        db.ast.startsWith(node, "Integer") ||
         db.ast.textEquals(node, "Integer") ||
-        db.ast.startsWith(node, "Boolean") ||
         db.ast.textEquals(node, "Boolean") ||
-        db.ast.startsWith(node, "String") ||
         db.ast.textEquals(node, "String") ||
-        db.ast.startsWith(node, "Clock") ||
         db.ast.textEquals(node, "Clock") ||
-        db.ast.startsWith(node, "StateSelect") ||
         db.ast.textEquals(node, "StateSelect") ||
-        db.ast.startsWith(node, "AssertionLevel") ||
         db.ast.textEquals(node, "AssertionLevel") ||
-        db.ast.startsWith(node, "ExternalObject") ||
         db.ast.textEquals(node, "ExternalObject") ||
         db.ast.textEquals(node, "Modelica.SIunits.Voltage") ||
         db.ast.textEquals(node, "Modelica.SIunits.Current") ||
@@ -302,21 +294,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(node, "Modelica.SIunits.Time") ||
         (firstIdent != 0 &&
           (db.ast.textEquals(firstIdent, "Real") ||
-            db.ast.startsWith(firstIdent, "Real") ||
             db.ast.textEquals(firstIdent, "Integer") ||
-            db.ast.startsWith(firstIdent, "Integer") ||
             db.ast.textEquals(firstIdent, "Boolean") ||
-            db.ast.startsWith(firstIdent, "Boolean") ||
             db.ast.textEquals(firstIdent, "String") ||
-            db.ast.startsWith(firstIdent, "String") ||
             db.ast.textEquals(firstIdent, "Clock") ||
-            db.ast.startsWith(firstIdent, "Clock") ||
             db.ast.textEquals(firstIdent, "StateSelect") ||
-            db.ast.startsWith(firstIdent, "StateSelect") ||
             db.ast.textEquals(firstIdent, "AssertionLevel") ||
-            db.ast.startsWith(firstIdent, "AssertionLevel") ||
             db.ast.textEquals(firstIdent, "ExternalObject") ||
-            db.ast.startsWith(firstIdent, "ExternalObject") ||
             db.ast.textEquals(firstIdent, "Modelica") ||
             db.ast.textEquals(firstIdent, "SIunits") ||
             db.ast.textEquals(firstIdent, "Icons") ||

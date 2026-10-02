@@ -114,5 +114,5 @@ Reduces parameter dimensionality in surrogate modeling by converting raw physica
   - Linear matrix systems from [`TornBlock`](./tearing.md) and [`TR-BDF2`](./solvers-ode-dae.md).
   - 3D CFD and FEA continuum field snapshots from [`CFD`](../languages/cfd.md) and [`FEA`](../languages/fea.md).
 - **Downstream Consumers**:
-  - Embedded into real-time Modelica plant loops via `msc surrogate`.
+  - Embedded into real-time Modelica plant loops via `msx surrogate`.
   - Accelerates linear solves across all numerical integrators and optimal control routines.

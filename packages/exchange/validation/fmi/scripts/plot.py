@@ -38,11 +38,15 @@ def read_csv(path):
 for model_name, var_map in MODELS.items():
     model_dir = os.path.join(BASE_DIR, model_name)
     
+    native_csv = os.path.join(model_dir, f'{model_name}_msx.csv')
+    if not os.path.exists(native_csv):
+        native_csv = os.path.join(model_dir, f'{model_name}_msc.csv')
+
     csv_paths = {
-        'Native msc': os.path.join(model_dir, f'{model_name}_msc.csv'),
+        'Native msx': native_csv,
         'Ref-FMU (fmusim)': os.path.join(model_dir, f'{model_name}_refFmu_fmusim.csv'),
-        'msc-FMU (fmusim)': os.path.join(model_dir, 'build_fmusim', 'fmusim_res.csv'),
-        'msc-FMU (omc)': os.path.join(model_dir, 'build_omc', f'{model_name}_me_FMU_res.csv')
+        'msx-FMU (fmusim)': os.path.join(model_dir, 'build_fmusim', 'fmusim_res.csv'),
+        'msx-FMU (omc)': os.path.join(model_dir, 'build_omc', f'{model_name}_me_FMU_res.csv')
     }
     
     csv_data = {name: read_csv(path) for name, path in csv_paths.items()}
@@ -61,9 +65,9 @@ for model_name, var_map in MODELS.items():
     # Some colors and styles
     styles = {
         'Ref-FMU (fmusim)': {'color': 'black', 'linestyle': '-', 'linewidth': 3, 'alpha': 0.5},
-        'Native msc': {'color': 'red', 'linestyle': '--', 'linewidth': 2},
-        'msc-FMU (fmusim)': {'color': 'blue', 'linestyle': '-.', 'linewidth': 2},
-        'msc-FMU (omc)': {'color': 'green', 'linestyle': ':', 'linewidth': 2}
+        'Native msx': {'color': 'red', 'linestyle': '--', 'linewidth': 2},
+        'msx-FMU (fmusim)': {'color': 'blue', 'linestyle': '-.', 'linewidth': 2},
+        'msx-FMU (omc)': {'color': 'green', 'linestyle': ':', 'linewidth': 2}
     }
     
     for i, (msc_var, ref_var) in enumerate(var_map.items()):

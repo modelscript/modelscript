@@ -17,6 +17,7 @@ import {
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
+import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
@@ -280,6 +281,7 @@ export function startNodeServer(input?: any, output?: any) {
     { id: "owl2", pkg: "@modelscript/owl2", name: "OWL2", ext: [".owl", ".owl2", ".ofn", ".ttl"] },
     { id: "csv", pkg: "@modelscript/csv", name: "CSV", ext: [".csv"] },
     { id: "scad", pkg: "@modelscript/scad", name: "OpenSCAD", ext: [".scad"] },
+    { id: "modelscript", pkg: "@modelscript/modelscript", name: "ModelScript", ext: [".modelscript", ".msx"] },
     { id: "fea", pkg: "@modelscript/fea", name: "FEA", ext: [".inp", ".bdf"] },
     { id: "cfd", pkg: "@modelscript/cfd", name: "CFD", ext: [".cfg"] },
   ];
@@ -324,6 +326,9 @@ export function startNodeServer(input?: any, output?: any) {
               langDef = csvLangFallback;
             } else if (item.id === "scad") {
               langDef = scadLangFallback;
+            } else if (item.id === "modelscript") {
+              langDef = modelscriptLangFallback;
+              handlers = modelscriptLangFallback.lsp?.handlers;
             }
 
             globalLanguageRegistry.register({
@@ -339,6 +344,14 @@ export function startNodeServer(input?: any, output?: any) {
               set queryEngine(val) {
                 if (queryEngineSetter) queryEngineSetter(val);
               },
+              createQueryEngine:
+                item.id === "modelica"
+                  ? (idx: any, tree?: any) => createModelicaQueryEngine(idx, tree)
+                  : item.id === "sysml2"
+                    ? (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree)
+                    : item.id === "owl2"
+                      ? (idx: any, tree?: any) => createOWL2QueryEngine(idx, tree)
+                      : undefined,
               languageDef: langDef,
               handlers,
               actionHandlers,

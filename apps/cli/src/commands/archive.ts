@@ -88,7 +88,7 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
     const token = getToken();
 
     if (!token) {
-      console.error(c.red("Authentication required: Please log in using 'msc login' or set MODELSCRIPT_API_TOKEN."));
+      console.error(c.red("Authentication required: Please log in using 'msx login' or set MODELSCRIPT_API_TOKEN."));
       process.exit(1);
     }
 
@@ -179,7 +179,7 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
 
       if (!args.wait) {
         console.log(c.green(`✔ Archive job enqueued successfully (Status: ${enqueueData.job.status}).`));
-        console.log(c.dim("Run 'msc archive status' to monitor progress or check web settings.\n"));
+        console.log(c.dim("Run 'msx archive status' to monitor progress or check web settings.\n"));
         return;
       }
 

@@ -338,9 +338,82 @@ export class CdclSatSolver {
   private varInc = 1.0;
   private readonly varDecay = 0.95;
 
+  // VSIDS Binary Max-Heap Priority Queue & Phase Saving
+  private heap: VarId[] = [];
+  private heapPos: Map<VarId, number> = new Map();
+  private savedPhase: Map<VarId, boolean> = new Map();
+
   private currentLevel = 0;
   private maxVarId = 0;
   private isRootUnsat = false;
+
+  private inHeap(v: VarId): boolean {
+    return (this.heapPos.get(v) ?? -1) !== -1;
+  }
+
+  private heapLess(i: number, j: number): boolean {
+    const vi = this.heap[i]!;
+    const vj = this.heap[j]!;
+    return (this.activity.get(vi) ?? 0) < (this.activity.get(vj) ?? 0);
+  }
+
+  private swapHeap(i: number, j: number): void {
+    const vi = this.heap[i]!;
+    const vj = this.heap[j]!;
+    this.heap[i] = vj;
+    this.heap[j] = vi;
+    this.heapPos.set(vi, j);
+    this.heapPos.set(vj, i);
+  }
+
+  private siftUp(i: number): void {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.heapLess(parent, i)) {
+        this.swapHeap(parent, i);
+        i = parent;
+      } else {
+        break;
+      }
+    }
+  }
+
+  private siftDown(i: number): void {
+    const n = this.heap.length;
+    while (true) {
+      let largest = i;
+      const left = (i << 1) + 1;
+      const right = left + 1;
+      if (left < n && this.heapLess(largest, left)) {
+        largest = left;
+      }
+      if (right < n && this.heapLess(largest, right)) {
+        largest = right;
+      }
+      if (largest !== i) {
+        this.swapHeap(i, largest);
+        i = largest;
+      } else {
+        break;
+      }
+    }
+  }
+
+  private insertVarOrder(v: VarId): void {
+    if (!this.inHeap(v) && !this.assignments.has(v)) {
+      const idx = this.heap.length;
+      this.heap.push(v);
+      this.heapPos.set(v, idx);
+      this.siftUp(idx);
+    }
+  }
+
+  private updateVarOrder(v: VarId): void {
+    const pos = this.heapPos.get(v) ?? -1;
+    if (pos !== -1) {
+      this.siftUp(pos);
+    }
+  }
 
   public ensureVar(v: VarId): void {
     if (v > this.maxVarId) {
@@ -348,6 +421,7 @@ export class CdclSatSolver {
     }
     if (!this.activity.has(v)) {
       this.activity.set(v, 0.0);
+      this.insertVarOrder(v);
     }
   }
 
@@ -563,13 +637,15 @@ export class CdclSatSolver {
   public backtrack(level: number): void {
     if (this.currentLevel <= level) return;
 
-    const targetTrailLim = level === 0 ? (this.trailLim[0] ?? 0) : this.trailLim[level - 1]!;
+    const targetTrailLim = this.trailLim[level] ?? (level === 0 ? (this.trailLim[0] ?? 0) : this.trail.length);
     while (this.trail.length > targetTrailLim) {
       const lit = this.trail.pop()!;
       const v = litToVar(lit);
+      this.savedPhase.set(v, lit > 0);
       this.assignments.delete(v);
       this.decisionLevel.delete(v);
       this.reasonClause.delete(v);
+      this.insertVarOrder(v);
     }
 
     this.trailLim.length = level;
@@ -579,6 +655,17 @@ export class CdclSatSolver {
   private bumpVarActivity(v: VarId): void {
     const act = (this.activity.get(v) ?? 0) + this.varInc;
     this.activity.set(v, act);
+    if (act > 1e100) {
+      this.rescaleVarActivities();
+    }
+    this.updateVarOrder(v);
+  }
+
+  private rescaleVarActivities(): void {
+    for (const [v, act] of this.activity.entries()) {
+      this.activity.set(v, act * 1e-100);
+    }
+    this.varInc *= 1e-100;
   }
 
   private decayVarActivity(): void {
@@ -586,21 +673,73 @@ export class CdclSatSolver {
   }
 
   private pickBranchLit(): LitId | 0 {
-    let bestVar: VarId = 0;
-    let bestScore = -1;
+    while (this.heap.length > 0) {
+      const bestVar = this.heap[0]!;
+      const last = this.heap.pop()!;
+      this.heapPos.delete(bestVar);
+      if (this.heap.length > 0 && bestVar !== last) {
+        this.heap[0] = last;
+        this.heapPos.set(last, 0);
+        this.siftDown(0);
+      }
+      if (!this.assignments.has(bestVar)) {
+        const phase = this.savedPhase.get(bestVar) ?? true;
+        return phase ? bestVar : -bestVar;
+      }
+    }
 
+    // Fallback in case unassigned variables exist outside heap
     for (let v = 1; v <= this.maxVarId; v++) {
       if (!this.assignments.has(v)) {
-        const score = this.activity.get(v) ?? 0;
-        if (score > bestScore) {
-          bestScore = score;
-          bestVar = v;
+        this.insertVarOrder(v);
+      }
+    }
+    if (this.heap.length > 0) {
+      return this.pickBranchLit();
+    }
+
+    return 0;
+  }
+
+  private analyzeFinalConflict(conflictClause: LitId[], assumptions: LitId[]): LitId[] {
+    const coreSet = new Set<LitId>();
+    const assumptionSet = new Set(assumptions);
+    const assumptionNegSet = new Set(assumptions.map((a) => -a));
+    const seenVars = new Set<VarId>();
+
+    for (const lit of conflictClause) {
+      seenVars.add(litToVar(lit));
+    }
+
+    for (let i = this.trail.length - 1; i >= 0; i--) {
+      const lit = this.trail[i]!;
+      const v = litToVar(lit);
+      if (seenVars.has(v)) {
+        seenVars.delete(v);
+        const rCIdx = this.reasonClause.get(v);
+        if (rCIdx === undefined || rCIdx === -1) {
+          // Decision or assumption
+          if (assumptionSet.has(lit)) {
+            coreSet.add(lit);
+          } else if (assumptionNegSet.has(lit)) {
+            coreSet.add(-lit);
+          }
+        } else {
+          const rClause = this.clauses[rCIdx]!;
+          for (const antLit of rClause) {
+            const antVar = litToVar(antLit);
+            if (antVar !== v) {
+              const antLvl = this.decisionLevel.get(antVar) ?? 0;
+              if (antLvl > 0) {
+                seenVars.add(antVar);
+              }
+            }
+          }
         }
       }
     }
 
-    if (bestVar === 0) return 0;
-    return bestVar;
+    return coreSet.size > 0 ? Array.from(coreSet) : assumptions;
   }
 
   /**
@@ -625,10 +764,16 @@ export class CdclSatSolver {
       this.ensureVar(litToVar(aLit));
       this.currentLevel++;
       this.trailLim.push(this.trail.length);
-      if (!this.enqueue(aLit, -1) || this.propagate() !== -1) {
-        // Assumption caused immediate conflict
+      const enqOk = this.enqueue(aLit, -1);
+      const conflictCIdx = enqOk ? this.propagate() : -1;
+      if (!enqOk || conflictCIdx !== -1) {
+        const conflClause = conflictCIdx !== -1 ? this.clauses[conflictCIdx]! : [-aLit];
+        const core = this.analyzeFinalConflict(conflClause, assumptions);
+        if (!enqOk) {
+          core.push(aLit);
+        }
         this.backtrack(0);
-        return { status: "UNSAT", unsatCore: [aLit] };
+        return { status: "UNSAT", unsatCore: Array.from(new Set(core)) };
       }
     }
 
@@ -648,8 +793,9 @@ export class CdclSatSolver {
 
         if (backtrackLevel < assumptionLevel) {
           // Cannot backtrack past assumptions => UNSAT under assumptions
+          const core = this.analyzeFinalConflict(this.clauses[conflictCIdx]!, assumptions);
           this.backtrack(0);
-          return { status: "UNSAT", unsatCore: assumptions };
+          return { status: "UNSAT", unsatCore: core };
         }
 
         this.backtrack(backtrackLevel);

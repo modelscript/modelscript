@@ -101,6 +101,58 @@ export class StlMonitor {
   }
 
   /**
+   * Fast in-WASM zero-copy evaluation of Always[a, b] directly in WebAssembly linear memory.
+   */
+  public static evaluateAlwaysWasm(
+    wasmExports: Record<string, any>,
+    timePtr: number,
+    valPtr: number,
+    n: number,
+    a: number,
+    b: number,
+    outPtr: number,
+  ): void {
+    if (typeof wasmExports.stl_eval_always === "function") {
+      wasmExports.stl_eval_always(timePtr, valPtr, n, a, b, outPtr);
+    }
+  }
+
+  /**
+   * Fast in-WASM zero-copy evaluation of Eventually[a, b] directly in WebAssembly linear memory.
+   */
+  public static evaluateEventuallyWasm(
+    wasmExports: Record<string, any>,
+    timePtr: number,
+    valPtr: number,
+    n: number,
+    a: number,
+    b: number,
+    outPtr: number,
+  ): void {
+    if (typeof wasmExports.stl_eval_eventually === "function") {
+      wasmExports.stl_eval_eventually(timePtr, valPtr, n, a, b, outPtr);
+    }
+  }
+
+  /**
+   * Fast in-WASM zero-copy evaluation of Until[a, b] directly in WebAssembly linear memory.
+   */
+  public static evaluateUntilWasm(
+    wasmExports: Record<string, any>,
+    timePtr: number,
+    lPtr: number,
+    rPtr: number,
+    n: number,
+    a: number,
+    b: number,
+    outPtr: number,
+  ): void {
+    if (typeof wasmExports.stl_eval_until === "function") {
+      wasmExports.stl_eval_until(timePtr, lPtr, rPtr, n, a, b, outPtr);
+    }
+  }
+
+  /**
    * Evaluates the quantitative robustness degree rho(phi, trace, t) across all time points.
    */
   public static evaluate(formula: StlFormula, trace: TrajectoryTrace): StlEvaluationResult {
@@ -226,23 +278,30 @@ export class StlMonitor {
         const [a, b] = formula.interval;
         const rho = new Float64Array(N);
 
+        let right = 0;
+        const deque = new Int32Array(N);
+        let head = 0;
+        let tail = 0;
+
         for (let i = 0; i < N; i++) {
           const t = time[i]!;
           const tMin = t + a;
           const tMax = t + b;
-          let minVal = Infinity;
 
-          // Find range of indices within [tMin, tMax]
-          for (let j = i; j < N; j++) {
-            const tj = time[j]!;
-            if (tj < tMin) continue;
-            if (tj > tMax) break;
-            if (childRho[j]! < minVal) {
-              minVal = childRho[j]!;
+          while (right < N && time[right]! <= tMax) {
+            const val = childRho[right]!;
+            while (tail > head && childRho[deque[tail - 1]!]! >= val) {
+              tail--;
             }
+            deque[tail++] = right;
+            right++;
           }
 
-          rho[i] = minVal === Infinity ? childRho[N - 1]! : minVal;
+          while (head < tail && time[deque[head]!]! < tMin) {
+            head++;
+          }
+
+          rho[i] = head < tail ? childRho[deque[head]!]! : childRho[N - 1]!;
         }
         return rho;
       }
@@ -252,22 +311,30 @@ export class StlMonitor {
         const [a, b] = formula.interval;
         const rho = new Float64Array(N);
 
+        let right = 0;
+        const deque = new Int32Array(N);
+        let head = 0;
+        let tail = 0;
+
         for (let i = 0; i < N; i++) {
           const t = time[i]!;
           const tMin = t + a;
           const tMax = t + b;
-          let maxVal = -Infinity;
 
-          for (let j = i; j < N; j++) {
-            const tj = time[j]!;
-            if (tj < tMin) continue;
-            if (tj > tMax) break;
-            if (childRho[j]! > maxVal) {
-              maxVal = childRho[j]!;
+          while (right < N && time[right]! <= tMax) {
+            const val = childRho[right]!;
+            while (tail > head && childRho[deque[tail - 1]!]! <= val) {
+              tail--;
             }
+            deque[tail++] = right;
+            right++;
           }
 
-          rho[i] = maxVal === -Infinity ? childRho[N - 1]! : maxVal;
+          while (head < tail && time[deque[head]!]! < tMin) {
+            head++;
+          }
+
+          rho[i] = head < tail ? childRho[deque[head]!]! : childRho[N - 1]!;
         }
         return rho;
       }
@@ -283,20 +350,19 @@ export class StlMonitor {
           const tMin = t + a;
           const tMax = t + b;
           let maxUntil = -Infinity;
+          let minL = Infinity;
 
-          for (let j = i; j < N; j++) {
-            const tj = time[j]!;
-            if (tj < tMin) continue;
-            if (tj > tMax) break;
+          let j = i;
+          while (j < N && time[j]! < tMin) {
+            if (lRho[j]! < minL) minL = lRho[j]!;
+            j++;
+          }
 
-            const rVal = rRho[j]!;
-            let minL = Infinity;
-            for (let k = i; k <= j; k++) {
-              if (lRho[k]! < minL) minL = lRho[k]!;
-            }
-
-            const candidate = Math.min(rVal, minL);
+          while (j < N && time[j]! <= tMax) {
+            if (lRho[j]! < minL) minL = lRho[j]!;
+            const candidate = Math.min(rRho[j]!, minL);
             if (candidate > maxUntil) maxUntil = candidate;
+            j++;
           }
 
           rho[i] = maxUntil === -Infinity ? -Infinity : maxUntil;

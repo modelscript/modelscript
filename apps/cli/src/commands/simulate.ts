@@ -425,7 +425,7 @@ async function simulateWasm(
 
   // Compile with Emscripten
   profiler.start("compilation");
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-wasm-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-wasm-"));
   try {
     const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
     const jsFile = path.join(tmpDir, `${modelIdentifier}_sim.js`);
@@ -546,7 +546,7 @@ async function simulateC(
 
   // Compile
   profiler.start("compilation");
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-sim-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-sim-"));
   try {
     const cFile = path.join(tmpDir, `${modelIdentifier}_sim.c`);
     const binFile = path.join(tmpDir, `${modelIdentifier}_sim`);

@@ -1,7 +1,6 @@
 // name:     FunctionDefaultArgsMod
 // keywords: functions, default arguments, modifier, #2729
 // status:   correct
-// xfail:    true
 //
 // Checks that it's possible to add default argument to a derived function via a
 // modifier.

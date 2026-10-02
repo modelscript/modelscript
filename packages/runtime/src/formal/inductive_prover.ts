@@ -109,17 +109,23 @@ export function primeConstraint(c: NonlinearConstraint): NonlinearConstraint {
 /**
  * Negates a single constraint into an array of equivalent non-linear inequalities.
  */
-export function negateConstraint(c: NonlinearConstraint, eps = 0.01): NonlinearConstraint[] {
+export function negateConstraint(c: NonlinearConstraint, eps = 1e-9): NonlinearConstraint[] {
   if (c.rel === "<=") {
-    return [{ expr: c.expr, rel: ">=", rhs: c.rhs + eps }];
+    return [{ expr: c.expr, rel: ">", rhs: c.rhs }];
   } else if (c.rel === ">=") {
-    return [{ expr: c.expr, rel: "<=", rhs: c.rhs - eps }];
-  } else {
-    // c.rel === "==" -> c.expr <= rhs - eps OR c.expr >= rhs + eps
+    return [{ expr: c.expr, rel: "<", rhs: c.rhs }];
+  } else if (c.rel === "<") {
+    return [{ expr: c.expr, rel: ">=", rhs: c.rhs }];
+  } else if (c.rel === ">") {
+    return [{ expr: c.expr, rel: "<=", rhs: c.rhs }];
+  } else if (c.rel === "==") {
     return [
-      { expr: c.expr, rel: "<=", rhs: c.rhs - eps },
-      { expr: c.expr, rel: ">=", rhs: c.rhs + eps },
+      { expr: c.expr, rel: "<", rhs: c.rhs },
+      { expr: c.expr, rel: ">", rhs: c.rhs },
     ];
+  } else {
+    // c.rel === "!="
+    return [{ expr: c.expr, rel: "==", rhs: c.rhs }];
   }
 }
 

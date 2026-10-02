@@ -1,6 +1,5 @@
 // name: ErrorUnknownDimension
 // status: incorrect
-// xfail:    true
 
 model ErrorUnknownDimension
   Real r[:];

@@ -136,8 +136,9 @@ describe("Native In-Engine CDCL SAT & IC3/PDR Verification Suite", () => {
       right: { op: "and" as const, children: [notS1, notS0] },
     };
 
-    encoder.encode(trans1);
-    encoder.encode(trans0);
+    const l1 = encoder.encode(trans1);
+    const l0 = encoder.encode(trans0);
+    encoder.clauses.push([l1], [l0]);
 
     // Property P: ~(s1 & s0) => clause (~s1 | ~s0)
     const propClauses: number[][] = [[-s1, -s0]];

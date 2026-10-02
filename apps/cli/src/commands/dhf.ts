@@ -200,7 +200,7 @@ export function generateDhfMarkdown(
     md += ProofManifestGenerator.formatMarkdownSection(proofManifest);
   }
 
-  md += `---\n*Generated automatically by ModelScript CLI (\`msc dhf export\`)*\n`;
+  md += `---\n*Generated automatically by ModelScript CLI (\`msx dhf export\`)*\n`;
 
   return md;
 }
@@ -255,8 +255,8 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
     const rawPaths = args.paths && args.paths.length > 0 ? args.paths : ["."];
     const targetFiles = collectFiles(rawPaths, new Set([".sysml", ".mo"]));
 
-    console.log(`[msc dhf] Collecting engineering models from ${rawPaths.join(", ")}...`);
-    console.log(`[msc dhf] Found ${targetFiles.length} source file(s).`);
+    console.log(`[msx dhf] Collecting engineering models from ${rawPaths.join(", ")}...`);
+    console.log(`[msx dhf] Found ${targetFiles.length} source file(s).`);
 
     const sysmlWasmPath = resolveBuiltInWasmPath("sysml2");
     let sysmlParser: any = null;
@@ -342,7 +342,7 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
       const outPath = path.resolve(process.cwd(), args.output);
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, outputContent, "utf-8");
-      console.log(`[msc dhf] ✅ Design History File successfully exported to: ${outPath}`);
+      console.log(`[msx dhf] ✅ Design History File successfully exported to: ${outPath}`);
     } else {
       console.log(outputContent);
     }

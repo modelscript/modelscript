@@ -1,7 +1,6 @@
 // name:     Record Variability
 // keywords: record
 // status:   correct
-// xfail:    true
 
 record abcRec
   Integer a;

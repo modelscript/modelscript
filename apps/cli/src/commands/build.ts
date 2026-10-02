@@ -39,11 +39,11 @@ export const Build: CommandModule<{}, BuildArgs> = {
     const absoluteEntry = path.resolve(process.cwd(), entryPath);
 
     if (!fs.existsSync(absoluteEntry)) {
-      console.log(`Entry file not found at ${absoluteEntry}. Running 'msc generate' automatically...`);
+      console.log(`Entry file not found at ${absoluteEntry}. Running 'msx generate' automatically...`);
       try {
-        execSync("npx msc generate", { stdio: "inherit" });
+        execSync("npx msx generate", { stdio: "inherit" });
       } catch {
-        console.error("Failed to run 'msc generate'. Please ensure the language definition is correct.");
+        console.error("Failed to run 'msx generate'. Please ensure the language definition is correct.");
         process.exit(1);
       }
 

@@ -18,7 +18,7 @@ models = {
     "LorenzSystem": "x"
 }
 
-msc_cmd = ["npx", "tsx", "/home/omar/git3/modelscript/apps/cli/src/main.ts", "simulate"]
+msx_cmd = ["npx", "tsx", "/home/omar/git3/modelscript/apps/cli/src/main.ts", "simulate"]
 models_dir = "/home/omar/git/amc2026/modelsold"
 
 # Plot formatting
@@ -60,16 +60,16 @@ simulate({model}, stopTime=2.0, outputFormat="csv");
     ax.plot(omc_time, omc_v, label='OMC (DASSL)', color='#111111', linewidth=3.5, zorder=1)
 
     configurations = [
-        ("arena", "cvode", "MSC WASM (CVODE)", "#1f77b4", (0, (5, 2.5))),
-        ("js", "dopri5", "MSC JS (Dopri5)", "#2ca02c", "--"),
-        ("c", "rk4", "MSC C FMU (RK4)", "#ff7f0e", ":"),
-        ("wasm", "rk4", "MSC WASM FMU (RK4)", "#d62728", "-."),
+        ("arena", "cvode", "MSX WASM (CVODE)", "#1f77b4", (0, (5, 2.5))),
+        ("js", "dopri5", "MSX JS (Dopri5)", "#2ca02c", "--"),
+        ("c", "rk4", "MSX C FMU (RK4)", "#ff7f0e", ":"),
+        ("wasm", "rk4", "MSX WASM FMU (RK4)", "#d62728", "-."),
     ]
 
     for engine, solver, label, color, ls in configurations:
-        cmd = [*msc_cmd, model, mo_path, "--engine", engine, "--solver", solver, "--format", "csv", "--stop-time", "2.0"]
+        cmd = [*msx_cmd, model, mo_path, "--engine", engine, "--solver", solver, "--format", "csv", "--stop-time", "2.0"]
         res = subprocess.run(cmd, capture_output=True, text=True, cwd="/home/omar/git3/modelscript")
-        lines = [l for l in res.stdout.strip().split('\n') if l and not l.startswith("msc")]
+        lines = [l for l in res.stdout.strip().split('\n') if l and not l.startswith("msx") and not l.startswith("modelscript")]
         if not lines or len(lines) < 2:
             continue
         headers = lines[0].split(',')

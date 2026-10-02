@@ -1,7 +1,6 @@
 // name:     VectorizeOneReturnValue
 // keywords: Array
 // status:   correct
-// xfail:    true
 //
 
 class OneReturnValue

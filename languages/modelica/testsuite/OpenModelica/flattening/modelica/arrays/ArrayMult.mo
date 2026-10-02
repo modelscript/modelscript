@@ -1,7 +1,6 @@
 // name:     ArrayMult
 // keywords: array
 // status:   correct
-// xfail:    true
 //
 // Array multiplication
 class ArrayMult

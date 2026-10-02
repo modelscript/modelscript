@@ -1,7 +1,6 @@
 // name: InOutArray
 // keywords: <insert keywords here>
 // status: correct
-// xfail:    true
 
 function sumInt
     input Integer[:] inVal;

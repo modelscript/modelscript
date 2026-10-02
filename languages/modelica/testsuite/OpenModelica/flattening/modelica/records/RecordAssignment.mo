@@ -1,7 +1,6 @@
 // name: RecordAssignment
 // keywords: record
 // status: correct
-// xfail:    true
 //
 // Tests assignment of records
 //

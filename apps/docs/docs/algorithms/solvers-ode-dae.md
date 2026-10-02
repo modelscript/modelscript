@@ -97,5 +97,5 @@ Coordinates multi-rate, multi-vendor FMI Functional Mock-up Units (FMUs) and SSP
   - DAE blocks partitioned and torn by [`BltEngine`](./blt.md) and [`TornBlock`](./tearing.md).
   - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./surrogates-linear-algebra.md).
 - **Downstream Consumers**:
-  - Powers `msc simulate`, `msc optimize`, and the Web IDE charting canvas.
+  - Powers `msx simulate`, `msx optimize`, and the Web IDE charting canvas.
   - Feeds state trajectories into [`Signal Temporal Logic (STL) Monitor`](./theory-coordinator.md) and formal verification oracles.

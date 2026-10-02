@@ -154,7 +154,7 @@ export function compareCSV(
         const omcVar = mscVar.replace(/\[/g, "_").replace(/\]/g, "_");
         idx1 = headers1.indexOf(omcVar);
       }
-      // Fallback for FMI 3.0 arrays in msc-FMU
+      // Fallback for FMI 3.0 arrays in msx-FMU
       if (idx1 === -1 && mscVar.includes("[")) {
         const match = mscVar.match(/^([^\[]+)\[(\d+)\]$/);
         if (match) {

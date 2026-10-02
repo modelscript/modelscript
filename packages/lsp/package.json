@@ -106,6 +106,7 @@
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/modelscript": "*",
     "@modelscript/owl2": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",

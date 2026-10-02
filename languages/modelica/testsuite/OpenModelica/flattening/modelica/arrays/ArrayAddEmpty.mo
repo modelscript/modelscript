@@ -1,7 +1,6 @@
 // name:     ArrayAddEmpty
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 //
 // MORE WORK HAS TO BE DONE ON THIS FILE!
 //

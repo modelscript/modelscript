@@ -1,7 +1,6 @@
 // name:     Function11
 // keywords: function, default values
 // status:   correct
-// xfail:    true
 //
 // This tests default values for function arguments.
 

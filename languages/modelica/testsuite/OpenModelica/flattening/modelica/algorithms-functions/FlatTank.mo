@@ -1,7 +1,6 @@
 // name:     FlatTank
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 //
 // <insert description here>
 //

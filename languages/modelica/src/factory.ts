@@ -123,7 +123,7 @@ const wasmModelicaIndexerHooks: any[] = [
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: {
-      typeSpecifier: "parent.type_specifier",
+      typeSpecifier: "parent.parent.type_specifier",
     },
   },
   {

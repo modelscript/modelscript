@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * CLI `msc cosim` command group.
+ * CLI `msx cosim` command group.
  *
  * Subcommands for managing co-simulation sessions, participants,
  * FMU uploads, and historian replay from the command line.

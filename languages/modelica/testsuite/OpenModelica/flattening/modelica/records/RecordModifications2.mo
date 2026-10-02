@@ -1,7 +1,6 @@
 // name:     RecordModifications2
 // keywords: record modification #3479
 // status:   correct
-// xfail:    true
 //
 // Tests record modification propagation using very simplified models from
 // Modelica.Electrical.Machines.

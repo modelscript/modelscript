@@ -74,7 +74,7 @@ async function run() {
   console.log("\n3. High-Dimensional Verification Summary:");
   console.log(`   Model:            Cascade_${N} (N=100 equations, 100 continuous dynamic states)`);
   console.log(`   OMC Reference:    DASSL variable-step integrator`);
-  console.log(`   MSC Target:       WASM Sundials CVODE / C FMU`);
+  console.log(`   ModelScript Target: WASM Sundials CVODE / C FMU`);
   console.log(`   Max Trajectory L∞ Difference: 3.84e-4 (< 1e-2 threshold)`);
   console.log(`   Status:           VERIFIED - High dimensional simulation fidelity confirmed.`);
   console.log("================================================================================");

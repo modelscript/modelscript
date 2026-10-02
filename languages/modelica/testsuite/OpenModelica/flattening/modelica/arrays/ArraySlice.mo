@@ -1,7 +1,6 @@
 // name:     ArraySlice
 // keywords: array
 // status:   incorrect
-// xfail:    true
 //
 // Drmodelica: 7.4 Array Indexing operator (p. 216)
 //

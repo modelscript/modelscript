@@ -67,12 +67,12 @@ end DC_Motor;
 
 ## CLI Compilation & Flattening
 
-Compile and flatten a Modelica class using `msc`:
+Compile and flatten a Modelica class using `msx`:
 
 ```bash
 # Flatten to canonical DAE equations
-npx msc flatten DC_Motor motor.mo
+npx msx flatten DC_Motor motor.mo
 
 # Simulate for 10 seconds and output CSV trajectory
-npx msc simulate DC_Motor motor.mo --stop-time 10 --output trajectory.csv
+npx msx simulate DC_Motor motor.mo --stop-time 10 --output trajectory.csv
 ```

@@ -1,7 +1,6 @@
 // name: String arrays
 // keywords: array
 // status: correct
-// xfail:    true
 
 function strCombine
   input String[:] inVal;

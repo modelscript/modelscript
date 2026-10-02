@@ -148,7 +148,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       const { runImportFmu } = await import("./import-fmu.js");
       const fmuTarget = args.paths?.[0];
       if (!fmuTarget) {
-        console.error("Error: Please provide the path to the .fmu file (e.g. msc fmu import <path.fmu>)");
+        console.error("Error: Please provide the path to the .fmu file (e.g. msx fmu import <path.fmu>)");
         process.exitCode = 1;
         return;
       }
@@ -315,7 +315,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     // ── Compile Native C ──
     if (args.compile) {
       profiler.start("compilation_c");
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-fmu-"));
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-fmu-"));
       try {
         // Generate C sources to temp dir
         const sources = generateFmuCSources(arena, result.fmuResult, archiveOptions);

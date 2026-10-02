@@ -57,6 +57,7 @@ export interface IC3ProofResult {
 interface ProofObligation {
   cube: LitId[]; // Cube of state literals (conjunction) representing bad states
   level: number;
+  model?: Map<VarId, boolean>;
 }
 
 export class IC3Engine {
@@ -64,6 +65,8 @@ export class IC3Engine {
   private frameClauses: LitId[][][] = []; // frames[i] = array of clauses
   private varPrimeMap = new Map<VarId, VarId>();
   private primeVarMap = new Map<VarId, VarId>();
+  private frameSolvers: CdclSatSolver[] = [];
+  private auxVarCounter = 100000;
 
   constructor(public readonly ts: TransitionSystem) {
     for (let i = 0; i < ts.stateVars.length; i++) {
@@ -72,6 +75,14 @@ export class IC3Engine {
       this.varPrimeMap.set(v, vPrime);
       this.primeVarMap.set(vPrime, v);
     }
+
+    let maxVar = 0;
+    for (const v of ts.stateVars) if (v > maxVar) maxVar = v;
+    for (const v of ts.nextStateVars) if (v > maxVar) maxVar = v;
+    for (const c of ts.transClauses) {
+      for (const l of c) if (Math.abs(l) > maxVar) maxVar = Math.abs(l);
+    }
+    this.auxVarCounter = maxVar + 10000;
   }
 
   private primeLit(lit: LitId): LitId {
@@ -93,33 +104,39 @@ export class IC3Engine {
       this.frames.push(new Set());
       this.frameClauses.push([]);
     }
+    if (clause.length === 0) return;
     const key = this.serializeClause(clause);
     if (!this.frames[level]!.has(key)) {
       this.frames[level]!.add(key);
       this.frameClauses[level]!.push([...clause]);
+      if (level > 0 && this.frameSolvers.length > level) {
+        this.frameSolvers[level]!.addClause(clause);
+      }
     }
   }
 
   /**
-   * Builds a fresh SAT solver containing:
-   *   Frame clauses F_level + Transition relation T.
+   * Returns a persistent SAT solver for the given frame level.
    */
-  private buildFrameSolver(level: number): CdclSatSolver {
-    const solver = new CdclSatSolver();
-
-    // Add Transition relation
-    for (const c of this.ts.transClauses) {
-      solver.addClause(c);
-    }
-
-    // Add clauses from F_0 ... F_level
-    for (let i = 0; i <= level && i < this.frameClauses.length; i++) {
-      for (const c of this.frameClauses[i]!) {
+  private getFrameSolver(level: number): CdclSatSolver {
+    while (this.frameSolvers.length <= level) {
+      const lvl = this.frameSolvers.length;
+      const solver = new CdclSatSolver();
+      for (const c of this.ts.transClauses) {
         solver.addClause(c);
       }
+      if (lvl === 0) {
+        for (const c of this.ts.initClauses) {
+          solver.addClause(c);
+        }
+      } else if (this.frameClauses[lvl]) {
+        for (const c of this.frameClauses[lvl]!) {
+          solver.addClause(c);
+        }
+      }
+      this.frameSolvers.push(solver);
     }
-
-    return solver;
+    return this.frameSolvers[level]!;
   }
 
   /**
@@ -129,17 +146,18 @@ export class IC3Engine {
     let currentClause = cube.map((l) => -l); // clause = ~cube
     if (level === 0) return currentClause;
 
+    const solver = this.getFrameSolver(level - 1);
+
     for (let i = 0; i < currentClause.length; i++) {
       const candidate = currentClause.filter((_, idx) => idx !== i);
       if (candidate.length === 0) continue;
 
-      // Check if candidate clause is still inductive relative to F_{level-1}:
-      // F_{level-1} & candidate & T & ~candidate' is UNSAT?
-      const solver = this.buildFrameSolver(level - 1);
-      solver.addClause(candidate);
+      // Use an activation literal for candidate:
+      const act = ++this.auxVarCounter;
+      solver.addClause([-act, ...candidate]);
 
       const primedNegatedAssumptions = candidate.map((l) => -this.primeLit(l));
-      const res = solver.solve(primedNegatedAssumptions);
+      const res = solver.solve([act, ...primedNegatedAssumptions]);
 
       if (res.status === "UNSAT") {
         currentClause = candidate;
@@ -165,7 +183,7 @@ export class IC3Engine {
         if (this.frames[nextLevel]?.has(key)) continue;
 
         // Query: F_i & T & ~c'
-        const solver = this.buildFrameSolver(i);
+        const solver = this.getFrameSolver(i);
         const assumptions = c.map((l) => -this.primeLit(l));
         const res = solver.solve(assumptions);
 
@@ -221,8 +239,9 @@ export class IC3Engine {
     let k = 1;
     while (k <= maxDepth) {
       // 1. Check if any state in F_k can violate P
-      const frameSolver = this.buildFrameSolver(k);
+      const frameSolver = this.getFrameSolver(k);
       let badCube: LitId[] | null = null;
+      let badModel: Map<VarId, boolean> | undefined;
 
       for (const propClause of this.ts.propClauses) {
         // ~P is satisfied if all literals in propClause are false
@@ -238,15 +257,15 @@ export class IC3Engine {
             }
           }
           badCube = cube;
+          badModel = res.model;
           break;
         }
       }
 
       if (badCube !== null) {
         // 2. Block bad cube recursively
-        const queue: ProofObligation[] = [{ cube: badCube, level: k }];
+        const queue: ProofObligation[] = [{ cube: badCube, level: k, model: badModel }];
         let cexFound = false;
-        const traceModels: Map<VarId, boolean>[] = [];
 
         while (queue.length > 0) {
           const obl = queue[queue.length - 1]!;
@@ -258,7 +277,7 @@ export class IC3Engine {
           }
 
           // Query: F_{level-1} & T & obl.cube'
-          const predSolver = this.buildFrameSolver(obl.level - 1);
+          const predSolver = this.getFrameSolver(obl.level - 1);
           const primedAssumptions = obl.cube.map((l) => this.primeLit(l));
           const res = predSolver.solve(primedAssumptions);
 
@@ -271,8 +290,7 @@ export class IC3Engine {
                 predCube.push(val ? v : -v);
               }
             }
-            traceModels.push(res.model!);
-            queue.push({ cube: predCube, level: obl.level - 1 });
+            queue.push({ cube: predCube, level: obl.level - 1, model: res.model });
           } else {
             // obl.cube is blocked at obl.level!
             queue.pop();
@@ -284,6 +302,10 @@ export class IC3Engine {
         }
 
         if (cexFound) {
+          const traceModels = queue
+            .map((o) => o.model!)
+            .filter(Boolean)
+            .reverse();
           return {
             isProvenInvariant: false,
             depthReached: k,
@@ -316,7 +338,7 @@ export class IC3Engine {
     }
 
     return {
-      isProvenInvariant: true,
+      isProvenInvariant: false,
       depthReached: maxDepth,
       summary: `Property holds up to bounded depth k=${maxDepth} (induction did not converge within depth limit).`,
     };

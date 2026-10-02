@@ -1,15 +1,15 @@
 # CLI Command Reference
 
-Comprehensive syntax, arguments, options, and usage examples for all primary `msc` subcommands.
+Comprehensive syntax, arguments, options, and usage examples for all primary `msx` subcommands.
 
 ---
 
-## `msc flatten`
+## `msx flatten`
 
 Flattens a hierarchical Modelica model into a flat Differential Algebraic Equation (DAE) system.
 
 ```bash
-msc flatten <model> [paths...] [options]
+msx flatten <model> [paths...] [options]
 ```
 
 ### Options
@@ -22,17 +22,17 @@ msc flatten <model> [paths...] [options]
 ### Example
 
 ```bash
-msc flatten Modelica.Electrical.Analog.Examples.ChuaCircuit path/to/MSL
+msx flatten Modelica.Electrical.Analog.Examples.ChuaCircuit path/to/MSL
 ```
 
 ---
 
-## `msc simulate`
+## `msx simulate`
 
 Runs a time-domain numerical simulation of a Modelica model.
 
 ```bash
-msc simulate <model> [paths...] [options]
+msx simulate <model> [paths...] [options]
 ```
 
 ### Options
@@ -48,17 +48,17 @@ msc simulate <model> [paths...] [options]
 ### Example
 
 ```bash
-msc simulate BouncingBall model.mo --stop-time 10 --solver cvode --output trajectory.csv
+msx simulate BouncingBall model.mo --stop-time 10 --solver cvode --output trajectory.csv
 ```
 
 ---
 
-## `msc optimize`
+## `msx optimize`
 
 Solves dynamic optimal control problems via direct collocation.
 
 ```bash
-msc optimize <model> [paths...] [options]
+msx optimize <model> [paths...] [options]
 ```
 
 ### Options
@@ -71,7 +71,7 @@ msc optimize <model> [paths...] [options]
 ### Example
 
 ```bash
-msc optimize InvertedPendulum model.mo \
+msx optimize InvertedPendulum model.mo \
   --objective "theta^2 + 0.1*u^2" \
   --controls "u" \
   --control-bounds "u:-10:10" \
@@ -80,12 +80,12 @@ msc optimize InvertedPendulum model.mo \
 
 ---
 
-## `msc lint`
+## `msx lint`
 
 Runs static analysis and linter rules across Modelica and polyglot source files.
 
 ```bash
-msc lint [paths...] [options]
+msx lint [paths...] [options]
 ```
 
 ### Options
@@ -97,17 +97,17 @@ msc lint [paths...] [options]
 
 ```bash
 # Output SARIF format for GitHub Code Scanning
-msc lint models/ --format sarif > results.sarif
+msx lint models/ --format sarif > results.sarif
 ```
 
 ---
 
-## `msc render`
+## `msx render`
 
 Renders Modelica annotations into interactive SVG diagrams.
 
 ```bash
-msc render <model> [paths...] [options]
+msx render <model> [paths...] [options]
 ```
 
 ### Options
@@ -118,17 +118,17 @@ msc render <model> [paths...] [options]
 ### Example
 
 ```bash
-msc render ChuaCircuit model.mo --view diagram > diagram.svg
+msx render ChuaCircuit model.mo --view diagram > diagram.svg
 ```
 
 ---
 
-## `msc fmu export`
+## `msx fmu export`
 
 Exports a Modelica model as a standardized Functional Mock-up Unit (FMU).
 
 ```bash
-msc fmu export <model> [paths...] [options]
+msx fmu export <model> [paths...] [options]
 ```
 
 ### Options
@@ -140,17 +140,17 @@ msc fmu export <model> [paths...] [options]
 ### Example
 
 ```bash
-msc fmu export DC_Motor motor.mo --version 3.0 --type cs --output DC_Motor.fmu
+msx fmu export DC_Motor motor.mo --version 3.0 --type cs --output DC_Motor.fmu
 ```
 
 ---
 
-## `msc csg evaluate`
+## `msx csg evaluate`
 
 Evaluates OpenSCAD scripts or STEP CAD solids.
 
 ```bash
-msc csg evaluate <file.scad> [options]
+msx csg evaluate <file.scad> [options]
 ```
 
 ### Options
@@ -161,17 +161,17 @@ msc csg evaluate <file.scad> [options]
 ### Example
 
 ```bash
-msc csg evaluate bracket.scad --output bracket.step --mass-properties
+msx csg evaluate bracket.scad --output bracket.step --mass-properties
 ```
 
 ---
 
-## `msc surrogate`
+## `msx surrogate`
 
 Trains or evaluates parametric reduced-order surrogate models.
 
 ```bash
-msc surrogate <train|eval> [options]
+msx surrogate <train|eval> [options]
 ```
 
 ### Options
@@ -184,17 +184,17 @@ msc surrogate <train|eval> [options]
 ### Example
 
 ```bash
-msc surrogate train plant.fmu --samples 1000 --method gp --output surrogate.json
+msx surrogate train plant.fmu --samples 1000 --method gp --output surrogate.json
 ```
 
 ---
 
-## `msc mc`
+## `msx mc`
 
 Runs high-throughput Monte Carlo simulations under parameter uncertainty.
 
 ```bash
-msc mc <model> [paths...] [options]
+msx mc <model> [paths...] [options]
 ```
 
 ### Options
@@ -206,21 +206,21 @@ msc mc <model> [paths...] [options]
 ### Example
 
 ```bash
-msc mc Circuit model.mo --runs 5000 --gpu --distribution "R:normal:100:5"
+msx mc Circuit model.mo --runs 5000 --gpu --distribution "R:normal:100:5"
 ```
 
 ---
 
-## `msc pr-diff`
+## `msx pr-diff`
 
 Computes semantic AST diffs between Git branches or revisions.
 
 ```bash
-msc pr-diff <source-ref> <target-ref> [options]
+msx pr-diff <source-ref> <target-ref> [options]
 ```
 
 ### Example
 
 ```bash
-msc pr-diff main HEAD --models
+msx pr-diff main HEAD --models
 ```

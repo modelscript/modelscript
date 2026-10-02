@@ -1,7 +1,6 @@
 // name:     PredefinedTypes
 // keywords: Predefined types, modifications
 // status:   correct
-// xfail:    true
 
 type enum = enumeration(a,b,c);
 model PredefinedTypes

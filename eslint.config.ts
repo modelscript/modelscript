@@ -123,6 +123,7 @@ export default defineConfig([
             "languages/cfd/tests/*.ts",
             "languages/fea/tests/*.ts",
             "languages/csv/tests/*.ts",
+            "languages/modelscript/tests/*.ts",
             "packages/mcp/tests/*.ts",
             "apps/api/tests/*.ts",
           ],

@@ -230,16 +230,22 @@ export class PdrEngine {
     // Transition relation clauses T(V, V')
     const transClauses: LitId[][] = [];
 
-    // Build successor map
+    // Build successor and predecessor maps
     const successorMap = new Map<StateId, StateId[]>();
+    const predecessorMap = new Map<StateId, StateId[]>();
     for (const t of transitions) {
       if (!successorMap.has(t.sourceId)) successorMap.set(t.sourceId, []);
       successorMap.get(t.sourceId)!.push(t.targetId);
+
+      if (!predecessorMap.has(t.targetId)) predecessorMap.set(t.targetId, []);
+      predecessorMap.get(t.targetId)!.push(t.sourceId);
     }
 
     for (const s of states) {
       const v = stateToVar.get(s.id)!;
+      const vNext = stateToNextVar.get(s.id)!;
       const succs = successorMap.get(s.id) || [];
+      const preds = predecessorMap.get(s.id) || [];
 
       if (succs.length > 0) {
         // If active(s), then at least one successor must be active in next state
@@ -250,10 +256,23 @@ export class PdrEngine {
         }
         transClauses.push(clause);
       } else {
-        // No outgoing transitions: if active, stays active (self-loop) or disappears
-        // For safety: if no transitions, the state persists
-        const vNext = stateToNextVar.get(s.id)!;
+        // No outgoing transitions: if active, stays active (self-loop)
         transClauses.push([-v, vNext]); // active => active'
+      }
+
+      // Backward transition constraint: active'(s) => at least one predecessor was active
+      const allowedPreds = [...preds];
+      if (succs.length === 0) {
+        allowedPreds.push(s.id);
+      }
+      if (allowedPreds.length > 0) {
+        const predClause: LitId[] = [-vNext];
+        for (const predId of allowedPreds) {
+          predClause.push(stateToVar.get(predId)!);
+        }
+        transClauses.push(predClause);
+      } else {
+        transClauses.push([-vNext]);
       }
     }
 
@@ -275,6 +294,16 @@ export class PdrEngine {
       if (v !== undefined) {
         propClauses.push([-v]);
       }
+    }
+
+    if (propClauses.length === 0) {
+      return {
+        isProvenUniversal: true,
+        convergedDepth: 0,
+        inductiveLemmas: [],
+        framesCount: 0,
+        summary: `Symbolic IC3 proved safety invariant for '${property.name}' at depth 0. No forbidden states exist in the state machine.`,
+      };
     }
 
     // Run IC3

@@ -50,25 +50,56 @@ export class OctagonDBM {
     }
   }
 
+  getBound(i: number, j: number): number {
+    const dim = this.dim;
+    if (i >= dim || j >= dim) return OCTAGON_INF;
+    return this.matrix[i * dim + j]!;
+  }
+
   /**
    * Floyd-Warshall transitive closure — propagates all derived bounds.
    */
   close(): void {
     const dim = this.dim;
+    const matrix = this.matrix;
+
     for (let k = 0; k < dim; k++) {
+      const kRow = k * dim;
       for (let i = 0; i < dim; i++) {
+        const iRow = i * dim;
+        const ik = matrix[iRow + k]!;
+        if (ik >= OCTAGON_INF) continue; // Early-skip unreachable rows
+
         for (let j = 0; j < dim; j++) {
-          const ik = this.matrix[i * dim + k]!;
-          const kj = this.matrix[k * dim + j]!;
-          if (ik !== OCTAGON_INF && kj !== OCTAGON_INF) {
+          const kj = matrix[kRow + j]!;
+          if (kj < OCTAGON_INF) {
             const newBound = ik + kj;
-            if (newBound < this.matrix[i * dim + j]!) {
-              this.matrix[i * dim + j] = newBound;
+            if (newBound < matrix[iRow + j]!) {
+              matrix[iRow + j] = newBound;
             }
           }
         }
       }
     }
+  }
+
+  /**
+   * Computes transitive closure using in-WASM acceleration if provided,
+   * falling back to the optimized in-engine Floyd-Warshall closure.
+   */
+  closeWithWasm(wasmExports: Record<string, any>): void {
+    if (typeof wasmExports.octagon_close_i32 === "function" && typeof wasmExports.__new === "function") {
+      const dim = this.dim;
+      const bytes = dim * dim * 4;
+      const ptr = wasmExports.__new(bytes, 0);
+      const mem = wasmExports.memory as WebAssembly.Memory;
+      const view = new Int32Array(mem.buffer, ptr, dim * dim);
+      view.set(this.matrix);
+      wasmExports.octagon_close_i32(ptr, dim);
+      this.matrix.set(view);
+      return;
+    }
+    this.close();
   }
 
   /**

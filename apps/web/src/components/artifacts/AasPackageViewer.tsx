@@ -14,11 +14,11 @@ export interface AasPackageViewerProps {
     manifest?: any;
     cadUrl?: string;
     variants?: string[];
-    instances?: Array<{
+    instances?: {
       serialNumber: string;
       variant?: string;
       birthData?: Record<string, any>;
-    }>;
+    }[];
   };
   isFullScreen?: boolean;
 }
@@ -35,7 +35,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
   const instances = viewConfig.instances || [];
 
   const copyNpmCmd = () => {
-    navigator.clipboard.writeText(`msc install ${viewConfig.packageName}@${viewConfig.version}`);
+    navigator.clipboard.writeText(`msx install ${viewConfig.packageName}@${viewConfig.version}`);
     setCopiedNpm(true);
     setTimeout(() => setCopiedNpm(false), 2000);
   };
@@ -126,7 +126,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
           )}
 
           <Button size="small" onClick={copyNpmCmd} leadingVisual={copiedNpm ? CheckIcon : CopyIcon}>
-            {copiedNpm ? "Copied!" : "msc install"}
+            {copiedNpm ? "Copied!" : "msx install"}
           </Button>
 
           <Button size="small" as="a" href={exportAasxUrl} target="_blank" download leadingVisual={DownloadIcon}>

@@ -59,7 +59,7 @@ $$\text{subject to } F(t, x, \dot{x}, u) = 0, \quad u_{\min} \le u(t) \le u_{\ma
 
 High-fidelity 3D simulations (such as CFD or FEA) are often too computationally expensive for real-time control loops or web deployment.
 
-ModelScript's surrogate modeling pipeline (`msc surrogate`):
+ModelScript's surrogate modeling pipeline (`msx surrogate`):
 
 1. **Sampling**: Generates experimental design samples (Latin Hypercube, Sobol sequences).
 2. **Execution**: Evaluates high-fidelity runs across parameter spaces.

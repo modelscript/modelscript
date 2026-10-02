@@ -1,7 +1,6 @@
 // name: ArraySubtraction
 // keywords: array, subtraction
 // status: correct
-// xfail:    true
 //
 // Tests elementwise array subtraction
 //

@@ -399,6 +399,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       set queryEngine(val) {
         workspaceManager.setQueryEngine("modelica", val ?? null);
       },
+      createQueryEngine: (idx: any, tree?: any) => createModelicaQueryEngine(idx, tree),
       languageDef: modelicaLanguage,
       handlers: modelicaLanguage.lsp?.handlers,
       actionHandlers: modelicaActionHandlers,
@@ -427,6 +428,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       set queryEngine(val) {
         workspaceManager.setQueryEngine("sysml2", val ?? null);
       },
+      createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
       languageDef: sysml2LangFallback,
     });
 
@@ -508,6 +510,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       set queryEngine(val) {
         workspaceManager.setQueryEngine("owl2", val ?? null);
       },
+      createQueryEngine: (idx: any, tree?: any) => createOWL2QueryEngine(idx, tree),
       languageDef: owl2LangFallback,
     });
 

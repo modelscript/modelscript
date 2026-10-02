@@ -1,6 +1,5 @@
 // name: Constant13
 // status: correct
-// xfail:    true
 // #2155 - this pattern was used in the Buildings library
 
 model Constant13

@@ -68,7 +68,7 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `packages/exchange/`      | FMI 2.0/3.0 FMU export/import, SSP container toolkit, Co-Simulation master orchestrator                                                                                     |
 | `packages/cad/`           | CAD and ECAD engine — CSG primitives, OpenCascade operations, STEP serialization/deserialization, Gerber parser                                                             |
 | `packages/mcp/`           | Model Context Protocol server exposing ModelScript compilation, simulation, and analysis tools to AI agents                                                                 |
-| `apps/cli/`               | `msc` command-line interface — flatten, simulate, optimize, lint, render, fmu, csg, surrogate, mc                                                                           |
+| `apps/cli/`               | `modelscript` (`msx`) command-line interface — flatten, simulate, optimize, lint, render, fmu, csg, surrogate, mc                                                           |
 | `apps/api/`               | REST, GraphQL, SPARQL, and simulation backend API server                                                                                                                    |
 | `apps/ide/` & `apps/web/` | WebAssembly-powered web IDE and visual modeling environment                                                                                                                 |
 

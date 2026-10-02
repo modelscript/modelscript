@@ -84,7 +84,9 @@ def main():
         import glob
         
         ref_files = glob.glob(os.path.join(model_dir, f"{model}_refFmu_fmusim_*.csv"))
-        msc_path = os.path.join(model_dir, f"{model}_msc.csv")
+        msx_path = os.path.join(model_dir, f"{model}_msx.csv")
+        if not os.path.exists(msx_path):
+            msx_path = os.path.join(model_dir, f"{model}_msc.csv")
         fmusim_files = glob.glob(os.path.join(model_dir, "build_fmusim_*", "fmusim_res.csv"))
         oms_files = glob.glob(os.path.join(model_dir, "build_oms_*", "oms_res.csv"))
         
@@ -112,16 +114,16 @@ def main():
                         plt.plot(df_ref['time'], col, style, label=f'Ref-FMU ({mode_str}){var_suffix}', linewidth=2, alpha=0.5)
                         plotted = True
                     
-            # Native MSC
-            df_msc = parse_csv(msc_path)
-            if df_msc is not None:
-                col = extract_col(df_msc, msc_var)
+            # Native MSX
+            df_msx = parse_csv(msx_path)
+            if df_msx is not None:
+                col = extract_col(df_msx, msc_var)
                 if col is not None:
-                    print(f"Plotting {model} Native msc, {len(col)} points, col name: {msc_var}")
-                    plt.plot(df_msc['time'], col, 'b-', label=f'Native msc{var_suffix}', alpha=0.9, linewidth=3)
+                    print(f"Plotting {model} Native msx, {len(col)} points, col name: {msc_var}")
+                    plt.plot(df_msx['time'], col, 'b-', label=f'Native msx{var_suffix}', alpha=0.9, linewidth=3)
                     plotted = True
                     
-            # msc-FMU (fmusim)
+            # msx-FMU (fmusim)
             for f_file in fmusim_files:
                 df_fmusim = parse_csv(f_file)
                 if df_fmusim is not None:
@@ -132,7 +134,7 @@ def main():
                         plt.plot(df_fmusim['time'], col, label=f'fmusim ({mode}){var_suffix}', alpha=0.7)
                         plotted = True
                     
-            # msc-FMU (omsim)
+            # msx-FMU (omsim)
             for o_file in oms_files:
                 df_oms = parse_csv(o_file)
                 if df_oms is not None:

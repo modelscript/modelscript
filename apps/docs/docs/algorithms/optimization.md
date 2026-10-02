@@ -92,10 +92,10 @@ Solves multi-objective engineering trade-offs (e.g. simultaneously minimizing el
 
 - **Upstream Inputs**:
   - Trajectory residuals evaluated by [`Simulation Solvers`](./solvers-ode-dae.md) against [`CSV Datasets`](../languages/csv.md).
-  - Collocation constraint formulations from `msc optimize`.
+  - Collocation constraint formulations from `msx optimize`.
 - **Downstream Consumers**:
-  - Powers `msc falsify` adversarial requirement falsification across SysML v2 / Modelica / CAD.
-  - Powers `msc cosim optimize` for black-box multi-FMU tuning across SSP boundaries.
+  - Powers `msx falsify` adversarial requirement falsification across SysML v2 / Modelica / CAD.
+  - Powers `msx cosim optimize` for black-box multi-FMU tuning across SSP boundaries.
   - Powers `ModelicaCalibrator` with `hybrid-cmaes-lm` (CMA-ES global exploration + Levenberg-Marquardt quadratic polishing).
   - Powers `TradeStudyEngine.evolve` for generative multi-objective Pareto design trade studies.
 
@@ -140,8 +140,8 @@ const calResult = calibrator.calibrate();
 
 ```bash
 # 1. Adversarial requirement falsification with CMA-ES
-msc falsify --formula "always[0,10] (stress <= 180)" --algorithm cma-es --population 20
+msx falsify --formula "always[0,10] (stress <= 180)" --algorithm cma-es --population 20
 
 # 2. Black-box co-simulation parameter tuning with Differential Evolution
-msc cosim optimize ssp-archive.ssp --params "kp:0.1:10.0,kd:0.01:1.0" --objective "error_integral" --algorithm de
+msx cosim optimize ssp-archive.ssp --params "kp:0.1:10.0,kd:0.01:1.0" --objective "error_integral" --algorithm de
 ```

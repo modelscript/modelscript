@@ -1,7 +1,6 @@
 // name: DeclarationEquation2
 // keywords: equation, array
 // status: correct
-// xfail:    true
 //
 // Tests declaration equations with vectors
 //

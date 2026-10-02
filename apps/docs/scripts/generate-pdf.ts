@@ -77,7 +77,7 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
     ],
   },
   {
-    partTitle: "Part V: Command-Line Interface (msc)",
+    partTitle: "Part V: Command-Line Interface (msx)",
     files: [
       { title: "CLI Overview & Flags", relativePath: "cli/overview.md" },
       { title: "Command Reference", relativePath: "cli/commands.md" },

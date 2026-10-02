@@ -1,7 +1,6 @@
 // name: RecordNonPublic
 // keywords: record
 // status: correct
-// xfail:    true
 //
 // Tests the declaration and instantiation of a record
 // that has non-public components

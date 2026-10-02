@@ -15,6 +15,7 @@ import {
   ArenaStateMachine,
   ArenaStateMachineState,
   BinOp,
+  Causality,
   DAEBuilder,
   EqKind,
   ExprKind,
@@ -77,11 +78,13 @@ export class ArenaDAEPrinter {
   private visitedFunctions = new Set<DAEBuilder>();
   private isInsideAlgorithm = false;
   private insideState = false;
+  private isOldFrontend = false;
 
   constructor(out: Writer, arena: DAEBuilder, omcCompatibility = false) {
     this.out = out;
     this.arena = arena;
     this.omcCompatibility = omcCompatibility;
+    this.isOldFrontend = Boolean(arena.extensionMetadata?.isOldFrontend);
   }
 
   private getExprRank(id: number): number {
@@ -917,9 +920,11 @@ export class ArenaDAEPrinter {
 
     const type = a.getVarType(idx);
     const variability = a.getVarVariability(idx);
+    const isOldFrontend = Boolean(a.extensionMetadata?.isOldFrontend);
     const isFinal =
       a.isVarFinal(idx) ||
       (this.omcCompatibility &&
+        !isOldFrontend &&
         variability === Variability.Parameter &&
         (type === VarType.Enumeration ||
           rawCustomType?.startsWith("enumeration") ||
@@ -1307,6 +1312,13 @@ export class ArenaDAEPrinter {
       case StmtKind.ProcedureCall: {
         const callExprId = a.getStmtData1(idx);
         this.out.write(this.indent());
+        if (a.classKind === "function" && this.isOldFrontend) {
+          const fnNameId = a.getExprKind(callExprId) === ExprKind.Call ? a.getExprData1(callExprId) : -1;
+          const fnName = fnNameId >= 0 ? a.interner.resolve(fnNameId) : "";
+          if (fnName && fnName === a.name) {
+            this.out.write("return ");
+          }
+        }
         this.printExpr(callExprId);
         this.out.write(";\n");
         return idx + 1;
@@ -1525,7 +1537,8 @@ export class ArenaDAEPrinter {
       collectCalls(fn);
     }
 
-    const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+    this.isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+    const isOldFrontend = this.isOldFrontend;
 
     // Collect custom types used by variables in dae and in functions
     const usedTypeNames = new Set<string>();
@@ -1841,7 +1854,9 @@ export class ArenaDAEPrinter {
     this.out.write("\n");
 
     if (this.omcCompatibility) {
+      const isRecordCtor = Boolean(fn.description && fn.description.includes("record constructor"));
       const publicVars: number[] = [];
+      const outputVars: number[] = [];
       const protNoBinding: number[] = [];
       const protWithBinding: number[] = [];
 
@@ -1857,7 +1872,11 @@ export class ArenaDAEPrinter {
           }
         } else {
           if (fn.getVarVariability(i) !== Variability.Constant) {
-            publicVars.push(i);
+            if (isRecordCtor && fn.getVarCausality(i) === Causality.Output) {
+              outputVars.push(i);
+            } else {
+              publicVars.push(i);
+            }
           }
         }
       }
@@ -1872,7 +1891,7 @@ export class ArenaDAEPrinter {
         return 0;
       });
 
-      for (const i of [...publicVars, ...protNoBinding, ...protWithBinding]) {
+      for (const i of [...publicVars, ...protNoBinding, ...protWithBinding, ...outputVars]) {
         this.printVar(i);
       }
     } else {

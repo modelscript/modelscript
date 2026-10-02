@@ -1,7 +1,6 @@
 // name: RecordRestriction3
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 record R

@@ -141,7 +141,7 @@ export const Format: CommandModule<any, any> = {
 
     if (args.check) {
       if (unformattedCount > 0) {
-        console.error(`\nFound ${unformattedCount} unformatted file(s). Run 'msc format -w' to format in place.`);
+        console.error(`\nFound ${unformattedCount} unformatted file(s). Run 'msx format -w' to format in place.`);
         process.exit(1);
       } else {
         console.log(`All ${filePaths.length} file(s) are properly formatted.`);

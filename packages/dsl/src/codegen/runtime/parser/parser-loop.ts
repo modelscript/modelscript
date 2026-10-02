@@ -4333,7 +4333,7 @@ export function advanceGLR(): void {
             if (!didRecover && (head.prev != null || head.inErrorState)) {
               didRecover = recoverStackSummary(head, tok, frontierPos);
             }
-            if (!didRecover && configEnableBranchA1) {
+            if (configEnableBranchA1) {
               recoverSkipToken(head, tok, frontierPos);
             }
           }
@@ -4378,7 +4378,7 @@ export function advanceGLR(): void {
         if (!didRecover && (bestPausedHead.prev != null || bestPausedHead.inErrorState)) {
           didRecover = recoverStackSummary(bestPausedHead, resumeTok, bestPausedHead.pos);
         }
-        if (!didRecover && configEnableBranchA1) {
+        if (configEnableBranchA1) {
           recoverSkipToken(bestPausedHead, resumeTok, bestPausedHead.pos);
         }
       } else {
@@ -4401,7 +4401,7 @@ export function advanceGLR(): void {
               if (!didRec && (cand.prev != null || cand.inErrorState)) {
                 didRec = recoverStackSummary(cand, cTok, cand.pos);
               }
-              if (!didRec && configEnableBranchA1) {
+              if (configEnableBranchA1) {
                 recoverSkipToken(cand, cTok, cand.pos);
               }
             } else {

@@ -8,7 +8,7 @@
  *   2. Runs either SUNDIALS CVODE (with CVDiag) or an embedded RK4 integration loop
  *   3. Outputs CSV results to stdout
  *
- * Designed for `msc simulate --engine=c` and `msc simulate --engine=wasm`.
+ * Designed for `msx simulate --engine=c` and `msx simulate --engine=wasm`.
  */
 
 import type { FmiScalarVariable, FmuResult } from "@modelscript/exchange/fmu";

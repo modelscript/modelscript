@@ -46,7 +46,7 @@ export type ExprNode =
 
 export interface NonlinearConstraint {
   expr: ExprNode;
-  rel: "<=" | ">=" | "==" | "<" | ">";
+  rel: "<=" | ">=" | "==" | "<" | ">" | "!=";
   rhs: number;
 }
 
@@ -370,6 +370,19 @@ export class Hc4Contractor {
       case "==":
         targetInterval = new Interval(constraint.rhs, constraint.rhs);
         break;
+      case "!=": {
+        if (Math.abs(exprInterval.lo - constraint.rhs) < 1e-9 && Math.abs(exprInterval.hi - constraint.rhs) < 1e-9) {
+          return false;
+        }
+        if (Math.abs(exprInterval.hi - constraint.rhs) < 1e-9) {
+          targetInterval = new Interval(-Infinity, constraint.rhs - 1e-9);
+        } else if (Math.abs(exprInterval.lo - constraint.rhs) < 1e-9) {
+          targetInterval = new Interval(constraint.rhs + 1e-9, Infinity);
+        } else {
+          return true;
+        }
+        break;
+      }
       default:
         targetInterval = new Interval(-Infinity, Infinity);
         break;

@@ -123,14 +123,14 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ### Applications (`apps/`)
 
-| Package                                 | Responsibility                                                                                            |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)       | `msc` unified command-line toolchain — compile, simulate, optimize, lint, render, fmu, csg, surrogate, mc |
-| [`@modelscript/api`](./apps/api/)       | REST, GraphQL, SPARQL, and simulation backend API server                                                  |
-| [`@modelscript/ide`](./apps/ide/)       | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                     |
-| [`@modelscript/web`](./apps/web/)       | Web frontend for browsing and exploring libraries (NPM-style registry)                                    |
-| [`@modelscript/morsel`](./apps/morsel/) | Interactive visual editor — code editing, diagram viewer, simulation, and plotting                        |
-| [`@modelscript/docs`](./apps/docs/)     | Unified modelscript.org website and documentation portal (VitePress)                                      |
+| Package                                 | Responsibility                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)       | `modelscript` (`msx`) unified command-line toolchain — compile, simulate, optimize, lint, render, fmu, csg, surrogate, mc |
+| [`@modelscript/api`](./apps/api/)       | REST, GraphQL, SPARQL, and simulation backend API server                                                                  |
+| [`@modelscript/ide`](./apps/ide/)       | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                                     |
+| [`@modelscript/web`](./apps/web/)       | Web frontend for browsing and exploring libraries (NPM-style registry)                                                    |
+| [`@modelscript/morsel`](./apps/morsel/) | Interactive visual editor — code editing, diagram viewer, simulation, and plotting                                        |
+| [`@modelscript/docs`](./apps/docs/)     | Unified modelscript.org website and documentation portal (VitePress)                                                      |
 
 ---
 
@@ -209,40 +209,40 @@ npm run download-model --workspace=@modelscript/ide
 
 ---
 
-## CLI Usage (`msc`)
+## CLI Usage (`modelscript` / `msx`)
 
-After building, the unified CLI is available as `msc`:
+After building, the unified CLI is available as `modelscript` (alias `msx`):
 
 ```bash
 # Compile / flatten a Modelica model to flat DAE
-npx msc compile BouncingBall model.mo
-npx msc flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL
+npx msx compile BouncingBall model.mo
+npx msx flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL
 
 # Simulate a model (CSV or JSON output)
-npx msc simulate BouncingBall model.mo --stop-time 5
-npx msc simulate BouncingBall model.mo --format json
+npx msx simulate BouncingBall model.mo --stop-time 5
+npx msx simulate BouncingBall model.mo --format json
 
 # Export a model as an FMI 2.0/3.0 FMU
-npx msc fmu export MyModel model.mo --version 3.0 --output MyModel.fmu
+npx msx fmu export MyModel model.mo --version 3.0 --output MyModel.fmu
 
 # Solve an optimal control problem via direct collocation
-npx msc optimize MyModel model.mo \
+npx msx optimize MyModel model.mo \
   --objective "u^2" --controls "u" --control-bounds "u:-1:1" --stop-time 10
 
 # Continuous requirements verification
-npx msc verify SystemRequirement model.mo --sysml architecture.sysml
+npx msx verify SystemRequirement model.mo --sysml architecture.sysml
 
 # Evaluate and export CSG geometry to STEP/STL
-npx msc csg render chassis.scad --output chassis.step
+npx msx csg render chassis.scad --output chassis.step
 
 # Train a parametric surrogate Reduced Order Model
-npx msc surrogate train plant.fmu --samples 500 --output surrogate.json
+npx msx surrogate train plant.fmu --samples 500 --output surrogate.json
 
 # Lint Modelica and polyglot files
-npx msc lint model.mo
+npx msx lint model.mo
 
 # Render a model diagram to SVG
-npx msc render MyModel model.mo > diagram.svg
+npx msx render MyModel model.mo > diagram.svg
 ```
 
 ---

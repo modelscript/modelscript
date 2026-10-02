@@ -30,7 +30,7 @@ import {
   getNodeMerkleHash,
   S,
 } from "../arena";
-import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3 } from "./engine";
+import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool } from "./engine";
 import { inputLength, inputEncoding } from "../parser";
 import { UnmanagedMap64To64, createMap64To64, UnmanagedMap64 } from "../core/hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "../indexing/stub";
@@ -301,6 +301,7 @@ function ensureLspBuffers(): void {
   } else {
     lsp_clearVisited();
     t_lspBinaryBuffer.clear();
+    resetExpectedTokensPool();
   }
 }
 
@@ -696,7 +697,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
           let exp2: u32 = 0;
           for (let ei = 0; ei < errorCount; ei++) {
             if (t_errorStarts[ei] <= dEnd && t_errorEnds[ei] >= dStart) {
-              if (changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) {
+              if (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0) {
                 exp1 = t_errorArg2[ei];
                 exp2 = t_errorArg3[ei];
                 break;
@@ -714,7 +715,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
           let exp2: u32 = 0;
           for (let ei = 0; ei < errorCount; ei++) {
             if (t_errorStarts[ei] <= fallbackEnd && t_errorEnds[ei] >= fallbackStart) {
-              if (changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) {
+              if (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0) {
                 exp1 = t_errorArg2[ei];
                 exp2 = t_errorArg3[ei];
                 break;
@@ -2346,4 +2347,12 @@ export function lsp_semanticTokens_delta(astRoot: u32, prevResultId: u32): u32 {
 
 export function lsp_getSemanticTokensResultId(): u32 {
   return t_currentResultId;
+}
+
+export function lsp_getExpectedPool(): u32 {
+  return getExpectedTokensPoolPtr();
+}
+
+export function lsp_getExpectedPoolLen(): u32 {
+  return getExpectedTokensPoolLen();
 }

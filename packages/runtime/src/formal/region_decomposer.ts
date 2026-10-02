@@ -103,7 +103,14 @@ export function extractExprVariables(node: ExprNode, out: Set<string>): void {
  */
 function areComplementary(c1: NonlinearConstraint, c2: NonlinearConstraint): boolean {
   if (formatExprNode(c1.expr) !== formatExprNode(c2.expr)) return false;
-  if ((c1.rel === "<=" && c2.rel === ">=") || (c1.rel === ">=" && c2.rel === "<=")) {
+  const isOpposite =
+    (c1.rel === "<=" && (c2.rel === ">=" || c2.rel === ">")) ||
+    (c1.rel === ">=" && (c2.rel === "<=" || c2.rel === "<")) ||
+    (c1.rel === "<" && (c2.rel === ">=" || c2.rel === ">")) ||
+    (c1.rel === ">" && (c2.rel === "<=" || c2.rel === "<")) ||
+    (c1.rel === "==" && c2.rel === "!=") ||
+    (c1.rel === "!=" && c2.rel === "==");
+  if (isOpposite) {
     return Math.abs(c1.rhs - c2.rhs) <= 1e-2;
   }
   return false;

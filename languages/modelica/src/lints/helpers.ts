@@ -887,7 +887,7 @@ function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Rec
               break;
             }
           }
-          if (cls != 0 && !isClassKind(db, cls, "type")) continue;
+          if (cls != 0 && !isClassKind(db, cls, "type") && !isClassKind(db, cls, "class")) continue;
 
           if ($.enum_list != 0) {
             for (const _ of db.ast.getDescendants(spec, $.enum_list)) {
@@ -930,7 +930,7 @@ function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Rec
               break;
             }
           }
-          if (cls != 0 && !isClassKind(db, cls, "type")) continue;
+          if (cls != 0 && !isClassKind(db, cls, "type") && !isClassKind(db, cls, "class")) continue;
 
           for (const ext of db.ast.getDescendants(spec, $.extends_clause)) {
             for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {

@@ -22,13 +22,13 @@ const ReplyInputContainer = styled.div`
 
 const SplitContainer = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1.15fr;
-  gap: 20px;
-  padding: 16px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.95fr);
+  gap: 24px;
+  padding: 16px 20px;
   width: 100%;
   box-sizing: border-box;
 
-  @media (max-width: 992px) {
+  @media (max-width: 900px) {
     grid-template-columns: 1fr;
   }
 `;
@@ -87,6 +87,10 @@ const ConvergencePlotBox = styled.div`
   align-items: center;
   justify-content: center;
   position: relative;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
 `;
 
 const ActionDockBtn = styled.button<{ $primary?: boolean }>`
@@ -347,7 +351,7 @@ const PostDetailPage: React.FC = () => {
             </ParamSliderRow>
 
             <ConvergencePlotBox>
-              <svg width="260" height="130" viewBox="0 0 260 130">
+              <svg width="100%" height="130" viewBox="0 0 260 130" style={{ maxWidth: "340px", overflow: "visible" }}>
                 <line x1="10" y1="65" x2="250" y2="65" stroke="rgba(255,255,255,0.1)" strokeDasharray="3 3" />
                 <path
                   d={waveformPath}

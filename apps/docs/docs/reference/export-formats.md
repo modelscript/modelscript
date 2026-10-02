@@ -10,7 +10,7 @@ ModelScript provides full-featured import and export for the **Functional Mock-u
 
 ```bash
 # Export as FMI 3.0 Co-Simulation FMU
-npx msc fmu export DC_Motor motor.mo --version 3.0 --type cs --output DC_Motor.fmu
+npx msx fmu export DC_Motor motor.mo --version 3.0 --type cs --output DC_Motor.fmu
 ```
 
 ### Supported FMI Profiles
@@ -36,7 +36,7 @@ Packages complete multi-FMU simulation systems into standardized `.ssp` archives
 ModelScript linter and verification diagnostics can be exported in OASIS **SARIF v2.1.0** format:
 
 ```bash
-npx msc lint models/ --format sarif > linter-report.sarif
+npx msx lint models/ --format sarif > linter-report.sarif
 ```
 
 - Direct ingestion into **GitHub Code Scanning** and Azure DevOps pull request checks.
@@ -49,7 +49,7 @@ npx msc lint models/ --format sarif > linter-report.sarif
 For automated test suites and regression runners, ModelScript outputs **CTRF** reports (`ctrf-report.json`):
 
 ```bash
-npx msc test --format ctrf --output ctrf-report.json
+npx msx test --format ctrf --output ctrf-report.json
 ```
 
 - Compatible with CTRF GitHub Actions, GitLab CI, and CircleCI dashboards.
@@ -62,7 +62,7 @@ npx msc test --format ctrf --output ctrf-report.json
 When safety-critical systems require formal certification (e.g. ISO 26262, DO-178C), ModelScript's Nelson-Oppen Theory Coordinator can export rigorous mathematical proofs in LaTeX:
 
 ```bash
-npx msc verify SafetyConstraint system.mo --format latex > proof.tex
+npx msx verify SafetyConstraint system.mo --format latex > proof.tex
 ```
 
 - Exports step-by-step CDCL(T) deductions, Unsat cores, and interpolants.
@@ -72,7 +72,7 @@ npx msc verify SafetyConstraint system.mo --format latex > proof.tex
 
 ## 6. Time-Series Trajectory Formats
 
-Numerical simulation results (`msc simulate`) can be streamed to three primary trajectory formats:
+Numerical simulation results (`msx simulate`) can be streamed to three primary trajectory formats:
 
 | Format      | Extension  | Use Case                                                                                       |
 | :---------- | :--------- | :--------------------------------------------------------------------------------------------- |

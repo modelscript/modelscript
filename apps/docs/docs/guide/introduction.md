@@ -56,4 +56,4 @@ A unified background worker indexing mixed-language workspaces simultaneously. E
 
 ## Ready to Get Started?
 
-Proceed to the [Installation guide](./installation.md) to set up the `msc` CLI and VS Code extension, or follow [Getting Started](./getting-started.md) to build your first connected model.
+Proceed to the [Installation guide](./installation.md) to set up the `msx` CLI and VS Code extension, or follow [Getting Started](./getting-started.md) to build your first connected model.

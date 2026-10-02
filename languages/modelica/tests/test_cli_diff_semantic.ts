@@ -38,7 +38,7 @@ equation
 end Motor;`,
 );
 
-console.log("Testing msc diff with terminal output...");
+console.log("Testing msx diff with terminal output...");
 const outTerminal = execFileSync("node", ["apps/cli/dist/main.js", "diff", fileOld, fileNew], { encoding: "utf8" });
 console.log(outTerminal);
 
@@ -46,7 +46,7 @@ assert.ok(outTerminal.includes("+ [INSERT]"));
 assert.ok(outTerminal.includes("- [DELETE]"));
 assert.ok(outTerminal.includes("BREAKING"));
 
-console.log("Testing msc diff with JSON output...");
+console.log("Testing msx diff with JSON output...");
 const outJsonStr = execFileSync("node", ["apps/cli/dist/main.js", "diff", fileOld, fileNew, "--format", "json"], {
   encoding: "utf8",
 });
@@ -57,7 +57,7 @@ assert.strictEqual(outJson.summary.deleted, 1);
 assert.strictEqual(outJson.summary.breaking, 1);
 assert.strictEqual(outJson.changes.length >= 2, true);
 
-console.log("Testing msc diff --breaking-only exit code...");
+console.log("Testing msx diff --breaking-only exit code...");
 let exitCode = 0;
 try {
   execFileSync("node", ["apps/cli/dist/main.js", "diff", fileOld, fileNew, "--breaking-only"], { stdio: "pipe" });

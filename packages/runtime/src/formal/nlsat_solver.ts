@@ -405,6 +405,71 @@ export class MultiPoly {
   }
 
   /**
+   * Projects critical roots of a bivariate constraint onto `targetVar` by computing the discriminant
+   * with respect to `futureVar` (for quadratic in `futureVar`) or the leading coefficient (for linear).
+   */
+  public projectQuadraticRoots(assignment: Map<string, number>, targetVar: string, futureVar: string): number[] {
+    const yCoeffs = new Map<number, Map<number, number>>();
+
+    for (const t of this.terms) {
+      let coeff = t.coeff;
+      let degX = 0;
+      let degY = 0;
+      let valid = true;
+
+      for (const [v, d] of t.deg.entries()) {
+        if (v === targetVar) {
+          degX = d;
+        } else if (v === futureVar) {
+          degY = d;
+        } else {
+          const val = assignment.get(v);
+          if (val === undefined) {
+            valid = false;
+            break;
+          }
+          coeff *= Math.pow(val, d);
+        }
+      }
+
+      if (!valid) continue;
+
+      let xMap = yCoeffs.get(degY);
+      if (!xMap) {
+        xMap = new Map<number, number>();
+        yCoeffs.set(degY, xMap);
+      }
+      xMap.set(degX, (xMap.get(degX) ?? 0) + coeff);
+    }
+
+    const toUni = (xMap?: Map<number, number>): UnivariatePoly => {
+      if (!xMap || xMap.size === 0) return new UnivariatePoly([0]);
+      const maxDeg = Math.max(0, ...Array.from(xMap.keys()));
+      const arr = new Array<number>(maxDeg + 1).fill(0);
+      for (const [d, c] of xMap.entries()) arr[d] = c;
+      return new UnivariatePoly(arr);
+    };
+
+    const A = toUni(yCoeffs.get(2));
+    const B = toUni(yCoeffs.get(1));
+    const C = toUni(yCoeffs.get(0));
+
+    const roots: number[] = [];
+    if (!A.isZero()) {
+      // Discriminant Delta(x) = B(x)^2 - 4*A(x)*C(x)
+      const delta = B.mul(B).sub(A.mul(C).mulScalar(4));
+      roots.push(...isolateRealRoots(delta));
+      if (A.degree() > 0) {
+        roots.push(...isolateRealRoots(A));
+      }
+    } else if (!B.isZero() && B.degree() > 0) {
+      roots.push(...isolateRealRoots(B));
+    }
+
+    return roots;
+  }
+
+  /**
    * Constructs a MultiPoly from an AST ExprNode. Returns null if expression contains non-polynomial operators.
    */
   public static fromExprNode(node: ExprNode): MultiPoly | null {
@@ -673,6 +738,20 @@ export class NlsatSolver {
           allRoots.push(...roots);
         }
 
+        // Project critical roots of coupled constraints mentioning future variables
+        const futureVars = this.variableOrder.slice(currentVarIdx + 1);
+        for (const fv of futureVars) {
+          for (const c of this.constraints) {
+            if (c.vars.includes(varName) && c.vars.includes(fv)) {
+              const otherAssigned = c.vars.every((v) => v === varName || v === fv || assignment.has(v));
+              if (otherAssigned) {
+                const projRoots = c.poly.projectQuadraticRoots(assignment, varName, fv);
+                allRoots.push(...projRoots);
+              }
+            }
+          }
+        }
+
         // Decompose R into 1D sign-invariant cells
         const candidateCells = build1DCells(allRoots);
 
@@ -735,6 +814,17 @@ export class NlsatSolver {
           assignment.delete(varName);
 
           if (currentVarIdx === 0) {
+            const hasComplexCoupling = this.constraints.some(
+              (c) => c.vars.length > 1 && c.vars.some((v) => c.poly.degree(v) > 2),
+            );
+            if (hasComplexCoupling) {
+              return {
+                status: "UNKNOWN",
+                iterations,
+                durationMs: performance.now() - startTime,
+                summary: "UNKNOWN: Higher-degree multivariate constraints cannot be projected by 1D CAD.",
+              };
+            }
             return {
               status: "UNSAT",
               iterations,

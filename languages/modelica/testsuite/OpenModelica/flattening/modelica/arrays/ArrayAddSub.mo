@@ -1,7 +1,6 @@
 // name:     ArrayAddSub
 // keywords: array
 // status:   incorrect
-// xfail:    true
 //
 // Drmodelica: 7.6 Arithmetic Array Operators (p. 223)
 //

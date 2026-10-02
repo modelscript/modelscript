@@ -96,7 +96,7 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
           for (const m of data.pending) {
             console.log(`  ${c.yellow("⏳")} ${m.name}`);
           }
-          console.log(c.dim("\nRun 'msc db upgrade' to apply pending migrations."));
+          console.log(c.dim("\nRun 'msx db upgrade' to apply pending migrations."));
         }
       } catch (err: any) {
         console.error(c.red(`Could not connect to ModelScript API at ${apiUrl}: ${err.message}`));

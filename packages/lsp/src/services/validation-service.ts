@@ -1686,9 +1686,7 @@ export class ValidationService {
       // Match class / function / block / model definitions with algorithms
       const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
       let match: RegExpExecArray | null;
-
-      const cached = this.documentCache?.get(effectiveUri);
-
+      const cached = this.documentManager.documentTrees.get(effectiveUri);
       while ((match = funcRegex.exec(text)) !== null) {
         const kind = match[1]!;
         const name = match[2]!;

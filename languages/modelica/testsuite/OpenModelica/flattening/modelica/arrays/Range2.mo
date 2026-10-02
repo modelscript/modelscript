@@ -1,7 +1,6 @@
 // name:     Range2
 // keywords: array bug1825
 // status:   correct
-// xfail:    true
 //
 // Some tests of range expressions with tricky limits due to floating point
 // rounding errors.

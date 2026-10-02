@@ -1,7 +1,6 @@
 // name:     UnknownDimensionMod.mo
 // keywords: deduce unknown dimensions from modifier
 // status:   correct
-// xfail:    true
 //
 // check that we can deduce dimensions from array/matrix modifiers
 //

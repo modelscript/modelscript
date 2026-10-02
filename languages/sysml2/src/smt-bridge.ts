@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { QueryDB } from "@modelscript/runtime";
+import { OCTAGON_INF, OctagonDBM } from "@modelscript/runtime";
 import { extractSysML2Constraints, type ExtractedConstraint } from "./constraint-extractor.js";
 import { RealSimplexSolver, parseLinearExpression } from "./real-simplex.js";
 export { RealSimplexSolver, parseLinearExpression, type LinearConstraint } from "./real-simplex.js";
 export { OCTAGON_INF };
-
-import { OCTAGON_INF, OctagonDBM } from "@modelscript/runtime";
 
 /** Backward-compatible alias for the shared OctagonDBM class. */
 export { OctagonDBM as SmtOctagonDBM };

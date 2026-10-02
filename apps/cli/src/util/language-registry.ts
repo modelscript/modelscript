@@ -87,6 +87,12 @@ export function saveUserCatalog(catalog: UserRegistryCatalog): void {
 
 export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   {
+    id: "modelscript",
+    name: "ModelScript",
+    extensions: [".modelscript", ".msx"],
+    isBuiltIn: true,
+  },
+  {
     id: "modelica",
     name: "Modelica",
     extensions: [".mo", ".mos", ".msim"],
@@ -505,7 +511,7 @@ function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
       const wasmPath = manifest.wasmPath || resolveBuiltInWasmPath(manifest.id);
       if (!wasmPath || !fs.existsSync(wasmPath)) {
         throw new Error(
-          `Parser binary for language '${manifest.name}' not found at: ${wasmPath || "(unresolved)"}.\nRun 'msc build' to compile the parser.`,
+          `Parser binary for language '${manifest.name}' not found at: ${wasmPath || "(unresolved)"}.\nRun 'msx build' to compile the parser.`,
         );
       }
 

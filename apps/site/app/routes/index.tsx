@@ -167,7 +167,7 @@ export default function Index() {
             />
             <PackageCard
               name="@modelscript/cli"
-              description="Command-line interface — the msc command for parsing, linting, flattening, simulating, and rendering."
+              description="Command-line interface — modelscript (msx) command for parsing, linting, flattening, simulating, and rendering."
               install="npm install -g @modelscript/cli"
             />
             <PackageCard
@@ -243,10 +243,10 @@ export default function Index() {
           <QuickStartStep
             step={2}
             title="Flatten a model"
-            code="msc flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL"
+            code="msx flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL"
           />
-          <QuickStartStep step={3} title="Simulate" code="msc simulate BouncingBall model.mo --stop-time 5" />
-          <QuickStartStep step={4} title="Render a diagram" code="msc render MyModel model.mo > diagram.svg" />
+          <QuickStartStep step={3} title="Simulate" code="msx simulate BouncingBall model.mo --stop-time 5" />
+          <QuickStartStep step={4} title="Render a diagram" code="msx render MyModel model.mo > diagram.svg" />
         </div>
       </section>
 

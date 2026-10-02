@@ -200,14 +200,18 @@ export class FalsificationRunner {
           };
         }
 
-        // Compute downhill gradient: ∇_p rho
-        const grad = this.computeRobustnessGradient(curParams, eps);
+        // Compute downhill gradient: ∇_p rho in normalized unit hypercube coordinates [0, 1]^d
+        const rawGrad = this.computeRobustnessGradient(curParams, eps);
         evaluations += 2 * this.problem.parameters.length;
 
-        // Gradient norm
+        // Scale by parameter ranges to form normalized dimensionless gradient: d(rho)/d(p_hat)
+        const normGrad: Record<string, number> = {};
         let normSq = 0;
-        for (const k in grad) {
-          normSq += (grad[k] ?? 0) ** 2;
+        for (const b of this.problem.parameters) {
+          const range = Math.max(1e-6, b.max - b.min);
+          const scaled = (rawGrad[b.name] ?? 0) * range;
+          normGrad[b.name] = scaled;
+          normSq += scaled * scaled;
         }
         const norm = Math.sqrt(normSq);
 
@@ -216,11 +220,11 @@ export class FalsificationRunner {
           break;
         }
 
-        // Gradient descent step: p = p - lr * grad / norm * (param_range)
+        // Gradient descent step in normalized domain: p_next = p - lr * range * (normGrad / norm)
         const nextParams: Record<string, number> = {};
         for (const b of this.problem.parameters) {
           const range = Math.max(1e-6, b.max - b.min);
-          const stepSize = lr * range * ((grad[b.name] ?? 0) / norm);
+          const stepSize = lr * range * ((normGrad[b.name] ?? 0) / norm);
           nextParams[b.name] = (curParams[b.name] ?? 0) - stepSize;
         }
 

@@ -4,11 +4,11 @@ This dashboard tracks the numerical parity and structural compatibility of the M
 
 ### Options & Terminology
 
-- **Native msc:** The ModelScript Arena Simulator running the source `.mo` file directly. Uses the internal WASM CVODE solver by default.
-- **msc-FMU (fmusim):** The exported ModelScript FMU (`.fmu`) simulated using the official FMI standard `fmusim` C-binary. We explicitly pass `--output-interval` to ensure exact parity with the Reference FMU execution.
+- **Native msx:** The ModelScript Arena Simulator running the source `.mo` file directly. Uses the internal WASM CVODE solver by default.
+- **msx-FMU (fmusim):** The exported ModelScript FMU (`.fmu`) simulated using the official FMI standard `fmusim` C-binary. We explicitly pass `--output-interval` to ensure exact parity with the Reference FMU execution.
   - **Model Exchange (ME):** The FMU only supplies state derivatives. The host (`fmusim`) integrates the equations. We explicitly configure `fmusim` to use the **CVODE** algorithm (`--solver cvode`).
   - **Co-Simulation (CS):** The FMU contains its own embedded solver. ModelScript natively compiles a custom **4th-order Runge-Kutta (RK4)** integration algorithm directly into the FMU binary to advance the state.
-- **msc-FMU (omsim):** The exported ModelScript FMU (`.fmu`) simulated using OpenModelica's `OMSimulator` binary (which also utilizes CVODE/KINSOL algorithms internally).
+- **msx-FMU (omsim):** The exported ModelScript FMU (`.fmu`) simulated using OpenModelica's `OMSimulator` binary (which also utilizes CVODE/KINSOL algorithms internally).
 
 ### Error Metric
 
@@ -21,7 +21,7 @@ Values are reported as `Max Absolute Error (NRMSE %)`. A simulation passes if th
 
 ## Simulation Matrix
 
-| Model        | FMI | Mode | Native msc | msc-FMU (fmusim)  | msc-FMU (omsim)   |
+| Model        | FMI | Mode | Native msx | msx-FMU (fmusim)  | msx-FMU (omsim)   |
 | ------------ | --- | ---- | ---------- | ----------------- | ----------------- |
 | BouncingBall | 2.0 | CS   | ❌ Fail    | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) |
 | BouncingBall | 2.0 | ME   | ❌ Fail    | ✅ 5.3e-5 (0.00%) | ✅ 2.5e-4 (0.02%) |

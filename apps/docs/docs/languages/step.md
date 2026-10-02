@@ -26,8 +26,8 @@ Traditional physical simulation abstracts mechanical bodies into point masses or
 
 ```bash
 # Ingest and verify mass properties of a mechanical chassis
-npx msc csg evaluate chassis.step --mass-properties
+npx msx csg evaluate chassis.step --mass-properties
 
 # Render STEP assembly hierarchy and component trees
-npx msc render chassis.step --format svg
+npx msx render chassis.step --format svg
 ```

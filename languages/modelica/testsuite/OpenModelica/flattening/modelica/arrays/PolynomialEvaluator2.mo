@@ -1,7 +1,6 @@
 // name:     PolynomialEvaluator2
 // keywords: function, algorithm, scoping, array
 // status:   correct
-// xfail:    true
 
 
 function polyeval

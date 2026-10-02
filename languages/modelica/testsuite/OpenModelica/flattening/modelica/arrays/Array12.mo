@@ -1,7 +1,6 @@
 // name:     Array12
 // keywords: arrays, type conversion
 // status:   correct
-// xfail:    true
 //
 // Type conversion from Integer to Real in arrays.
 //

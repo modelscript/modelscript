@@ -241,15 +241,13 @@ const ProfileFooterContainer = styled.div`
   }
 `;
 
-const GuestCtaCard = styled.div`
+const GuestFooter = styled.div`
   margin-top: auto;
-  padding: 16px;
-  background: var(--color-bg-card, rgba(15, 23, 42, 0.65));
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
+  padding: 12px 8px 8px 8px;
+  border-top: 1px solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 
   @media (max-width: 1280px) {
     display: none;
@@ -261,20 +259,20 @@ const GuestSignInBtn = styled(Link)`
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 8px 16px;
-  border-radius: 8px;
-  background: var(--gradient-cta);
-  color: white;
-  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border-glass);
+  color: var(--color-text-primary);
+  font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s;
 
   &:hover {
-    box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
-    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.08);
     text-decoration: none;
-    color: white;
+    color: var(--color-text-primary);
   }
 `;
 
@@ -283,21 +281,19 @@ const GuestSignUpBtn = styled(Link)`
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 7px 16px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid var(--color-border-default);
-  color: var(--color-fg-default);
-  font-size: 14px;
-  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--gradient-cta);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
   text-decoration: none;
   transition: all 0.2s;
 
   &:hover {
-    background: var(--color-canvas-subtle);
-    border-color: var(--color-border-muted);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
     text-decoration: none;
-    color: var(--color-fg-default);
+    color: white;
   }
 `;
 
@@ -498,14 +494,19 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
       )}
 
       {!user && (
-        <GuestCtaCard>
-          <Text style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-fg-default)" }}>Join ModelScript</Text>
-          <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)", lineHeight: 1.4 }}>
-            Sign in to simulate physical systems, publish models, and collaborate.
+        <GuestFooter>
+          <Text style={{ fontSize: "11px", color: "var(--color-text-tertiary)", letterSpacing: "0.2px" }}>
+            ModelScript Hub
           </Text>
-          <GuestSignInBtn to="/login">Sign in</GuestSignInBtn>
-          <GuestSignUpBtn to="/signup">Create account</GuestSignUpBtn>
-        </GuestCtaCard>
+          <Box display="flex" gap={2}>
+            <GuestSignInBtn to="/login" style={{ flex: 1 }}>
+              Log in
+            </GuestSignInBtn>
+            <GuestSignUpBtn to="/signup" style={{ flex: 1 }}>
+              Sign up
+            </GuestSignUpBtn>
+          </Box>
+        </GuestFooter>
       )}
     </SidebarContainer>
   );

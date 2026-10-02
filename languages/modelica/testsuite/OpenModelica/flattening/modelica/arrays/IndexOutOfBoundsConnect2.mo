@@ -1,7 +1,6 @@
 // name:     IndexOutOfBoundsConnect2
 // keywords: array subscript connect
 // status:   incorrect
-// xfail:    true
 //
 // Tests that indices out of bounds are caught in connect statements.
 //

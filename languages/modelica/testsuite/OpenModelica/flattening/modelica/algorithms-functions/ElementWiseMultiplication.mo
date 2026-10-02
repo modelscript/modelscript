@@ -1,7 +1,6 @@
 // name:     ElementWiseMultiplication.mo
 // keywords: function, array, algorithm
 // status:   correct
-// xfail:    true
 //
 // Drmodelica:
 //

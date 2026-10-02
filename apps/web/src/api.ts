@@ -939,4 +939,92 @@ export const getCloudSimulationResultCsv = async (jobId: string): Promise<string
   return data;
 };
 
+// ── Cluster Health & Live HPC Queues ───────────────────────────────
+
+export interface ClusterStatus {
+  backend: "slurm-rest" | "slurm" | "local-process" | string;
+  connected: boolean;
+  latencyMs: number;
+  version?: string;
+  stagingBackend?: string;
+  partitions: { name: string; state: string }[];
+  nodesCount: number;
+  nodes?: { name: string; state: string }[];
+}
+
+export const getClusterStatus = async (): Promise<ClusterStatus> => {
+  try {
+    const { data } = await api.get<ClusterStatus>("/cae/cluster/status");
+    return data;
+  } catch {
+    return {
+      backend: "local-process",
+      connected: true,
+      latencyMs: 8,
+      version: "local",
+      partitions: [{ name: "default", state: "UP" }],
+      nodesCount: 1,
+      nodes: [{ name: "compute-local", state: "idle" }],
+    };
+  }
+};
+
+export interface UnifiedJob {
+  id: string | number;
+  name: string;
+  domain: string;
+  profile: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "SUCCESS" | "FAILED" | string;
+  progress?: number;
+  costCredits?: number;
+  elapsedSeconds?: number;
+  startedAt?: string | number;
+  hasVtu?: boolean;
+  hasCsv?: boolean;
+}
+
+export const getUnifiedUserJobs = async (): Promise<UnifiedJob[]> => {
+  const jobs: UnifiedJob[] = [];
+
+  try {
+    const cloudRes = await api.get<{ jobs: any[] }>("/cloud/jobs");
+    if (cloudRes.data?.jobs && Array.isArray(cloudRes.data.jobs)) {
+      for (const j of cloudRes.data.jobs) {
+        jobs.push({
+          id: j.jobId,
+          name: j.name || `Job #${String(j.jobId).slice(0, 8)}`,
+          domain: j.domain || "modelica",
+          profile: j.profile || "standard",
+          status: j.status,
+          costCredits: j.costCredits,
+          startedAt: j.startTime,
+        });
+      }
+    }
+  } catch {}
+
+  try {
+    const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit: 5 } });
+    if (caeRes.data?.jobs && Array.isArray(caeRes.data.jobs)) {
+      for (const j of caeRes.data.jobs) {
+        if (!jobs.some((existing) => String(existing.id) === String(j.id))) {
+          jobs.push({
+            id: j.id,
+            name: j.name,
+            domain: j.solver === "su2" ? "cfd" : j.solver === "calculix" ? "fea" : "simulation",
+            profile: j.computeProfile || "standard",
+            status: j.status === "SUCCESS" ? "completed" : j.status === "FAILED" ? "failed" : "running",
+            costCredits: j.costCredits,
+            startedAt: j.startedAt,
+            hasVtu: j.hasVtu,
+            hasCsv: j.hasScalars,
+          });
+        }
+      }
+    }
+  } catch {}
+
+  return jobs;
+};
+
 export default api;

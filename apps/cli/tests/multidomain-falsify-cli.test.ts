@@ -9,7 +9,7 @@ import { runMultidomainFalsification } from "../src/commands/falsify.js";
 
 describe("CLI Multi-Domain Adversarial Falsification Suite", () => {
   it("should falsify multi-domain requirement and generate counterexample CAD model", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-falsify-test-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-falsify-test-"));
     const cadFilePath = path.join(tmpDir, "bracket.scad");
     const traceFilePath = path.join(tmpDir, "counterexample.trace.json");
     const outCadFilePath = path.join(tmpDir, "bracket_counterexample.scad");

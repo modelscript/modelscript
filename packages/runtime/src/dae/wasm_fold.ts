@@ -2523,7 +2523,12 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     }
   }
 
-  const cloneExpr = (exprId: number, indexSuffix: string, currentShape: number[] | null): number => {
+  const cloneExpr = (
+    exprId: number,
+    indexSuffix: string,
+    currentShape: number[] | null,
+    reconstructArrays = false,
+  ): number => {
     if (exprId < 0) return exprId;
     const kind = dae.getExprKind(exprId);
 
@@ -2535,6 +2540,11 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           const shape = arrayShapes.get(name)!;
           if (currentShape && shape.join(",") === currentShape.join(",")) {
             return out.addNameExpr(`${name}${indexSuffix}`);
+          }
+          if (reconstructArrays && !currentShape && indexSuffix === "") {
+            const indices = generateIndices(shape);
+            const elemExprs = indices.map((idx) => out.addNameExpr(`${name}[${idx.join(",")}]`));
+            return out.addArrayCtorExpr(elemExprs);
           }
         }
         return out.addNameExpr(name || "");
@@ -2618,7 +2628,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const args: number[] = [];
         for (let i = 0; i < argCount; i++) {
           const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
-          args.push(cloneExpr(argExprId, indexSuffix, currentShape));
+          args.push(cloneExpr(argExprId, indexSuffix, currentShape, true));
         }
         return out.addCallExpr(dae.interner.resolve(funcNameId) || "", args);
       }

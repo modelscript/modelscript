@@ -409,7 +409,27 @@ export class DpllTSolver {
             } else {
               // Negated constraint
               activeLits.push(-litId);
-              const negatedRel = constraint.rel === "<=" ? ">=" : constraint.rel === ">=" ? "<=" : "==";
+              let negatedRel: "<=" | ">=" | "==" | "<" | ">" | "!=";
+              switch (constraint.rel) {
+                case "<=":
+                  negatedRel = ">";
+                  break;
+                case ">=":
+                  negatedRel = "<";
+                  break;
+                case "<":
+                  negatedRel = ">=";
+                  break;
+                case ">":
+                  negatedRel = "<=";
+                  break;
+                case "==":
+                  negatedRel = "!=";
+                  break;
+                case "!=":
+                  negatedRel = "==";
+                  break;
+              }
               activeConstraints.push({
                 expr: constraint.expr,
                 rel: negatedRel,

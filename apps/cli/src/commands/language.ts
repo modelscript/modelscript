@@ -46,7 +46,7 @@ export const Language: CommandModule<any, any> = {
 
       console.log("\nUser-Registered Languages:");
       if (userRegistered.length === 0) {
-        console.log("  (None registered yet. Use 'msc language register <path>' or 'msc build --register')");
+        console.log("  (None registered yet. Use 'msx language register <path>' or 'msx build --register')");
       } else {
         for (const u of userRegistered) {
           console.log(
@@ -76,7 +76,7 @@ export const Language: CommandModule<any, any> = {
 
     if (action === "unregister") {
       if (!target) {
-        console.error("Error: Please specify the language ID to unregister (e.g. 'msc language unregister mylang').");
+        console.error("Error: Please specify the language ID to unregister (e.g. 'msx language unregister mylang').");
         process.exit(1);
       }
       const success = unregisterLanguage(target);
