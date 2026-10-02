@@ -11,6 +11,65 @@ function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
 }
 
+function enhanceWithCadLink(hoverContent: string, token: string, text: string, offset: number): string {
+  if (!token) return hoverContent;
+
+  const lineStart = text.lastIndexOf("\n", offset) + 1;
+  const nextLine = text.indexOf("\n", offset);
+  const lineEnd = nextLine === -1 ? text.length : nextLine;
+  const lineText = text.slice(lineStart, lineEnd);
+
+  let coupledPartName: string | null = null;
+  const cadMatch =
+    lineText.match(/CAD(?:Port)?\([^)]*?(?:feature|part)\s*=\s*"([^"]+)"/i) ||
+    lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i);
+
+  if (cadMatch) {
+    coupledPartName = cadMatch[1];
+  } else {
+    const lowerToken = token.toLowerCase();
+    const bioCadKeywords = [
+      "lead",
+      "cannula",
+      "ventricle",
+      "atrium",
+      "myocardium",
+      "valve",
+      "leaflet",
+      "anchor",
+      "housing",
+      "impeller",
+      "patch",
+      "catheter",
+      "stent",
+      "sensor",
+      "motor",
+      "rotor",
+      "electrode",
+      "apex",
+    ];
+    if (
+      bioCadKeywords.some((k) => lowerToken.includes(k)) ||
+      lowerToken.endsWith("_anchor") ||
+      lowerToken.endsWith("_cad") ||
+      lowerToken.endsWith("_part") ||
+      lowerToken.startsWith("cad_")
+    ) {
+      coupledPartName = token;
+    }
+  }
+
+  if (coupledPartName) {
+    const commandArg = encodeURIComponent(JSON.stringify({ partName: coupledPartName }));
+    return (
+      hoverContent +
+      `\n\n---\n**Coupled 3D CAD Anchor:**\n[🔍 Inspect in 3D Anatomy Canvas](command:modelscript.focusCadPart?${commandArg})`
+    );
+  }
+
+  return hoverContent;
+}
+
 export function registerHoverProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
@@ -97,8 +156,10 @@ export function registerHoverProvider(
               while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
               let tokenEnd = offset;
               while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
+              const token = text.slice(tokenStart, tokenEnd).trim();
+              const enriched = enhanceWithCadLink(hoverText, token, text, offset);
               return {
-                contents: { kind: "markdown", value: hoverText },
+                contents: { kind: "markdown", value: enriched },
                 range: {
                   start: document.positionAt(tokenStart),
                   end: document.positionAt(tokenEnd),
@@ -168,19 +229,84 @@ export function registerHoverProvider(
         if (token) {
           for (const [fnName, proof] of proofMap.entries()) {
             const entryStates = proof.summary?.blockEntryStates as Map<number, any> | undefined;
-            if (entryStates) {
-              for (const state of entryStates.values()) {
-                const ival = state.intervals?.get?.(token);
-                if (ival && !ival.isTop?.() && !ival.isBottom?.()) {
-                  hoverContent += `\n\n---\n**Formal Invariant (Sound Abstract Domain):**\n- \`${token} ∈ ${ival.toString()}\` (Verified Invariant in \`${fnName}\`)`;
-                  break;
+            const exitStates = proof.summary?.blockExitStates as Map<number, any> | undefined;
+
+            let matchedIval: any = undefined;
+
+            // 1. Try finding a basic block spanning the hovered cursor offset
+            if (proof.cfg?.blocks) {
+              for (const [bId, block] of proof.cfg.blocks) {
+                const inBlock = block.instructions.some(
+                  (inst: any) =>
+                    inst.startByte !== undefined &&
+                    inst.endByte !== undefined &&
+                    offset >= inst.startByte &&
+                    offset <= inst.endByte,
+                );
+                if (inBlock) {
+                  const state = exitStates?.get(bId) || entryStates?.get(bId);
+                  const ival = state?.intervals?.get?.(token);
+                  if (ival && !ival.isTop?.() && !ival.isBottom?.()) {
+                    matchedIval = ival;
+                    break;
+                  }
                 }
               }
+            }
+
+            // 2. Sound fallback: inspect reachable blocks where token is bound
+            if (!matchedIval && (entryStates || exitStates)) {
+              const states = [
+                ...(entryStates ? Array.from(entryStates.values()) : []),
+                ...(exitStates ? Array.from(exitStates.values()) : []),
+              ];
+              for (const state of states) {
+                const ival = state?.intervals?.get?.(token);
+                if (ival && !ival.isTop?.() && !ival.isBottom?.()) {
+                  if (!matchedIval) {
+                    matchedIval = ival;
+                  } else if (matchedIval.join) {
+                    matchedIval = matchedIval.join(ival);
+                  }
+                }
+              }
+            }
+
+            if (matchedIval) {
+              hoverContent += `\n\n---\n**Formal Invariant (Sound Abstract Domain):**\n- \`${token} ∈ ${matchedIval.toString()}\` (Verified Invariant in \`${fnName}\`)`;
+              break;
+            }
+          }
+        }
+      }
+
+      // Enhance hover with DAE reachability bounds and algebraic loop certificates
+      const daeMap = validationService.modelicaDaeVerificationResultsByUri?.get(document.uri);
+      if (daeMap) {
+        let tokenStart = offset;
+        while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
+        let tokenEnd = offset;
+        while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
+        const token = text.slice(tokenStart, tokenEnd).trim();
+
+        if (token) {
+          for (const [modelName, daeProof] of daeMap.entries()) {
+            const varBound = daeProof.variableBounds?.get(token);
+            if (varBound && !varBound.isTop?.() && !varBound.isBottom?.()) {
+              hoverContent += `\n\n---\n**DAE Reachability Invariant:**\n- \`${token} \u2208 ${varBound.toString()}\` \u2713 (Sound BLT Reachability in \`${modelName}\`)`;
             }
           }
         }
       }
     }
+
+    // Enhance hover with coupled 3D CAD navigation link (Workstream 4)
+    let hoveredStart = offset;
+    while (hoveredStart > 0 && /[a-zA-Z0-9_]/.test(text[hoveredStart - 1]!)) hoveredStart--;
+    let hoveredEnd = offset;
+    while (hoveredEnd < text.length && /[a-zA-Z0-9_]/.test(text[hoveredEnd]!)) hoveredEnd++;
+    const hoveredToken = text.slice(hoveredStart, hoveredEnd).trim();
+    hoverContent = enhanceWithCadLink(hoverContent, hoveredToken, text, offset);
 
     return {
       contents: {

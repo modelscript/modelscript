@@ -99,6 +99,17 @@ export class MultiBodyAnimationPanel {
     });
   }
 
+  public focusPart(partName: string): void {
+    this._panel.webview.postMessage({
+      type: "focusPart",
+      partName,
+    });
+  }
+
+  public reveal(column?: vscode.ViewColumn): void {
+    this._panel.reveal(column);
+  }
+
   public dispose() {
     MultiBodyAnimationPanel.currentPanel = undefined;
     this._panel.dispose();

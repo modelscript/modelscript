@@ -208,6 +208,31 @@ export function computeAABBDistance(a: AABB, b: AABB): number {
 }
 
 /**
+ * Computes the pair of closest 3D points between two AABBs.
+ * Useful for spatial proximity vectors and dynamic clearance line rendering.
+ */
+export function computeAABBClosestPoints(a: AABB, b: AABB): [[number, number, number], [number, number, number]] {
+  const ptA: [number, number, number] = [0, 0, 0];
+  const ptB: [number, number, number] = [0, 0, 0];
+
+  for (let i = 0; i < 3; i++) {
+    if (a.max[i] < b.min[i]) {
+      ptA[i] = a.max[i];
+      ptB[i] = b.min[i];
+    } else if (b.max[i] < a.min[i]) {
+      ptA[i] = a.min[i];
+      ptB[i] = b.max[i];
+    } else {
+      const mid = (Math.max(a.min[i], b.min[i]) + Math.min(a.max[i], b.max[i])) / 2;
+      ptA[i] = mid;
+      ptB[i] = mid;
+    }
+  }
+
+  return [ptA, ptB];
+}
+
+/**
  * Verifies spatial clearance and interference across all parts in an Assembly.
  *
  * @param asm Assembly containing named PartEntry objects.

@@ -4,11 +4,13 @@ import { createWasmParser } from "@modelscript/dsl/bindings";
 import assert from "node:assert";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { legend, registerSemanticTokensProvider } from "../src/providers/semanticTokensProvider.js";
 
 test("LSP Semantic Tokens Test Suite", async (t) => {
-  const wasmPath = path.resolve("languages/modelica/dist/parser.wasm");
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  const wasmPath = path.resolve(repoRoot, "languages/modelica/dist/parser.wasm");
   const { parser } = await createWasmParser(wasmPath);
 
   const modelicaSource = `model SimplePendulum "A pendulum"

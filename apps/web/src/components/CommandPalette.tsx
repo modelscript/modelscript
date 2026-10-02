@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  CodeIcon,
   CpuIcon,
   GearIcon,
   GlobeIcon,
@@ -330,6 +331,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         icon: <RepoIcon size={16} />,
         action: () => {
           navigate("/repos");
+          onClose();
+        },
+      },
+      {
+        id: "nav-ide",
+        category: "Navigation",
+        title: "ModelScript IDE Workbench",
+        subtitle: "Launch VS Code Web editor with WASM solvers and CAD viewers",
+        icon: <CodeIcon size={16} />,
+        action: () => {
+          navigate("/ide");
           onClose();
         },
       },

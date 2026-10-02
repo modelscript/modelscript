@@ -255,6 +255,17 @@ export class CadViewerPanel {
     }
   }
 
+  public focusPart(partName: string) {
+    this._panel.webview.postMessage({
+      type: "focusPart",
+      partName,
+    });
+  }
+
+  public reveal(column?: vscode.ViewColumn) {
+    this._panel.reveal(column);
+  }
+
   public dispose() {
     CadViewerPanel.currentPanel = undefined;
     this._panel.dispose();

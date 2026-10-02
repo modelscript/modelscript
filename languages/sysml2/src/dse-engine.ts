@@ -171,6 +171,19 @@ export function rankTOPSIS(frontier: DSECandidate[], objectives: DSEObjective[])
   return frontier;
 }
 
+export class SplitMix32PRNG {
+  private state: number;
+  constructor(seed: number = Date.now()) {
+    this.state = seed | 0;
+  }
+  public next(): number {
+    let z = (this.state = (this.state + 0x9e3779b9) | 0);
+    z = Math.imul(z ^ (z >>> 16), 0x21f0aaad);
+    z = Math.imul(z ^ (z >>> 15), 0x735a2d97);
+    return ((z ^ (z >>> 15)) >>> 0) / 4294967296;
+  }
+}
+
 export class SysML2DSEEngine {
   /**
    * Executes Design Space Exploration across continuous and discrete configurations.
@@ -179,16 +192,32 @@ export class SysML2DSEEngine {
     const { parameters, objectives, constraints = [], evaluate } = problem;
     const sampleCount = problem.sampleCount ?? 32;
 
+    const rng = new SplitMix32PRNG(problem.seed ?? 123456789);
+
+    // Dimension-wise random permutations for true Latin Hypercube sampling
+    const permutations: number[][] = [];
+    for (let pIdx = 0; pIdx < parameters.length; pIdx++) {
+      const perm: number[] = Array.from({ length: sampleCount }, (_, idx) => idx);
+      // Fisher-Yates shuffle
+      for (let k = sampleCount - 1; k > 0; k--) {
+        const j = Math.floor(rng.next() * (k + 1));
+        const temp = perm[k]!;
+        perm[k] = perm[j]!;
+        perm[j] = temp;
+      }
+      permutations.push(perm);
+    }
+
     const candidates: DSECandidate[] = [];
 
-    // Latin Hypercube style stratified sampling
+    // True Latin Hypercube sampling with dimension-wise stratification
     for (let i = 0; i < sampleCount; i++) {
       const paramVals: Record<string, number> = {};
 
       for (let pIdx = 0; pIdx < parameters.length; pIdx++) {
         const p = parameters[pIdx]!;
-        // Stratified slice
-        const slice = (i + Math.random()) / sampleCount;
+        const bin = permutations[pIdx]![i]!;
+        const slice = (bin + rng.next()) / sampleCount;
         let val = p.min + slice * (p.max - p.min);
 
         if (p.step) {

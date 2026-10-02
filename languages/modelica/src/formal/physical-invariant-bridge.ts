@@ -40,18 +40,27 @@ export class PhysicalInvariantBridge {
     stateNames: string[],
   ): Map<string, [number, number]> {
     const envelopes = new Map<string, [number, number]>();
+    if (!flowpipeResult?.steps || flowpipeResult.steps.length === 0) {
+      return envelopes;
+    }
 
     for (let i = 0; i < stateNames.length; i++) {
       envelopes.set(stateNames[i]!, [Infinity, -Infinity]);
     }
 
+    let foundAny = false;
     for (const step of flowpipeResult.steps) {
       for (let i = 0; i < stateNames.length && i < step.tubes.length; i++) {
         const name = stateNames[i]!;
         const tube = step.tubes[i]!;
         const curr = envelopes.get(name)!;
         envelopes.set(name, [Math.min(curr[0], tube.lo), Math.max(curr[1], tube.hi)]);
+        foundAny = true;
       }
+    }
+
+    if (!foundAny) {
+      envelopes.clear();
     }
 
     return envelopes;
@@ -65,11 +74,18 @@ export class PhysicalInvariantBridge {
     stateNames: string[],
   ): Map<string, [number, number]> {
     const envelopes = new Map<string, [number, number]>();
+    if (
+      !hybridResult?.segments ||
+      (hybridResult.segments.length === 0 && (!hybridResult.jumps || hybridResult.jumps.length === 0))
+    ) {
+      return envelopes;
+    }
 
     for (let i = 0; i < stateNames.length; i++) {
       envelopes.set(stateNames[i]!, [Infinity, -Infinity]);
     }
 
+    let foundAny = false;
     // 1. Continuous mode segments
     for (const seg of hybridResult.segments) {
       for (const step of seg.steps) {
@@ -78,18 +94,26 @@ export class PhysicalInvariantBridge {
           const tube = step.tubes[i]!;
           const curr = envelopes.get(name)!;
           envelopes.set(name, [Math.min(curr[0], tube.lo), Math.max(curr[1], tube.hi)]);
+          foundAny = true;
         }
       }
     }
 
     // 2. Discrete mode jump enclosures
-    for (const jump of hybridResult.jumps) {
-      for (let i = 0; i < stateNames.length && i < jump.postJumpEnclosure.length; i++) {
-        const name = stateNames[i]!;
-        const tube = jump.postJumpEnclosure[i]!;
-        const curr = envelopes.get(name)!;
-        envelopes.set(name, [Math.min(curr[0], tube.lo), Math.max(curr[1], tube.hi)]);
+    if (hybridResult.jumps) {
+      for (const jump of hybridResult.jumps) {
+        for (let i = 0; i < stateNames.length && i < jump.postJumpEnclosure.length; i++) {
+          const name = stateNames[i]!;
+          const tube = jump.postJumpEnclosure[i]!;
+          const curr = envelopes.get(name)!;
+          envelopes.set(name, [Math.min(curr[0], tube.lo), Math.max(curr[1], tube.hi)]);
+          foundAny = true;
+        }
       }
+    }
+
+    if (!foundAny) {
+      envelopes.clear();
     }
 
     return envelopes;

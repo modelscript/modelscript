@@ -195,6 +195,25 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   config.productConfiguration = config.productConfiguration || {};
   
   el.setAttribute('data-settings', JSON.stringify(config));
+
+  // Notify parent window when embedded in ModelScript Hub shell
+  if (window.parent && window.parent !== window) {
+    try {
+      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+    } catch (e) {}
+
+    window.addEventListener('message', function(ev) {
+      if (!ev.data || typeof ev.data !== 'object') return;
+      if (ev.data.type === 'MODELSCRIPT_AUTH_SYNC' && ev.data.token) {
+        try {
+          sessionStorage.setItem('modelscript.token', ev.data.token);
+          if (ev.data.user) {
+            sessionStorage.setItem('modelscript.user', JSON.stringify(ev.data.user));
+          }
+        } catch (e) {}
+      }
+    });
+  }
 })();
 </script>`;
 

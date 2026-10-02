@@ -100,6 +100,8 @@ const btnClear = document.getElementById("btn-clear")!;
 const btn3dAnimation = document.getElementById("btn-3d-animation")!;
 const btnResetView = document.getElementById("btn-reset-view")!;
 const checkboxSmooth = document.getElementById("checkbox-smooth") as HTMLInputElement;
+const checkboxEcg = document.getElementById("checkbox-ecg") as HTMLInputElement | null;
+let isEcgMode = false;
 
 function escapeHtmlSim(unsafe: string): string {
   if (!unsafe) return "";
@@ -134,6 +136,15 @@ let currentParameters: Record<string, HTMLInputElement> = {};
 let currentInterpolation = "smooth";
 checkboxSmooth?.addEventListener("change", (e) => {
   currentInterpolation = (e.target as HTMLInputElement).checked ? "smooth" : "linear";
+  if (isLiveMode) {
+    drawLive();
+  } else {
+    draw();
+  }
+});
+
+checkboxEcg?.addEventListener("change", () => {
+  isEcgMode = !!checkboxEcg?.checked;
   if (isLiveMode) {
     drawLive();
   } else {
@@ -1273,24 +1284,75 @@ function draw() {
   // Clear
   ctx.clearRect(0, 0, w, h);
 
-  // Grid lines
-  ctx.strokeStyle = gridColor;
-  ctx.lineWidth = 1;
   const xTicks = niceTicksFor(tMin, tMax, 8);
   const yTicks = niceTicksFor(yMin, yMax, 6);
 
-  ctx.beginPath();
-  for (const xt of xTicks) {
-    const x = xScale(xt);
-    ctx.moveTo(x, margin.top);
-    ctx.lineTo(x, margin.top + plotH);
+  if (isEcgMode) {
+    // Clinical ECG Pink Background
+    ctx.fillStyle = isDark ? "#241419" : "#fff0f3";
+    ctx.fillRect(margin.left, margin.top, plotW, plotH);
+
+    // Minor grid (1mm x 1mm -> 40ms x 0.1mV)
+    ctx.strokeStyle = isDark ? "rgba(244, 143, 177, 0.22)" : "#f8bbd0";
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    const tStartMinor = Math.floor(tMin / 0.04) * 0.04;
+    for (let curT = tStartMinor; curT <= tMax; curT += 0.04) {
+      const x = xScale(curT);
+      if (x >= margin.left && x <= margin.left + plotW) {
+        ctx.moveTo(x, margin.top);
+        ctx.lineTo(x, margin.top + plotH);
+      }
+    }
+    const yStartMinor = Math.floor(yMin / 0.1) * 0.1;
+    for (let curY = yStartMinor; curY <= yMax; curY += 0.1) {
+      const yPos = yScale(curY);
+      if (yPos >= margin.top && yPos <= margin.top + plotH) {
+        ctx.moveTo(margin.left, yPos);
+        ctx.lineTo(margin.left + plotW, yPos);
+      }
+    }
+    ctx.stroke();
+
+    // Major grid (5mm x 5mm -> 200ms x 0.5mV)
+    ctx.strokeStyle = isDark ? "rgba(244, 143, 177, 0.65)" : "#e91e63";
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    const tStartMajor = Math.floor(tMin / 0.2) * 0.2;
+    for (let curT = tStartMajor; curT <= tMax; curT += 0.2) {
+      const x = xScale(curT);
+      if (x >= margin.left && x <= margin.left + plotW) {
+        ctx.moveTo(x, margin.top);
+        ctx.lineTo(x, margin.top + plotH);
+      }
+    }
+    const yStartMajor = Math.floor(yMin / 0.5) * 0.5;
+    for (let curY = yStartMajor; curY <= yMax; curY += 0.5) {
+      const yPos = yScale(curY);
+      if (yPos >= margin.top && yPos <= margin.top + plotH) {
+        ctx.moveTo(margin.left, yPos);
+        ctx.lineTo(margin.left + plotW, yPos);
+      }
+    }
+    ctx.stroke();
+  } else {
+    // Standard Grid lines
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    for (const xt of xTicks) {
+      const x = xScale(xt);
+      ctx.moveTo(x, margin.top);
+      ctx.lineTo(x, margin.top + plotH);
+    }
+    for (const yt of yTicks) {
+      const yy = yScale(yt);
+      ctx.moveTo(margin.left, yy);
+      ctx.lineTo(margin.left + plotW, yy);
+    }
+    ctx.stroke();
   }
-  for (const yt of yTicks) {
-    const yy = yScale(yt);
-    ctx.moveTo(margin.left, yy);
-    ctx.lineTo(margin.left + plotW, yy);
-  }
-  ctx.stroke();
 
   // Axes
   ctx.strokeStyle = axisColor;
@@ -1462,6 +1524,122 @@ function draw() {
       }
     }
 
+    ctx.restore();
+  }
+
+  // ── Automated Pacemaker Event Flags & Refractory Windows (Biomedical Telemetry) ──
+  if (isEcgMode) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(margin.left, margin.top, plotW, plotH);
+    ctx.clip();
+
+    for (let vi = 0; vi < states.length; vi++) {
+      const varName = states[vi].toLowerCase();
+      const isAtrialPacing =
+        varName.includes("ap") ||
+        varName.includes("atrial_pace") ||
+        varName.includes("pace_a") ||
+        varName.includes("pacing_a") ||
+        varName.includes("pacinga");
+      const isVentricularPacing =
+        varName.includes("vp") ||
+        varName.includes("vent_pace") ||
+        varName.includes("pace_v") ||
+        varName.includes("pacing_v") ||
+        varName.includes("pacingv");
+      const isAtrialSensing = varName.includes("as") || varName.includes("atrial_sense") || varName.includes("sense_a");
+      const isVentricularSensing =
+        varName.includes("vs") || varName.includes("vent_sense") || varName.includes("sense_v");
+      const isCardioSignal =
+        varName.includes("vm") ||
+        varName.includes("ecg") ||
+        varName.includes("egm") ||
+        varName.includes("voltage") ||
+        varName.includes("pacing");
+
+      if (isAtrialPacing || isVentricularPacing || isAtrialSensing || isVentricularSensing) {
+        let lastEventTime = -1;
+        for (let i = 0; i < t.length; i++) {
+          const val = y[i]?.[vi];
+          if (val !== undefined && val > 0.5 && t[i] - lastEventTime > 0.12) {
+            lastEventTime = t[i];
+            const px = xScale(t[i]);
+
+            const label = isAtrialPacing ? "AP" : isVentricularPacing ? "VP" : isAtrialSensing ? "AS" : "VS";
+            const badgeColor = isAtrialPacing
+              ? "#2196f3"
+              : isVentricularPacing
+                ? "#ff9800"
+                : isAtrialSensing
+                  ? "#4caf50"
+                  : "#00bcd4";
+
+            if (isVentricularPacing || isVentricularSensing) {
+              const blankingEnd = xScale(t[i] + 0.028);
+              ctx.fillStyle = "rgba(255, 87, 34, 0.18)";
+              ctx.fillRect(px, margin.top, Math.max(2, blankingEnd - px), plotH);
+
+              const pvarpEnd = xScale(t[i] + 0.25);
+              ctx.fillStyle = "rgba(255, 152, 0, 0.08)";
+              ctx.fillRect(px, margin.top, Math.max(4, pvarpEnd - px), plotH);
+            }
+
+            ctx.strokeStyle = badgeColor;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 2]);
+            ctx.beginPath();
+            ctx.moveTo(px, margin.top);
+            ctx.lineTo(px, margin.top + plotH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = badgeColor;
+            ctx.fillRect(px - 10, margin.top + 6, 20, 14);
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(label, px, margin.top + 13);
+          }
+        }
+      } else if (isCardioSignal) {
+        for (let i = 1; i < t.length - 1; i++) {
+          const vPrev = y[i - 1]?.[vi] ?? 0;
+          const vCurr = y[i]?.[vi] ?? 0;
+          const vNext = y[i + 1]?.[vi] ?? 0;
+          const dt = t[i] - t[i - 1];
+          if (dt > 0 && Math.abs(vCurr - vPrev) / dt > 40 && vCurr > vPrev && vCurr > vNext) {
+            const px = xScale(t[i]);
+            const py = yScale(vCurr);
+            ctx.fillStyle = "#ff9800";
+            ctx.beginPath();
+            ctx.arc(px, py, 3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+    ctx.restore();
+
+    // Clinical ECG telemetry strip header banner
+    ctx.save();
+    ctx.fillStyle = isDark ? "rgba(36, 20, 25, 0.92)" : "rgba(255, 240, 243, 0.95)";
+    ctx.fillRect(margin.left, margin.top, plotW, 20);
+    ctx.strokeStyle = isDark ? "rgba(244, 143, 177, 0.5)" : "#f48fb1";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(margin.left, margin.top, plotW, 20);
+
+    ctx.fillStyle = isDark ? "#f48fb1" : "#c2185b";
+    ctx.font = "bold 10px var(--vscode-editor-font-family, monospace)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "🩺 CLINICAL STRIP: 25 mm/s | 10 mm/mV | Major: 200ms / 0.5mV | Minor: 40ms / 0.1mV | Mode: DDD | PVARP: 250ms",
+      margin.left + 8,
+      margin.top + 10,
+    );
     ctx.restore();
   }
 

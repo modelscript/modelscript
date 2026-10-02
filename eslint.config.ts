@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import eslint from "@eslint/js";
+import reactHooks from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
@@ -75,6 +76,7 @@ export default defineConfig([
   {
     plugins: {
       "modelscript-headers": licenseHeaderPlugin,
+      "react-hooks": reactHooks,
     },
     rules: {
       "modelscript-headers/header-presence": "error",

@@ -37,6 +37,8 @@ export interface CadAnnotation {
   scale?: [number, number, number];
   dynamicPosition?: string;
   dynamicRotation?: string;
+  dynamicScale?: string;
+  dynamicDeformation?: string;
 }
 
 export interface CadPortAnnotation {

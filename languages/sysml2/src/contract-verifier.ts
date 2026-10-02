@@ -175,7 +175,7 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
   if (isSimple) {
     const gBounds = new Map<string, { lower: number; upper: number }>();
     for (const g of pConstraints) {
-      const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
+      const varName = g.variable;
       const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
       if (g.operator === "<=" || g.operator === "<") {
         b.upper = Math.min(b.upper, g.value);
@@ -188,9 +188,16 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
       gBounds.set(varName, b);
     }
 
+    // Contradictory premises (UNSAT): False => Conclusion is vacuously entailed!
+    for (const [_, b] of gBounds) {
+      if (b.lower > b.upper + 1e-9) {
+        return { entailed: true };
+      }
+    }
+
     let allHold = true;
     for (const a of cConstraints) {
-      const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
+      const varName = a.variable;
       const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
       const gLo = b.lower;
       const gHi = b.upper;
@@ -229,8 +236,7 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
     if (c.nonlinear) {
       extractVariables(c.nonlinear.expr, allVarNames);
     } else {
-      const varName = c.variable.includes(".") ? c.variable.split(".").pop()! : c.variable;
-      allVarNames.add(varName);
+      allVarNames.add(c.variable);
     }
   }
 
@@ -248,7 +254,7 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
         if (p.nonlinear) {
           nl = p.nonlinear;
         } else {
-          const varName = p.variable.includes(".") ? p.variable.split(".").pop()! : p.variable;
+          const varName = p.variable;
           const rel =
             p.operator === "<=" || p.operator === "<" ? "<=" : p.operator === ">=" || p.operator === ">" ? ">=" : "==";
           nl = { expr: { kind: "var", name: varName }, rel, rhs: p.value };
@@ -265,7 +271,7 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
 
       const initialBox = new Map<string, Interval>();
       for (const v of allVarNames) {
-        initialBox.set(v, new Interval(-1000, 1000));
+        initialBox.set(v, new Interval(-1e6, 1e6));
       }
 
       const solver = new DpllTSolver({
@@ -307,20 +313,34 @@ export function verifyAssumeGuaranteePair(
   guarantees: string[],
   assumptions: string[],
   connectionName?: string,
+  portMapping?: Map<string, string> | Record<string, string>,
 ): ContractVerificationResult {
   const violations: ContractViolation[] = [];
 
-  const gConstraints = guarantees.flatMap((g) => parseGuardConstraints(g));
+  let effectiveGuarantees = guarantees;
+  if (portMapping) {
+    const mapEntries = portMapping instanceof Map ? Array.from(portMapping.entries()) : Object.entries(portMapping);
+    effectiveGuarantees = guarantees.map((g) => {
+      let mapped = g;
+      for (const [src, dst] of mapEntries) {
+        const regex = new RegExp(`\\b${src.replace(/\./g, "\\.")}\\b`, "g");
+        mapped = mapped.replace(regex, dst);
+      }
+      return mapped;
+    });
+  }
+
+  const gConstraints = effectiveGuarantees.flatMap((g) => parseGuardConstraints(g));
   const aConstraints = assumptions.flatMap((a) => parseGuardConstraints(a));
 
   if (gConstraints.length === 0 || aConstraints.length === 0) {
     return { isSatisfied: true, violations: [] };
   }
 
-  // Exact real bounds per variable
+  // Exact real bounds per canonical variable
   const gBounds = new Map<string, { lower: number; upper: number }>();
   for (const g of gConstraints) {
-    const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
+    const varName = g.variable;
     const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
     if (g.operator === "<=" || g.operator === "<") {
       b.upper = Math.min(b.upper, g.value);
@@ -337,13 +357,13 @@ export function verifyAssumeGuaranteePair(
   for (let i = 0; i < aConstraints.length; i++) {
     const a = aConstraints[i]!;
     const aRaw = assumptions[i] || `${a.variable} ${a.operator} ${a.value}`;
-    const ent = checkSymbolicEntailment(guarantees, aRaw);
+    const ent = checkSymbolicEntailment(effectiveGuarantees, aRaw);
 
     if (!ent.entailed) {
-      const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
-      const b = gBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+      const b = gBounds.get(a.variable) ?? { lower: -Infinity, upper: Infinity };
       const gLo = b.lower;
       const gHi = b.upper;
+      const varName = a.variable.includes(".") ? a.variable.split(".").pop()! : a.variable;
 
       let cexVal = 0;
       let reasonText =
@@ -365,7 +385,8 @@ export function verifyAssumeGuaranteePair(
         sourceEndpoint: supplierName,
         targetEndpoint: consumerName,
         guarantee:
-          guarantees.find((g) => g.includes(varName) || g.includes(a.variable)) || `${varName} ∈ [${gLo}, ${gHi}]`,
+          effectiveGuarantees.find((g) => g.includes(varName) || g.includes(a.variable)) ||
+          `${varName} ∈ [${gLo}, ${gHi}]`,
         assumption: aRaw,
         variable: varName,
         counterexample: cexVal,
@@ -565,12 +586,16 @@ export class ContractAlgebra {
   /**
    * System-level compositional contract verification (OCRA / SAVVS paradigm).
    *
-   * 1. Compatibility Check:
+   * 1. Dependency Validation:
+   *    Validates that component contracts do not have circular assume-guarantee
+   *    dependencies without temporal delays (soundness requirement).
+   *
+   * 2. Compatibility Check:
    *    For each component i:
    *      (A_sys /\ \bigwedge_{j != i} G_j) => A_i
    *    Proves that the environment and peer components satisfy all component assumptions.
    *
-   * 2. Refinement / Dominance Check:
+   * 3. Refinement / Dominance Check:
    *    (A_sys /\ \bigwedge_i G_i) => G_sys
    *    Proves that component guarantees collectively deliver the top-level system guarantees.
    */
@@ -581,7 +606,101 @@ export class ContractAlgebra {
     const compatibilityViolations: CompositionalProofResult["compatibilityViolations"] = [];
     const refinementViolations: CompositionalProofResult["refinementViolations"] = [];
 
-    // 1. Compatibility Check
+    // Helper to extract referenced variables and detect temporal delay operators
+    const extractContractVars = (constraints: string[]): { vars: Set<string>; hasTemporalDelay: boolean } => {
+      const vars = new Set<string>();
+      let hasTemporalDelay = false;
+      for (const str of constraints) {
+        if (/\bprev\s*\(|\bdelay\s*\(|\blatch\b/i.test(str)) {
+          hasTemporalDelay = true;
+        }
+        const parsed = parseGuardConstraints(str);
+        for (const g of parsed) {
+          if (g.nonlinear) {
+            extractVariables(g.nonlinear.expr, vars);
+          } else {
+            vars.add(g.variable);
+          }
+        }
+      }
+      return { vars, hasTemporalDelay };
+    };
+
+    // 1. Dependency Graph Construction & Circular Dependency Validation
+    const compOutputs = componentContracts.map((c) => extractContractVars(c.guarantees));
+    const compInputs = componentContracts.map((c) => extractContractVars(c.assumptions));
+
+    const adj = new Map<number, number[]>();
+    for (let i = 0; i < componentContracts.length; i++) adj.set(i, []);
+
+    for (let i = 0; i < componentContracts.length; i++) {
+      for (let j = 0; j < componentContracts.length; j++) {
+        if (i === j) continue;
+        for (const outVar of compOutputs[i]!.vars) {
+          if (compInputs[j]!.vars.has(outVar)) {
+            adj.get(i)!.push(j);
+            break;
+          }
+        }
+      }
+    }
+
+    // DFS Cycle Detection
+    const visited = new Array(componentContracts.length).fill(0);
+    const parent = new Array(componentContracts.length).fill(-1);
+    let detectedCycle: number[] | null = null;
+
+    const dfs = (node: number): boolean => {
+      visited[node] = 1;
+      for (const neighbor of adj.get(node) || []) {
+        if (visited[neighbor] === 1) {
+          const path: number[] = [neighbor, node];
+          let curr = node;
+          while (curr !== neighbor && parent[curr] !== -1 && parent[curr] !== neighbor) {
+            curr = parent[curr];
+            path.push(curr);
+          }
+          path.push(neighbor);
+          path.reverse();
+          detectedCycle = path;
+          return true;
+        } else if (visited[neighbor] === 0) {
+          parent[neighbor] = node;
+          if (dfs(neighbor)) return true;
+        }
+      }
+      visited[node] = 2;
+      return false;
+    };
+
+    for (let i = 0; i < componentContracts.length; i++) {
+      if (visited[i] === 0) {
+        if (dfs(i)) break;
+      }
+    }
+
+    if (detectedCycle) {
+      const cycleNodes = detectedCycle as number[];
+      let hasTemporalDelayInCycle = false;
+      for (const idx of cycleNodes) {
+        if (compInputs[idx]!.hasTemporalDelay || compOutputs[idx]!.hasTemporalDelay) {
+          hasTemporalDelayInCycle = true;
+          break;
+        }
+      }
+
+      if (!hasTemporalDelayInCycle) {
+        const cycleNames = cycleNodes.map((idx) => componentContracts[idx]!.name);
+        const cycleStr = cycleNames.join(" -> ");
+        compatibilityViolations.push({
+          component: cycleNames[0]!,
+          missingAssumption: "temporal-delay",
+          reason: `Circular assume-guarantee dependency detected between components [${cycleStr}]. Compositional reasoning without temporal delay is unsound.`,
+        });
+      }
+    }
+
+    // 2. Compatibility Check
     for (let i = 0; i < componentContracts.length; i++) {
       const comp = componentContracts[i]!;
       const siblingGuarantees = componentContracts.filter((_, idx) => idx !== i).flatMap((c) => c.guarantees);

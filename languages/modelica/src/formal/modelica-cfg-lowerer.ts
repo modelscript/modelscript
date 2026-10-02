@@ -362,6 +362,354 @@ export class ModelicaCFGLowerer {
   }
 
   /**
+   * Lowers structured ModelicaStatement nodes directly from an algorithm_section CST node.
+   */
+  static extractStatementsFromCst(algNode: any, defaultStartByte: number = 0): ModelicaStatement[] {
+    if (!algNode) return [];
+    if (!algNode.children || algNode.children.length === 0) {
+      if (algNode.text) {
+        return this.parseStatements(algNode.text, algNode.startIndex ?? defaultStartByte);
+      }
+      return [];
+    }
+
+    const statements: ModelicaStatement[] = [];
+    for (const child of algNode.children) {
+      const type = normCstType(child.type);
+      if (type === "statement") {
+        const stmt = this.extractSingleStatementFromCst(child);
+        if (stmt) statements.push(stmt);
+      }
+    }
+
+    if (statements.length === 0 && algNode.text) {
+      return this.parseStatements(algNode.text, algNode.startIndex ?? defaultStartByte);
+    }
+
+    return statements;
+  }
+
+  private static extractSingleStatementFromCst(stmtNode: any): ModelicaStatement | null {
+    if (!stmtNode) return null;
+    const rawText = stmtNode.text || "";
+    const startByte = stmtNode.startIndex ?? 0;
+    const endByte = stmtNode.endIndex ?? startByte + rawText.length;
+
+    const findChild = (node: any, t: string) => node.children?.find((c: any) => normCstType(c.type) === t);
+    const findDescendants = (node: any, t: string) => {
+      const res: any[] = [];
+      const walk = (n: any) => {
+        if (!n) return;
+        if (normCstType(n.type) === t) res.push(n);
+        if (n.children) {
+          for (const c of n.children) walk(c);
+        }
+      };
+      walk(node);
+      return res;
+    };
+
+    // 1. If statement
+    const ifNode =
+      findChild(stmtNode, "ifstatement") ??
+      findChild(stmtNode, "if_statement") ??
+      (normCstType(stmtNode.type) === "ifstatement" || normCstType(stmtNode.type) === "if_statement" ? stmtNode : null);
+    if (ifNode) {
+      let currentMode: "init" | "if_cond" | "then" | "elseif_cond" | "elseif_body" | "else_body" = "init";
+      let curElseIf: { condExpr: string; stmts: ModelicaStatement[] } | null = null;
+      let condExpr = "";
+      const thenStmts: ModelicaStatement[] = [];
+      const elseStmts: ModelicaStatement[] = [];
+      const elseIfs: { condExpr: string; stmts: ModelicaStatement[] }[] = [];
+
+      for (const ch of ifNode.children || []) {
+        const t = normCstType(ch.type);
+        const txt = (ch.text || "").trim();
+        if (txt === "if") {
+          currentMode = "if_cond";
+        } else if (txt === "elseif") {
+          curElseIf = { condExpr: "", stmts: [] };
+          elseIfs.push(curElseIf);
+          currentMode = "elseif_cond";
+        } else if (txt === "then") {
+          currentMode = curElseIf ? "elseif_body" : "then";
+        } else if (txt === "else") {
+          curElseIf = null;
+          currentMode = "else_body";
+        } else if (txt === "end if" || txt === "endif" || txt === "end") {
+          break;
+        } else if (t === "expression" && (currentMode === "if_cond" || currentMode === "init")) {
+          condExpr = ch.text?.trim() || "";
+          currentMode = "then";
+        } else if (t === "expression" && currentMode === "elseif_cond" && curElseIf) {
+          curElseIf.condExpr = ch.text?.trim() || "";
+          currentMode = "elseif_body";
+        } else if (t === "statement") {
+          const s = this.extractSingleStatementFromCst(ch);
+          if (s) {
+            if (currentMode === "else_body") {
+              elseStmts.push(s);
+            } else if (currentMode === "elseif_body" && curElseIf) {
+              curElseIf.stmts.push(s);
+            } else {
+              thenStmts.push(s);
+            }
+          }
+        }
+      }
+
+      if (!condExpr) {
+        const exprNodes = findDescendants(ifNode, "expression");
+        condExpr = exprNodes[0]?.text?.trim() || "";
+      }
+
+      if (thenStmts.length === 0 && elseStmts.length === 0 && rawText) {
+        const parsed = this.parseStatements(rawText, startByte);
+        if (parsed.length > 0) return parsed[0]!;
+      }
+
+      return {
+        kind: "if",
+        condExpr,
+        thenStmts,
+        elseStmts,
+        elseIfs,
+        rawText,
+        startByte,
+        endByte,
+      };
+    }
+
+    // 2. For statement
+    const forNode =
+      findChild(stmtNode, "forstatement") ??
+      findChild(stmtNode, "for_statement") ??
+      (normCstType(stmtNode.type) === "forstatement" || normCstType(stmtNode.type) === "for_statement"
+        ? stmtNode
+        : null);
+    if (forNode) {
+      let loopVar = "";
+      let rangeText = "";
+      const indicesNode = findChild(forNode, "forindices") ?? findChild(forNode, "for_indices");
+      const indexNodes = indicesNode
+        ? findDescendants(indicesNode, "forindex").concat(findDescendants(indicesNode, "for_index"))
+        : findDescendants(forNode, "forindex").concat(findDescendants(forNode, "for_index"));
+
+      if (indexNodes.length > 0) {
+        const idNode = findDescendants(indexNodes[0], "identifier")[0];
+        loopVar = idNode?.text?.trim() || "";
+        const exprNode = findDescendants(indexNodes[0], "expression")[0];
+        rangeText = exprNode?.text?.trim() || "";
+      } else {
+        const idNode = findDescendants(forNode, "identifier")[0];
+        loopVar = idNode?.text?.trim() || "";
+        const exprNodes = findDescendants(forNode, "expression");
+        rangeText = exprNodes[0]?.text?.trim() || "";
+      }
+
+      let rangeStart = "1";
+      let rangeEnd = "1";
+      let rangeStep = "1";
+      if (rangeText.includes(":")) {
+        const parts = rangeText.split(":");
+        if (parts.length === 2) {
+          rangeStart = parts[0]!.trim();
+          rangeEnd = parts[1]!.trim();
+        } else if (parts.length === 3) {
+          rangeStart = parts[0]!.trim();
+          rangeStep = parts[1]!.trim();
+          rangeEnd = parts[2]!.trim();
+        }
+      }
+
+      const loopBody: ModelicaStatement[] = [];
+      const childStmts = (forNode.children || []).filter((c: any) => normCstType(c.type) === "statement");
+      for (const ch of childStmts) {
+        const s = this.extractSingleStatementFromCst(ch);
+        if (s) loopBody.push(s);
+      }
+
+      if (loopBody.length === 0 && rawText) {
+        const parsed = this.parseStatements(rawText, startByte);
+        if (parsed.length > 0) return parsed[0]!;
+      }
+
+      return {
+        kind: "for",
+        loopVar: loopVar || "i",
+        rangeStart,
+        rangeEnd,
+        rangeStep,
+        loopBody,
+        rawText,
+        startByte,
+        endByte,
+      };
+    }
+
+    // 3. While statement
+    const whileNode =
+      findChild(stmtNode, "whilestatement") ??
+      findChild(stmtNode, "while_statement") ??
+      (normCstType(stmtNode.type) === "whilestatement" || normCstType(stmtNode.type) === "while_statement"
+        ? stmtNode
+        : null);
+    if (whileNode) {
+      const exprNodes = findDescendants(whileNode, "expression");
+      const condExpr = exprNodes[0]?.text?.trim() || "";
+      const whileBody: ModelicaStatement[] = [];
+      const childStmts = (whileNode.children || []).filter((c: any) => normCstType(c.type) === "statement");
+      for (const ch of childStmts) {
+        const s = this.extractSingleStatementFromCst(ch);
+        if (s) whileBody.push(s);
+      }
+
+      if (whileBody.length === 0 && rawText) {
+        const parsed = this.parseStatements(rawText, startByte);
+        if (parsed.length > 0) return parsed[0]!;
+      }
+
+      return {
+        kind: "while",
+        condExpr,
+        whileBody,
+        rawText,
+        startByte,
+        endByte,
+      };
+    }
+
+    // 4. When statement
+    const whenNode =
+      findChild(stmtNode, "whenstatement") ??
+      findChild(stmtNode, "when_statement") ??
+      (normCstType(stmtNode.type) === "whenstatement" || normCstType(stmtNode.type) === "when_statement"
+        ? stmtNode
+        : null);
+    if (whenNode) {
+      const exprNodes = findDescendants(whenNode, "expression");
+      const condExpr = exprNodes[0]?.text?.trim() || "";
+      const whenBody: ModelicaStatement[] = [];
+      const childStmts = (whenNode.children || []).filter((c: any) => normCstType(c.type) === "statement");
+      for (const ch of childStmts) {
+        const s = this.extractSingleStatementFromCst(ch);
+        if (s) whenBody.push(s);
+      }
+
+      if (whenBody.length === 0 && rawText) {
+        const parsed = this.parseStatements(rawText, startByte);
+        if (parsed.length > 0) return parsed[0]!;
+      }
+
+      return {
+        kind: "when",
+        condExpr,
+        whenBody,
+        rawText,
+        startByte,
+        endByte,
+      };
+    }
+
+    // 5. Assignment statement
+    const assignNode =
+      findChild(stmtNode, "assignmentstatement") ??
+      findChild(stmtNode, "assignment_statement") ??
+      (normCstType(stmtNode.type) === "assignmentstatement" || normCstType(stmtNode.type) === "assignment_statement"
+        ? stmtNode
+        : null);
+
+    if (assignNode || rawText.includes(":=")) {
+      let targetVar = "";
+      let valExpr = "";
+      if (assignNode) {
+        const compRef = findChild(assignNode, "componentreference") ?? findChild(assignNode, "component_reference");
+        const exprNode = findChild(assignNode, "expression");
+        targetVar = compRef?.text?.trim() || "";
+        valExpr = exprNode?.text?.trim() || "";
+      }
+      if (!targetVar && rawText.includes(":=")) {
+        const parts = rawText.split(":=");
+        targetVar = parts[0]?.trim().replace(/^;+|;+$/g, "") || "";
+        valExpr =
+          parts
+            .slice(1)
+            .join(":=")
+            .trim()
+            .replace(/^;+|;+$/g, "") || "";
+      }
+
+      return {
+        kind: "assignment",
+        targetVar,
+        valExpr,
+        rawText,
+        startByte,
+        endByte,
+      };
+    }
+
+    // 6. Return / Break
+    const trimmed = rawText.trim().replace(/;$/, "");
+    if (trimmed === "return" || trimmed.startsWith("return ") || trimmed.startsWith("return(")) {
+      return { kind: "return", rawText, startByte, endByte };
+    }
+    if (trimmed === "break") {
+      return { kind: "break", rawText, startByte, endByte };
+    }
+
+    // 7. Function call
+    const callMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$/.exec(trimmed);
+    if (callMatch) {
+      const callFn = callMatch[1]!;
+      const callArgs = callMatch[2] ? callMatch[2].split(",").map((s) => s.trim()) : [];
+      return { kind: "call", callFn, callArgs, rawText, startByte, endByte };
+    }
+
+    return null;
+  }
+
+  /**
+   * Lowers algorithmic sections of a class directly from linear CST / CodeGraph.
+   */
+  static lowerAlgorithmFromCst(db: any, classId: any): GenericCFG {
+    if (!db || classId === undefined || classId === null) {
+      return new GenericCFG();
+    }
+    const cst = typeof db.cstNode === "function" ? db.cstNode(classId) : (db.rootNode ?? db);
+    if (!cst) {
+      return new GenericCFG();
+    }
+    return this.lowerAlgorithmFromClassCst(cst);
+  }
+
+  /**
+   * Lowers algorithmic sections directly from a class_definition CST node.
+   */
+  static lowerAlgorithmFromClassCst(classCst: any): GenericCFG {
+    const algSections = findCstNodesByType(classCst, "algorithm_section");
+    if (algSections.length === 0) {
+      return new GenericCFG();
+    }
+
+    const allStatements: ModelicaStatement[] = [];
+    for (const alg of algSections) {
+      const stmts = ModelicaCFGLowerer.extractStatementsFromCst(alg, alg.startIndex ?? 0);
+      allStatements.push(...stmts);
+    }
+
+    return new ModelicaCFGLowerer().lower(allStatements);
+  }
+
+  /**
+   * Lowers an algorithm_section CST node directly into a GenericCFG.
+   */
+  static lowerCst(algNode: any, defaultStartByte: number = 0): GenericCFG {
+    const stmts = ModelicaCFGLowerer.extractStatementsFromCst(algNode, defaultStartByte);
+    return new ModelicaCFGLowerer().lower(stmts);
+  }
+
+  /**
    * Lowers raw Modelica algorithmic source text directly into a GenericCFG.
    */
   static lowerText(algText: string, defaultStartByte: number = 0): GenericCFG {
@@ -531,16 +879,19 @@ export class ModelicaCFGLowerer {
         const stepVal = stmt.rangeStep ?? "1";
 
         // Initialize loop variable in pre-header
-        curr.addInstruction(
-          this.cfg.createInstruction("ASSIGN", loopVar, [startVal], {
-            startByte: stmt.startByte,
-            endByte: stmt.endByte,
-          }),
-        );
+        curr.addInstruction(this.cfg.createInstruction("ASSIGN", loopVar, [startVal]));
 
         const headerBlock = this.cfg.createBlock("for_header");
         const bodyBlock = this.cfg.createBlock("for_body");
         const exitBlock = this.cfg.createBlock("for_exit");
+
+        const loopHeaderEnd = (stmt.startByte ?? 0) + (stmt.rawText ? stmt.rawText.indexOf("loop") + 4 : 20);
+        headerBlock.addInstruction(
+          this.cfg.createInstruction("ASSUME", loopVar, [`${loopVar} <= ${endVal}`], {
+            startByte: stmt.startByte,
+            endByte: loopHeaderEnd,
+          }),
+        );
 
         const condExpr = `${loopVar} <= ${endVal}`;
         this.cfg.addEdge(curr.id, headerBlock.id, CFGEdgeKind.Normal);
@@ -568,4 +919,28 @@ export class ModelicaCFGLowerer {
       }
     }
   }
+}
+
+function normCstType(t: string | undefined): string {
+  return (t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export function findCstNodesByType(root: any, typeName: string): any[] {
+  const results: any[] = [];
+  const target = normCstType(typeName);
+
+  function walk(node: any) {
+    if (!node) return;
+    if (normCstType(node.type) === target) {
+      results.push(node);
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(root);
+  return results;
 }

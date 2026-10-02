@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DpllTSolver, Interval, type ExprNode, type NonlinearConstraint, type QueryDB } from "@modelscript/runtime";
-import { SmtOctagonDBM } from "./smt-bridge.js";
 
 /**
  * Diagnostic emitted when a state machine transition hazard is identified.
@@ -458,62 +457,80 @@ function checkConjunctPairMutuallyExclusive(
     };
   }
 
-  const varMap = new Map<string, number>();
-  let nextId = 0;
-  for (const c of allConstraints) {
-    if (!varMap.has(c.variable)) {
-      varMap.set(c.variable, nextId++);
-    }
+  interface RealBound {
+    lower: number;
+    lowerStrict: boolean;
+    upper: number;
+    upperStrict: boolean;
+    notEquals: Set<number>;
   }
 
-  const numVars = Math.max(nextId, 1);
-  const dbm = new SmtOctagonDBM(numVars);
+  const boundMap = new Map<string, RealBound>();
+  const getBound = (v: string): RealBound => {
+    let b = boundMap.get(v);
+    if (!b) {
+      b = { lower: -Infinity, lowerStrict: false, upper: Infinity, upperStrict: false, notEquals: new Set() };
+      boundMap.set(v, b);
+    }
+    return b;
+  };
 
   for (const c of allConstraints) {
-    const v = varMap.get(c.variable)!;
-    const curLo = dbm.getLowerBound(v);
-    const curHi = dbm.getUpperBound(v);
-
+    const b = getBound(c.variable);
     switch (c.operator) {
       case "<=":
-        dbm.assumeInterval(v, curLo, Math.floor(c.value));
+        if (c.value < b.upper) {
+          b.upper = c.value;
+          b.upperStrict = false;
+        }
         break;
       case "<":
-        dbm.assumeInterval(v, curLo, Math.floor(c.value - 1e-6));
+        if (c.value < b.upper || (c.value === b.upper && !b.upperStrict)) {
+          b.upper = c.value;
+          b.upperStrict = true;
+        }
         break;
       case ">=":
-        dbm.assumeInterval(v, Math.ceil(c.value), curHi);
+        if (c.value > b.lower) {
+          b.lower = c.value;
+          b.lowerStrict = false;
+        }
         break;
       case ">":
-        dbm.assumeInterval(v, Math.ceil(c.value + 1e-6), curHi);
+        if (c.value > b.lower || (c.value === b.lower && !b.lowerStrict)) {
+          b.lower = c.value;
+          b.lowerStrict = true;
+        }
         break;
       case "==":
-        dbm.assumeInterval(v, Math.round(c.value), Math.round(c.value));
+        if (c.value > b.lower) {
+          b.lower = c.value;
+          b.lowerStrict = false;
+        }
+        if (c.value < b.upper) {
+          b.upper = c.value;
+          b.upperStrict = false;
+        }
         break;
       case "!=":
-        // In DBM, != is non-convex; skip or treat conservatively
+        b.notEquals.add(c.value);
         break;
     }
-    if (dbm.hasNegativeCycle() || dbm.getLowerBound(v) > dbm.getUpperBound(v)) {
-      return { mutuallyExclusive: true };
-    }
-  }
 
-  for (const [name, id] of varMap) {
-    const lo = dbm.getLowerBound(id);
-    const hi = dbm.getUpperBound(id);
-    if (lo > hi) {
+    if (
+      b.lower > b.upper ||
+      (b.lower === b.upper && (b.lowerStrict || b.upperStrict)) ||
+      (b.lower === b.upper && b.notEquals.has(b.lower))
+    ) {
       return { mutuallyExclusive: true };
     }
   }
 
   // Construct overlapping witness interval
   const parts: string[] = [];
-  for (const [name, id] of varMap) {
-    const lo = dbm.getLowerBound(id);
-    const hi = dbm.getUpperBound(id);
-    const loStr = lo <= -100000 ? "-∞" : lo.toString();
-    const hiStr = hi >= 100000 ? "∞" : hi.toString();
+  for (const [name, b] of boundMap) {
+    const loStr = b.lower <= -100000 ? "-∞" : b.lower.toString();
+    const hiStr = b.upper >= 100000 ? "∞" : b.upper.toString();
     parts.push(`${name} ∈ [${loStr}, ${hiStr}]`);
   }
 
@@ -591,7 +608,12 @@ export function checkSingleVarExhaustive(
     }
   }
 
-  if (intervals.length === 0) return { exhaustive: true };
+  if (intervals.length === 0) {
+    if (constraintsList.length > 0) {
+      return { exhaustive: false, unhandledRange: `${variable} ∈ (-∞, ∞)` };
+    }
+    return { exhaustive: true };
+  }
 
   // Sort intervals by lower bound
   intervals.sort((a, b) => a.lo - b.lo);

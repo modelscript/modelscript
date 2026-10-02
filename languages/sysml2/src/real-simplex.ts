@@ -22,6 +22,45 @@ export interface LinearConstraint {
   expression?: string;
 }
 
+export interface InfNumber {
+  r: number;
+  k: number;
+}
+
+export function infNum(r: number, k = 0): InfNumber {
+  return { r, k };
+}
+
+export function infAdd(a: InfNumber, b: InfNumber): InfNumber {
+  return { r: a.r + b.r, k: a.k + b.k };
+}
+
+export function infSub(a: InfNumber, b: InfNumber): InfNumber {
+  return { r: a.r - b.r, k: a.k - b.k };
+}
+
+export function infMulScalar(a: InfNumber, s: number): InfNumber {
+  return { r: a.r * s, k: a.k * s };
+}
+
+export function infDivScalar(a: InfNumber, s: number): InfNumber {
+  return { r: a.r / s, k: a.k / s };
+}
+
+export function infLt(a: InfNumber, b: InfNumber, tol = 1e-12): boolean {
+  if (a.r < b.r - tol) return true;
+  if (a.r > b.r + tol) return false;
+  return a.k < b.k;
+}
+
+export function infGt(a: InfNumber, b: InfNumber, tol = 1e-12): boolean {
+  return infLt(b, a, tol);
+}
+
+export function infEq(a: InfNumber, b: InfNumber, tol = 1e-12): boolean {
+  return Math.abs(a.r - b.r) <= tol && a.k === b.k;
+}
+
 export interface SimplexVariableBound {
   varName: string;
   lower: number;
@@ -37,7 +76,7 @@ export interface SimplexResult {
 }
 
 /**
- * Parses a linear expression string (e.g. "2*x + 3.5*y - z" or "x - y") into terms and constant offset.
+ * Parses a linear expression string (e.g. "2*x + 3.5*y - z" or "1.2e-4*x - 3.5e-2*y") into terms and constant offset.
  */
 export function parseLinearExpression(expr: string): { terms: LinearTerm[]; constant: number } {
   let cleaned = expr.trim().replace(/\s+/g, "");
@@ -48,8 +87,8 @@ export function parseLinearExpression(expr: string): { terms: LinearTerm[]; cons
     cleaned = "+" + cleaned;
   }
 
-  // Tokenize signed terms: ([+-])([0-9.]*\*?)?([a-zA-Z0-9_.]+)
-  const regex = /([+-])(?:([0-9.]+)\*?)?([a-zA-Z0-9_.]+)?/g;
+  // Tokenize signed terms supporting scientific notation
+  const regex = /([+-])(?:([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\*?)?([a-zA-Z_][a-zA-Z0-9_.]*)?/g;
   let match: RegExpExecArray | null;
 
   const terms: LinearTerm[] = [];
@@ -75,26 +114,31 @@ export function parseLinearExpression(expr: string): { terms: LinearTerm[]; cons
 }
 
 /**
- * Real-Algebraic Simplex Solver.
+ * Real-Algebraic Simplex Solver with exact Infinitesimal R(δ) arithmetic.
  */
 export class RealSimplexSolver {
   private constraints: LinearConstraint[] = [];
-  private explicitBounds = new Map<string, { lower: number; upper: number }>();
+  private explicitBounds = new Map<string, { lower: InfNumber; upper: InfNumber }>();
 
   public addConstraint(constraint: LinearConstraint): void {
     this.constraints.push(constraint);
   }
 
-  public setBound(varName: string, lower = -Infinity, upper = Infinity): void {
-    const existing = this.explicitBounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
+  public setBound(varName: string, lower: number | InfNumber = -Infinity, upper: number | InfNumber = Infinity): void {
+    const l = typeof lower === "number" ? infNum(lower, 0) : lower;
+    const u = typeof upper === "number" ? infNum(upper, 0) : upper;
+    const existing = this.explicitBounds.get(varName) ?? {
+      lower: infNum(-Infinity, 0),
+      upper: infNum(Infinity, 0),
+    };
     this.explicitBounds.set(varName, {
-      lower: Math.max(existing.lower, lower),
-      upper: Math.min(existing.upper, upper),
+      lower: infGt(l, existing.lower) ? l : existing.lower,
+      upper: infLt(u, existing.upper) ? u : existing.upper,
     });
   }
 
   /**
-   * Solves the linear system using the Dutertre-de Moura SMT Simplex algorithm.
+   * Solves the linear system using the Dutertre-de Moura SMT Simplex algorithm with exact R(δ).
    */
   public solve(maxIterations = 5000): SimplexResult {
     // 1. Collect all non-basic variable names
@@ -123,12 +167,10 @@ export class RealSimplexSolver {
     const nbMap = new Map<string, number>();
     for (let j = 0; j < n; j++) nbMap.set(nonBasicVars[j]!, j);
 
-    // Basic variables s_0 ... s_{m-1} correspond to each constraint
-    // Tableau: s_i = \sum_{j=0}^{n-1} A_{i, j} x_j
     // Matrix A of size m x n
     const A: number[][] = Array.from({ length: m }, () => new Array(n).fill(0));
-    const lowerBounds: number[] = new Array(m + n).fill(-Infinity);
-    const upperBounds: number[] = new Array(m + n).fill(Infinity);
+    const lowerBounds: InfNumber[] = Array.from({ length: m + n }, () => infNum(-Infinity, 0));
+    const upperBounds: InfNumber[] = Array.from({ length: m + n }, () => infNum(Infinity, 0));
 
     // Set bounds for non-basic variables (indices 0 .. n-1)
     for (let j = 0; j < n; j++) {
@@ -140,7 +182,7 @@ export class RealSimplexSolver {
       }
     }
 
-    // Set coefficients and bounds for basic variables (indices n .. n+m-1)
+    // Set coefficients and exact InfNumber bounds for basic variables (indices n .. n+m-1)
     for (let i = 0; i < m; i++) {
       const c = this.constraints[i]!;
       const sIdx = n + i;
@@ -150,56 +192,55 @@ export class RealSimplexSolver {
       }
 
       const rhs = c.rhs;
-      const eps = 1e-9;
       switch (c.operator) {
         case "<=":
-          upperBounds[sIdx] = rhs;
+          upperBounds[sIdx] = infNum(rhs, 0);
           break;
         case "<":
-          upperBounds[sIdx] = rhs - eps;
+          upperBounds[sIdx] = infNum(rhs, -1);
           break;
         case ">=":
-          lowerBounds[sIdx] = rhs;
+          lowerBounds[sIdx] = infNum(rhs, 0);
           break;
         case ">":
-          lowerBounds[sIdx] = rhs + eps;
+          lowerBounds[sIdx] = infNum(rhs, 1);
           break;
         case "==":
-          lowerBounds[sIdx] = rhs;
-          upperBounds[sIdx] = rhs;
+          lowerBounds[sIdx] = infNum(rhs, 0);
+          upperBounds[sIdx] = infNum(rhs, 0);
           break;
       }
     }
 
     // Check trivial bound conflicts
     for (let k = 0; k < m + n; k++) {
-      if (lowerBounds[k]! > upperBounds[k]!) {
+      if (infGt(lowerBounds[k]!, upperBounds[k]!)) {
         const reqName = k >= n ? this.constraints[k - n]?.requirementName : undefined;
         return {
           isFeasible: false,
           unsatCore: reqName ? [reqName] : [],
-          conflictExplanation: `Contradictory bounds for variable ${k < n ? nonBasicVars[k] : `constraint_${k - n}`}: [${lowerBounds[k]}, ${upperBounds[k]}]`,
+          conflictExplanation: `Contradictory bounds for variable ${k < n ? nonBasicVars[k] : `constraint_${k - n}`}: [(${lowerBounds[k]!.r}, ${lowerBounds[k]!.k}δ), (${upperBounds[k]!.r}, ${upperBounds[k]!.k}δ)]`,
           violatedConstraint: k >= n ? this.constraints[k - n] : undefined,
         };
       }
     }
 
-    // Assignment vector: beta of size n + m
-    // Initialize non-basic variables to 0 (or bound nearest 0)
-    const beta = new Array<number>(m + n).fill(0);
+    // Assignment vector: beta of size n + m with InfNumber
+    const beta: InfNumber[] = new Array(m + n);
     for (let j = 0; j < n; j++) {
       const l = lowerBounds[j]!;
       const u = upperBounds[j]!;
-      if (0 < l) beta[j] = l;
-      else if (0 > u) beta[j] = u;
-      else beta[j] = 0;
+      const zero = infNum(0, 0);
+      if (infLt(zero, l)) beta[j] = l;
+      else if (infGt(zero, u)) beta[j] = u;
+      else beta[j] = zero;
     }
 
     // Initialize basic variables: s_i = \sum A_{ij} x_j
     for (let i = 0; i < m; i++) {
-      let sum = 0;
+      let sum = infNum(0, 0);
       for (let j = 0; j < n; j++) {
-        sum += (A[i]![j] ?? 0) * beta[j]!;
+        sum = infAdd(sum, infMulScalar(beta[j]!, A[i]![j] ?? 0));
       }
       beta[n + i] = sum;
     }
@@ -209,21 +250,21 @@ export class RealSimplexSolver {
     // Non-basic variable indices for cols (initially 0 .. n-1)
     const nonBasicVarOfCol: number[] = Array.from({ length: n }, (_, j) => j);
 
-    // Helper: update assignment after pivoting
     const updateBasicValues = () => {
       for (let i = 0; i < m; i++) {
-        let sum = 0;
+        let sum = infNum(0, 0);
         for (let j = 0; j < n; j++) {
-          sum += (A[i]![j] ?? 0) * beta[nonBasicVarOfCol[j]!]!;
+          sum = infAdd(sum, infMulScalar(beta[nonBasicVarOfCol[j]!]!, A[i]![j] ?? 0));
         }
         beta[basicVarOfRow[i]!] = sum;
       }
     };
 
-    // 2. Dutertre-de Moura Pivot Loop
+    // 2. Dutertre-de Moura Pivot Loop with Bland's Anti-Cycling Rule
     for (let iter = 0; iter < maxIterations; iter++) {
-      // Find a basic variable that violates its bounds
+      // Find a basic variable violating bounds with minimal variable index
       let violatingRow = -1;
+      let minViolatingVar = Infinity;
       let isTooSmall = false;
 
       for (let i = 0; i < m; i++) {
@@ -232,14 +273,18 @@ export class RealSimplexSolver {
         const l = lowerBounds[v]!;
         const u = upperBounds[v]!;
 
-        if (val < l - 1e-9) {
-          violatingRow = i;
-          isTooSmall = true;
-          break;
-        } else if (val > u + 1e-9) {
-          violatingRow = i;
-          isTooSmall = false;
-          break;
+        if (infLt(val, l)) {
+          if (v < minViolatingVar) {
+            minViolatingVar = v;
+            violatingRow = i;
+            isTooSmall = true;
+          }
+        } else if (infGt(val, u)) {
+          if (v < minViolatingVar) {
+            minViolatingVar = v;
+            violatingRow = i;
+            isTooSmall = false;
+          }
         }
       }
 
@@ -248,7 +293,7 @@ export class RealSimplexSolver {
         const assignment: Record<string, number> = {};
         for (let j = 0; j < n; j++) {
           const varName = nonBasicVars[j]!;
-          assignment[varName] = beta[j]!;
+          assignment[varName] = beta[j]!.r;
         }
         return {
           isFeasible: true,
@@ -259,8 +304,9 @@ export class RealSimplexSolver {
       const xi = basicVarOfRow[violatingRow]!;
       const row = A[violatingRow]!;
 
-      // Find entering non-basic variable using Bland's rule
+      // Find entering non-basic variable with minimal variable index (Bland's rule)
       let enteringCol = -1;
+      let minEnteringVar = Infinity;
 
       for (let j = 0; j < n; j++) {
         const aij = row[j]!;
@@ -271,22 +317,20 @@ export class RealSimplexSolver {
         const lj = lowerBounds[xj]!;
         const uj = upperBounds[xj]!;
 
+        let canEnter = false;
         if (isTooSmall) {
-          // xi < li -> need to increase xi
-          // If aij > 0, we can increase xj (if valXj < uj)
-          // If aij < 0, we can decrease xj (if valXj > lj)
-          if ((aij > 0 && valXj < uj - 1e-9) || (aij < 0 && valXj > lj + 1e-9)) {
-            enteringCol = j;
-            break;
+          if ((aij > 0 && infLt(valXj, uj)) || (aij < 0 && infGt(valXj, lj))) {
+            canEnter = true;
           }
         } else {
-          // xi > ui -> need to decrease xi
-          // If aij > 0, we can decrease xj (if valXj > lj)
-          // If aij < 0, we can increase xj (if valXj < uj)
-          if ((aij > 0 && valXj > lj + 1e-9) || (aij < 0 && valXj < uj - 1e-9)) {
-            enteringCol = j;
-            break;
+          if ((aij > 0 && infGt(valXj, lj)) || (aij < 0 && infLt(valXj, uj))) {
+            canEnter = true;
           }
+        }
+
+        if (canEnter && xj < minEnteringVar) {
+          minEnteringVar = xj;
+          enteringCol = j;
         }
       }
 
@@ -312,7 +356,7 @@ export class RealSimplexSolver {
         return {
           isFeasible: false,
           unsatCore: Array.from(unsatCoreReqs),
-          conflictExplanation: `Unsatisfiable linear real constraints at row ${violatingRow}: variable cannot reach bound [${lowerBounds[xi]}, ${upperBounds[xi]}] (current value: ${beta[xi]?.toFixed(4)})`,
+          conflictExplanation: `Unsatisfiable linear real constraints at row ${violatingRow}: variable cannot reach bound [(${lowerBounds[xi]!.r}, ${lowerBounds[xi]!.k}δ), (${upperBounds[xi]!.r}, ${upperBounds[xi]!.k}δ)] (current: ${beta[xi]!.r.toFixed(4)})`,
           violatedConstraint,
         };
       }
@@ -323,9 +367,9 @@ export class RealSimplexSolver {
 
       // Change assignment of xi to the violated bound
       const targetVal = isTooSmall ? lowerBounds[xi]! : upperBounds[xi]!;
-      const delta = (targetVal - beta[xi]!) / pivotCoeff;
+      const delta = infDivScalar(infSub(targetVal, beta[xi]!), pivotCoeff);
       beta[xi] = targetVal;
-      beta[xj] = beta[xj]! + delta;
+      beta[xj] = infAdd(beta[xj]!, delta);
 
       // Swap variable roles: xi becomes non-basic, xj becomes basic
       basicVarOfRow[violatingRow] = xj;

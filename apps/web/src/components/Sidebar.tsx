@@ -4,6 +4,7 @@
 import {
   BellIcon,
   BookmarkIcon,
+  CodeIcon,
   GearIcon,
   HomeIcon,
   KebabHorizontalIcon,
@@ -337,6 +338,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   }
   navLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   navLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
+  navLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
   navLinks.push({ to: "/scripts", icon: TerminalIcon, label: "Scripts" });
 
   if (user) {

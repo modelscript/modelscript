@@ -34,13 +34,18 @@ import { NumericalInterval as Interval } from "./interval_domain.js";
  *   - Integrated into the `FixpointSolver` verification waterfall.
  */
 export class ArraySegmentState {
+  public readonly dimensions?: Interval[];
+
   constructor(
     public readonly length: Interval,
     public readonly universalSummary: Interval = Interval.TOP,
     public readonly currentElement: Interval = Interval.TOP,
     public readonly prefixSummary: Interval = Interval.TOP,
     public readonly suffixSummary: Interval = Interval.TOP,
-  ) {}
+    dimensions?: Interval[],
+  ) {
+    this.dimensions = dimensions ?? (length ? [length] : undefined);
+  }
 
   static bottom(): ArraySegmentState {
     return new ArraySegmentState(Interval.BOTTOM, Interval.BOTTOM, Interval.BOTTOM, Interval.BOTTOM, Interval.BOTTOM);
@@ -61,6 +66,7 @@ export class ArraySegmentState {
       this.currentElement,
       this.prefixSummary,
       this.suffixSummary,
+      this.dimensions ? [...this.dimensions] : undefined,
     );
   }
 
@@ -68,12 +74,22 @@ export class ArraySegmentState {
     if (this.isBottom()) return other.clone();
     if (other.isBottom()) return this.clone();
 
+    let joinedDims: Interval[] | undefined;
+    if (this.dimensions && other.dimensions) {
+      joinedDims = this.dimensions.map((d, i) => (other.dimensions![i] ? d.join(other.dimensions![i]!) : d));
+    } else if (this.dimensions) {
+      joinedDims = [...this.dimensions];
+    } else if (other.dimensions) {
+      joinedDims = [...other.dimensions];
+    }
+
     return new ArraySegmentState(
       this.length.join(other.length),
       this.universalSummary.join(other.universalSummary),
       this.currentElement.join(other.currentElement),
       this.prefixSummary.join(other.prefixSummary),
       this.suffixSummary.join(other.suffixSummary),
+      joinedDims,
     );
   }
 
@@ -83,12 +99,32 @@ export class ArraySegmentState {
     const len = this.length.meet(other.length);
     if (len.isBottom()) return ArraySegmentState.bottom();
 
+    let metDims: Interval[] | undefined;
+    if (this.dimensions && other.dimensions) {
+      metDims = [];
+      const maxLen = Math.max(this.dimensions.length, other.dimensions.length);
+      for (let i = 0; i < maxLen; i++) {
+        const d1 = this.dimensions[i];
+        const d2 = other.dimensions[i];
+        if (d1 && d2) {
+          const m = d1.meet(d2);
+          if (m.isBottom()) return ArraySegmentState.bottom();
+          metDims.push(m);
+        } else if (d1) {
+          metDims.push(d1);
+        } else if (d2) {
+          metDims.push(d2);
+        }
+      }
+    }
+
     return new ArraySegmentState(
       len,
       this.universalSummary.meet(other.universalSummary),
       this.currentElement.meet(other.currentElement),
       this.prefixSummary.meet(other.prefixSummary),
       this.suffixSummary.meet(other.suffixSummary),
+      metDims,
     );
   }
 
@@ -96,20 +132,31 @@ export class ArraySegmentState {
     if (this.isBottom()) return other.clone();
     if (other.isBottom()) return this.clone();
 
+    let widenedDims: Interval[] | undefined;
+    if (this.dimensions && other.dimensions) {
+      widenedDims = this.dimensions.map((d, i) =>
+        other.dimensions![i] ? d.widen(other.dimensions![i]!, thresholds) : d,
+      );
+    }
+
     return new ArraySegmentState(
       this.length.widen(other.length, thresholds),
       this.universalSummary.widen(other.universalSummary, thresholds),
       this.currentElement.widen(other.currentElement, thresholds),
       this.prefixSummary.widen(other.prefixSummary, thresholds),
       this.suffixSummary.widen(other.suffixSummary, thresholds),
+      widenedDims,
     );
   }
 
   /**
-   * Asserts index access i in 1-based indexing [1, length].
+   * Asserts index access i in 1-based indexing [1, length] (or [1, dimensions[dimIdx]]).
    * Returns verification verdict.
    */
-  checkInBounds(index: Interval): {
+  checkInBounds(
+    index: Interval,
+    dimIdx: number = 0,
+  ): {
     inBounds: "safe" | "out_of_bounds" | "potential_out_of_bounds";
     validRange: Interval;
   } {
@@ -117,17 +164,18 @@ export class ArraySegmentState {
       return { inBounds: "safe", validRange: Interval.BOTTOM };
     }
 
+    const targetDim = this.dimensions && this.dimensions[dimIdx] ? this.dimensions[dimIdx]! : this.length;
     const minLegal = 1;
-    const maxLegal = this.length.high;
+    const maxLegal = targetDim.high;
 
     // Definite out of bounds: index.high < 1 or index.low > maxLegal
     if (index.high < minLegal || (maxLegal !== Infinity && index.low > maxLegal)) {
       return { inBounds: "out_of_bounds", validRange: new Interval(minLegal, maxLegal) };
     }
 
-    // Definite in bounds: index.low >= 1 and index.high <= this.length.low
-    if (index.low >= minLegal && index.high <= this.length.low) {
-      return { inBounds: "safe", validRange: new Interval(minLegal, this.length.low) };
+    // Definite in bounds: index.low >= 1 and index.high <= targetDim.low
+    if (index.low >= minLegal && index.high <= targetDim.low) {
+      return { inBounds: "safe", validRange: new Interval(minLegal, targetDim.low) };
     }
 
     return { inBounds: "potential_out_of_bounds", validRange: new Interval(minLegal, maxLegal) };
@@ -140,6 +188,7 @@ export class ArraySegmentState {
       value,
       this.prefixSummary.join(this.currentElement),
       this.suffixSummary,
+      this.dimensions ? [...this.dimensions] : undefined,
     );
   }
 }

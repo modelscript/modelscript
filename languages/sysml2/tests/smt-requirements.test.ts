@@ -146,4 +146,54 @@ test("SysML v2 SMT & Octagon Requirement Verification", async (t) => {
     ]);
     assert.strictEqual(nonNumericResult.isConsistent, true);
   });
+
+  await t.test("verifyConstraintSet isolates conflicting requirements without polluting unrelated requirements", () => {
+    const constraints: ExtractedConstraint[] = [
+      {
+        requirementName: "Req1_MaxVoltage",
+        expression: "voltage <= 12",
+        lhs: "voltage",
+        operator: "<=",
+        rhs: 12,
+      },
+      {
+        requirementName: "Req2_MinVoltage",
+        expression: "voltage >= 24", // Contradicts Req1!
+        lhs: "voltage",
+        operator: ">=",
+        rhs: 24,
+      },
+      {
+        requirementName: "Req3_MaxCurrent",
+        expression: "current <= 10",
+        lhs: "current",
+        operator: "<=",
+        rhs: 10,
+      },
+      {
+        requirementName: "Req4_MinCurrent",
+        expression: "current >= 2",
+        lhs: "current",
+        operator: ">=",
+        rhs: 2,
+      },
+      {
+        requirementName: "Req5_MaxTemp",
+        expression: "temp <= 85",
+        lhs: "temp",
+        operator: "<=",
+        rhs: 85,
+      },
+    ];
+
+    const result = verifyConstraintSet(constraints);
+    assert.strictEqual(result.isConsistent, false);
+    // Conflicting requirements MUST contain Req1 and Req2
+    assert.ok(result.conflictingRequirements.includes("Req1_MaxVoltage"));
+    assert.ok(result.conflictingRequirements.includes("Req2_MinVoltage"));
+    // Conflicting requirements MUST NOT contain Req3, Req4, Req5!
+    assert.strictEqual(result.conflictingRequirements.includes("Req3_MaxCurrent"), false);
+    assert.strictEqual(result.conflictingRequirements.includes("Req4_MinCurrent"), false);
+    assert.strictEqual(result.conflictingRequirements.includes("Req5_MaxTemp"), false);
+  });
 });

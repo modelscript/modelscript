@@ -108,4 +108,31 @@ describe("SysML v2 Decision Table Exhaustiveness & Disjointness Prover (Imandra 
     assert.strictEqual(d1Result.isDeterministic, true);
     assert.strictEqual(d1Result.hasDeadBranches, false);
   });
+
+  it("efficiently verifies a 10-branch decision table in a single CNF call without path explosion", () => {
+    const branches: DecisionBranch[] = [
+      { id: "b0", guardText: "x < 10" },
+      { id: "b1", guardText: "x >= 10 && x < 20" },
+      { id: "b2", guardText: "x >= 20 && x < 30" },
+      { id: "b3", guardText: "x >= 30 && x < 40" },
+      { id: "b4", guardText: "x >= 40 && x < 50" },
+      { id: "b5", guardText: "x >= 50 && x < 60" },
+      { id: "b6", guardText: "x >= 60 && x < 70" },
+      { id: "b7", guardText: "x >= 70 && x < 80" },
+      { id: "b8", guardText: "x >= 80 && x < 90" },
+      { id: "b9", guardText: "x >= 90" },
+    ];
+
+    const t0 = performance.now();
+    const result = DecisionTableVerifier.verifyDecisionTable(branches, {
+      domainBounds: new Map([["x", [0, 100]]]),
+    });
+    const elapsed = performance.now() - t0;
+
+    assert.strictEqual(result.isExhaustive, true, "10-branch table must be exhaustive");
+    assert.strictEqual(result.isDeterministic, true, "10-branch table must be deterministic");
+    assert.strictEqual(result.hasDeadBranches, false);
+    // Verify fast execution (well under 50ms, typically < 10ms)
+    assert.ok(elapsed < 50, `10-branch table took ${elapsed}ms; must terminate in < 50ms without path explosion`);
+  });
 });

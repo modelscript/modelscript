@@ -2760,6 +2760,39 @@ export const extendsClauseQueries: Record<string, any> = {
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
   },
+  lint__baseClassNotFound: (db: QueryDB, self: SymbolEntry) => {
+    const baseName = self.name;
+    if (!baseName) return null;
+    const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", self.id);
+    if (baseClass) return null;
+
+    if (self.parentId !== null) {
+      const resolveName = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
+      if (resolveName && resolveName(baseName)) return null;
+    }
+
+    if (baseName.includes(".")) {
+      if (resolveQualified(db, baseName)) return null;
+    } else {
+      const entries = db.byName(baseName);
+      if (entries?.some((e: any) => e.kind === "Class" || e.kind === "Package")) return null;
+    }
+
+    const cstNode = db.cstNode(self.id) as any;
+    const startByte = cstNode?.startIndex ?? cstNode?.startByte ?? self.startByte;
+    const endByte = cstNode?.endIndex ?? cstNode?.endByte ?? self.endByte;
+    const startOffset = cstNode?.startOffset ?? startByte;
+    const endOffset = cstNode?.endOffset ?? endByte;
+
+    const msg = `Class or type '${baseName}' not found in scope.`;
+    return error(msg, {
+      startByte,
+      endByte,
+      startCharOffset: startOffset,
+      endCharOffset: endOffset,
+      code: 2003,
+    });
+  },
 };
 
 export const componentDeclarationQueries: Record<string, any> = {
@@ -3774,6 +3807,80 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (!typeEntry) return null;
     const mod = db.query<any | null>("effectiveModification", self.id);
     return checkModifierNotFound(db, self, mod, typeClassId, typeEntry, undefined);
+  },
+  lint__typeNotFound: (db: QueryDB, self: SymbolEntry) => {
+    let typeName = db.query<string | null>("typeSpecifier", self.id);
+    if (!typeName || typeof typeName !== "string") return null;
+    typeName = typeName.trim();
+    if (!typeName) return null;
+
+    const baseType = typeName.replace(/\[.*\]$/, "").trim();
+    if (!baseType) return null;
+
+    if (
+      baseType === "Real" ||
+      baseType === "Integer" ||
+      baseType === "Boolean" ||
+      baseType === "String" ||
+      baseType === "Clock" ||
+      baseType === "StateSelect" ||
+      baseType === "AssertionLevel" ||
+      baseType === "ExternalObject"
+    ) {
+      return null;
+    }
+
+    const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+    if (typeClassId) return null;
+
+    if (self.parentId !== null) {
+      if (baseType.includes(".")) {
+        const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
+        if (qualResolver && qualResolver(baseType)) return null;
+      } else {
+        const simpleResolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", self.parentId);
+        if (simpleResolver && simpleResolver(baseType)) return null;
+      }
+    }
+
+    if (baseType.includes(".")) {
+      const resolved = resolveQualified(db, baseType);
+      if (resolved) return null;
+    } else {
+      const entries = db.byName(baseType);
+      const found = entries?.find(
+        (e: any) =>
+          (e.metadata as Record<string, unknown>)?.isPredefined ||
+          e.kind === "Class" ||
+          e.kind === "Package" ||
+          e.kind === "Function" ||
+          e.kind === "Def",
+      );
+      if (found) return null;
+    }
+
+    const cstNode = db.cstNode(self.id) as any;
+    let current = cstNode;
+    while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
+      current = current.parent;
+    }
+    const typeSpecNode =
+      Cst.ComponentClause.typeSpecifier(current) ??
+      current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+
+    const startByte = typeSpecNode?.startIndex ?? typeSpecNode?.startByte ?? self.startByte;
+    const endByte = typeSpecNode?.endIndex ?? typeSpecNode?.endByte ?? startByte + typeName.length;
+    const startOffset = typeSpecNode?.startOffset ?? startByte;
+    const endOffset = typeSpecNode?.endOffset ?? endByte;
+
+    const msg = `Class or type '${typeName}' not found in scope.`;
+    return error(msg, {
+      startByte,
+      endByte,
+      startCharOffset: startOffset,
+      endCharOffset: endOffset,
+      code: 2003,
+    });
   },
 };
 

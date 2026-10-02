@@ -5,10 +5,10 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
-import { AnimationController } from "./cad-viewer/animation-controller";
-import { AnimationTimeline } from "./cad-viewer/animation-timeline";
-import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
-import type { StepMeshPayload } from "./step-viewer/step-viewer";
+import { AnimationController } from "./cad-viewer/animation-controller.js";
+import { AnimationTimeline } from "./cad-viewer/animation-timeline.js";
+import { extractCadComponents } from "./cad-viewer/parse-cad-annotations.js";
+import type { StepMeshPayload } from "./step-viewer/step-viewer.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
@@ -51,6 +51,9 @@ function AnimatedBody({
 
     // Apply Position
     groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
+
+    // Apply Dynamic Scaling (Workstream 1: Soft-tissue mesh morphing & volume deformation)
+    groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
 
     // Apply Rotation
     // In our App bindings setup, we mapped the 9 R.T matrix components to tf.rotation array indices 0..8!
@@ -116,20 +119,68 @@ function AnimatedBody({
   );
 }
 
+function DynamicClearanceOverlay({
+  meshes,
+  animationController,
+}: {
+  meshes: StepMeshPayload[];
+  animationController: AnimationController;
+}) {
+  const lineRef = useRef<THREE.LineSegments>(null);
+
+  useFrame(() => {
+    if (!lineRef.current) return;
+    const segs = animationController.getClearanceSegments();
+    if (segs.length > 0) {
+      const seg = segs[0];
+      const positions = new Float32Array([...seg.pointA, ...seg.pointB]);
+      lineRef.current.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      return;
+    }
+
+    if (meshes.length >= 2) {
+      const nameA = meshes[0].name;
+      const nameB = meshes[1].name;
+      const tfA = animationController.getTransform(nameA);
+      const tfB = animationController.getTransform(nameB);
+      const positions = new Float32Array([
+        tfA.position[0],
+        tfA.position[1],
+        tfA.position[2],
+        tfB.position[0],
+        tfB.position[1],
+        tfB.position[2],
+      ]);
+      lineRef.current.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    }
+  });
+
+  return (
+    <lineSegments ref={lineRef}>
+      <bufferGeometry />
+      <lineBasicMaterial color="#ffea00" linewidth={2} />
+    </lineSegments>
+  );
+}
+
 function SceneContents({
   meshes,
   animationController,
   selectedId,
   onSelect,
   dark,
+  focusedPartName,
 }: {
   meshes: StepMeshPayload[];
   animationController: AnimationController;
   selectedId?: number | null;
   onSelect?: (id: number | null) => void;
   dark: boolean;
+  focusedPartName?: string;
 }) {
   const { camera } = useThree();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controlsRef = useRef<any>(null);
 
   useEffect(() => {
     let minX = Infinity,
@@ -164,6 +215,44 @@ function SceneContents({
     camera.updateProjectionMatrix();
   }, [meshes, camera]);
 
+  // Handle focus part smoothly
+  useEffect(() => {
+    if (!focusedPartName) return;
+    const target = focusedPartName.toLowerCase();
+    const mesh = meshes.find(
+      (m) =>
+        m.name.toLowerCase().includes(target) ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((m as any).userData?.name || "").toLowerCase().includes(target),
+    );
+    if (!mesh) return;
+
+    let minX = Infinity,
+      minY = Infinity,
+      minZ = Infinity;
+    let maxX = -Infinity,
+      maxY = -Infinity,
+      maxZ = -Infinity;
+    for (let i = 0; i < mesh.vertices.length; i += 3) {
+      const x = mesh.vertices[i];
+      const y = mesh.vertices[i + 1];
+      const z = mesh.vertices[i + 2];
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const cz = (minZ + maxZ) / 2;
+    if (controlsRef.current) {
+      controlsRef.current.target.set(cx, cy, cz);
+      controlsRef.current.update();
+    }
+  }, [focusedPartName, meshes]);
+
   // Drive the animation clock from the render loop
   useFrame((_, delta) => {
     animationController.tick(delta);
@@ -191,10 +280,12 @@ function SceneContents({
           );
         })}
 
+        <DynamicClearanceOverlay meshes={meshes} animationController={animationController} />
+
         <ContactShadows position={[0, 0, 0]} opacity={dark ? 0.4 : 0.25} scale={100} blur={2} far={10} />
       </group>
 
-      <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+      <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.1} />
 
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
         <GizmoViewport labelColor="white" axisHeadScale={1} />
@@ -206,6 +297,7 @@ function SceneContents({
 function App() {
   const [meshes, setMeshes] = useState<StepMeshPayload[]>([]);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
+  const [focusedPartName, setFocusedPartName] = useState<string | undefined>(undefined);
   const [isDark, setIsDark] = useState<boolean>(true);
   const animationControllerRef = useRef<AnimationController | null>(null);
   const [, forceUpdate] = useState(0);
@@ -250,9 +342,7 @@ function App() {
         // 4. Setup Bindings from CAD Components
         const parsedCad = extractCadComponents(cadComponents || []);
 
-        // We must map `dynamicPosition` and `dynamicRotation` to the `bindings` array expected by AnimationController.
-        // Wait, AnimationController expects `property`, `index`, `variable`.
-        // We will override AnimatedBody's useFrame to read the variables directly since R.T needs to be converted to a quaternion.
+        // We map dynamicPosition, dynamicRotation, dynamicScale, and dynamicDeformation to AnimationController bindings.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const bindings = parsedCad.map((c: any) => {
           const compBindings: { property: "position" | "rotation" | "scale"; index: number; variable: string }[] = [];
@@ -269,7 +359,6 @@ function App() {
 
           if (c.cad.dynamicRotation) {
             // dynamicRotation is "body1.frame_a.R.T"
-            // Modelica R.T is a 3x3 array.
             const prefix = c.cad.dynamicRotation;
             compBindings.push({ property: "rotation", index: 0, variable: `${prefix}[1,1]` });
             compBindings.push({ property: "rotation", index: 1, variable: `${prefix}[1,2]` });
@@ -282,10 +371,36 @@ function App() {
             compBindings.push({ property: "rotation", index: 8, variable: `${prefix}[3,3]` });
           }
 
+          if (c.cad.dynamicScale) {
+            const match = c.cad.dynamicScale.match(/\{([^,]+),\s*([^,]+),\s*([^}]+)\}/);
+            if (match) {
+              compBindings.push({ property: "scale", index: 0, variable: match[1].trim() });
+              compBindings.push({ property: "scale", index: 1, variable: match[2].trim() });
+              compBindings.push({ property: "scale", index: 2, variable: match[3].trim() });
+            } else {
+              compBindings.push({ property: "scale", index: 0, variable: c.cad.dynamicScale.trim() });
+              compBindings.push({ property: "scale", index: 1, variable: c.cad.dynamicScale.trim() });
+              compBindings.push({ property: "scale", index: 2, variable: c.cad.dynamicScale.trim() });
+            }
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let deformationConfig: any = undefined;
+          if (c.cad.dynamicDeformation) {
+            const volMatch = c.cad.dynamicDeformation.match(/V=([a-zA-Z0-9_.]+)/);
+            const v0Match = c.cad.dynamicDeformation.match(/V0=([0-9.eE+-]+)/);
+            deformationConfig = {
+              mode: "volume_radial",
+              volumeVariable: volMatch ? volMatch[1] : c.cad.dynamicDeformation.trim(),
+              referenceVolume: v0Match ? parseFloat(v0Match[1]) : 1.0,
+            };
+          }
+
           return {
             // We use the feature name if available, otherwise the component name
             componentName: c.cad.feature || c.name,
             bindings: compBindings,
+            deformation: deformationConfig,
           };
         });
 
@@ -302,6 +417,18 @@ function App() {
             forceUpdate((n) => n + 1);
           }
         }
+      } else if (message.type === "focusPart") {
+        const target = (message.partName || "").toLowerCase();
+        setFocusedPartName(message.partName);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const found = meshes.find(
+          (m: any) =>
+            (m.name || "").toLowerCase().includes(target) || (m.userData?.name || "").toLowerCase().includes(target),
+        );
+        if (found) {
+          setSelectedId(found.id);
+        }
+        forceUpdate((n) => n + 1);
       }
     };
     window.addEventListener("message", handleMessage);
@@ -312,7 +439,7 @@ function App() {
       window.removeEventListener("message", handleMessage);
       observer.disconnect();
     };
-  }, []);
+  }, [meshes]);
 
   const handleSelect = (id: number | null) => {
     setSelectedId(id || undefined);
@@ -352,6 +479,7 @@ function App() {
                 selectedId={selectedId}
                 onSelect={handleSelect}
                 dark={isDark}
+                focusedPartName={focusedPartName}
               />
             )}
           </Canvas>

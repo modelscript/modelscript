@@ -13,6 +13,7 @@ import FeedsPage from "./pages/FeedsPage";
 import FollowersPage from "./pages/FollowersPage";
 import FollowingPage from "./pages/FollowingPage";
 import HomeFeedPage from "./pages/HomeFeedPage";
+import IdeWorkspacePage from "./pages/IdeWorkspacePage";
 import LibraryListPage from "./pages/LibraryListPage";
 import LibraryVersionPage from "./pages/LibraryVersionPage";
 import LoginPage from "./pages/LoginPage";
@@ -74,8 +75,13 @@ function App() {
                 <Route path="/packages/:name/:version" element={<PackageDetailPage />} />
                 <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
 
+                {/* ModelScript IDE Workbench */}
+                <Route path="/ide" element={<IdeWorkspacePage />} />
+                <Route path="/ide/:templateId" element={<IdeWorkspacePage />} />
+
                 {/* Repositories */}
                 <Route path="/repos" element={<RepositoryListPage />} />
+                <Route path="/repos/:provider/:namespace/:project/ide" element={<IdeWorkspacePage />} />
                 <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
 
                 {/* Scripts */}

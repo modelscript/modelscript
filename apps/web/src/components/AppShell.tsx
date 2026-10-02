@@ -302,15 +302,24 @@ const AppShell: React.FC = () => {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
+  React.useEffect(() => {
+    const handleOpenCompose = () => {
+      setIsComposeOpen(true);
+    };
+    window.addEventListener("modelscript:open-compose", handleOpenCompose);
+    return () => window.removeEventListener("modelscript:open-compose", handleOpenCompose);
+  }, []);
+
   const isDev = import.meta.env.DEV;
 
   // Make wide layout for /settings/*
   const isWideLayout = location.pathname.startsWith("/settings");
 
-  // Make full screen layout for /packages/* and /repos/*
+  // Make full screen layout for /packages/*, /repos/*, and /ide/*
   const isFullScreenLayout =
     (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
-    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/");
+    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/") ||
+    location.pathname.startsWith("/ide");
 
   return (
     <ComposeContext.Provider value={{ openCompose: () => setIsComposeOpen(true) }}>

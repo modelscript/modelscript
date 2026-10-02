@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { ArrowLeftIcon, SearchIcon, XCircleFillIcon } from "@primer/octicons-react";
+import { ArrowLeftIcon, CodeIcon, RocketIcon, SearchIcon, XCircleFillIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -11,6 +10,87 @@ import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
 import Post from "../components/Post";
 import { API_BASE_URL } from "../config";
+
+interface StarterTemplate {
+  id: string;
+  title: string;
+  category: "CAD" | "Simulation" | "MBSE" | "AI" | "Optimization" | "Polyglot";
+  description: string;
+  badge: string;
+  icon: string;
+}
+
+const STARTER_TEMPLATES: StarterTemplate[] = [
+  {
+    id: "drone-chassis",
+    title: "Drone Chassis Thread",
+    category: "Polyglot",
+    badge: "CAD + FEA + CFD",
+    description:
+      "Quadcopter assembly linking procedural Modelica CAD geometry to aerodynamic simulation and STEP export.",
+    icon: "🛸",
+  },
+  {
+    id: "sysml2",
+    title: "SysML v2 Vehicle Architecture",
+    category: "MBSE",
+    badge: "SysML v2",
+    description: "Complete vehicle architecture model showcasing KerML parts, ports, state machines, and requirements.",
+    icon: "🚗",
+  },
+  {
+    id: "bouncing-ball",
+    title: "Bouncing Ball Dynamics",
+    category: "Simulation",
+    badge: "WASM Solvers",
+    description:
+      "Classic hybrid continuous/discrete physical modeling with state events, restitution, and zero-crossing detection.",
+    icon: "⚽",
+  },
+  {
+    id: "rlc",
+    title: "Analogue RLC Circuit",
+    category: "Simulation",
+    badge: "Analogue EE",
+    description:
+      "Second-order electrical resonant circuit with frequency response plotting and interactive parameter tuning.",
+    icon: "⚡",
+  },
+  {
+    id: "injection-molding-cosim",
+    title: "Injection Molding Co-Simulation",
+    category: "Polyglot",
+    badge: "FMI Co-Sim",
+    description:
+      "Thermal-hydraulic coupling simulating polymer mold cavity fill, temperature decay, and cooling cycle dynamics.",
+    icon: "🏭",
+  },
+  {
+    id: "surrogate",
+    title: "AI Surrogate ROMs",
+    category: "AI",
+    badge: "Neural ROM",
+    description: "WebAssembly-accelerated neural surrogate model for ultra-fast reduced-order dynamic simulation.",
+    icon: "🧠",
+  },
+  {
+    id: "assembly-to-multibody",
+    title: "STEP CAD to Multi-Body",
+    category: "CAD",
+    badge: "OpenCascade STEP",
+    description: "Automatic conversion from 3D STEP mechanical assemblies to articulated multibody dynamic equations.",
+    icon: "📐",
+  },
+  {
+    id: "calibration",
+    title: "Parameter Calibration & Fitting",
+    category: "Optimization",
+    badge: "Optimization",
+    description:
+      "Non-linear least squares parameter estimation fitting dynamic Modelica models against measured time-series data.",
+    icon: "🎯",
+  },
+];
 
 const SearchHeader = styled.div`
   display: flex;
@@ -123,20 +203,57 @@ const ExplorePage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
 
-  const [posts, setPosts] = useState<any[]>([]);
-  const [topicPosts, setTopicPosts] = useState<any[]>([]);
-  const [trending, setTrending] = useState<any[]>([]);
+  interface PostData {
+    id: string;
+    [key: string]: unknown;
+  }
+
+  interface TopicData {
+    name: string;
+    tag?: string;
+    postsCount?: number;
+    [key: string]: unknown;
+  }
+
+  interface PackageData {
+    name: string;
+    version?: string;
+    description?: string;
+    [key: string]: unknown;
+  }
+
+  interface RepoData {
+    id?: string;
+    provider?: string;
+    namespace: string;
+    project: string;
+    description?: string;
+    avatar_url?: string;
+    [key: string]: unknown;
+  }
+
+  interface PersonData {
+    id?: string;
+    username?: string;
+    name?: string;
+    avatar?: string;
+    [key: string]: unknown;
+  }
+
+  const [posts, setPosts] = useState<PostData[]>([]);
+  const [topicPosts, setTopicPosts] = useState<PostData[]>([]);
+  const [trending, setTrending] = useState<TopicData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Top");
   const [localQuery, setLocalQuery] = useState("");
 
-  const [packages, setPackages] = useState<any[]>([]);
+  const [packages, setPackages] = useState<PackageData[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(false);
 
-  const [repos, setRepos] = useState<any[]>([]);
+  const [repos, setRepos] = useState<RepoData[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
 
-  const [matchedPeople, setMatchedPeople] = useState<any[]>([]);
+  const [matchedPeople, setMatchedPeople] = useState<PersonData[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
 
   useEffect(() => {
@@ -266,7 +383,7 @@ const ExplorePage: React.FC = () => {
               (r.description && r.description.toLowerCase().includes(query.toLowerCase())),
           );
           const filteredUser = userRepos.filter(
-            (r: any) =>
+            (r: RepoData) =>
               r.project.toLowerCase().includes(query.toLowerCase()) ||
               r.namespace.toLowerCase().includes(query.toLowerCase()) ||
               (r.description && r.description.toLowerCase().includes(query.toLowerCase())),
@@ -343,7 +460,7 @@ const ExplorePage: React.FC = () => {
     (p) => p.artifact_view_id !== null && p.content && p.content.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const TABS = ["Top", "Latest", "People", "Media", "Artifacts", "Repositories"];
+  const TABS = ["Top", "Latest", "Templates", "People", "Media", "Artifacts", "Repositories"];
 
   if (topic) {
     return (
@@ -458,6 +575,89 @@ const ExplorePage: React.FC = () => {
                   </Box>
                 )}
               </>
+            )}
+
+            {activeTab === "Templates" && (
+              <Box p={3}>
+                <Box display="grid" gridTemplateColumns="repeat(auto-fill, minmax(280px, 1fr))" gap={3}>
+                  {STARTER_TEMPLATES.filter(
+                    (t) =>
+                      t.title.toLowerCase().includes(query.toLowerCase()) ||
+                      t.description.toLowerCase().includes(query.toLowerCase()) ||
+                      t.category.toLowerCase().includes(query.toLowerCase()) ||
+                      t.badge.toLowerCase().includes(query.toLowerCase()),
+                  ).map((template) => (
+                    <Box
+                      key={template.id}
+                      p={3}
+                      borderRadius="12px"
+                      border="1px solid var(--color-border-default)"
+                      bg="var(--color-canvas-default)"
+                      display="flex"
+                      flexDirection="column"
+                      justifyContent="space-between"
+                      sx={{
+                        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                        "&:hover": {
+                          borderColor: "var(--color-accent-emphasis)",
+                          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+                        },
+                      }}
+                    >
+                      <Box>
+                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                          <span style={{ fontSize: "24px" }}>{template.icon}</span>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontFamily: "var(--font-mono)",
+                              padding: "2px 8px",
+                              borderRadius: "9999px",
+                              backgroundColor: "rgba(56, 139, 253, 0.12)",
+                              color: "var(--color-accent-fg)",
+                              border: "1px solid rgba(56, 139, 253, 0.3)",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {template.badge}
+                          </span>
+                        </Box>
+                        <Heading as="h4" style={{ fontSize: "15px", fontWeight: "bold", marginBottom: "6px" }}>
+                          {template.title}
+                        </Heading>
+                        <Text
+                          as="p"
+                          color="var(--color-fg-muted)"
+                          style={{ fontSize: "13px", lineHeight: 1.4, margin: 0 }}
+                        >
+                          {template.description}
+                        </Text>
+                      </Box>
+                      <Box mt={3} pt={2} borderTop="1px solid var(--color-border-subtle)">
+                        <Link
+                          to={`/ide/${template.id}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                            padding: "8px 12px",
+                            borderRadius: "6px",
+                            background: "var(--gradient-cta)",
+                            color: "white",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            textDecoration: "none",
+                            boxShadow: "var(--glow-ai-sm)",
+                          }}
+                        >
+                          <CodeIcon size={14} /> Launch in IDE
+                        </Link>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
             )}
 
             {activeTab === "People" && (
@@ -782,6 +982,138 @@ const ExplorePage: React.FC = () => {
         </Box>
       ) : (
         <Box>
+          {/* Starter Engineering Workspaces */}
+          <Box p={3} borderBottom="1px solid var(--color-border-subtle)" bg="var(--color-canvas-subtle)">
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box>
+                <Heading
+                  as="h3"
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 800,
+                    color: "var(--color-fg-default)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <RocketIcon size={18} /> Starter Engineering Workspaces
+                </Heading>
+                <Text style={{ fontSize: "13px", color: "var(--color-fg-muted)" }}>
+                  Launch ready-to-run polyglot models, 3D CAD assemblies, and WASM solvers with zero setup.
+                </Text>
+              </Box>
+              <Link
+                to="/ide"
+                style={{
+                  fontSize: "13px",
+                  color: "var(--color-accent-fg)",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <CodeIcon size={14} /> Open Blank IDE
+              </Link>
+            </Box>
+
+            <Box
+              display="flex"
+              gap="12px"
+              sx={{
+                overflowX: "auto",
+                paddingBottom: "8px",
+                "&::-webkit-scrollbar": { display: "none" },
+                scrollbarWidth: "none",
+              }}
+            >
+              {STARTER_TEMPLATES.map((tmpl) => (
+                <Box
+                  key={tmpl.id}
+                  bg="var(--color-canvas-default)"
+                  border="1px solid var(--color-border-default)"
+                  borderRadius="10px"
+                  p="14px"
+                  minWidth="240px"
+                  maxWidth="260px"
+                  display="flex"
+                  flexDirection="column"
+                  justifyContent="space-between"
+                  sx={{
+                    flexShrink: 0,
+                    transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                    "&:hover": {
+                      borderColor: "var(--color-accent-emphasis)",
+                      transform: "translateY(-2px)",
+                      boxShadow: "0 6px 18px rgba(0, 0, 0, 0.25)",
+                    },
+                  }}
+                >
+                  <Box>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <span style={{ fontSize: "20px" }}>{tmpl.icon}</span>
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "var(--font-mono)",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          backgroundColor: "rgba(56, 139, 253, 0.12)",
+                          color: "var(--color-accent-fg)",
+                          border: "1px solid rgba(56, 139, 253, 0.3)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {tmpl.badge}
+                      </span>
+                    </Box>
+                    <div
+                      style={{
+                        fontWeight: "bold",
+                        fontSize: "14px",
+                        color: "var(--color-fg-default)",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {tmpl.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--color-fg-muted)",
+                        lineHeight: 1.4,
+                        marginBottom: "12px",
+                      }}
+                    >
+                      {tmpl.description}
+                    </div>
+                  </Box>
+                  <Link
+                    to={`/ide/${tmpl.id}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      padding: "6px 12px",
+                      borderRadius: "6px",
+                      background: "var(--gradient-cta)",
+                      color: "white",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      boxShadow: "var(--glow-ai-sm)",
+                    }}
+                  >
+                    <CodeIcon size={12} /> Launch in IDE
+                  </Link>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
           {trending.length > 0 && (
             <Box p={3} borderBottom="1px solid var(--color-border-subtle)" bg="var(--color-canvas-subtle)">
               <Heading

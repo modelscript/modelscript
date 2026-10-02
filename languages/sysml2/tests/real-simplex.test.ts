@@ -100,4 +100,58 @@ assert(
   checkRes.conflictingRequirements.includes("Req_Budget") || checkRes.conflictingRequirements.includes("Req_MinZ"),
 );
 console.log("  ✓ Multi-variable linear budget contradiction detection: OK");
+
+// 4. Test exact strict inequality contradiction without epsilon approximation (x < 1 && x >= 1)
+const strictSolver = new RealSimplexSolver();
+strictSolver.addConstraint({
+  terms: [{ varName: "x", coeff: 1 }],
+  operator: "<",
+  rhs: 1,
+});
+strictSolver.addConstraint({
+  terms: [{ varName: "x", coeff: 1 }],
+  operator: ">=",
+  rhs: 1,
+});
+const strictRes = strictSolver.solve();
+assert.strictEqual(strictRes.isFeasible, false, "x < 1 and x >= 1 must be strictly UNSAT via R(delta)");
+console.log("  ✓ Exact infinitesimal R(delta) strict inequality contradiction: OK");
+
+// 5. Test micro-scale strict inequality below epsilon threshold: x < 1e-12 && x >= 1e-12
+const microSolver = new RealSimplexSolver();
+microSolver.addConstraint({
+  terms: [{ varName: "v", coeff: 1 }],
+  operator: "<",
+  rhs: 1e-12,
+});
+microSolver.addConstraint({
+  terms: [{ varName: "v", coeff: 1 }],
+  operator: ">=",
+  rhs: 1e-12,
+});
+const microRes = microSolver.solve();
+assert.strictEqual(microRes.isFeasible, false, "Micro-scale strict inequalities must be UNSAT without epsilon failure");
+console.log("  ✓ Micro-scale precision below 1e-9 verified via R(delta): OK");
+
+// 6. Test scientific notation parsing and solving
+const sciExpr = parseLinearExpression("1.2e-4*x + 3.5e-2*y - 5.0e-3");
+assert.strictEqual(sciExpr.terms.length, 2);
+assert.strictEqual(sciExpr.terms[0]!.varName, "x");
+assert.strictEqual(sciExpr.terms[0]!.coeff, 1.2e-4);
+assert.strictEqual(sciExpr.terms[1]!.varName, "y");
+assert.strictEqual(sciExpr.terms[1]!.coeff, 3.5e-2);
+assert.strictEqual(sciExpr.constant, -5.0e-3);
+
+const sciSolver = new RealSimplexSolver();
+sciSolver.addConstraint({
+  terms: sciExpr.terms,
+  operator: "<=",
+  rhs: 10.0,
+});
+sciSolver.setBound("x", 0, 100);
+sciSolver.setBound("y", 0, 100);
+const sciRes = sciSolver.solve();
+assert.strictEqual(sciRes.isFeasible, true, "Scientific notation constraints must be feasible");
+console.log("  ✓ Scientific notation parsing and solving: OK");
+
 console.log("Real-Algebraic Simplex Solver verified successfully!");

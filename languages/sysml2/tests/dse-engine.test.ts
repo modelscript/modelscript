@@ -80,4 +80,57 @@ describe("SysML v2 Multi-Objective Design Space Exploration (DSE) Engine", () =>
 
     assert.ok(res.summary.includes("non-dominated Pareto designs"));
   });
+
+  it("should achieve true Latin Hypercube space-filling coverage across off-diagonal quadrants", async () => {
+    const res = await SysML2DSEEngine.explore({
+      sampleCount: 40,
+      seed: 42,
+      parameters: [
+        { name: "x", min: 0, max: 100 },
+        { name: "y", min: 0, max: 100 },
+      ],
+      objectives: [{ name: "obj", direction: "minimize" }],
+      evaluate: (p) => ({ obj: p.x + p.y }),
+    });
+
+    let q1 = 0; // x > 50, y > 50
+    let q2 = 0; // x < 50, y > 50 (off-diagonal)
+    let q3 = 0; // x < 50, y < 50
+    let q4 = 0; // x > 50, y < 50 (off-diagonal)
+
+    for (const c of res.candidates) {
+      const x = c.parameters["x"]!;
+      const y = c.parameters["y"]!;
+      if (x >= 50 && y >= 50) q1++;
+      else if (x < 50 && y >= 50) q2++;
+      else if (x < 50 && y < 50) q3++;
+      else q4++;
+    }
+
+    // A true Latin Hypercube must explore off-diagonal quadrants (q2 and q4)
+    assert.ok(q2 >= 3, `Expected at least 3 samples in off-diagonal quadrant 2 (x<50, y>50), got ${q2}`);
+    assert.ok(q4 >= 3, `Expected at least 3 samples in off-diagonal quadrant 4 (x>50, y<50), got ${q4}`);
+  });
+
+  it("should produce deterministic reproducible samples when seeded", async () => {
+    const problem = {
+      sampleCount: 20,
+      seed: 9999,
+      parameters: [
+        { name: "a", min: 10, max: 50 },
+        { name: "b", min: 100, max: 500 },
+      ],
+      objectives: [{ name: "cost", direction: "minimize" }],
+      evaluate: (p: Record<string, number>) => ({ cost: p.a * 2 + p.b }),
+    };
+
+    const run1 = await SysML2DSEEngine.explore(problem);
+    const run2 = await SysML2DSEEngine.explore(problem);
+
+    for (let i = 0; i < run1.candidates.length; i++) {
+      assert.strictEqual(run1.candidates[i]!.parameters["a"], run2.candidates[i]!.parameters["a"]);
+      assert.strictEqual(run1.candidates[i]!.parameters["b"], run2.candidates[i]!.parameters["b"]);
+      assert.strictEqual(run1.candidates[i]!.objectives["cost"], run2.candidates[i]!.objectives["cost"]);
+    }
+  });
 });

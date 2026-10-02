@@ -93,12 +93,9 @@ export class ReducedProductState {
       if (ival.isBottom()) return ReducedProductState.bottom(this.octagon.numVars);
       const idx = this.getVarIndex(name);
       if (idx < this.octagon.numVars) {
-        if (ival.high !== Infinity && !isNaN(ival.high)) {
-          this.octagon.setInterval(idx, -OCTAGON_INF / 2, Math.floor(ival.high));
-        }
-        if (ival.low !== -Infinity && !isNaN(ival.low)) {
-          this.octagon.setInterval(idx, Math.ceil(ival.low), OCTAGON_INF / 2);
-        }
+        const low = ival.low !== -Infinity && !isNaN(ival.low) ? Math.floor(ival.low) : -OCTAGON_INF / 2;
+        const high = ival.high !== Infinity && !isNaN(ival.high) ? Math.ceil(ival.high) : OCTAGON_INF / 2;
+        this.octagon.setInterval(idx, low, high);
       }
     }
 

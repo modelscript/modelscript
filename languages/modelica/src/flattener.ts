@@ -323,9 +323,17 @@ function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
   }
   const activeDb: QueryDB | undefined = (dae as any).db ?? (dae as any).parentDae?.db;
   if (activeDb) {
+    const currentClassId: SymbolId | undefined = (dae as any).flattener?.currentClassId ?? (dae as any).currentClassId;
     const lastPart = name.includes(".") ? name.split(".").pop()! : name;
     const cleanLastPart = lastPart.includes("[") ? lastPart.split("[")[0]! : lastPart;
-    const syms = activeDb.byName(cleanLastPart);
+    let syms: SymbolEntry[] = [];
+    if (currentClassId) {
+      const scopeSyms = activeDb.childrenOf(currentClassId);
+      syms = scopeSyms.filter((s) => s.name === cleanLastPart);
+    }
+    if (syms.length === 0) {
+      syms = activeDb.byName(cleanLastPart);
+    }
     for (const s of syms) {
       if (s.kind === "Component") {
         const typeSpec = activeDb.query<string | null>("typeSpecifier", s.id);
@@ -645,9 +653,7 @@ function evalDaeExpr(exprId: number, dae: DAEBuilder): any {
           if (dae.getVarType(varIdx) === VarType.Boolean) {
             return startVal !== 0;
           }
-          if (startVal !== 0) {
-            return startVal;
-          }
+          return startVal;
         }
       }
       return null;
@@ -757,6 +763,28 @@ function evalDaeExpr(exprId: number, dae: DAEBuilder): any {
       const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
       if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
         return scalarBuiltin.fold(...args);
+      }
+      return null;
+    }
+    case ExprKind.IfElse: {
+      const condVal = evalDaeExpr(dae.getExprData1(exprId), dae);
+      if (typeof condVal === "boolean") {
+        return condVal ? evalDaeExpr(dae.getExprLeft(exprId), dae) : evalDaeExpr(dae.getExprRight(exprId), dae);
+      }
+      return null;
+    }
+    case ExprKind.Subscript: {
+      const baseVal = evalDaeExpr(dae.getExprData1(exprId), dae);
+      if (!Array.isArray(baseVal)) return null;
+      const subCount = dae.getExprRight(exprId);
+      if (subCount === 1) {
+        const subVal = evalDaeExpr(dae.getExprLeft(exprId), dae);
+        if (typeof subVal === "number" && Number.isInteger(subVal)) {
+          const idx = subVal - 1;
+          if (idx >= 0 && idx < baseVal.length) {
+            return baseVal[idx];
+          }
+        }
       }
       return null;
     }
@@ -1156,22 +1184,35 @@ function findImplicitArrayDim(bodyNodes: any[], iterName: string, dae: DAEBuilde
   return foundDim;
 }
 
-function splitTopLevelArgs(text: string): string[] {
+function splitTopLevel(text: string, delimiter: string = ","): string[] {
   const parts: string[] = [];
   let depth = 0;
+  let inString = false;
   let current = "";
-  for (const ch of text) {
-    if (ch === "(" || ch === "{" || ch === "[") depth++;
-    else if (ch === ")" || ch === "}" || ch === "]") depth--;
-    else if (ch === "," && depth === 0) {
-      parts.push(current.trim());
-      current = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' && (i === 0 || text[i - 1] !== "\\")) {
+      inString = !inString;
+      current += ch;
       continue;
+    }
+    if (!inString) {
+      if (ch === "(" || ch === "{" || ch === "[") depth++;
+      else if (ch === ")" || ch === "}" || ch === "]") depth--;
+      else if (ch === delimiter && depth === 0) {
+        if (current.trim()) parts.push(current.trim());
+        current = "";
+        continue;
+      }
     }
     current += ch;
   }
   if (current.trim()) parts.push(current.trim());
   return parts;
+}
+
+function splitTopLevelArgs(text: string): string[] {
+  return splitTopLevel(text, ",");
 }
 
 function evalArithmeticString(expr: string): number | null {
@@ -1283,6 +1324,82 @@ function evalArithmeticText(str: string, subs?: Map<string, number>): number | n
   return evalArithmeticString(s);
 }
 
+function getVarPrefixSet(dae: DAEBuilder): Set<string> {
+  let set = (dae as any)._varPrefixSet as Set<string> | undefined;
+  let lastCount = (dae as any)._varPrefixCount ?? 0;
+  if (!set) {
+    set = new Set<string>();
+    (dae as any)._varPrefixSet = set;
+    lastCount = 0;
+  }
+  const currCount = dae.varCount;
+  if (lastCount < currCount) {
+    for (let i = lastCount; i < currCount; i++) {
+      if (dae.isVarRemoved(i)) continue;
+      const name = dae.getVarName(i);
+      let dotIdx = name.indexOf(".");
+      while (dotIdx >= 0) {
+        const p = name.slice(0, dotIdx);
+        set.add(p);
+        const brkIdx = p.indexOf("[");
+        if (brkIdx >= 0) {
+          set.add(p.slice(0, brkIdx));
+        }
+        dotIdx = name.indexOf(".", dotIdx + 1);
+      }
+      const brkIdx = name.indexOf("[");
+      if (brkIdx >= 0) {
+        set.add(name.slice(0, brkIdx));
+      }
+    }
+    (dae as any)._varPrefixCount = currCount;
+  }
+  return set;
+}
+
+function getDaeArrayDimSize(dae: DAEBuilder, arrName: string, resolvedName: string, dim: number): number | null {
+  const namedShape =
+    (dae as any).getNamedArrayShape?.(resolvedName) ??
+    (dae as any).namedArrayShapes?.get(resolvedName) ??
+    (dae as any).getNamedArrayShape?.(arrName) ??
+    (dae as any).namedArrayShapes?.get(arrName);
+  if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
+    return namedShape[dim - 1]!;
+  }
+  const varIdx =
+    dae.getVarIdxByName(resolvedName) >= 0 ? dae.getVarIdxByName(resolvedName) : dae.getVarIdxByName(arrName);
+  if (varIdx >= 0) {
+    const shape = dae.getVarShape(varIdx);
+    if (shape && shape.length >= dim && shape[dim - 1]! >= 0) {
+      return shape[dim - 1]!;
+    }
+  }
+  const prefixSet = getVarPrefixSet(dae);
+  if (!prefixSet.has(resolvedName) && !prefixSet.has(arrName)) {
+    return null;
+  }
+  let maxDim = 0;
+  const target = prefixSet.has(resolvedName) ? resolvedName : arrName;
+  const prefixMatch = `${target}[`;
+  for (let i = 0; i < dae.varCount; i++) {
+    if (!dae.isVarRemoved(i)) {
+      const vn = dae.getVarName(i);
+      if (vn.startsWith(prefixMatch)) {
+        const rest = vn.slice(prefixMatch.length);
+        const endBracket = rest.indexOf("]");
+        if (endBracket >= 0) {
+          const idxList = rest.slice(0, endBracket).split(",");
+          if (dim >= 1 && dim <= idxList.length) {
+            const val = parseInt(idxList[dim - 1]!.trim(), 10);
+            if (!isNaN(val) && val > maxDim) maxDim = val;
+          }
+        }
+      }
+    }
+  }
+  return maxDim > 0 ? maxDim : null;
+}
+
 function evaluateCSTNumber(
   node: any,
   subs?: Map<string, number>,
@@ -1311,43 +1428,8 @@ function evaluateCSTNumber(
     const arrName = sizeMatch[1];
     const dim = parseInt(sizeMatch[2], 10);
     const resolvedName = resolveScopedName(arrName, prefix, dae);
-    const namedShape =
-      (dae as any).getNamedArrayShape?.(resolvedName) ??
-      (dae as any).namedArrayShapes?.get(resolvedName) ??
-      (dae as any).getNamedArrayShape?.(arrName) ??
-      (dae as any).namedArrayShapes?.get(arrName);
-    if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
-      return namedShape[dim - 1]!;
-    }
-    const varIdx =
-      dae.getVarIdxByName(resolvedName) >= 0 ? dae.getVarIdxByName(resolvedName) : dae.getVarIdxByName(arrName);
-    if (varIdx >= 0) {
-      const shape = dae.getVarShape(varIdx);
-      if (shape && shape.length >= dim && shape[dim - 1]! >= 0) {
-        return shape[dim - 1]!;
-      }
-    }
-    let maxDim = 0;
-    const prefixMatch = `${resolvedName}[`;
-    for (let i = 0; i < dae.varCount; i++) {
-      if (!dae.isVarRemoved(i)) {
-        const vn = dae.getVarName(i);
-        if (vn.startsWith(prefixMatch)) {
-          const rest = vn.slice(prefixMatch.length);
-          const endBracket = rest.indexOf("]");
-          if (endBracket >= 0) {
-            const idxList = rest.slice(0, endBracket).split(",");
-            if (dim >= 1 && dim <= idxList.length) {
-              const val = parseInt(idxList[dim - 1]!.trim(), 10);
-              if (!isNaN(val) && val > maxDim) {
-                maxDim = val;
-              }
-            }
-          }
-        }
-      }
-    }
-    if (maxDim > 0) return maxDim;
+    const dimSize = getDaeArrayDimSize(dae, arrName, resolvedName, dim);
+    if (dimSize !== null && dimSize > 0) return dimSize;
     if (db) {
       const syms = db.byName(arrName);
       for (const s of syms) {
@@ -1420,41 +1502,8 @@ function evaluateCSTNumber(
       const dim = parseInt(dimStr, 10);
       if (dae) {
         const resolvedName = resolveScopedName(arrName, prefix, dae);
-        const namedShape =
-          (dae as any).getNamedArrayShape?.(resolvedName) ??
-          (dae as any).namedArrayShapes?.get(resolvedName) ??
-          (dae as any).getNamedArrayShape?.(arrName) ??
-          (dae as any).namedArrayShapes?.get(arrName);
-        if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
-          return String(namedShape[dim - 1]!);
-        }
-        const varIdx =
-          dae.getVarIdxByName(resolvedName) >= 0 ? dae.getVarIdxByName(resolvedName) : dae.getVarIdxByName(arrName);
-        if (varIdx >= 0) {
-          const shape = dae.getVarShape(varIdx);
-          if (shape && shape.length >= dim && shape[dim - 1]! >= 0) {
-            return String(shape[dim - 1]!);
-          }
-        }
-        let maxDim = 0;
-        const prefixMatch = `${resolvedName}[`;
-        for (let i = 0; i < dae.varCount; i++) {
-          if (!dae.isVarRemoved(i)) {
-            const vn = dae.getVarName(i);
-            if (vn.startsWith(prefixMatch)) {
-              const rest = vn.slice(prefixMatch.length);
-              const endBracket = rest.indexOf("]");
-              if (endBracket >= 0) {
-                const idxList = rest.slice(0, endBracket).split(",");
-                if (dim >= 1 && dim <= idxList.length) {
-                  const val = parseInt(idxList[dim - 1]!.trim(), 10);
-                  if (!isNaN(val) && val > maxDim) maxDim = val;
-                }
-              }
-            }
-          }
-        }
-        if (maxDim > 0) return String(maxDim);
+        const dimSize = getDaeArrayDimSize(dae, arrName, resolvedName, dim);
+        if (dimSize !== null && dimSize > 0) return String(dimSize);
       }
       if (db) {
         const syms = db.byName(arrName);
@@ -1554,15 +1603,9 @@ function resolveScopedName(name: string, prefix: string, dae: DAEBuilder, innerO
       if (dae.getVarIdxByName(prefixed) >= 0) {
         resolvedName = prefixed;
       } else {
-        const searchPrefix = prefixed + ".";
-        for (let i = 0; i < dae.varCount; i++) {
-          if (
-            !dae.isVarRemoved(i) &&
-            (dae.getVarName(i).startsWith(searchPrefix) || dae.getVarName(i).startsWith(prefixed + "["))
-          ) {
-            resolvedName = prefixed;
-            break;
-          }
+        const prefixSet = getVarPrefixSet(dae);
+        if (prefixSet.has(prefixed)) {
+          resolvedName = prefixed;
         }
       }
     }
@@ -1607,19 +1650,11 @@ function resolveScopedName(name: string, prefix: string, dae: DAEBuilder, innerO
             resolvedName = target;
             break;
           }
-          const searchPrefix = target + ".";
-          let foundPrefix = false;
-          for (let i = 0; i < dae.varCount; i++) {
-            if (
-              !dae.isVarRemoved(i) &&
-              (dae.getVarName(i).startsWith(searchPrefix) || dae.getVarName(i).startsWith(target + "["))
-            ) {
-              resolvedName = target;
-              foundPrefix = true;
-              break;
-            }
+          const prefixSet = getVarPrefixSet(dae);
+          if (prefixSet.has(target)) {
+            resolvedName = target;
+            break;
           }
-          if (foundPrefix) break;
         }
       }
       p = p.includes(".") ? p.split(".").slice(0, -1).join(".") : p === "" ? null : "";
@@ -3461,6 +3496,42 @@ function getArrayCtorElements(id: number, dae: DAEBuilder): number[] {
     elems.push(dae.getExprLeft(baseId + i));
   }
   return elems;
+}
+
+function negateExpr(operandId: number, dae: DAEBuilder): number {
+  if (operandId < 0) return operandId;
+  const k = dae.getExprKind(operandId);
+  if (k === ExprKind.Negate) {
+    return dae.getExprLeft(operandId);
+  }
+  if (k === ExprKind.Unary && (dae.getExprData1(operandId) as UnaryOp) === UnaryOp.Negate) {
+    return dae.getExprLeft(operandId);
+  }
+  if (k === ExprKind.IntLiteral) {
+    return dae.addIntLiteral(-dae.getExprData1(operandId));
+  }
+  if (k === ExprKind.RealLiteral) {
+    const val = -dae.getExprRealValue(operandId);
+    return dae.addRealLiteral(val === 0 ? 0.0 : val);
+  }
+  if (k === ExprKind.ArrayCtor) {
+    const elems = getArrayCtorElements(operandId, dae);
+    return dae.addArrayCtorExpr(elems.map((e) => negateExpr(e, dae)));
+  }
+  if (k === ExprKind.Binary) {
+    const binOp = dae.getExprData1(operandId) as BinOp;
+    if (binOp === BinOp.Mul) {
+      const leftId = dae.getExprLeft(operandId);
+      const rightId = dae.getExprRight(operandId);
+      return dae.addBinaryExpr(BinOp.Mul, negateExpr(leftId, dae), rightId);
+    }
+    if (binOp === BinOp.Div) {
+      const leftId = dae.getExprLeft(operandId);
+      const rightId = dae.getExprRight(operandId);
+      return dae.addBinaryExpr(BinOp.Div, negateExpr(leftId, dae), rightId);
+    }
+  }
+  return dae.addExpression(ExprKind.Negate, 0, operandId);
 }
 
 function isEquationExpr(c: any): boolean {
@@ -7346,10 +7417,7 @@ function lowerCSTExpression(
             const rightArg = dae.getExprLeft(rightId);
             const leftArgCount = dae.getExprRight(leftId);
             const rightArgCount = dae.getExprRight(rightId);
-            const sameArg =
-              leftArg === rightArg ||
-              (dae.getExprKind(leftArg) === dae.getExprKind(rightArg) &&
-                dae.getExprData1(leftArg) === dae.getExprData1(rightArg));
+            const sameArg = leftArg === rightArg || areExpressionsEqual(dae, leftArg, rightArg);
             if (leftArgCount === 1 && rightArgCount === 1 && sameArg) {
               return dae.addCallExpr("tan", [leftArg]);
             }
@@ -7442,17 +7510,7 @@ function lowerCSTExpression(
         const dispatched = dispatchUnaryOperator("'-'", operandId, node.child(1), dae, db, flattener);
         if (dispatched !== null) return dispatched;
       }
-      if (dae.getExprKind(operandId) === ExprKind.ArrayCtor) {
-        const distributeNeg = (id: number): number => {
-          if (dae.getExprKind(id) === ExprKind.ArrayCtor) {
-            const elems = getArrayCtorElements(id, dae);
-            return dae.addArrayCtorExpr(elems.map(distributeNeg));
-          }
-          return dae.addExpression(ExprKind.Negate, 0, id);
-        };
-        return distributeNeg(operandId);
-      }
-      return dae.addExpression(ExprKind.Negate, 0, operandId);
+      return negateExpr(operandId, dae);
     }
 
     if (op === "+") {
@@ -9845,6 +9903,14 @@ export class ModelicaFlattener {
     this.calledFunctionSymIds.clear();
     this.activeLoopVars.clear();
     this.pendingArrayBindings.clear();
+    this.usedOperatorFunctions.clear();
+    this.expandableBuses.clear();
+    this.evaluatedConstantArrays.clear();
+    this.activeFlatteningFunctionIds.clear();
+    this.currentFlatteningFunctionId = null;
+    this.currentFunctionEnclosingScope = null;
+    this.currentParentMods = undefined;
+    this.bodySnapshot = null;
     this.currentImports = this.collectClassImports(rootClassId);
     const rootSym = this.db.symbol(rootClassId);
     const rootName = rootSym?.name ?? "Model";
@@ -9855,6 +9921,13 @@ export class ModelicaFlattener {
     (dae as any).innerOuterComponents = this.innerOuterComponents;
     (dae as any).activeLoopVars = this.activeLoopVars;
     (dae as any).db = this.db;
+    (dae as any).flattener = this;
+    (dae as any).currentClassId = rootClassId;
+    (dae as any)._isRealNameCache?.clear();
+    delete (dae as any)._isRealNameCache;
+    (dae as any)._varPrefixSet?.clear();
+    delete (dae as any)._varPrefixSet;
+    delete (dae as any)._varPrefixCount;
     const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
     let specKind: string | null = null;
     if (typeof rawKind === "string") {
@@ -10509,7 +10582,6 @@ export class ModelicaFlattener {
 
     if (shouldScalarize) {
       dae = scalarizeArena(dae);
-      foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
       (this as any).currentRootDae = dae;
     }
 
@@ -10584,6 +10656,11 @@ export class ModelicaFlattener {
     const t7 = performance.now();
 
     attachDiffReport(dae);
+    (dae as any)._isRealNameCache?.clear();
+    delete (dae as any)._isRealNameCache;
+    (dae as any)._varPrefixSet?.clear();
+    delete (dae as any)._varPrefixSet;
+    delete (dae as any)._varPrefixCount;
     return dae;
   }
 
@@ -11782,197 +11859,200 @@ export class ModelicaFlattener {
     (fn as any).symId = fnSymId;
     (fn as any).isBeingFlattened = true;
 
-    const parts = cleanFnName.split(".");
-    const baseName = parts[parts.length - 1];
-
-    if (parentDae) {
-      parentDae.addFunction(cleanFnName, fn);
-      parentDae.addFunction(fnName, fn);
-      if (baseName) parentDae.addFunction(baseName, fn);
-    }
-    fn.addFunction(cleanFnName, fn);
-    fn.addFunction(fnName, fn);
-    if (baseName) fn.addFunction(baseName, fn);
-
     const prevImports = this.currentImports;
-    const fnImports = this.collectClassImports(fnSymId);
-    this.currentImports = new Map([...this.currentImports, ...fnImports]);
+    try {
+      const parts = cleanFnName.split(".");
+      const baseName = parts[parts.length - 1];
 
-    const cst = this.db.cstNode(fnSymId) as any;
-    if (cst?.text && /\b__OpenModelica_EarlyInline\s*=\s*true\b/.test(cst.text)) {
-      (fn as any).isEarlyInline = true;
-    }
-    if (cst?.text && /\bimpure\s+function\b/.test(cst.text)) {
-      fn.isImpure = true;
-    }
-
-    const findDesc = (node: any): string | null => {
-      if (!node) return null;
-      if (
-        node.type === "element" ||
-        node.type === "component_clause" ||
-        node.type === "external_clause" ||
-        node.type === "algorithm_section" ||
-        node.type === "equation_section"
-      ) {
-        return null;
-      }
-      if (node.type === "description_string" || node.type === "string_literal") {
-        let t = node.text?.trim() ?? "";
-        if (t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1);
-      }
-      for (const child of node.children || []) {
-        const d = findDesc(child);
-        if (d) return d;
-      }
-      return null;
-    };
-    const fnDesc = findDesc(cst);
-    if (fnDesc) fn.description = fnDesc;
-
-    const findExternalClause = (node: any): any => {
-      if (!node) return null;
-      if (node.type === "external_clause") return node;
-      for (const child of node.children || []) {
-        const found = findExternalClause(child);
-        if (found) return found;
-      }
-      return null;
-    };
-    const extClause = findExternalClause(cst);
-
-    const shortSpec = getShortClassSpecifierNode(cst);
-    let targetSymId = fnSymId;
-    const combinedMods = [...(modifiers ?? [])];
-
-    if (shortSpec) {
-      const typeSpecNode =
-        Cst.ShortClassSpecifier.typeSpecifier(shortSpec) ??
-        shortSpec.children?.find((c: any) => c.type === "type_specifier");
-      const baseName = typeSpecNode?.text?.trim() ?? "";
-      if (baseName) {
-        const baseSym = this.db.byName(baseName).find((e) => e.kind === "Class");
-        if (baseSym) {
-          targetSymId = baseSym.id;
-        }
-      }
-      const modNode =
-        Cst.ShortClassSpecifier.classModification(shortSpec) ??
-        shortSpec.children?.find((c: any) => c.type === "class_modification");
-      if (modNode) {
-        const parsed = this.db.query<any>("effectiveModification", fnSymId);
-        if (parsed?.args) {
-          combinedMods.unshift(...parsed.args);
-        }
-      } else {
-        const mathMatch = baseName.match(
-          /^(?:Modelica\.Math\.)?(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|log|log10|sqrt)$/,
-        );
-        if (mathMatch) {
-          (fn as any).aliasTo = mathMatch[1];
-        }
-      }
-    }
-
-    const elements = this.db.query<SymbolId[]>("instantiate", targetSymId);
-    if (elements && elements.length > 0) {
-      this.instantiateElements(elements, "", fn, { args: combinedMods });
-    }
-
-    if (extClause) {
-      const hasCall =
-        extClause.children?.some((c: any) => c.type === "external_function_call") || /\(/.test(extClause.text ?? "");
-      let extText = extClause.text?.trim() ?? "";
-      extText = extText.replace(/\s*annotation\s*\([\s\S]*?\)\s*;?$/, "").trim();
-      if (extText.endsWith(";")) extText = extText.slice(0, -1).trim();
-
-      if (!hasCall) {
-        // Synthesize default external call: [output =] name(inputs) per MLS §12.9.1
-        const inputs: string[] = [];
-        let outputName: string | null = null;
-        for (let i = 0; i < fn.varCount; i++) {
-          if (fn.isVarRemoved(i)) continue;
-          const causality = fn.getVarCausality(i);
-          const varName = fn.getVarName(i);
-          if (causality === Causality.Input) {
-            inputs.push(varName);
-          } else if (causality === Causality.Output && !outputName) {
-            outputName = varName;
-          }
-        }
-        const callSig = `${baseName}(${inputs.join(", ")})`;
-        const defaultCall = outputName ? `${outputName} = ${callSig}` : callSig;
-        extText = `${extText} ${defaultCall}`.trim();
-      }
-
-      if (!extText.endsWith(";")) extText += ";";
-      fn.externalDecl = extText;
-    }
-
-    this.extractClassEquations(targetSymId, "", fn);
-    foldArenaConstants(fn, this.db, targetSymId, true);
-
-    if (fn.externalDecl && ((fn as any).hasAlgorithmSection || fn.algorithmSections.length > 0)) {
-      const bCst = this.db.cstNode(targetSymId) as any;
-      const rangeObj = bCst
-        ? {
-            startByte: bCst.startIndex ?? bCst.startByte,
-            endByte: bCst.endIndex ?? bCst.endByte,
-            startPosition: bCst.startPosition,
-            endPosition: bCst.endPosition,
-          }
-        : undefined;
-      fn.diagnostics.push({
-        severity: "error",
-        code: ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code,
-        message: ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.message(),
-        range: rangeObj,
-      });
-    }
-
-    if (fn.diagnostics.some((d) => d.severity === "error")) {
-      const cleanupFrom = (targetDae: any) => {
-        if (!targetDae) return;
-        for (const k of [cleanFnName, fnName, baseName]) {
-          if (!k) continue;
-          targetDae.functions.delete(k);
-          const id = targetDae.interner?.lookup(k);
-          if (id !== undefined) targetDae.functions.delete(id);
-        }
-      };
-      cleanupFrom(parentDae);
-      let rootDae: any = (this as any)?.currentRootDae ?? parentDae;
-      while (rootDae?.parentDae) rootDae = rootDae.parentDae;
-      cleanupFrom(rootDae);
-      this.failedFunctionIds.add(fnSymId);
-      const hasInterfaceError = fn.diagnostics.some(
-        (d) => d.severity === "error" && !d.message.includes("looking for a function or record"),
-      );
-      if (hasInterfaceError) {
-        this.invalidInterfaceFunctionIds.add(fnSymId);
-      }
-    } else if (fn.functions && fn.functions.size > 0) {
-      let rootDae: any = (this as any)?.currentRootDae ?? parentDae;
-      while (rootDae?.parentDae) rootDae = rootDae.parentDae;
-      if (rootDae) {
-        for (const [nestedName, nestedFn] of fn.functions.entries()) {
-          rootDae.addFunction(nestedName, nestedFn);
-        }
-      }
       if (parentDae) {
-        for (const [nestedName, nestedFn] of fn.functions.entries()) {
-          parentDae.addFunction(nestedName, nestedFn);
+        parentDae.addFunction(cleanFnName, fn);
+        parentDae.addFunction(fnName, fn);
+        if (baseName) parentDae.addFunction(baseName, fn);
+      }
+      fn.addFunction(cleanFnName, fn);
+      fn.addFunction(fnName, fn);
+      if (baseName) fn.addFunction(baseName, fn);
+
+      const fnImports = this.collectClassImports(fnSymId);
+      this.currentImports = new Map([...this.currentImports, ...fnImports]);
+
+      const cst = this.db.cstNode(fnSymId) as any;
+      if (cst?.text && /\b__OpenModelica_EarlyInline\s*=\s*true\b/.test(cst.text)) {
+        (fn as any).isEarlyInline = true;
+      }
+      if (cst?.text && /\bimpure\s+function\b/.test(cst.text)) {
+        fn.isImpure = true;
+      }
+
+      const findDesc = (node: any): string | null => {
+        if (!node) return null;
+        if (
+          node.type === "element" ||
+          node.type === "component_clause" ||
+          node.type === "external_clause" ||
+          node.type === "algorithm_section" ||
+          node.type === "equation_section"
+        ) {
+          return null;
+        }
+        if (node.type === "description_string" || node.type === "string_literal") {
+          let t = node.text?.trim() ?? "";
+          if (t.startsWith('"') && t.endsWith('"')) return t.slice(1, -1);
+        }
+        for (const child of node.children || []) {
+          const d = findDesc(child);
+          if (d) return d;
+        }
+        return null;
+      };
+      const fnDesc = findDesc(cst);
+      if (fnDesc) fn.description = fnDesc;
+
+      const findExternalClause = (node: any): any => {
+        if (!node) return null;
+        if (node.type === "external_clause") return node;
+        for (const child of node.children || []) {
+          const found = findExternalClause(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      const extClause = findExternalClause(cst);
+
+      const shortSpec = getShortClassSpecifierNode(cst);
+      let targetSymId = fnSymId;
+      const combinedMods = [...(modifiers ?? [])];
+
+      if (shortSpec) {
+        const typeSpecNode =
+          Cst.ShortClassSpecifier.typeSpecifier(shortSpec) ??
+          shortSpec.children?.find((c: any) => c.type === "type_specifier");
+        const baseName = typeSpecNode?.text?.trim() ?? "";
+        if (baseName) {
+          const baseSym = this.db.byName(baseName).find((e) => e.kind === "Class");
+          if (baseSym) {
+            targetSymId = baseSym.id;
+          }
+        }
+        const modNode =
+          Cst.ShortClassSpecifier.classModification(shortSpec) ??
+          shortSpec.children?.find((c: any) => c.type === "class_modification");
+        if (modNode) {
+          const parsed = this.db.query<any>("effectiveModification", fnSymId);
+          if (parsed?.args) {
+            combinedMods.unshift(...parsed.args);
+          }
+        } else {
+          const mathMatch = baseName.match(
+            /^(?:Modelica\.Math\.)?(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|log|log10|sqrt)$/,
+          );
+          if (mathMatch) {
+            (fn as any).aliasTo = mathMatch[1];
+          }
         }
       }
-    }
 
-    this.currentImports = prevImports;
-    this.currentFlatteningFunctionId = prevFnId;
-    this.currentClassId = prevClassId;
-    this.currentFunctionEnclosingScope = prevEnclosingScope;
-    this.activeFlatteningFunctionIds.delete(fnSymId);
-    (fn as any).isBeingFlattened = false;
-    return fn;
+      const elements = this.db.query<SymbolId[]>("instantiate", targetSymId);
+      if (elements && elements.length > 0) {
+        this.instantiateElements(elements, "", fn, { args: combinedMods });
+      }
+
+      if (extClause) {
+        const hasCall =
+          extClause.children?.some((c: any) => c.type === "external_function_call") || /\(/.test(extClause.text ?? "");
+        let extText = extClause.text?.trim() ?? "";
+        extText = extText.replace(/\s*annotation\s*\([\s\S]*?\)\s*;?$/, "").trim();
+        if (extText.endsWith(";")) extText = extText.slice(0, -1).trim();
+
+        if (!hasCall) {
+          // Synthesize default external call: [output =] name(inputs) per MLS §12.9.1
+          const inputs: string[] = [];
+          let outputName: string | null = null;
+          for (let i = 0; i < fn.varCount; i++) {
+            if (fn.isVarRemoved(i)) continue;
+            const causality = fn.getVarCausality(i);
+            const varName = fn.getVarName(i);
+            if (causality === Causality.Input) {
+              inputs.push(varName);
+            } else if (causality === Causality.Output && !outputName) {
+              outputName = varName;
+            }
+          }
+          const callSig = `${baseName}(${inputs.join(", ")})`;
+          const defaultCall = outputName ? `${outputName} = ${callSig}` : callSig;
+          extText = `${extText} ${defaultCall}`.trim();
+        }
+
+        if (!extText.endsWith(";")) extText += ";";
+        fn.externalDecl = extText;
+      }
+
+      this.extractClassEquations(targetSymId, "", fn);
+      foldArenaConstants(fn, this.db, targetSymId, true);
+
+      if (fn.externalDecl && ((fn as any).hasAlgorithmSection || fn.algorithmSections.length > 0)) {
+        const bCst = this.db.cstNode(targetSymId) as any;
+        const rangeObj = bCst
+          ? {
+              startByte: bCst.startIndex ?? bCst.startByte,
+              endByte: bCst.endIndex ?? bCst.endByte,
+              startPosition: bCst.startPosition,
+              endPosition: bCst.endPosition,
+            }
+          : undefined;
+        fn.diagnostics.push({
+          severity: "error",
+          code: ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code,
+          message: ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.message(),
+          range: rangeObj,
+        });
+      }
+
+      if (fn.diagnostics.some((d) => d.severity === "error")) {
+        const cleanupFrom = (targetDae: any) => {
+          if (!targetDae) return;
+          for (const k of [cleanFnName, fnName, baseName]) {
+            if (!k) continue;
+            targetDae.functions.delete(k);
+            const id = targetDae.interner?.lookup(k);
+            if (id !== undefined) targetDae.functions.delete(id);
+          }
+        };
+        cleanupFrom(parentDae);
+        let rootDae: any = (this as any)?.currentRootDae ?? parentDae;
+        while (rootDae?.parentDae) rootDae = rootDae.parentDae;
+        cleanupFrom(rootDae);
+        this.failedFunctionIds.add(fnSymId);
+        const hasInterfaceError = fn.diagnostics.some(
+          (d) => d.severity === "error" && !d.message.includes("looking for a function or record"),
+        );
+        if (hasInterfaceError) {
+          this.invalidInterfaceFunctionIds.add(fnSymId);
+        }
+      } else if (fn.functions && fn.functions.size > 0) {
+        let rootDae: any = (this as any)?.currentRootDae ?? parentDae;
+        while (rootDae?.parentDae) rootDae = rootDae.parentDae;
+        if (rootDae) {
+          for (const [nestedName, nestedFn] of fn.functions.entries()) {
+            rootDae.addFunction(nestedName, nestedFn);
+          }
+        }
+        if (parentDae) {
+          for (const [nestedName, nestedFn] of fn.functions.entries()) {
+            parentDae.addFunction(nestedName, nestedFn);
+          }
+        }
+      }
+
+      return fn;
+    } finally {
+      this.currentImports = prevImports;
+      this.currentFlatteningFunctionId = prevFnId;
+      this.currentClassId = prevClassId;
+      this.currentFunctionEnclosingScope = prevEnclosingScope;
+      this.activeFlatteningFunctionIds.delete(fnSymId);
+      (fn as any).isBeingFlattened = false;
+    }
   }
 
   private generateOperatorFunctions(dae: DAEBuilder): void {
@@ -12261,6 +12341,8 @@ export class ModelicaFlattener {
 
     let stateCount = 0;
     for (let i = 0; i < dae.getVarCount(); i++) {
+      if (dae.isVarRemoved(i)) continue;
+      if (dae.getVarCausality(i) === Causality.Input) continue;
       const v = dae.getVarVariability(i);
       if (v === Variability.Continuous || v === Variability.Discrete) {
         stateCount += dae.getVarShapeElementCount(i);
@@ -12269,7 +12351,7 @@ export class ModelicaFlattener {
     let eqCount = 0;
     for (let i = 0; i < dae.getEqCount(); i++) {
       const kind = dae.getEqKind(i);
-      if (kind === EqKind.Simple || kind === EqKind.InitialSimple || kind === EqKind.Array) {
+      if (kind === EqKind.Simple || kind === EqKind.Array) {
         let count = 1;
         const lhs = dae.getEqLhs(i);
         const rhs = dae.getEqRhs(i);
@@ -12483,8 +12565,11 @@ export class ModelicaFlattener {
   }
 
   private instantiateElements(elements: SymbolId[], prefix: string, dae: DAEBuilder, parentMods?: any): void {
+    const compInstMap = new Map<SymbolId, ComponentInstanceData | undefined>();
+    const declaredNames = new Set<string>();
     for (const elemId of elements) {
       const compInst = this.db.query<ComponentInstanceData>("componentInstance", elemId);
+      compInstMap.set(elemId, compInst);
       if (compInst?.name && compInst?.typeSpecifier) {
         const leafType = compInst.typeSpecifier.split(".").pop();
         if (compInst.name === leafType) {
@@ -12510,19 +12595,25 @@ export class ModelicaFlattener {
           return;
         }
       }
-    }
 
-    const declaredNames = new Set<string>();
-    for (const elemId of elements) {
       const sym = this.db.symbol(elemId);
       if (sym?.name) {
-        const compInst = this.db.query<ComponentInstanceData>("componentInstance", elemId);
-        if (compInst?.isOuter && !compInst.isInner) {
-          continue;
+        if (!compInst?.isOuter || compInst.isInner) {
+          declaredNames.add(sym.name);
         }
-        declaredNames.add(sym.name);
+      }
+
+      if (compInst?.isInner && compInst?.name) {
+        const fullCompName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
+        if (!this.innerDeclarations.has(prefix)) {
+          this.innerDeclarations.set(prefix, new Map<string, string>());
+        }
+        this.innerDeclarations.get(prefix)!.set(compInst.name, fullCompName);
+        if (!(dae as any).innerComponents) (dae as any).innerComponents = new Set<string>();
+        (dae as any).innerComponents.add(fullCompName);
       }
     }
+
     if (parentMods?.args) {
       for (const arg of parentMods.args) {
         if (arg?.name) declaredNames.add(arg.name);
@@ -12558,29 +12649,10 @@ export class ModelicaFlattener {
 
     try {
       for (const elemId of elements) {
-        const compInst = this.db.query<ComponentInstanceData>("componentInstance", elemId);
-        if (compInst?.isInner && compInst?.name) {
-          const fullCompName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
-          if (!this.innerDeclarations.has(prefix)) {
-            this.innerDeclarations.set(prefix, new Map<string, string>());
-          }
-          this.innerDeclarations.get(prefix)!.set(compInst.name, fullCompName);
-          if (!(dae as any).innerComponents) (dae as any).innerComponents = new Set<string>();
-          (dae as any).innerComponents.add(fullCompName);
-        }
-      }
-
-      for (const elemId of elements) {
-        const compInst = this.db.query<ComponentInstanceData>("componentInstance", elemId);
+        const compInst = compInstMap.get(elemId);
         if (!compInst) continue;
 
         const fullCompName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
-        if (compInst.isInner) {
-          if (!this.innerDeclarations.has(prefix)) {
-            this.innerDeclarations.set(prefix, new Map<string, string>());
-          }
-          this.innerDeclarations.get(prefix)!.set(compInst.name, fullCompName);
-        }
 
         const isStateOutput = Boolean(compInst.isOuter && compInst.causality === "output");
         if (compInst.isOuter && !compInst.isInner) {
@@ -14859,17 +14931,8 @@ export class ModelicaFlattener {
               }
             }
           } else if (bText.startsWith("[") && bText.endsWith("]")) {
-            const rows = bText
-              .slice(1, -1)
-              .split(";")
-              .map((s) => s.trim())
-              .filter(Boolean);
-            const rowElements = rows.map((r) =>
-              r
-                .split(",")
-                .map((c) => c.trim())
-                .filter(Boolean),
-            );
+            const rows = splitTopLevel(bText.slice(1, -1), ";");
+            const rowElements = rows.map((r) => splitTopLevel(r, ","));
             const rowsCount = rows.length;
             const colsCount = rowElements.length > 0 ? rowElements[0].length : 0;
             if (arrayDims && arrayDims.length === 1) {
@@ -15058,14 +15121,10 @@ export class ModelicaFlattener {
                     }
                   }
                   if (rowsCount === 0) {
-                    const rows = bRef
-                      .slice(1, -1)
-                      .split(";")
-                      .map((s) => s.trim())
-                      .filter(Boolean);
+                    const rows = splitTopLevel(bRef.slice(1, -1), ";");
                     rowsCount = rows.length;
                     if (rows.length > 0) {
-                      const cols = rows[0].split(/[\s,]+/).filter(Boolean);
+                      const cols = splitTopLevel(rows[0], ",");
                       colsCount = cols.length;
                     }
                   }
@@ -15270,17 +15329,8 @@ export class ModelicaFlattener {
               (arg as any).bindingExpression ??
               "";
             if (rawText.startsWith("[") && rawText.endsWith("]")) {
-              const rows = rawText
-                .slice(1, -1)
-                .split(";")
-                .map((s) => s.trim())
-                .filter(Boolean);
-              const rowElements = rows.map((r) =>
-                r
-                  .split(",")
-                  .map((c) => c.trim())
-                  .filter(Boolean),
-              );
+              const rows = splitTopLevel(rawText.slice(1, -1), ";");
+              const rowElements = rows.map((r) => splitTopLevel(r, ","));
               const rowsCount = rows.length;
               const colsCount = rowElements.length > 0 ? rowElements[0].length : 0;
               if (
@@ -18110,6 +18160,21 @@ export class ModelicaFlattener {
   }
 
   private expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
+    // 1. Direct scalar or exact variable reference
+    if (dae.getVarIdxByName(refStr) >= 0) {
+      return [refStr];
+    }
+    // 2. Direct shape lookup for array connector
+    const namedShape = (dae as any).getNamedArrayShape?.(refStr) ?? (dae as any).namedArrayShapes?.get(refStr);
+    if (namedShape && namedShape.length > 0) {
+      return generateArrayIndices(namedShape).map((idx) => `${refStr}${idx}`);
+    }
+    // 3. If refStr is not in prefixSet, it has no array or member children
+    const prefixSet = getVarPrefixSet(dae);
+    if (!prefixSet.has(refStr)) {
+      return [refStr];
+    }
+    // 4. Fallback: regex scan only when array elements exist in prefixes
     const parts = refStr.split(".");
     const pattern = new RegExp(
       "^(" +

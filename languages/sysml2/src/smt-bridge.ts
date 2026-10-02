@@ -33,7 +33,7 @@ export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequ
   const solver = new RealSimplexSolver();
   const conflictingReqs = new Set<string>();
   const violatedConstraints: { expression: string; requirementName?: string; reason: string }[] = [];
-  const bounds = new Map<string, { lower: number; upper: number }>();
+  const bounds = new Map<string, { lower: number; upper: number; lowerSourceReq?: string; upperSourceReq?: string }>();
 
   for (const c of constraints) {
     if (typeof c.rhs !== "number") continue;
@@ -47,21 +47,44 @@ export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequ
       const varName = terms[0]!.varName;
       const b = bounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
       let violated = false;
+      let priorReq: string | undefined = undefined;
+
       if (c.operator === "<=" || c.operator === "<") {
-        if (effectiveRhs < b.lower - 1e-9) violated = true;
-        b.upper = Math.min(b.upper, effectiveRhs);
+        if (effectiveRhs < b.lower - 1e-9) {
+          violated = true;
+          priorReq = b.lowerSourceReq;
+        }
+        if (effectiveRhs < b.upper) {
+          b.upper = effectiveRhs;
+          b.upperSourceReq = c.requirementName;
+        }
       } else if (c.operator === ">=" || c.operator === ">") {
-        if (effectiveRhs > b.upper + 1e-9) violated = true;
-        b.lower = Math.max(b.lower, effectiveRhs);
+        if (effectiveRhs > b.upper + 1e-9) {
+          violated = true;
+          priorReq = b.upperSourceReq;
+        }
+        if (effectiveRhs > b.lower) {
+          b.lower = effectiveRhs;
+          b.lowerSourceReq = c.requirementName;
+        }
       } else if (c.operator === "==") {
-        if (effectiveRhs < b.lower - 1e-9 || effectiveRhs > b.upper + 1e-9) violated = true;
+        if (effectiveRhs < b.lower - 1e-9) {
+          violated = true;
+          priorReq = b.lowerSourceReq;
+        } else if (effectiveRhs > b.upper + 1e-9) {
+          violated = true;
+          priorReq = b.upperSourceReq;
+        }
         b.lower = Math.max(b.lower, effectiveRhs);
         b.upper = Math.min(b.upper, effectiveRhs);
+        b.lowerSourceReq = c.requirementName;
+        b.upperSourceReq = c.requirementName;
       }
       bounds.set(varName, b);
 
       if (violated) {
         if (c.requirementName) conflictingReqs.add(c.requirementName);
+        if (priorReq) conflictingReqs.add(priorReq);
         violatedConstraints.push({
           expression: c.expression,
           requirementName: c.requirementName,
@@ -93,13 +116,6 @@ export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequ
           res.conflictExplanation ?? `Contradiction with prior bound for variable '${c.lhs}' (evaluated bound: ${rhs})`,
       });
       break;
-    }
-  }
-
-  // If a contradiction was detected, find all participating requirements
-  if (violatedConstraints.length > 0) {
-    for (const c of constraints) {
-      if (c.requirementName) conflictingReqs.add(c.requirementName);
     }
   }
 

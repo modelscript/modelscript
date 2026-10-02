@@ -91,4 +91,22 @@ describe("SysML v2 Non-linear Real Arithmetic (QF_NRA) SMT Solver", () => {
     assert.strictEqual(res.status, "unsat");
     assert.ok(res.explanation.includes("Unsatisfiable"));
   });
+
+  it("should solve irrational real roots without falsely declaring UNSAT", () => {
+    // Equation: x^2 - 2 = 0, root is sqrt(2) approx 1.41421356 in [1, 2]
+    const p = new Polynomial([new Term(1, new Map([["x", 2]])), new Term(-2, new Map())], ["x"]);
+
+    const res = SysML2NRASolver.solve({
+      variables: {
+        x: [1, 2],
+      },
+      constraints: [{ polynomial: p, op: "==" }],
+      tolerance: 1e-4,
+    });
+
+    assert.notStrictEqual(res.status, "unsat", "Must not falsely declare sqrt(2) as UNSAT");
+    assert.strictEqual(res.status, "sat");
+    assert.ok(res.model !== undefined);
+    assert.ok(Math.abs(res.model!.x! - Math.SQRT2) < 1e-3);
+  });
 });

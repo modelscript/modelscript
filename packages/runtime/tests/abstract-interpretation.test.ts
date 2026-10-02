@@ -82,6 +82,19 @@ describe("Phase 1: Abstract Interpretation Generic Engine (@modelscript/runtime)
     assert.strictEqual(sqrtPotential.domainViolation, "possible");
     assert.strictEqual(sqrtPotential.result.low, 0);
     assert.strictEqual(sqrtPotential.result.high, 3);
+
+    // Interval Squaring (sqr): positive, negative, and zero-straddling
+    const sqrPos = new Interval(2, 4).sqr();
+    assert.strictEqual(sqrPos.low, 4);
+    assert.strictEqual(sqrPos.high, 16);
+
+    const sqrNeg = new Interval(-5, -2).sqr();
+    assert.strictEqual(sqrNeg.low, 4);
+    assert.strictEqual(sqrNeg.high, 25);
+
+    const sqrStraddle = new Interval(-2, 3).sqr();
+    assert.strictEqual(sqrStraddle.low, 0);
+    assert.strictEqual(sqrStraddle.high, 9);
   });
 
   it("should perform widening with literal thresholds on Octagon DBM", () => {
@@ -119,6 +132,15 @@ describe("Phase 1: Abstract Interpretation Generic Engine (@modelscript/runtime)
     // Index in [5, 15] -> Potential Out of Bounds (needs assert/precondition)
     const potIdx = arr.checkInBounds(new Interval(5, 15));
     assert.strictEqual(potIdx.inBounds, "potential_out_of_bounds");
+
+    // Multi-dimensional array bounds: Matrix 10x20
+    const matrix = new ArraySegmentState(new Interval(10, 10), Interval.TOP, Interval.TOP, Interval.TOP, Interval.TOP, [
+      new Interval(10, 10),
+      new Interval(20, 20),
+    ]);
+    assert.strictEqual(matrix.checkInBounds(new Interval(5, 5), 0).inBounds, "safe");
+    assert.strictEqual(matrix.checkInBounds(new Interval(15, 15), 1).inBounds, "safe");
+    assert.strictEqual(matrix.checkInBounds(new Interval(25, 25), 1).inBounds, "out_of_bounds");
   });
 
   it("should perform bidirectional reduction in ReducedProductDomain", () => {
@@ -148,6 +170,37 @@ describe("Phase 1: Abstract Interpretation Generic Engine (@modelscript/runtime)
     const jIval = state.intervals.get("j");
     assert.strictEqual(jIval.low, 3);
     assert.strictEqual(jIval.high, 7);
+  });
+
+  it("should project out variable constraints using OctagonDBM.forget without negative cycles", () => {
+    const dbm = new OctagonDBM(4);
+    // x0 in [1, 2]
+    dbm.setInterval(0, 1, 2);
+    // x1 in [10, 20]
+    dbm.setInterval(1, 10, 20);
+    // x1 - x0 <= 15
+    dbm.setDifference(1, 0, 15);
+
+    assert.strictEqual(dbm.getLowerBound(0), 1);
+    assert.strictEqual(dbm.getUpperBound(0), 2);
+    assert.strictEqual(dbm.hasNegativeCycle(), false);
+
+    // Forget x0
+    dbm.forget(0);
+
+    // x0 bounds should now be unbound (-INF, +INF)
+    assert.ok(dbm.getLowerBound(0) <= -1000000);
+    assert.ok(dbm.getUpperBound(0) >= 1000000);
+    // x1 bounds should remain intact (retaining its tightened upper bound 17)
+    assert.strictEqual(dbm.getLowerBound(1), 10);
+    assert.strictEqual(dbm.getUpperBound(1), 17);
+    assert.strictEqual(dbm.hasNegativeCycle(), false);
+
+    // Now assigning a larger value to x0 does NOT contradict old bounds
+    dbm.setInterval(0, 50, 100);
+    assert.strictEqual(dbm.getLowerBound(0), 50);
+    assert.strictEqual(dbm.getUpperBound(0), 100);
+    assert.strictEqual(dbm.hasNegativeCycle(), false);
   });
 
   it("should run FixpointSolver on a loop proving complete absence of RTEs", () => {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ContractAlgebra,
+  checkSymbolicEntailment,
   exportContractToNuXmv,
   verifyAssumeGuaranteePair,
   verifyTemporalContractSymbolic,
@@ -154,5 +155,91 @@ describe("SysML v2 Assume-Guarantee (A/G) Contract Verifier", () => {
     const compRes = ContractAlgebra.verifySystemComposition(sysContract, [motorContract, transmissionContract]);
     assert.strictEqual(compRes.isCompatible, true);
     assert.strictEqual(compRes.isRefined, true);
+  });
+
+  it("should preserve qualified variable paths and require portMapping for mismatched component scopes", () => {
+    // motor1.temp guarantee must NOT satisfy motor2.temp assumption without explicit port mapping
+    const resultUnmapped = verifyAssumeGuaranteePair(
+      "Motor1",
+      "Motor2",
+      ["motor1.temp <= 50"],
+      ["motor2.temp <= 50"],
+      "thermalBus",
+    );
+    assert.strictEqual(resultUnmapped.isSatisfied, false, "Must fail because motor1.temp != motor2.temp");
+    assert.strictEqual(resultUnmapped.violations.length, 1);
+
+    // With explicit portMapping, translation succeeds
+    const resultMapped = verifyAssumeGuaranteePair(
+      "Motor1",
+      "Motor2",
+      ["motor1.temp <= 50"],
+      ["motor2.temp <= 50"],
+      "thermalBus",
+      new Map([["motor1", "motor2"]]),
+    );
+    assert.strictEqual(resultMapped.isSatisfied, true, "Must succeed with valid portMapping");
+    assert.strictEqual(resultMapped.violations.length, 0);
+  });
+
+  it("should recognize vacuous entailment when premises are contradictory", () => {
+    // False => anything is vacuously True in first-order logic
+    const res = checkSymbolicEntailment(["x >= 10", "x <= 5"], "y == 42");
+    assert.strictEqual(res.entailed, true, "Contradictory premises must vacuously entail any conclusion");
+  });
+
+  it("should find counterexamples beyond small bounds in expanded search box", () => {
+    // x >= 200,000 does NOT imply x >= 500,000; counterexample must be found in [200000, 500000]
+    const res = checkSymbolicEntailment(["x >= 200000"], "x >= 500000");
+    assert.strictEqual(res.entailed, false);
+    assert.ok(res.counterexample, "Counterexample should be produced");
+    const xInterval = res.counterexample["x"];
+    assert.ok(xInterval, "Counterexample for x must exist");
+    assert.ok(
+      xInterval[0] >= 199999 && xInterval[1] <= 500001,
+      `Counterexample [${xInterval[0]}, ${xInterval[1]}] must fall in [200000, 500000]`,
+    );
+  });
+
+  it("should detect unsound instantaneous circular assume-guarantee dependencies", () => {
+    const sysContract = {
+      name: "FeedbackSystem",
+      assumptions: [],
+      guarantees: ["out_a >= 10"],
+    };
+
+    // ComponentA assumes out_b <= 50, guarantees out_a >= 10
+    const compA = {
+      name: "ComponentA",
+      assumptions: ["out_b <= 50"],
+      guarantees: ["out_a >= 10"],
+    };
+
+    // ComponentB assumes out_a >= 10, guarantees out_b <= 50 (Instantaneous circular dependency!)
+    const compB = {
+      name: "ComponentB",
+      assumptions: ["out_a >= 10"],
+      guarantees: ["out_b <= 50"],
+    };
+
+    const compRes = ContractAlgebra.verifySystemComposition(sysContract, [compA, compB]);
+    assert.strictEqual(compRes.isCompatible, false, "Instantaneous circular AG dependency must fail compatibility");
+    const circDiag = compRes.compatibilityViolations.find((v) =>
+      v.reason.includes("Circular assume-guarantee dependency"),
+    );
+    assert.ok(circDiag, "Should flag circular assume-guarantee dependency diagnostic");
+    assert.ok(circDiag.reason.includes("ComponentA -> ComponentB -> ComponentA"));
+
+    // If temporal delay is present (e.g. prev(out_a)), circular dependency is sound
+    const compBWithDelay = {
+      name: "ComponentB",
+      assumptions: ["prev(out_a) >= 10"],
+      guarantees: ["out_b <= 50"],
+    };
+    const compResDelay = ContractAlgebra.verifySystemComposition(sysContract, [compA, compBWithDelay]);
+    const circDiagDelay = compResDelay.compatibilityViolations.find((v) =>
+      v.reason.includes("Circular assume-guarantee dependency"),
+    );
+    assert.strictEqual(circDiagDelay, undefined, "Temporal delay breaks unsound instantaneous algebraic cycle");
   });
 });

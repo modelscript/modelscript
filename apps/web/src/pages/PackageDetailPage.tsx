@@ -5,6 +5,7 @@ import {
   BookIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CodeIcon,
   CopyIcon,
   DependabotIcon,
   FileIcon,
@@ -1214,6 +1215,30 @@ const PackageDetailPage: React.FC = () => {
               <code>{installCmd}</code>
               <span className="copy-icon">{copied ? <VerifiedIcon size={16} /> : <CopyIcon size={16} />}</span>
             </InstallBox>
+
+            <Link
+              to={`/ide#memfs:package-${name || "model"}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                width: "100%",
+                padding: "10px 16px",
+                borderRadius: "8px",
+                background: "var(--gradient-cta)",
+                color: "white",
+                fontSize: "14px",
+                fontWeight: 600,
+                textDecoration: "none",
+                marginBottom: "20px",
+                boxShadow: "var(--glow-ai-sm)",
+                boxSizing: "border-box",
+              }}
+            >
+              <CodeIcon size={16} />
+              Open in ModelScript IDE
+            </Link>
 
             {packument?.repository?.url && (
               <MetaBlock>

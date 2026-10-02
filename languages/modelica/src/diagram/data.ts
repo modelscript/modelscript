@@ -166,14 +166,16 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     if (condition === false) continue;
 
     const componentClassInstance = component.classInstance;
-    if (!componentClassInstance) continue;
+    const isUnresolved = !componentClassInstance;
     componentCount++;
 
     const tp0 = performance.now();
     let componentTransform = computeIconPlacement(component);
     const autoLayout = !componentTransform;
     if (!componentTransform) {
-      const icon = componentClassInstance.annotation("Icon", component) as IIcon | null;
+      const icon = componentClassInstance?.annotation
+        ? (componentClassInstance.annotation("Icon", component) as IIcon | null)
+        : null;
       const naturalWidth = computeWidth(icon?.coordinateSystem?.extent) || 200;
       const naturalHeight = computeHeight(icon?.coordinateSystem?.extent) || 200;
       const scaleX = 20 / naturalWidth;
@@ -200,7 +202,43 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const flipY = componentTransform.scaleY < 0;
 
     const ti0 = performance.now();
-    let componentMarkup = renderIconX6(componentClassInstance, component, false);
+    let componentMarkup: any;
+    if (isUnresolved) {
+      componentMarkup = {
+        tagName: "g",
+        children: [
+          {
+            tagName: "rect",
+            attrs: {
+              x: 0,
+              y: 0,
+              width: absWidth,
+              height: absHeight,
+              fill: "#fee2e2",
+              stroke: "#ef4444",
+              strokeWidth: 1.5,
+              strokeDasharray: "4 2",
+              rx: 4,
+            },
+          },
+          {
+            tagName: "text",
+            attrs: {
+              x: absWidth / 2,
+              y: absHeight / 2 + 3,
+              "text-anchor": "middle",
+              fill: "#dc2626",
+              "font-size": Math.max(6, Math.min(10, absHeight * 0.4)),
+              "font-family": "sans-serif",
+              "font-weight": "bold",
+            },
+            children: component.name ?? "?",
+          },
+        ],
+      };
+    } else {
+      componentMarkup = renderIconX6(componentClassInstance, component, false);
+    }
     tIconRender += performance.now() - ti0;
 
     if (flipX || flipY) {
@@ -261,61 +299,104 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     // Build ports
     const ports: DiagramPort[] = [];
     const tpr0 = performance.now();
-    for (const connector of collectAllComponents(componentClassInstance)) {
-      const connectorCondition = evaluateCondition(connector, component);
-      if (connectorCondition === false) continue;
-
-      const connectorClassInstance = connector.classInstance;
-      if (
-        !connectorClassInstance ||
-        (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
-          connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
-          connectorClassInstance.classKind !== undefined)
-      )
-        continue;
-      const connectorTransform = computePortPlacement(connector);
-      if (!connectorTransform) continue;
-
-      let connectorMarkup = renderIconX6(connectorClassInstance);
-      if (flipX || flipY) {
-        const psx = flipX ? -1 : 1;
-        const psy = flipY ? -1 : 1;
-        const ptx = flipX ? connectorTransform.width * absScaleX : 0;
-        const pty = flipY ? connectorTransform.height * absScaleY : 0;
-        connectorMarkup = {
-          tagName: "g",
-          attrs: { transform: `translate(${ptx}, ${pty}) scale(${psx}, ${psy})` },
-          children: [connectorMarkup],
-        };
+    if (isUnresolved) {
+      const referencedPorts = new Set<string>();
+      for (const eq of classInstance?.connectEquations ?? []) {
+        const p1 =
+          eq.lhs ?? eq.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
+        const p2 =
+          eq.rhs ?? eq.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
+        if (typeof p1 === "string" && p1.startsWith(`${component.name}.`)) {
+          referencedPorts.add(p1.substring(component.name.length + 1).split(".")[0]);
+        }
+        if (typeof p2 === "string" && p2.startsWith(`${component.name}.`)) {
+          referencedPorts.add(p2.substring(component.name.length + 1).split(".")[0]);
+        }
       }
-
-      const a = connectorTransform.rotate * (Math.PI / 180);
-      const extCenterOffX = connectorTransform.translateX - connectorTransform.originX + connectorTransform.width / 2;
-      const extCenterOffY = connectorTransform.translateY - connectorTransform.originY + connectorTransform.height / 2;
-      const connCenterX = connectorTransform.originX + extCenterOffX * Math.cos(a) - extCenterOffY * Math.sin(a);
-      const connCenterY = connectorTransform.originY + extCenterOffX * Math.sin(a) + extCenterOffY * Math.cos(a);
-      const portWidth = connectorTransform.width * absScaleX;
-      const portHeight = connectorTransform.height * absScaleY;
-      const desiredCenterX = absWidth / 2 + connCenterX * componentTransform.scaleX;
-      const desiredCenterY = absHeight / 2 + connCenterY * componentTransform.scaleY;
-      const portX = desiredCenterX - portWidth / 2;
-      const portY = desiredCenterY - portHeight / 2;
-
-      ports.push({
-        id: connector.name ?? "",
-        group: "absolute",
-        args: { x: portX, y: portY, angle: connectorTransform.rotate },
-        markup: {
-          tagName: "svg",
-          children: [connectorMarkup],
-          attrs: {
-            magnet: "true",
-            width: connectorTransform.width * absScaleX,
-            height: connectorTransform.height * absScaleY,
-            style: `overflow: visible${connectorCondition === undefined ? "; opacity: 0.5" : ""}`,
+      if (referencedPorts.size === 0) {
+        referencedPorts.add("p");
+        referencedPorts.add("n");
+      }
+      let idx = 0;
+      for (const portName of referencedPorts) {
+        const portX = idx % 2 === 0 ? 0 : absWidth;
+        const portY = absHeight / 2;
+        ports.push({
+          id: portName,
+          group: "absolute",
+          args: { x: portX, y: portY, angle: 0 },
+          markup: {
+            tagName: "rect",
+            attrs: {
+              width: 8,
+              height: 8,
+              x: -4,
+              y: -4,
+              fill: "#ef4444",
+              magnet: "true",
+            },
           },
-        },
-      });
+        });
+        idx++;
+      }
+    } else {
+      for (const connector of collectAllComponents(componentClassInstance)) {
+        const connectorCondition = evaluateCondition(connector, component);
+        if (connectorCondition === false) continue;
+
+        const connectorClassInstance = connector.classInstance;
+        if (
+          !connectorClassInstance ||
+          (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
+            connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+            connectorClassInstance.classKind !== undefined)
+        )
+          continue;
+        const connectorTransform = computePortPlacement(connector);
+        if (!connectorTransform) continue;
+
+        let connectorMarkup = renderIconX6(connectorClassInstance);
+        if (flipX || flipY) {
+          const psx = flipX ? -1 : 1;
+          const psy = flipY ? -1 : 1;
+          const ptx = flipX ? connectorTransform.width * absScaleX : 0;
+          const pty = flipY ? connectorTransform.height * absScaleY : 0;
+          connectorMarkup = {
+            tagName: "g",
+            attrs: { transform: `translate(${ptx}, ${pty}) scale(${psx}, ${psy})` },
+            children: [connectorMarkup],
+          };
+        }
+
+        const a = connectorTransform.rotate * (Math.PI / 180);
+        const extCenterOffX = connectorTransform.translateX - connectorTransform.originX + connectorTransform.width / 2;
+        const extCenterOffY =
+          connectorTransform.translateY - connectorTransform.originY + connectorTransform.height / 2;
+        const connCenterX = connectorTransform.originX + extCenterOffX * Math.cos(a) - extCenterOffY * Math.sin(a);
+        const connCenterY = connectorTransform.originY + extCenterOffX * Math.sin(a) + extCenterOffY * Math.cos(a);
+        const portWidth = connectorTransform.width * absScaleX;
+        const portHeight = connectorTransform.height * absScaleY;
+        const desiredCenterX = absWidth / 2 + connCenterX * componentTransform.scaleX;
+        const desiredCenterY = absHeight / 2 + connCenterY * componentTransform.scaleY;
+        const portX = desiredCenterX - portWidth / 2;
+        const portY = desiredCenterY - portHeight / 2;
+
+        ports.push({
+          id: connector.name ?? "",
+          group: "absolute",
+          args: { x: portX, y: portY, angle: connectorTransform.rotate },
+          markup: {
+            tagName: "svg",
+            children: [connectorMarkup],
+            attrs: {
+              magnet: "true",
+              width: connectorTransform.width * absScaleX,
+              height: connectorTransform.height * absScaleY,
+              style: `overflow: visible${connectorCondition === undefined ? "; opacity: 0.5" : ""}`,
+            },
+          },
+        });
+      }
     }
     tPortRender += performance.now() - tpr0;
 
@@ -327,10 +408,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     // docRevisions, iconSvg) are deferred to buildComponentProperties() and
     // loaded on-demand when the user clicks a node.
     const properties: ComponentPropertyData = {
-      classKind: componentClassInstance.classKind,
-      className: componentClassInstance.name ?? "",
+      classKind: componentClassInstance?.classKind ?? "unknown",
+      className: componentClassInstance?.name ?? (component as any).typeName ?? "Unknown",
       name: component.name ?? "",
-      description: component.description ?? "",
+      description: component.description ?? (isUnresolved ? "Unresolved component type" : ""),
       parameters: [],
     };
 

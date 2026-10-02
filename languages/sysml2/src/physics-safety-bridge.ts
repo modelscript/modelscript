@@ -98,6 +98,8 @@ export class PhysicsSafetyBridge {
       let isTriggered = false;
       let peakValue = signal[0] ?? 0;
       let breachTime = 0;
+      let firstViolationTime: number | null = null;
+      const requiredDuration = hazardCondition.minDurationSeconds ?? 0;
 
       for (let i = 0; i < trajectory.times.length; i++) {
         const val = signal[i]!;
@@ -126,9 +128,17 @@ export class PhysicsSafetyBridge {
             break;
         }
 
-        if (violated && !isTriggered) {
-          isTriggered = true;
-          breachTime = t;
+        if (violated) {
+          if (firstViolationTime === null) {
+            firstViolationTime = t;
+          }
+          const continuousViolationTime = t - firstViolationTime;
+          if (continuousViolationTime >= requiredDuration - 1e-9 && !isTriggered) {
+            isTriggered = true;
+            breachTime = t;
+          }
+        } else {
+          firstViolationTime = null;
         }
       }
 

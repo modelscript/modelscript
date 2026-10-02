@@ -195,7 +195,7 @@ export class LoopInvariantAnalyzer {
     const startVal = currentBounds.get(cond.lhsVar)?.lower ?? 0;
     const limit = cond.constant;
 
-    if (cond.operator === "<" || cond.operator === "<=") {
+    if (cond.operator === "<") {
       if (delta <= 0) {
         isTerminating = false;
         diagnostics.push({
@@ -206,7 +206,18 @@ export class LoopInvariantAnalyzer {
       } else {
         iterationsEstimated = Math.max(0, Math.ceil((limit - startVal) / delta));
       }
-    } else if (cond.operator === ">" || cond.operator === ">=") {
+    } else if (cond.operator === "<=") {
+      if (delta <= 0) {
+        isTerminating = false;
+        diagnostics.push({
+          severity: "error",
+          rule: "possible-infinite-loop",
+          message: `Loop variable '${cond.lhsVar}' is not incremented (delta = ${delta}) while condition requires '${cond.lhsVar} ${cond.operator} ${limit}'. Loop may not terminate.`,
+        });
+      } else {
+        iterationsEstimated = Math.max(0, Math.floor((limit - startVal) / delta) + 1);
+      }
+    } else if (cond.operator === ">") {
       if (delta >= 0) {
         isTerminating = false;
         diagnostics.push({
@@ -216,6 +227,17 @@ export class LoopInvariantAnalyzer {
         });
       } else {
         iterationsEstimated = Math.max(0, Math.ceil((startVal - limit) / -delta));
+      }
+    } else if (cond.operator === ">=") {
+      if (delta >= 0) {
+        isTerminating = false;
+        diagnostics.push({
+          severity: "error",
+          rule: "possible-infinite-loop",
+          message: `Loop variable '${cond.lhsVar}' is not decremented (delta = ${delta}) while condition requires '${cond.lhsVar} ${cond.operator} ${limit}'. Loop may not terminate.`,
+        });
+      } else {
+        iterationsEstimated = Math.max(0, Math.floor((startVal - limit) / -delta) + 1);
       }
     }
 
@@ -290,8 +312,8 @@ export class LoopInvariantAnalyzer {
     // 5. Derive sound post-conditions
     for (const v of varList) {
       if (v === cond.lhsVar && isTerminating) {
-        // Exit condition reached: e.g. for (i < 10) with delta > 0, exit bound is limit
-        const exitVal = cond.operator === "<" ? limit : cond.operator === "<=" ? limit + (delta > 0 ? 1 : 0) : limit;
+        // Exit condition reached with exact stride overshoot
+        const exitVal = startVal + iterationsEstimated * delta;
         postConditions.set(v, { lower: exitVal, upper: exitVal });
       } else {
         const u = updates.find((up) => up.targetVar === v);
@@ -306,9 +328,20 @@ export class LoopInvariantAnalyzer {
       }
     }
 
-    const summary = isTerminating
-      ? `Loop is guaranteed to terminate in ~${iterationsEstimated} iteration(s). Invariants verified.`
-      : `Loop has potential termination defects or unbounded progression.`;
+    let summary: string;
+    if (!isTerminating) {
+      summary = `Loop has potential termination defects or unbounded progression.`;
+    } else if (loop.invariants && loop.invariants.length > 0) {
+      if (inductiveProof?.status === "PROVEN") {
+        summary = `Loop is guaranteed to terminate in ~${iterationsEstimated} iteration(s). Invariants verified inductively for arbitrary iterations.`;
+      } else if (invariantHolds) {
+        summary = `Loop is guaranteed to terminate in ~${iterationsEstimated} iteration(s). Invariants verified up to k=${maxSteps} iterations (bounded unroll).`;
+      } else {
+        summary = `Loop is guaranteed to terminate in ~${iterationsEstimated} iteration(s), but invariant violation detected.`;
+      }
+    } else {
+      summary = `Loop is guaranteed to terminate in ~${iterationsEstimated} iteration(s).`;
+    }
 
     return {
       isTerminating,

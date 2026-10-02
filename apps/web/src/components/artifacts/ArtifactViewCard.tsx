@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-import { ScreenFullIcon } from "@primer/octicons-react";
+import { CodeIcon, ScreenFullIcon } from "@primer/octicons-react";
 import { Spinner, Text, useTheme } from "@primer/react";
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
 import Box from "../Box";
 import AasPackageViewer from "./AasPackageViewer";
@@ -44,6 +45,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
   const [isLoaded, setIsLoaded] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const { resolvedColorMode } = useTheme();
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchArtifact() {
@@ -388,6 +390,29 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
               ⚡ Fork &amp; Reproduce
             </button>
           )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/ide#memfs:artifact-${artifactId}`);
+            }}
+            style={{
+              background: "linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(99, 102, 241, 0.15))",
+              color: "var(--color-accent-fg, #58a6ff)",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
+              borderRadius: "6px",
+              padding: "3px 8px",
+              fontSize: "11px",
+              fontWeight: "600",
+              fontFamily: "var(--font-mono)",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+            }}
+            title="Open and run in ModelScript IDE workbench"
+          >
+            <CodeIcon size={12} /> Run in IDE
+          </button>
           {isLoaded && (
             <button
               onClick={(e) => {

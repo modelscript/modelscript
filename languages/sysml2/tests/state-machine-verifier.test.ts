@@ -42,6 +42,18 @@ describe("SysML v2 State-Machine Determinism & Completeness Verifier", () => {
 
     const res3 = checkGuardsMutuallyExclusive("x >= 0 && x <= 20", "x > 30");
     assert.strictEqual(res3.mutuallyExclusive, true, "Intervals [0, 20] and (30, inf) must be mutually exclusive");
+
+    // Continuous floating-point guards
+    const resFloatMutEx = checkGuardsMutuallyExclusive("speed < 2.5", "speed >= 2.5");
+    assert.strictEqual(
+      resFloatMutEx.mutuallyExclusive,
+      true,
+      "speed < 2.5 and speed >= 2.5 must be mutually exclusive",
+    );
+
+    const resFloatOverlap = checkGuardsMutuallyExclusive("speed <= 2.5", "speed >= 2.5");
+    assert.strictEqual(resFloatOverlap.mutuallyExclusive, false, "speed <= 2.5 and speed >= 2.5 must overlap at 2.5");
+    assert(resFloatOverlap.overlap?.includes("speed ∈ [2.5, 2.5]"));
   });
 
   it("should detect overlapping guards as non-deterministic", () => {
@@ -52,6 +64,11 @@ describe("SysML v2 State-Machine Determinism & Completeness Verifier", () => {
     const res2 = checkGuardsMutuallyExclusive("speed >= 50 && speed <= 100", "speed >= 80 && speed <= 120");
     assert.strictEqual(res2.mutuallyExclusive, false);
     assert(res2.overlap?.includes("speed ∈ [80, 100]"), `Overlap expected in [80, 100], got: ${res2.overlap}`);
+
+    // Continuous float overlap
+    const res3 = checkGuardsMutuallyExclusive("voltage >= 3.3 && voltage <= 4.2", "voltage >= 4.0 && voltage <= 5.0");
+    assert.strictEqual(res3.mutuallyExclusive, false);
+    assert(res3.overlap?.includes("voltage ∈ [4, 4.2]"));
   });
 
   it("should detect gaps in transition guards causing deadlocks", () => {

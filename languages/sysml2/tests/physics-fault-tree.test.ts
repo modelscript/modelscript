@@ -107,4 +107,82 @@ describe("Physics-Informed Safety Analysis & Minimal Cut Set Discovery", () => {
     assert.strictEqual(result.isHazardReachable, false);
     assert.strictEqual(result.minimalCutSets.length, 0);
   });
+
+  it("should not trigger hazard on transient violation shorter than minDurationSeconds", () => {
+    const failureModes: FailureMode[] = [{ id: "SensorGlitch", name: "Glitch", component: "Sensor" }];
+
+    // Spike lasts 0.05s (between t=0.10 and t=0.15), but minDurationSeconds is 0.10s
+    const simulateSpike = (params: Record<string, number>) => {
+      const times = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25];
+      const hasGlitch = (params.glitch ?? 0) === 1;
+      // Values: only at t=0.15 is it above threshold (continuous duration = 0.05s)
+      const values = hasGlitch ? [10, 10, 10, 100, 10, 10] : [10, 10, 10, 10, 10, 10];
+      return {
+        times,
+        signals: {
+          current: values,
+        },
+      };
+    };
+
+    const result = PhysicsSafetyBridge.analyzePhysicsSafety({
+      hazardId: "HAZ_Overcurrent",
+      hazardName: "Overcurrent",
+      failureModes,
+      faultInjections: { SensorGlitch: { glitch: 1 } },
+      baselineParams: { glitch: 0 },
+      simulate: simulateSpike,
+      hazardCondition: {
+        variable: "current",
+        operator: ">=",
+        threshold: 50.0,
+        minDurationSeconds: 0.1,
+      },
+    });
+
+    assert.strictEqual(
+      result.isHazardReachable,
+      false,
+      "Transient spike lasting only 0.05s should not trigger hazard requiring 0.10s",
+    );
+    assert.strictEqual(result.minimalCutSets.length, 0);
+  });
+
+  it("should trigger hazard on sustained violation exceeding minDurationSeconds with correct breach timestamp", () => {
+    const failureModes: FailureMode[] = [{ id: "ShortCircuit", name: "Short Circuit", component: "Power" }];
+
+    // Breach starts at t=0.10 and stays violated until t=0.30 (continuous duration 0.20s > minDuration 0.10s)
+    const simulateSustained = (params: Record<string, number>) => {
+      const times = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3];
+      const isShorted = (params.shorted ?? 0) === 1;
+      const values = isShorted ? [10, 10, 80, 85, 90, 85, 80] : [10, 10, 10, 10, 10, 10, 10];
+      return {
+        times,
+        signals: {
+          current: values,
+        },
+      };
+    };
+
+    const result = PhysicsSafetyBridge.analyzePhysicsSafety({
+      hazardId: "HAZ_Overcurrent",
+      hazardName: "Overcurrent",
+      failureModes,
+      faultInjections: { ShortCircuit: { shorted: 1 } },
+      baselineParams: { shorted: 0 },
+      simulate: simulateSustained,
+      hazardCondition: {
+        variable: "current",
+        operator: ">=",
+        threshold: 50.0,
+        minDurationSeconds: 0.1,
+      },
+    });
+
+    assert.strictEqual(result.isHazardReachable, true, "Sustained violation must trigger hazard");
+    assert.strictEqual(result.minimalCutSets.length, 1);
+    assert.strictEqual(result.physicalFailureTraces.length, 1);
+    const trace = result.physicalFailureTraces[0]!;
+    assert.strictEqual(trace.timeOfBreach, 0.2, "Breach timestamp should match required duration point");
+  });
 });

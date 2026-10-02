@@ -156,6 +156,17 @@ export class NumericalInterval {
     return new NumericalInterval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
   }
 
+  sqr(): NumericalInterval {
+    if (this.isBottom()) return NumericalInterval.BOTTOM;
+    if (this.low >= 0) {
+      return new NumericalInterval(this.low * this.low, this.high * this.high);
+    }
+    if (this.high <= 0) {
+      return new NumericalInterval(this.high * this.high, this.low * this.low);
+    }
+    return new NumericalInterval(0, Math.max(this.low * this.low, this.high * this.high));
+  }
+
   div(other: NumericalInterval): { result: NumericalInterval; divisionByZero: "never" | "possible" | "definite" } {
     if (this.isBottom() || other.isBottom()) {
       return { result: NumericalInterval.BOTTOM, divisionByZero: "never" };
@@ -198,6 +209,120 @@ export class NumericalInterval {
     if (this.low >= 0) return this;
     if (this.high <= 0) return new NumericalInterval(-this.high, -this.low);
     return new NumericalInterval(0, Math.max(-this.low, this.high));
+  }
+
+  exp(): NumericalInterval {
+    if (this.isBottom()) return NumericalInterval.BOTTOM;
+    const l = this.low === -Infinity ? 0 : Math.exp(this.low);
+    const h = this.high === Infinity ? Infinity : Math.exp(this.high);
+    return new NumericalInterval(l, h);
+  }
+
+  log(): { result: NumericalInterval; domainViolation: "never" | "possible" | "definite" } {
+    if (this.isBottom()) return { result: NumericalInterval.BOTTOM, domainViolation: "never" };
+    if (this.high <= 0) return { result: NumericalInterval.BOTTOM, domainViolation: "definite" };
+    const possibleNonPos = this.low <= 0;
+    const safeLow = Math.max(1e-15, this.low);
+    const l = safeLow === 0 ? -Infinity : Math.log(safeLow);
+    const h = this.high === Infinity ? Infinity : Math.log(this.high);
+    return {
+      result: new NumericalInterval(l, h),
+      domainViolation: possibleNonPos ? "possible" : "never",
+    };
+  }
+
+  sin(): NumericalInterval {
+    if (this.isBottom()) return NumericalInterval.BOTTOM;
+    if (this.high - this.low >= 2 * Math.PI) {
+      return new NumericalInterval(-1, 1);
+    }
+    let minVal = Math.min(Math.sin(this.low), Math.sin(this.high));
+    let maxVal = Math.max(Math.sin(this.low), Math.sin(this.high));
+
+    const kMax = Math.ceil((this.low - Math.PI / 2) / (2 * Math.PI));
+    if (Math.PI / 2 + kMax * 2 * Math.PI <= this.high) {
+      maxVal = 1;
+    }
+    const kMin = Math.ceil((this.low - (3 * Math.PI) / 2) / (2 * Math.PI));
+    if ((3 * Math.PI) / 2 + kMin * 2 * Math.PI <= this.high) {
+      minVal = -1;
+    }
+    return new NumericalInterval(minVal, maxVal);
+  }
+
+  cos(): NumericalInterval {
+    if (this.isBottom()) return NumericalInterval.BOTTOM;
+    return this.add(new NumericalInterval(Math.PI / 2, Math.PI / 2)).sin();
+  }
+
+  tan(): { result: NumericalInterval; domainViolation: "never" | "possible" | "definite" } {
+    if (this.isBottom()) return { result: NumericalInterval.BOTTOM, domainViolation: "never" };
+    if (this.high - this.low >= Math.PI) {
+      return { result: NumericalInterval.TOP, domainViolation: "definite" };
+    }
+    const k = Math.floor((this.low - Math.PI / 2) / Math.PI) + 1;
+    const crit = Math.PI / 2 + k * Math.PI;
+    if (crit > this.low && crit < this.high) {
+      return { result: NumericalInterval.TOP, domainViolation: "definite" };
+    }
+    return {
+      result: new NumericalInterval(Math.tan(this.low), Math.tan(this.high)),
+      domainViolation: "never",
+    };
+  }
+
+  pow(exponent: number): { result: NumericalInterval; domainViolation: "never" | "possible" | "definite" } {
+    if (this.isBottom()) return { result: NumericalInterval.BOTTOM, domainViolation: "never" };
+    if (exponent === 0) return { result: NumericalInterval.ONE, domainViolation: "never" };
+    if (Number.isInteger(exponent)) {
+      if (exponent > 0) {
+        if (exponent % 2 === 0) {
+          if (this.low >= 0) {
+            return {
+              result: new NumericalInterval(Math.pow(this.low, exponent), Math.pow(this.high, exponent)),
+              domainViolation: "never",
+            };
+          }
+          if (this.high <= 0) {
+            return {
+              result: new NumericalInterval(Math.pow(this.high, exponent), Math.pow(this.low, exponent)),
+              domainViolation: "never",
+            };
+          }
+          return {
+            result: new NumericalInterval(0, Math.max(Math.pow(this.low, exponent), Math.pow(this.high, exponent))),
+            domainViolation: "never",
+          };
+        } else {
+          return {
+            result: new NumericalInterval(Math.pow(this.low, exponent), Math.pow(this.high, exponent)),
+            domainViolation: "never",
+          };
+        }
+      } else {
+        const posPow = this.pow(-exponent);
+        if (posPow.result.isBottom()) return posPow;
+        const divRes = NumericalInterval.ONE.div(posPow.result);
+        return {
+          result: divRes.result,
+          domainViolation:
+            divRes.divisionByZero === "never"
+              ? "never"
+              : divRes.divisionByZero === "definite"
+                ? "definite"
+                : "possible",
+        };
+      }
+    }
+    if (this.high < 0) {
+      return { result: NumericalInterval.BOTTOM, domainViolation: "definite" };
+    }
+    const possibleNeg = this.low < 0;
+    const safeLow = Math.max(0, this.low);
+    return {
+      result: new NumericalInterval(Math.pow(safeLow, exponent), Math.pow(this.high, exponent)),
+      domainViolation: possibleNeg ? "possible" : "never",
+    };
   }
 
   toString(): string {

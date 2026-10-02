@@ -19,8 +19,33 @@ export default defineConfig({
     port: 3001,
     strictPort: true,
     proxy: {
+      "/api/models": {
+        target: "http://127.0.0.1:3003",
+        changeOrigin: true,
+      },
+      "/api/languages": {
+        target: "http://127.0.0.1:3003",
+        changeOrigin: true,
+      },
+      "/api/github": {
+        target: "http://127.0.0.1:3003",
+        changeOrigin: true,
+      },
       "/api": {
         target: "http://127.0.0.1:3000",
+        changeOrigin: true,
+      },
+      "/vscode": {
+        target: "http://127.0.0.1:3003",
+        changeOrigin: true,
+        ws: true,
+      },
+      "/vscode-static": {
+        target: "http://127.0.0.1:3003",
+        changeOrigin: true,
+      },
+      "/static": {
+        target: "http://127.0.0.1:3003",
         changeOrigin: true,
       },
     },

@@ -19,10 +19,37 @@
 export interface CadDynamicBinding {
   /** CAD property being animated: "position", "rotation", or "scale" */
   property: "position" | "rotation" | "scale";
-  /** Index within the property array (0=x, 1=y, 2=z) */
+  /** Index within the property array (0=x, 1=y, 2=z, or -1 for uniform scale) */
   index: number;
   /** Fully qualified simulation variable name, e.g. "body1.frame_a.r[1]" */
   variable: string;
+}
+
+/** Dynamic deformation configuration for compliant soft-tissue and organ structures. */
+export interface DynamicDeformationConfig {
+  /**
+   * Scaling mode for soft-tissue/cavity deformations:
+   * - "volume_radial": uniform scaling s = (V / V_ref)^(1/3) relative to reference volume
+   * - "anisotropic": independent directional scaling along x, y, and z axes
+   * - "modal": displacement along pre-computed shape modes
+   */
+  mode?: "volume_radial" | "anisotropic" | "modal";
+  /** Reference initial volume V0 for volume_radial scaling (default: 1.0) */
+  referenceVolume?: number;
+  /** State variable or constant driving cavity volume V(t) */
+  volumeVariable?: string;
+  /** Anchor point / center of deformation */
+  anchorOrigin?: [number, number, number];
+}
+
+/** Dynamic spatial clearance segment between two interacting CAD bodies. */
+export interface DynamicClearanceSegment {
+  partA: string;
+  partB: string;
+  pointA: [number, number, number];
+  pointB: [number, number, number];
+  distance: number;
+  status: "safe" | "warning" | "danger";
 }
 
 /** All animation bindings for a single CAD component. */
@@ -31,6 +58,8 @@ export interface AnimationBinding {
   componentName: string;
   /** Dynamic bindings for this component */
   bindings: CadDynamicBinding[];
+  /** Optional deformation/morphing binding for soft tissue / organ plant */
+  deformation?: DynamicDeformationConfig;
 }
 
 /** Animation playback mode. */
@@ -42,6 +71,9 @@ export interface ComponentTransform {
   rotation: [number, number, number];
   scale: [number, number, number];
 }
+
+/** Alias for ComponentTransform matching clinical studio specifications. */
+export type TransformResult = ComponentTransform;
 
 /** Animation state snapshot for UI. */
 export interface AnimationState {
@@ -79,8 +111,11 @@ export class AnimationController {
 
   // ── Bindings ──
   private bindings = new Map<string, CadDynamicBinding[]>();
+  private deformations = new Map<string, DynamicDeformationConfig>();
   /** Default transforms for components (from static CAD annotations). */
   private defaults = new Map<string, ComponentTransform>();
+  /** Clearance point segments */
+  private clearanceSegments: DynamicClearanceSegment[] = [];
 
   // ── State listeners ──
   private listeners = new Set<StateListener>();
@@ -158,8 +193,12 @@ export class AnimationController {
    */
   setBindings(bindings: AnimationBinding[]): void {
     this.bindings.clear();
+    this.deformations.clear();
     for (const b of bindings) {
       this.bindings.set(b.componentName, b.bindings);
+      if (b.deformation) {
+        this.deformations.set(b.componentName, b.deformation);
+      }
     }
   }
 
@@ -267,7 +306,8 @@ export class AnimationController {
     };
 
     const componentBindings = this.bindings.get(componentName);
-    if (!componentBindings || componentBindings.length === 0) {
+    const deformation = this.deformations.get(componentName);
+    if ((!componentBindings || componentBindings.length === 0) && !deformation) {
       return defaultTf;
     }
 
@@ -278,22 +318,72 @@ export class AnimationController {
       scale: [...defaultTf.scale],
     };
 
-    for (const binding of componentBindings) {
-      let value: number | null = null;
+    if (componentBindings) {
+      for (const binding of componentBindings) {
+        let value: number | null = null;
 
+        if (this._mode === "live") {
+          const liveVal = this.liveValues.get(binding.variable);
+          if (liveVal !== undefined) value = liveVal;
+        } else {
+          value = this.interpolate(binding.variable, this._currentTime);
+        }
+
+        if (value !== null) {
+          if (binding.property === "scale" && (binding.index < 0 || binding.index === undefined)) {
+            result.scale = [value, value, value];
+          } else {
+            result[binding.property][binding.index] = value;
+          }
+        }
+      }
+    }
+
+    // Apply soft-tissue / organ volume deformation if present
+    if (deformation && deformation.volumeVariable) {
+      let vVal: number | null = null;
       if (this._mode === "live") {
-        const liveVal = this.liveValues.get(binding.variable);
-        if (liveVal !== undefined) value = liveVal;
+        const liveVal = this.liveValues.get(deformation.volumeVariable);
+        if (liveVal !== undefined) vVal = liveVal;
       } else {
-        value = this.interpolate(binding.variable, this._currentTime);
+        vVal = this.interpolate(deformation.volumeVariable, this._currentTime);
       }
 
-      if (value !== null) {
-        result[binding.property][binding.index] = value;
+      if (vVal !== null && vVal > 0) {
+        const v0 = deformation.referenceVolume && deformation.referenceVolume > 0 ? deformation.referenceVolume : 1.0;
+        const radialScale = Math.cbrt(vVal / v0);
+        result.scale = [result.scale[0] * radialScale, result.scale[1] * radialScale, result.scale[2] * radialScale];
       }
     }
 
     return result;
+  }
+
+  // ── Dynamic clearance vectors ───────────────────────────────────────
+
+  /** Register dynamic clearance segments between moving / deforming bodies. */
+  setClearanceSegments(segments: DynamicClearanceSegment[]): void {
+    this.clearanceSegments = segments;
+  }
+
+  /** Retrieve current clearance segments. */
+  getClearanceSegments(): DynamicClearanceSegment[] {
+    return this.clearanceSegments;
+  }
+
+  /** Compute spatial clearance distance between two components. */
+  computeClearanceDistance(partA: string, partB: string): number | null {
+    const seg = this.clearanceSegments.find(
+      (s) => (s.partA === partA && s.partB === partB) || (s.partA === partB && s.partB === partA),
+    );
+    if (seg) return seg.distance;
+
+    const tfA = this.getTransform(partA);
+    const tfB = this.getTransform(partB);
+    const dx = tfA.position[0] - tfB.position[0];
+    const dy = tfA.position[1] - tfB.position[1];
+    const dz = tfA.position[2] - tfB.position[2];
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
 
   /**

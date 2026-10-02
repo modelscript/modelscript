@@ -10,13 +10,46 @@
  */
 
 import { assembly, part } from "./assembly.js";
-import { computeAABBDistance, computeSolidAABB, type AABB, type ClearanceConstraint } from "./clearance.js";
-import { rotate, translate } from "./transforms.js";
+import {
+  computeAABBClosestPoints,
+  computeAABBDistance,
+  computeSolidAABB,
+  type AABB,
+  type ClearanceConstraint,
+} from "./clearance.js";
+import { rotate, scale, translate } from "./transforms.js";
 import { SolidKind, type Assembly, type PartEntry, type Solid } from "./types.js";
 
 export interface IntervalBox {
   lo: number;
   hi: number;
+}
+
+/**
+ * Dynamic deformation / morphing binding for soft-tissue and compliant organ bodies (e.g. contracting ventricles).
+ */
+export interface DynamicDeformationBinding {
+  /**
+   * Scaling mode for soft-tissue/cavity deformations:
+   * - "volume_radial": uniform scaling s = (V / V_ref)^(1/3) relative to reference volume
+   * - "anisotropic": independent directional scaling along x, y, and z axes
+   * - "modal": displacement along pre-computed shape modes
+   */
+  mode?: "volume_radial" | "anisotropic" | "modal";
+  /** Reference initial volume V0 for volume_radial scaling (default: 1.0) */
+  referenceVolume?: number;
+  /** State variable or constant driving cavity volume V(t) */
+  volume?: string | number;
+  /** Explicit anisotropic scale factors or state variable names */
+  scale?: {
+    x?: string | number;
+    y?: string | number;
+    z?: string | number;
+  };
+  /** Anchor point / center of deformation (default: center of initial bounding box) */
+  anchorOrigin?: [number, number, number];
+  /** Modal displacement weights mapped to state variables (for modal skinning) */
+  modalWeights?: Record<string, string | number>;
 }
 
 export interface DynamicTransformBinding {
@@ -40,6 +73,10 @@ export interface DynamicTransformBinding {
     angle: string | number;
     inDegrees?: boolean;
   };
+  /**
+   * Optional deformation/morphing binding for soft-tissue or compliant organ bodies.
+   */
+  deformation?: DynamicDeformationBinding;
 }
 
 export interface TrajectoryStepEnclosure {
@@ -78,6 +115,7 @@ export interface DynamicClearanceReport {
     time: number;
     minDistance: number;
     closestPair: [string, string];
+    closestPoints?: [[number, number, number], [number, number, number]];
   }[];
   counterexampleAssembly?: Assembly;
   summary: string;
@@ -275,12 +313,110 @@ export class DynamicClearanceVerifier {
           currentSolid = rotate(currentSolid, binding.rotation.axis, nAngle);
         }
 
+        // Apply deformation / morphing enclosure if present
+        if (binding.deformation) {
+          const def = binding.deformation;
+          const anchor = def.anchorOrigin || [
+            (currentBox.min[0] + currentBox.max[0]) / 2,
+            (currentBox.min[1] + currentBox.max[1]) / 2,
+            (currentBox.min[2] + currentBox.max[2]) / 2,
+          ];
+
+          let sxLo = 1.0,
+            sxHi = 1.0;
+          let syLo = 1.0,
+            syHi = 1.0;
+          let szLo = 1.0,
+            szHi = 1.0;
+
+          if (def.volume !== undefined || def.mode === "volume_radial") {
+            const vIntv = resolveInterval(step.states, def.volume);
+            const v0 = def.referenceVolume && def.referenceVolume > 0 ? def.referenceVolume : 1.0;
+            const vlo = Math.max(1e-9, vIntv.lo);
+            const vhi = Math.max(1e-9, vIntv.hi);
+            const sLo = Math.cbrt(vlo / v0);
+            const sHi = Math.cbrt(vhi / v0);
+            sxLo = syLo = szLo = sLo;
+            sxHi = syHi = szHi = sHi;
+          }
+
+          if (def.scale) {
+            if (def.scale.x !== undefined) {
+              const sxIntv = resolveInterval(step.states, def.scale.x);
+              sxLo *= sxIntv.lo;
+              sxHi *= sxIntv.hi;
+            }
+            if (def.scale.y !== undefined) {
+              const syIntv = resolveInterval(step.states, def.scale.y);
+              syLo *= syIntv.lo;
+              syHi *= syIntv.hi;
+            }
+            if (def.scale.z !== undefined) {
+              const szIntv = resolveInterval(step.states, def.scale.z);
+              szLo *= szIntv.lo;
+              szHi *= szIntv.hi;
+            }
+          }
+
+          const scaleAxis = (minVal: number, maxVal: number, anchorVal: number, sLo: number, sHi: number) => {
+            const dMin = minVal - anchorVal;
+            const dMax = maxVal - anchorVal;
+            const cand1 = dMin * sLo;
+            const cand2 = dMin * sHi;
+            const cand3 = dMax * sLo;
+            const cand4 = dMax * sHi;
+            const newMin = anchorVal + Math.min(cand1, cand2, cand3, cand4);
+            const newMax = anchorVal + Math.max(cand1, cand2, cand3, cand4);
+            return [newMin, newMax] as const;
+          };
+
+          const [newMinX, newMaxX] = scaleAxis(currentBox.min[0], currentBox.max[0], anchor[0], sxLo, sxHi);
+          const [newMinY, newMaxY] = scaleAxis(currentBox.min[1], currentBox.max[1], anchor[1], syLo, syHi);
+          const [newMinZ, newMaxZ] = scaleAxis(currentBox.min[2], currentBox.max[2], anchor[2], szLo, szHi);
+
+          currentBox = {
+            min: [newMinX, newMinY, newMinZ],
+            max: [newMaxX, newMaxY, newMaxZ],
+          };
+
+          if (def.modalWeights) {
+            for (const weightExpr of Object.values(def.modalWeights)) {
+              const weightIntv = resolveInterval(step.states, weightExpr);
+              const maxDisp = Math.max(Math.abs(weightIntv.lo), Math.abs(weightIntv.hi));
+              currentBox = {
+                min: [currentBox.min[0] - maxDisp, currentBox.min[1] - maxDisp, currentBox.min[2] - maxDisp],
+                max: [currentBox.max[0] + maxDisp, currentBox.max[1] + maxDisp, currentBox.max[2] + maxDisp],
+              };
+            }
+          }
+
+          let nx = (sxLo + sxHi) / 2;
+          let ny = (syLo + syHi) / 2;
+          let nz = (szLo + szHi) / 2;
+          if (def.volume !== undefined) {
+            const nV = resolveNominal(step.nominal, step.states, def.volume);
+            const v0 = def.referenceVolume && def.referenceVolume > 0 ? def.referenceVolume : 1.0;
+            const nScale = Math.cbrt(Math.max(1e-9, nV) / v0);
+            nx = ny = nz = nScale;
+          }
+          if (def.scale) {
+            if (def.scale.x !== undefined) nx *= resolveNominal(step.nominal, step.states, def.scale.x);
+            if (def.scale.y !== undefined) ny *= resolveNominal(step.nominal, step.states, def.scale.y);
+            if (def.scale.z !== undefined) nz *= resolveNominal(step.nominal, step.states, def.scale.z);
+          }
+
+          currentSolid = translate(currentSolid, [-anchor[0], -anchor[1], -anchor[2]]);
+          currentSolid = scale(currentSolid, [nx, ny, nz]);
+          currentSolid = translate(currentSolid, [anchor[0], anchor[1], anchor[2]]);
+        }
+
         currentBoxes.push({ name: p.name, box: currentBox, solid: currentSolid });
       }
 
       // Check all pairs at current step
       let stepMinDist = Infinity;
       let stepClosestPair: [string, string] = ["", ""];
+      let stepClosestPoints: [[number, number, number], [number, number, number]] | undefined = undefined;
 
       for (let i = 0; i < currentBoxes.length; i++) {
         for (let j = i + 1; j < currentBoxes.length; j++) {
@@ -291,6 +427,7 @@ export class DynamicClearanceVerifier {
           if (distance < stepMinDist) {
             stepMinDist = distance;
             stepClosestPair = [pA.name, pB.name];
+            stepClosestPoints = computeAABBClosestPoints(pA.box, pB.box);
           }
 
           let requiredClearance = defaultMinClearance;
@@ -337,6 +474,7 @@ export class DynamicClearanceVerifier {
         time: step.time,
         minDistance: stepMinDist,
         closestPair: stepClosestPair,
+        closestPoints: stepClosestPoints,
       });
     }
 
@@ -359,6 +497,35 @@ export class DynamicClearanceVerifier {
           const nAngle =
             resolveNominal(worstStepEnclosure!.nominal, worstStepEnclosure!.states, binding.rotation.angle) * factor;
           solid = rotate(solid, binding.rotation.axis, nAngle);
+        }
+        if (binding.deformation) {
+          const def = binding.deformation;
+          const baseBox = p.baseAABB;
+          const anchor = def.anchorOrigin || [
+            (baseBox.min[0] + baseBox.max[0]) / 2,
+            (baseBox.min[1] + baseBox.max[1]) / 2,
+            (baseBox.min[2] + baseBox.max[2]) / 2,
+          ];
+          let nx = 1.0,
+            ny = 1.0,
+            nz = 1.0;
+          if (def.volume !== undefined) {
+            const nV = resolveNominal(worstStepEnclosure!.nominal, worstStepEnclosure!.states, def.volume);
+            const v0 = def.referenceVolume && def.referenceVolume > 0 ? def.referenceVolume : 1.0;
+            const nScale = Math.cbrt(Math.max(1e-9, nV) / v0);
+            nx = ny = nz = nScale;
+          }
+          if (def.scale) {
+            if (def.scale.x !== undefined)
+              nx *= resolveNominal(worstStepEnclosure!.nominal, worstStepEnclosure!.states, def.scale.x);
+            if (def.scale.y !== undefined)
+              ny *= resolveNominal(worstStepEnclosure!.nominal, worstStepEnclosure!.states, def.scale.y);
+            if (def.scale.z !== undefined)
+              nz *= resolveNominal(worstStepEnclosure!.nominal, worstStepEnclosure!.states, def.scale.z);
+          }
+          solid = translate(solid, [-anchor[0], -anchor[1], -anchor[2]]);
+          solid = scale(solid, [nx, ny, nz]);
+          solid = translate(solid, [anchor[0], anchor[1], anchor[2]]);
         }
         return part(solid, { material: p.material, color: p.color });
       });

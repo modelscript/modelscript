@@ -183,4 +183,61 @@ describe("SysML v2 Comprehensive Activity Control & Data Flow Analysis (CFA/DFA)
     assert.strictEqual(res.isSound, true);
     assert.strictEqual(res.deadlockNodes.length, 0);
   });
+
+  it("should preserve definite assignment across loop back-edges", () => {
+    const sysml = `
+      action def LoopProcessor {
+        out result : Real;
+        action Init {
+          assign result := 0;
+        }
+        action LoopStep {
+          assign result := result + 1;
+        }
+        action Exit;
+
+        first Init then LoopStep;
+        first LoopStep then LoopStep;
+        first LoopStep then Exit;
+      }
+    `;
+
+    const res = checkActivitySoundness(sysml);
+    assert.strictEqual(res.isSound, true, "Loop with initialized variable must be sound");
+    assert.strictEqual(res.unassignedOutputs.length, 0, "result must remain definitely assigned");
+    assert.strictEqual(res.diagnostics.filter((d) => d.rule === "use-before-def").length, 0);
+  });
+
+  it("should not flag false deadlock for concurrent fork-join paths nested in a decision", () => {
+    const sysml = `
+      action def ConcurrentDecisionWorkflow {
+        action Start;
+        decide dMode;
+        action ModeA;
+        fork fParallel;
+        action Task1;
+        action Task2;
+        join jParallel;
+        action ModeB;
+        merge mMerge;
+        action End;
+
+        first Start then dMode;
+        first dMode then ModeA;
+        first dMode then ModeB;
+        first ModeA then fParallel;
+        first fParallel then Task1;
+        first fParallel then Task2;
+        first Task1 then jParallel;
+        first Task2 then jParallel;
+        first jParallel then mMerge;
+        first ModeB then mMerge;
+        first mMerge then End;
+      }
+    `;
+
+    const res = checkActivitySoundness(sysml);
+    assert.strictEqual(res.isSound, true, "Concurrent fork-join reconciled by merge must be sound");
+    assert.strictEqual(res.deadlockNodes.length, 0, "Must not flag jParallel as deadlock");
+  });
 });

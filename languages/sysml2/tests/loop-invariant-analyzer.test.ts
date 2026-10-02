@@ -131,4 +131,26 @@ describe("SysML v2 Loop Invariant & Bounded Iteration Analyzer (Octagon DBM)", (
     const postTick = res.postConditions.get("tick");
     assert.strictEqual(postTick?.lower, 5);
   });
+
+  it("calculates exact stride overshoot exit bounds without artificial clamping", () => {
+    // Loop: x starting at 0, while x < 10, x += 3.
+    // Iterations: 0 -> 3 -> 6 -> 9 -> 12 (4 iterations)
+    // Exit value must be exactly 12, NOT clamped to 10!
+    const overshootLoop = {
+      condition: "x < 10",
+      body: `
+        assign x := x + 3;
+      `,
+    };
+
+    const initialBounds = new Map([["x", { lower: 0, upper: 0 }]]);
+    const res = LoopInvariantAnalyzer.analyzeLoop(overshootLoop, initialBounds);
+
+    assert.strictEqual(res.isTerminating, true);
+    assert.strictEqual(res.iterationsEstimated, 4, "Must take 4 iterations to cross threshold 10 with step 3");
+    const postX = res.postConditions.get("x");
+    assert(postX, "Must derive post-conditions for x");
+    assert.strictEqual(postX.lower, 12, "Exit value must be exactly 12 (0 + 4*3), not clamped to 10");
+    assert.strictEqual(postX.upper, 12, "Exit value must be exactly 12 (0 + 4*3), not clamped to 10");
+  });
 });

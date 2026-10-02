@@ -116,6 +116,23 @@ export class OctagonDBM {
   }
 
   /**
+   * Projects out (forgets/havocs) all constraints involving a variable.
+   * Resets row and column pairs (2*varIdx, 2*varIdx + 1) to OCTAGON_INF
+   * while preserving diagonal zeros.
+   */
+  forget(varIdx: number): void {
+    const p = varIdx * 2;
+    const dim = this.dim;
+    if (p + 1 >= dim) return;
+    for (let k = 0; k < dim; k++) {
+      this.matrix[p * dim + k] = p === k ? 0 : OCTAGON_INF;
+      this.matrix[(p + 1) * dim + k] = p + 1 === k ? 0 : OCTAGON_INF;
+      this.matrix[k * dim + p] = k === p ? 0 : OCTAGON_INF;
+      this.matrix[k * dim + (p + 1)] = k === p + 1 ? 0 : OCTAGON_INF;
+    }
+  }
+
+  /**
    * Checks if the variable's current bounds are within [lower, upper].
    */
   checkInterval(varIdx: number, lower: number, upper: number): boolean {

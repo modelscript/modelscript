@@ -550,10 +550,12 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
     if (incomingEdges.length <= 1) continue;
 
     const branchDecisions = new Map<string, Set<string>>();
+    const branchForks = new Map<string, Set<string>>();
 
     for (const inEdge of incomingEdges) {
       const visited = new Set<string>();
       const decisions = new Set<string>();
+      const forks = new Set<string>();
       const bQueue = [inEdge];
       visited.add(inEdge);
 
@@ -562,6 +564,9 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
         const currNode = nodeMap.get(curr);
         if (currNode && currNode.kind === "decide") {
           decisions.add(curr);
+        }
+        if (currNode && currNode.kind === "fork") {
+          forks.add(curr);
         }
         if (currNode && currNode.kind === "merge") {
           continue; // Intervening merge reconciles the branch
@@ -575,11 +580,18 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
         }
       }
       branchDecisions.set(inEdge, decisions);
+      branchForks.set(inEdge, forks);
     }
 
     const inKeys = Array.from(branchDecisions.keys());
     for (let i = 0; i < inKeys.length; i++) {
       for (let j = i + 1; j < inKeys.length; j++) {
+        // If both incoming branches share a common fork node, they are concurrent parallel paths
+        const f1 = branchForks.get(inKeys[i]!)!;
+        const f2 = branchForks.get(inKeys[j]!)!;
+        const sharesCommonFork = Array.from(f1).some((f) => f2.has(f));
+        if (sharesCommonFork) continue;
+
         const d1 = branchDecisions.get(inKeys[i]!)!;
         const d2 = branchDecisions.get(inKeys[j]!)!;
         for (const d of d1) {
@@ -604,12 +616,22 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
   // Iterative forward dataflow over the reachability DAG/graph:
   // InSet(u) = ⋂_{p ∈ Pred(u)} OutSet(p)  (for merge / sequential)
   // OutSet(u) = InSet(u) ∪ Gen(u)
+  // In must-dataflow analysis, non-entry nodes must be initialized to TOP (all variables)
+  // so that back-edges in loops do not destroy definite assignments at loop headers.
+  const allVars = new Set<string>();
+  for (const n of nodes) {
+    for (const p of n.inputs) allVars.add(p.name);
+    for (const p of n.outputs) allVars.add(p.name);
+    for (const a of n.assignments) allVars.add(a.target);
+  }
+  for (const p of declaredOutputs) allVars.add(p.name);
+
   const inSets = new Map<string, Set<string>>();
   const outSets = new Map<string, Set<string>>();
 
   for (const n of nodes) {
-    inSets.set(n.name, new Set());
-    outSets.set(n.name, new Set());
+    inSets.set(n.name, new Set(allVars));
+    outSets.set(n.name, new Set(allVars));
   }
 
   // Initial node seeds with initial input parameters

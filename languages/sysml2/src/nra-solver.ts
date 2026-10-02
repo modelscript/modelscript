@@ -59,12 +59,33 @@ interface IntervalRange {
   hi: number;
 }
 
+/** Multiplies two intervals safely handling 0 * infinity */
+function mulInterval(tLo: number, tHi: number, pLo: number, pHi: number): IntervalRange {
+  if (tLo === 0 && tHi === 0) return { lo: 0, hi: 0 };
+  if (pLo === 0 && pHi === 0) return { lo: 0, hi: 0 };
+
+  const products: number[] = [];
+  for (const t of [tLo, tHi]) {
+    for (const p of [pLo, pHi]) {
+      if (t === 0 || p === 0) {
+        products.push(0);
+      } else {
+        const prod = t * p;
+        if (!isNaN(prod)) products.push(prod);
+      }
+    }
+  }
+  if (products.length === 0) return { lo: -Infinity, hi: Infinity };
+  return { lo: Math.min(...products), hi: Math.max(...products) };
+}
+
 /** Evaluates a polynomial range over a domain box */
 function evalPolyInterval(p: Polynomial, box: Map<string, IntervalRange>): IntervalRange {
   let minVal = 0;
   let maxVal = 0;
 
   for (const t of p.terms) {
+    if (Math.abs(t.coefficient) < 1e-15) continue;
     let tMin = t.coefficient;
     let tMax = t.coefficient;
 
@@ -91,10 +112,9 @@ function evalPolyInterval(p: Polynomial, box: Map<string, IntervalRange>): Inter
         pMax = Math.pow(b.hi, d);
       }
 
-      // Multiply interval [tMin, tMax] by [pMin, pMax]
-      const prods = [tMin * pMin, tMin * pMax, tMax * pMin, tMax * pMax];
-      tMin = Math.min(...prods);
-      tMax = Math.max(...prods);
+      const mult = mulInterval(tMin, tMax, pMin, pMax);
+      tMin = mult.lo;
+      tMax = mult.hi;
     }
 
     minVal += tMin;
@@ -104,6 +124,24 @@ function evalPolyInterval(p: Polynomial, box: Map<string, IntervalRange>): Inter
   return { lo: minVal, hi: maxVal };
 }
 
+/** Evaluates partial derivative of polynomial with respect to variable v at point pt */
+function evalPolyPartialDerivative(p: Polynomial, v: string, pt: Record<string, number>): number {
+  let sum = 0;
+  for (const t of p.terms) {
+    const d = t.degrees.get(v) ?? 0;
+    if (d <= 0) continue;
+    let termVal = t.coefficient * d;
+    for (const [varName, deg] of t.degrees.entries()) {
+      const currentDeg = varName === v ? deg - 1 : deg;
+      if (currentDeg > 0) {
+        termVal *= Math.pow(pt[varName] ?? 0, currentDeg);
+      }
+    }
+    sum += termVal;
+  }
+  return sum;
+}
+
 export class SysML2NRASolver {
   /**
    * Solves a QF_NRA polynomial constraint satisfaction problem.
@@ -111,7 +149,7 @@ export class SysML2NRASolver {
   public static solve(options: NRASolverOptions): NRASolverResult {
     const { variables, constraints } = options;
     const tol = options.tolerance ?? 1e-6;
-    const maxIter = options.maxIterations ?? 200;
+    const maxIter = options.maxIterations ?? 1000;
 
     const varNames = Object.keys(variables);
 
@@ -149,6 +187,22 @@ export class SysML2NRASolver {
 
     const queue: Map<string, IntervalRange>[] = [initialBox];
     let iterations = 0;
+    let hasSmallFeasibleBox = false;
+    let fallbackCandidate: Record<string, number> | undefined = undefined;
+
+    const checkPointSatisfies = (pt: Record<string, number>, pointTol = tol): boolean => {
+      for (const [v, [vLo, vHi]] of Object.entries(variables)) {
+        const val = pt[v] ?? 0;
+        if (val < vLo - pointTol || val > vHi + pointTol) return false;
+      }
+      for (const c of constraints) {
+        const val = evalPolynomial(c.polynomial, pt);
+        if (c.op === "==" && Math.abs(val) > pointTol) return false;
+        else if ((c.op === "<=" || c.op === "<") && val > pointTol) return false;
+        else if ((c.op === ">=" || c.op === ">") && val < -pointTol) return false;
+      }
+      return true;
+    };
 
     while (queue.length > 0 && iterations < maxIter) {
       iterations++;
@@ -196,22 +250,48 @@ export class SysML2NRASolver {
         }
       }
 
-      // Check candidate point satisfaction
-      let satisfiesAll = true;
-      for (const c of constraints) {
-        const val = evalPolynomial(c.polynomial, candidatePoint);
-        if (c.op === "==" && Math.abs(val) > tol) satisfiesAll = false;
-        else if ((c.op === "<=" || c.op === "<") && val > tol) satisfiesAll = false;
-        else if ((c.op === ">=" || c.op === ">") && val < -tol) satisfiesAll = false;
-        if (!satisfiesAll) break;
-      }
-
-      if (satisfiesAll) {
+      // 1. Direct candidate point satisfaction
+      if (checkPointSatisfies(candidatePoint)) {
         return {
           status: "sat",
           model: candidatePoint,
           groebnerBasis: reducedBasis,
           explanation: `Satisfying real witness found in ${iterations} iterations with tolerance ${tol}.`,
+        };
+      }
+
+      // 2. Local Newton refinement for candidate point
+      const refinedPoint = { ...candidatePoint };
+      let newtonSteps = 0;
+      while (newtonSteps < 5) {
+        newtonSteps++;
+        let maxCorrection = 0;
+        for (const c of constraints) {
+          if (c.op !== "==") continue;
+          const val = evalPolynomial(c.polynomial, refinedPoint);
+          if (Math.abs(val) <= tol) continue;
+
+          for (const v of varNames) {
+            const deriv = evalPolyPartialDerivative(c.polynomial, v, refinedPoint);
+            if (Math.abs(deriv) > 1e-12) {
+              const delta = -val / deriv;
+              const b = currentBox.get(v) ?? { lo: -Infinity, hi: Infinity };
+              const clamped = Math.max(b.lo, Math.min(b.hi, refinedPoint[v]! + delta));
+              const change = Math.abs(clamped - refinedPoint[v]!);
+              refinedPoint[v] = clamped;
+              if (change > maxCorrection) maxCorrection = change;
+            }
+          }
+        }
+        if (maxCorrection < 1e-12) break;
+      }
+
+      if (checkPointSatisfies(refinedPoint)) {
+        return {
+          status: "sat",
+          model: refinedPoint,
+          groebnerBasis: reducedBasis,
+          explanation: `Satisfying real witness found via local refinement in ${iterations} iterations with tolerance ${tol}.`,
         };
       }
 
@@ -228,10 +308,24 @@ export class SysML2NRASolver {
 
         queue.push(leftBox);
         queue.push(rightBox);
+      } else {
+        hasSmallFeasibleBox = true;
+        if (!fallbackCandidate) {
+          fallbackCandidate = refinedPoint;
+        }
       }
     }
 
     if (queue.length === 0) {
+      if (hasSmallFeasibleBox && fallbackCandidate) {
+        return {
+          status: "unknown",
+          model: fallbackCandidate,
+          groebnerBasis: reducedBasis,
+          explanation: `Candidate solution box reached tolerance limit ${tol}, but exact point witness could not be refined further.`,
+        };
+      }
+
       return {
         status: "unsat",
         groebnerBasis: reducedBasis,
@@ -241,6 +335,7 @@ export class SysML2NRASolver {
 
     return {
       status: "unknown",
+      model: fallbackCandidate,
       groebnerBasis: reducedBasis,
       explanation: `Search bound reached (${maxIter} iterations). Inconclusive within tolerance ${tol}.`,
     };

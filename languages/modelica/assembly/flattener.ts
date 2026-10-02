@@ -2069,6 +2069,14 @@ export class WasmExprVisitor {
 
   lowerUnary(op: u16, operand: u32): u32 {
     let k = this.dae.getExprKind(operand);
+    if (op == (UnaryOp.Negate as u16)) {
+      if (k == ExprKind.Negate) {
+        return this.dae.getExprLeft(operand);
+      }
+      if (k == ExprKind.Unary && (this.dae.getExprData1(operand) as u16) == (UnaryOp.Negate as u16)) {
+        return this.dae.getExprLeft(operand);
+      }
+    }
     if (k == ExprKind.RealLiteral && op == (UnaryOp.Negate as u16)) {
       let val = this.dae.getExprRealValue(operand);
       return this.dae.addRealLiteral(-val);
@@ -2093,6 +2101,21 @@ export class WasmExprVisitor {
           unchecked(elems[i] = this.lowerUnary(op, getArrayCtorElement(this.dae, operand, i)));
         }
         return addArrayCtorFromStatic(this.dae, elems);
+      }
+    }
+    if (op == (UnaryOp.Negate as u16) && k == ExprKind.Binary) {
+      let binOp = this.dae.getExprData1(operand) as u32;
+      if (binOp == (BinOp.Mul as u32)) {
+        let a = this.dae.getExprLeft(operand);
+        let b = this.dae.getExprRight(operand);
+        let negA = this.lowerUnary(UnaryOp.Negate as u16, a);
+        return this.lowerBinary(BinOp.Mul as u16, negA, b);
+      }
+      if (binOp == (BinOp.Div as u32)) {
+        let a = this.dae.getExprLeft(operand);
+        let b = this.dae.getExprRight(operand);
+        let negA = this.lowerUnary(UnaryOp.Negate as u16, a);
+        return this.lowerBinary(BinOp.Div as u16, negA, b);
       }
     }
     return this.dae.addExpression(ExprKind.Unary, op as u32, operand);
@@ -3233,12 +3256,6 @@ export class WasmExprVisitor {
       if (opType == SyntaxType.OP_SUB || locMatches(opNode, "-")) {
         let operand = this.visitLoc(c1);
         if (operand == 0xffffffff) return 0xffffffff;
-        if (this.dae.getExprKind(operand) == ExprKind.Binary && this.dae.getExprData1(operand) == (BinOp.Mul as u32)) {
-          let a = this.dae.getExprLeft(operand);
-          let b = this.dae.getExprRight(operand);
-          let negA = this.lowerUnary(UnaryOp.Negate as u16, a);
-          return this.lowerBinary(BinOp.Mul as u16, negA, b);
-        }
         return this.lowerUnary(UnaryOp.Negate as u16, operand);
       }
       if (opType == SyntaxType.OP_ADD || locMatches(opNode, "+")) {

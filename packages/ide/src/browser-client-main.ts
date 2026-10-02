@@ -48,6 +48,7 @@ import { ExperimentsTreeProvider } from "./experiments-tree";
 import { GCodeEditorProvider } from "./gcode-editor-provider";
 import { InpEditorProvider } from "./inp-editor-provider";
 import { OptimizationPanel } from "./optimization-panel";
+import { PacemakerProgrammerPanel } from "./pacemaker-programmer-panel";
 import { SimulationViewPanel } from "./physics-setup-editor-provider";
 import { SimulationPanel } from "./simulation-panel";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./ssp-document-provider";
@@ -805,6 +806,51 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const cloudStatusBar = new CloudStatusBar();
   context.subscriptions.push(cloudStatusBar);
+
+  // ── Host Social Hub Integration (Synergy 2) ──
+  const shareStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  shareStatusBar.text = "$(sparkle) Share to Feed";
+  shareStatusBar.tooltip = "Share active model snippet or results to ModelScript social feed";
+  shareStatusBar.command = "modelscript.shareToFeed";
+  shareStatusBar.show();
+  context.subscriptions.push(shareStatusBar);
+
+  safeRegisterCommand("modelscript.shareToFeed", async () => {
+    const editor = vscode.window.activeTextEditor;
+    let snippet = "";
+    let title = "Model";
+
+    if (editor) {
+      const doc = editor.document;
+      title = doc.uri.path.split("/").pop() || "Model";
+      const selection = editor.selection;
+      if (!selection.isEmpty) {
+        snippet = doc.getText(selection);
+      } else {
+        snippet = doc.getText();
+      }
+      if (snippet.length > 2000) {
+        snippet = snippet.slice(0, 2000) + "\n// ... (truncated)";
+      }
+    }
+
+    try {
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage({
+        type: "MODELSCRIPT_SHARE_TO_FEED",
+        payload: {
+          title: `Shared model: ${title}`,
+          content: `Sharing model \`${title}\` from ModelScript IDE workbench:\n\n\`\`\`modelica\n${snippet}\n\`\`\``,
+          codeSnippet: snippet,
+        },
+      });
+      channel.close();
+      vscode.window.showInformationMessage(`Opened share composer in ModelScript Hub for ${title}`);
+    } catch {
+      await vscode.env.clipboard.writeText(snippet);
+      vscode.window.showInformationMessage(`Copied snippet for ${title} to clipboard.`);
+    }
+  });
 
   // Listen for status notifications from the LSP server
   let isScmRegistered = false;
@@ -2102,6 +2148,45 @@ END-ISO-10303-21;`;
     }),
     commands.registerCommand("modelscript.openContractExplorer", (contractName?: string) => {
       ContractHierarchyPanel.createOrShow(context.extensionUri, client, contractName);
+    }),
+    commands.registerCommand("modelscript.openPacemakerProgrammer", (uri?: string) => {
+      PacemakerProgrammerPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+    commands.registerCommand("modelscript.focusCadPart", async (arg?: any) => {
+      let partName = "";
+      if (typeof arg === "string") {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(arg));
+          partName = parsed.partName || arg;
+        } catch {
+          partName = arg;
+        }
+      } else if (arg && typeof arg === "object") {
+        partName = arg.partName || "";
+      }
+
+      if (!partName) return;
+
+      const { MultiBodyAnimationPanel } = await import("./multibody-animation-panel");
+      if (MultiBodyAnimationPanel.currentPanel) {
+        MultiBodyAnimationPanel.currentPanel.reveal();
+        MultiBodyAnimationPanel.currentPanel.focusPart(partName);
+        return;
+      }
+
+      const { CadViewerPanel } = await import("./cad-viewer-panel");
+      if (CadViewerPanel.currentPanel) {
+        CadViewerPanel.currentPanel.reveal();
+        CadViewerPanel.currentPanel.focusPart(partName);
+        return;
+      }
+
+      if (client && context.extensionUri) {
+        CadViewerPanel.createOrShow(context.extensionUri, client);
+        setTimeout(() => {
+          CadViewerPanel.currentPanel?.focusPart(partName);
+        }, 500);
+      }
     }),
     commands.registerCommand("modelscript.runMcdcTests", async (uri?: string, actionName?: string) => {
       if (!client) return;

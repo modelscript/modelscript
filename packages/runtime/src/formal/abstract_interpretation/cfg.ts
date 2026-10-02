@@ -121,6 +121,10 @@ export class GenericCFG {
     return this.blocks.get(id);
   }
 
+  getEdge(fromId: number, toId: number): CFGEdge | undefined {
+    return this.edges.find((e) => e.fromBlockId === fromId && e.toBlockId === toId);
+  }
+
   /**
    * Computes the Reverse Post-Order (RPO) traversal of basic blocks.
    * Optimal order for forward dataflow / abstract interpretation worklist analysis.

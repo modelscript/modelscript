@@ -32,6 +32,45 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
   const encoder = new TextEncoder();
   const template = workspaceUri.path.substring(1) || "empty";
 
+  if (template.startsWith("artifact-")) {
+    const artifactId = template.slice("artifact-".length);
+    const content = [
+      `// ModelScript Workspace for Social Artifact #${artifactId}`,
+      `// Opened from Community Feed & Physical Twin Hub`,
+      ``,
+      `model ArtifactModel "Community Artifact #${artifactId}"`,
+      `  Real x(start = 1.0) "State variable";`,
+      `  Real y(start = 0.0) "Coupled variable";`,
+      `equation`,
+      `  der(x) = -y;`,
+      `  der(y) = x;`,
+      `end ArtifactModel;`,
+      ``,
+    ].join("\n");
+    const fileUri = joinPath(workspaceUri, "ArtifactModel.mo");
+    memFs.writeFile(fileUri, encoder.encode(content));
+    return;
+  }
+
+  if (template.startsWith("package-")) {
+    const pkgName = template.slice("package-".length);
+    const content = [
+      `// ModelScript Workspace for Package: ${pkgName}`,
+      `// Dependencies automatically resolved from registry`,
+      ``,
+      `model PackageDemo "Testing ${pkgName}"`,
+      `  // import ${pkgName}.*;`,
+      `  Real time_val = time;`,
+      `equation`,
+      ``,
+      `end PackageDemo;`,
+      ``,
+    ].join("\n");
+    const fileUri = joinPath(workspaceUri, "PackageDemo.mo");
+    memFs.writeFile(fileUri, encoder.encode(content));
+    return;
+  }
+
   const templates: Record<string, Record<string, string>> = {
     "drone-chassis": {
       "DroneSimulation.mo": [
@@ -1876,5 +1915,7 @@ export function getTemplatePrimaryFile(template: string): string {
     "pendulum-3d": "DoublePendulum.mo",
     "vehicle-architecture": "VehicleSystem.sysml",
   };
+  if (template.startsWith("artifact-")) return "ArtifactModel.mo";
+  if (template.startsWith("package-")) return "PackageDemo.mo";
   return map[template] ?? "HelloWorld.mo";
 }

@@ -90,6 +90,7 @@ export { RomLoadPipeline, type FeaBoundaryCondition, type TransientPeakLoad } fr
 
 // Spatial Clearance & Verification
 export {
+  computeAABBClosestPoints,
   computeAABBDistance,
   computeSolidAABB,
   transformAABB,
@@ -107,6 +108,7 @@ export {
   type DynamicClearanceOptions,
   type DynamicClearanceReport,
   type DynamicClearanceViolation,
+  type DynamicDeformationBinding,
   type DynamicTransformBinding,
   type IntervalBox,
   type TrajectoryStepEnclosure,

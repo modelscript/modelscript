@@ -52,6 +52,8 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
       scale: result["scale"] as [number, number, number] | undefined,
       dynamicPosition: result["dynamicPosition"] as string | undefined,
       dynamicRotation: result["dynamicRotation"] as string | undefined,
+      dynamicScale: result["dynamicScale"] as string | undefined,
+      dynamicDeformation: result["dynamicDeformation"] as string | undefined,
     } satisfies CadAnnotation;
   } else {
     return {

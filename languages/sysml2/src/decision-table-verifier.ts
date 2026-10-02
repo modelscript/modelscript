@@ -50,7 +50,7 @@ export function toNonlinearConstraint(g: GuardConstraint): NonlinearConstraint {
   if (g.nonlinear) {
     return g.nonlinear;
   }
-  const varName = g.variable.includes(".") ? g.variable.split(".").pop()! : g.variable;
+  const varName = g.variable;
   if (g.operator === "<" || g.operator === "<=") {
     return { expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value };
   } else if (g.operator === ">" || g.operator === ">=") {
@@ -76,7 +76,83 @@ function negateNlConstraint(c: NonlinearConstraint): NonlinearConstraint[] {
   }
 }
 
+function negateGuard(g: GuardConstraint, eps = 1e-5): NonlinearConstraint[] {
+  if (g.nonlinear) {
+    return negateNlConstraint(g.nonlinear);
+  }
+  const varName = g.variable;
+  if (g.operator === "<") {
+    return [{ expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value }];
+  } else if (g.operator === "<=") {
+    return [{ expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value + eps }];
+  } else if (g.operator === ">") {
+    return [{ expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value }];
+  } else if (g.operator === ">=") {
+    return [{ expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value - eps }];
+  } else {
+    return [
+      { expr: { kind: "var", name: varName }, rel: "<=", rhs: g.value - eps },
+      { expr: { kind: "var", name: varName }, rel: ">=", rhs: g.value + eps },
+    ];
+  }
+}
+
 function areGuardsDisjoint(guardsA: GuardConstraint[], guardsB: GuardConstraint[]): boolean {
+  const vars = new Set<string>();
+  for (const g of guardsA) if (!g.nonlinear) vars.add(g.variable);
+  for (const g of guardsB) if (!g.nonlinear) vars.add(g.variable);
+
+  for (const v of vars) {
+    let loA = -Infinity,
+      hiA = Infinity,
+      strictLoA = false,
+      strictHiA = false;
+    let loB = -Infinity,
+      hiB = Infinity,
+      strictLoB = false,
+      strictHiB = false;
+
+    for (const g of guardsA) {
+      if (g.variable !== v || g.nonlinear) continue;
+      if (g.operator === "<") {
+        hiA = Math.min(hiA, g.value);
+        strictHiA = true;
+      } else if (g.operator === "<=") {
+        hiA = Math.min(hiA, g.value);
+      } else if (g.operator === ">") {
+        loA = Math.max(loA, g.value);
+        strictLoA = true;
+      } else if (g.operator === ">=") {
+        loA = Math.max(loA, g.value);
+      } else if (g.operator === "==") {
+        loA = Math.max(loA, g.value);
+        hiA = Math.min(hiA, g.value);
+      }
+    }
+
+    for (const g of guardsB) {
+      if (g.variable !== v || g.nonlinear) continue;
+      if (g.operator === "<") {
+        hiB = Math.min(hiB, g.value);
+        strictHiB = true;
+      } else if (g.operator === "<=") {
+        hiB = Math.min(hiB, g.value);
+      } else if (g.operator === ">") {
+        loB = Math.max(loB, g.value);
+        strictLoB = true;
+      } else if (g.operator === ">=") {
+        loB = Math.max(loB, g.value);
+      } else if (g.operator === "==") {
+        loB = Math.max(loB, g.value);
+        hiB = Math.min(hiB, g.value);
+      }
+    }
+
+    if (hiA < loB || hiB < loA) return true;
+    if (hiA === loB && (strictHiA || strictLoB)) return true;
+    if (hiB === loA && (strictHiB || strictLoA)) return true;
+  }
+
   for (const gA of guardsA) {
     for (const gB of guardsB) {
       if (gA.variable === gB.variable && Math.abs(gA.value - gB.value) < 1e-4) {
@@ -92,6 +168,85 @@ function areGuardsDisjoint(guardsA: GuardConstraint[], guardsB: GuardConstraint[
     }
   }
   return false;
+}
+
+function areGuardsComplementaryAt(g: GuardConstraint, otherGuards: GuardConstraint[]): boolean {
+  for (const other of otherGuards) {
+    if (other.variable === g.variable && Math.abs(other.value - g.value) < 1e-4) {
+      if (
+        (g.operator === "<" && (other.operator === ">=" || other.operator === ">")) ||
+        (other.operator === "<" && (g.operator === ">=" || g.operator === ">")) ||
+        (g.operator === "<=" && other.operator === ">") ||
+        (other.operator === "<=" && g.operator === ">")
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function checkUnivariateIntervalExhaustiveness(
+  branches: { rawConstraints: GuardConstraint[] }[],
+  varName: string,
+  domain: [number, number],
+): { isExhaustive: boolean; gap?: [number, number] } | null {
+  const intervals: { lo: number; hi: number; strictLo: boolean; strictHi: boolean }[] = [];
+
+  for (const b of branches) {
+    if (b.rawConstraints.length === 0) return null;
+    let lo = -Infinity,
+      hi = Infinity;
+    let strictLo = false,
+      strictHi = false;
+    for (const g of b.rawConstraints) {
+      if (g.nonlinear || g.variable !== varName) return null;
+      if (g.operator === "<") {
+        hi = Math.min(hi, g.value);
+        strictHi = true;
+      } else if (g.operator === "<=") {
+        hi = Math.min(hi, g.value);
+      } else if (g.operator === ">") {
+        lo = Math.max(lo, g.value);
+        strictLo = true;
+      } else if (g.operator === ">=") {
+        lo = Math.max(lo, g.value);
+      } else if (g.operator === "==") {
+        lo = Math.max(lo, g.value);
+        hi = Math.min(hi, g.value);
+      } else return null;
+    }
+    intervals.push({ lo, hi, strictLo, strictHi });
+  }
+
+  intervals.sort((a, b) => a.lo - b.lo);
+
+  let currentHi = domain[0];
+  let currentStrictHi = false;
+  for (const inv of intervals) {
+    if (inv.hi < domain[0]) continue;
+    if (inv.lo > domain[1]) break;
+
+    if (inv.lo > currentHi + 1e-7) {
+      return { isExhaustive: false, gap: [currentHi, inv.lo] };
+    }
+    if (Math.abs(inv.lo - currentHi) <= 1e-7 && currentStrictHi && inv.strictLo) {
+      return { isExhaustive: false, gap: [currentHi, currentHi] };
+    }
+
+    if (inv.hi > currentHi + 1e-7) {
+      currentHi = inv.hi;
+      currentStrictHi = inv.strictHi;
+    } else if (Math.abs(inv.hi - currentHi) <= 1e-7) {
+      currentStrictHi = currentStrictHi && inv.strictHi;
+    }
+  }
+
+  if (currentHi < domain[1] - 1e-7) {
+    return { isExhaustive: false, gap: [currentHi, domain[1]] };
+  }
+
+  return { isExhaustive: true };
 }
 
 export class DecisionTableVerifier {
@@ -258,94 +413,99 @@ export class DecisionTableVerifier {
     let unhandledScenarioBox: Record<string, [number, number]> | undefined = undefined;
 
     if (!hasCatchAll) {
-      // Each branch pb has a list of negation options
-      const branchNegOptions: NonlinearConstraint[][] = [];
-
-      for (const pb of parsedBranches) {
-        if (pb.nlConstraints.length === 0) continue;
-        const negsForThisBranch: NonlinearConstraint[] = [];
-        for (const c of pb.nlConstraints) {
-          negsForThisBranch.push(...negateNlConstraint(c));
-        }
-        if (negsForThisBranch.length > 0) {
-          branchNegOptions.push(negsForThisBranch);
-        }
-      }
-
-      // Generate Cartesian product of negation options (each path is a conjunction of unit constraints)
-      function getCartesianPaths(optionsList: NonlinearConstraint[][]): NonlinearConstraint[][] {
-        if (optionsList.length === 0) return [[]];
-        const [first, ...rest] = optionsList;
-        const restCombinations = getCartesianPaths(rest);
-        const result: NonlinearConstraint[][] = [];
-        for (const item of first!) {
-          for (const comb of restCombinations) {
-            result.push([item, ...comb]);
+      // 3a. Fast path for 1D interval decision tables
+      let handledByFastPath = false;
+      if (varList.length === 1) {
+        const vName = varList[0]!;
+        const domain = (options.domainBounds?.get(vName) ?? defaultRange) as [number, number];
+        const uniRes = checkUnivariateIntervalExhaustiveness(parsedBranches, vName, domain);
+        if (uniRes) {
+          handledByFastPath = true;
+          if (!uniRes.isExhaustive) {
+            isExhaustive = false;
+            unhandledScenarioBox = { [vName]: uniRes.gap! };
           }
         }
-        return result;
       }
 
-      const paths = getCartesianPaths(branchNegOptions);
-
-      // Check each path: if any path is DELTA_SAT, an unhandled input scenario was found
-      for (const path of paths) {
+      if (!handledByFastPath) {
         const theoryLiterals = new Map<number, NonlinearConstraint>();
         const clauses: number[][] = [];
-        let litId = 1;
+        let nextLitId = 1;
 
-        for (const c of path) {
-          theoryLiterals.set(litId, c);
-          clauses.push([litId]);
-          litId++;
+        for (const pb of parsedBranches) {
+          const clause: number[] = [];
+          if (pb.rawConstraints.length > 0) {
+            for (const g of pb.rawConstraints) {
+              const negs = negateGuard(g);
+              for (const neg of negs) {
+                const litId = nextLitId++;
+                theoryLiterals.set(litId, neg);
+                clause.push(litId);
+              }
+            }
+          } else if (pb.nlConstraints.length > 0) {
+            for (const c of pb.nlConstraints) {
+              const negs = negateNlConstraint(c);
+              for (const neg of negs) {
+                const litId = nextLitId++;
+                theoryLiterals.set(litId, neg);
+                clause.push(litId);
+              }
+            }
+          }
+          if (clause.length > 0) {
+            clauses.push(clause);
+          }
         }
 
-        const initialBox = buildInitialBox();
-        const solver = new DpllTSolver({
-          clauses,
-          theoryLiterals,
-          initialBox,
-          delta: 1e-4,
-          maxSubdivisions: 200,
-        });
+        if (clauses.length > 0) {
+          const initialBox = buildInitialBox();
+          const solver = new DpllTSolver({
+            clauses,
+            theoryLiterals,
+            initialBox,
+            delta: 1e-4,
+            maxSubdivisions: 200,
+          });
 
-        const res = solver.solve(initialBox);
-        if (res.status === "DELTA_SAT") {
-          // Check that the uncovered witness is not on a shared boundary facet between complementary guards
-          let isComplementaryBoundary = false;
-          if (res.solutionBox) {
-            for (const pb of parsedBranches) {
-              for (const g of pb.rawConstraints) {
-                const interval = res.solutionBox.get(g.variable);
-                if (
-                  interval &&
-                  g.value >= interval.lo - 1e-4 &&
-                  g.value <= interval.hi + 1e-4 &&
-                  interval.hi - interval.lo <= 1e-2
-                ) {
-                  for (const otherPb of parsedBranches) {
-                    if (otherPb === pb) continue;
-                    if (areGuardsDisjoint(pb.rawConstraints, otherPb.rawConstraints)) {
-                      isComplementaryBoundary = true;
-                      break;
+          const res = solver.solve(initialBox);
+          if (res.status === "DELTA_SAT" || res.status === "SAT") {
+            // Check that the uncovered witness is not on a shared boundary facet between complementary guards
+            let isComplementaryBoundary = false;
+            if (res.solutionBox) {
+              for (const pb of parsedBranches) {
+                for (const g of pb.rawConstraints) {
+                  const interval = res.solutionBox.get(g.variable);
+                  if (
+                    interval &&
+                    g.value >= interval.lo - 1e-4 &&
+                    g.value <= interval.hi + 1e-4 &&
+                    interval.hi - interval.lo <= 1e-2
+                  ) {
+                    for (const otherPb of parsedBranches) {
+                      if (otherPb === pb) continue;
+                      if (areGuardsComplementaryAt(g, otherPb.rawConstraints)) {
+                        isComplementaryBoundary = true;
+                        break;
+                      }
                     }
                   }
+                  if (isComplementaryBoundary) break;
                 }
                 if (isComplementaryBoundary) break;
               }
-              if (isComplementaryBoundary) break;
             }
-          }
 
-          if (!isComplementaryBoundary) {
-            isExhaustive = false;
-            unhandledScenarioBox = {};
-            if (res.solutionBox) {
-              for (const [k, inv] of res.solutionBox.entries()) {
-                unhandledScenarioBox[k] = [inv.lo, inv.hi];
+            if (!isComplementaryBoundary) {
+              isExhaustive = false;
+              unhandledScenarioBox = {};
+              if (res.solutionBox) {
+                for (const [k, inv] of res.solutionBox.entries()) {
+                  unhandledScenarioBox[k] = [inv.lo, inv.hi];
+                }
               }
             }
-            break; // Found an uncovered gap
           }
         }
       }

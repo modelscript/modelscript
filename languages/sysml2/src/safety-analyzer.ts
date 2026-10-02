@@ -54,6 +54,7 @@ export interface SafetyAnalysisResult {
   maxOrderExplored: number;
   faultTreeDiagram?: DiagramData;
   summary: string;
+  diagnostics?: string[];
 }
 
 export interface SafetyAnalysisOptions {
@@ -274,10 +275,57 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
     const hasHazardMeta = sym.metadata?.defKind === "hazard" || sym.metadata?.stereotype === "Hazard";
 
     if (hasHazardType || hasHazardMeta) {
+      const linkedCauses: string[] = [];
+      if (Array.isArray(sym.metadata?.causes)) {
+        linkedCauses.push(...sym.metadata.causes);
+      } else if (typeof sym.metadata?.causes === "string") {
+        linkedCauses.push(sym.metadata.causes);
+      }
+      if (sym.metadata?.cause && typeof sym.metadata.cause === "string") {
+        linkedCauses.push(sym.metadata.cause);
+      }
+      for (const ch of children) {
+        if (
+          ch.name === "causes" ||
+          ch.name === "cause" ||
+          ch.name === "failureModes" ||
+          ch.ruleName?.toLowerCase().includes("cause")
+        ) {
+          if (ch.metadata?.target) linkedCauses.push(String(ch.metadata.target));
+          else if (ch.metadata?.val) linkedCauses.push(String(ch.metadata.val));
+          else if (ch.name && ch.name !== "causes" && ch.name !== "cause") linkedCauses.push(ch.name);
+        }
+        if (ch.ruleName === "FeatureTyping" || ch.ruleName === "OwnedFeatureTyping") {
+          const typeName = ch.name || "";
+          if (typeName && !typeName.toLowerCase().includes("hazard")) {
+            linkedCauses.push(typeName);
+          }
+        }
+      }
+
+      const causeSet = new Set(linkedCauses.filter((c) => c !== "causes" && c !== "cause"));
+
+      let causesHazard: (active: Set<string>) => boolean;
+      let description = sym.metadata?.description as string | undefined;
+
+      if (causeSet.size > 0) {
+        causesHazard = (active) => {
+          for (const cause of causeSet) {
+            if (!active.has(cause)) return false;
+          }
+          return true;
+        };
+      } else {
+        const diagMsg = `Hazard '${sym.name}' has no associated failure mode causal rules or physics evaluator.`;
+        if (!description) description = diagMsg;
+        causesHazard = () => false;
+      }
+
       hazards.push({
         id: sym.name,
         name: sym.name,
-        causesHazard: (active) => active.size >= 2,
+        description,
+        causesHazard,
       });
     }
   }
@@ -303,10 +351,12 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
       const name = sym.name || "";
       const lower = name.toLowerCase();
       if (lower.includes("hazard") || lower.includes("critical")) {
+        const diagMsg = `Hazard '${name}' has no associated failure mode causal rules or physics evaluator.`;
         hazards.push({
           id: name,
           name,
-          causesHazard: (active) => active.size >= 2,
+          description: diagMsg,
+          causesHazard: () => false,
         });
       }
     }
@@ -373,6 +423,14 @@ export function analyzeSafetyAndFaultTree(
     ? `Identified ${minimalCutSets.length} Minimal Cut Sets (${singlePointsOfFailure.length} single points of failure) for hazard '${hazard.name}'.`
     : `Hazard '${hazard.name}' is unreachable under all analyzed fault combinations.`;
 
+  const diagnostics: string[] = [];
+  if (
+    hazard.description &&
+    hazard.description.includes("no associated failure mode causal rules or physics evaluator")
+  ) {
+    diagnostics.push(hazard.description);
+  }
+
   return {
     hazardId: hazard.id,
     hazardName: hazard.name,
@@ -383,6 +441,7 @@ export function analyzeSafetyAndFaultTree(
     maxOrderExplored: maxOrder,
     faultTreeDiagram,
     summary,
+    diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
   };
 }
 

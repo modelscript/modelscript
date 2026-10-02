@@ -209,4 +209,181 @@ end FormalControl;
       "Hover must display variable documentation and formal invariant context",
     );
   });
+
+  await t.test("should display accurate [1, 10] formal invariant for loop variable", async () => {
+    const loopUri = "file:///workspace/BouncingBall.mo";
+    const loopContent = `model BouncingBall
+algorithm
+  for i in 1:10 loop
+  end for;
+end BouncingBall;
+`;
+
+    const loopDoc = TextDocument.create(loopUri, "modelica", 1, loopContent);
+    mockDocManager.documents.set(loopUri, loopDoc);
+
+    const diags: any[] = [];
+    await validationService.postValidateModelicaAbstractInterpretation(loopUri, loopDoc, diags);
+
+    let loopHoverHandler: any = null;
+    const hoverConn: any = {
+      onHover: (h: any) => {
+        loopHoverHandler = h;
+      },
+    };
+    const loopMockDocs: any = {
+      get: (uri: string) => (uri === loopUri ? loopDoc : undefined),
+    };
+    const loopMockBridge: any = {
+      hover: () => ({
+        contents: "```modelica\nInteger i\n```",
+        range: { start: { line: 2, character: 6 }, end: { line: 2, character: 7 } },
+      }),
+    };
+    validationService.documentLSPBridges.set(loopUri, loopMockBridge);
+    registerHoverProvider(hoverConn, loopMockDocs, validationService);
+
+    const loopHoverPos = loopDoc.positionAt(loopContent.indexOf("for i in 1:10 loop") + 4);
+    const loopHoverResult = loopHoverHandler({
+      textDocument: { uri: loopUri },
+      position: loopHoverPos,
+    });
+
+    assert.ok(loopHoverResult, "Must return hover result for loop variable");
+    assert.ok(
+      loopHoverResult.contents.value.includes("i ∈ [1, 10]"),
+      `Hover must display 'i ∈ [1, 10]' invariant, got: ${loopHoverResult.contents.value}`,
+    );
+  });
+
+  await t.test(
+    "should verify continuous DAE equations, emitting Red diagnostics and CodeLens proof badges",
+    async () => {
+      const daeUri = "file:///workspace/DaeModel.mo";
+      const daeContent = `
+package DaeModel
+  model SafeCircuit
+    Real V(start = 10.0);
+    Real R(start = 2.0);
+    Real I;
+  equation
+    I = V / R;
+  end SafeCircuit;
+
+  model SingularCircuit
+    Real V(start = 10.0);
+    Real R(start = 0.0);
+    Real I;
+  equation
+    I = V / 0.0;
+  end SingularCircuit;
+end DaeModel;
+`;
+
+      const daeDoc = TextDocument.create(daeUri, "modelica", 1, daeContent);
+      mockDocManager.documents.set(daeUri, daeDoc);
+
+      const diagnostics: any[] = [];
+      await validationService.postValidateModelicaDaeReachability(daeUri, daeDoc, diagnostics);
+
+      assert.ok(diagnostics.length >= 1, `Expected at least 1 DAE diagnostic, got ${diagnostics.length}`);
+
+      // Check Definite Error diagnostic for SingularCircuit
+      const divZeroDiag = diagnostics.find((d) => d.severity === DiagnosticSeverity.Error && d.code === "div_by_zero");
+      assert.ok(divZeroDiag, "Must emit DiagnosticSeverity.Error for definite division by zero in equation");
+      assert.strictEqual(divZeroDiag.source, "modelscript-dae-verifier");
+      assert.ok(divZeroDiag.message.includes("[DAE Formal Defect]"));
+
+      // Check CodeLens badges
+      const daeWorkspaceManager: any = {
+        globalWorkspaceIndex: {
+          getFileIndex: (uri: string) => {
+            if (uri === daeUri) {
+              return {
+                symbols: new Map([
+                  [
+                    10,
+                    {
+                      id: 10,
+                      name: "SafeCircuit",
+                      classKind: "model",
+                      selectionRange: { start: { line: 2, character: 8 }, end: { line: 2, character: 19 } },
+                    },
+                  ],
+                  [
+                    11,
+                    {
+                      id: 11,
+                      name: "SingularCircuit",
+                      classKind: "model",
+                      selectionRange: { start: { line: 9, character: 8 }, end: { line: 9, character: 23 } },
+                    },
+                  ],
+                ]),
+              };
+            }
+            return undefined;
+          },
+        },
+      };
+
+      let codeLensHandler: any = null;
+      const codeLensConnection: any = {
+        onRequest: (method: string, handler: any) => {
+          if (method === "textDocument/codeLens") {
+            codeLensHandler = handler;
+          }
+        },
+      };
+
+      const mockDaeContext: any = {
+        connection: codeLensConnection,
+        documents: { get: (uri: string) => (uri === daeUri ? daeDoc : undefined) },
+        workspaceManager: daeWorkspaceManager,
+        validationService,
+      };
+
+      registerCodeLensProvider(mockDaeContext);
+      const lenses = codeLensHandler({ textDocument: { uri: daeUri } });
+
+      const safeLens = lenses.find((l: any) => l.command.title.includes("DAE Formally Verified"));
+      assert.ok(safeLens, "Must have '✓ DAE Formally Verified' badge for SafeCircuit");
+      assert.strictEqual(safeLens.command.arguments[1], "SafeCircuit");
+
+      const defectLens = lenses.find((l: any) => l.command.title.includes("DAE Defect"));
+      assert.ok(defectLens, "Must have '✗ DAE Defect' badge for SingularCircuit");
+      assert.strictEqual(defectLens.command.arguments[1], "SingularCircuit");
+
+      // Check Variable Hover for SafeCircuit
+      let hoverHandler: any = null;
+      const hoverConn: any = {
+        onHover: (h: any) => {
+          hoverHandler = h;
+        },
+      };
+      const mockHoverBridge: any = {
+        hover: () => ({
+          contents: "```modelica\nReal V\n```",
+          range: { start: { line: 3, character: 9 }, end: { line: 3, character: 10 } },
+        }),
+      };
+      validationService.documentLSPBridges.set(daeUri, mockHoverBridge);
+      const daeMockDocs: any = {
+        get: (uri: string) => (uri === daeUri ? daeDoc : undefined),
+      };
+      registerHoverProvider(hoverConn, daeMockDocs, validationService);
+
+      const vHoverPos = daeDoc.positionAt(daeContent.indexOf("Real V(") + 5);
+      const hoverRes = hoverHandler({
+        textDocument: { uri: daeUri },
+        position: vHoverPos,
+      });
+
+      assert.ok(hoverRes, "Must return hover result for variable V");
+      assert.ok(
+        hoverRes.contents.value.includes("DAE Reachability Invariant"),
+        `Hover must display DAE reachability invariant, got: ${hoverRes.contents.value}`,
+      );
+    },
+  );
 });

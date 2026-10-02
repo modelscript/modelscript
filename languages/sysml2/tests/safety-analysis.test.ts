@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import {
   analyzeSafetyAndFaultTree,
   enumerateAllMinimalCutSets,
+  extractSysML2FailureModes,
   quickXplain,
   type FailureMode,
   type HazardDefinition,
@@ -145,5 +146,58 @@ describe("Automated Safety Analysis & Fault Tree (MCS) Suite", () => {
     const andGateNode = diagram.nodes.find((n) => n.id === "node_gate_and_1");
     assert(andGateNode !== undefined);
     assert.strictEqual(andGateNode.data?.kind, "gate-and");
+  });
+
+  it("should soundly handle hazards without causal rules by emitting diagnostic instead of dummy combinations", () => {
+    // Mock QueryDB with a hazard that has NO linked causes and a hazard with explicit causes
+    const mockDB: any = {
+      allEntries: () => [
+        {
+          id: 1,
+          name: "UnlinkedHazard",
+          metadata: { defKind: "hazard" },
+          parentId: null,
+        },
+        {
+          id: 2,
+          name: "OverpressureHazard",
+          metadata: { defKind: "hazard", causes: ["ValvLeak", "SensorFail"] },
+          parentId: null,
+        },
+      ],
+      childrenOf: () => [],
+      symbol: (id: number) => ({ id, name: `Sym_${id}` }),
+    };
+
+    const extracted = extractSysML2FailureModes(mockDB);
+    assert.strictEqual(extracted.hazards.length, 2);
+
+    const unlinked = extracted.hazards.find((h) => h.id === "UnlinkedHazard")!;
+    assert(unlinked !== undefined);
+    assert(
+      unlinked.description?.includes(
+        "Hazard 'UnlinkedHazard' has no associated failure mode causal rules or physics evaluator.",
+      ),
+      "Must have informative diagnostic in description",
+    );
+    // Even if 10 faults are active, it must not trigger artificially
+    assert.strictEqual(unlinked.causesHazard(new Set(["F1", "F2", "F3"])), false);
+
+    const linked = extracted.hazards.find((h) => h.id === "OverpressureHazard")!;
+    assert(linked !== undefined);
+    assert.strictEqual(linked.causesHazard(new Set(["ValvLeak"])), false);
+    assert.strictEqual(linked.causesHazard(new Set(["ValvLeak", "SensorFail"])), true);
+
+    // Also verify end-to-end analyzeSafetyAndFaultTree surfaces diagnostic
+    const analysis = analyzeSafetyAndFaultTree(mockDB, {
+      hazard: unlinked,
+      failureModes: [
+        { id: "F1", name: "F1", component: "C1" },
+        { id: "F2", name: "F2", component: "C2" },
+      ],
+    });
+    assert.strictEqual(analysis.isHazardReachable, false);
+    assert(analysis.diagnostics !== undefined);
+    assert(analysis.diagnostics[0]?.includes("no associated failure mode causal rules"));
   });
 });

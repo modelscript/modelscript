@@ -215,6 +215,7 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
   const [error, setError] = useState("");
   const [showCloudSim, setShowCloudSim] = useState(false);
   const [copiedClone, setCopiedClone] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function load() {
@@ -518,11 +519,12 @@ git push -u origin main`}
               style={{ height: "32px", gap: "6px" }}
               onClick={() => {
                 const targetRef = repo.default_branch || "main";
-                const ideUrl = `/vscode/workbench#${repo.path_with_namespace || repo.name}@${targetRef}`;
-                window.open(ideUrl, "_blank");
+                navigate(
+                  `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(targetRef)}`,
+                );
               }}
             >
-              Open in VS Code
+              Open in IDE
             </Button>
             <ActionMenu>
               <ActionMenu.Button
@@ -543,8 +545,9 @@ git push -u origin main`}
                   <ActionList.Item
                     onSelect={() => {
                       const targetRef = repo.default_branch || "main";
-                      const ideUrl = `/vscode/workbench#${repo.path_with_namespace || repo.name}@${targetRef}`;
-                      window.open(ideUrl, "_blank");
+                      navigate(
+                        `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(targetRef)}`,
+                      );
                     }}
                   >
                     Open in ModelScript IDE (Web VS Code)
@@ -677,11 +680,12 @@ git push -u origin main`}
                       leadingVisual={PlayIcon}
                       onClick={() => {
                         const targetRef = repo.default_branch || "main";
-                        const ideUrl = `/vscode/workbench#${repo.path_with_namespace || repo.name}@${targetRef}`;
-                        window.open(ideUrl, "_blank");
+                        navigate(
+                          `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(targetRef)}`,
+                        );
                       }}
                     >
-                      Edit in VS Code
+                      Edit in IDE
                     </Button>
                   </Box>
                 </Box>

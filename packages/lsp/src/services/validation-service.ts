@@ -243,6 +243,7 @@ export class ValidationService {
   public verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
   public verificationResultsByUri = new Map<string, any[]>();
   public modelicaProofResultsByUri = new Map<string, Map<string, any>>();
+  public modelicaDaeVerificationResultsByUri = new Map<string, Map<string, any>>();
   public reasonerDiagnosticsByUri = new Map<string, Diagnostic[]>();
 
   get dependenciesReady(): boolean {
@@ -1057,6 +1058,7 @@ export class ValidationService {
           this.checkAutoVerify(effectiveUri);
         } else if (langId === "modelica" && !hasSyntaxErrors && textDocument) {
           await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
+          await this.postValidateModelicaDaeReachability(effectiveUri, textDocument, newSemanticDiagnostics);
           this.postValidateModelicaReasoner(effectiveUri, newSemanticDiagnostics);
         }
       }
@@ -1675,7 +1677,8 @@ export class ValidationService {
       const text = textDocument.getText();
       if (!/\balgorithm\b/.test(text)) return;
 
-      const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer } = await import("@modelscript/modelica");
+      const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer, findCstNodesByType } =
+        await import("@modelscript/modelica");
 
       const proofMap = new Map<string, any>();
       this.modelicaProofResultsByUri.set(effectiveUri, proofMap);
@@ -1683,6 +1686,8 @@ export class ValidationService {
       // Match class / function / block / model definitions with algorithms
       const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
       let match: RegExpExecArray | null;
+
+      const cached = this.documentCache?.get(effectiveUri);
 
       while ((match = funcRegex.exec(text)) !== null) {
         const kind = match[1]!;
@@ -1727,7 +1732,23 @@ export class ValidationService {
           });
         }
 
-        const statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
+        let statements: any[] = [];
+        if (cached?.tree?.rootNode && findCstNodesByType) {
+          const classNodes = findCstNodesByType(cached.tree.rootNode, "class_definition");
+          const classNode = classNodes.find((cn: any) => {
+            const idNode = findCstNodesByType(cn, "identifier")[0];
+            return idNode?.text?.trim() === name;
+          });
+          if (classNode) {
+            const algSections = findCstNodesByType(classNode, "algorithm_section");
+            if (algSections.length > 0) {
+              statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
+            }
+          }
+        }
+        if (statements.length === 0) {
+          statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
+        }
         if (statements.length === 0) continue;
 
         const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, {
@@ -1770,8 +1791,286 @@ export class ValidationService {
         }
       }
     } catch (err: any) {
-      this.connection.console.error(`[modelica-prover] Error in abstract interpretation: ${err?.message}`);
+      this.connection?.console?.error?.(`[modelica-prover] Error in abstract interpretation: ${err?.message}`);
     }
+  }
+
+  public async postValidateModelicaDaeReachability(
+    effectiveUri: string,
+    textDocument: TextDocument,
+    diagnostics: Diagnostic[],
+  ): Promise<void> {
+    try {
+      const text = textDocument.getText();
+      if (!/\bequation\b/.test(text) && !/\bmodel\b|\bblock\b|\bclass\b/.test(text)) return;
+
+      const {
+        DAEBuilder,
+        DaeBltReachabilityEngine,
+        HybridModeConsistencyVerifier,
+        performBltTransformationArena,
+        initBltWasm,
+        BinOp,
+        EqKind,
+        ExprKind,
+        UnaryOp,
+        Variability,
+        VarType,
+      } = await import("@modelscript/runtime");
+
+      const daeMap = new Map<string, any>();
+      this.modelicaDaeVerificationResultsByUri.set(effectiveUri, daeMap);
+
+      const classRegex = /\b(model|block|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
+      let match: RegExpExecArray | null;
+
+      while ((match = classRegex.exec(text)) !== null) {
+        const name = match[2]!;
+        const body = match[3]!;
+        const classOffset = match.index;
+
+        if (!/\bequation\b/.test(body)) continue;
+
+        let arena: any;
+        const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
+        const context = this.parserService?.sharedContext;
+        if (typeof flattenFn === "function" && context) {
+          try {
+            arena = flattenFn({ name }, context);
+          } catch {
+            // fallback
+          }
+        }
+
+        if (!arena) {
+          arena = this.extractLightweightDaeArena(
+            body,
+            DAEBuilder,
+            EqKind,
+            ExprKind,
+            BinOp,
+            UnaryOp,
+            Variability,
+            VarType,
+          );
+        }
+        if (!arena || arena.eqCount === 0) continue;
+
+        let bltResult: any;
+        try {
+          await initBltWasm();
+          bltResult = performBltTransformationArena(arena);
+        } catch {
+          const blocks = [];
+          for (let e = 0; e < arena.eqCount; e++) {
+            blocks.push({ eqIdxs: [e], vars: [Math.min(e, arena.varCount - 1)] });
+          }
+          bltResult = { sortedEquations: blocks.map((_, i) => i), blocks };
+        }
+
+        const reachEngine = new DaeBltReachabilityEngine(arena);
+        const reachSummary = reachEngine.verify(bltResult);
+
+        const hybridVerifier = new HybridModeConsistencyVerifier(arena);
+        const hybridResult = hybridVerifier.verify();
+
+        const allIssues = [...reachSummary.issues, ...hybridResult.issues];
+
+        const namedBounds = new Map<string, any>();
+        for (let i = 0; i < arena.varCount; i++) {
+          const vName = arena.getVarName(i);
+          const bound = reachSummary.variableBounds.get(i) ?? reachEngine.evaluator.getVarBound(i);
+          if (vName && bound && !bound.isTop?.() && !bound.isBottom?.()) {
+            namedBounds.set(vName, bound);
+          }
+        }
+
+        daeMap.set(name, {
+          isFullyCertified: reachSummary.isFullyCertified && hybridResult.isCertifiedConsistent,
+          reachSummary,
+          hybridResult,
+          issues: allIssues,
+          variableBounds: namedBounds,
+        });
+
+        for (const issue of allIssues) {
+          let issueOffset = classOffset;
+          if (issue.varName && body.includes(issue.varName)) {
+            issueOffset = classOffset + body.indexOf(issue.varName);
+          } else {
+            const eqMatch = /\bequation\b/.exec(body);
+            if (eqMatch) {
+              issueOffset = classOffset + eqMatch.index;
+            }
+          }
+
+          const startPos = textDocument.positionAt(issueOffset);
+          const endPos = textDocument.positionAt(issueOffset + (issue.varName?.length ?? 10));
+
+          if (issue.severity === "definite") {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start: startPos, end: endPos },
+              message: `[DAE Formal Defect] ${issue.message}`,
+              source: "modelscript-dae-verifier",
+              code: issue.kind,
+            });
+          } else {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Warning,
+              range: { start: startPos, end: endPos },
+              message: `[DAE Invariant Warning] ${issue.message}`,
+              source: "modelscript-dae-verifier",
+              code: issue.kind,
+            });
+          }
+        }
+      }
+    } catch (err: any) {
+      this.connection?.console?.error?.(`[modelica-dae-verifier] Error in DAE verification: ${err?.message}`);
+    }
+  }
+
+  private extractLightweightDaeArena(
+    body: string,
+    DAEBuilder: any,
+    EqKind: any,
+    ExprKind: any,
+    BinOp: any,
+    _UnaryOp: any,
+    Variability: any,
+    VarType: any,
+  ): any {
+    const arena = new DAEBuilder();
+
+    const varDeclRegex =
+      /\b(parameter|constant)?\s*(Real|Integer|Boolean)\s+(?:\[(.*?)\]\s+)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((.*?)\))?(?:\s*=\s*([^;]+))?\s*;/g;
+    let vMatch: RegExpExecArray | null;
+    while ((vMatch = varDeclRegex.exec(body)) !== null) {
+      const variabilityStr = vMatch[1];
+      const typeStr = vMatch[2];
+      const nameStr = vMatch[4]!;
+      const attrsStr = vMatch[5];
+      const initExprStr = vMatch[6];
+
+      let varType = VarType.Real;
+      if (typeStr === "Integer") varType = VarType.Integer;
+      else if (typeStr === "Boolean") varType = VarType.Boolean;
+
+      let variability = Variability.Continuous;
+      if (variabilityStr === "parameter") variability = Variability.Parameter;
+      else if (variabilityStr === "constant") variability = Variability.Constant;
+
+      const vIdx = arena.addVariable(nameStr, varType, variability);
+
+      if (attrsStr) {
+        const minMatch = /\bmin\s*=\s*(-?\d+(?:\.\d+)?)/.exec(attrsStr);
+        if (minMatch) {
+          arena.setVarAttr(vIdx, "min", arena.addRealLiteral(Number(minMatch[1])));
+        }
+        const maxMatch = /\bmax\s*=\s*(-?\d+(?:\.\d+)?)/.exec(attrsStr);
+        if (maxMatch) {
+          arena.setVarAttr(vIdx, "max", arena.addRealLiteral(Number(maxMatch[1])));
+        }
+        const startMatch = /\bstart\s*=\s*(-?\d+(?:\.\d+)?)/.exec(attrsStr);
+        if (startMatch) {
+          arena.setVarStartValue(vIdx, Number(startMatch[1]));
+        }
+      }
+
+      if (initExprStr) {
+        const val = Number(initExprStr.trim());
+        if (Number.isFinite(val)) {
+          arena.setVarStartValue(vIdx, val);
+        }
+      }
+    }
+
+    const eqMatch = /\bequation\b([\s\S]*)$/.exec(body);
+    if (!eqMatch) return arena;
+
+    const eqSection = eqMatch[1]!;
+
+    const parseExpr = (exprStr: string): number => {
+      const s = exprStr.trim();
+      if (!s) return -1;
+
+      if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
+        return arena.addRealLiteral(Number(s));
+      }
+
+      const derMatch = /^der\((.*?)\)$/.exec(s);
+      if (derMatch) {
+        const inner = parseExpr(derMatch[1]!);
+        return arena.addExpression(ExprKind.Der, inner);
+      }
+
+      const sqrtMatch = /^sqrt\((.*?)\)$/.exec(s);
+      if (sqrtMatch) {
+        const inner = parseExpr(sqrtMatch[1]!);
+        return arena.addCallExpr(arena.interner.intern("sqrt"), [inner]);
+      }
+
+      const binOps = [
+        { op: "+", kind: BinOp.Add },
+        { op: "-", kind: BinOp.Sub },
+        { op: "*", kind: BinOp.Mul },
+        { op: "/", kind: BinOp.Div },
+        { op: "<=", kind: BinOp.Lte },
+        { op: ">=", kind: BinOp.Gte },
+        { op: "<", kind: BinOp.Lt },
+        { op: ">", kind: BinOp.Gt },
+      ];
+
+      for (const b of binOps) {
+        const opIdx = s.lastIndexOf(b.op);
+        if (opIdx > 0 && opIdx < s.length - 1) {
+          const leftStr = s.slice(0, opIdx).trim();
+          const rightStr = s.slice(opIdx + b.op.length).trim();
+          if (leftStr && rightStr) {
+            const leftExpr = parseExpr(leftStr);
+            const rightExpr = parseExpr(rightStr);
+            return arena.addBinaryExpr(b.kind, leftExpr, rightExpr);
+          }
+        }
+      }
+
+      let vIdx = arena.getVarIdxByName(s);
+      if (vIdx < 0) {
+        vIdx = arena.addVariable(s, VarType.Real, Variability.Continuous);
+      }
+      return arena.addExpression(ExprKind.Name, arena.interner.intern(s));
+    };
+
+    const rawStmts = eqSection.split(";");
+    for (let rawStmt of rawStmts) {
+      rawStmt = rawStmt.trim();
+      if (!rawStmt || rawStmt.startsWith("//")) continue;
+
+      const whenMatch = /\bwhen\s+(.*?)\s+then\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)\s*(?:;\s*)?end\s+when/s.exec(
+        rawStmt,
+      );
+      if (whenMatch) {
+        const condExpr = parseExpr(whenMatch[1]!);
+        const targetName = whenMatch[2]!;
+        const valExpr = parseExpr(whenMatch[3]!);
+        const whenIdx = arena.addWhenEquation(condExpr);
+        let targetIdx = arena.getVarIdxByName(targetName);
+        if (targetIdx < 0) targetIdx = arena.addVariable(targetName, VarType.Real, Variability.Continuous);
+        const targetExpr = arena.addExpression(ExprKind.Name, arena.interner.intern(targetName));
+        arena.addWhenBodyEquation(whenIdx, EqKind.Simple, targetExpr, valExpr);
+        continue;
+      }
+
+      const eqParts = rawStmt.split("=");
+      if (eqParts.length === 2) {
+        const lhsExpr = parseExpr(eqParts[0]!.trim());
+        const rhsExpr = parseExpr(eqParts[1]!.trim());
+        arena.addEquation(EqKind.Simple, lhsExpr, rhsExpr);
+      }
+    }
+
+    return arena;
   }
 
   private checkAutoVerify(effectiveUri: string): void {

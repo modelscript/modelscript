@@ -732,6 +732,9 @@ export class SimulationPanel {
         <label style="display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground); cursor: pointer;">
           <input type="checkbox" id="checkbox-smooth" checked> Smooth Curves
         </label>
+        <label style="display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground); cursor: pointer;" title="Toggle Calibrated Clinical ECG/EGM Strip Chart (25mm/s, 10mm/mV)">
+          <input type="checkbox" id="checkbox-ecg"> 🩺 ECG Strip (25mm/s)
+        </label>
         <button id="btn-pause" class="live-only">⏸ Pause</button>
         <button id="btn-clear" class="live-only">Clear</button>
         <button id="btn-3d-animation" style="display: none; background: #2da44e; color: white;">🎬 3D Animation</button>

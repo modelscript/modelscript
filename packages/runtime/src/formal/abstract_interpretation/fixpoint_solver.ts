@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CFGInstruction, GenericCFG } from "./cfg.js";
+import { CFGEdge, CFGInstruction, GenericCFG } from "./cfg.js";
 import { ReducedProductDomain, ReducedProductState } from "./reduced_product.js";
 
 export type RTEVerdict = "proven_safe" | "definite_bug" | "potential_bug" | "dead_code";
@@ -31,6 +31,8 @@ export type InstructionTransferFunction = (
   inState: ReducedProductState,
   collector: (check: RTECheckResult) => void,
 ) => ReducedProductState;
+
+export type EdgeTransferFunction = (edge: CFGEdge, outState: ReducedProductState) => ReducedProductState;
 
 /**
  * Static Analysis Fixpoint Solver with Widening.
@@ -68,6 +70,7 @@ export class FixpointSolver {
     private transferFn: InstructionTransferFunction,
     private thresholds: number[] = [-1, 0, 1, 10, 100, 1000],
     private maxWideningSteps: number = 20,
+    private edgeTransferFn?: EdgeTransferFunction,
   ) {}
 
   solve(initialState?: ReducedProductState): VerificationSummary {
@@ -116,9 +119,17 @@ export class FixpointSolver {
       if (bId !== this.cfg.entryBlockId) {
         let joinedPreds = this.domain.bottom();
         for (const pId of block.predecessors) {
-          const pOut = outStates.get(pId);
+          let pOut = outStates.get(pId);
           if (pOut && !this.domain.isBottom(pOut)) {
-            joinedPreds = this.domain.join(joinedPreds, pOut);
+            if (this.edgeTransferFn) {
+              const edge = this.cfg.getEdge(pId, bId);
+              if (edge) {
+                pOut = this.edgeTransferFn(edge, pOut);
+              }
+            }
+            if (!this.domain.isBottom(pOut)) {
+              joinedPreds = this.domain.join(joinedPreds, pOut);
+            }
           }
         }
 
@@ -149,6 +160,61 @@ export class FixpointSolver {
             worklist.push(sId);
             inWorklist.add(sId);
           }
+        }
+      }
+    }
+
+    // 2. Narrowing Phase (Bounded meet iterations after widening post-fixpoint)
+    for (let narrowStep = 0; narrowStep < 2; narrowStep++) {
+      for (const bId of rpo) {
+        if (bId === this.cfg.entryBlockId) continue;
+        const block = this.cfg.getBlock(bId);
+        if (!block) continue;
+
+        let joinedPreds = this.domain.bottom();
+        for (const pId of block.predecessors) {
+          let pOut = outStates.get(pId);
+          if (pOut && !this.domain.isBottom(pOut)) {
+            if (this.edgeTransferFn) {
+              const edge = this.cfg.getEdge(pId, bId);
+              if (edge) {
+                pOut = this.edgeTransferFn(edge, pOut);
+              }
+            }
+            if (!this.domain.isBottom(pOut)) {
+              joinedPreds = this.domain.join(joinedPreds, pOut);
+            }
+          }
+        }
+
+        if (!this.domain.isBottom(joinedPreds)) {
+          const currentIn = inStates.get(bId)!;
+          const narrowedIn = this.domain.meet(currentIn, joinedPreds);
+          inStates.set(bId, narrowedIn);
+
+          let currentOut = narrowedIn.clone();
+          if (!this.domain.isBottom(narrowedIn)) {
+            for (const inst of block.instructions) {
+              currentOut = this.transferFn(inst, currentOut, () => {});
+              if (this.domain.isBottom(currentOut)) break;
+            }
+          }
+          outStates.set(bId, currentOut);
+        }
+      }
+    }
+
+    // 3. Final Verification Pass: collect definitive RTE checks on stabilized invariants
+    checks.length = 0;
+    for (const bId of rpo) {
+      const block = this.cfg.getBlock(bId);
+      if (!block) continue;
+      const inState = inStates.get(bId)!;
+      if (!this.domain.isBottom(inState)) {
+        let curr = inState.clone();
+        for (const inst of block.instructions) {
+          curr = this.transferFn(inst, curr, checkCollector);
+          if (this.domain.isBottom(curr)) break;
         }
       }
     }

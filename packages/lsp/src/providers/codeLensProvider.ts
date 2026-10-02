@@ -67,6 +67,29 @@ export function registerCodeLensProvider(context: LspContext) {
             },
           });
         }
+
+        const daeMap = context.validationService.modelicaDaeVerificationResultsByUri?.get(uri);
+        const daeProof = daeMap?.get(sym.name);
+        if (daeProof) {
+          let daeTitle = "✓ DAE Formally Verified (Non-Singular BLT, 0 Singularities)";
+          if (daeProof.issues.length > 0) {
+            const definite = daeProof.issues.find((i: any) => i.severity === "definite");
+            if (definite) {
+              daeTitle = `✗ DAE Defect: ${definite.message}`;
+            } else {
+              daeTitle = `⚠ DAE Invariant: ${daeProof.issues[0].message}`;
+            }
+          }
+
+          lenses.push({
+            range,
+            command: {
+              title: daeTitle,
+              command: "modelscript.showDaeVerificationDetails",
+              arguments: [uri, sym.name, daeProof],
+            },
+          });
+        }
       }
       return lenses;
     }
