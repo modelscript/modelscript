@@ -137,4 +137,53 @@ describe("Modelica Diagram Data Robustness & DynamicSelect", () => {
     const markupStr = JSON.stringify(node.markup);
     assert(markupStr.includes("strokeDasharray"), "Cascading stacked rects should have dashed stroke");
   });
+
+  it("should extract Line annotation from enclosing some_equation when called on connect_equation", async () => {
+    const { createWasmParser } = await import("@modelscript/modelica/parser");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { parser } = await createWasmParser(modelicaWasm);
+
+    const code = `
+      model M
+      equation
+        connect(a.p, b.p) annotation(Line(points = {{-80, 0}, {-40, 0}, {-40, 20}, {0, 20}}, color = {0, 0, 255}));
+      end M;
+    `;
+    const tree = parser.parse(code);
+    let connectNode: any = null;
+    function findConnect(n: any) {
+      if (n.type === "connect_equation") {
+        connectNode = n;
+        return;
+      }
+      for (let i = 0; i < n.namedChildCount; i++) {
+        findConnect(n.namedChild(i));
+        if (connectNode) return;
+      }
+    }
+    findConnect(tree.rootNode);
+    assert(connectNode, "connect_equation node should be found");
+    assert.strictEqual(
+      connectNode.text.includes("annotation"),
+      false,
+      "connect_equation node text should not include annotation",
+    );
+
+    const evaluator = new AnnotationEvaluator();
+    const lineFromConnect = evaluator.evaluate(connectNode, "Line");
+    assert(lineFromConnect, "Should extract Line annotation when passing connect_equation CST node");
+    assert(Array.isArray(lineFromConnect.points), "Line points should be an array");
+    assert.strictEqual(lineFromConnect.points.length, 4, "Line points should have 4 points");
+    assert.deepStrictEqual(lineFromConnect.points[0], [-80, 0]);
+    assert.deepStrictEqual(lineFromConnect.points[3], [0, 20]);
+    assert.deepStrictEqual(lineFromConnect.color, [0, 0, 255]);
+
+    const lineFromParent = evaluator.evaluate(connectNode.parent, "Line");
+    assert(lineFromParent, "Should extract Line annotation when passing some_equation CST node");
+    assert.deepStrictEqual(lineFromParent.points, lineFromConnect.points);
+  });
 });

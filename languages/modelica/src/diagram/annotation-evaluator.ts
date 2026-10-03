@@ -1018,8 +1018,21 @@ export class AnnotationEvaluator {
 
   public evaluate(ast: any, name: string): any {
     if (!ast) return null;
-    if (typeof ast.text === "string" && !ast.text.includes("annotation")) {
-      return null;
+    if (typeof ast.text === "string") {
+      const hasAnnotation =
+        ast.text.includes("annotation") ||
+        (ast.parent &&
+          ast.parent.type !== "class_definition" &&
+          ast.parent.type !== "composition" &&
+          ast.parent.type !== "stored_definition" &&
+          typeof ast.parent.text === "string" &&
+          ast.parent.text.includes("annotation")) ||
+        (ast.nextNamedSibling &&
+          typeof ast.nextNamedSibling.text === "string" &&
+          ast.nextNamedSibling.text.includes("annotation"));
+      if (!hasAnnotation) {
+        return null;
+      }
     }
 
     const classMods = this.extractAllClassModifications(ast);
@@ -1057,7 +1070,13 @@ export class AnnotationEvaluator {
     this.findAllAnnotationClauses(ast, 0, clauses);
 
     // Fallbacks for inner declarations: check parent and next sibling
-    if (clauses.length === 0 && ast.parent) {
+    if (
+      clauses.length === 0 &&
+      ast.parent &&
+      ast.parent.type !== "class_definition" &&
+      ast.parent.type !== "composition" &&
+      ast.parent.type !== "stored_definition"
+    ) {
       this.findAllAnnotationClauses(ast.parent, 0, clauses);
     }
     if (clauses.length === 0 && ast.nextNamedSibling) {

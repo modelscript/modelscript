@@ -4010,7 +4010,11 @@ export const componentDeclarationQueries: Record<string, any> = {
       declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
 
     const mod = db.query<any | null>("effectiveModification", self.id);
-    const hasBinding = Boolean(mod?.bindingExpression || (modNode && modNode.text && modNode.text.includes("=")));
+    const hasBinding = Boolean(
+      mod?.bindingExpression ||
+      (modNode && Cst.Modification.modificationExpression(modNode) != null) ||
+      (modNode?.children && modNode.children.some((c: any) => c.text === "=" || c.type === "=")),
+    );
     if (!hasBinding) return null;
 
     let typeName = db.query<string | null>("typeSpecifier", self.id);
@@ -4217,19 +4221,24 @@ export const connectEquationQueries: Record<string, any> = {
           found = allElems.find((e) => e.name === seg) ?? null;
         }
         if (!found) {
-          return { resolved: false, missingSegment: seg };
+          const fullMissing = rawSegments.slice(0, i + 1).join(".");
+          return { resolved: false, missingSegment: fullMissing };
         }
 
         currentEntry = found;
         if (i < rawSegments.length - 1) {
           if (found.kind === "Component") {
             const nextClassId = db.query<SymbolId | null>("classInstance", found.id);
-            if (!nextClassId) return { resolved: false, missingSegment: seg };
+            if (!nextClassId) {
+              const fullMissing = rawSegments.slice(0, i + 1).join(".");
+              return { resolved: false, unresolvableType: true, missingSegment: fullMissing };
+            }
             currentClassId = nextClassId;
           } else if (found.kind === "Class" || found.kind === "Package") {
             currentClassId = found.id;
           } else {
-            return { resolved: false, missingSegment: seg };
+            const fullMissing = rawSegments.slice(0, i + 1).join(".");
+            return { resolved: false, missingSegment: fullMissing };
           }
         }
       }
@@ -4268,7 +4277,7 @@ export const connectEquationQueries: Record<string, any> = {
     };
 
     // 1. Check if endpoints resolve (M2002)
-    if (!lhsRes.resolved) {
+    if (!lhsRes.resolved && !lhsRes.unresolvableType) {
       diags.push(
         error(ModelicaErrorCode.VARIABLE_NOT_FOUND.message(lhsRes.missingSegment || lhsText, parentClassName), {
           ...getRange(lhsNode),
@@ -4276,7 +4285,7 @@ export const connectEquationQueries: Record<string, any> = {
         }),
       );
     }
-    if (!rhsRes.resolved) {
+    if (!rhsRes.resolved && !rhsRes.unresolvableType) {
       diags.push(
         error(ModelicaErrorCode.VARIABLE_NOT_FOUND.message(rhsRes.missingSegment || rhsText, parentClassName), {
           ...getRange(rhsNode),
@@ -4284,7 +4293,7 @@ export const connectEquationQueries: Record<string, any> = {
         }),
       );
     }
-    if (diags.length > 0) return diags;
+    if (diags.length > 0 || !lhsRes.resolved || !rhsRes.resolved) return diags;
 
     // 2. Check if endpoints are connectors (M3004)
     if (!lhsRes.isConnector && !lhsRes.isExpandable) {

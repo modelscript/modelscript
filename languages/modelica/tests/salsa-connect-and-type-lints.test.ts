@@ -237,4 +237,33 @@ describe("Salsa Connect & Short Class Specifier Lint Suite", () => {
     const m2003 = diags.filter((d: any) => d.code === 2003);
     assert.equal(m2003.length, 0, "Expected 0 M2003 diagnostics for valid qualified short class alias");
   });
+
+  it("should suppress cascading M2002 when connect() references a component with unresolved class", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      model Circuit
+        NonExistentResistor R1;
+        Real dummy;
+      equation
+        connect(R1.p, dummy);
+      end Circuit;
+    `;
+
+    const uri = "file:///test/ConnectUnresolvedComponent.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    // Should have M2003 for NonExistentResistor
+    const m2003 = diags.filter((d: any) => d.code === 2003 || d.message?.includes("NonExistentResistor"));
+    assert.ok(m2003.length > 0, "Expected M2003 for unresolved class NonExistentResistor");
+
+    // Should NOT have M2002 for R1.p or p in scope Circuit
+    const m2002 = diags.filter(
+      (d: any) => d.code === 2002 || (d.message?.includes("Variable") && d.message?.includes("not found")),
+    );
+    assert.equal(m2002.length, 0, "Should not emit cascading M2002 for unresolved component type");
+  });
 });

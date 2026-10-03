@@ -246,6 +246,9 @@ export declare class LspFacade {
    */
   getStringFromPool(id: number): string;
   private _childTailCache;
+  /** Reusable WASM buffer for `TextEditRange` arrays passed to `parseWithEdits`. */
+  private _editsScratchPtr;
+  private _editsScratchCapacity;
   private currentInputLength;
   readonly rootSourceCode: Map<number, string>;
   readonly uriSourceCode: Map<string, string>;

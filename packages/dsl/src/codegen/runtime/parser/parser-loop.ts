@@ -24,7 +24,7 @@ import {
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding, propagateFirstChildPadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED, FLAG_FRAGILE,
-    getNodeEnvHash, getNodeStartState, setNodeStartState, getNodeReductionLookahead, setNodeReductionInfo, getInputBuffer,
+    getNodeEnvHash, getNodeStartState, setNodeStartState, getNodeReductionLookahead, setNodeReductionLookahead, setNodeReductionInfo, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2, setParseWatermark, isCurrentParseNode,
     setNodeMerkleHash, getNodeMerkleHash, EPHEMERAL_FLAGS
 } from "../arena";
@@ -73,6 +73,14 @@ import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTa
 import { MAX_PRODUCTION_LENGTH } from "./recovery-config";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
 
+let g_lookupMemoState: i32 = -1;
+let g_lookupMemoToken: i32 = 0;
+let g_lookupMemoTable: usize = 0;
+let g_lookupMemoCount: i32 = 0;
+
+/** Maximum number of actions copied into `tempActions` (it holds 32 u32 = 16 pairs). */
+const MAX_LOOKUP_ACTIONS: i32 = 16;
+
 /**
  * Looks up the GLR action count for a given parser state and token.
  * This checks the `action_offsets` and `action_data` tables.
@@ -82,6 +90,12 @@ import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
  * @returns The number of possible actions (1 for LR, >1 for GLR conflicts).
  */
 export function lookupActions(state: i32, token: i32): i32 {
+  // One-entry memo: `tempActions` is only ever written below, so it still holds the
+  // actions of the previous lookup when the key (and the table) match.
+  if (state == g_lookupMemoState && token == g_lookupMemoToken &&
+      g_lookupMemoTable == changetype<usize>(action_data) && changetype<usize>(tempActions) != 0) {
+    return g_lookupMemoCount;
+  }
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset + 1 >= action_data.length) {
     return 0;
@@ -113,11 +127,19 @@ export function lookupActions(state: i32, token: i32): i32 {
   }
   let actCount = action_data[matchIdx + 1];
   let actPtr = matchIdx + 2;
-  let count = actCount < 16 ? actCount : 16;
+  let count = actCount < MAX_LOOKUP_ACTIONS ? actCount : MAX_LOOKUP_ACTIONS;
+  if (actCount > MAX_LOOKUP_ACTIONS) {
+    // Surface grammar conflicts that exceed the scratch buffer instead of dropping silently.
+    debugLog(9501, state, token, actCount);
+  }
   for (let i = 0; i < count; i++) {
     tempActions[i * 2] = action_data[actPtr + i * 2];
     tempActions[i * 2 + 1] = action_data[actPtr + i * 2 + 1];
   }
+  g_lookupMemoState = state;
+  g_lookupMemoToken = token;
+  g_lookupMemoTable = changetype<usize>(action_data);
+  g_lookupMemoCount = count;
   return count;
 }
 
@@ -145,6 +167,7 @@ function stateCanAcceptFnBool(state: i32, token: i32): boolean {
  */
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
   debugLog(8888, pos, lrStackDepth, scannerState);
+  g_reduceLookahead = 0;
   let prevHead: ParseHead | null = null;
   let currentPos: u32 = 0;
   for (let i = 0; i < lrStackDepth; i++) {
@@ -191,6 +214,75 @@ function invokeLexer(pos: u32): i32 {
   let token = lex(pos);
   return token;
 }
+
+/** Position immediately after the last extra token consumed by `skipExtraTokens`. */
+let g_skipPos: u32 = 0;
+/** Bytes consumed by `skipExtraTokens` (whitespace preceding each extra + the extra itself). */
+let g_skipPad: u32 = 0;
+
+/**
+ * Skips token-type extras (e.g. grammar-declared comment tokens) starting from `tok`,
+ * which must have just been produced by `invokeLexer(pos)`.
+ *
+ * `lex(pos)` skips built-in whitespace internally, so each extra token begins at
+ * `srcLexPos`, not at `pos`. Advancing must therefore resume from `srcLexPos + lexLen`.
+ *
+ * On return, `g_skipPos` holds the position after the last consumed extra and
+ * `g_skipPad` holds the number of bytes consumed in `[pos, g_skipPos)`, so that
+ * `g_skipPad + (srcLexPos - g_skipPos)` equals the full padding before the returned token.
+ *
+ * @param zeroLenAdvance Amount to advance `pos` by if a zero-length extra is encountered.
+ * @returns The first non-extra token (or the zero-length extra token).
+ */
+function skipExtraTokens(tok: i32, pos: u32, zeroLenAdvance: u32): i32 {
+  let pad: u32 = 0;
+  while (load<u8>(is_extra_token + tok) == 1) {
+    if (lexLen == 0) {
+      pos += zeroLenAdvance;
+      break;
+    }
+    let start = srcLexPos > pos ? srcLexPos : pos;
+    let nextPos = start + lexLen;
+    pad += nextPos - pos;
+    pos = nextPos;
+    tok = invokeLexer(pos);
+  }
+  g_skipPos = pos;
+  g_skipPad = pad;
+  return tok;
+}
+
+/** Restores all lexer globals after a speculative re-lex (e.g. a rejected subtree reuse). */
+function restoreLexerState(savedLexPos: u32, savedSrcLexPos: u32, savedLexLen: u32, savedScannerState: u32): void {
+  lexPos = savedLexPos;
+  srcLexPos = savedSrcLexPos;
+  lexLen = savedLexLen;
+  currentScannerState = savedScannerState;
+}
+
+/**
+ * Lookahead token in effect for GLR reductions; recorded on reduced parent nodes so that
+ * a later incremental parse can verify the subtree's reductions still hold.
+ * 0 (NODE_TYPE_ERROR) means "unknown".
+ */
+let g_reduceLookahead: u32 = 0;
+
+/**
+ * Returns true if `node` may be reused when followed by `nextTok`.
+ *
+ * Non-terminal subtrees record the lookahead token that was current when they were
+ * reduced (see `setNodeReductionInfo`). If the token following the subtree changed,
+ * reductions inside it (e.g. precedence decisions at its right edge) may differ, so
+ * reuse is rejected. Terminals, list nodes (whose B-tree chunks don't carry a
+ * meaningful lookahead) and nodes with no recorded lookahead are accepted.
+ */
+function reuseLookaheadMatches(node: u32, nextTok: i32): bool {
+  if (getNodeType(node) <= (MAX_TERMINAL_ID as u16)) return true;
+  if ((getNodeFlags(node) & FLAG_IS_LIST) != 0) return true;
+  let la = getNodeReductionLookahead(node);
+  if (la == 0) return true;
+  return la == ((nextTok as u32) & 0x7fff);
+}
 /**
  * Fast-path LR parser. This parser loop handles deterministic code sections.
  * If an ambiguity is encountered (actionCount > 1) or an error occurs (actionCount == 0),
@@ -208,17 +300,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
     t_lrNodeStack[0] = 0;
     lrStackDepth = 1;
 
-    token = invokeLexer(pos);
-    while (load<u8>(is_extra_token + token) == 1) {
-      if (lexLen == 0) {
-        pos += 1;
-        break;
-      }
-      pendingPadding += lexLen;
-      let nextPos = pos + lexLen;
-      pos = nextPos > pos ? nextPos : pos + 1;
-      token = invokeLexer(pos);
-    }
+    token = skipExtraTokens(invokeLexer(pos), pos, 1);
+    pendingPadding += g_skipPad;
+    pos = g_skipPos;
   }
 
   
@@ -227,6 +311,8 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
     let currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
     let lrActCount = lookupActions(currentState, token);
     let isPendingReduce = (lrActCount == 1 && tempActions[0] == (ACTION_REDUCE as u32));
+    // Stack index of a speculatively pushed empty list (step 0 below), or -1.
+    let speculativeEmptyIdx: i32 = -1;
 
     if (!isPendingReduce && pos < inputLength && token != TOKEN_EOF && globalCursorDepth >= 0 && (g_editNewEnd > 0 || g_editOldEnd > 0 || t_editRangesCount > 0)) {
       let oldPos = mapNewPosToOldPos(pos);
@@ -334,6 +420,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                       setNodeFlags(emptyList, FLAG_IS_LIST | FLAG_INVISIBLE);
                       t_lrStateStack[lrStackDepth] = gotoState;
                       t_lrNodeStack[lrStackDepth] = emptyList;
+                      speculativeEmptyIdx = lrStackDepth as i32;
                       lrStackDepth++;
                       // Re-derive state variables for the new stack top.
                       currentState = gotoState;
@@ -360,29 +447,16 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (t_editRangesCount <= 1) {
               newEndOfList = g_editNewEnd + (oldListEnd - g_editOldEnd);
             } else {
-              let delta: i32 = 0;
-              for (let i: u32 = 0; i < t_editRangesCount; i++) {
-                let edit = TextEditRange.at(t_editRangesPtr, i);
-                delta += (edit.newEnd - edit.oldEnd) as i32;
-              }
-              newEndOfList = (oldListEnd as i32 + delta) as u32;
+              // Only edits located before the list end shift it.
+              newEndOfList = mapOldPosToNewPos(oldListEnd);
             }
             let savedLexPos = lexPos;
             let savedSrcLexPos = srcLexPos;
             let savedLexLen = lexLen;
             let savedScannerState = currentScannerState;
-            let nextTok = invokeLexer(newEndOfList);
-            let nextPendingPad: u32 = 0;
-            while (load<u8>(is_extra_token + nextTok) == 1) {
-              if (lexLen == 0) {
-                newEndOfList += 1;
-                break;
-              }
-              nextPendingPad += lexLen;
-              let nextEndPos = newEndOfList + lexLen;
-              newEndOfList = nextEndPos > newEndOfList ? nextEndPos : newEndOfList + 1;
-              nextTok = invokeLexer(newEndOfList);
-            }
+            let nextTok = skipExtraTokens(invokeLexer(newEndOfList), newEndOfList, 1);
+            let nextPendingPad: u32 = g_skipPad;
+            newEndOfList = g_skipPos;
             let canAccept = lookupActions(currentState, nextTok) > 0 || stateCanAcceptFnBool(currentState, nextTok);
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
@@ -420,18 +494,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
           let prefixSlice = extractListSlice(oldListRoot, oldListStart, oldSrcLexPos, g_editStart, headSym as u16, 0);
           if (prefixSlice != 0) {
             let newEndOfSlice = g_lastSlicedEnd;
-            let nextTok = invokeLexer(newEndOfSlice);
-            let nextPendingPad: u32 = 0;
-            while (load<u8>(is_extra_token + nextTok) == 1) {
-              if (lexLen == 0) {
-                newEndOfSlice += 1;
-                break;
-              }
-              nextPendingPad += lexLen;
-              let nextEndPos = newEndOfSlice + lexLen;
-              newEndOfSlice = nextEndPos > newEndOfSlice ? nextEndPos : newEndOfSlice + 1;
-              nextTok = invokeLexer(newEndOfSlice);
-            }
+            let nextTok = skipExtraTokens(invokeLexer(newEndOfSlice), newEndOfSlice, 1);
+            let nextPendingPad: u32 = g_skipPad;
+            newEndOfSlice = g_skipPos;
             let canAccept = lookupActions(currentState, nextTok) > 0 || stateCanAcceptFnBool(currentState, nextTok);
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
@@ -465,7 +530,8 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
           g_editStart,
           g_editOldEnd,
           headSym,
-          expectedPadding
+          expectedPadding,
+          token
         );
         if (reusedNode != 0) {
           let nodeType = getNodeType(reusedNode);
@@ -473,19 +539,13 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
           if (isListChunk) {
             let totalPadding = expectedPadding;
             let endPos = srcLexPos + getNodeByteLength(reusedNode);
+            let savedLexPos = lexPos;
             let savedSrcLexPos = srcLexPos;
             let savedLexLen = lexLen;
-            let nextTok = invokeLexer(endPos);
-            let nextPendingPad: u32 = 0;
-            while (load<u8>(is_extra_token + nextTok) == 1) {
-              if (lexLen == 0) {
-                break;
-              }
-              nextPendingPad += lexLen;
-              let nextEndPos = endPos + lexLen;
-              endPos = nextEndPos > endPos ? nextEndPos : endPos + 2;
-              nextTok = invokeLexer(endPos);
-            }
+            let savedScannerState = currentScannerState;
+            let nextTok = skipExtraTokens(invokeLexer(endPos), endPos, 0);
+            let nextPendingPad: u32 = g_skipPad;
+            endPos = g_skipPos;
             let canAccept = lookupActions(currentState, nextTok) > 0 || stateCanAcceptFnBool(currentState, nextTok);
             if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
               let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
@@ -507,8 +567,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               continue;
             } else {
               restoreCursorCheckpoint();
-              srcLexPos = savedSrcLexPos;
-              lexLen = savedLexLen;
+              restoreLexerState(savedLexPos, savedSrcLexPos, savedLexLen, savedScannerState);
             }
           } else {
             let nextState = -1;
@@ -534,21 +593,15 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (nextState != -1) {
               let totalPadding = expectedPadding;
               let endPos = srcLexPos + getNodeByteLength(reusedNode);
+              let savedLexPos = lexPos;
               let savedSrcLexPos = srcLexPos;
               let savedLexLen = lexLen;
+              let savedScannerState = currentScannerState;
               t_lrStateStack[lrStackDepth] = nextState;
               lrStackDepth++;
-              let nextTok = invokeLexer(endPos);
-              let nextPendingPad: u32 = 0;
-              while (load<u8>(is_extra_token + nextTok) == 1) {
-                if (lexLen == 0) {
-                  break;
-                }
-                nextPendingPad += lexLen;
-                let nextEndPos = endPos + lexLen;
-                endPos = nextEndPos > endPos ? nextEndPos : endPos + 2;
-                nextTok = invokeLexer(endPos);
-              }
+              let nextTok = skipExtraTokens(invokeLexer(endPos), endPos, 0);
+              let nextPendingPad: u32 = g_skipPad;
+              endPos = g_skipPos;
               let canAccept = lookupActions(nextState, nextTok) > 0 || stateCanAcceptFnBool(nextState, nextTok);
               if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
                 let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
@@ -556,6 +609,11 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                 if (dist == 0) {
                   canAccept = true;
                 }
+              }
+              // The reused subtree's internal reductions were decided with the old lookahead;
+              // reject reuse if the token following it has changed.
+              if (canAccept && !reuseLookaheadMatches(reusedNode, nextTok)) {
+                canAccept = false;
               }
               if (canAccept) {
                 let clone = cloneNodeShallow(reusedNode);
@@ -570,8 +628,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               } else {
                 restoreCursorCheckpoint();
                 lrStackDepth--;
-                srcLexPos = savedSrcLexPos;
-                lexLen = savedLexLen;
+                restoreLexerState(savedLexPos, savedSrcLexPos, savedLexLen, savedScannerState);
               }
             } else {
               restoreCursorCheckpoint();
@@ -581,6 +638,14 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
           restoreCursorCheckpoint();
         }
       }
+    }
+
+    // A speculative empty list that no splice/reuse consumed must not stay on the stack:
+    // the LR table may not even contain that ε-reduction for `token`, which would make
+    // the incremental tree diverge from a fresh parse.
+    if (speculativeEmptyIdx >= 0 && lrStackDepth == speculativeEmptyIdx + 1) {
+      lrStackDepth--;
+      currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
     }
 
     let actionCount = lookupActions(currentState, token);
@@ -657,18 +722,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       
       pos = srcLexPos + lexLen;
       
-      token = invokeLexer(pos);
-      pendingPadding = 0;
-      while (load<u8>(is_extra_token + token) == 1) {
-        if (lexLen == 0) {
-          pos += 1;
-          break;
-        }
-        pendingPadding += lexLen;
-        let nextPos = pos + lexLen;
-        pos = nextPos > pos ? nextPos : pos + 1;
-        token = invokeLexer(pos);
-      }
+      token = skipExtraTokens(invokeLexer(pos), pos, 1);
+      pendingPadding = g_skipPad;
+      pos = g_skipPos;
       
     } else if (type == ACTION_REDUCE) {
       if (++consecutiveReductions > 5000) {
@@ -757,7 +813,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             let child = t_lrNodeStack[(childStartIdx + k)];
             if (child == 0) continue;
             
-            let clone = cloneNodeShallow(child);
+            // P1: in LR mode a popped child is owned solely by this reduction unless it was
+            // reused from the old tree or is shared; only clone in those cases.
+            let clone = isMutable(child) ? child : cloneNodeShallow(child);
             
             if (k == 0) {
               setNodePadding(clone, 0);
@@ -925,8 +983,15 @@ export function peekNextTokenInState(pos: u32, state: i32): i32 {
   currentScannerState = savedScannerState;
 
   memory.copy(expected_tokens, savedExpectedTokensPtr, copyLen);
+  g_expectedMemoState = -1;
   return tok;
 }
+
+/**
+ * LR state whose expected-token set currently fills `expected_tokens` (-1 = unknown).
+ * Any code that writes `expected_tokens` outside `updateExpectedTokens` must reset it.
+ */
+let g_expectedMemoState: i32 = -1;
 
 /**
  * Updates the `expected_tokens` bitset based on the valid action transitions
@@ -936,16 +1001,19 @@ export function peekNextTokenInState(pos: u32, state: i32): i32 {
 function updateExpectedTokens(frontierPos: u32 = 0): void {
   if (expected_tokens == 0) {
     expected_tokens = atomicChunkAlloc(65536);
+    g_expectedMemoState = -1;
   }
   let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
   if (copyLen > 65536) copyLen = 65536;
-  memory.fill(expected_tokens, 0, copyLen);
   if (currentParserMode == MODE_LR) {
-    if (lrStackDepth > 0) {
-      let state = t_lrStateStack[lrStackDepth - 1] as i32;
-      addStateExpectedTokens(state, 0);
-    }
+    let state = lrStackDepth > 0 ? (t_lrStateStack[lrStackDepth - 1] as i32) : -2;
+    if (state == g_expectedMemoState) return;
+    memory.fill(expected_tokens, 0, copyLen);
+    if (state >= 0) addStateExpectedTokens(state, 0);
+    g_expectedMemoState = state;
   } else {
+    g_expectedMemoState = -1;
+    memory.fill(expected_tokens, 0, copyLen);
     let healthyCount: u32 = 0;
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let head = changetype<ParseHead>(t_activeHeads[i]);
@@ -1530,6 +1598,7 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
   }
 
   memory.copy(expected_tokens, savedExpectedTokensPtr, _copyLen);
+  g_expectedMemoState = -1;
   lexPos = savedLexPos;
   lexLen = savedLexLen;
   srcLexPos = savedSrcLexPos;
@@ -1563,6 +1632,7 @@ export function cloneNodeShallow(gc: u32): u32 {
   // confusing `injectStrandedNodes` into thinking the original node is a clone.
   setNodeFlags(gc, getNodeFlags(gc) | FLAG_IS_SHARED);
   let clone = allocNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc), false, getNodeStartState(gc));
+  setNodeReductionLookahead(clone, getNodeReductionLookahead(gc));
   // Keep FLAG_EXTRACTED on the clone so its shared children are not mutated in-place
   setNodeFlags(clone, (getNodeFlags(gc) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED)); 
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
@@ -1650,7 +1720,10 @@ function isMutable(ptr: u32): boolean {
   // mutating one corrupts the others' trees.
   // Note: The current head is popped from the queue during evaluation,
   // so if activeHeadsCount > 0, it means there is at least one OTHER head.
-  if (currentParserMode == MODE_GLR && (activeHeadsCount > 0 || nextHeadsCount > 0)) {
+  // Paused heads and the best dying/accepting fallback heads are parked outside the
+  // frontiers but still reference (possibly shared) subtrees, so they count too.
+  if (currentParserMode == MODE_GLR && (activeHeadsCount > 0 || nextHeadsCount > 0 || pausedHeadsCount > 0 ||
+      bestDyingHead != 0 || bestAcceptingHead != 0)) {
     return false;
   }
   if ((getNodeFlags(ptr) & (FLAG_EXTRACTED | FLAG_IS_SHARED)) != 0) return false;
@@ -1777,6 +1850,27 @@ let _listRecurDepth: u32 = 0;
 let appendListCalls = 0;
 
 /**
+ * Fallback combination of two nodes that never discards content: returns a new invisible
+ * parent of type `sym` with shallow clones of `leftNode` and `rightNode` as children.
+ * Used when `concatLists` cannot perform a proper balanced merge.
+ */
+function concatFlatPair(leftNode: u32, rightNode: u32, sym: u16, envHash: u32, asList: bool): u32 {
+  if (leftNode == 0) return cloneNodeShallow(rightNode);
+  if (rightNode == 0) return cloneNodeShallow(leftNode);
+  let errFlag = (getNodeFlags(leftNode) | getNodeFlags(rightNode)) & FLAG_HAS_ERROR;
+  let p = allocNode(sym, getNodePadding(leftNode), 0, envHash, false, getNodeStartState(leftNode));
+  setNodeFlags(p, (asList ? FLAG_IS_LIST : (0 as u16)) | FLAG_INVISIBLE | errFlag);
+  let l = cloneNodeShallow(leftNode);
+  setNodePadding(l, 0);
+  let r = cloneNodeShallow(rightNode);
+  setFirstChild(p, l);
+  setNextSibling(l, r);
+  setNextSibling(r, 0);
+  fixNodeLength(p);
+  return p;
+}
+
+/**
  * Concatenates two AST nodes into a single list of type `listSym`.
  * Extremely complex logic handles flattening uneven trees and splitting
  * trees that exceed `LIST_MAX_CHILDREN` (to ensure operations on the AST 
@@ -1784,15 +1878,17 @@ let appendListCalls = 0;
  */
 export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
   _listRecurDepth++;
-  // Cycle detection guard
+  // Cycle / runaway-recursion guard. Never drop an operand: fall back to a flat pair.
   if (_listRecurDepth > 50) {
     _listRecurDepth--;
-    return cloneNodeShallow(rightNode); // bail: cycle detected
+    debugLog(9401, leftNode, rightNode, listSym as u32);
+    return concatFlatPair(leftNode, rightNode, listSym, envHash, true);
   }
 
   if (listSym == 0) {
     listSym = getNodeType(leftNode) != 0 ? getNodeType(leftNode) : getNodeType(rightNode);
   }
+  let fallbackSym = listSym;
   if (listSym > (MAX_TERMINAL_ID as u16) && listSym < (type_is_list.length as u16)) {
     if (type_is_list[listSym] != 1) {
       listSym = 0; // Prevent non-list structural symbols (Equation/Decl) from creating phantom wrapper nodes
@@ -1800,10 +1896,13 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   }
   if (listSym == 0) {
     // Cannot determine a valid list symbol — don't wrap in ERROR-typed nodes.
-    // Return whichever operand has content, or clone rightNode by default.
     _listRecurDepth--;
-    if (getNodeByteLength(leftNode) > 0) return cloneNodeShallow(leftNode);
-    return cloneNodeShallow(rightNode);
+    if (leftNode == 0 || getNodeByteLength(leftNode) == 0) return cloneNodeShallow(rightNode);
+    if (rightNode == 0 || getNodeByteLength(rightNode) == 0) return cloneNodeShallow(leftNode);
+    // Both operands carry content: keep both under an invisible (non-list) wrapper that
+    // consumers flatten, rather than silently discarding one of them.
+    debugLog(9402, leftNode, rightNode, fallbackSym as u32);
+    return concatFlatPair(leftNode, rightNode, fallbackSym, envHash, false);
   }
 
   if (leftNode == 0) {
@@ -2017,6 +2116,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   // If the left tree is deeper, we drill down into the rightmost branch
   // of the left tree and recursively concatenate the right tree there.
   let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
+  setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
   let gc = getNodeFirstChild(leftNode);
   let lastChild = 0;
   for (let i = 0; i < lDirectChildCount - 1; i++) {
@@ -2067,7 +2167,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
       setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
-      let newRightChunk = allocNode(listSym, getNodePadding(origC2), 0, envHash);
+      let newRightChunk = allocNode(listSym, 0, 0, envHash); // fixNodeLength absorbs its first child's padding
       setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       
       // p is the first child of superP, so it should not duplicate superP's padding!
@@ -2163,207 +2263,185 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
     return p;
   }
 
-  let lDepth = getListDepth(leftNode, listSym);
-  let directChildCount: i32 = 0;
-  let ldTemp = getNodeFirstChild(leftNode);
-  let lastDirectChild: u32 = 0;
-  while (ldTemp != 0) {
-    directChildCount++;
-    lastDirectChild = ldTemp;
-    ldTemp = getNodeNextSibling(ldTemp);
+  if (isBoundary) {
+    setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_LIST_BOUNDARY);
   }
 
-    if (isBoundary) {
-      setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_LIST_BOUNDARY);
-    }
-
-    if (directChildCount < LIST_MAX_CHILDREN || !isBoundary) {
-      if (isMutable(leftNode)) {
-        if (lastDirectChild == 0) {
-          setNodePadding(leftNode, getNodePadding(leftNode) + getNodePadding(leaf));
-          setNodePadding(leaf, 0);
-          setFirstChild(leftNode, leaf);
-        } else {
-          setNextSibling(lastDirectChild, leaf);
-        }
-        setNextSibling(leaf, 0);
-        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
-        fixNodeLength(leftNode);
-        _listRecurDepth--;
-        return leftNode;
-      } else {
-        let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-        let lastChild = copyChildren(p, leftNode);
-        if (lastChild == 0) {
-          setNodePadding(p, getNodePadding(p) + getNodePadding(leaf));
-          setNodePadding(leaf, 0);
-          setFirstChild(p, leaf);
-        } else {
-          setNextSibling(lastChild, leaf);
-        }
-        fixNodeLength(p);
-        _listRecurDepth--;
-        return p;
-      }
-    } else {
-      if (isMutable(leftNode)) {
-        let splitTail = getNodeFirstChild(leftNode);
-        for (let i = 0; i < LIST_SPLIT_POINT - 1; i++) {
-          if (getNodeNextSibling(splitTail) == 0) break;
-          splitTail = getNodeNextSibling(splitTail);
-        }
-        let initialSplitTail = splitTail;
-        let foundBoundary = false;
-        while (getNodeNextSibling(splitTail) != 0) {
-          if ((getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) != 0) {
-            foundBoundary = true;
-            break;
-          }
-          splitTail = getNodeNextSibling(splitTail);
-        }
-        if (!foundBoundary) {
-          splitTail = initialSplitTail;
-        }
-        
-        let splitHead = getNodeNextSibling(splitTail);
-        if (splitHead == 0) {
-          // No boundary found — splitTail is the last child. Just append the leaf directly.
-          setNextSibling(splitTail, leaf);
-          setNextSibling(leaf, 0);
-          setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
-          fixNodeLength(leftNode);
-          _listRecurDepth--;
-          return leftNode;
-        }
-        setNextSibling(splitTail, 0); // truncate leftNode
-        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
-        fixNodeLength(leftNode);
-
-        let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash, false, getNodeStartState(splitHead));
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-        setNodePadding(splitHead, 0); // Avoid double padding!
-        setFirstChild(rightChunk, splitHead);
-
-        // Find the last child of rightChunk
-        let curr = splitHead;
-        while (getNodeNextSibling(curr) != 0) {
-          curr = getNodeNextSibling(curr);
-        }
-        setNextSibling(curr, leaf);
-        setNextSibling(leaf, 0);
-        fixNodeLength(rightChunk);
-
-        // We still need to return a new parent p containing [leftNode, rightChunk]
-        let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash, false, getNodeStartState(leftNode));
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-        setNodePadding(leftNode, 0); // Avoid double padding!
-        setFirstChild(p, leftNode);
-        setNextSibling(leftNode, rightChunk);
-        setNextSibling(rightChunk, 0);
-        fixNodeLength(p);
-
-        _listRecurDepth--;
-        return p;
-      } else {
-        let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash, false, getNodeStartState(leftNode));
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
-        let gc = getNodeFirstChild(leftNode);
-        let cloneLeft = allocNode(listSym, 0, 0, envHash, false, getNodeStartState(gc)); // Avoid double padding!
-        setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
-        let splitTail = gc;
-        for (let i = 0; i < LIST_SPLIT_POINT - 1; i++) {
-          if (getNodeNextSibling(splitTail) == 0) break;
-          splitTail = getNodeNextSibling(splitTail);
-        }
-        let initialSplitTail = splitTail;
-        let foundBoundary = false;
-        while (getNodeNextSibling(splitTail) != 0) {
-          if ((getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) != 0) {
-            foundBoundary = true;
-            break;
-          }
-          splitTail = getNodeNextSibling(splitTail);
-        }
-        if (!foundBoundary) {
-          splitTail = initialSplitTail;
-        }
-
-        let actualSplitCount = 0;
-        let curr = gc;
-        while (curr != 0) {
-          actualSplitCount++;
-          if (curr == splitTail) break;
-          curr = getNodeNextSibling(curr);
-        }
-
-        let lastChild = 0;
-        for (let i = 0; i < actualSplitCount; i++) {
-          let clone = cloneNodeShallow(gc);
-          if (lastChild == 0) setFirstChild(cloneLeft, clone);
-          else setNextSibling(lastChild, clone);
-          setNextSibling(clone, 0);
-          lastChild = clone;
-          if (gc == splitTail) {
-            gc = getNodeNextSibling(gc);
-            break;
-          }
-          gc = getNodeNextSibling(gc);
-        }
-        fixNodeLength(cloneLeft);
-
-        let splitHead = gc;
-        if (splitHead == 0) {
-          // No children remain after split — append leaf directly to cloneLeft.
-          if (lastChild == 0) {
-            setNodePadding(cloneLeft, getNodePadding(cloneLeft) + getNodePadding(leaf));
-            setNodePadding(leaf, 0);
-            setFirstChild(cloneLeft, leaf);
-          } else {
-            setNextSibling(lastChild, leaf);
-          }
-          setNextSibling(leaf, 0);
-          fixNodeLength(cloneLeft);
-          setFirstChild(p, cloneLeft);
-          setNextSibling(cloneLeft, 0);
-          fixNodeLength(p);
-          _listRecurDepth--;
-          return p;
-        }
-        let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash, false, getNodeStartState(splitHead));
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
-        lastChild = 0;
-        while (gc != 0) {
-          let clone = cloneNodeShallow(gc);
-          if (lastChild == 0) {
-            setNodePadding(clone, 0); // Avoid double padding!
-            setFirstChild(rightChunk, clone);
-          } else {
-            setNextSibling(lastChild, clone);
-          }
-          setNextSibling(clone, 0);
-          lastChild = clone;
-          gc = getNodeNextSibling(gc);
-        }
-        if (lastChild == 0) setFirstChild(rightChunk, leaf);
-        else setNextSibling(lastChild, leaf);
-        setNextSibling(leaf, 0);
-        fixNodeLength(rightChunk);
-
-        setFirstChild(p, cloneLeft);
-        setNextSibling(cloneLeft, rightChunk);
-        setNextSibling(rightChunk, 0);
-        fixNodeLength(p);
-        _listRecurDepth--;
-        return p;
-      }
-    }
-
+  // B-tree append: descend the rightmost spine to the deepest chunk, append there and
+  // propagate splits upward. All items therefore stay at the same depth, keeping the
+  // list tree O(log N) deep (previously, appends after the first split were attached
+  // beside the chunks at the top level, so depth grew linearly with list length).
+  let root = appendRec(leftNode, leaf, listSym, envHash, isBoundary, combinedErrorFlag);
+  let split = g_appendSplit;
+  g_appendSplit = 0;
+  if (split != 0) {
+    let p = allocNode(listSym, getNodePadding(root), 0, envHash, false, getNodeStartState(root));
+    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+    root = ownForPaddingChange(root);
+    setNodePadding(root, 0); // parent absorbs first child's padding
+    setFirstChild(p, root);
+    setNextSibling(root, split);
+    setNextSibling(split, 0);
+    fixNodeLength(p);
+    root = p;
+  }
   _listRecurDepth--;
-  return leftNode;
+  return root;
+}
+
+/** Extra right sibling chunk produced by a split inside `appendRec` (0 if none). */
+let g_appendSplit: u32 = 0;
+
+/** True if `node` is an (invisible) chunk of the list `listSym`. */
+@inline
+function isListChunkOf(node: u32, listSym: u16): bool {
+  return node != 0 && getNodeType(node) == listSym && (getNodeFlags(node) & FLAG_IS_LIST) != 0;
+}
+
+/**
+ * Returns `node` if it may be mutated in place, otherwise a fresh shallow clone
+ * (preserving its sibling link) that can be.
+ */
+function ownForPaddingChange(node: u32): u32 {
+  if (isMutable(node)) return node;
+  let clone = cloneNodeShallow(node);
+  setNextSibling(clone, getNodeNextSibling(node));
+  return clone;
+}
+
+/**
+ * Returns a list chunk equivalent to `node` whose child links may be modified:
+ * `node` itself if mutable, otherwise a copy with shallow-cloned children.
+ */
+function ownListChunk(node: u32, listSym: u16, envHash: u32): u32 {
+  if (isMutable(node)) return node;
+  let p = allocNode(listSym, getNodePadding(node), 0, envHash, false, getNodeStartState(node));
+  setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | (getNodeFlags(node) & FLAG_HAS_ERROR));
+  copyChildren(p, node);
+  fixNodeLength(p);
+  return p;
+}
+
+/**
+ * Detaches the children following `splitTail` from the owned chunk `node` and moves
+ * them into a new chunk, which is returned. Lengths/padding of both chunks are fixed.
+ */
+function splitChunkAfter(node: u32, splitTail: u32, listSym: u16, envHash: u32, errFlag: u16): u32 {
+  let head = getNodeNextSibling(splitTail);
+  setNextSibling(splitTail, 0);
+  fixNodeLength(node);
+  head = ownForPaddingChange(head);
+  let right = allocNode(listSym, getNodePadding(head), 0, envHash, false, getNodeStartState(head));
+  setNodeFlags(right, FLAG_IS_LIST | FLAG_INVISIBLE | errFlag);
+  setNodePadding(head, 0); // the chunk absorbs its first child's padding
+  setFirstChild(right, head);
+  fixNodeLength(right);
+  return right;
+}
+
+/**
+ * Appends `leaf` to the rightmost deepest chunk of the list subtree `node`.
+ * Returns the (possibly copied) replacement for `node`; if `node` overflowed, the
+ * split-off right sibling is stored in `g_appendSplit`.
+ */
+function appendRec(node: u32, leaf: u32, listSym: u16, envHash: u32, isBoundary: boolean, errFlag: u16): u32 {
+  g_appendSplit = 0;
+  let count: i32 = 0;
+  let last: u32 = 0;
+  let c = getNodeFirstChild(node);
+  while (c != 0) {
+    count++;
+    last = c;
+    c = getNodeNextSibling(c);
+  }
+
+  if (isListChunkOf(last, listSym)) {
+    // Internal level: recurse into the rightmost chunk.
+    let newLast = appendRec(last, leaf, listSym, envHash, isBoundary, errFlag);
+    let split = g_appendSplit;
+    g_appendSplit = 0;
+    let owned = ownListChunk(node, listSym, envHash);
+    // Replace the last child of `owned` with `newLast`.
+    let prev: u32 = 0;
+    let cur = getNodeFirstChild(owned);
+    while (getNodeNextSibling(cur) != 0) {
+      prev = cur;
+      cur = getNodeNextSibling(cur);
+    }
+    if (prev == 0) setFirstChild(owned, newLast);
+    else setNextSibling(prev, newLast);
+    setNextSibling(newLast, split);
+    if (split != 0) {
+      setNextSibling(split, 0);
+      count++;
+    }
+    setNodeFlags(owned, getNodeFlags(owned) | errFlag);
+    if (count > LIST_MAX_CHILDREN) {
+      // Internal chunks hold whole items, so any position is a valid split point.
+      let tail = getNodeFirstChild(owned);
+      for (let i = 1; i < count / 2; i++) tail = getNodeNextSibling(tail);
+      g_appendSplit = splitChunkAfter(owned, tail, listSym, envHash, errFlag);
+    } else {
+      fixNodeLength(owned);
+    }
+    return owned;
+  }
+
+  // Leaf level: holds the list items themselves.
+  let owned = ownListChunk(node, listSym, envHash);
+  setNodeFlags(owned, getNodeFlags(owned) | errFlag);
+  let lastOwned = getNodeFirstChild(owned);
+  if (lastOwned != 0) {
+    while (getNodeNextSibling(lastOwned) != 0) lastOwned = getNodeNextSibling(lastOwned);
+  }
+
+  if (count < LIST_MAX_CHILDREN || !isBoundary || lastOwned == 0) {
+    if (lastOwned == 0) {
+      setNodePadding(owned, getNodePadding(owned) + getNodePadding(leaf));
+      setNodePadding(leaf, 0);
+      setFirstChild(owned, leaf);
+    } else {
+      setNextSibling(lastOwned, leaf);
+    }
+    setNextSibling(leaf, 0);
+    fixNodeLength(owned);
+    return owned;
+  }
+
+  // Overflow: split after the first item boundary at or beyond LIST_SPLIT_POINT, so an
+  // item is never separated from the separator that was reduced together with it.
+  let splitTail = getNodeFirstChild(owned);
+  for (let i = 0; i < LIST_SPLIT_POINT - 1; i++) {
+    if (getNodeNextSibling(splitTail) == 0) break;
+    splitTail = getNodeNextSibling(splitTail);
+  }
+  let initialSplitTail = splitTail;
+  let foundBoundary = false;
+  while (getNodeNextSibling(splitTail) != 0) {
+    if ((getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) != 0) {
+      foundBoundary = true;
+      break;
+    }
+    splitTail = getNodeNextSibling(splitTail);
+  }
+  if (!foundBoundary) splitTail = initialSplitTail;
+
+  if (getNodeNextSibling(splitTail) == 0) {
+    // Nothing to move: append to this chunk.
+    setNextSibling(splitTail, leaf);
+    setNextSibling(leaf, 0);
+    fixNodeLength(owned);
+    return owned;
+  }
+
+  let right = splitChunkAfter(owned, splitTail, listSym, envHash, errFlag);
+  let rLast = getNodeFirstChild(right);
+  while (getNodeNextSibling(rLast) != 0) rLast = getNodeNextSibling(rLast);
+  setNextSibling(rLast, leaf);
+  setNextSibling(leaf, 0);
+  fixNodeLength(right);
+  g_appendSplit = right;
+  return owned;
 }
 
 /**
@@ -2602,6 +2680,7 @@ export function restoreSimulationState(): void {
   let copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
   if (copyLen > 65536) copyLen = 65536;
   memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), copyLen);
+  g_expectedMemoState = -1;
 }
 /**
  * Retrieves the best accepting head found so far.
@@ -2730,6 +2809,7 @@ function constructReducedParentNode(
         );
       }
       setNodeStartState(parentNode, bottomState as u32);
+      if (g_reduceLookahead != 0) setNodeReductionLookahead(parentNode, g_reduceLookahead);
       if (isFragile) {
         setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_FRAGILE);
       }
@@ -2738,6 +2818,7 @@ function constructReducedParentNode(
   }
 
   let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, balanceHash & 0xff, false, bottomState as u32);
+  if (g_reduceLookahead != 0) setNodeReductionLookahead(parentNode, g_reduceLookahead);
 
   if (prod_is_list[reduceProd] == 1) {
     let flags = getNodeFlags(parentNode);
@@ -2905,6 +2986,21 @@ function dfsPopPaths(
 }
 
 /**
+ * Allocates the head produced by reducing `head` to `parentNode` and following the goto
+ * from `bottom` to `nextState`. Per-path state that a reduction does not change (scanner
+ * state at `head.pos`, error state, stack summary, progress count) is carried over.
+ * The open ERROR container is intentionally not carried: the reduced parent may own it.
+ */
+function allocReducedHead(head: ParseHead, nextState: i32, parentNode: u32, bottom: ParseHead | null, reduceProd: i32): ParseHead {
+  return allocParseHead(
+    nextState, parentNode, bottom, head.pos, head.scannerState, head.errorCost,
+    head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+    head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
+    0, head.inErrorState, head.summaryPtr, head.summaryCount, head.nodeCount
+  );
+}
+
+/**
  * Executes a REDUCE action on the given head for the specified production rule.
  * Operates across single linear chains as well as branched GSS DAG diamonds for any popCount.
  */
@@ -2936,11 +3032,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
     if (nextState == -1) return null;
     let isFragile = isConflict;
     let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_globalChildNodes, 0, 0, curr.state, head.balanceHash, isFragile);
-    return allocParseHead(
-      nextState, parentNode, curr, head.pos, 0, head.errorCost,
-      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
-    );
+    return allocReducedHead(head, nextState, parentNode, curr, reduceProd);
   }
 
   // Fast-path: traverse linear chain and check if any node has firstEdge != 0
@@ -2992,11 +3084,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
 
     let isFragile = isConflict;
     let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_globalChildNodes, 0, actualCount, curr.state, head.balanceHash, isFragile);
-    return allocParseHead(
-      nextState, parentNode, curr, head.pos, 0, head.errorCost,
-      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
-    );
+    return allocReducedHead(head, nextState, parentNode, curr, reduceProd);
   }
 
   // Case B: Multi-link path pop across GSS diamonds (Tree-sitter ts_stack_pop_count)
@@ -3029,11 +3117,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
     if (pNextState == -1) continue;
 
     let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_popPathNodes, p * MAX_POP_DEPTH, pCount, bHead.state, head.balanceHash, isFragile);
-    let newHead = allocParseHead(
-      pNextState, parentNode, bHead, head.pos, 0, head.errorCost,
-      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
-    );
+    let newHead = allocReducedHead(head, pNextState, parentNode, bHead, reduceProd);
 
     if (primaryHead == null) {
       primaryHead = newHead;
@@ -4065,6 +4149,13 @@ export let t_defaultSingleEdit: usize = 0;
 
 /**
  * Unmanaged view over a 12-byte text edit range [start, oldEnd, newEnd] in linear memory.
+ *
+ * Coordinate convention (sequential edits, sorted by `start`): every edit is expressed in
+ * the coordinates of the text *after all previous edits were applied*.
+ * - `start`  : edit start (new-text coordinates)
+ * - `newEnd` : `start + insertedLength` (new-text coordinates)
+ * - `oldEnd` : `start + deletedLength`; the true old-text end is `oldEnd - prevDelta`,
+ *              where `prevDelta` is the sum of `newEnd - oldEnd` over the previous edits.
  */
 @unmanaged
 export class TextEditRange {
@@ -4131,6 +4222,29 @@ export function mapNewPosToOldPos(pos: u32): u32 {
     delta += (edit.newEnd - edit.oldEnd) as i32;
   }
   return (pos as i32 - delta) as u32;
+}
+
+/**
+ * Maps an old-text position to the new text. Returns 0xffffffff if `oldPos` lies strictly
+ * inside a replaced range. Positions at or after an edit's old end are shifted by that edit.
+ */
+export function mapOldPosToNewPos(oldPos: u32): u32 {
+  if (t_editRangesCount <= 1) {
+    if (g_editNewEnd == 0 && g_editOldEnd == 0) return oldPos;
+    if (oldPos >= g_editOldEnd) return g_editNewEnd + (oldPos - g_editOldEnd);
+    if (oldPos > g_editStart) return 0xffffffff;
+    return oldPos;
+  }
+  let prevDelta: i32 = 0;
+  for (let i: u32 = 0; i < t_editRangesCount; i++) {
+    let edit = TextEditRange.at(t_editRangesPtr, i);
+    let oldStart = (edit.start as i32 - prevDelta) as u32;
+    let oldEnd = (edit.oldEnd as i32 - prevDelta) as u32;
+    if (oldPos <= oldStart) return (oldPos as i32 + prevDelta) as u32;
+    if (oldPos < oldEnd) return 0xffffffff;
+    prevDelta += (edit.newEnd - edit.oldEnd) as i32;
+  }
+  return (oldPos as i32 + prevDelta) as u32;
 }
 
 export function isOldRangeEdited(start: u32, end: u32): boolean {
@@ -4204,16 +4318,14 @@ export function advanceGLR(): void {
         pushNextHead(changetype<u32>(head));
         continue;
       }
+      // From here on this head's actions (incl. reductions) run; later merges must not
+      // attach new predecessor edges to it (see ParseHead.processed).
+      head.processed = true;
 
-      let tok = invokeLexer(frontierPos);
-      let curPos = frontierPos;
-      while (load<u8>(is_extra_token + tok) == 1) {
-        if (lexLen == 0) { curPos += 1; break; }
-        head.pendingPadding += lexLen;
-        let nextP = curPos + lexLen;
-        curPos = nextP > curPos ? nextP : curPos + 1;
-        tok = invokeLexer(curPos);
-      }
+      // Skip token-type extras. The head stays at frontierPos: padding for the next
+      // token is computed as `head.pendingPadding + (srcLexPos - frontierPos)`, which
+      // already spans any skipped extras, so pendingPadding must not be bumped here.
+      let tok = skipExtraTokens(invokeLexer(frontierPos), frontierPos, 1);
 
       // Check for Subtree Reuse
       let oldPos = mapNewPosToOldPos(frontierPos);
@@ -4234,7 +4346,8 @@ export function advanceGLR(): void {
           g_editStart,
           g_editOldEnd,
           headSym,
-          expectedPadding
+          expectedPadding,
+          tok
         );
         if (reusedNode != 0) {
           let freshReuse = cloneNodeShallow(reusedNode);
@@ -4293,18 +4406,13 @@ export function advanceGLR(): void {
           }
         }
 
+        let savedLexPos = lexPos;
+        let savedSrcLexPos = srcLexPos;
+        let savedLexLen = lexLen;
+        let savedScannerState = currentScannerState;
         if (nextState != -1) {
           let endPos = frontierPos + totalPadding + getNodeByteLength(reusedNode);
-          let nextTok = invokeLexer(endPos);
-          while (load<u8>(is_extra_token + nextTok) == 1) {
-            if (lexLen == 0) {
-              endPos += 1;
-              break;
-            }
-            let nextEndPos = endPos + lexLen;
-            endPos = nextEndPos > endPos ? nextEndPos : endPos + 1;
-            nextTok = invokeLexer(endPos);
-          }
+          let nextTok = skipExtraTokens(invokeLexer(endPos), endPos, 1);
           let canAccept = stateCanAccept(head, nextState, nextTok, 0, 1);
           if (canAccept == 0 && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
             let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
@@ -4312,6 +4420,9 @@ export function advanceGLR(): void {
             if (dist == 0) {
               canAccept = 1;
             }
+          }
+          if (canAccept != 0 && !reuseLookaheadMatches(reusedNode, nextTok)) {
+            canAccept = 0;
           }
           if (canAccept == 0) {
             nextState = -1;
@@ -4343,8 +4454,12 @@ export function advanceGLR(): void {
           continue;
         } else {
           restoreCursorCheckpoint();
+          // Undo the speculative re-lex so the standard action loop below sees `tok`'s lexer state.
+          restoreLexerState(savedLexPos, savedSrcLexPos, savedLexLen, savedScannerState);
         }
       }
+
+      g_reduceLookahead = tok as u32;
 
       // Standard LR action loop: exact match -> wildcard fallback -> SHIFT/ACCEPT/REDUCE
       let didAct = false;
@@ -4878,6 +4993,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let _catCopyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
       if (_catCopyLen > 65536) _catCopyLen = 65536;
       memory.fill(expected_tokens, 1, _catCopyLen);
+      g_expectedMemoState = -1;
 
       while (p < inputLength) {
         let tok = lex(p);
@@ -5012,6 +5128,9 @@ function isWhitespaceBetween(from: u32, to: u32): bool {
   return p >= to;
 }
 
+/** Upper bound on cursor steps in a single `findReusableNode` search (runaway guard). */
+const REUSE_SEARCH_MAX_STEPS: u32 = 1 << 16;
+
 /**
  * Searches the old incremental tree for a sub-tree that matches the current parsing
  * state and hasn't been modified by the user's edits.
@@ -5024,6 +5143,8 @@ function isWhitespaceBetween(from: u32, to: u32): bool {
  * @param editOldEnd End of replaced region.
  * @param headSym The symbol currently at the top of the GSS head (used for splices).
  * @param expectedPadding Expected leading whitespace.
+ * @param curToken Token freshly lexed at `targetSrcOldPos` in the new text (-1 if unknown).
+ *                 Terminal leaves are only reused if they match this token's type and length.
  * @returns Pointer to a reusable AST node, or 0 if none found.
  */
 export function findReusableNode(
@@ -5034,7 +5155,8 @@ export function findReusableNode(
   editStart: u32,
   editOldEnd: u32,
   headSym: u32,
-  expectedPadding: u32
+  expectedPadding: u32,
+  curToken: i32 = -1
 ): u32 {
   if (globalCursorDepth < 0) {
     return 0;
@@ -5042,7 +5164,10 @@ export function findReusableNode(
 
   let _cursorSearchIter: u32 = 0;
   while (globalCursorDepth >= 0) {
-    if (++_cursorSearchIter > (MAX_AST_TRAVERSAL_DEPTH as u32)) return 0; // Depth guard: prevent infinite loops on deeply nested error-lists
+    // Runaway guard only: each iteration is a sibling step, drill-down or ascent, so a
+    // legitimate search is bounded by (tree depth x fan-out). The previous cap of
+    // MAX_AST_TRAVERSAL_DEPTH (100) silently disabled reuse for items deep in long lists.
+    if (++_cursorSearchIter > REUSE_SEARCH_MAX_STEPS) return 0;
     let cPtr = cursorNodeStack[globalCursorDepth];
     if (cPtr == 0) {
       if (!globalCursorGotoParent()) return 0;
@@ -5135,9 +5260,11 @@ export function findReusableNode(
         for (let i: u32 = 0; i < t_editRangesCount; i++) {
           let edit = TextEditRange.at(t_editRangesPtr, i);
           let oldStart = (edit.start as i32 - prevDelta) as u32;
+          let oldEditEnd = (edit.oldEnd as i32 - prevDelta) as u32;
           if (end <= oldStart && oldStart > 0) {
             if (end == oldStart) {
-              let prevChar = peekPrevChar(oldStart);
+              // The input buffer holds the *new* text: read it at new coordinates.
+              let prevChar = peekPrevChar(edit.start);
               let isWordChar = (prevChar >= 48 && prevChar <= 57) ||
                                (prevChar >= 65 && prevChar <= 90) ||
                                (prevChar >= 97 && prevChar <= 122) ||
@@ -5146,12 +5273,12 @@ export function findReusableNode(
               if (isWordChar || !isTerminalLeaf) {
                 isTouchingEdit = true;
               }
-            } else if (!isTerminalLeaf && isWhitespaceBetween(end, oldStart)) {
+            } else if (!isTerminalLeaf && isWhitespaceBetween((end as i32 + prevDelta) as u32, edit.start)) {
               isTouchingEdit = true;
             }
             break;
           }
-          if (start == edit.oldEnd && edit.newEnd > 0 && pad == 0) {
+          if (start == oldEditEnd && edit.newEnd > 0 && pad == 0) {
             let prevChar = peekPrevChar(edit.newEnd);
             let nextChar = peekChar(edit.newEnd);
             let prevIsWord = (prevChar >= 48 && prevChar <= 57) ||
@@ -5179,8 +5306,11 @@ export function findReusableNode(
         } else if (!isTerminalLeaf) {
           canTransition = (nodeStartState == (currentState as u32));
         } else {
-          // Terminal leaf reuse: verify currentState has a valid shift action for this token
-          let numActions = lookupActions(currentState as i32, nodeType as i32);
+          // Terminal leaf reuse: the leaf must be the very token the lexer produces now
+          // (contextual lexing or an adjacent edit may have changed it), and currentState
+          // must have a valid shift action for it.
+          let sameToken = curToken < 0 || ((nodeType as i32) == curToken && byteLen == lexLen);
+          let numActions = sameToken ? lookupActions(currentState as i32, nodeType as i32) : 0;
           if (numActions > 0 && tempActions[0] == (ACTION_SHIFT as u32)) {
             canTransition = true;
           }

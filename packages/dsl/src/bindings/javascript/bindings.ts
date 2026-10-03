@@ -573,6 +573,9 @@ export class LspFacade {
     return "";
   }
   private _childTailCache = new Map<number, number>();
+  /** Reusable WASM buffer for `TextEditRange` arrays passed to `parseWithEdits`. */
+  private _editsScratchPtr = 0;
+  private _editsScratchCapacity = 0;
   private currentInputLength: number = 0;
   public readonly rootSourceCode = new Map<number, string>();
   public readonly uriSourceCode = new Map<string, string>();
@@ -806,26 +809,18 @@ export class LspFacade {
 
     const oldTextPtr = getInputBuf();
 
-    // Snapshot old buffer contents BEFORE ensureInputBuffer which may grow memory
-    // and detach existing typed array views
-    let oldSnapshot: Uint16Array | null = null;
-    if (oldTotalLength > 0) {
-      const oldView = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
-      oldSnapshot = new Uint16Array(oldTotalLength);
-      oldSnapshot.set(oldView);
-    }
-
     const maxLen = Math.max(oldTotalLength, newTotalLength);
     const lenBytesAlloc = maxLen * 2;
     const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytesAlloc) : oldTextPtr;
 
-    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
-
-    // If the buffer was reallocated, copy the snapshot into the new buffer
-    if (oldTextPtr !== textPtr && oldSnapshot) {
-      const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
-      memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
+    // If the buffer was reallocated, move the old text into it. `ensureInputBuffer` never
+    // frees the previous buffer, so its contents are still valid in linear memory; this
+    // avoids snapshotting the whole document on every keystroke.
+    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
+      new Uint8Array(this.wasmMemory.buffer).copyWithin(textPtr, oldTextPtr, oldTextPtr + oldTotalLength * 2);
     }
+
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
 
     if (changeText.length !== rangeLength) {
       const sourceIndex = rangeOffset + rangeLength;
@@ -958,26 +953,16 @@ export class LspFacade {
     const lenBytes = newTotalLength * 2;
     const oldTextPtr = this.exports.getInputBuffer();
 
-    let oldSnapshot: Uint16Array | null = null;
-    if (oldTotalLength > 0) {
-      const oldView = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
-      oldSnapshot = new Uint16Array(oldTotalLength);
-      oldSnapshot.set(oldView);
-    }
-
     const maxLen = Math.max(oldTotalLength, newTotalLength);
     const lenBytesAlloc = maxLen * 2;
     const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytesAlloc) : oldTextPtr;
+
+    // Old input buffers are never freed, so relocated text can be copied in place.
+    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
+      new Uint8Array(this.wasmMemory.buffer).copyWithin(textPtr, oldTextPtr, oldTextPtr + oldTotalLength * 2);
+    }
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
 
-    if (oldTextPtr !== textPtr && oldSnapshot) {
-      const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
-      memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
-    }
-
-    console.log(
-      `[Bindings] parseIncrementalBatch START: ${edits.length} edits, netDelta=${netDelta}, oldLen=${oldTotalLength}, newLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
-    );
     // Sort edits in descending order so mutations at higher offsets do not shift lower offsets
     const sortedEdits = edits.slice().sort((a, b) => b.rangeOffset - a.rangeOffset);
     let currentLen = oldTotalLength;
@@ -3994,7 +3979,13 @@ export class LspFacade {
     if (Array.isArray(editStartOrEdits)) {
       const edits = editStartOrEdits;
       if (edits.length > 0 && this.exports.parseWithEdits && this.exports.atomicChunkAlloc) {
-        const editsPtr = this.exports.atomicChunkAlloc(edits.length * 12);
+        // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
+        // per call leaked 12 bytes per edit on every keystroke.
+        if (this._editsScratchCapacity < edits.length) {
+          this._editsScratchCapacity = Math.max(16, edits.length * 2);
+          this._editsScratchPtr = this.exports.atomicChunkAlloc(this._editsScratchCapacity * 12);
+        }
+        const editsPtr = this._editsScratchPtr;
         const mem32 = new Uint32Array(this.wasmMemory.buffer);
         for (let i = 0; i < edits.length; i++) {
           const base = (editsPtr >>> 2) + i * 3;

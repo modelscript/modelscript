@@ -805,7 +805,12 @@ export class WorkspaceManager {
                   }
                   if (connCst && evaluatorClass) {
                     const evaluator = new evaluatorClass(classInstance);
-                    return evaluator.evaluate(connCst, annName);
+                    const targetNode =
+                      connCst.parent &&
+                      (connCst.parent.type === "some_equation" || connCst.parent.type === "SomeEquation")
+                        ? connCst.parent
+                        : connCst;
+                    return evaluator.evaluate(targetNode, annName);
                   }
                 } catch {}
                 return null;

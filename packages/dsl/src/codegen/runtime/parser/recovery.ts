@@ -56,7 +56,6 @@ import {
   getNodeFlags,
   setNodeFlags,
   allocGen0,
-  setNodeByteLength,
 } from "../arena";
 import { MAX_SUMMARY_DEPTH } from "./recovery-config";
 import {
@@ -379,26 +378,36 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     setFirstChild(tNode, childLeaf);
     lastChild = childLeaf;
   } else {
-    let prevByteLen = getNodeByteLength(tNode);
-    setNodeByteLength(tNode, prevByteLen + pad + tLen);
+    // Copy-on-write: `head.errorNode` is also `head.astNode` and is shared by every fork of
+    // this head (and by any GSS successor that shifted past it). Never grow it in place;
+    // allocate a fresh header with the extended length instead.
+    let oldNode = tNode;
+    let prevByteLen = getNodeByteLength(oldNode);
+    tNode = allocNode(NODE_TYPE_ERROR, getNodePadding(oldNode), prevByteLen + pad + tLen, 0, false);
+    setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
     let childLeaf = allocNode(childTokType, pad, tLen, 0, false);
     setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
-    if (lastChild != 0) {
+    if (lastChild != 0 && getNodeNextSibling(lastChild) == 0) {
+      // Fast path: nobody has extended this chain yet, so the tail can be shared.
+      setFirstChild(tNode, getNodeFirstChild(oldNode));
       setNextSibling(lastChild, childLeaf);
-      lastChild = childLeaf;
     } else {
-      let curr = getNodeFirstChild(tNode);
-      if (curr == 0) {
-        setFirstChild(tNode, childLeaf);
-        lastChild = childLeaf;
-      } else {
-        while (getNodeNextSibling(curr) != 0) {
-          curr = getNodeNextSibling(curr);
-        }
-        setNextSibling(curr, childLeaf);
-        lastChild = childLeaf;
+      // Another fork already appended after `lastChild` (or the tail is unknown):
+      // copy the chain up to our tail so both forks keep consistent children.
+      let src = getNodeFirstChild(oldNode);
+      let tail: u32 = 0;
+      while (src != 0) {
+        let c = cloneNodeShallow(src);
+        if (tail == 0) setFirstChild(tNode, c);
+        else setNextSibling(tail, c);
+        tail = c;
+        if (src == lastChild) break;
+        src = getNodeNextSibling(src);
       }
+      if (tail == 0) setFirstChild(tNode, childLeaf);
+      else setNextSibling(tail, childLeaf);
     }
+    lastChild = childLeaf;
   }
 
   let nextPos = srcLexPos + tLen;

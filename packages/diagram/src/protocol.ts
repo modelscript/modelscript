@@ -72,6 +72,7 @@ export type PropertyFieldKind =
   | "quantity"
   | "typeReference"
   | "codeBlock"
+  | "html"
   | "color"
   | "filePicker"
   | "table";

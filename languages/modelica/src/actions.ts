@@ -5,6 +5,8 @@ import { initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/r
 import { simulateArena } from "@modelscript/simulate";
 import { ModelicaFlattener } from "./flattener.js";
 
+import { injectPredefinedTypes } from "./predefined-types.js";
+
 function resolveClassId(queryEngine: any, queryDB: any, className: string): number | undefined {
   let firstId: number | undefined;
   if (className.includes(".")) {
@@ -94,24 +96,49 @@ function ensureClassIndexed(
         if (docTrees && typeof docTrees.set === "function") {
           docTrees.set(effectiveUri, { text: docText, tree });
         }
-        if (typeof (context as any).parserService?.getSharedCstTreeWrapper === "function") {
-          queryEngine.updateTree?.((context as any).parserService.getSharedCstTreeWrapper());
-        } else if (typeof queryEngine.updateTree === "function") {
-          queryEngine.updateTree({
-            getText: (s: number, e: number) => docText!.substring(s, e),
-            getNode: (s: number, e: number) =>
-              typeof tree.rootNode?.descendantForIndex === "function"
-                ? tree.rootNode.descendantForIndex(s, e)
-                : typeof tree.getNode === "function"
-                  ? tree.getNode(s, e)
-                  : null,
-          });
+
+        const cstWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.() ?? {
+          getText: (s: number, e: number, entry?: any) => {
+            const dt = docTrees?.get?.(entry?.resourceId ?? effectiveUri);
+            return dt ? dt.text.substring(s, e) : docText!.substring(s, e);
+          },
+          getNode: (s: number, e: number, entry?: any) => {
+            const dt = docTrees?.get?.(entry?.resourceId ?? effectiveUri);
+            const rNode = dt ? dt.tree?.rootNode : tree.rootNode;
+            return typeof rNode?.descendantForIndex === "function"
+              ? rNode.descendantForIndex(s, e)
+              : typeof rNode?.getNode === "function"
+                ? rNode.getNode(s, e)
+                : null;
+          },
+        };
+        if (typeof queryEngine.updateTree === "function") {
+          queryEngine.updateTree(cstWrapper);
         }
-        ws.indexDocument(effectiveUri, () => tree.rootNode);
-        const unified = ws.toUnified();
-        const injectFn = (globalThis as any).injectPredefinedTypes;
-        if (typeof injectFn === "function") injectFn(unified);
-        const changedInfo = ws.takeGlobalChangedIds?.();
+
+        const uws = (context.workspaceManager as any)?.unifiedWorkspace;
+        let unified: any;
+        let changedInfo: any;
+
+        if (uws && typeof uws.reindexDocument === "function") {
+          uws.reindexDocument(effectiveUri, () => tree.rootNode);
+          if (typeof ws.reindexDocument === "function") {
+            ws.reindexDocument(effectiveUri, () => tree.rootNode);
+          }
+          unified = uws.toUnifiedPartial();
+          changedInfo = ws.takeGlobalChangedIds?.();
+        } else {
+          if (typeof ws.reindexDocument === "function") {
+            ws.reindexDocument(effectiveUri, () => tree.rootNode);
+          } else {
+            ws.indexDocument(effectiveUri, () => tree.rootNode);
+          }
+          unified = ws.toUnified();
+          changedInfo = ws.takeGlobalChangedIds?.();
+        }
+
+        injectPredefinedTypes(unified);
+
         if (typeof queryEngine.updateIndex === "function") {
           queryEngine.updateIndex(unified, effectiveUri, changedInfo?.changedIds, changedInfo?.structuralChangedIds);
         }
@@ -125,7 +152,10 @@ function ensureClassIndexed(
   let firstId = resolveClassId(queryEngine, queryDB, className);
 
   if (firstId !== undefined && typeof queryEngine.invalidate === "function") {
-    queryEngine.invalidate([firstId]);
+    const childIds = queryEngine.index?.childrenOf?.get(firstId) ?? [];
+    const structSet = new Set<number>([firstId, ...childIds]);
+    queryEngine.invalidate(structSet, structSet);
+    queryDB = queryEngine.toQueryDB();
   }
 
   if (firstId === undefined && ws?.unifiedIndex) {
@@ -140,9 +170,13 @@ function ensureClassIndexed(
       }
     }
     if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
-      queryEngine.updateIndex(ws.toUnified());
+      const unified = ws.toUnified();
+      injectPredefinedTypes(unified);
+      queryEngine.updateIndex(unified);
       queryDB = queryEngine.toQueryDB();
-      queryEngine.invalidate([firstId]);
+      const childIds = queryEngine.index?.childrenOf?.get(firstId) ?? [];
+      const structSet = new Set<number>([firstId, ...childIds]);
+      queryEngine.invalidate(structSet, structSet);
     }
   }
 
@@ -151,6 +185,14 @@ function ensureClassIndexed(
     if (uws?.byName) {
       const entries = uws.byName.get(className) || [];
       firstId = entries[0];
+      if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
+        injectPredefinedTypes(uws);
+        queryEngine.updateIndex(uws);
+        queryDB = queryEngine.toQueryDB();
+        const childIds = queryEngine.index?.childrenOf?.get(firstId) ?? [];
+        const structSet = new Set<number>([firstId, ...childIds]);
+        queryEngine.invalidate(structSet, structSet);
+      }
     }
   }
 

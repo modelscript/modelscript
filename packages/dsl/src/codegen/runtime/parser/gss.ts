@@ -221,19 +221,8 @@ export function pushActiveHead(headPtr: u32): boolean {
     }
   }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
-    let existingHead = changetype<ParseHead>(t_activeHeads[i]);
-    // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos) {
-      if (existingHead.prev == newHead.prev) {
-        if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
-          t_activeHeads[i] = headPtr;
-        }
-        return true;
-      } else if (existingHead.errorCost == newHead.errorCost) {
-        gssMergeHeads(existingHead, newHead);
-        return true;
-      }
-    }
+    let r = mergeIntoFrontierSlot(t_activeHeads, i, newHead);
+    if (r != MERGE_NONE) return true;
   }
   if (changetype<usize>(t_activeHeadProbe) != 0) {
     t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
@@ -241,6 +230,63 @@ export function pushActiveHead(headPtr: u32): boolean {
   t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
   return true;
+}
+
+const MERGE_NONE: i32 = 0;
+const MERGE_DONE: i32 = 1;
+
+/** True if `a` is a strictly better derivation than `b` for the same (state, pos). */
+@inline
+function isBetterHead(a: ParseHead, b: ParseHead): bool {
+  return a.errorCost < b.errorCost || (a.errorCost == b.errorCost && a.dynamicPrec > b.dynamicPrec);
+}
+
+/** Copies every alternative predecessor edge of `from` onto `to`. */
+function inheritEdges(to: ParseHead, from: ParseHead): void {
+  let curr = from.firstEdge;
+  while (curr != 0) {
+    let edge = changetype<GssEdge>(curr);
+    gssAddPredecessor(to, edge.targetHead, edge.astNode);
+    curr = edge.nextEdge;
+  }
+}
+
+/**
+ * Tries to fold `newHead` into the frontier entry `frontier[i]` when both share the same
+ * (state, pos). Returns MERGE_DONE if `newHead` was merged, replaced the entry, or was
+ * dropped as dominated; MERGE_NONE if the entry is unrelated (or must not be merged).
+ */
+function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: ParseHead): i32 {
+  let existingHead = changetype<ParseHead>(frontier[i]);
+  // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
+  if (existingHead.state != newHead.state || existingHead.pos != newHead.pos) return MERGE_NONE;
+  if (existingHead == newHead) return MERGE_DONE;
+  // Reductions for a processed head have already run; attaching an edge now would skip
+  // reductions along it. Keep the new head as a separate version instead.
+  if (existingHead.processed) return MERGE_NONE;
+
+  if (existingHead.prev == newHead.prev) {
+    // Same predecessor: two derivations of the same span (local ambiguity). Keep the better
+    // one, but don't lose the alternative edges either head accumulated.
+    let winner = isBetterHead(newHead, existingHead) ? newHead : existingHead;
+    let loser = winner == newHead ? existingHead : newHead;
+    inheritEdges(winner, loser);
+    if (winner.astNode != 0 && loser.astNode != 0 && winner.astNode != loser.astNode) {
+      setNodeFlags(winner.astNode, getNodeFlags(winner.astNode) | FLAG_FRAGILE);
+    }
+    frontier[i] = changetype<u32>(winner);
+    return MERGE_DONE;
+  }
+
+  if (existingHead.errorCost == newHead.errorCost) {
+    gssMergeHeads(existingHead, newHead);
+    return MERGE_DONE;
+  }
+
+  // Different predecessors and different error costs: keep both versions. Error recovery
+  // relies on the costlier version surviving (its per-path diagnostics/scanner state can
+  // still win later via `betterVersionExists`' relative pruning).
+  return MERGE_NONE;
 }
 
 /**
@@ -266,19 +312,8 @@ export function pushNextHead(headPtr: u32): boolean {
     }
   }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
-    let existingHead = changetype<ParseHead>(t_nextHeads[i]);
-    // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos) {
-      if (existingHead.prev == newHead.prev) {
-        if (newHead.errorCost < existingHead.errorCost || (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec)) {
-          t_nextHeads[i] = headPtr;
-        }
-        return true;
-      } else if (existingHead.errorCost == newHead.errorCost) {
-        gssMergeHeads(existingHead, newHead);
-        return true;
-      }
-    }
+    let r = mergeIntoFrontierSlot(t_nextHeads, i, newHead);
+    if (r != MERGE_NONE) return true;
   }
   if (changetype<usize>(t_nextHeadProbe) != 0) {
     t_nextHeadProbe[probeKey] = nextHeadsCount + 1;
@@ -375,6 +410,16 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
       existingHead.astNode = newHead.astNode;
       existingHead.dynamicPrec = newHead.dynamicPrec;
       existingHead.errorCost = newHead.errorCost;
+      // Per-path state must follow the primary derivation, otherwise diagnostics and
+      // padding of the losing path are reported for the winning tree.
+      existingHead.errorTail = newHead.errorTail;
+      existingHead.errorNode = newHead.errorNode;
+      existingHead.errorLastChild = newHead.errorLastChild;
+      existingHead.summaryPtr = newHead.summaryPtr;
+      existingHead.summaryCount = newHead.summaryCount;
+      existingHead.pendingPadding = newHead.pendingPadding;
+      existingHead.scannerState = newHead.scannerState;
+      existingHead.consecutiveInsertions = newHead.consecutiveInsertions;
       gssAddPredecessor(existingHead, oldPrev, oldNode);
     } else {
       gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
@@ -473,6 +518,13 @@ export class ParseHead {
 
   /** The lookahead token that caused this head to pause. */
   pausedLookahead: i32;
+
+  /**
+   * True once the GLR loop has started executing actions for this head at its frontier.
+   * Merging a new predecessor edge into a processed head would skip the reductions along
+   * that edge (the classic GLR "missed reductions" problem), so such heads are not merged.
+   */
+  processed: bool;
 }
 
 /**
@@ -501,7 +553,7 @@ export function allocParseHead(
   isPaused: bool = false,
   pausedLookahead: i32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(96);
+  let ptr = allocGen0((offsetof<ParseHead>() + 7) & ~7);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -524,6 +576,7 @@ export function allocParseHead(
   h.errorLastChild = errorLastChild;
   h.isPaused = isPaused;
   h.pausedLookahead = pausedLookahead;
+  h.processed = false;
   return h;
 }
 

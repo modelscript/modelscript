@@ -1001,7 +1001,10 @@ export class WasmQueryEngine {
   }
 
   public ensureFQNIndexed(fqn: string): void {
-    const ws = (this.index as any)?.workspace;
+    const ws =
+      (this.index as any)?.workspace ??
+      (this.index as any)?.workspaceIndex ??
+      (this.index as any)?.globalWorkspaceIndex;
     if (ws && typeof ws.ensureFQNIndexed === "function") {
       ws.ensureFQNIndexed(fqn);
     }

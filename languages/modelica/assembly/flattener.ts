@@ -3451,6 +3451,7 @@ export class ModelicaFlattener {
   // Root Program/Tree Node Pointer for resolving cross-class references
   rootProgramNodePtr: u32;
   rootProgramLoc: u64;
+  currentClassLoc: u64;
 
   // Flattening error flag
   hasError: boolean;
@@ -3488,6 +3489,7 @@ export class ModelicaFlattener {
     this.daePtr = changetype<usize>(dae) as u32;
     this.rootProgramNodePtr = 0;
     this.rootProgramLoc = 0;
+    this.currentClassLoc = 0;
     this.hasError = false;
     this.errorCode = 0;
     let ss = ScopeStack.create();
@@ -3979,8 +3981,11 @@ export class ModelicaFlattener {
     let compLoc = findCompositionLoc(classLoc);
     if (locIsNull(compLoc)) return 0;
 
+    let prevClassLoc = this.currentClassLoc;
+    this.currentClassLoc = classLoc;
     let varCountBefore = this.dae.varCount;
     this.instantiateCompositionElements(compLoc, prefixPathId, pool, isTopLevelInterface, parentCausality);
+    this.currentClassLoc = prevClassLoc;
     return this.dae.varCount - varCountBefore;
   }
 
@@ -4036,7 +4041,13 @@ export class ModelicaFlattener {
     if (locIsNull(baseNameNode)) baseNameNode = ext.findDescendantLoc(SyntaxType.NAME);
     if (!locIsNull(baseNameNode)) {
       let baseNameId = locIntern(pool, baseNameNode);
-      let baseClassLoc = findClassDefinitionLoc(this.rootProgramLoc, baseNameId, pool);
+      let baseClassLoc: u64 = 0;
+      if (!locIsNull(this.currentClassLoc)) {
+        baseClassLoc = findClassDefinitionLoc(this.currentClassLoc, baseNameId, pool);
+      }
+      if (locIsNull(baseClassLoc)) {
+        baseClassLoc = findClassDefinitionLoc(this.rootProgramLoc, baseNameId, pool);
+      }
       if (!locIsNull(baseClassLoc)) {
         let extEnvPtr: u32 = 0;
         let extModCur = ext.findDescendantLoc(SyntaxType.CLASS_MODIFICATION);
@@ -4151,7 +4162,13 @@ export class ModelicaFlattener {
         // Using locFindDescendant here would recurse into the entire class body (e.g.
         // package Modelica) and match unrelated nested short class specifiers like
         // "replaceable type SignalType = Real", incorrectly resolving packages as primitives.
-        let defLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
+        let defLoc: u64 = 0;
+        if (!locIsNull(this.currentClassLoc)) {
+          defLoc = findClassDefinitionLoc(this.currentClassLoc, typeNameId, pool);
+        }
+        if (locIsNull(defLoc)) {
+          defLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
+        }
         if (!locIsNull(defLoc)) {
           let classSpecLoc = locFindChild(defLoc, SyntaxType.CLASS_SPECIFIER);
           if (locIsNull(classSpecLoc)) classSpecLoc = defLoc;
@@ -4484,7 +4501,13 @@ export class ModelicaFlattener {
         this.dae.addEquation(eqKind, lhsNameExpr, valExprId);
       }
     } else if (typeNameId != 0) {
-      let subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
+      let subClassLoc: u64 = 0;
+      if (!locIsNull(this.currentClassLoc)) {
+        subClassLoc = findClassDefinitionLoc(this.currentClassLoc, typeNameId, pool);
+      }
+      if (locIsNull(subClassLoc)) {
+        subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
+      }
       if (!locIsNull(subClassLoc)) {
         let isConn = isConnectorClassLoc(subClassLoc);
         let isRec = isRecordClassLoc(subClassLoc);
@@ -4540,8 +4563,11 @@ export class ModelicaFlattener {
     let compLoc = findCompositionLoc(classLoc);
     if (locIsNull(compLoc)) return 0;
 
+    let prevClassLoc = this.currentClassLoc;
+    this.currentClassLoc = classLoc;
     let eqCountBefore = this.dae.eqCount;
     this.lowerCompositionEquations(compLoc, prefixPathId, pool);
+    this.currentClassLoc = prevClassLoc;
     return this.dae.eqCount - eqCountBefore;
   }
 
@@ -4580,7 +4606,13 @@ export class ModelicaFlattener {
       if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(elementLoc, SyntaxType.NAME);
       if (!locIsNull(baseNameNode)) {
         let baseNameId = locIntern(pool, baseNameNode);
-        let baseClassLoc = findClassDefinitionLoc(this.rootProgramLoc, baseNameId, pool);
+        let baseClassLoc: u64 = 0;
+        if (!locIsNull(this.currentClassLoc)) {
+          baseClassLoc = findClassDefinitionLoc(this.currentClassLoc, baseNameId, pool);
+        }
+        if (locIsNull(baseClassLoc)) {
+          baseClassLoc = findClassDefinitionLoc(this.rootProgramLoc, baseNameId, pool);
+        }
         if (!locIsNull(baseClassLoc)) {
           return this.lowerAllClassEquationsLoc(baseClassLoc, prefixPathId);
         }
@@ -4617,7 +4649,13 @@ export class ModelicaFlattener {
     }
 
     let typeNameId = locIntern(pool, typeSpecLoc);
-    let subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
+    let subClassLoc: u64 = 0;
+    if (!locIsNull(this.currentClassLoc)) {
+      subClassLoc = findClassDefinitionLoc(this.currentClassLoc, typeNameId, pool);
+    }
+    if (locIsNull(subClassLoc)) {
+      subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
+    }
     if (locIsNull(subClassLoc)) return 0;
 
     return this.lowerComponentEquationsDeclarations(clauseLoc, subClassLoc, prefixPathId, pool);

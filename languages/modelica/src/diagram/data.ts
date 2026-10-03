@@ -1609,15 +1609,21 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
 // Called lazily when the user clicks a component in the diagram.
 // This avoids the expensive parameter/doc/icon computation during initial diagram load.
 
-function processHtml(
-  html: string | undefined,
+function stripHtmlEnvelope(html: string): string {
+  return html
+    .replace(/^\s*<html[^>]*>\s*/i, "")
+    .replace(/\s*<\/html>\s*$/i, "")
+    .replace(/^\s*<body[^>]*>\s*/i, "")
+    .replace(/\s*<\/body>\s*$/i, "")
+    .trim();
+}
 
-  context: any,
-): string | undefined {
+function processHtml(html: string | undefined, context: any): string | undefined {
   if (!html) return html;
-  if (!context) return html;
+  const stripped = stripHtmlEnvelope(html);
+  if (!context) return stripped;
 
-  return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
+  return stripped.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
     const uri = `modelica://${uriPath}`;
     const resolvedPath = context.resolveURI(uri);
     if (resolvedPath) {
@@ -1671,20 +1677,157 @@ export function buildComponentProperties(
     return groups.get(groupName)!;
   };
 
-  for (const element of componentClassInstance.elements || []) {
-    if (
-      (element.isComponentInstance || element.kind === "Component") &&
-      element.variability === ModelicaVariability.PARAMETER
-    ) {
-      const compArgExpr = (component.modification as any)?.getModificationArgument(element.name ?? "")?.expression;
+  // Collect candidate elements across elements (tests), inherited components, and direct components
+  const candidateElements: any[] = [];
+  const visitedNames = new Set<string>();
 
-      const elemExpr = (element.modification as any)?.expression;
-      const value = formatPropertyValue(compArgExpr) ?? formatPropertyValue(elemExpr) ?? "-";
+  if (Array.isArray(componentClassInstance.elements)) {
+    for (const el of componentClassInstance.elements) {
+      if (el && el.name && !visitedNames.has(el.name)) {
+        visitedNames.add(el.name);
+        candidateElements.push(el);
+      }
+    }
+  }
 
-      const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument("unit")?.expression;
+  const inheritedComponents = collectAllComponents(componentClassInstance);
+  for (const comp of inheritedComponents) {
+    if (comp && comp.name && !visitedNames.has(comp.name)) {
+      visitedNames.add(comp.name);
+      candidateElements.push(comp);
+    }
+  }
+
+  if (Array.isArray(componentClassInstance.components)) {
+    for (const comp of componentClassInstance.components) {
+      if (comp && comp.name && !visitedNames.has(comp.name)) {
+        visitedNames.add(comp.name);
+        candidateElements.push(comp);
+      }
+    }
+  }
+
+  for (const element of candidateElements) {
+    const isComp =
+      element.isComponentInstance === true ||
+      element.kind === "Component" ||
+      element.declaration?.kind === "Component" ||
+      element.kind === "Variable" ||
+      element.declaration?.kind === "Variable";
+
+    let variability = element.variability;
+    if (!variability && element.declaration?.metadata?.variability) {
+      variability = element.declaration.metadata.variability;
+    }
+    if (!variability && element.declaration?.id != null && componentClassInstance.db?.query) {
+      try {
+        variability = componentClassInstance.db.query("variability", element.declaration.id);
+      } catch {}
+    }
+    if (!variability) {
+      let node = element.cstNode ?? element.abstractSyntaxNode;
+      let p = node?.parent;
+      while (p && !variability) {
+        if (p.type === "component_clause" || p.type === "ComponentClause") {
+          const tp = p.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix");
+          if (tp?.text?.includes("parameter")) variability = ModelicaVariability.PARAMETER;
+          else if (tp?.text?.includes("constant")) variability = ModelicaVariability.CONSTANT;
+          break;
+        }
+        p = p.parent;
+      }
+      if (!variability) {
+        const text = node?.parent?.text || node?.text || "";
+        if (/\bparameter\b/.test(text)) {
+          variability = ModelicaVariability.PARAMETER;
+        }
+      }
+    }
+
+    const isParameter = variability === ModelicaVariability.PARAMETER || variability === "parameter";
+
+    if (isComp && isParameter) {
+      // 1. Caller override (e.g. R(R = 100))
+      let value: string | undefined = undefined;
+      const compArgExpr = (component.modification as any)?.getModificationArgument?.(element.name ?? "")?.expression;
+      if (compArgExpr != null) {
+        value = formatPropertyValue(compArgExpr);
+      }
+      if (!value && component.cstNode) {
+        const compCstText = component.cstNode.text ?? "";
+        const escapedName = (element.name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const argRegex = new RegExp(`\\b${escapedName}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i");
+        const m = compCstText.match(argRegex);
+        if (m) {
+          value = m[1].trim();
+        }
+      }
+
+      // 2. Element's own default or start attribute
+      if (!value) {
+        const elemExpr = (element.modification as any)?.expression;
+        if (elemExpr != null) {
+          value = formatPropertyValue(elemExpr);
+        }
+      }
+      if (!value) {
+        const elemStartMod = (element.modification as any)?.getModificationArgument?.("start")?.expression;
+        if (elemStartMod != null) {
+          value = formatPropertyValue(elemStartMod);
+        }
+      }
+      if (!value && element.cstNode) {
+        const elemText = element.cstNode.text ?? "";
+        const startMatch = elemText.match(/\bstart\s*=\s*([^,()]+)/);
+        if (startMatch) {
+          value = startMatch[1].trim();
+        } else {
+          const assignMatch = elemText.match(/=\s*([^;"\n]+)/);
+          if (assignMatch) {
+            value = assignMatch[1].trim();
+          }
+        }
+      }
+      if (!value) {
+        value = "-";
+      }
+
+      // Unit
+      let unit: string | undefined = undefined;
+      const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument?.("unit")?.expression;
       const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
-      const unit = rawUnit ? formatUnit(rawUnit) : undefined;
-      const isBoolean = element.classInstance?.name === "Boolean";
+      if (rawUnit) {
+        unit = formatUnit(rawUnit);
+      } else {
+        const typeSpec = element.declaration?.metadata?.typeSpecifier ?? element.classInstance?.name ?? "";
+        if (typeSpec.includes("Resistance")) unit = "Ω";
+        else if (typeSpec.includes("Inductance")) unit = "H";
+        else if (typeSpec.includes("Capacitance")) unit = "F";
+        else if (typeSpec.includes("Voltage") || typeSpec.includes("Potential")) unit = "V";
+        else if (typeSpec.includes("Current")) unit = "A";
+        else if (typeSpec.includes("Temperature")) unit = "K";
+        else if (typeSpec.includes("Time")) unit = "s";
+        else if (typeSpec.includes("Frequency")) unit = "Hz";
+        else if (typeSpec.includes("Power")) unit = "W";
+      }
+
+      // Description
+      let elemDescription = element.description;
+      if (!elemDescription && element.declaration?.metadata?.description) {
+        elemDescription = element.declaration.metadata.description;
+      }
+      if (!elemDescription && element.cstNode) {
+        const descMatch = element.cstNode.text?.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/);
+        if (descMatch) {
+          elemDescription = descMatch[1];
+        }
+      }
+
+      const isBoolean =
+        element.classInstance?.name === "Boolean" ||
+        element.declaration?.metadata?.typeSpecifier === "Boolean" ||
+        value === "true" ||
+        value === "false";
 
       // Extract Dialog(...) annotation
       let dialogAnn: any = null;
@@ -1767,7 +1910,7 @@ export function buildComponentProperties(
       parameters.push({
         name: element.name ?? "",
         value,
-        description: element.description ?? undefined,
+        description: elemDescription ?? undefined,
         isBoolean,
         unit,
         tab: tabName,
@@ -1781,7 +1924,7 @@ export function buildComponentProperties(
         key: element.name ?? "",
         label: element.name ?? "",
         kind,
-        description: element.description ?? undefined,
+        description: elemDescription ?? undefined,
         defaultValue: value,
         unit,
         choices,
@@ -1857,7 +2000,7 @@ export function buildComponentProperties(
           {
             key: "docInfo",
             label: "Information",
-            kind: "codeBlock",
+            kind: "html",
             defaultValue: docInfo,
             readOnly: true,
           },
@@ -1872,7 +2015,7 @@ export function buildComponentProperties(
           {
             key: "docRevisions",
             label: "Revisions",
-            kind: "codeBlock",
+            kind: "html",
             defaultValue: docRevisions,
             readOnly: true,
           },

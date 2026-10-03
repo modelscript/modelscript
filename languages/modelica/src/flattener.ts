@@ -10540,7 +10540,8 @@ export class ModelicaFlattener {
     const t_start = performance.now();
     let flattenedInWasm = false;
     const classNodePtr = classCst?.ptr ?? classCst?.id;
-    const rootProgramPtr = classCst?.tree?.rootPtr ?? (this.db as any)?.rootNode?.ptr ?? 0;
+    const rootProgramPtr =
+      classCst?.tree?.rootPtr ?? classCst?.tree?.rootNode?.ptr ?? (this.db as any)?.rootNode?.ptr ?? 0;
     const hasWasmFlattener = typeof dae.exports?.flattener_flatten === "function";
     const isStrictWasm = this.options.backend === "wasm";
     const isDiffMode = this.options.backend === "diff";

@@ -24,10 +24,13 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
  * Node Memory Layout (24 bytes, 8-byte aligned):
  * offset + 0:  type (10 bits) | flags (12 bits) | paddingLength (10 bits)
  * offset + 4:  byteLength (23 bits) | isFatPadding (1 bit) | envHash (8 bits)
- * offset + 8:  startState (u32, LR parser state)
+ * offset + 8:  startState (u32): LR state (16 bits) | reduction lookahead (15 bits) | FLAG_FRAGILE (bit 31)
  * offset + 12: firstChild (u32, arena ptr / freeListNext)
  * offset + 16: nextSibling (u32, arena ptr)
  * offset + 20: pad (u32, 8-byte alignment padding)
+ *
+ * The logical `flags` value is 13 bits wide: bits 0-11 live in word0 and bit 12
+ * (FLAG_FRAGILE) is stored in bit 31 of startState, because word0 has no spare bits.
  */
 
 const NODE_SIZE: u32 = 32;
@@ -48,8 +51,13 @@ export class ASTNode {
   @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
   @inline set type(t: u16) { this.word0 = (this.word0 & ~0x03ff) | (t as u32 & 0x03ff); }
 
-  @inline get flags(): u16 { return ((this.word0 >> 10) & 0x0fff) as u16; }
-  @inline set flags(f: u16) { this.word0 = (this.word0 & ~(0x0fff << 10)) | ((f as u32 & 0x0fff) << 10); }
+  @inline get flags(): u16 {
+    return (((this.word0 >> 10) & 0x0fff) | ((this.startState >>> 31) << 12)) as u16;
+  }
+  @inline set flags(f: u16) {
+    this.word0 = (this.word0 & ~(0x0fff << 10)) | ((f as u32 & 0x0fff) << 10);
+    this.startState = (this.startState & 0x7fffffff) | (((f as u32 >> 12) & 1) << 31);
+  }
 
   @inline get paddingLength(): u32 { return this.word0 >> 22; }
   @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x003fffff) | (pad << 22); }
@@ -589,7 +597,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   let node = changetype<ASTNode>(ptr);
   node.word0 = (typ as u32 & 0x03ff) | initialFlags | (paddingLength << 22);
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
-  node.startState = startState;
+  node.startState = startState & 0xffff;
   node.firstChild = 0;
   node.nextSibling = 0;
   node.merkleLow = 0;
@@ -692,7 +700,7 @@ export function getNodeStartState(ptr: u32): u32 {
 
 @inline
 export function getNodeReductionLookahead(ptr: u32): u32 {
-  return (changetype<ASTNode>(ptr).startState >> 16) & 0xffff;
+  return (changetype<ASTNode>(ptr).startState >> 16) & 0x7fff;
 }
 
 @inline
@@ -704,13 +712,14 @@ export function setNodeStartState(ptr: u32, state: u32): void {
 @inline
 export function setNodeReductionLookahead(ptr: u32, lookahead: u32): void {
   let node = changetype<ASTNode>(ptr);
-  node.startState = (node.startState & 0x0000ffff) | ((lookahead & 0xffff) << 16);
+  node.startState = (node.startState & 0x8000ffff) | ((lookahead & 0x7fff) << 16);
 }
 
 @inline
 export function setNodeReductionInfo(ptr: u32, state: u32, lookahead: u32): void {
   let node = changetype<ASTNode>(ptr);
-  node.startState = (state & 0xffff) | ((lookahead & 0xffff) << 16);
+  // Preserve bit 31 (FLAG_FRAGILE storage).
+  node.startState = (node.startState & 0x80000000) | (state & 0xffff) | ((lookahead & 0x7fff) << 16);
 }
 
 // ----------------------------------------------------------------------------
@@ -947,6 +956,7 @@ export const FLAG_HAS_ERROR: u16 = 128;
 export const FLAG_IS_INSERTED: u16 = 256;
 export const FLAG_IS_SHARED: u16 = 512;
 export const FLAG_IS_SYNTHETIC: u16 = 1024;
+/** Stored in bit 31 of `startState` (see ASTNode.flags); word0 only has 12 flag bits. */
 export const FLAG_FRAGILE: u16 = 4096;
 export const EPHEMERAL_FLAGS: u16 = FLAG_GC_MARK | FLAG_EXTRACTED | FLAG_LSP_VISITED | FLAG_LSP_TRAVERSED | FLAG_IS_SHARED;
 

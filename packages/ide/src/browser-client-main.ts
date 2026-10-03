@@ -1497,8 +1497,22 @@ END-ISO-10303-21;`;
     }),
     safeRegisterCommand("modelscript.modelica.flatten", async (args?: any) => {
       if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      let uri = editor?.document.uri.toString();
+      let editor = vscode.window.activeTextEditor;
+      if (editor?.document.uri.scheme === "untitled" || editor?.document.uri.scheme === "output") {
+        const candidateEditor = vscode.window.visibleTextEditors.find(
+          (e) =>
+            e.document.uri.scheme !== "output" &&
+            e.document.uri.scheme !== "untitled" &&
+            (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
+        );
+        if (candidateEditor) {
+          editor = candidateEditor;
+        }
+      }
+      let uri =
+        editor?.document.uri.scheme !== "untitled" && editor?.document.uri.scheme !== "output"
+          ? editor?.document.uri.toString()
+          : undefined;
       let inputs: any = {};
       if (args && typeof args === "object") {
         if ("scheme" in args && "path" in args) {
@@ -1507,7 +1521,12 @@ END-ISO-10303-21;`;
           inputs = args;
         }
       }
-      if (!uri && editor?.document) {
+      if (
+        !uri &&
+        editor?.document &&
+        editor.document.uri.scheme !== "untitled" &&
+        editor.document.uri.scheme !== "output"
+      ) {
         uri = editor.document.uri.toString();
       }
       if (!uri) {
@@ -1515,10 +1534,14 @@ END-ISO-10303-21;`;
           vscode.window.visibleTextEditors.find(
             (e) =>
               e.document.uri.scheme !== "output" &&
+              e.document.uri.scheme !== "untitled" &&
               (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
           )?.document ??
           vscode.workspace.textDocuments.find(
-            (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
+            (d) =>
+              d.uri.scheme !== "output" &&
+              d.uri.scheme !== "untitled" &&
+              (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
           );
         if (candidate) {
           uri = candidate.uri.toString();

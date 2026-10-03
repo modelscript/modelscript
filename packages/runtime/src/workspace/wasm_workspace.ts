@@ -529,6 +529,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         oldSymbolsToDelete.delete(symId);
         if (existingEntry.startByte !== rootStart || existingEntry.endByte !== rootEnd) {
           this.globalChangedIds.add(symId);
+          this.globalStructuralChangedIds.add(symId);
+          if (parentId !== null) {
+            this.globalChangedIds.add(parentId);
+            this.globalStructuralChangedIds.add(parentId);
+          }
         }
       } else {
         symId = this.nextSymbolId++;
@@ -693,6 +698,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
               extSymId = existingEntry.id;
               oldSymbolsToDelete.delete(extSymId);
               this.globalChangedIds.add(extSymId);
+              this.globalStructuralChangedIds.add(extSymId);
+              if (parentId !== null) {
+                this.globalChangedIds.add(parentId);
+                this.globalStructuralChangedIds.add(parentId);
+              }
             } else {
               extSymId = this.nextSymbolId++;
               this.globalChangedIds.add(extSymId);
@@ -757,6 +767,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
               : existingEntry.startByte !== nodeStart || existingEntry.endByte !== nodeEnd;
           if (intersectsDirty) {
             this.globalChangedIds.add(symId);
+            this.globalStructuralChangedIds.add(symId);
+            if (parentId !== null) {
+              this.globalChangedIds.add(parentId);
+              this.globalStructuralChangedIds.add(parentId);
+            }
           }
         } else {
           symId = this.nextSymbolId++;
@@ -1095,19 +1110,22 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     parentFqn = "",
   ): number {
     const fileId = this.getFileId(uri);
-    const stubId = this.instance.registerSymbol(
-      fileId,
-      symbolId,
-      parentSymbolId,
-      kind,
-      flags,
-      name,
-      startByte,
-      endByte,
-      merkleLow,
-      merkleHigh,
-      parentFqn,
-    );
+    let stubId = symbolId;
+    if (this.instance && typeof this.instance.registerSymbol === "function") {
+      stubId = this.instance.registerSymbol(
+        fileId,
+        symbolId,
+        parentSymbolId,
+        kind,
+        flags,
+        name,
+        startByte,
+        endByte,
+        merkleLow,
+        merkleHigh,
+        parentFqn,
+      );
+    }
     this._version++;
     this._structuralRevision++;
     const fileUri = this.idToUri.get(fileId);
@@ -1120,14 +1138,46 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    */
   findByName(name: string, preferredUri?: string): WasmStubSymbol[] {
     const preferredFileId = preferredUri ? this.uriToId.get(preferredUri) || 0 : 0;
-    return this.instance.findStubsByNameSIMD(name, preferredFileId);
+    if (this.instance && typeof this.instance.findStubsByNameSIMD === "function") {
+      return this.instance.findStubsByNameSIMD(name, preferredFileId);
+    }
+    const ids = this.unifiedIndex.byName.get(name) ?? [];
+    return ids.map((id) => {
+      const sym = this.unifiedIndex.symbols.get(id);
+      return {
+        symbolId: id,
+        fileId: sym ? (this.uriToId.get(sym.resourceId ?? "") ?? 0) : 0,
+        parentSymbolId: typeof sym?.parentId === "number" ? sym.parentId : 0,
+        kind: typeof sym?.kind === "number" ? sym.kind : 0,
+        flags: 0,
+        nameHash: 0,
+        startByte: sym?.startByte ?? 0,
+        endByte: sym?.endByte ?? 0,
+      } as WasmStubSymbol;
+    });
   }
 
   /**
    * Returns all child stubs for a parent symbol ID.
    */
   getChildren(parentSymbolId: number): WasmStubSymbol[] {
-    return this.instance.getStubChildren(parentSymbolId);
+    if (this.instance && typeof this.instance.getStubChildren === "function") {
+      return this.instance.getStubChildren(parentSymbolId);
+    }
+    const childrenIds = this.unifiedIndex.childrenOf.get(parentSymbolId) ?? [];
+    return childrenIds.map((id) => {
+      const sym = this.unifiedIndex.symbols.get(id);
+      return {
+        symbolId: id,
+        fileId: sym ? (this.uriToId.get(sym.resourceId ?? "") ?? 0) : 0,
+        parentSymbolId: typeof sym?.parentId === "number" ? sym.parentId : parentSymbolId,
+        kind: typeof sym?.kind === "number" ? sym.kind : 0,
+        flags: 0,
+        nameHash: 0,
+        startByte: sym?.startByte ?? 0,
+        endByte: sym?.endByte ?? 0,
+      } as WasmStubSymbol;
+    });
   }
 
   /**
@@ -1136,7 +1186,24 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   getFileSymbols(uriOrFileId: string | number): WasmStubSymbol[] {
     const fileId = typeof uriOrFileId === "number" ? uriOrFileId : this.uriToId.get(uriOrFileId);
     if (!fileId) return [];
-    return this.instance.getFileSymbols(fileId);
+    if (this.instance && typeof this.instance.getFileSymbols === "function") {
+      return this.instance.getFileSymbols(fileId);
+    }
+    const uri = this.idToUri.get(fileId);
+    const symIds = uri ? (this.fileSymbols.get(uri) ?? []) : [];
+    return symIds.map((id) => {
+      const sym = this.unifiedIndex.symbols.get(id);
+      return {
+        symbolId: id,
+        fileId,
+        parentSymbolId: typeof sym?.parentId === "number" ? sym.parentId : 0,
+        kind: typeof sym?.kind === "number" ? sym.kind : 0,
+        flags: 0,
+        nameHash: 0,
+        startByte: sym?.startByte ?? 0,
+        endByte: sym?.endByte ?? 0,
+      } as WasmStubSymbol;
+    });
   }
 
   /**
@@ -1780,6 +1847,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         merged.childrenOf.set(parentId, existing.concat(childIds));
       }
     }
+    (merged as any).workspace = this;
     return merged;
   }
 

@@ -11,6 +11,7 @@ import {
   updateParameterText,
   validatePropertyValue,
 } from "@modelscript/diagram";
+import DOMPurify from "dompurify";
 
 function escapeHtml(str: unknown): string {
   if (str === null || str === undefined) return "";
@@ -304,12 +305,16 @@ function showProperties(nodeData: any) {
                   </select>
                 </div>
               `;
-            } else if (field.kind === "codeBlock") {
+            } else if (field.kind === "html" || field.kind === "codeBlock") {
+              const safeContent =
+                field.kind === "html" || /<[a-z][\s\S]*>/i.test(String(val))
+                  ? DOMPurify.sanitize(String(val))
+                  : escapedVal;
               html += `
                 <div class="prop-group" style="display: flex; flex-direction: column; gap: 4px;">
                   <label class="prop-label" title="${escapedDesc}">${escapedLabel}</label>
-                  <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.4; max-height: 200px; overflow-y: auto;">
-                    ${escapedVal}
+                  <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); font-size: 12px; line-height: 1.5; max-height: 250px; overflow-y: auto;">
+                    ${safeContent}
                   </div>
                 </div>
               `;
@@ -363,8 +368,8 @@ function showProperties(nodeData: any) {
         html += `
           <details open style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
             <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Information</summary>
-            <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
-              ${escapeHtml(props.docInfo)}
+            <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.5; user-select: text;">
+              ${DOMPurify.sanitize(props.docInfo)}
             </div>
           </details>
         `;
@@ -374,15 +379,24 @@ function showProperties(nodeData: any) {
         html += `
           <details style="margin-top: 16px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); padding-bottom: 8px;">
             <summary style="cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--vscode-sideBarTitle-foreground);">Revisions</summary>
-            <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.4; user-select: text;">
-              ${escapeHtml(props.docRevisions)}
+            <div class="prop-doc-container" style="color: var(--vscode-descriptionForeground); margin-top: 8px; line-height: 1.5; user-select: text;">
+              ${DOMPurify.sanitize(props.docRevisions)}
             </div>
           </details>
         `;
       }
     }
 
-    html += `<style>.prop-doc-container img { max-width: 100%; height: auto; }</style>`;
+    html += `<style>
+      .prop-doc-container { font-size: 12px; line-height: 1.5; word-break: break-word; }
+      .prop-doc-container p { margin: 4px 0 8px 0; }
+      .prop-doc-container ul, .prop-doc-container ol { margin: 4px 0 8px 0; padding-left: 20px; }
+      .prop-doc-container li { margin-bottom: 4px; }
+      .prop-doc-container img { max-width: 100%; height: auto; }
+      .prop-doc-container a { color: var(--vscode-textLink-foreground, #3794ff); text-decoration: none; }
+      .prop-doc-container a:hover { text-decoration: underline; }
+      .prop-doc-container code { background: rgba(128,128,128,0.15); padding: 2px 4px; border-radius: 3px; font-family: var(--vscode-editor-font-family, monospace); }
+    </style>`;
   }
 
   content.innerHTML = html;
