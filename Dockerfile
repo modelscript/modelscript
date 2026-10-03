@@ -11,7 +11,7 @@
 ARG PREBUILT=false
 
 # ---- Shared Alpine base with native build tools ----
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 RUN apk add --no-cache python3 make g++ zip unzip
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 WORKDIR /app
@@ -69,7 +69,7 @@ COPY apps/api apps/api
 
 FROM build-api-${PREBUILT} AS build-api
 
-FROM node:24-alpine AS api
+FROM node:26-alpine AS api
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
@@ -99,7 +99,7 @@ COPY apps/morsel/package.json apps/morsel/buil[d] /app/apps/morsel/build/
 
 FROM build-morsel-${PREBUILT} AS build-morsel
 
-FROM node:24-alpine AS morsel
+FROM node:26-alpine AS morsel
 WORKDIR /app
 COPY --from=build-morsel /app/apps/morsel/build apps/morsel/build
 COPY --from=build-morsel /app/apps/morsel/package.json apps/morsel/
@@ -134,7 +134,7 @@ EXPOSE 80
 # ==============================================================================
 
 # Download WebLLM model weights (cached layer)
-FROM node:24-alpine AS download-model
+FROM node:26-alpine AS download-model
 RUN apk add --no-cache curl bash
 WORKDIR /app/apps/ide
 COPY apps/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm models/
@@ -158,7 +158,7 @@ COPY apps/morsel/public apps/morsel/public
 
 FROM build-ide-${PREBUILT} AS build-ide
 
-FROM node:24-alpine AS ide
+FROM node:26-alpine AS ide
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/ide/package.json apps/ide/
@@ -199,7 +199,7 @@ COPY apps/cli apps/cli
 
 FROM build-cli-${PREBUILT} AS build-cli
 
-FROM node:24-alpine AS cli
+FROM node:26-alpine AS cli
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
