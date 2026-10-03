@@ -24,7 +24,6 @@ COPY apps/docs/package.json apps/docs/
 COPY apps/ide/package.json apps/ide/
 COPY apps/ide/github-fs/package.json apps/ide/github-fs/
 COPY apps/morsel/package.json apps/morsel/
-COPY apps/site/package.json apps/site/
 COPY apps/web/package.json apps/web/
 
 # Packages manifests
@@ -45,6 +44,7 @@ COPY languages/csv/package.json languages/csv/
 COPY languages/fea/package.json languages/fea/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelica/src languages/modelica/src
+COPY languages/modelscript/package.json languages/modelscript/
 COPY languages/owl2/package.json languages/owl2/
 COPY languages/scad/package.json languages/scad/
 COPY languages/ssp/package.json languages/ssp/

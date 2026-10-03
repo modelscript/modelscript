@@ -14,25 +14,13 @@ import Box from "../components/Box";
 
 const TabBar = styled.div`
   display: flex;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: transparent;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--color-canvas-default);
-    opacity: 0.85;
-    z-index: -1;
-  }
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(6, 8, 15, 0.85);
 `;
 
 const Tab = styled.button<{ $active?: boolean }>`
@@ -43,14 +31,16 @@ const Tab = styled.button<{ $active?: boolean }>`
   padding: 16px;
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? "bold" : "normal")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  font-weight: ${(props) => (props.$active ? "700" : "500")};
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
   position: relative;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 
   &::after {
@@ -255,7 +245,7 @@ const LibraryListPage: React.FC = () => {
         {/* Content */}
         {loading && libraries.length === 0 ? (
           <Box display="flex" justifyContent="center" p={12}>
-            <SyncIcon size={32} className="spinner-spin" fill="var(--color-fg-muted)" />
+            <SyncIcon size={32} className="spinner-spin" fill="var(--color-text-muted)" />
           </Box>
         ) : error ? (
           <Box
@@ -329,7 +319,7 @@ const LibraryListPage: React.FC = () => {
                 alignItems="flex-start"
                 justifyContent="space-between"
                 p={3}
-                borderBottom="1px solid var(--color-border-subtle)"
+                borderBottom="1px solid var(--color-border)"
               >
                 <Link
                   to={lib.latestVersion ? `/packages/${lib.name}/${lib.latestVersion}` : `/packages/${lib.name}`}
@@ -339,11 +329,11 @@ const LibraryListPage: React.FC = () => {
                   <Box flex={1}>
                     <Heading
                       as="h4"
-                      style={{ fontSize: "15px", fontWeight: "bold", margin: 0, color: "var(--color-fg-default)" }}
+                      style={{ fontSize: "15px", fontWeight: "bold", margin: 0, color: "var(--color-text-heading)" }}
                     >
                       {lib.name}
                     </Heading>
-                    <Text color="var(--color-fg-muted)" style={{ fontSize: "14px", display: "block" }}>
+                    <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
                       @{lib.name} · v{lib.latestVersion || "1.0.0"}
                     </Text>
                     <Text
@@ -351,7 +341,7 @@ const LibraryListPage: React.FC = () => {
                       style={{
                         fontSize: "14px",
                         margin: "4px 0 0 0",
-                        color: "var(--color-fg-default)",
+                        color: "var(--color-text-primary)",
                         lineHeight: 1.4,
                       }}
                     >
@@ -360,9 +350,9 @@ const LibraryListPage: React.FC = () => {
                     {lib.jobStatus && (lib.jobStatus.status === "pending" || lib.jobStatus.status === "processing") && (
                       <Box display="flex" alignItems="center" gap="8px" mt="8px">
                         {lib.jobStatus.status === "pending" ? (
-                          <HourglassIcon size={16} fill="var(--color-fg-muted)" />
+                          <HourglassIcon size={16} fill="var(--color-text-muted)" />
                         ) : (
-                          <SyncIcon size={16} className="spinner-spin" fill="var(--color-fg-muted)" />
+                          <SyncIcon size={16} className="spinner-spin" fill="var(--color-text-muted)" />
                         )}
                         <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                           {lib.jobStatus.status === "pending"
@@ -375,8 +365,8 @@ const LibraryListPage: React.FC = () => {
                     )}
                     {lib.jobStatus?.status === "failed" && (
                       <Box display="flex" alignItems="center" gap="6px" mt="8px">
-                        <AlertIcon size={14} fill="var(--color-danger-fg)" />
-                        <Text style={{ fontSize: "12px", color: "var(--color-danger-fg)" }}>
+                        <AlertIcon size={14} fill="var(--color-error)" />
+                        <Text style={{ fontSize: "12px", color: "var(--color-error)" }}>
                           Processing failed: {lib.jobStatus.error || "Unknown error"}
                         </Text>
                       </Box>
@@ -385,15 +375,16 @@ const LibraryListPage: React.FC = () => {
                 </Link>
                 <button
                   style={{
-                    backgroundColor: "transparent",
-                    color: "var(--color-fg-default)",
+                    backgroundColor: "rgba(255, 255, 255, 0.04)",
+                    color: "var(--color-text-primary)",
                     border: "1px solid var(--color-border)",
                     borderRadius: "9999px",
                     padding: "6px 16px",
-                    fontWeight: "bold",
+                    fontWeight: 700,
                     fontSize: "14px",
                     cursor: "pointer",
                     marginLeft: "12px",
+                    transition: "all 0.2s ease",
                   }}
                   onClick={(e) => {
                     e.preventDefault();

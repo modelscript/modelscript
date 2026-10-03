@@ -81,7 +81,7 @@ const SearchContainer = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--color-canvas-default);
+    background-color: var(--color-bg-primary);
     opacity: 0.85;
     z-index: -1;
   }
@@ -103,16 +103,23 @@ const SearchWrapper = styled.div`
     width: 100%;
     padding: 12px 16px 12px 42px;
     border-radius: 9999px;
-    background-color: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
+    background-color: var(--color-search-bg);
+    border: 1px solid var(--color-search-border);
+    color: var(--color-text-primary);
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
 
+    &::placeholder {
+      color: var(--color-text-tertiary);
+    }
+
     &:focus {
-      background-color: var(--color-bg-primary);
-      border-color: #1d9bf0;
-      box-shadow: 0 0 0 1px #1d9bf0;
+      background-color: var(--color-search-bg);
+      border-color: var(--color-accent-cyan);
+      box-shadow:
+        0 0 0 1px var(--color-accent-cyan),
+        var(--glow-cyan-sm);
     }
   }
 `;
@@ -249,47 +256,50 @@ const ProviderButton = styled.button`
   justify-content: center;
   gap: 8px;
   height: 40px;
-  background: var(--color-canvas-default);
-  color: var(--color-fg-default);
-  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-glass);
   border-radius: 9999px;
-  font-size: 15px;
-  font-weight: bold;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   width: 100%;
 
   &:hover {
-    background: var(--color-canvas-subtle);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--color-border-strong);
   }
 `;
 
 const TrendingItem = styled.div`
   display: flex;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 16px;
   margin: 0 -16px;
   cursor: pointer;
   position: relative;
   transition: background-color 0.2s;
+  border-radius: 6px;
 
   &:hover {
-    background-color: var(--color-bg-secondary);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 `;
 
 const ShowMoreLink = styled(Link)`
-  color: #1d9bf0;
+  color: var(--color-accent-cyan);
   text-decoration: none;
-  font-size: 15px;
-  padding: 16px;
-  margin: 0 -16px -16px -16px;
+  font-size: 14px;
+  padding: 12px 16px;
+  margin: 4px -16px -16px -16px;
   border-radius: 0 0 16px 16px;
   display: block;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
 
   &:hover {
-    background-color: var(--color-bg-secondary);
+    background-color: rgba(6, 182, 212, 0.06);
+    color: var(--color-link-hover);
   }
 `;
 
@@ -309,8 +319,8 @@ const KebabButton = styled.button`
     color 0.2s;
 
   &:hover {
-    background-color: rgba(29, 155, 240, 0.1);
-    color: #1d9bf0;
+    background-color: var(--color-accent-purple-bg);
+    color: var(--color-accent-purple);
   }
 `;
 
@@ -495,7 +505,7 @@ const RightPanel: React.FC = () => {
                   fontSize: "14px",
                   display: "block",
                   marginBottom: "8px",
-                  color: "var(--color-fg-default)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 People
@@ -508,7 +518,7 @@ const RightPanel: React.FC = () => {
                   fontSize: "14px",
                   cursor: "pointer",
                   marginBottom: "8px",
-                  color: "var(--color-fg-default)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 <span>From anyone</span>
@@ -516,7 +526,7 @@ const RightPanel: React.FC = () => {
                   type="radio"
                   name="people-filter"
                   defaultChecked
-                  style={{ accentColor: "#1d9bf0", width: "16px", height: "16px" }}
+                  style={{ accentColor: "var(--color-accent-cyan)", width: "16px", height: "16px" }}
                 />
               </label>
               <label
@@ -526,14 +536,14 @@ const RightPanel: React.FC = () => {
                   alignItems: "center",
                   fontSize: "14px",
                   cursor: "pointer",
-                  color: "var(--color-fg-default)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 <span>People you follow</span>
                 <input
                   type="radio"
                   name="people-filter"
-                  style={{ accentColor: "#1d9bf0", width: "16px", height: "16px" }}
+                  style={{ accentColor: "var(--color-accent-cyan)", width: "16px", height: "16px" }}
                 />
               </label>
             </div>
@@ -547,7 +557,7 @@ const RightPanel: React.FC = () => {
                   fontSize: "14px",
                   display: "block",
                   marginBottom: "8px",
-                  color: "var(--color-fg-default)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 Location
@@ -560,7 +570,7 @@ const RightPanel: React.FC = () => {
                   fontSize: "14px",
                   cursor: "pointer",
                   marginBottom: "8px",
-                  color: "var(--color-fg-default)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 <span>Anywhere</span>
@@ -568,7 +578,7 @@ const RightPanel: React.FC = () => {
                   type="radio"
                   name="location-filter"
                   defaultChecked
-                  style={{ accentColor: "#1d9bf0", width: "16px", height: "16px" }}
+                  style={{ accentColor: "var(--color-accent-cyan)", width: "16px", height: "16px" }}
                 />
               </label>
               <label
@@ -578,14 +588,14 @@ const RightPanel: React.FC = () => {
                   alignItems: "center",
                   fontSize: "14px",
                   cursor: "pointer",
-                  color: "var(--color-fg-default)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 <span>Near you</span>
                 <input
                   type="radio"
                   name="location-filter"
-                  style={{ accentColor: "#1d9bf0", width: "16px", height: "16px" }}
+                  style={{ accentColor: "var(--color-accent-cyan)", width: "16px", height: "16px" }}
                 />
               </label>
             </div>
@@ -594,7 +604,7 @@ const RightPanel: React.FC = () => {
 
             <a
               href="#advanced"
-              style={{ color: "#1d9bf0", textDecoration: "none", fontSize: "14px", fontWeight: "500" }}
+              style={{ color: "var(--color-accent-cyan)", textDecoration: "none", fontSize: "14px", fontWeight: "500" }}
             >
               Advanced search
             </a>
@@ -1055,16 +1065,18 @@ const RightPanel: React.FC = () => {
                               cursor: "pointer",
                               fontSize: "14px",
                               fontWeight: "bold",
-                              color: "var(--color-fg-default)",
+                              color: "var(--color-text-primary)",
                               borderRadius: "8px",
                               display: "flex",
                               alignItems: "center",
                               gap: "12px",
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.04)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
-                            <span style={{ fontSize: "16px", color: "var(--color-fg-muted)", lineHeight: 1 }}>☹️</span>
+                            <span style={{ fontSize: "16px", color: "var(--color-text-muted)", lineHeight: 1 }}>
+                              ☹️
+                            </span>
                             {label}
                           </button>
                         ))}
@@ -1137,7 +1149,7 @@ const RightPanel: React.FC = () => {
                             style={{
                               fontWeight: "bold",
                               fontSize: "15px",
-                              color: "var(--color-fg-default)",
+                              color: "var(--color-text-heading)",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
@@ -1206,7 +1218,7 @@ const RightPanel: React.FC = () => {
                       style={{
                         fontWeight: "bold",
                         fontSize: "15px",
-                        color: "var(--color-fg-default)",
+                        color: "var(--color-text-heading)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -1217,7 +1229,7 @@ const RightPanel: React.FC = () => {
                     </Text>
                     <Text
                       style={{
-                        color: "var(--color-fg-muted)",
+                        color: "var(--color-text-muted)",
                         fontSize: "14px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",

@@ -844,6 +844,16 @@ export function treeCursorGotoParent(cursorPtr: usize): boolean {
   return TreeCursor.at(cursorPtr).gotoParent();
 }
 
+@inline
+export function treeCursorNodeAtDepth(cursorPtr: usize, depth: i32): u32 {
+  return TreeCursor.at(cursorPtr).getNode(depth);
+}
+
+@inline
+export function treeCursorOffsetAtDepth(cursorPtr: usize, depth: i32): u32 {
+  return TreeCursor.at(cursorPtr).getContentStart(depth);
+}
+
 
 /**
  * Allocates a raw buffer in the transient Generation 0 memory space.

@@ -66,8 +66,8 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
         gap={2}
       >
         <Box display="flex" alignItems="center" gap={2}>
-          <Box p={2} bg="rgba(9, 105, 218, 0.1)" borderRadius="8px">
-            <PackageIcon size={20} fill="#0969da" />
+          <Box p={2} bg="rgba(139, 92, 246, 0.12)" borderRadius="8px">
+            <PackageIcon size={20} fill="var(--color-accent-purple)" />
           </Box>
           <Box>
             <Box display="flex" alignItems="center" gap={2}>
@@ -227,8 +227,8 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
                             padding: "2px 8px",
                             borderRadius: "10px",
                             fontSize: "11px",
-                            background: "rgba(9, 105, 218, 0.1)",
-                            color: "#0969da",
+                            background: "rgba(139, 92, 246, 0.12)",
+                            color: "var(--color-accent-purple)",
                           }}
                         >
                           {item.category || "part"}
@@ -238,7 +238,12 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
                       <td style={{ padding: "8px", fontFamily: "monospace" }}>{item.packageDependency || "—"}</td>
                       <td style={{ padding: "8px" }}>
                         {item.sourcingUrl ? (
-                          <a href={item.sourcingUrl} target="_blank" rel="noreferrer" style={{ color: "#0969da" }}>
+                          <a
+                            href={item.sourcingUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "var(--color-accent-cyan)" }}
+                          >
                             Source Link ↗
                           </a>
                         ) : (
@@ -279,7 +284,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
                       width="28px"
                       height="28px"
                       borderRadius="50%"
-                      bg="#0969da"
+                      background="var(--gradient-cta)"
                       color="white"
                       display="flex"
                       alignItems="center"
@@ -385,7 +390,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
       fontSize: "13px",
       fontWeight: active ? 600 : 400,
       color: active ? "var(--color-fg-default)" : "var(--color-fg-muted)",
-      borderBottom: active ? "2px solid #0969da" : "2px solid transparent",
+      borderBottom: active ? "2px solid var(--color-accent-purple)" : "2px solid transparent",
       cursor: "pointer",
     }}
   >

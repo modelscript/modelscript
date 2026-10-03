@@ -27,21 +27,22 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalContent = styled.div`
-  background: var(--color-canvas-default);
-  border: 1px solid var(--color-border-default);
+  background: rgba(14, 20, 36, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass);
   border-radius: 16px;
   width: 100%;
   max-width: 680px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
   overflow: hidden;
 `;
 
 const ModalHeader = styled.div`
   padding: 18px 24px;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -52,8 +53,8 @@ const SearchInputWrapper = styled.div`
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  background: var(--color-canvas-subtle);
-  border: 1px solid var(--color-border-default);
+  background: var(--color-search-bg);
+  border: 1px solid var(--color-search-border);
   border-radius: 9999px;
   margin: 16px 24px 8px 24px;
 `;
@@ -75,9 +76,9 @@ const FilterPills = styled.div`
 `;
 
 const FilterPill = styled.button<{ $active: boolean }>`
-  background: ${(props) => (props.$active ? "var(--color-accent-emphasis)" : "var(--color-canvas-subtle)")};
+  background: ${(props) => (props.$active ? "var(--gradient-cta)" : "rgba(255, 255, 255, 0.05)")};
   color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-primary)")};
-  border: 1px solid ${(props) => (props.$active ? "var(--color-accent-emphasis)" : "var(--color-border-default)")};
+  border: 1px solid ${(props) => (props.$active ? "transparent" : "var(--color-border)")};
   border-radius: 9999px;
   padding: 4px 12px;
   font-size: 12px;
@@ -87,7 +88,7 @@ const FilterPill = styled.button<{ $active: boolean }>`
   transition: all 0.15s ease-in-out;
 
   &:hover {
-    border-color: var(--color-accent-emphasis);
+    border-color: var(--color-accent-cyan);
   }
 `;
 
@@ -101,8 +102,8 @@ const JobListContainer = styled.div`
 `;
 
 const JobCard = styled.div<{ $selected: boolean }>`
-  background: ${(props) => (props.$selected ? "var(--color-canvas-subtle)" : "var(--color-canvas-default)")};
-  border: 1.5px solid ${(props) => (props.$selected ? "var(--color-accent-emphasis)" : "var(--color-border-subtle)")};
+  background: ${(props) => (props.$selected ? "rgba(139, 92, 246, 0.12)" : "rgba(255, 255, 255, 0.02)")};
+  border: 1.5px solid ${(props) => (props.$selected ? "var(--color-accent-purple)" : "var(--color-border)")};
   border-radius: 12px;
   padding: 16px;
   cursor: pointer;
@@ -112,9 +113,9 @@ const JobCard = styled.div<{ $selected: boolean }>`
   gap: 10px;
 
   &:hover {
-    border-color: var(--color-accent-emphasis);
+    border-color: var(--color-accent-purple);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
   }
 `;
 
@@ -127,17 +128,17 @@ const SolverBadge = styled.span<{ $solver: string }>`
   border-radius: 6px;
   background: ${(props) =>
     props.$solver === "calculix"
-      ? "rgba(31, 111, 235, 0.2)"
+      ? "rgba(6, 182, 212, 0.15)"
       : props.$solver === "su2"
-        ? "rgba(137, 87, 229, 0.2)"
+        ? "rgba(139, 92, 246, 0.15)"
         : props.$solver === "openfoam"
           ? "rgba(46, 160, 67, 0.2)"
           : "rgba(210, 153, 34, 0.2)"};
   color: ${(props) =>
     props.$solver === "calculix"
-      ? "#58a6ff"
+      ? "var(--color-accent-cyan)"
       : props.$solver === "su2"
-        ? "#bc8cff"
+        ? "var(--color-accent-purple)"
         : props.$solver === "openfoam"
           ? "#3fb950"
           : "#d29922"};
@@ -147,16 +148,16 @@ const ProfileChip = styled.span`
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 6px;
-  background: var(--color-canvas-subtle);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--color-text-muted);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   display: inline-flex;
   align-items: center;
   gap: 4px;
 `;
 
 const AttachButton = styled.button`
-  background: var(--color-accent-emphasis);
+  background: var(--gradient-cta);
   color: white;
   border: none;
   border-radius: 9999px;
@@ -167,10 +168,11 @@ const AttachButton = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: background-color 0.15s ease-in-out;
+  transition: all 0.15s ease-in-out;
 
   &:hover:not(:disabled) {
-    background: var(--color-accent-fg);
+    box-shadow: 0 0 14px rgba(6, 182, 212, 0.5);
+    transform: translateY(-1px);
   }
 
   &:disabled {
@@ -351,7 +353,8 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
                   {job.scalars && Object.keys(job.scalars).length > 0 && (
                     <Box
                       p={2}
-                      bg="var(--color-canvas-subtle)"
+                      bg="rgba(255, 255, 255, 0.03)"
+                      border="1px solid var(--color-border)"
                       borderRadius="6px"
                       fontSize="12px"
                       display="flex"
@@ -378,11 +381,11 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
         <Box
           p={3}
           px={4}
-          borderTop="1px solid var(--color-border-default)"
+          borderTop="1px solid var(--color-border)"
           display="flex"
           justifyContent="space-between"
           alignItems="center"
-          bg="var(--color-canvas-subtle)"
+          bg="rgba(14, 20, 36, 0.95)"
         >
           <Box display="flex" alignItems="center" gap={2}>
             <span style={{ fontSize: "12px", color: "var(--color-text-muted)", fontWeight: "600" }}>Colormap:</span>
@@ -390,9 +393,9 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
               value={colormap}
               onChange={(e) => setColormap(e.target.value)}
               style={{
-                background: "var(--color-canvas-default)",
+                background: "rgba(255, 255, 255, 0.05)",
                 color: "var(--color-text-primary)",
-                border: "1px solid var(--color-border-default)",
+                border: "1px solid var(--color-border)",
                 borderRadius: "6px",
                 padding: "4px 8px",
                 fontSize: "12px",

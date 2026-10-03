@@ -120,20 +120,22 @@ const MenuItem = styled.button<{ $active?: boolean }>`
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  background-color: ${(props) => (props.$active ? "var(--color-canvas-subtle)" : "transparent")};
+  background-color: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.08)" : "transparent")};
   border: none;
-  border-right: ${(props) => (props.$active ? "2px solid var(--color-accent-emphasis)" : "2px solid transparent")};
+  border-right: ${(props) => (props.$active ? "3px solid var(--color-accent-purple)" : "3px solid transparent")};
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.2s;
-  color: var(--color-text-primary);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: ${(props) => (props.$active ? "var(--color-text-primary)" : "var(--color-text-secondary)")};
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.04);
+    color: var(--color-text-primary);
   }
 
   span {
     font-size: 15px;
+    font-weight: ${(props) => (props.$active ? "600" : "500")};
   }
 `;
 
@@ -177,7 +179,7 @@ const DetailSubtitle = styled.span`
 `;
 
 const SaveButton = styled.button`
-  background-color: var(--color-accent-emphasis);
+  background: var(--gradient-cta);
   color: white;
   border: none;
   border-radius: 9999px;
@@ -186,8 +188,11 @@ const SaveButton = styled.button`
   cursor: pointer;
   font-size: 14px;
   align-self: flex-end;
-  &:hover {
-    background-color: var(--color-accent-fg);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
   }
   &:disabled {
     opacity: 0.5;
@@ -196,7 +201,7 @@ const SaveButton = styled.button`
 `;
 
 const PrimaryButton = styled.button`
-  background-color: var(--color-accent-emphasis, #0969da);
+  background: var(--gradient-cta);
   color: white;
   border: none;
   border-radius: 9999px;
@@ -207,10 +212,11 @@ const PrimaryButton = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
   transition: all 0.15s ease-in-out;
   &:hover:not(:disabled) {
-    background-color: var(--color-accent-fg, #218bff);
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
   }
   &:disabled {
     opacity: 0.5;
@@ -219,9 +225,9 @@ const PrimaryButton = styled.button`
 `;
 
 const SecondaryButton = styled.button`
-  background-color: var(--color-canvas-subtle, #f6f8fa);
-  color: var(--color-text-primary, #24292f);
-  border: 1px solid var(--color-border-default, #d0d7de);
+  background-color: var(--color-canvas-subtle, rgba(255, 255, 255, 0.04));
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
   border-radius: 9999px;
   padding: 10px 20px;
   font-weight: 600;
@@ -232,7 +238,8 @@ const SecondaryButton = styled.button`
   gap: 8px;
   transition: all 0.15s ease-in-out;
   &:hover:not(:disabled) {
-    background-color: var(--color-border-subtle, #eaeef2);
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--color-border-hover);
   }
   &:disabled {
     opacity: 0.5;
@@ -300,14 +307,14 @@ const Text = styled.span<{
 `;
 
 const BillingWalletCard = styled.div`
-  background: linear-gradient(135deg, rgba(31, 111, 235, 0.15) 0%, rgba(137, 87, 229, 0.15) 100%);
-  border: 1px solid var(--color-border-default);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(6, 182, 212, 0.1) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
   border-radius: 12px;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   margin-bottom: 24px;
 `;
 
@@ -319,7 +326,7 @@ const StatGrid = styled.div`
 `;
 
 const StatItem = styled.div`
-  background: var(--color-canvas-subtle);
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.03));
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
   padding: 16px;
@@ -329,8 +336,8 @@ const StatItem = styled.div`
 `;
 
 const TopUpPillButton = styled.button`
-  background: var(--color-btn-bg, #21262d);
-  color: var(--color-btn-text, #c9d1d9);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-primary);
   border: 1px solid var(--color-border-default);
   border-radius: 20px;
   padding: 8px 16px;
@@ -343,10 +350,11 @@ const TopUpPillButton = styled.button`
   transition: all 0.15s ease-in-out;
 
   &:hover:not(:disabled) {
-    background: var(--color-accent-emphasis);
+    background: var(--gradient-cta);
     color: #ffffff;
-    border-color: var(--color-accent-emphasis);
+    border-color: transparent;
     transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
   }
 
   &:disabled {
@@ -389,9 +397,10 @@ const TxBadge = styled.span<{ $type: string }>`
     props.$type === "initial_grant"
       ? "rgba(35, 134, 54, 0.2)"
       : props.$type === "topup"
-        ? "rgba(56, 139, 253, 0.2)"
+        ? "rgba(6, 182, 212, 0.15)"
         : "rgba(218, 54, 51, 0.2)"};
-  color: ${(props) => (props.$type === "initial_grant" ? "#3fb950" : props.$type === "topup" ? "#58a6ff" : "#f85149")};
+  color: ${(props) =>
+    props.$type === "initial_grant" ? "#3fb950" : props.$type === "topup" ? "var(--color-accent-cyan)" : "#f85149"};
 `;
 
 type TabType =
@@ -1669,14 +1678,14 @@ const SettingsPage: React.FC = () => {
                 <Box
                   mb={4}
                   p={4}
-                  bg="rgba(56, 139, 253, 0.08)"
-                  border="1px solid var(--color-accent-emphasis)"
+                  bg="rgba(139, 92, 246, 0.08)"
+                  border="1px solid rgba(139, 92, 246, 0.3)"
                   borderRadius="12px"
                   display="flex"
                   gap={3}
                   alignItems="flex-start"
                 >
-                  <Box mt={1} color="var(--color-accent-fg)">
+                  <Box mt={1} color="var(--color-accent-cyan)">
                     <SyncIcon size={24} style={{ animation: "rotate 1.5s linear infinite" }} />
                   </Box>
                   <Box flex={1}>
@@ -1693,8 +1702,8 @@ const SettingsPage: React.FC = () => {
                           textTransform: "uppercase",
                           padding: "2px 8px",
                           borderRadius: "12px",
-                          backgroundColor: "rgba(56, 139, 253, 0.2)",
-                          color: "var(--color-accent-fg)",
+                          backgroundColor: "rgba(6, 182, 212, 0.15)",
+                          color: "var(--color-accent-cyan)",
                         }}
                       >
                         {archiveJob.status}

@@ -18,20 +18,9 @@ const TabBar = styled.div`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 20;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--color-canvas-default);
-    opacity: 0.85;
-    z-index: -1;
-  }
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(6, 8, 15, 0.85);
 `;
 
 const Tab = styled.button<{ $active?: boolean }>`
@@ -42,14 +31,16 @@ const Tab = styled.button<{ $active?: boolean }>`
   height: 53px;
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? "bold" : "normal")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  font-weight: ${(props) => (props.$active ? "700" : "500")};
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
   position: relative;
 
   &:hover {
-    background-color: rgba(128, 128, 128, 0.15);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 `;
 
@@ -80,10 +71,12 @@ const SortMenu = styled.div`
   left: 50%;
   transform: translateX(-50%);
   width: 160px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
+  background-color: rgba(14, 20, 36, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass);
   border-radius: 16px;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--glow-card);
   padding: 12px 0;
   z-index: 100;
 
@@ -93,26 +86,28 @@ const SortMenu = styled.div`
     background: none;
     border: none;
     text-align: left;
-    font-size: 15px;
-    font-weight: bold;
-    color: var(--color-fg-default);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-primary);
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
 
     &:hover {
-      background-color: rgba(128, 128, 128, 0.15);
+      background-color: rgba(255, 255, 255, 0.06);
     }
   }
 
   .menu-header {
     padding: 0 16px 8px 16px;
-    font-size: 13px;
-    font-weight: normal;
+    font-size: 12px;
+    font-weight: 600;
     color: var(--color-text-muted);
     border-bottom: 1px solid var(--color-border);
     margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 `;
 
@@ -214,7 +209,7 @@ const HomeFeedPage: React.FC = () => {
                         setShowSortMenu(false);
                       }}
                     >
-                      Popular {followingSort === "popular" && <CheckIcon size={16} color="#1d9bf0" />}
+                      Popular {followingSort === "popular" && <CheckIcon size={16} color="var(--color-accent-cyan)" />}
                     </button>
                     <button
                       onClick={(e) => {
@@ -223,7 +218,7 @@ const HomeFeedPage: React.FC = () => {
                         setShowSortMenu(false);
                       }}
                     >
-                      Recent {followingSort === "recent" && <CheckIcon size={16} color="#1d9bf0" />}
+                      Recent {followingSort === "recent" && <CheckIcon size={16} color="var(--color-accent-cyan)" />}
                     </button>
                   </SortMenu>
                 )}
@@ -249,7 +244,7 @@ const HomeFeedPage: React.FC = () => {
             <Post key={post.id} post={post} />
           ))}
           {posts.length === 0 && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               Welcome to ModelScript! No posts to show yet. Follow some people to see their posts here!
             </Box>
           )}

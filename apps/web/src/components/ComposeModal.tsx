@@ -25,12 +25,14 @@ const Overlay = styled.div`
 `;
 
 const ModalPanel = styled.div`
-  background: var(--color-bg-primary);
+  background: rgba(14, 20, 36, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   width: 100%;
   max-width: 600px;
   border-radius: 16px;
-  border: 1px solid var(--color-border-subtle);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--color-border-glass);
+  box-shadow: var(--glow-card);
   display: flex;
   flex-direction: column;
   overflow: visible;
@@ -211,14 +213,14 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
               onClick={handleCloseClick}
               aria-label="Close"
               sx={{
-                color: "var(--color-fg-default)",
+                color: "var(--color-text-primary)",
                 borderRadius: "50%",
                 width: "36px",
                 height: "36px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                "&:hover": { backgroundColor: "var(--color-canvas-subtle)" },
+                "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" },
               }}
             />
             <Box flex={1} />
@@ -227,7 +229,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
               style={{
                 background: "none",
                 border: "none",
-                color: "#1d9bf0",
+                color: "var(--color-accent-cyan)",
                 fontWeight: "bold",
                 fontSize: "15px",
                 cursor: "pointer",
@@ -259,20 +261,20 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
         {view === "drafts" && (
           <Box display="flex" flexDirection="column" height="100%">
-            <Header style={{ paddingBottom: "12px", borderBottom: "1px solid var(--color-border-subtle)" }}>
+            <Header style={{ paddingBottom: "12px", borderBottom: "1px solid var(--color-border)" }}>
               <IconButton
                 icon={ArrowLeftIcon}
                 variant="invisible"
                 onClick={() => setView("compose")}
                 aria-label="Back"
               />
-              <Heading as="h3" style={{ margin: "0 0 0 16px", fontSize: "20px" }}>
+              <Heading as="h3" style={{ margin: "0 0 0 16px", fontSize: "20px", color: "var(--color-text-heading)" }}>
                 Drafts
               </Heading>
             </Header>
             <Box flex={1} overflowY="auto">
               {draftsList.length === 0 ? (
-                <Box p={5} textAlign="center" color="var(--color-fg-muted)">
+                <Box p={5} textAlign="center" color="var(--color-text-muted)">
                   No drafts yet.
                 </Box>
               ) : (
@@ -280,14 +282,14 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                   <Box
                     key={draft.id}
                     p={3}
-                    borderBottom="1px solid var(--color-border-subtle)"
+                    borderBottom="1px solid var(--color-border)"
                     style={{ cursor: "pointer", transition: "background-color 0.2s" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.04)")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     onClick={() => loadDraft(draft)}
                   >
                     <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <span style={{ color: "var(--color-fg-muted)", fontSize: "13px" }}>
+                      <span style={{ color: "var(--color-text-muted)", fontSize: "13px" }}>
                         {new Date(draft.timestamp).toLocaleString()}
                       </span>
                       <IconButton
@@ -299,7 +301,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                           deleteDraft(draft.id);
                           setDraftsList(getDrafts());
                         }}
-                        sx={{ color: "var(--color-danger-fg)" }}
+                        sx={{ color: "var(--color-error)" }}
                       />
                     </Box>
                     <Box
@@ -311,7 +313,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                         maxHeight: "100px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        color: "var(--color-fg-default)",
+                        color: "var(--color-text-primary)",
                       }}
                     >
                       {draft.content ||
@@ -328,31 +330,40 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       </Overlay>
 
       {view === "confirm_save" && (
-        <Overlay style={{ zIndex: 1100, background: "rgba(0,0,0,0.4)" }} onClick={() => setView("compose")}>
+        <Overlay style={{ zIndex: 1100, background: "rgba(0,0,0,0.6)" }} onClick={() => setView("compose")}>
           <ModalPanel
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: "320px", minHeight: "auto", margin: "auto" }}
           >
             <Box p={4} pb={5} display="flex" flexDirection="column" alignItems="flex-start" gap={2}>
-              <Heading as="h3" style={{ margin: "4px 0 0 0", fontSize: "20px", fontWeight: "bold" }}>
+              <Heading
+                as="h3"
+                style={{
+                  margin: "4px 0 0 0",
+                  fontSize: "20px",
+                  fontWeight: "bold",
+                  color: "var(--color-text-heading)",
+                }}
+              >
                 Save post?
               </Heading>
               <span
-                style={{ color: "var(--color-fg-muted)", fontSize: "15px", lineHeight: "1.4", marginBottom: "8px" }}
+                style={{ color: "var(--color-text-muted)", fontSize: "15px", lineHeight: "1.4", marginBottom: "8px" }}
               >
                 You can save this to send later from your drafts.
               </span>
               <Box display="flex" flexDirection="column" gap={3} width="100%" mt={2}>
                 <button
                   style={{
-                    background: "var(--color-fg-default)",
-                    color: "var(--color-canvas-default)",
+                    background: "var(--gradient-cta)",
+                    color: "#ffffff",
                     border: "none",
                     borderRadius: "9999px",
-                    padding: "14px",
+                    padding: "12px",
                     fontWeight: "bold",
                     fontSize: "15px",
                     cursor: "pointer",
+                    boxShadow: "var(--glow-ai-sm)",
                   }}
                   onClick={commitDraftAndNavigate}
                 >
@@ -361,10 +372,10 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                 <button
                   style={{
                     background: "transparent",
-                    color: "var(--color-fg-default)",
-                    border: "1px solid var(--color-border-default)",
+                    color: "var(--color-text-primary)",
+                    border: "1px solid var(--color-border)",
                     borderRadius: "9999px",
-                    padding: "14px",
+                    padding: "12px",
                     fontWeight: "bold",
                     fontSize: "15px",
                     cursor: "pointer",

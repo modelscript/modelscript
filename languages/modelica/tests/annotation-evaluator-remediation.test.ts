@@ -59,7 +59,7 @@ model MultiClauseTest
   Real x;
 equation
   x = 1.0;
-  annotation(Icon(graphics = {}));
+  annotation(Icon());
   annotation(Diagram(coordinateSystem(extent = {{-100, -100}, {100, 100}})));
   annotation(experiment(StartTime = 0, StopTime = 10 + 5));
 end MultiClauseTest;

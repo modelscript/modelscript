@@ -244,14 +244,16 @@ const BottomBarContainer = styled.div`
   left: 0;
   right: 0;
   height: 60px;
-  background-color: var(--color-canvas-default);
+  background-color: rgba(6, 8, 15, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--color-border);
   display: none;
   justify-content: space-around;
   align-items: center;
   z-index: 999;
   padding: 0 8px;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
 
   @media (max-width: 500px) {
     display: flex;
@@ -261,7 +263,7 @@ const BottomBarContainer = styled.div`
 const BottomBarButton = styled.button<{ $active?: boolean }>`
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? "var(--color-accent-emphasis)" : "var(--color-fg-default)")};
+  color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted)")};
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -272,7 +274,7 @@ const BottomBarButton = styled.button<{ $active?: boolean }>`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.08);
   }
 `;
 
@@ -835,12 +837,7 @@ const AppShell: React.FC = () => {
           >
             <Dialog.Header id="wallet-topup-title">Compute Wallet &amp; Cloud Credits</Dialog.Header>
             <Box p={3} display="flex" flexDirection="column" gap={3}>
-              <Box
-                p={3}
-                borderRadius="8px"
-                bg="var(--color-canvas-subtle)"
-                border="1px solid var(--color-border-default)"
-              >
+              <Box p={3} borderRadius="8px" bg="rgba(255, 255, 255, 0.03)" border="1px solid var(--color-border)">
                 <Text style={{ fontSize: "12px", color: "var(--color-text-muted)", display: "block" }}>
                   Current Credit Balance
                 </Text>

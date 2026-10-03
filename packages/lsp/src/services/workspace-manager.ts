@@ -21,7 +21,7 @@ import type { AlignedDomainElement } from "../providers/threadDiagnosticsProvide
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { extractIndexerHooks } from "../utils/hook-extractor.js";
-import { DocumentManager } from "./DocumentManager.js";
+import { DocumentManager } from "./document-manager.js";
 
 let nodeRequire: ((id: string) => any) | null = null;
 try {
@@ -1065,7 +1065,7 @@ export class WorkspaceManager {
 
     const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
     const targetNorm = normUri(uri);
-    for (const [id, entry] of idx.symbols.entries()) {
+    for (const entry of idx.symbols.values()) {
       if (
         (entry.resourceId === uri || (entry.resourceId && normUri(entry.resourceId) === targetNorm)) &&
         (entry.kind === "Class" || entry.kind === "Def") &&

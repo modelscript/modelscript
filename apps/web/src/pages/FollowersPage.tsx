@@ -50,7 +50,8 @@ const TabBar = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  background: var(--color-canvas-default);
+  background: rgba(6, 8, 15, 0.85);
+  backdrop-filter: blur(12px);
   z-index: 9;
 `;
 
@@ -65,7 +66,7 @@ const TabButton = styled(Link)<{ $active?: boolean }>`
   transition: all 0.15s;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.03);
     color: var(--color-fg-default);
     text-decoration: none;
   }
@@ -78,9 +79,10 @@ const TabButton = styled(Link)<{ $active?: boolean }>`
     transform: translateX(-50%);
     width: ${(props) => (props.$active ? "60px" : "0")};
     height: 3px;
-    background: var(--color-accent-cyan, #58a6ff);
+    background: var(--gradient-cta);
     border-radius: 9999px;
-    transition: width 0.2s;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+    transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 `;
 

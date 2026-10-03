@@ -308,11 +308,18 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                 </Text>
                 <Box sx={{ display: "flex", gap: 3, fontSize: 0 }}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <span style={{ width: 10, height: 10, backgroundColor: "#0969da", borderRadius: "50%" }} />
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        backgroundColor: "var(--color-accent-cyan, #06b6d4)",
+                        borderRadius: "50%",
+                      }}
+                    />
                     <Text>Physical Telemetry (y_meas)</Text>
                   </Box>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <span style={{ width: 14, height: 2, backgroundColor: "#8250df" }} />
+                    <span style={{ width: 14, height: 2, backgroundColor: "var(--color-accent-purple, #8b5cf6)" }} />
                     <Text>Self-Updated Twin (y_twin)</Text>
                   </Box>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -357,8 +364,14 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
 
                 {/* Trajectories */}
                 <path d={baselinePath} fill="none" stroke="#cf222e" strokeWidth="1.5" strokeDasharray="4 3" />
-                <path d={twinPath} fill="none" stroke="#8250df" strokeWidth="2.5" />
-                <path d={measPath} fill="none" stroke="#0969da" strokeWidth="1.2" opacity="0.85" />
+                <path d={twinPath} fill="none" stroke="var(--color-accent-purple, #8b5cf6)" strokeWidth="2.5" />
+                <path
+                  d={measPath}
+                  fill="none"
+                  stroke="var(--color-accent-cyan, #06b6d4)"
+                  strokeWidth="1.5"
+                  opacity="0.9"
+                />
               </svg>
             </Box>
           </Box>
@@ -442,7 +455,9 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                       <tr key={name} style={{ borderBottom: "1px solid #21262d" }}>
                         <td style={{ padding: "8px", fontWeight: "bold" }}>`{name}`</td>
                         <td style={{ padding: "8px" }}>{d.prior.toFixed(4)}</td>
-                        <td style={{ padding: "8px", color: "#58a6ff" }}>{d.calibrated.toFixed(4)}</td>
+                        <td style={{ padding: "8px", color: "var(--color-accent-cyan, #06b6d4)" }}>
+                          {d.calibrated.toFixed(4)}
+                        </td>
                         <td style={{ padding: "8px", color: d.deltaPct >= 0 ? "#f85149" : "#3fb950" }}>
                           {d.deltaPct >= 0 ? "+" : ""}
                           {d.deltaPct.toFixed(1)}%
@@ -456,7 +471,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                     <tr style={{ borderBottom: "1px solid #21262d" }}>
                       <td style={{ padding: "8px", fontWeight: "bold" }}>`R_th` (Thermal Resistance)</td>
                       <td style={{ padding: "8px" }}>0.1200 K/W</td>
-                      <td style={{ padding: "8px", color: "#58a6ff" }}>0.1870 K/W</td>
+                      <td style={{ padding: "8px", color: "var(--color-accent-cyan, #06b6d4)" }}>0.1870 K/W</td>
                       <td style={{ padding: "8px", color: "#f85149" }}>+55.8%</td>
                       <td style={{ padding: "8px" }}>
                         <Label variant="severe">Degraded</Label>

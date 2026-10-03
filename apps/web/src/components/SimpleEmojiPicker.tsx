@@ -3,7 +3,11 @@
 import { SearchIcon } from "@primer/octicons-react";
 import { useEffect, useRef, useState } from "react";
 
-type Emoji = { char: string; name: string; hasSkinTone?: boolean };
+interface Emoji {
+  char: string;
+  name: string;
+  hasSkinTone?: boolean;
+}
 
 const EMOJI_CATEGORIES: { title: string; icon: string; emojis: Emoji[] }[] = [
   {
@@ -513,7 +517,7 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
   const [showSkinTones, setShowSkinTones] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>(EMOJI_CATEGORIES[0].title);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const categoryRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     const handleScroll = () => {
@@ -581,14 +585,15 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
           style={{
             display: "flex",
             alignItems: "center",
-            backgroundColor: "var(--color-canvas-subtle)",
+            backgroundColor: "var(--color-search-bg)",
             borderRadius: "9999px",
             padding: "4px 12px",
-            border: searchFocused ? "2px solid #1d9bf0" : "1px solid var(--color-border)",
-            margin: searchFocused ? "-1px" : "0",
+            border: searchFocused ? "1px solid var(--color-accent-cyan)" : "1px solid var(--color-search-border)",
+            boxShadow: searchFocused ? "0 0 10px var(--color-search-focus)" : "none",
+            margin: "0",
           }}
         >
-          <SearchIcon size={16} fill={searchFocused ? "#1d9bf0" : "var(--color-fg-muted)"} />
+          <SearchIcon size={16} fill={searchFocused ? "var(--color-accent-cyan)" : "var(--color-text-muted)"} />
           <input
             type="text"
             placeholder="Search emojis"
@@ -642,12 +647,13 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
                   fontSize: "16px",
                   padding: "4px 4px 8px 4px",
                   marginBottom: "-9px",
-                  borderBottom: activeCategory === cat.title ? "2px solid #1d9bf0" : "2px solid transparent",
-                  color: activeCategory === cat.title ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+                  borderBottom:
+                    activeCategory === cat.title ? "2px solid var(--color-accent-purple)" : "2px solid transparent",
+                  color: activeCategory === cat.title ? "var(--color-text-heading)" : "var(--color-text-muted)",
                 }}
                 onMouseOver={(e) => {
                   if (activeCategory !== cat.title) {
-                    e.currentTarget.style.borderBottom = "2px solid var(--color-border-default)";
+                    e.currentTarget.style.borderBottom = "2px solid var(--color-border)";
                   }
                 }}
                 onMouseOut={(e) => {
@@ -788,7 +794,8 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
                     height: "24px",
                     borderRadius: "50%",
                     backgroundColor: tone.color,
-                    border: skinTone === tone.char ? "2px solid #1d9bf0" : "1px solid var(--color-border-default)",
+                    border:
+                      skinTone === tone.char ? "2px solid var(--color-accent-cyan)" : "1px solid var(--color-border)",
                     cursor: "pointer",
                     padding: 0,
                   }}

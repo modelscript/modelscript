@@ -7,7 +7,9 @@ import path from "node:path";
 
 console.log("=== Testing msx ddp CLI Commands End-to-End ===");
 
-const testDir = path.resolve(process.cwd(), "packages/exchange/validation/.tmp_ddp_cli");
+const repoRoot = path.resolve(import.meta.dirname, "../../..");
+const cliPath = path.resolve(repoRoot, "apps/cli/src/main.ts");
+const testDir = path.resolve(repoRoot, "packages/exchange/validation/.tmp_ddp_cli");
 fs.mkdirSync(testDir, { recursive: true });
 fs.mkdirSync(path.join(testDir, "requirements"), { recursive: true });
 fs.mkdirSync(path.join(testDir, "geometry"), { recursive: true });
@@ -96,7 +98,7 @@ const aasxOutput = path.join(testDir, "spoiler.aasx");
 try {
   // 1. Pack
   console.log("\n[1] Testing: msx ddp pack");
-  const packCmd = `npx tsx apps/cli/src/main.ts ddp pack "${manifestPath}" -o "${ddpOutput}"`;
+  const packCmd = `npx tsx "${cliPath}" ddp pack "${manifestPath}" -o "${ddpOutput}"`;
   const packOut = execSync(packCmd, { encoding: "utf-8" });
   console.log(packOut.trim());
   assert(fs.existsSync(ddpOutput), "Output .ddp must exist");
@@ -104,7 +106,7 @@ try {
 
   // 2. Inspect
   console.log("\n[2] Testing: msx ddp inspect");
-  const inspectCmd = `npx tsx apps/cli/src/main.ts ddp inspect "${ddpOutput}"`;
+  const inspectCmd = `npx tsx "${cliPath}" ddp inspect "${ddpOutput}"`;
   const inspectOut = execSync(inspectCmd, { encoding: "utf-8" });
   console.log(inspectOut.trim());
   assert(inspectOut.includes("Flight Control Spoiler Assembly"), "Inspection must display title");
@@ -113,7 +115,7 @@ try {
 
   // 3. To-AASX
   console.log("\n[3] Testing: msx ddp to-aasx");
-  const toAasxCmd = `npx tsx apps/cli/src/main.ts ddp to-aasx "${ddpOutput}" -o "${aasxOutput}"`;
+  const toAasxCmd = `npx tsx "${cliPath}" ddp to-aasx "${ddpOutput}" -o "${aasxOutput}"`;
   const toAasxOut = execSync(toAasxCmd, { encoding: "utf-8" });
   console.log(toAasxOut.trim());
   assert(fs.existsSync(aasxOutput), "Output .aasx must exist");

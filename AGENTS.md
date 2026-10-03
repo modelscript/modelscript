@@ -85,6 +85,7 @@ ModelScript is a polyglot compiler supporting multiple engineering domains with 
 - `languages/fea/`: Finite element analysis configuration
 - `languages/scad/`: OpenSCAD language support and CSG evaluator
 - `languages/ssp/`: System Structure and Parameterization definitions
+- `languages/modelscript/`: Native ModelScript (`.msx`) language syntax and compiler
 
 ### SymbolIndex Data Model
 

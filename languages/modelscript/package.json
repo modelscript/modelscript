@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/modelscript",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "type": "module",
   "exports": {
     ".": {

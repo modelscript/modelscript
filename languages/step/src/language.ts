@@ -223,6 +223,10 @@ export const stepLanguage = language({
 
   lsp: {
     fileExtensions: [".step", ".stp", ".p21"],
+    icons: {
+      light: "./assets/step/icon-light.png",
+      dark: "./assets/step/icon-dark.png",
+    },
     handlers: {
       "modelscript/generateMultiBody": async (ctx: any, params: { uri: string }) => {
         const model = ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel(params.uri);

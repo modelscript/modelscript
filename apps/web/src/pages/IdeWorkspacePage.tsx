@@ -52,13 +52,13 @@ const BreadcrumbText = styled.div`
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--color-fg-default, #c9d1d9);
+  color: var(--color-fg-default);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 
   a {
-    color: var(--color-accent-fg, #58a6ff);
+    color: var(--color-accent-cyan);
     text-decoration: none;
     &:hover {
       text-decoration: underline;
@@ -66,7 +66,7 @@ const BreadcrumbText = styled.div`
   }
 
   .separator {
-    color: var(--color-fg-muted, #8b949e);
+    color: var(--color-fg-muted);
   }
 `;
 
@@ -78,9 +78,9 @@ const Badge = styled.span`
   font-family: var(--font-mono, monospace);
   padding: 2px 6px;
   border-radius: 4px;
-  background-color: rgba(56, 139, 253, 0.15);
-  color: var(--color-accent-fg, #58a6ff);
-  border: 1px solid rgba(56, 139, 253, 0.3);
+  background-color: rgba(6, 182, 212, 0.12);
+  color: var(--color-accent-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.25);
 `;
 
 const IframeWrapper = styled.div`

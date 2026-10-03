@@ -23,8 +23,8 @@ import {
   loadMSL,
   loadSysML2StandardLibrary,
 } from "../vfs/library-loader.js";
-import { DocumentManager } from "./DocumentManager.js";
-import { WorkspaceManager } from "./WorkspaceManager.js";
+import { DocumentManager } from "./document-manager.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 let registryUrl: any = undefined;
 let savedLoaderCtx: any = undefined;

@@ -338,12 +338,13 @@ export class EventGrammarSolver {
 
     // Lexicographic symmetry breaking for symmetric independent concurrent actors
     if (options.enableSymmetryBreaking) {
-      const serializeActorStructure = (node: EventNode): string => {
-        const parts: string[] = [node.kind, node.name];
+      const serializeActorStructure = (node: EventNode, isRoot = true): string => {
+        const parts: string[] = [node.kind];
+        if (!isRoot) parts.push(node.name);
         if (node.minRep !== undefined) parts.push(`min:${node.minRep}`);
         if (node.maxRep !== undefined) parts.push(`max:${node.maxRep}`);
         if (node.children) {
-          parts.push(`[${node.children.map(serializeActorStructure).join(",")}]`);
+          parts.push(`[${node.children.map((c) => serializeActorStructure(c, false)).join(",")}]`);
         }
         return parts.join("|");
       };
@@ -368,6 +369,17 @@ export class EventGrammarSolver {
 
             if (aRels.length === 0 && bRels.length === 0 && aCoords.length === 0 && bCoords.length === 0) {
               // Independent symmetric actors: impose lexicographic leader constraint
+              const aAllInsts = allInstances.filter((inst) => inst.actor === aName);
+              const bAllInsts = allInstances.filter((inst) => inst.actor === bName);
+              if (aAllInsts.length > 0 && bAllInsts.length > 0) {
+                const firstA = aAllInsts[0]!;
+                const firstB = bAllInsts[0]!;
+                const aAct = actVarMap.get(firstA.instId)!;
+                const bAct = actVarMap.get(firstB.instId)!;
+                const pAB = getPrecVar(firstA.instId, firstB.instId);
+                baseClauses.push([-aAct, -bAct, pAB]);
+              }
+
               const aLeafInsts = allInstances.filter((inst) => inst.actor === aName && inst.kind === "atomic");
               const bLeafInsts = allInstances.filter((inst) => inst.actor === bName && inst.kind === "atomic");
               if (aLeafInsts.length > 0 && bLeafInsts.length > 0) {

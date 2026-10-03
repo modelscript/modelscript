@@ -19,8 +19,8 @@
       "default": "./dist/nodeServerMain.js"
     },
     "./context": {
-      "types": "./dist/LspContext.d.ts",
-      "default": "./dist/LspContext.js"
+      "types": "./dist/lsp-context.d.ts",
+      "default": "./dist/lsp-context.js"
     },
     "./services": {
       "types": "./dist/services/index.d.ts",

@@ -6,6 +6,5 @@ export * from "./enum.js";
 export * from "./filesystem.js";
 export * from "./hash.js";
 export * from "./io.js";
-export * from "./tree-sitter.js";
 export * from "./types.js";
 export * from "./weak.js";

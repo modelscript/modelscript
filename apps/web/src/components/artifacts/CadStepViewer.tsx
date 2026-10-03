@@ -346,14 +346,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
                       p={2}
                       borderRadius="6px"
                       border="1px solid"
-                      borderColor={
-                        isSelected ? "var(--color-accent-fg, #0969da)" : "var(--color-border-default, #30363d)"
-                      }
-                      bg={
-                        isSelected
-                          ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.1))"
-                          : "var(--color-canvas-subtle, #161b22)"
-                      }
+                      borderColor={isSelected ? "var(--color-accent-purple)" : "var(--color-border-default)"}
+                      bg={isSelected ? "rgba(139, 92, 246, 0.12)" : "var(--color-canvas-subtle)"}
                       style={{ cursor: "pointer", transition: "all 0.15s ease" }}
                       onClick={() => setSelectedProfileId(p.id)}
                     >
@@ -361,7 +355,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
                         <Text
                           fontWeight="bold"
                           fontSize="12px"
-                          color={isSelected ? "var(--color-accent-fg, #58a6ff)" : "var(--color-fg-default)"}
+                          color={isSelected ? "var(--color-accent-cyan)" : "var(--color-fg-default)"}
                         >
                           {p.name}
                         </Text>

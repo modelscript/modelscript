@@ -5,7 +5,10 @@ import bcrypt from "bcryptjs";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
+
+const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
@@ -435,11 +438,11 @@ graph TD
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/git", gitRouter());
   app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility
-  app.use("/api/thumbnails", express.static(path.resolve(process.cwd(), "public/thumbnails")));
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+  app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
+  app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 
   if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
-    app.use("/static-examples", express.static(path.resolve(process.cwd(), "../../packages/examples")));
+    app.use("/static-examples", express.static(path.resolve(API_ROOT, "../../packages/examples")));
   }
 
   // ── RFC 9116 Security Disclosure (security.txt) ──

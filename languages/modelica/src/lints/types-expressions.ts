@@ -16,7 +16,6 @@ import {
   isTypeCompatible,
   resolveBasePrimitiveType,
   TYPE_BOOLEAN,
-  TYPE_CLOCK,
   TYPE_INTEGER,
   TYPE_REAL,
   TYPE_STRING,
@@ -49,13 +48,21 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       for (const anc of db.ast.getAncestors(node)) {
         const ancType = db.ast.getType(anc);
         if (ancType == $.component_clause || ancType == $.component_clause1) {
-          for (const id of db.ast.getDescendants(anc, $.identifier)) {
-            if (db.ast.textEquals(id, "Real")) expectedType = TYPE_REAL;
-            else if (db.ast.textEquals(id, "Integer")) expectedType = TYPE_INTEGER;
-            else if (db.ast.textEquals(id, "Boolean")) expectedType = TYPE_BOOLEAN;
-            else if (db.ast.textEquals(id, "String")) expectedType = TYPE_STRING;
-            else if (db.ast.textEquals(id, "Clock")) expectedType = TYPE_CLOCK;
-            break;
+          let typeSpecNode: u32 = 0;
+          if ($.type_specifier != 0) {
+            for (const ts of db.ast.getDescendants(anc, $.type_specifier)) {
+              typeSpecNode = ts;
+              break;
+            }
+          }
+          if (typeSpecNode != 0) {
+            expectedType = resolveBasePrimitiveType(db, typeSpecNode, $);
+          }
+          if (expectedType == TYPE_UNKNOWN) {
+            for (const id of db.ast.getDescendants(anc, $.identifier)) {
+              expectedType = resolveBasePrimitiveType(db, id, $);
+              if (expectedType != TYPE_UNKNOWN) break;
+            }
           }
           break;
         }
@@ -581,12 +588,21 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       for (const anc of db.ast.getAncestors(node)) {
         const ancType = db.ast.getType(anc);
         if (ancType == $.component_clause || ancType == $.component_clause1) {
-          for (const id of db.ast.getDescendants(anc, $.identifier)) {
-            if (db.ast.textEquals(id, "Real")) expectedType = TYPE_REAL;
-            else if (db.ast.textEquals(id, "Integer")) expectedType = TYPE_INTEGER;
-            else if (db.ast.textEquals(id, "Boolean")) expectedType = TYPE_BOOLEAN;
-            else if (db.ast.textEquals(id, "String")) expectedType = TYPE_STRING;
-            break;
+          let typeSpecNode: u32 = 0;
+          if ($.type_specifier != 0) {
+            for (const ts of db.ast.getDescendants(anc, $.type_specifier)) {
+              typeSpecNode = ts;
+              break;
+            }
+          }
+          if (typeSpecNode != 0) {
+            expectedType = resolveBasePrimitiveType(db, typeSpecNode, $);
+          }
+          if (expectedType == TYPE_UNKNOWN) {
+            for (const id of db.ast.getDescendants(anc, $.identifier)) {
+              expectedType = resolveBasePrimitiveType(db, id, $);
+              if (expectedType != TYPE_UNKNOWN) break;
+            }
           }
           break;
         }
@@ -647,7 +663,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (lhs != 0 && rhs != 0) {
         const lhsType = inferExprType(db, lhs, $);
         const rhsType = inferExprType(db, rhs, $);
-        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && lhsType < 0x8000 && rhsType < 0x8000) {
+        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && (lhsType < 0x8000 || rhsType < 0x8000)) {
           if (!isTypeCompatible(rhsType, lhsType) && !isTypeCompatible(lhsType, rhsType)) {
             let isOldFrontend: u32 = 0;
             const docRoot = db.ast.getRootNode();

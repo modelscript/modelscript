@@ -42,7 +42,7 @@ function formatPostContent(content: string) {
           <ProfileHoverCard username={username}>
             <Link
               to={`/${username}`}
-              style={{ color: "#1d9bf0", textDecoration: "none" }}
+              style={{ color: "var(--color-link)", textDecoration: "none" }}
               onClick={(e) => e.stopPropagation()}
               onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
               onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
@@ -75,7 +75,7 @@ const Avatar = styled.div<{ $url?: string }>`
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: var(--color-accent-emphasis);
+  background: var(--gradient-ai);
   background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
   background-size: cover;
   flex-shrink: 0;
@@ -90,15 +90,15 @@ const AvatarsRow = styled.div`
 const getIconForType = (type: string) => {
   switch (type) {
     case "like":
-      return <HeartFillIcon color="var(--color-like)" size={24} />;
+      return <HeartFillIcon color="var(--color-error)" size={24} />;
     case "follow":
-      return <PersonIcon color="var(--color-accent-emphasis)" size={24} />;
+      return <PersonIcon color="var(--color-accent-cyan)" size={24} />;
     case "reply":
-      return <ReplyIcon color="var(--color-fg-muted)" size={24} />;
+      return <ReplyIcon color="var(--color-text-muted)" size={24} />;
     case "repost":
-      return <StarIcon color="var(--color-success)" size={24} />;
+      return <StarIcon color="var(--color-status-verified)" size={24} />;
     case "mention":
-      return <MentionIcon color="var(--color-accent-emphasis)" size={24} />;
+      return <MentionIcon color="var(--color-accent-purple)" size={24} />;
     default:
       return null;
   }
@@ -286,7 +286,7 @@ const NotificationsPage: React.FC = () => {
         )}
       </StickyHeader>
 
-      <Box display="flex" borderBottom="1px solid var(--color-border-subtle)">
+      <Box display="flex" borderBottom="1px solid var(--color-border)">
         <button
           onClick={() => setActiveTab("all")}
           style={{
@@ -295,7 +295,7 @@ const NotificationsPage: React.FC = () => {
             background: "none",
             border: "none",
             borderBottom: activeTab === "all" ? "3px solid var(--color-accent-cyan)" : "3px solid transparent",
-            color: activeTab === "all" ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+            color: activeTab === "all" ? "var(--color-text-heading)" : "var(--color-text-muted)",
             fontWeight: activeTab === "all" ? 700 : 500,
             cursor: "pointer",
             fontSize: "15px",
@@ -311,7 +311,7 @@ const NotificationsPage: React.FC = () => {
             background: "none",
             border: "none",
             borderBottom: activeTab === "mentions" ? "3px solid var(--color-accent-cyan)" : "3px solid transparent",
-            color: activeTab === "mentions" ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+            color: activeTab === "mentions" ? "var(--color-text-heading)" : "var(--color-text-muted)",
             fontWeight: activeTab === "mentions" ? 700 : 500,
             cursor: "pointer",
             fontSize: "15px",
@@ -326,7 +326,7 @@ const NotificationsPage: React.FC = () => {
           <Spinner size="large" />
         </Box>
       ) : filteredNotifications.length === 0 ? (
-        <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+        <Box p={6} textAlign="center" color="var(--color-text-muted)">
           {activeTab === "mentions" ? "No mentions yet." : "You have no notifications yet."}
         </Box>
       ) : (
@@ -371,7 +371,7 @@ const NotificationsPage: React.FC = () => {
                               to={`/${notif.actors[0].username}`}
                               style={{
                                 fontWeight: "bold",
-                                color: "var(--color-fg-default)",
+                                color: "var(--color-text-heading)",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
@@ -400,7 +400,7 @@ const NotificationsPage: React.FC = () => {
                           </span>
                         </Box>
                         {notif.type === "reply" && (
-                          <Box fontSize="15px" color="var(--color-fg-muted)" mb="4px">
+                          <Box fontSize="15px" color="var(--color-text-muted)" mb="4px">
                             Replying to{" "}
                             {(() => {
                               const mentions = new Set<string>();
@@ -418,7 +418,7 @@ const NotificationsPage: React.FC = () => {
                                   <ProfileHoverCard username={handle}>
                                     <Link
                                       to={`/${handle}`}
-                                      style={{ color: "#1d9bf0", textDecoration: "none" }}
+                                      style={{ color: "var(--color-link)", textDecoration: "none" }}
                                       onClick={(e) => e.stopPropagation()}
                                       onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
                                       onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
@@ -505,12 +505,12 @@ const NotificationsPage: React.FC = () => {
             );
           })}
           {notifications.length === 0 && token && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               Nothing to see here yet.
             </Box>
           )}
           {!token && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               Please log in to view your notifications.
             </Box>
           )}

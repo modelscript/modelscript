@@ -11,8 +11,8 @@ import {
   createDiagramDispatch,
 } from "../diagramApi.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import { DocumentManager } from "./DocumentManager.js";
-import { WorkspaceManager } from "./WorkspaceManager.js";
+import { DocumentManager } from "./document-manager.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 function getModelicaDiagramOps(): any {
   return (globalThis as any).modelicaDiagramOps ?? {};

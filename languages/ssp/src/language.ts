@@ -16,6 +16,10 @@ export const sspLanguage = language({
   fileExtensions: [".ssp", ".ssd"],
   lsp: {
     fileExtensions: [".ssp", ".ssd"],
+    icons: {
+      light: "./assets/ssp/icon-light.png",
+      dark: "./assets/ssp/icon-dark.png",
+    },
   },
   rules: {
     Root: () => "ssp",

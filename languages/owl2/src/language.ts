@@ -19,6 +19,10 @@ export const owl2Language = language({
   fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
   lsp: {
     fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
+    icons: {
+      light: "./assets/owl2/icon-light.png",
+      dark: "./assets/owl2/icon-dark.png",
+    },
   },
 
   writeback: (ctx) => {

@@ -470,7 +470,7 @@ export class DecisionTableVerifier {
           });
 
           const res = solver.solve(initialBox);
-          if (res.status === "DELTA_SAT" || res.status === "SAT") {
+          if (res.status === "DELTA_SAT") {
             // Check that the uncovered witness is not on a shared boundary facet between complementary guards
             let isComplementaryBoundary = false;
             if (res.solutionBox) {

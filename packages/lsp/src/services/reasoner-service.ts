@@ -2,7 +2,7 @@
 
 import { OntologyBuilder, TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { Connection } from "vscode-languageserver/browser.js";
-import { WorkspaceManager } from "./WorkspaceManager.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 export class ReasonerService {
   public reasoner: TableauReasoner;

@@ -6,6 +6,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
+import assert from "node:assert";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
+
+const expect = (actual: any) => ({
+  toBeGreaterThan: (expected: number) => assert.ok(actual > expected, `Expected ${actual} > ${expected}`),
+  toContain: (expected: string) =>
+    assert.ok(String(actual).includes(expected), `Expected ${actual} to contain ${expected}`),
+  toBe: (expected: any) => assert.strictEqual(actual, expected),
+  toEqual: (expected: any) => assert.deepStrictEqual(actual, expected),
+  toHaveLength: (expected: number) => assert.strictEqual(actual?.length, expected),
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -81,25 +93,38 @@ describe("Incremental Repair Cleanliness Test", () => {
     const wasmModule = await WebAssembly.compile(wasm);
 
     const wrapperSrc =
-      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
+      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") +
+      `\nreturn { LspFacade, Tree };`;
     const getFacade = new Function(wrapperSrc);
-    const { LspFacade } = getFacade();
+    const { LspFacade, Tree } = getFacade();
+    (activeFacade as any) = null;
+    (global as any).TestTree = Tree;
 
     const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
 
+    let logDebug = false;
+    (global as any).setLogDebug = (val: boolean) => {
+      logDebug = val;
+    };
     const imports = {
       env: {
         memory: memory,
         abort: () => console.log("ABORT!"),
         logNode: () => {},
-        debugLog: () => {},
+        debugLog: (id: number, p1: number, p2: number, p3: number) => {
+          if (logDebug) console.log(`DEBUG: id=${id} p1=${p1} p2=${p2} p3=${p3}`);
+        },
       },
       JavaScript: {
-        debugLog: () => {},
+        debugLog: (id: number, p1: number, p2: number, p3: number) => {
+          if (logDebug) console.log(`JS DEBUG: id=${id} p1=${p1} p2=${p2} p3=${p3}`);
+        },
         logNode: () => {},
       },
       engine: {
-        debugLog: () => {},
+        debugLog: (id: number, p1: number, p2: number, p3: number) => {
+          if (logDebug) console.log(`ENG DEBUG: id=${id} p1=${p1} p2=${p2} p3=${p3}`);
+        },
       },
       parser: { logInt: () => {} },
       recovery: {},
@@ -112,13 +137,7 @@ describe("Incremental Repair Cleanliness Test", () => {
   }, 40000);
 
   afterAll(() => {
-    if (fs.existsSync(tmpDir)) {
-      try {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup error
-      }
-    }
+    // Keep tmpDir for inspection
   });
 
   it("should completely clear diagnostics when an error on Line 2 is repaired incrementally", () => {
@@ -140,7 +159,6 @@ end ElectricalCircuit;
     const ast0 = activeFacade.parseIncremental(baseCode, 0, 0, baseCode.length);
     expect(ast0).toBeGreaterThan(0);
     const diags0 = activeFacade.getDiagnostics(ast0);
-    console.log("INITIAL DIAGS COUNT:", diags0.length);
     expect(diags0).toHaveLength(0);
 
     // 2. Introduce error on Line 2: replace 'Pin p, n;' with 'Pin p n;' (delete comma)
@@ -151,7 +169,6 @@ end ElectricalCircuit;
     const brokenAst = activeFacade.parseIncremental("", commaOffset, 1, baseCode.length - 1);
     expect(brokenAst).toBeGreaterThan(0);
     const brokenDiags = activeFacade.getDiagnostics(brokenAst);
-    console.log("BROKEN DIAGS:\n", JSON.stringify(brokenDiags, null, 2));
     expect(brokenDiags.length).toBeGreaterThan(0);
     expect(brokenDiags[0].range.start.line).toBe(1);
 
@@ -159,7 +176,6 @@ end ElectricalCircuit;
     const repairedAst = activeFacade.parseIncremental(",", commaOffset, 0, baseCode.length);
     expect(repairedAst).toBeGreaterThan(0);
     const repairedDiags = activeFacade.getDiagnostics(repairedAst);
-    console.log("REPAIRED DIAGS:\n", JSON.stringify(repairedDiags, null, 2));
     expect(repairedDiags).toHaveLength(0);
 
     // 4. Introduce error by deleting semicolon at end of Line 2
@@ -167,13 +183,11 @@ end ElectricalCircuit;
     expect(semiOffset).toBeGreaterThan(0);
     const brokenSemiAst = activeFacade.parseIncremental("", semiOffset, 1, baseCode.length - 1);
     const brokenSemiDiags = activeFacade.getDiagnostics(brokenSemiAst);
-    console.log("BROKEN SEMI DIAGS:\n", JSON.stringify(brokenSemiDiags, null, 2));
     expect(brokenSemiDiags.length).toBeGreaterThan(0);
 
     // 5. Repair semicolon back
     const repairedSemiAst = activeFacade.parseIncremental(";", semiOffset, 0, baseCode.length);
     const repairedSemiDiags = activeFacade.getDiagnostics(repairedSemiAst);
-    console.log("REPAIRED SEMI DIAGS:\n", JSON.stringify(repairedSemiDiags, null, 2));
     expect(repairedSemiDiags).toHaveLength(0);
   });
 });

@@ -1633,6 +1633,83 @@ export const classDefinitionQueries: Record<string, any> = {
     ];
   },
 
+  /**
+   * M2003: Type / class not found in scope for short class specifiers.
+   */
+  lint__typeNotFound: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    if (!cst) return null;
+    const spec = getShortClassSpecifierNode(cst);
+    if (!spec) return null;
+
+    const typeSpec =
+      Cst.ShortClassSpecifier.typeSpecifier(spec) ??
+      spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    let typeName = typeSpec?.text?.trim();
+    if (!typeName) return null;
+    typeName = typeName.split("[")[0].trim();
+    if (!typeName) return null;
+
+    if (
+      typeName === "Real" ||
+      typeName === "Integer" ||
+      typeName === "Boolean" ||
+      typeName === "String" ||
+      typeName === "Clock" ||
+      typeName === "StateSelect" ||
+      typeName === "AssertionLevel" ||
+      typeName === "ExternalObject"
+    ) {
+      return null;
+    }
+
+    // Resolve via Salsa
+    let baseEntry: SymbolEntry | null = null;
+    if (self.parentId !== null) {
+      const resolve = db.query<any>("resolveName", self.parentId);
+      if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
+      if (!baseEntry) {
+        const resSimple = db.query<any>("resolveSimpleName", self.parentId);
+        if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+      }
+    }
+
+    if (!baseEntry) {
+      if (typeName.includes(".")) {
+        baseEntry = resolveQualified(db, typeName);
+      } else {
+        const entries = db.byName(typeName);
+        baseEntry =
+          entries?.find(
+            (e: any) =>
+              (e.metadata as Record<string, unknown>)?.isPredefined ||
+              e.kind === "Class" ||
+              e.kind === "Package" ||
+              e.kind === "Function" ||
+              e.kind === "Def",
+          ) ?? null;
+      }
+    }
+
+    if (baseEntry) return null;
+
+    const startByte = typeSpec?.startIndex ?? typeSpec?.startByte ?? self.startByte;
+    const endByte = typeSpec?.endIndex ?? typeSpec?.endByte ?? startByte + typeName.length;
+    const startOffset = typeSpec?.startOffset ?? startByte;
+    const endOffset = typeSpec?.endOffset ?? endByte;
+
+    const msg = `Class or type '${typeName}' not found in scope.`;
+    return [
+      error(msg, {
+        startByte,
+        endByte,
+        startCharOffset: startOffset,
+        endCharOffset: endOffset,
+        code: 2003,
+      }),
+    ];
+  },
+
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
     if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
@@ -1979,11 +2056,18 @@ export const classDefinitionQueries: Record<string, any> = {
    */
   isConnector: (db: QueryDB, self: SymbolEntry) => {
     const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
-    return (
+    if (
       kind === "connector" ||
       kind === "expandable connector" ||
       (typeof kind === "string" && kind.includes("connector"))
-    );
+    ) {
+      return true;
+    }
+    const base = db.query<SymbolEntry | null>("resolvedBaseClass", self.id);
+    if (base && base.id !== self.id) {
+      return db.query<boolean>("isConnector", base.id) || false;
+    }
+    return false;
   },
   /**
    * Check if this class is an expandable connector type.
@@ -1996,7 +2080,12 @@ export const classDefinitionQueries: Record<string, any> = {
     );
     kind = kind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
     const words = kind.split(/\s+/).filter(Boolean);
-    return words.includes("expandable") && words.includes("connector");
+    if (words.includes("expandable") && words.includes("connector")) return true;
+    const base = db.query<SymbolEntry | null>("resolvedBaseClass", self.id);
+    if (base && base.id !== self.id) {
+      return db.query<boolean>("isExpandableConnector", base.id) || false;
+    }
+    return false;
   },
   /**
    * Check if this class is an operator record type.
@@ -3899,6 +3988,105 @@ export const componentDeclarationQueries: Record<string, any> = {
       code: 2003,
     });
   },
+  lint__componentBindingRestriction: (db: QueryDB, self: SymbolEntry) => {
+    const cstNode = db.cstNode(self.id) as any;
+    let current = cstNode;
+    while (
+      current &&
+      current.type !== "ComponentDeclaration" &&
+      current.type !== "component_declaration" &&
+      current.type !== "Declaration" &&
+      current.type !== "declaration"
+    ) {
+      current = current.parent;
+    }
+    const declNode =
+      current?.type === "Declaration" || current?.type === "declaration"
+        ? current
+        : (Cst.ComponentDeclaration.declaration(current) ??
+          current?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration"));
+    const modNode =
+      Cst.Declaration.modification(declNode) ??
+      declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+
+    const mod = db.query<any | null>("effectiveModification", self.id);
+    const hasBinding = Boolean(mod?.bindingExpression || (modNode && modNode.text && modNode.text.includes("=")));
+    if (!hasBinding) return null;
+
+    let typeName = db.query<string | null>("typeSpecifier", self.id);
+    if (!typeName || typeof typeName !== "string") return null;
+    typeName = typeName.trim();
+    if (!typeName) return null;
+
+    const baseType = typeName.replace(/\[.*\]$/, "").trim();
+    if (!baseType) return null;
+
+    if (
+      baseType === "Real" ||
+      baseType === "Integer" ||
+      baseType === "Boolean" ||
+      baseType === "String" ||
+      baseType === "Clock" ||
+      baseType === "StateSelect" ||
+      baseType === "AssertionLevel" ||
+      baseType === "ExternalObject"
+    ) {
+      return null;
+    }
+
+    const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+    let resolved: SymbolEntry | null = typeClassId ? db.symbol(typeClassId) : null;
+    if (!resolved && self.parentId !== null) {
+      if (baseType.includes(".")) {
+        const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
+        if (qualResolver) resolved = qualResolver(baseType);
+      } else {
+        const simpleResolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", self.parentId);
+        if (simpleResolver) resolved = simpleResolver(baseType);
+      }
+    }
+    if (!resolved && baseType.includes(".")) {
+      resolved = resolveQualified(db, baseType);
+    }
+    if (!resolved) {
+      const entries = db.byName(baseType);
+      resolved = entries?.find((e: any) => e.kind === "Package" || e.kind === "Class" || e.kind === "Function") ?? null;
+    }
+
+    if (resolved) {
+      const meta = resolved.metadata as Record<string, unknown> | undefined;
+      const rawKind = String(meta?.classPrefixes ?? meta?.classKind ?? resolved.kind ?? "").toLowerCase();
+      let specKind: string | null = null;
+      if (resolved.kind === "Package" || rawKind.includes("package")) {
+        specKind = "package";
+      } else if (resolved.kind === "Model" || rawKind.includes("model")) {
+        specKind = "model";
+      } else if (resolved.kind === "Block" || rawKind.includes("block")) {
+        specKind = "block";
+      } else if (resolved.kind === "Connector" || rawKind.includes("connector")) {
+        specKind = "connector";
+      } else if (resolved.kind === "Function" || rawKind.includes("function")) {
+        specKind = "function";
+      }
+
+      if (specKind) {
+        const startByte = declNode?.startIndex ?? declNode?.startByte ?? self.startByte;
+        const endByte = declNode?.endIndex ?? declNode?.endByte ?? self.endByte;
+        const startOffset = declNode?.startOffset ?? startByte;
+        const endOffset = declNode?.endOffset ?? endByte;
+
+        const msg = ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.message(self.name, specKind);
+        return error(msg, {
+          startByte,
+          endByte,
+          startCharOffset: startOffset,
+          endCharOffset: endOffset,
+          code: ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.code,
+        });
+      }
+    }
+    return null;
+  },
 };
 
 export const shortClassSpecifierQueries: Record<string, any> = {
@@ -3991,19 +4179,234 @@ export const connectEquationQueries: Record<string, any> = {
    * Validate that both sides of the connect equation reference
    * connector-typed components, and that they are plug-compatible.
    */
-  validateConnect: (db: QueryDB, self: SymbolEntry) => {
-    const meta = self.metadata as Record<string, unknown>;
-    const ref1Name = typeof meta?.ref1 === "string" ? meta.ref1 : null;
-    const ref2Name = typeof meta?.ref2 === "string" ? meta.ref2 : null;
-    if (!ref1Name || !ref2Name) return { valid: false, reason: "unresolved" };
-
-    // Resolve both component references
-    const ref1Entries = db.byName(ref1Name);
-    const ref2Entries = db.byName(ref2Name);
-    if (!ref1Entries?.length || !ref2Entries?.length) {
-      return { valid: false, reason: "not found" };
+  lint__validateConnect: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    let lhsNode = cst ? Cst.ConnectEquation.lhs(cst) : null;
+    let rhsNode = cst ? Cst.ConnectEquation.rhs(cst) : null;
+    if (!lhsNode || !rhsNode) {
+      const children = (cst?.children || []).filter(
+        (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+      );
+      if (!lhsNode && children.length > 0) lhsNode = children[0];
+      if (!rhsNode && children.length > 1) rhsNode = children[1];
     }
-    return { valid: true, reason: null };
+
+    const meta = (self.metadata as Record<string, unknown>) || {};
+    const lhsText = lhsNode?.text?.trim() ?? (typeof meta.lhs === "string" ? meta.lhs : null);
+    const rhsText = rhsNode?.text?.trim() ?? (typeof meta.rhs === "string" ? meta.rhs : null);
+    if (!lhsText || !rhsText) return null;
+
+    if (self.parentId === null) return null;
+    const parentClassId = self.parentId;
+    const parentEntry = db.symbol(parentClassId);
+    const parentClassName = parentEntry?.name ?? "";
+
+    const resolveEndpoint = (refText: string) => {
+      const rawSegments = refText.split(".");
+      let currentClassId: SymbolId = parentClassId;
+      let currentEntry: SymbolEntry | null = null;
+
+      for (let i = 0; i < rawSegments.length; i++) {
+        const seg = rawSegments[i].replace(/\[.*\]$/, "").trim();
+        if (!seg) return { resolved: false, missingSegment: rawSegments[i] };
+
+        const resolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
+        let found: SymbolEntry | null = resolver ? resolver(seg) : null;
+        if (!found) {
+          const allElems = db.query<SymbolEntry[]>("allElements", currentClassId) ?? [];
+          found = allElems.find((e) => e.name === seg) ?? null;
+        }
+        if (!found) {
+          return { resolved: false, missingSegment: seg };
+        }
+
+        currentEntry = found;
+        if (i < rawSegments.length - 1) {
+          if (found.kind === "Component") {
+            const nextClassId = db.query<SymbolId | null>("classInstance", found.id);
+            if (!nextClassId) return { resolved: false, missingSegment: seg };
+            currentClassId = nextClassId;
+          } else if (found.kind === "Class" || found.kind === "Package") {
+            currentClassId = found.id;
+          } else {
+            return { resolved: false, missingSegment: seg };
+          }
+        }
+      }
+
+      if (!currentEntry) return { resolved: false, missingSegment: refText };
+
+      let typeClassId: SymbolId | null = null;
+      if (currentEntry.kind === "Component") {
+        typeClassId = db.query<SymbolId | null>("classInstance", currentEntry.id);
+      } else if (currentEntry.kind === "Class") {
+        typeClassId = currentEntry.id;
+      }
+
+      const isConn = typeClassId ? db.query<boolean>("isConnector", typeClassId) || false : false;
+      const isExp = typeClassId ? db.query<boolean>("isExpandableConnector", typeClassId) || false : false;
+
+      return {
+        resolved: true,
+        entry: currentEntry,
+        typeClassId,
+        isConnector: isConn,
+        isExpandable: isExp,
+      };
+    };
+
+    const lhsRes = resolveEndpoint(lhsText);
+    const rhsRes = resolveEndpoint(rhsText);
+    const diags: any[] = [];
+
+    const getRange = (node: any) => {
+      const startByte = node?.startIndex ?? node?.startByte ?? self.startByte;
+      const endByte = node?.endIndex ?? node?.endByte ?? self.endByte;
+      const startOffset = node?.startOffset ?? startByte;
+      const endOffset = node?.endOffset ?? endByte;
+      return { startByte, endByte, startCharOffset: startOffset, endCharOffset: endOffset };
+    };
+
+    // 1. Check if endpoints resolve (M2002)
+    if (!lhsRes.resolved) {
+      diags.push(
+        error(ModelicaErrorCode.VARIABLE_NOT_FOUND.message(lhsRes.missingSegment || lhsText, parentClassName), {
+          ...getRange(lhsNode),
+          code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+        }),
+      );
+    }
+    if (!rhsRes.resolved) {
+      diags.push(
+        error(ModelicaErrorCode.VARIABLE_NOT_FOUND.message(rhsRes.missingSegment || rhsText, parentClassName), {
+          ...getRange(rhsNode),
+          code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+        }),
+      );
+    }
+    if (diags.length > 0) return diags;
+
+    // 2. Check if endpoints are connectors (M3004)
+    if (!lhsRes.isConnector && !lhsRes.isExpandable) {
+      diags.push(
+        error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, lhsText), {
+          ...getRange(lhsNode),
+          code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
+        }),
+      );
+    }
+    if (!rhsRes.isConnector && !rhsRes.isExpandable) {
+      diags.push(
+        error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, rhsText), {
+          ...getRange(rhsNode),
+          code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
+        }),
+      );
+    }
+    if (diags.length > 0) return diags;
+
+    // 3. Expandable connector compatibility (M4055)
+    if (lhsRes.isExpandable && !rhsRes.isExpandable) {
+      diags.push(
+        error(ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.message(lhsText, rhsText), {
+          ...getRange(cst),
+          code: ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.code,
+        }),
+      );
+      return diags;
+    } else if (rhsRes.isExpandable && !lhsRes.isExpandable) {
+      diags.push(
+        error(ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.message(rhsText, lhsText), {
+          ...getRange(cst),
+          code: ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.code,
+        }),
+      );
+      return diags;
+    } else if (lhsRes.isExpandable && rhsRes.isExpandable) {
+      return null;
+    }
+
+    // 4. Standard connector plug-compatibility (M3003, M5004)
+    if (lhsRes.typeClassId && rhsRes.typeClassId) {
+      if (lhsRes.typeClassId === rhsRes.typeClassId) {
+        return null;
+      }
+      const lhsElems = (db.query<SymbolEntry[]>("allElements", lhsRes.typeClassId) ?? []).filter(
+        (e) => e.kind === "Component",
+      );
+      const rhsElems = (db.query<SymbolEntry[]>("allElements", rhsRes.typeClassId) ?? []).filter(
+        (e) => e.kind === "Component",
+      );
+
+      // Check flow matching (M5004)
+      const lhsFlowMap = new Map<string, string | null>();
+      for (const elem of lhsElems) {
+        lhsFlowMap.set(elem.name, db.query<string | null>("flowPrefix", elem.id) ?? null);
+      }
+      const rhsFlowMap = new Map<string, string | null>();
+      for (const elem of rhsElems) {
+        rhsFlowMap.set(elem.name, db.query<string | null>("flowPrefix", elem.id) ?? null);
+      }
+
+      for (const [name, lFlow] of lhsFlowMap.entries()) {
+        if (rhsFlowMap.has(name)) {
+          const rFlow = rhsFlowMap.get(name);
+          if (lFlow === "flow" && rFlow !== "flow") {
+            diags.push(
+              error(ModelicaErrorCode.CONNECT_FLOW_MISMATCH.message(`${lhsText}.${name}`, `${rhsText}.${name}`), {
+                ...getRange(lhsNode),
+                code: ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code,
+              }),
+            );
+          } else if (rFlow === "flow" && lFlow !== "flow") {
+            diags.push(
+              error(ModelicaErrorCode.CONNECT_FLOW_MISMATCH.message(`${rhsText}.${name}`, `${lhsText}.${name}`), {
+                ...getRange(rhsNode),
+                code: ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code,
+              }),
+            );
+          }
+        }
+      }
+      if (diags.length > 0) return diags;
+
+      // Check number of elements & type compatibility (M3003)
+      if (lhsElems.length !== rhsElems.length) {
+        diags.push(
+          error(ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(lhsText, rhsText), {
+            ...getRange(cst),
+            code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+          }),
+        );
+        return diags;
+      }
+
+      for (const lElem of lhsElems) {
+        const rElem = rhsElems.find((r) => r.name === lElem.name);
+        if (!rElem) {
+          diags.push(
+            error(ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(lhsText, rhsText), {
+              ...getRange(cst),
+              code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+            }),
+          );
+          return diags;
+        }
+        const lType = db.query<string | null>("typeSpecifier", lElem.id);
+        const rType = db.query<string | null>("typeSpecifier", rElem.id);
+        if (lType && rType && lType !== rType) {
+          diags.push(
+            error(ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(lhsText, rhsText), {
+              ...getRange(cst),
+              code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+            }),
+          );
+          return diags;
+        }
+      }
+    }
+
+    return null;
   },
 };
 

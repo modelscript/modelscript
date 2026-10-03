@@ -86,6 +86,10 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     });
   }
 
+  function isIgnoredQueryParam(p: string): boolean {
+    return p === "$" || p === "_$" || p === "db" || p === "_db" || p === "graph" || p === "_graph" || p === "cg";
+  }
+
   function getNodeSourceFile(node: ts.Node): ts.SourceFile {
     let curr: ts.Node = node;
     while (curr.parent) curr = curr.parent;
@@ -115,7 +119,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       const fnInfo = transpileQuery(fnDecl);
       let fnStr = fnInfo.body;
       if (!fnStr.startsWith("export function") && !fnStr.startsWith("function")) {
-        const nonDollar = fnInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+        const nonDollar = fnInfo.params.filter((p) => !isIgnoredQueryParam(p));
         const paramsStr = nonDollar
           .map((p) => {
             if (ts.isFunctionDeclaration(fnDecl)) {
@@ -144,7 +148,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       const queryFn = ast?.queries?.get(queryName) || rawQueryFn;
       let queryInfo = transpileQuery(queryFn);
       let asQueryStr = queryInfo.body;
-      const nonDollarParams = queryInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+      const nonDollarParams = queryInfo.params.filter((p) => !isIgnoredQueryParam(p));
       const actualArgNames = nonDollarParams;
 
       let signatureArgs =
@@ -207,7 +211,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
         const funcName = `compute_attr_${attrName}_${nodeName}`;
         let innerBody = asQueryStr;
         if (queryInfo && !innerBody.startsWith("export function") && !innerBody.startsWith("function")) {
-          const firstParam = queryInfo.params.filter((p) => p !== "$")[0];
+          const firstParam = queryInfo.params.filter((p) => !isIgnoredQueryParam(p))[0];
           if (firstParam && firstParam !== "queryArg") {
             innerBody = `let ${firstParam} = queryArg;\n` + innerBody;
           }
@@ -240,7 +244,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       let queryInfo = transpileQuery(queryFn, "lint");
       let asQueryStr = queryInfo.body;
       if (!asQueryStr.startsWith("export function") && !asQueryStr.startsWith("function")) {
-        const nonDollar = queryInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+        const nonDollar = queryInfo.params.filter((p) => !isIgnoredQueryParam(p));
         const firstParam = nonDollar[0];
         if (firstParam && firstParam !== "node") {
           asQueryStr = `let ${firstParam} = node;\n` + asQueryStr;
@@ -266,7 +270,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       let queryInfo = transpileQuery(ast?.definition || grammar.lsp.definition, "lsp");
       asQueryStr = queryInfo.body;
       if (!asQueryStr.startsWith("export function") && !asQueryStr.startsWith("function")) {
-        const nonDollar = queryInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+        const nonDollar = queryInfo.params.filter((p) => !isIgnoredQueryParam(p));
         const firstParam = nonDollar[0];
         if (firstParam && firstParam !== "node") {
           asQueryStr = `let ${firstParam} = node;\n` + asQueryStr;
@@ -289,7 +293,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
         const passInfo = transpileQuery(passFn);
         const passFuncName = `pipeline_${pipelineName}_pass_${passIdx}`;
         let body = passInfo.body;
-        const nonDollar = passInfo.params.filter((p) => p !== "$" && p !== "graph" && p !== "db");
+        const nonDollar = passInfo.params.filter((p) => !isIgnoredQueryParam(p));
         const firstParam = nonDollar.length > 0 ? nonDollar[0] : "rootNode";
         if (!body.startsWith("export function") && !body.startsWith("function")) {
           body = `function ${passFuncName}(${firstParam}: u32): void {\n${body}\n}\n`;

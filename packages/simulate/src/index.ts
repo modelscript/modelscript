@@ -18,3 +18,8 @@ export * from "./sysml2/index.js";
 export * from "./twin/index.js";
 export * from "./uq/index.js";
 export * from "./utils/index.js";
+
+import { simulateArena, simulateArenaAsync } from "./core/simulate-arena.js";
+import { registerArenaSimulator } from "./uq/monte-carlo.js";
+
+registerArenaSimulator(simulateArena, simulateArenaAsync);

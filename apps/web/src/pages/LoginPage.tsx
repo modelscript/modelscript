@@ -92,20 +92,24 @@ const Input = styled.input`
   box-sizing: border-box;
 
   &:focus {
-    border-color: var(--color-accent-fg, #1d9bf0);
+    border-color: var(--color-accent-cyan);
+    box-shadow: 0 0 10px var(--color-search-focus);
   }
 `;
 
 const Button = styled.button`
   height: 40px;
-  background: var(--color-btn-primary-bg, var(--color-fg-default));
-  color: var(--color-btn-primary-text, var(--color-canvas-default));
+  background: var(--gradient-cta);
+  color: #ffffff;
   border: none;
   border-radius: 9999px;
   font-size: 15px;
   font-weight: bold;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition:
+    opacity 0.2s,
+    box-shadow 0.2s;
+  box-shadow: var(--glow-ai-sm);
   margin-top: 12px;
   width: 100%;
 
@@ -184,7 +188,7 @@ const FooterText = styled.p`
   max-width: 300px;
 
   a {
-    color: #1d9bf0;
+    color: var(--color-accent-cyan);
     text-decoration: none;
     font-weight: bold;
 
@@ -253,11 +257,11 @@ export default function LoginPage() {
           {forgotNotice && (
             <div
               style={{
-                background: "rgba(56, 139, 253, 0.12)",
-                border: "1px solid rgba(56, 139, 253, 0.35)",
-                color: "var(--color-accent-blue, #58a6ff)",
+                background: "rgba(6, 182, 212, 0.12)",
+                border: "1px solid rgba(6, 182, 212, 0.35)",
+                color: "var(--color-accent-cyan)",
                 padding: "10px 14px",
-                borderRadius: "6px",
+                borderRadius: "8px",
                 fontSize: "13px",
                 textAlign: "left",
                 lineHeight: "1.4",

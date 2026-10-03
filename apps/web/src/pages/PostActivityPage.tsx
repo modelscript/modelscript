@@ -13,11 +13,12 @@ import { API_BASE_URL } from "../config";
 
 const TabBar = styled.div`
   display: flex;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
+  background: rgba(6, 8, 15, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 10;
 `;
 
@@ -29,14 +30,16 @@ const Tab = styled.button<{ $active?: boolean }>`
   padding: 16px;
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? "bold" : "normal")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  font-weight: ${(props) => (props.$active ? "700" : "500")};
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
   position: relative;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 
   &::after {
@@ -45,9 +48,10 @@ const Tab = styled.button<{ $active?: boolean }>`
     bottom: 0;
     height: 4px;
     width: 56px;
-    background-color: var(--color-accent-emphasis, #1d9bf0);
+    background: var(--gradient-cta);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
+    box-shadow: var(--glow-purple-sm);
   }
 `;
 
@@ -57,12 +61,12 @@ const IconButton = styled.button`
   cursor: pointer;
   padding: 8px;
   border-radius: 50%;
-  color: var(--color-fg-default);
+  color: var(--color-text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.06);
   }
 `;
 
@@ -146,7 +150,7 @@ const PostActivityPage: React.FC = () => {
             <Post key={post.id} post={post} />
           ))}
           {displayPosts.length === 0 && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               <Text fontSize="16px" fontWeight="bold" display="block" mb={2}>
                 No {activeTab} yet
               </Text>

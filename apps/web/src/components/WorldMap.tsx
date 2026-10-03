@@ -8,10 +8,11 @@ import Box from "./Box";
 
 const MapContainer = styled(Box)`
   width: 100%;
-  background-color: var(--color-canvas-subtle);
+  background-color: rgba(14, 20, 36, 0.65);
+  backdrop-filter: blur(16px);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--color-border-default);
+  border: 1px solid var(--color-border);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -43,9 +44,9 @@ const PrivacyBadge = styled.div`
   font-weight: 500;
   padding: 3px 8px;
   border-radius: 999px;
-  background-color: rgba(56, 139, 253, 0.1);
-  color: #58a6ff;
-  border: 1px solid rgba(56, 139, 253, 0.2);
+  background-color: rgba(6, 182, 212, 0.12);
+  color: var(--color-accent-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.3);
 `;
 
 const LegendContainer = styled(Box)`
@@ -62,14 +63,14 @@ const LegendGradient = styled.div`
   width: 80px;
   height: 8px;
   border-radius: 4px;
-  background: linear-gradient(to right, #93c5fd, #3b82f6, #1d4ed8, #0284c7);
+  background: var(--gradient-cta);
   border: 1px solid rgba(255, 255, 255, 0.15);
 `;
 
 const BreakdownContainer = styled(Box)`
   padding: 12px 18px 16px;
-  border-top: 1px solid var(--color-border-muted);
-  background-color: var(--color-canvas-default);
+  border-top: 1px solid var(--color-border);
+  background-color: rgba(255, 255, 255, 0.02);
 `;
 
 const BreakdownTitle = styled.div`
@@ -149,14 +150,14 @@ const Tooltip = styled.div<{ $show: boolean; $x: number; $y: number; $flipX: boo
   pointer-events: none;
   opacity: ${(props) => (props.$show ? 1 : 0)};
   transition: opacity 0.15s ease;
-  background-color: var(--color-canvas-overlay, #1c2128);
-  border: 1px solid var(--color-border-default, #444c56);
+  background-color: rgba(14, 20, 36, 0.95);
+  border: 1px solid var(--color-border-glass);
   border-radius: 8px;
   padding: 8px 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   z-index: 100;
   font-size: 13px;
-  color: var(--color-fg-default, #adbac7);
+  color: var(--color-text-primary);
   white-space: nowrap;
 
   &::after {
@@ -169,8 +170,8 @@ const Tooltip = styled.div<{ $show: boolean; $x: number; $y: number; $flipX: boo
     border-style: solid;
     border-color: ${(props) =>
       props.$flipY
-        ? "transparent transparent var(--color-canvas-overlay, #1c2128) transparent"
-        : "var(--color-canvas-overlay, #1c2128) transparent transparent transparent"};
+        ? "transparent transparent rgba(14, 20, 36, 0.95) transparent"
+        : "rgba(14, 20, 36, 0.95) transparent transparent transparent"};
   }
 `;
 
@@ -523,8 +524,8 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
-                  fill={hasViews ? colorScale(views) : "var(--color-canvas-inset, #1f2937)"}
-                  stroke="var(--color-border-subtle, #30363d)"
+                  fill={hasViews ? colorScale(views) : "rgba(255, 255, 255, 0.05)"}
+                  stroke="var(--color-border)"
                   strokeWidth={0.5}
                   style={{
                     default: {
@@ -532,8 +533,8 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
                       transition: "fill 0.2s ease",
                     },
                     hover: {
-                      fill: hasViews ? "#38bdf8" : "var(--color-neutral-muted, #374151)",
-                      stroke: hasViews ? "#0284c7" : "var(--color-border-default)",
+                      fill: hasViews ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.12)",
+                      stroke: hasViews ? "var(--color-accent-cyan)" : "var(--color-border-strong)",
                       strokeWidth: 1,
                       outline: "none",
                       cursor: "pointer",

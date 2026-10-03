@@ -11,8 +11,8 @@ import {
   hasClassChildren,
   isTreeVisible,
 } from "../utils/hierarchy-utils.js";
-import { DocumentManager } from "./DocumentManager.js";
-import { WorkspaceManager } from "./WorkspaceManager.js";
+import { DocumentManager } from "./document-manager.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 export class HierarchyService {
   constructor(

@@ -272,11 +272,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     message: (target) => `Class or type '${target.text}' not found in scope.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let firstIdent: u32 = 0;
+      let identCount = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
-        firstIdent = id;
-        break;
+        if (firstIdent == 0) firstIdent = id;
+        identCount++;
       }
 
+      // 1. Built-in primitive types
       if (
         db.ast.textEquals(node, "Real") ||
         db.ast.textEquals(node, "Integer") ||
@@ -286,12 +288,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(node, "StateSelect") ||
         db.ast.textEquals(node, "AssertionLevel") ||
         db.ast.textEquals(node, "ExternalObject") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Voltage") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Current") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Resistance") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Capacitance") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Inductance") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Time") ||
         (firstIdent != 0 &&
           (db.ast.textEquals(firstIdent, "Real") ||
             db.ast.textEquals(firstIdent, "Integer") ||
@@ -300,13 +296,15 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             db.ast.textEquals(firstIdent, "Clock") ||
             db.ast.textEquals(firstIdent, "StateSelect") ||
             db.ast.textEquals(firstIdent, "AssertionLevel") ||
-            db.ast.textEquals(firstIdent, "ExternalObject") ||
-            db.ast.textEquals(firstIdent, "Modelica") ||
-            db.ast.textEquals(firstIdent, "SIunits") ||
-            db.ast.textEquals(firstIdent, "Icons") ||
-            db.ast.textEquals(firstIdent, "Blocks") ||
-            db.ast.textEquals(firstIdent, "Electrical")))
+            db.ast.textEquals(firstIdent, "ExternalObject")))
       ) {
+        return;
+      }
+
+      // 2. Qualified type paths (e.g. Modelica.SIunits.Voltage, Package.Type)
+      // Defer to Salsa QueryEngine which has full multi-file WorkspaceIndex
+      // and standard library symbols. Avoids hardcoded namespace whitelists.
+      if (identCount > 1) {
         return;
       }
 
@@ -318,102 +316,14 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         return;
       }
 
-      // Check if the type name matches an import clause in an enclosing class
-      // This handles renamed imports (import MyC=A.B2.C), simple imports (import A.B.C),
-      // and unqualified imports (import A.B.*)
+      // 3. If enclosing class has imports, defer to Salsa QueryEngine
+      // to resolve against external packages without blanket suppression.
       if ($.import_clause != 0) {
         for (const anc of db.ast.getAncestors(node, 0)) {
           const ancType = db.ast.getType(anc);
           if (ancType !== $.class_definition && ancType !== $.stored_definition) continue;
-          for (const imp of db.ast.getDescendants(anc, $.import_clause)) {
-            // Only consider direct children (not deeply nested imports in inner classes)
-            let isDirectChild = false;
-            for (const impAnc of db.ast.getAncestors(imp, 0)) {
-              if (impAnc === anc) {
-                isDirectChild = true;
-                break;
-              }
-              const impAncType = db.ast.getType(impAnc);
-              if (impAncType === $.class_definition && impAnc !== anc) break;
-            }
-            if (!isDirectChild) continue;
-
-            // Check for alias: import MyC = A.B2.C
-            const aliasField = db.ast.getChildByFieldId(imp, "alias");
-            if (
-              aliasField != 0 &&
-              (db.ast.textEqualsNode(node, aliasField) ||
-                (firstIdent != 0 && db.ast.textEqualsNode(firstIdent, aliasField)))
-            ) {
-              return;
-            }
-            // Check for simple import: import A.B.C → last segment matches
-            // The name field contains the full dotted path; we check if the type
-            // node text matches the last identifier in the name
-            if (aliasField == 0) {
-              const nameField = db.ast.getChildByFieldId(imp, "name");
-              if (nameField != 0) {
-                // Get all identifiers in the name field; the last one is the imported name
-                let lastNameId: u32 = 0;
-                for (const id of db.ast.getDescendants(nameField, $.identifier)) {
-                  lastNameId = id;
-                }
-                if (
-                  lastNameId != 0 &&
-                  (db.ast.textEqualsNode(node, lastNameId) ||
-                    (firstIdent != 0 && db.ast.textEqualsNode(firstIdent, lastNameId)))
-                ) {
-                  return;
-                }
-              }
-            }
-          }
-          // For any enclosing class with imports, we need to be more careful.
-          // If there are unqualified imports (import A.B.*), the name could be any child.
-          // Check by scanning import_clause texts for .* pattern.
-          // Since we can't getText, check if any import_clause in this class
-          // doesn't have an alias and doesn't have an import_list — those are
-          // either simple or unqualified. We'll be conservative and suppress
-          // for any class that has any unqualified import.
-          for (const imp of db.ast.getDescendants(anc, $.import_clause)) {
-            let isDirectChild2 = false;
-            for (const impAnc2 of db.ast.getAncestors(imp, 0)) {
-              if (impAnc2 === anc) {
-                isDirectChild2 = true;
-                break;
-              }
-              if (db.ast.getType(impAnc2) === $.class_definition && impAnc2 !== anc) break;
-            }
-            if (!isDirectChild2) continue;
-            const aliasField2 = db.ast.getChildByFieldId(imp, "alias");
-            const nameField2 = db.ast.getChildByFieldId(imp, "name");
-            const importListField2 = db.ast.getChildByFieldId(imp, "import_list");
-            // Unqualified import: has name but no alias and no import_list, and name text != child text
-            // (since if name matched, we would have returned above)
-            // We can detect this: if the import doesn't have alias, doesn't have import_list,
-            // and the name doesn't end with the same text as node, then it must be unqualified
-            // (name is the package path, .* was stripped by grammar)
-            if (aliasField2 == 0 && importListField2 == 0 && nameField2 != 0) {
-              // This could be a simple import (import A.B.C) or unqualified (import A.B.*)
-              // We already checked simple imports above. If we get here, it might be unqualified.
-              // Check: does the import node's text contain ".*"?
-              // Since we can't getText on import, use a heuristic:
-              // Walk all children of import_clause. If only "import" + name + description exist,
-              // it's either simple or unqualified. We detect unqualified by checking if no
-              // identifier in the name matches node text.
-              let anyIdentMatch = false;
-              for (const id of db.ast.getDescendants(nameField2, $.identifier)) {
-                if (db.ast.textEqualsNode(node, id) || (firstIdent != 0 && db.ast.textEqualsNode(firstIdent, id))) {
-                  anyIdentMatch = true;
-                  break;
-                }
-              }
-              if (!anyIdentMatch) {
-                // This import brings in a package where .* could make this name visible
-                // Be conservative and don't flag
-                return;
-              }
-            }
+          for (const _ of db.ast.getDescendants(anc, $.import_clause)) {
+            return;
           }
         }
       }
@@ -1521,7 +1431,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const targetClass = findClassByName(db, typeNode, $);
       if (targetClass != 0) {
         let idCount: u32 = 0;
-        for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
+        for (const _id of db.ast.getDescendants(nameNode, $.identifier)) {
           idCount++;
         }
 

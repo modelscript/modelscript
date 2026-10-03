@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, expect, it, jest } from "@jest/globals";
-import { CoinorWasmSolver } from "../src/compiler/optimizer/solvers/coinor-wasm.js";
+import { CoinorWasmSolver } from "../src/optimizer/solvers/coinor-wasm.js";
 
 describe("COIN-OR IPOPT WASM Solver", () => {
   it("should initialize CoinorWasmSolver and execute nonlinear problem interface", () => {

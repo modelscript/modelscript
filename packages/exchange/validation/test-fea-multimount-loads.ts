@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { FeaCoSimParticipant } from "@modelscript/exchange/cosim";
+import { Tet4Mesher, type MaterialProperties } from "@modelscript/simulate";
 import assert from "node:assert";
-import { Tet4Mesher, type MaterialProperties } from "../src/index.js";
 
 async function runMultiMountTest() {
   console.log("=== Testing: FeaCoSimParticipant Multi-Mount Differential Vector Loads ===");

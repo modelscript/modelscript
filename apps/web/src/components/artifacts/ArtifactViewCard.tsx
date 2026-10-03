@@ -396,9 +396,9 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
               navigate(`/ide#memfs:artifact-${artifactId}`);
             }}
             style={{
-              background: "linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(99, 102, 241, 0.15))",
-              color: "var(--color-accent-fg, #58a6ff)",
-              border: "1px solid rgba(56, 189, 248, 0.3)",
+              background: "linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15))",
+              color: "var(--color-accent-cyan)",
+              border: "1px solid rgba(6, 182, 212, 0.3)",
               borderRadius: "6px",
               padding: "3px 8px",
               fontSize: "11px",

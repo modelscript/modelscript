@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, expect, test } from "@jest/globals";
 import { generateSimplex } from "@modelscript/dsl/codegen/simplex.js";
 
 describe("Simplex LP Solver Generator", () => {

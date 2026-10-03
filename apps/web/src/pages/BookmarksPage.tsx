@@ -32,23 +32,30 @@ const SearchInputWrapper = styled.div`
   svg {
     position: absolute;
     left: 14px;
-    color: var(--color-fg-muted);
+    color: var(--color-text-muted);
   }
 
   input {
     width: 100%;
     padding: 10px 16px 10px 40px;
     border-radius: 9999px;
-    background-color: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
+    background-color: var(--color-search-bg);
+    border: 1px solid var(--color-search-border);
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
     color: var(--color-text-primary);
+    transition: all 0.2s ease;
 
     &:focus {
-      background-color: var(--color-bg-primary);
-      border-color: #1d9bf0;
+      background-color: var(--color-search-bg);
+      border-color: var(--color-accent-cyan);
+      box-shadow: 0 0 12px var(--color-search-focus);
+    }
+
+    &::placeholder {
+      color: var(--color-text-muted);
+      opacity: 0.7;
     }
   }
 `;
@@ -121,17 +128,17 @@ const BookmarksPage: React.FC = () => {
             <Post key={post.id} post={post} />
           ))}
           {filteredPosts.length === 0 && posts.length > 0 && token && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               No bookmarks match your search.
             </Box>
           )}
           {posts.length === 0 && token && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               You haven't bookmarked any posts yet.
             </Box>
           )}
           {!token && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               Please log in to view your bookmarks.
             </Box>
           )}

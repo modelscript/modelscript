@@ -1384,6 +1384,7 @@ export class LspFacade {
           : "Syntax Error";
       let severity = lintId > 0 && lintId < 0x8000 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
       let codeStr = lintId > 0 && lintId < 0x8000 ? lintId : undefined;
+      let expectedTokensList = undefined;
       if (rawLintId === 0x7ffe) {
         msg = "Too many diagnostics; remaining diagnostics omitted";
         severity = 2; // Warning
@@ -1415,6 +1416,7 @@ export class LspFacade {
         if (arg0 === 1 && rawArg1 > 0) {
           let symName = formatSyntaxTokenName(rawArg1);
           msg = `Syntax Error: Missing '${symName}'`;
+          expectedTokensList = [symName];
         } else if (arg0 === 2) {
           const extracted = extractTokenText(startByte, endByte);
           let symName = extracted;
@@ -1425,19 +1427,69 @@ export class LspFacade {
           }
           let rawArg2 = arg2 & 0x7fff;
           let rawArg3 = arg3 & 0x7fff;
-          let expName1 = rawArg2 > 0 ? formatSyntaxTokenName(rawArg2) : "";
-          let expName2 = rawArg3 > 0 ? formatSyntaxTokenName(rawArg3) : "";
+          const poolPtr = this.exports.lsp_getExpectedPool
+            ? this.exports.lsp_getExpectedPool()
+            : 0;
           let expectedStr = "";
-          if (expName1 && expName2 && expName1 !== expName2) {
-            if (expName1 === symName) {
-              expectedStr = `'${expName2}'`;
-            } else if (expName2 === symName) {
-              expectedStr = `'${expName1}'`;
-            } else {
-              expectedStr = `'${expName1}' or '${expName2}'`;
+          if (poolPtr > 0 && rawArg3 > 0) {
+            const expTokenSlice = new Uint16Array(
+              this.wasmMemory.buffer,
+              poolPtr + rawArg2 * 2,
+              rawArg3,
+            );
+            const expTokens = [];
+            const seenExp = new Set();
+            for (let k = 0; k < expTokenSlice.length; k++) {
+              const tokId = expTokenSlice[k];
+              if (tokId > 0) {
+                const formatted = formatSyntaxTokenName(tokId);
+                if (formatted && !seenExp.has(formatted)) {
+                  seenExp.add(formatted);
+                  expTokens.push(formatted);
+                }
+              }
             }
-          } else if (expName1 && expName1 !== symName) {
-            expectedStr = `'${expName1}'`;
+            const identIdx = expTokens.indexOf("identifier");
+            if (identIdx > 0) {
+              expTokens.splice(identIdx, 1);
+              expTokens.unshift("identifier");
+            }
+            expectedTokensList = expTokens;
+            const displayTokens = expTokens.filter((t) => t !== symName);
+            if (displayTokens.length === 1) {
+              expectedStr = `'${displayTokens[0]}'`;
+            } else if (displayTokens.length === 2) {
+              expectedStr = `'${displayTokens[0]}' or '${displayTokens[1]}'`;
+            } else if (displayTokens.length >= 3 && displayTokens.length <= 6) {
+              const allButLast = displayTokens
+                .slice(0, -1)
+                .map((t) => `'${t}'`)
+                .join(", ");
+              expectedStr = `${allButLast} or '${displayTokens[displayTokens.length - 1]}'`;
+            } else if (displayTokens.length > 6) {
+              const top5 = displayTokens
+                .slice(0, 5)
+                .map((t) => `'${t}'`)
+                .join(", ");
+              const remaining = displayTokens.length - 5;
+              expectedStr = `${top5} or ${remaining} other${remaining > 1 ? "s" : ""}`;
+            }
+          } else {
+            let expName1 = rawArg2 > 0 ? formatSyntaxTokenName(rawArg2) : "";
+            let expName2 = rawArg3 > 0 ? formatSyntaxTokenName(rawArg3) : "";
+            if (expName1 && expName2 && expName1 !== expName2) {
+              expectedTokensList = [expName1, expName2];
+              if (expName1 === symName) {
+                expectedStr = `'${expName2}'`;
+              } else if (expName2 === symName) {
+                expectedStr = `'${expName1}'`;
+              } else {
+                expectedStr = `'${expName1}' or '${expName2}'`;
+              }
+            } else if (expName1 && expName1 !== symName) {
+              expectedTokensList = [expName1];
+              expectedStr = `'${expName1}'`;
+            }
           }
           if (symName && expectedStr) {
             msg = `Syntax Error: Unexpected '${symName}', expected ${expectedStr}`;
@@ -1454,6 +1506,9 @@ export class LspFacade {
           let expName1 = rawArg2 > 0 ? formatSyntaxTokenName(rawArg2) : "";
           let symName =
             extracted || (rawArg1 > 0 ? formatSyntaxTokenName(rawArg1) : "");
+          if (expName1) {
+            expectedTokensList = [expName1];
+          }
           if (symName && expName1 && symName !== expName1) {
             msg = `Syntax Error: Unexpected '${symName}', expected '${expName1}'`;
           } else if (symName) {
@@ -1706,6 +1761,7 @@ export class LspFacade {
         message: msg,
         severity: severity,
         code: codeStr,
+        expectedTokens: expectedTokensList,
         startOffset: startCharOff,
         endOffset: endCharOff,
         startCharOffset: startCharOff,

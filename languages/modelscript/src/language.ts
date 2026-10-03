@@ -23,6 +23,10 @@ export const modelscriptLanguage = language({
   fileExtensions: [".modelscript", ".msx"],
   lsp: {
     fileExtensions: [".modelscript", ".msx"],
+    icons: {
+      light: "./assets/modelscript/icon-light.png",
+      dark: "./assets/modelscript/icon-dark.png",
+    },
   },
 
   writeback: (ctx) => {

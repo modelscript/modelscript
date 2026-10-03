@@ -164,6 +164,7 @@ export interface Diagnostic {
   message: string;
   severity: number;
   code?: number | string;
+  expectedTokens?: string[];
   /** Character offset of the diagnostic start within the source text. */
   startOffset?: number;
   /** Character offset of the diagnostic end within the source text. */

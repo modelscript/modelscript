@@ -2497,6 +2497,10 @@ export const sysml2Language = language({
 
   lsp: {
     fileExtensions: [".sysml", ".sysml2"],
+    icons: {
+      light: "./assets/sysml2/icon-light.png",
+      dark: "./assets/sysml2/icon-dark.png",
+    },
   },
 
   writeback: sysml2Writeback,

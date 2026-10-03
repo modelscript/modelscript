@@ -265,7 +265,7 @@ const ProfilePage: React.FC = () => {
               width: "134px",
               height: "134px",
               borderRadius: "50%",
-              backgroundColor: "var(--color-accent-emphasis)",
+              backgroundColor: "var(--color-accent-purple)",
               border: "4px solid var(--color-bg-primary)",
               display: "flex",
               alignItems: "center",
@@ -319,13 +319,17 @@ const ProfilePage: React.FC = () => {
                         top="100%"
                         right="0"
                         mt={1}
-                        bg="var(--color-bg-primary)"
-                        border="1px solid var(--color-border-subtle)"
-                        borderRadius="12px"
-                        boxShadow="0 4px 12px rgba(0,0,0,0.15)"
-                        py={2}
-                        zIndex={100}
-                        minWidth="280px"
+                        style={{
+                          backgroundColor: "rgba(14, 20, 36, 0.95)",
+                          backdropFilter: "blur(16px)",
+                          WebkitBackdropFilter: "blur(16px)",
+                          border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
+                          borderRadius: "12px",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                          padding: "8px 0",
+                          zIndex: 100,
+                          minWidth: "280px",
+                        }}
                       >
                         <button
                           style={{
@@ -647,12 +651,17 @@ const ProfilePage: React.FC = () => {
           }}
         >
           <Box
-            bg="var(--color-bg-primary)"
-            borderRadius="16px"
-            p={4}
-            minWidth="300px"
-            maxWidth="320px"
-            boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+            style={{
+              backgroundColor: "rgba(14, 20, 36, 0.95)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
+              borderRadius: "16px",
+              padding: "24px",
+              minWidth: "300px",
+              maxWidth: "340px",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+            }}
           >
             <Heading as="h3" style={{ fontSize: "20px", marginBottom: "8px" }}>
               Unblock @{profile.username}?
@@ -667,9 +676,10 @@ const ProfilePage: React.FC = () => {
                 borderRadius: "9999px",
                 padding: "10px",
                 fontWeight: "bold",
-                backgroundColor: "#0f1419",
+                background: "var(--gradient-cta)",
                 color: "white",
                 border: "none",
+                boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)",
               }}
               onClick={handleUnblock}
             >
@@ -682,7 +692,8 @@ const ProfilePage: React.FC = () => {
                 padding: "10px",
                 fontWeight: "bold",
                 border: "1px solid var(--color-border-default)",
-                background: "transparent",
+                background: "rgba(255, 255, 255, 0.04)",
+                color: "var(--color-fg-default)",
               }}
               onClick={() => setShowUnblockModal(false)}
             >

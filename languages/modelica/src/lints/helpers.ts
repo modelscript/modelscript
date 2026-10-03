@@ -274,7 +274,7 @@ function findTargetElementInClassRecursive(
   for (const el of db.ast.getDescendants(targetClass, $.element)) {
     if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
     let isExtends = false;
-    for (const ext of db.ast.getDescendants(el, $.extends_clause)) {
+    for (const _ext of db.ast.getDescendants(el, $.extends_clause)) {
       isExtends = true;
       break;
     }
@@ -856,6 +856,9 @@ export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Reco
 
 function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Record<string, u16>, depth: u32): u16 {
   if (typeNameId == 0 || depth > 10) return TYPE_UNKNOWN;
+  if (db.ast.startsWith(typeNameId, "Modelica.SIunits.") || db.ast.startsWith(typeNameId, "SIunits.")) {
+    return TYPE_REAL;
+  }
   let targetId: u32 = typeNameId;
   for (const id of db.ast.getDescendants(typeNameId, $.identifier)) {
     targetId = id;

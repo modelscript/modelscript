@@ -4,9 +4,9 @@
 // ts-check
 import { Connection, Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { DocumentManager } from "./DocumentManager.js";
-import { ParserService } from "./ParserService.js";
-import { WorkspaceManager } from "./WorkspaceManager.js";
+import { DocumentManager } from "./document-manager.js";
+import { ParserService } from "./parser-service.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 
 import { getModelicaErrorCodeDef } from "@modelscript/modelica";
 import { lowerCstToAxioms } from "@modelscript/owl2/cst-lowering";
@@ -17,7 +17,7 @@ import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { ThreadDiagnosticsProvider } from "../providers/threadDiagnosticsProvider.js";
 import { getArenaParameterInfo } from "../utils/arena-utils.js";
 import { computeTreeEdit } from "../utils/ast-utils.js";
-import { ReasonerService } from "./ReasonerService.js";
+import { ReasonerService } from "./reasoner-service.js";
 
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
 

@@ -50,6 +50,19 @@ export function planRenames(): RenamePlan[] {
       plans.push({ oldPath: relPath, newPath });
       continue;
     }
+
+    // Target 3: simulate package test suites
+    if (
+      relPath.startsWith("packages/simulate/tests/test-") &&
+      filename.endsWith(".ts") &&
+      !filename.endsWith(".test.ts") &&
+      filename !== "test-setup.ts"
+    ) {
+      const newFilename = filename.slice("test-".length).replace(/\.ts$/, ".test.ts");
+      const newPath = path.join(dir, newFilename);
+      plans.push({ oldPath: relPath, newPath });
+      continue;
+    }
   }
 
   return plans;

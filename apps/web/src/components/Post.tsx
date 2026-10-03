@@ -233,10 +233,11 @@ const ProfileNameLink = styled(Link)`
 const QuoteWrapper = styled.div`
   margin-top: 8px;
   padding: 12px;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
+  transition: background-color 0.2s;
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.03);
   }
 `;
 
@@ -252,7 +253,7 @@ const ActionButton = styled.button<{ $active?: boolean; $color?: string; $noHove
   align-items: center;
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? props.$color : "#536471 !important")};
+  color: ${(props) => (props.$active ? props.$color : "var(--color-text-muted) !important")};
   cursor: pointer;
   padding: 0;
   position: relative;
@@ -284,8 +285,8 @@ const ActionButton = styled.button<{ $active?: boolean; $color?: string; $noHove
   }
 
   .icon-wrapper svg {
-    fill: ${(props) => (props.$active ? props.$color : "#536471")} !important;
-    color: ${(props) => (props.$active ? props.$color : "#536471")} !important;
+    fill: ${(props) => (props.$active ? props.$color : "var(--color-text-muted)")} !important;
+    color: ${(props) => (props.$active ? props.$color : "var(--color-text-muted)")} !important;
     transition:
       fill 0.2s,
       color 0.2s;
@@ -306,16 +307,17 @@ const MenuButton = styled.button`
   text-align: left;
   cursor: pointer;
   font-size: 15px;
-  font-weight: bold;
+  font-weight: 600;
   color: var(--color-fg-default);
   border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 12px;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
 
   &:hover {
-    background-color: var(--color-action-list-item-default-hover-bg, rgba(128, 128, 128, 0.15));
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--color-accent-cyan);
   }
 `;
 
@@ -325,7 +327,8 @@ const AnalyticsModalOverlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -333,13 +336,15 @@ const AnalyticsModalOverlay = styled.div`
 `;
 
 const AnalyticsModalContainer = styled.div`
-  background: var(--color-bg-primary, #ffffff);
+  background: rgba(14, 20, 36, 0.95);
+  border: 1px solid var(--color-border-glass);
+  backdrop-filter: blur(16px);
   border-radius: 16px;
   width: 90%;
   max-width: 600px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
   padding-bottom: 32px;
@@ -352,13 +357,15 @@ const AnalyticsHeader = styled.div`
   padding: 12px 16px;
   position: sticky;
   top: 0;
-  background: var(--color-bg-primary, #ffffff);
+  background: rgba(14, 20, 36, 0.85);
+  backdrop-filter: blur(12px);
   z-index: 10;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border);
 `;
 
 const AnalyticsCard = styled.div`
   border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.02);
   border-radius: 16px;
   padding: 16px;
   margin: 16px;
@@ -428,18 +435,19 @@ const ProviderButton = styled.button`
   justify-content: center;
   gap: 8px;
   height: 40px;
-  background: var(--color-canvas-default);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--color-fg-default);
   border: 1px solid var(--color-border);
   border-radius: 9999px;
   font-size: 15px;
   font-weight: bold;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   width: 100%;
 
   &:hover {
-    background: var(--color-canvas-subtle);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
   }
 `;
 
@@ -453,7 +461,8 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        backdropFilter: "blur(6px)",
         zIndex: 10000,
         display: "flex",
         alignItems: "center",
@@ -467,14 +476,16 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
       <div
         style={{
           position: "relative",
-          backgroundColor: "var(--color-bg-primary)",
+          backgroundColor: "rgba(14, 20, 36, 0.95)",
+          border: "1px solid var(--color-border-glass)",
+          backdropFilter: "blur(16px)",
           borderRadius: "16px",
           padding: "32px",
           width: "90%",
           maxWidth: "400px",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -497,7 +508,7 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
             justifyContent: "center",
             borderRadius: "50%",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.08)")}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
         >
           <XIcon size={16} />
@@ -522,16 +533,16 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
             <TwitterXIcon />
             Sign up with X
           </ProviderButton>
-          <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "#536471" }}>
-            <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
-            <span style={{ margin: "0 8px", fontSize: "13px", color: "#536471" }}>or</span>
-            <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
+          <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "var(--color-text-muted)" }}>
+            <div style={{ flex: 1, borderBottom: "1px solid var(--color-border)" }}></div>
+            <span style={{ margin: "0 8px", fontSize: "13px", color: "var(--color-text-muted)" }}>or</span>
+            <div style={{ flex: 1, borderBottom: "1px solid var(--color-border)" }}></div>
           </div>
           <button
             onClick={() => navigate("/signup")}
             style={{
               height: 40,
-              backgroundColor: "#1f1f1f",
+              background: "var(--gradient-cta)",
               color: "#fff",
               border: "none",
               borderRadius: 9999,
@@ -539,6 +550,7 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
               fontWeight: "bold",
               cursor: "pointer",
               width: "100%",
+              boxShadow: "0 0 16px rgba(139, 92, 246, 0.35)",
             }}
           >
             Create account
@@ -546,15 +558,15 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
         </Box>
         <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "12px", marginTop: "24px", lineHeight: 1.4 }}>
           By signing up, you agree to the{" "}
-          <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+          <a href="#" style={{ color: "var(--color-accent-cyan)", textDecoration: "none" }}>
             Terms of Service
           </a>{" "}
           and{" "}
-          <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+          <a href="#" style={{ color: "var(--color-accent-cyan)", textDecoration: "none" }}>
             Privacy Policy
           </a>
           , including{" "}
-          <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+          <a href="#" style={{ color: "var(--color-accent-cyan)", textDecoration: "none" }}>
             Cookie Use
           </a>
           .
@@ -569,15 +581,15 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
             style={{
               height: 40,
               backgroundColor: "transparent",
-              color: "#1d9bf0",
-              border: "1px solid var(--color-border)",
+              color: "var(--color-accent-cyan)",
+              border: "1px solid rgba(6, 182, 212, 0.4)",
               borderRadius: 9999,
               fontSize: 15,
               fontWeight: "bold",
               cursor: "pointer",
               width: "100%",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(29, 155, 240, 0.1)")}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(6, 182, 212, 0.12)")}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
           >
             Sign in
@@ -618,7 +630,7 @@ const RenderContent = ({ text }: { text: string | null }) => {
             <ProfileHoverCard username={username}>
               <Link
                 to={`/${username}`}
-                style={{ color: "#1d9bf0", textDecoration: "none", fontWeight: "bold" }}
+                style={{ color: "var(--color-accent-cyan)", textDecoration: "none", fontWeight: "bold" }}
                 onMouseOver={(e) => ((e.target as any).style.textDecoration = "underline")}
                 onMouseOut={(e) => ((e.target as any).style.textDecoration = "none")}
               >
@@ -629,7 +641,7 @@ const RenderContent = ({ text }: { text: string | null }) => {
           ),
         );
       } else if (href && href.startsWith("/explore?q=")) {
-        link.style.color = "#1d9bf0";
+        link.style.color = "var(--color-accent-cyan)";
         link.style.textDecoration = "none";
         link.style.fontWeight = "bold";
         link.onmouseover = () => (link.style.textDecoration = "underline");
@@ -1028,9 +1040,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             <Box
               mt={2}
               p={2}
-              border="1px solid var(--color-border-subtle)"
+              border="1px solid var(--color-border)"
               borderRadius="8px"
-              backgroundColor="var(--color-canvas-subtle)"
+              backgroundColor="rgba(255, 255, 255, 0.03)"
               style={{ cursor: "pointer", display: "inline-block" }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1098,7 +1110,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               p={3}
               border="1px solid var(--color-border)"
               borderRadius="12px"
-              sx={{ cursor: "pointer", "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
+              sx={{ cursor: "pointer", "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.03)" } }}
             >
               <Box display="flex" alignItems="center" gap={2} mb={1}>
                 <Avatar
@@ -1261,10 +1273,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     position="absolute"
                     top="100%"
                     left="0"
-                    bg="var(--color-bg-primary)"
-                    border="1px solid var(--color-border-subtle)"
+                    bg="rgba(14, 20, 36, 0.95)"
+                    border="1px solid var(--color-border)"
                     borderRadius="12px"
-                    boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                    boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
+                    style={{ backdropFilter: "blur(12px)" }}
                     p={1}
                     zIndex={100}
                     minWidth="120px"
@@ -1287,7 +1300,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                         alignItems: "center",
                         gap: "8px",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     >
                       <SyncIcon size={14} />
@@ -1314,7 +1327,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                         alignItems: "center",
                         gap: "8px",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     >
                       <QuoteIcon size={14} /> Quote
@@ -1341,7 +1354,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               </Text>
             </ActionButton>
 
-            <ActionButton $active={bookmarked} $color="#1d9bf0" onClick={handleBookmark}>
+            <ActionButton $active={bookmarked} $color="var(--color-accent-cyan)" onClick={handleBookmark}>
               <div className="icon-wrapper">
                 {bookmarked ? <BookmarkFillIcon size={18} /> : <BookmarkIcon size={18} />}
               </div>
@@ -1349,7 +1362,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
             <Box position="relative">
               <ActionButton
-                $color="#1d9bf0"
+                $color="var(--color-accent-cyan)"
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
@@ -1637,9 +1650,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   <Box
                     mt={2}
                     p={2}
-                    border="1px solid var(--color-border-subtle)"
+                    border="1px solid var(--color-border)"
                     borderRadius="8px"
-                    backgroundColor="var(--color-canvas-subtle)"
+                    backgroundColor="rgba(255, 255, 255, 0.03)"
                     style={{ cursor: "pointer", display: "inline-block" }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1707,7 +1720,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   onClick={(e) => e.preventDefault()}
                 >
                   <ActionButton
-                    $color="#1d9bf0"
+                    $color="var(--color-accent-cyan)"
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
@@ -1780,10 +1793,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           position="absolute"
                           top="100%"
                           left="0"
-                          bg="var(--color-bg-primary)"
-                          border="1px solid var(--color-border-subtle)"
+                          bg="rgba(14, 20, 36, 0.95)"
+                          border="1px solid var(--color-border)"
                           borderRadius="12px"
-                          boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                          boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
+                          style={{ backdropFilter: "blur(12px)" }}
                           p={1}
                           zIndex={100}
                           minWidth="120px"
@@ -1806,7 +1820,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                               alignItems: "center",
                               gap: "8px",
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
                             <SyncIcon size={14} />
@@ -1833,7 +1847,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                               alignItems: "center",
                               gap: "8px",
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
                             <QuoteIcon size={14} />
@@ -1861,7 +1875,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   </ActionButton>
 
                   <ActionButton
-                    $color="#1d9bf0"
+                    $color="var(--color-accent-cyan)"
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
@@ -1886,7 +1900,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   </ActionButton>
 
                   <Box display="flex" gap={0}>
-                    <ActionButton $active={bookmarked} $color="#1d9bf0" onClick={handleBookmark}>
+                    <ActionButton $active={bookmarked} $color="var(--color-accent-cyan)" onClick={handleBookmark}>
                       <div className="icon-wrapper">
                         {bookmarked ? <BookmarkFillIcon size={18} /> : <BookmarkIcon size={18} />}
                       </div>
@@ -1894,7 +1908,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
                     <Box position="relative">
                       <ActionButton
-                        $color="#1d9bf0"
+                        $color="var(--color-accent-cyan)"
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
@@ -1920,10 +1934,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                             position="absolute"
                             top="100%"
                             right="0"
-                            bg="var(--color-bg-primary)"
-                            border="1px solid var(--color-border-subtle)"
+                            bg="rgba(14, 20, 36, 0.95)"
+                            border="1px solid var(--color-border)"
                             borderRadius="12px"
-                            boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                            boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
+                            style={{ backdropFilter: "blur(12px)" }}
                             p={1}
                             zIndex={100}
                             minWidth="200px"

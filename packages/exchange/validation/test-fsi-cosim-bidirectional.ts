@@ -9,8 +9,8 @@ import {
   type CosimValue,
   type ParticipantMetadata,
 } from "@modelscript/exchange/cosim";
+import { Tet4Mesher, type LbmGridConfig, type MaterialProperties } from "@modelscript/simulate";
 import assert from "node:assert";
-import { Tet4Mesher, type LbmGridConfig, type MaterialProperties } from "../src/index.js";
 
 /**
  * Mock 1D Modelica Vehicle Dynamics Participant with Bidirectional Feedback.

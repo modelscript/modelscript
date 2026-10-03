@@ -86,6 +86,21 @@
   --color-toggle-icon: #94a3b8;
 
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Primer overrides to guarantee seamless AI dark theme */
+  --color-canvas-default: #06080f;
+  --color-canvas-subtle: rgba(255, 255, 255, 0.04);
+  --color-canvas-inset: #030712;
+  --color-canvas-overlay: #0e1424;
+  --color-fg-default: #f1f5f9;
+  --color-fg-muted: #94a3b8;
+  --color-fg-subtle: #64748b;
+  --color-border-subtle: rgba(255, 255, 255, 0.07);
+  --color-border-muted: rgba(255, 255, 255, 0.06);
+  --color-accent-fg: #06b6d4;
+  --color-accent-emphasis: #8b5cf6;
+  --color-accent-subtle: rgba(139, 92, 246, 0.12);
+  --color-accent-muted: rgba(6, 182, 212, 0.2);
 }
 
 /* ─── Light theme ─── */
@@ -175,6 +190,21 @@
   --color-toggle-icon: #64748b;
 
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Primer overrides to guarantee seamless light theme */
+  --color-canvas-default: #f8fafc;
+  --color-canvas-subtle: #f1f5f9;
+  --color-canvas-inset: #ffffff;
+  --color-canvas-overlay: #ffffff;
+  --color-fg-default: #0f172a;
+  --color-fg-muted: #64748b;
+  --color-fg-subtle: #94a3b8;
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+  --color-border-muted: rgba(0, 0, 0, 0.04);
+  --color-accent-fg: #0891b2;
+  --color-accent-emphasis: #7c3aed;
+  --color-accent-subtle: rgba(124, 58, 237, 0.08);
+  --color-accent-muted: rgba(8, 145, 178, 0.16);
 }
 
 html,

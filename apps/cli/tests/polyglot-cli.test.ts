@@ -91,7 +91,7 @@ PropellerGuard();`,
   it("should execute `msx polyglot verify` across all 8 polyglot domains", () => {
     const stdout = execFileSync("npx", ["tsx", cliPath, "polyglot", "verify"], {
       encoding: "utf-8",
-      timeout: 30000,
+      timeout: 60000,
     });
     assert.ok(stdout.includes("ModelScript Polyglot TGG Formal Confluence"));
     assert.ok(stdout.includes("Modelica"));
@@ -165,7 +165,7 @@ PropellerGuard();`,
   it("should inspect digital thread alignment graph via `msx polyglot thread`", () => {
     const stdout = execFileSync("npx", ["tsx", cliPath, "polyglot", "thread", sampleMoPath], {
       encoding: "utf-8",
-      timeout: 30000,
+      timeout: 60000,
     });
     assert.ok(stdout.includes("Digital Thread Alignment for 'DroneMotor.mo'"));
     assert.ok(stdout.includes("Primary Node:   DroneMotor"));

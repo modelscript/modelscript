@@ -160,12 +160,16 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
     if (lang.id === "sysml2") {
       activationEvents.push("onLanguage:sysml");
-      contributesLanguages.push({
+      const sysmlEntry: any = {
         id: "sysml",
         aliases: ["SysML", "sysml"],
         extensions: [".sysml"],
         configuration: `./language-configuration-sysml.json`,
-      });
+      };
+      if (lang.icon) {
+        sysmlEntry.icon = lang.icon;
+      }
+      contributesLanguages.push(sysmlEntry);
       contributesGrammars.push({
         language: "sysml",
         scopeName: `source.sysml`,
@@ -801,7 +805,7 @@ export function generateLanguageConfiguration(lang: NormalizedLanguage): string 
 /**
  * Generates the unified client extension.ts TypeScript bootstrap source.
  */
-export function generateExtensionBootstrap(languages: NormalizedLanguage[], options?: ExtensionOptions): string {
+export function generateExtensionBootstrap(languages: NormalizedLanguage[], _options?: ExtensionOptions): string {
   const langArrayJson = JSON.stringify(
     languages.map((l) => ({
       id: l.id,
@@ -1758,6 +1762,20 @@ module.exports.default = module.exports;
     if (fs.existsSync(src)) {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.cpSync(src, destPath, { recursive: true });
+    }
+  }
+
+  // Copy discovered language assets (languages/<lang>/assets -> assets/<lang>/)
+  if (fs.existsSync(languagesDir)) {
+    const langDirs = fs.readdirSync(languagesDir, { withFileTypes: true });
+    for (const d of langDirs) {
+      if (!d.isDirectory()) continue;
+      const langAssetDir = path.join(languagesDir, d.name, "assets");
+      if (fs.existsSync(langAssetDir)) {
+        const destLangAssets = path.join(outDir, "assets", d.name);
+        fs.mkdirSync(destLangAssets, { recursive: true });
+        fs.cpSync(langAssetDir, destLangAssets, { recursive: true });
+      }
     }
   }
 

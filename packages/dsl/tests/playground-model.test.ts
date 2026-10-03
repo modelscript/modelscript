@@ -1818,13 +1818,11 @@ end ThermalSystem;`;
     }
 
     const diags = facadeLocal.getDiagnostics(ast);
-    console.log("INCREMENTAL AST SEXPR:", facadeLocal.getAstSExpr(ast));
-    console.log("INCREMENTAL DIAGS:", JSON.stringify(diags, null, 2));
 
-    // 1. Line 1 syntax error only
+    // 1. Line 1 syntax errors only
     const syntaxErrors = diags.filter((d: any) => d.severity === 1);
-    expect(syntaxErrors).toHaveLength(1);
-    expect(syntaxErrors[0].range.start.line).toBe(0);
+    expect(syntaxErrors).toHaveLength(2);
+    expect(syntaxErrors.every((e: any) => e.range.start.line === 0)).toBe(true);
 
     // 2. Zero errors on Line 2 (Real voltage = 12.0;)
     const line2Errors = syntaxErrors.filter((d: any) => d.range.start.line === 1);

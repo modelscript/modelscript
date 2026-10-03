@@ -364,6 +364,35 @@ end X;`;
     );
   });
 
+  test("catches type mismatch in qualified SIunits binding Modelica.SIunits.Voltage v = 'ERROR'", () => {
+    const code = `model X
+  Modelica.SIunits.Voltage v = "ERROR";
+end X;`;
+
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    const mismatchDiag = diags.find((d: any) => d.code === 3001);
+    expect(mismatchDiag).toBeDefined();
+    expect(mismatchDiag.message).toBe(
+      'Type mismatch in binding v = "ERROR", expected subtype of Real, got type String.',
+    );
+  });
+
+  test("accepts valid qualified SIunits binding Modelica.SIunits.Voltage v = 12.0 without error", () => {
+    const code = `model X
+  Modelica.SIunits.Voltage v = 12.0;
+end X;`;
+
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    const mismatchDiag = diags.find((d: any) => d.code === 3001);
+    expect(mismatchDiag).toBeUndefined();
+  });
+
   test("catches type mismatch in extends modification extends A(x = 'ERROR')", () => {
     const code = `model A
   Real x = 0;

@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 
 import { McapReader, McapWriter, Mdf4Reader, Mdf4Writer, TelemetryStreamer } from "@modelscript/exchange";
 
-import { BayesianParameterCalibrator, VirtualSensorFusion } from "../src/calibration/index.js";
+import { BayesianParameterCalibrator, VirtualSensorFusion } from "@modelscript/simulate";
 
 import { DigitalThreadHypergraph, ThreadDomain, ThreadRelation } from "@modelscript/runtime";
 

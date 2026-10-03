@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, expect, test } from "@jest/globals";
 import { generateSparseMatrix } from "@modelscript/dsl/codegen/sparse_matrix.js";
 
 describe("Sparse Matrix Generator", () => {

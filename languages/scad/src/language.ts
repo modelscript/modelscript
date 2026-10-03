@@ -35,6 +35,10 @@ export const scadLanguage = language({
   fileExtensions: [".scad"],
   lsp: {
     fileExtensions: [".scad"],
+    icons: {
+      light: "./assets/scad/icon-light.png",
+      dark: "./assets/scad/icon-dark.png",
+    },
   },
 
   writeback: scadWriteback,
@@ -312,7 +316,7 @@ export const scadLanguage = language({
 
     LinearExtrudeOp: ($) => seq("linear_extrude", "(", optional(field("args", $.ArgumentList)), ")"),
 
-    BooleanOp: ($) => choice(seq("union", "(", ")"), seq("difference", "(", ")"), seq("intersection", "(", ")")),
+    BooleanOp: () => choice(seq("union", "(", ")"), seq("difference", "(", ")"), seq("intersection", "(", ")")),
 
     TagPortOp: ($) =>
       def({

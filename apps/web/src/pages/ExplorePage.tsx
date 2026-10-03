@@ -100,21 +100,10 @@ const SearchHeader = styled.div`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: transparent;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--color-bg-primary);
-    opacity: 0.85;
-    z-index: -1;
-  }
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(6, 8, 15, 0.85);
+  border-bottom: 1px solid var(--color-border);
 `;
 
 const SearchInputWrapper = styled.div`
@@ -126,24 +115,30 @@ const SearchInputWrapper = styled.div`
   svg {
     position: absolute;
     left: 14px;
-    color: var(--color-fg-muted);
+    color: var(--color-text-muted);
   }
 
   input {
     width: 100%;
     padding: 10px 16px 10px 40px;
-    border-radius: 10px;
-    background-color: var(--color-bg-primary);
-    border: 1px solid var(--color-border-default, var(--color-border, #cfd9de));
+    border-radius: 9999px;
+    background-color: var(--color-search-bg);
+    border: 1px solid var(--color-search-border);
     font-size: 14px;
     outline: none;
     box-sizing: border-box;
     color: var(--color-text-primary);
+    transition: all 0.2s ease;
 
     &:focus {
-      background-color: var(--color-bg-primary);
+      background-color: var(--color-search-bg);
       border-color: var(--color-accent-cyan);
-      box-shadow: 0 0 0 1px var(--color-accent-cyan);
+      box-shadow: 0 0 12px var(--color-search-focus);
+    }
+
+    &::placeholder {
+      color: var(--color-text-muted);
+      opacity: 0.7;
     }
   }
 `;
@@ -153,8 +148,8 @@ import { CircleIconButton as HeaderIconButton } from "../components/SharedStyles
 const TabContainer = styled.div`
   display: flex;
   overflow-x: auto;
-  border-bottom: 1px solid var(--color-border-subtle);
-  background-color: var(--color-canvas-default);
+  border-bottom: 1px solid var(--color-border);
+  background-color: transparent;
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
@@ -169,14 +164,17 @@ const TabButton = styled.button<{ $active?: boolean }>`
   padding: 14px 16px;
   font-size: 15px;
   font-weight: ${(props) => (props.$active ? "700" : "500")};
-  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
   cursor: pointer;
   position: relative;
   text-align: center;
   white-space: nowrap;
+  transition:
+    color 0.2s,
+    background-color 0.2s;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 
   ${(props) =>
@@ -490,7 +488,7 @@ const ExplorePage: React.FC = () => {
               <Post key={post.id} post={post} />
             ))}
             {topicPosts.length === 0 && (
-              <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+              <Box p={6} textAlign="center" color="var(--color-text-muted)">
                 No posts found for this topic.
               </Box>
             )}
@@ -524,7 +522,7 @@ const ExplorePage: React.FC = () => {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: "var(--color-fg-muted)",
+                  color: "var(--color-text-muted)",
                   padding: "4px",
                   display: "flex",
                   alignItems: "center",
@@ -557,7 +555,7 @@ const ExplorePage: React.FC = () => {
                   <Post key={post.id} post={post} />
                 ))}
                 {topPosts.length === 0 && (
-                  <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                  <Box p={6} textAlign="center" color="var(--color-text-muted)">
                     No posts matching "{query}" found.
                   </Box>
                 )}
@@ -570,7 +568,7 @@ const ExplorePage: React.FC = () => {
                   <Post key={post.id} post={post} />
                 ))}
                 {latestPosts.length === 0 && (
-                  <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                  <Box p={6} textAlign="center" color="var(--color-text-muted)">
                     No posts matching "{query}" found.
                   </Box>
                 )}
@@ -591,16 +589,16 @@ const ExplorePage: React.FC = () => {
                       key={template.id}
                       p={3}
                       borderRadius="12px"
-                      border="1px solid var(--color-border-default)"
-                      bg="var(--color-canvas-default)"
+                      border="1px solid var(--color-border-glass)"
+                      bg="var(--color-bg-card)"
                       display="flex"
                       flexDirection="column"
                       justifyContent="space-between"
                       sx={{
                         transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                         "&:hover": {
-                          borderColor: "var(--color-accent-emphasis)",
-                          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+                          borderColor: "var(--color-accent-purple)",
+                          boxShadow: "var(--glow-card)",
                         },
                       }}
                     >
@@ -613,27 +611,35 @@ const ExplorePage: React.FC = () => {
                               fontFamily: "var(--font-mono)",
                               padding: "2px 8px",
                               borderRadius: "9999px",
-                              backgroundColor: "rgba(56, 139, 253, 0.12)",
-                              color: "var(--color-accent-fg)",
-                              border: "1px solid rgba(56, 139, 253, 0.3)",
+                              backgroundColor: "var(--color-accent-blue-bg)",
+                              color: "var(--color-accent-cyan)",
+                              border: "1px solid var(--color-accent-blue-border)",
                               fontWeight: 600,
                             }}
                           >
                             {template.badge}
                           </span>
                         </Box>
-                        <Heading as="h4" style={{ fontSize: "15px", fontWeight: "bold", marginBottom: "6px" }}>
+                        <Heading
+                          as="h4"
+                          style={{
+                            fontSize: "15px",
+                            fontWeight: "bold",
+                            marginBottom: "6px",
+                            color: "var(--color-text-heading)",
+                          }}
+                        >
                           {template.title}
                         </Heading>
                         <Text
                           as="p"
-                          color="var(--color-fg-muted)"
+                          color="var(--color-text-muted)"
                           style={{ fontSize: "13px", lineHeight: 1.4, margin: 0 }}
                         >
                           {template.description}
                         </Text>
                       </Box>
-                      <Box mt={3} pt={2} borderTop="1px solid var(--color-border-subtle)">
+                      <Box mt={3} pt={2} borderTop="1px solid var(--color-border)">
                         <Link
                           to={`/ide/${template.id}`}
                           style={{
@@ -675,7 +681,7 @@ const ExplorePage: React.FC = () => {
                         alignItems="center"
                         justifyContent="space-between"
                         p={3}
-                        borderBottom="1px solid var(--color-border-subtle)"
+                        borderBottom="1px solid var(--color-border)"
                       >
                         <Link
                           to={`/${u.username}`}
@@ -693,7 +699,8 @@ const ExplorePage: React.FC = () => {
                               width: 44,
                               height: 44,
                               borderRadius: "50%",
-                              backgroundColor: "var(--color-accent-emphasis)",
+                              background: "var(--gradient-ai)",
+                              boxShadow: "var(--glow-ai-sm)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -713,12 +720,12 @@ const ExplorePage: React.FC = () => {
                                 fontSize: "15px",
                                 fontWeight: "bold",
                                 margin: 0,
-                                color: "var(--color-fg-default)",
+                                color: "var(--color-text-heading)",
                               }}
                             >
                               {u.display_name || u.username}
                             </Heading>
-                            <Text color="var(--color-fg-muted)" style={{ fontSize: "14px" }}>
+                            <Text color="var(--color-text-muted)" style={{ fontSize: "14px" }}>
                               @{u.username}
                             </Text>
                             {u.bio && (
@@ -726,7 +733,7 @@ const ExplorePage: React.FC = () => {
                                 as="p"
                                 style={{
                                   fontSize: "13px",
-                                  color: "var(--color-fg-default)",
+                                  color: "var(--color-text-primary)",
                                   margin: "4px 0 0 0",
                                   lineHeight: 1.3,
                                 }}
@@ -740,7 +747,7 @@ const ExplorePage: React.FC = () => {
                       </Box>
                     ))}
                     {matchedPeople.length === 0 && (
-                      <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                      <Box p={6} textAlign="center" color="var(--color-text-muted)">
                         No users matching "{query}" found.
                       </Box>
                     )}
@@ -755,7 +762,7 @@ const ExplorePage: React.FC = () => {
                   <Post key={post.id} post={post} />
                 ))}
                 {artifactPosts.length === 0 && (
-                  <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                  <Box p={6} textAlign="center" color="var(--color-text-muted)">
                     No posts with media matching "{query}" found.
                   </Box>
                 )}
@@ -777,7 +784,7 @@ const ExplorePage: React.FC = () => {
                         alignItems="flex-start"
                         justifyContent="space-between"
                         p={3}
-                        borderBottom="1px solid var(--color-border-subtle)"
+                        borderBottom="1px solid var(--color-border)"
                       >
                         <Link
                           to={`/packages/${pkg.name}`}
@@ -788,7 +795,8 @@ const ExplorePage: React.FC = () => {
                               width: 32,
                               height: 32,
                               borderRadius: "8px",
-                              backgroundColor: "var(--color-done-emphasis)",
+                              background: "var(--gradient-ai)",
+                              boxShadow: "var(--glow-ai-sm)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -807,12 +815,12 @@ const ExplorePage: React.FC = () => {
                                 fontSize: "15px",
                                 fontWeight: "bold",
                                 margin: 0,
-                                color: "var(--color-fg-default)",
+                                color: "var(--color-text-heading)",
                               }}
                             >
                               {pkg.name}
                             </Heading>
-                            <Text color="var(--color-fg-muted)" style={{ fontSize: "14px", display: "block" }}>
+                            <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
                               @npm/{pkg.name} · v{pkg.latestVersion || "1.0.0"}
                             </Text>
                             <Text
@@ -820,7 +828,7 @@ const ExplorePage: React.FC = () => {
                               style={{
                                 fontSize: "14px",
                                 margin: "4px 0 0 0",
-                                color: "var(--color-fg-default)",
+                                color: "var(--color-text-primary)",
                                 lineHeight: 1.4,
                               }}
                             >
@@ -831,17 +839,18 @@ const ExplorePage: React.FC = () => {
                         <Link
                           to={`/packages/${pkg.name}`}
                           style={{
-                            backgroundColor: "var(--color-canvas-subtle)",
-                            color: "var(--color-fg-default)",
-                            border: "1px solid var(--color-border-default)",
+                            backgroundColor: "rgba(255, 255, 255, 0.06)",
+                            color: "var(--color-text-primary)",
+                            border: "1px solid var(--color-border)",
                             borderRadius: "9999px",
                             padding: "6px 16px",
-                            fontWeight: "bold",
+                            fontWeight: 700,
                             fontSize: "14px",
                             textDecoration: "none",
                             marginLeft: "12px",
                             display: "inline-flex",
                             alignItems: "center",
+                            transition: "all 0.2s ease",
                           }}
                         >
                           View
@@ -849,7 +858,7 @@ const ExplorePage: React.FC = () => {
                       </Box>
                     ))}
                     {packages.length === 0 && (
-                      <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                      <Box p={6} textAlign="center" color="var(--color-text-muted)">
                         No packages matching "{query}" found.
                       </Box>
                     )}
@@ -873,7 +882,7 @@ const ExplorePage: React.FC = () => {
                         alignItems="flex-start"
                         justifyContent="space-between"
                         p={3}
-                        borderBottom="1px solid var(--color-border-subtle)"
+                        borderBottom="1px solid var(--color-border)"
                       >
                         <Link
                           to={`/repos/${r.provider}/${r.namespace}/${r.project}`}
@@ -884,7 +893,8 @@ const ExplorePage: React.FC = () => {
                               width: 44,
                               height: 44,
                               borderRadius: "50%",
-                              backgroundColor: "var(--color-accent-emphasis)",
+                              background: "var(--gradient-ai)",
+                              boxShadow: "var(--glow-ai-sm)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -904,12 +914,12 @@ const ExplorePage: React.FC = () => {
                                 fontSize: "15px",
                                 fontWeight: "bold",
                                 margin: 0,
-                                color: "var(--color-fg-default)",
+                                color: "var(--color-text-heading)",
                               }}
                             >
                               {r.project}
                             </Heading>
-                            <Text color="var(--color-fg-muted)" style={{ fontSize: "14px", display: "block" }}>
+                            <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
                               @{r.provider}.com/{r.namespace}/{r.project}
                             </Text>
                             <Text
@@ -917,7 +927,7 @@ const ExplorePage: React.FC = () => {
                               style={{
                                 fontSize: "14px",
                                 margin: "4px 0 0 0",
-                                color: "var(--color-fg-default)",
+                                color: "var(--color-text-primary)",
                                 lineHeight: 1.4,
                               }}
                             >
@@ -928,17 +938,18 @@ const ExplorePage: React.FC = () => {
                         <Link
                           to={`/repos/${r.provider}/${r.namespace}/${r.project}`}
                           style={{
-                            backgroundColor: "var(--color-canvas-subtle)",
-                            color: "var(--color-fg-default)",
-                            border: "1px solid var(--color-border-default)",
+                            backgroundColor: "rgba(255, 255, 255, 0.06)",
+                            color: "var(--color-text-primary)",
+                            border: "1px solid var(--color-border)",
                             borderRadius: "9999px",
                             padding: "6px 16px",
-                            fontWeight: "bold",
+                            fontWeight: 700,
                             fontSize: "14px",
                             textDecoration: "none",
                             marginLeft: "12px",
                             display: "inline-flex",
                             alignItems: "center",
+                            transition: "all 0.2s ease",
                           }}
                         >
                           Open
@@ -946,7 +957,7 @@ const ExplorePage: React.FC = () => {
                       </Box>
                     ))}
                     {repos.length === 0 && (
-                      <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+                      <Box p={6} textAlign="center" color="var(--color-text-muted)">
                         No repositories matching "{query}" found.
                       </Box>
                     )}
@@ -983,7 +994,7 @@ const ExplorePage: React.FC = () => {
       ) : (
         <Box>
           {/* Starter Engineering Workspaces */}
-          <Box p={3} borderBottom="1px solid var(--color-border-subtle)" bg="var(--color-canvas-subtle)">
+          <Box p={3} borderBottom="1px solid var(--color-border)" style={{ background: "rgba(14, 20, 36, 0.4)" }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Box>
                 <Heading
@@ -991,7 +1002,7 @@ const ExplorePage: React.FC = () => {
                   style={{
                     fontSize: "16px",
                     fontWeight: 800,
-                    color: "var(--color-fg-default)",
+                    color: "var(--color-text-heading)",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
@@ -999,7 +1010,7 @@ const ExplorePage: React.FC = () => {
                 >
                   <RocketIcon size={18} /> Starter Engineering Workspaces
                 </Heading>
-                <Text style={{ fontSize: "13px", color: "var(--color-fg-muted)" }}>
+                <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
                   Launch ready-to-run polyglot models, 3D CAD assemblies, and WASM solvers with zero setup.
                 </Text>
               </Box>
@@ -1007,7 +1018,7 @@ const ExplorePage: React.FC = () => {
                 to="/ide"
                 style={{
                   fontSize: "13px",
-                  color: "var(--color-accent-fg)",
+                  color: "var(--color-accent-cyan)",
                   fontWeight: 600,
                   textDecoration: "none",
                   display: "flex",
@@ -1032,8 +1043,8 @@ const ExplorePage: React.FC = () => {
               {STARTER_TEMPLATES.map((tmpl) => (
                 <Box
                   key={tmpl.id}
-                  bg="var(--color-canvas-default)"
-                  border="1px solid var(--color-border-default)"
+                  bg="var(--color-bg-card)"
+                  border="1px solid var(--color-border-glass)"
                   borderRadius="10px"
                   p="14px"
                   minWidth="240px"
@@ -1045,9 +1056,9 @@ const ExplorePage: React.FC = () => {
                     flexShrink: 0,
                     transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                     "&:hover": {
-                      borderColor: "var(--color-accent-emphasis)",
+                      borderColor: "var(--color-accent-purple)",
                       transform: "translateY(-2px)",
-                      boxShadow: "0 6px 18px rgba(0, 0, 0, 0.25)",
+                      boxShadow: "var(--glow-card)",
                     },
                   }}
                 >
@@ -1060,9 +1071,9 @@ const ExplorePage: React.FC = () => {
                           fontFamily: "var(--font-mono)",
                           padding: "2px 6px",
                           borderRadius: "4px",
-                          backgroundColor: "rgba(56, 139, 253, 0.12)",
-                          color: "var(--color-accent-fg)",
-                          border: "1px solid rgba(56, 139, 253, 0.3)",
+                          backgroundColor: "var(--color-accent-blue-bg)",
+                          color: "var(--color-accent-cyan)",
+                          border: "1px solid var(--color-accent-blue-border)",
                           fontWeight: 600,
                         }}
                       >
@@ -1073,7 +1084,7 @@ const ExplorePage: React.FC = () => {
                       style={{
                         fontWeight: "bold",
                         fontSize: "14px",
-                        color: "var(--color-fg-default)",
+                        color: "var(--color-text-heading)",
                         marginBottom: "4px",
                       }}
                     >
@@ -1082,7 +1093,7 @@ const ExplorePage: React.FC = () => {
                     <div
                       style={{
                         fontSize: "12px",
-                        color: "var(--color-fg-muted)",
+                        color: "var(--color-text-muted)",
                         lineHeight: 1.4,
                         marginBottom: "12px",
                       }}
@@ -1115,10 +1126,10 @@ const ExplorePage: React.FC = () => {
           </Box>
 
           {trending.length > 0 && (
-            <Box p={3} borderBottom="1px solid var(--color-border-subtle)" bg="var(--color-canvas-subtle)">
+            <Box p={3} borderBottom="1px solid var(--color-border)" style={{ background: "rgba(14, 20, 36, 0.2)" }}>
               <Heading
                 as="h3"
-                style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px", color: "var(--color-fg-default)" }}
+                style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px", color: "var(--color-text-heading)" }}
               >
                 Trending Topics
               </Heading>
@@ -1139,14 +1150,17 @@ const ExplorePage: React.FC = () => {
                     style={{ textDecoration: "none" }}
                   >
                     <Box
-                      bg="var(--color-canvas-default)"
-                      border="1px solid var(--color-border-default)"
+                      bg="var(--color-bg-card)"
+                      border="1px solid var(--color-border-glass)"
                       borderRadius="8px"
                       p="12px 16px"
                       minWidth="140px"
                       sx={{
-                        transition: "background-color 0.2s",
-                        "&:hover": { backgroundColor: "var(--color-canvas-subtle)" },
+                        transition: "all 0.2s ease",
+                        "&:hover": {
+                          backgroundColor: "rgba(255, 255, 255, 0.05)",
+                          borderColor: "var(--color-accent-purple)",
+                        },
                       }}
                     >
                       <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "4px" }}>
@@ -1162,8 +1176,8 @@ const ExplorePage: React.FC = () => {
             </Box>
           )}
 
-          <Box p={3} borderBottom="1px solid var(--color-border-subtle)">
-            <Heading as="h3" style={{ fontSize: "16px", fontWeight: 800, color: "var(--color-fg-default)" }}>
+          <Box p={3} borderBottom="1px solid var(--color-border)">
+            <Heading as="h3" style={{ fontSize: "16px", fontWeight: 800, color: "var(--color-text-heading)" }}>
               Suggested Posts
             </Heading>
           </Box>
@@ -1172,7 +1186,7 @@ const ExplorePage: React.FC = () => {
             <Post key={post.id} post={post} />
           ))}
           {posts.length === 0 && (
-            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+            <Box p={6} textAlign="center" color="var(--color-text-muted)">
               No trending posts right now.
             </Box>
           )}

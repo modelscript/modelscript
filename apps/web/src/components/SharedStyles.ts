@@ -6,32 +6,20 @@ export const StickyHeader = styled.div`
   display: flex;
   flex-direction: row;
   padding: 16px;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   align-items: center;
-  background: transparent;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--color-canvas-default);
-    opacity: 0.85;
-    z-index: -1;
-  }
+  background: rgba(6, 8, 15, 0.85);
 `;
 
 export const CircleIconButton = styled.button<{ $color?: string; $hoverColor?: string; $hoverBg?: string }>`
   background: none;
   border: none;
-  color: ${(props) => props.$color || "var(--color-fg-default)"};
+  color: ${(props) => props.$color || "var(--color-text-primary)"};
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -45,8 +33,8 @@ export const CircleIconButton = styled.button<{ $color?: string; $hoverColor?: s
   flex-shrink: 0;
 
   &:hover:not(:disabled) {
-    color: ${(props) => props.$hoverColor || "var(--color-fg-default)"};
-    background-color: ${(props) => props.$hoverBg || "rgba(128, 128, 128, 0.15)"};
+    color: ${(props) => props.$hoverColor || "var(--color-text-heading)"};
+    background-color: ${(props) => props.$hoverBg || "rgba(255, 255, 255, 0.08)"};
   }
 
   &:disabled {

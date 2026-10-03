@@ -32,6 +32,10 @@ export const cfdLanguage = language({
   fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2"],
   lsp: {
     fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2"],
+    icons: {
+      light: "./assets/cfd/icon-light.png",
+      dark: "./assets/cfd/icon-dark.png",
+    },
   },
 
   actions: [
@@ -90,8 +94,8 @@ export const cfdLanguage = language({
         targetLang: "modelica",
         priority: 10,
         source: ($, v) => $.Directive({ key: "MARKER_INLET", value: v("markerVal") }),
-        target: ($, v) => $.ComponentClause({ name: "inlet", typeSpecifier: "Modelica.Fluid.Interfaces.FluidPort_a" }),
-        where: (v) => [tggComplement(["dialect", "meshFilename", "options"])],
+        target: ($, _v) => $.ComponentClause({ name: "inlet", typeSpecifier: "Modelica.Fluid.Interfaces.FluidPort_a" }),
+        where: (_v) => [tggComplement(["dialect", "meshFilename", "options"])],
       }),
       tggRule({
         name: "CfdHeatFluxToModelicaHeatPort",
@@ -99,12 +103,12 @@ export const cfdLanguage = language({
         targetLang: "modelica",
         priority: 10,
         source: ($, v) => $.Directive({ key: "MARKER_HEATFLUX", value: v("markerVal") }),
-        target: ($, v) =>
+        target: ($, _v) =>
           $.ComponentClause({
             name: "heatPort",
             typeSpecifier: "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
           }),
-        where: (v) => [tggComplement(["dialect", "meshFilename", "options"])],
+        where: (_v) => [tggComplement(["dialect", "meshFilename", "options"])],
       }),
       tggRule({
         name: "CfdMarkerToSysmlPort",

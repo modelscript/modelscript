@@ -21,15 +21,6 @@ export * from "./requirements.js";
 export * from "./rtm/index.js";
 export * from "./services/index.js";
 export * from "./utils/hook-extractor.js";
-export {
-  LineIndex,
-  type Edit,
-  type Parser,
-  type Range,
-  type SyntaxNode,
-  type TokenData,
-  type Tree,
-  type Point as TreePoint,
-} from "./utils/index.js";
+export { LineIndex, type TokenData } from "./utils/index.js";
 export * from "./vfs/index.js";
 export * from "./workers/worker-pool.js";

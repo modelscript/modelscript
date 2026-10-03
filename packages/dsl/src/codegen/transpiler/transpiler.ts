@@ -74,7 +74,7 @@ export function transpileQuery(
   let hasDbParam = false;
   if (originalParams.length > 0) {
     const firstP = originalParams[0];
-    if (firstP === "db" || firstP === "graph" || firstP === "cg") {
+    if (firstP === "db" || firstP === "_db" || firstP === "graph" || firstP === "_graph" || firstP === "cg") {
       dbName = firstP;
       hasDbParam = true;
     }
@@ -84,7 +84,7 @@ export function transpileQuery(
   let validName = "valid";
   if (context === "scanner") {
     if (originalParams.length > 0) {
-      if (originalParams[0] === "$") {
+      if (originalParams[0] === "$" || originalParams[0] === "_$") {
         lexerName = originalParams[1] || "lexer";
         validName = originalParams[2] || "valid";
       } else {
@@ -384,7 +384,10 @@ export function transpileQuery(
       }
 
       // 1. $.RuleName -> <u16>SyntaxType.RULENAME or getDJB2Hash(RuleName)
-      if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "$") {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        (node.expression.getText() === "$" || node.expression.getText() === "_$")
+      ) {
         const rawName = node.name.getText();
         const upper = rawName.toUpperCase();
         const rules = opts.rules;
@@ -828,7 +831,10 @@ export function transpileQuery(
       }
 
       // 6. Identifier db / dbName -> graph (only when dbName was a valid db parameter)
-      if (ts.isIdentifier(node) && (node.text === "db" || (hasDbParam && node.text === dbName))) {
+      if (
+        ts.isIdentifier(node) &&
+        (node.text === "db" || node.text === "_db" || (hasDbParam && node.text === dbName))
+      ) {
         return ts.factory.createIdentifier("graph");
       }
 
@@ -837,8 +843,15 @@ export function transpileQuery(
         const filteredArgs = node.arguments
           .filter((arg) => {
             if (ts.isIdentifier(arg)) {
-              if (arg.text === "$") return false;
-              if (arg.text === "db" || arg.text === "graph" || arg.text === "cg") return false;
+              if (arg.text === "$" || arg.text === "_$") return false;
+              if (
+                arg.text === "db" ||
+                arg.text === "_db" ||
+                arg.text === "graph" ||
+                arg.text === "_graph" ||
+                arg.text === "cg"
+              )
+                return false;
             }
             return true;
           })

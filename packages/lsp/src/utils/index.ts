@@ -7,4 +7,3 @@ export * from "./hierarchy-utils.js";
 export * from "./hook-extractor.js";
 export * from "./line-index.js";
 export * from "./lsp-utils.js";
-export * from "./tree-sitter.js";

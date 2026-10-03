@@ -15,25 +15,13 @@ import { API_BASE_URL } from "../config";
 
 const TabBar = styled.div`
   display: flex;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: transparent;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--color-canvas-default);
-    opacity: 0.85;
-    z-index: -1;
-  }
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(6, 8, 15, 0.85);
 `;
 
 const Tab = styled.button<{ $active?: boolean }>`
@@ -44,14 +32,16 @@ const Tab = styled.button<{ $active?: boolean }>`
   padding: 16px;
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? "bold" : "normal")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  font-weight: ${(props) => (props.$active ? "700" : "500")};
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
   position: relative;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(255, 255, 255, 0.04);
   }
 
   &::after {
@@ -60,9 +50,10 @@ const Tab = styled.button<{ $active?: boolean }>`
     bottom: 0;
     height: 4px;
     width: 56px;
-    background-color: var(--color-accent-emphasis, #1d9bf0);
+    background: var(--gradient-cta);
     border-radius: 9999px;
     display: ${(props) => (props.$active ? "block" : "none")};
+    box-shadow: var(--glow-purple-sm);
   }
 `;
 
@@ -91,12 +82,12 @@ const RepoInput = styled.input`
   border: none;
   background: transparent;
   font-size: 16px;
-  color: var(--color-fg-default);
+  color: var(--color-text-primary);
   outline: none;
 
   &::placeholder {
-    color: var(--color-fg-muted);
-    opacity: 0.5;
+    color: var(--color-text-muted);
+    opacity: 0.6;
   }
 `;
 
@@ -329,7 +320,7 @@ const RepositoryListPage: React.FC = () => {
                 alignItems="flex-start"
                 justifyContent="space-between"
                 p={3}
-                borderBottom="1px solid var(--color-border-subtle)"
+                borderBottom="1px solid var(--color-border)"
               >
                 <Box display="flex" gap="12px" flex={1}>
                   <Box
@@ -337,7 +328,8 @@ const RepositoryListPage: React.FC = () => {
                       width: 44,
                       height: 44,
                       borderRadius: "50%",
-                      backgroundColor: "var(--color-accent-emphasis)",
+                      background: "var(--gradient-ai)",
+                      boxShadow: "var(--glow-ai-sm)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -353,7 +345,7 @@ const RepositoryListPage: React.FC = () => {
                   <Box flex={1}>
                     <Heading
                       as="h4"
-                      style={{ fontSize: "15px", fontWeight: "bold", margin: 0, color: "var(--color-fg-default)" }}
+                      style={{ fontSize: "15px", fontWeight: "bold", margin: 0, color: "var(--color-text-heading)" }}
                     >
                       <Link
                         to={`/repos/${r.provider}/${r.namespace}/${r.project}`}
@@ -362,7 +354,7 @@ const RepositoryListPage: React.FC = () => {
                         {r.project}
                       </Link>
                     </Heading>
-                    <Text color="var(--color-fg-muted)" style={{ fontSize: "14px", display: "block" }}>
+                    <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
                       @{r.provider}.com/{r.namespace}/{r.project}
                     </Text>
                     <Text
@@ -370,7 +362,7 @@ const RepositoryListPage: React.FC = () => {
                       style={{
                         fontSize: "14px",
                         margin: "4px 0 0 0",
-                        color: "var(--color-fg-default)",
+                        color: "var(--color-text-primary)",
                         lineHeight: 1.4,
                       }}
                     >
@@ -380,15 +372,16 @@ const RepositoryListPage: React.FC = () => {
                 </Box>
                 <button
                   style={{
-                    backgroundColor: "var(--color-fg-default)",
-                    color: "var(--color-canvas-default)",
-                    border: "none",
+                    backgroundColor: "#f1f5f9",
+                    color: "#0f172a",
+                    border: "1px solid transparent",
                     borderRadius: "9999px",
                     padding: "6px 16px",
-                    fontWeight: "bold",
+                    fontWeight: 700,
                     fontSize: "14px",
                     cursor: "pointer",
                     marginLeft: "12px",
+                    transition: "all 0.2s ease",
                   }}
                   onClick={(e) => {
                     e.preventDefault();
@@ -396,13 +389,13 @@ const RepositoryListPage: React.FC = () => {
                     if (btn.innerText === "Follow") {
                       btn.innerText = "Following";
                       btn.style.backgroundColor = "transparent";
-                      btn.style.color = "var(--color-fg-default)";
-                      btn.style.border = "1px solid var(--color-border-default)";
+                      btn.style.color = "var(--color-text-primary)";
+                      btn.style.border = "1px solid var(--color-border)";
                     } else {
                       btn.innerText = "Follow";
-                      btn.style.backgroundColor = "var(--color-fg-default)";
-                      btn.style.color = "var(--color-canvas-default)";
-                      btn.style.border = "none";
+                      btn.style.backgroundColor = "#f1f5f9";
+                      btn.style.color = "#0f172a";
+                      btn.style.border = "1px solid transparent";
                     }
                   }}
                 >

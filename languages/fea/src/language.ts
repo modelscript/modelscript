@@ -32,6 +32,10 @@ export const feaLanguage = language({
   fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
   lsp: {
     fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
+    icons: {
+      light: "./assets/fea/icon-light.png",
+      dark: "./assets/fea/icon-dark.png",
+    },
   },
 
   actions: [
@@ -118,12 +122,12 @@ export const feaLanguage = language({
         targetLang: "modelica",
         priority: 10,
         source: ($, v) => $.KeywordCard({ name: "BOUNDARY", parameter: v("nodeId") }),
-        target: ($, v) =>
+        target: ($, _v) =>
           $.ComponentClause({
             name: "fixedBoundary",
             typeSpecifier: "Modelica.Mechanics.Translational.Components.Fixed",
           }),
-        where: (v) => [tggComplement(["nodeId", "dofs"])],
+        where: (_v) => [tggComplement(["nodeId", "dofs"])],
       }),
       tggRule({
         name: "FeaSpringToModelicaSpring",
@@ -131,12 +135,12 @@ export const feaLanguage = language({
         targetLang: "modelica",
         priority: 10,
         source: ($, v) => $.KeywordCard({ name: "SPRING", parameter: v("stiffness") }),
-        target: ($, v) =>
+        target: ($, _v) =>
           $.ComponentClause({
             name: "springComponent",
             typeSpecifier: "Modelica.Mechanics.Translational.Components.Spring",
           }),
-        where: (v) => [tggComplement(["stiffness", "damping"])],
+        where: (_v) => [tggComplement(["stiffness", "damping"])],
       }),
       tggRule({
         name: "FeaLoadCaseToSysmlRequirement",
@@ -144,8 +148,8 @@ export const feaLanguage = language({
         targetLang: "sysml2",
         priority: 0,
         source: ($, v) => $.KeywordCard({ name: "LOADCASE", parameter: v("limitVal") }),
-        target: ($, v) => $.ConstraintUsage({ declaredName: "loadCase" }),
-        where: (v) => [tggComplement(["limitVal", "loadSteps"])],
+        target: ($, _v) => $.ConstraintUsage({ declaredName: "loadCase" }),
+        where: (_v) => [tggComplement(["limitVal", "loadSteps"])],
       }),
     ],
   },

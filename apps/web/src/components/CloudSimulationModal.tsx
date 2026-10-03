@@ -47,25 +47,26 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalCard = styled.div`
-  background: var(--color-canvas-default);
-  border: 1px solid var(--color-border-default);
+  background: rgba(14, 20, 36, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass);
   border-radius: 16px;
   width: 100%;
   max-width: 760px;
   max-height: 88vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
   overflow: hidden;
 `;
 
 const ModalHeader = styled.div`
   padding: 18px 24px;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--color-canvas-subtle);
+  background: rgba(14, 20, 36, 0.85);
 `;
 
 const ModalBody = styled.div`
@@ -87,8 +88,8 @@ const ProfileGrid = styled.div`
 `;
 
 const ProfileCard = styled.div<{ $selected: boolean }>`
-  border: 1px solid ${(props) => (props.$selected ? "var(--color-accent-emphasis)" : "var(--color-border-default)")};
-  background: ${(props) => (props.$selected ? "rgba(56, 139, 253, 0.08)" : "var(--color-canvas-subtle)")};
+  border: 1px solid ${(props) => (props.$selected ? "var(--color-accent-purple)" : "var(--color-border)")};
+  background: ${(props) => (props.$selected ? "rgba(139, 92, 246, 0.12)" : "rgba(255, 255, 255, 0.02)")};
   border-radius: 12px;
   padding: 14px 16px;
   cursor: pointer;
@@ -98,7 +99,7 @@ const ProfileCard = styled.div<{ $selected: boolean }>`
   gap: 6px;
 
   &:hover {
-    border-color: var(--color-accent-emphasis);
+    border-color: var(--color-accent-purple);
   }
 `;
 
@@ -110,27 +111,27 @@ const StepItem = styled.div<{ $state: "waiting" | "active" | "done" | "error" }>
   border-radius: 8px;
   background: ${(props) =>
     props.$state === "active"
-      ? "rgba(56, 139, 253, 0.1)"
+      ? "rgba(6, 182, 212, 0.12)"
       : props.$state === "done"
-        ? "rgba(46, 160, 67, 0.1)"
+        ? "rgba(16, 185, 129, 0.12)"
         : props.$state === "error"
-          ? "rgba(248, 81, 73, 0.1)"
-          : "var(--color-canvas-subtle)"};
+          ? "rgba(244, 63, 94, 0.12)"
+          : "rgba(255, 255, 255, 0.02)"};
   border: 1px solid
     ${(props) =>
       props.$state === "active"
-        ? "var(--color-accent-emphasis)"
+        ? "var(--color-accent-cyan)"
         : props.$state === "done"
-          ? "var(--color-success-fg)"
+          ? "var(--color-status-verified)"
           : props.$state === "error"
-            ? "var(--color-danger-fg)"
-            : "var(--color-border-default)"};
+            ? "var(--color-error)"
+            : "var(--color-border)"};
   font-size: 13px;
 `;
 
 const StatCard = styled.div`
-  background: var(--color-canvas-subtle);
-  border: 1px solid var(--color-border-default);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 12px;
   flex: 1;
@@ -140,9 +141,9 @@ const StatCard = styled.div`
 const TableWrap = styled.div`
   max-height: 220px;
   overflow: auto;
-  border: 1px solid var(--color-border-default);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 
   table {
@@ -151,19 +152,19 @@ const TableWrap = styled.div`
   }
 
   th {
-    background: var(--color-canvas-subtle);
+    background: rgba(255, 255, 255, 0.05);
     position: sticky;
     top: 0;
     padding: 6px 10px;
     text-align: left;
-    border-bottom: 1px solid var(--color-border-default);
+    border-bottom: 1px solid var(--color-border);
     color: var(--color-text-primary);
   }
 
   td {
     padding: 4px 10px;
-    border-bottom: 1px solid var(--color-border-muted);
-    color: var(--color-fg-muted);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 `;
@@ -387,8 +388,8 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                       width: "100%",
                       padding: "8px 12px",
                       borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      background: "var(--color-canvas-subtle)",
+                      border: "1px solid var(--color-border)",
+                      background: "rgba(255, 255, 255, 0.04)",
                       color: "var(--color-text-primary)",
                       fontSize: "14px",
                     }}
@@ -408,8 +409,8 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                       width: "100%",
                       padding: "8px 12px",
                       borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      background: "var(--color-canvas-subtle)",
+                      border: "1px solid var(--color-border)",
+                      background: "rgba(255, 255, 255, 0.04)",
                       color: "var(--color-text-primary)",
                       fontSize: "14px",
                     }}
@@ -466,8 +467,8 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                 <Box
                   p={3}
                   borderRadius="8px"
-                  bg="var(--color-canvas-subtle)"
-                  border="1px solid var(--color-border-default)"
+                  bg="rgba(255, 255, 255, 0.02)"
+                  border="1px solid var(--color-border)"
                   display="flex"
                   justifyContent="space-between"
                   alignItems="center"
@@ -639,11 +640,11 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
         <Box
           p={3}
           px={4}
-          borderTop="1px solid var(--color-border-default)"
+          borderTop="1px solid var(--color-border)"
           display="flex"
           justifyContent="space-between"
           alignItems="center"
-          bg="var(--color-canvas-subtle)"
+          bg="rgba(14, 20, 36, 0.95)"
         >
           {phase === "config" && (
             <>
@@ -651,7 +652,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                 onClick={onClose}
                 style={{
                   background: "transparent",
-                  border: "1px solid var(--color-border-default)",
+                  border: "1px solid var(--color-border)",
                   borderRadius: "9999px",
                   padding: "8px 16px",
                   fontSize: "13px",
@@ -666,7 +667,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                 onClick={handleLaunch}
                 disabled={!modelName.trim()}
                 style={{
-                  background: "var(--color-accent-emphasis)",
+                  background: "var(--gradient-cta)",
                   color: "#ffffff",
                   border: "none",
                   borderRadius: "9999px",
@@ -677,6 +678,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
+                  boxShadow: "0 0 14px rgba(139, 92, 246, 0.35)",
                   opacity: !modelName.trim() ? 0.6 : 1,
                 }}
               >
@@ -695,7 +697,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                 onClick={onClose}
                 style={{
                   background: "transparent",
-                  border: "1px solid var(--color-border-default)",
+                  border: "1px solid var(--color-border)",
                   borderRadius: "9999px",
                   padding: "8px 16px",
                   fontSize: "13px",
@@ -715,7 +717,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                 onClick={() => setPhase("config")}
                 style={{
                   background: "transparent",
-                  border: "1px solid var(--color-border-default)",
+                  border: "1px solid var(--color-border)",
                   borderRadius: "9999px",
                   padding: "8px 16px",
                   fontSize: "13px",
@@ -735,8 +737,8 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
                   onClick={handleDownloadCsv}
                   disabled={!csvContent}
                   style={{
-                    background: "var(--color-canvas-default)",
-                    border: "1px solid var(--color-border-default)",
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid var(--color-border)",
                     borderRadius: "9999px",
                     padding: "8px 16px",
                     fontSize: "13px",

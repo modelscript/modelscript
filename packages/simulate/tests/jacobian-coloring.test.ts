@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, expect, test } from "@jest/globals";
 import { generateJacobianColoring } from "@modelscript/dsl/codegen/coloring.js";
 
 describe("Distance-2 Graph Coloring Generator", () => {

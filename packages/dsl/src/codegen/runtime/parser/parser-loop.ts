@@ -17,7 +17,8 @@ import {
     initGSS,
     ParseHead, GssEdge, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
     t_pausedHeads, pausedHeadsCount, resetPausedHeads,
-    globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
+    globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild,
+    saveCursorCheckpoint, restoreCursorCheckpoint
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
@@ -352,7 +353,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         }
 
         // 1. Suffix list splicing optimization (past the edited region):
-        if (pos >= g_editNewEnd && oldListRoot != 0) {
+        if (pos >= g_editNewEnd && oldListRoot != 0 && (getNodeFlags(oldListRoot) & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) == 0) {
           let oldListEnd = oldListStart + getNodeByteLength(oldListRoot);
           if (oldSrcLexPos < oldListEnd && !isOldRangeEdited(oldSrcLexPos, oldListEnd)) {
             let newEndOfList: u32 = 0;
@@ -366,6 +367,10 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               }
               newEndOfList = (oldListEnd as i32 + delta) as u32;
             }
+            let savedLexPos = lexPos;
+            let savedSrcLexPos = srcLexPos;
+            let savedLexLen = lexLen;
+            let savedScannerState = currentScannerState;
             let nextTok = invokeLexer(newEndOfList);
             let nextPendingPad: u32 = 0;
             while (load<u8>(is_extra_token + nextTok) == 1) {
@@ -387,7 +392,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             if (canAccept) {
               let suffix = extractListSlice(oldListRoot, oldListStart, oldSrcLexPos, 0xffffffff, headSym as u16, 0);
               if (suffix != 0) {
-                let combined = concatLists(lastNode, suffix, headSym as u16, 0);
+                let clone = cloneNodeShallow(suffix);
+                setNodePadding(clone, expectedPadding);
+                let combined = concatLists(lastNode, clone, headSym as u16, 0);
                 t_lrNodeStack[lrStackDepth - 1] = combined;
                 pos = newEndOfList;
                 token = nextTok;
@@ -397,11 +404,19 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                 continue;
               }
             }
+            lexPos = savedLexPos;
+            srcLexPos = savedSrcLexPos;
+            lexLen = savedLexLen;
+            currentScannerState = savedScannerState;
           }
         }
 
         // 2. Prefix list splicing optimization (before the edited region):
-        if (oldSrcLexPos < g_editStart && oldListRoot != 0 && g_editStart > 0) {
+        if (oldSrcLexPos < g_editStart && oldListRoot != 0 && g_editStart > 0 && (getNodeFlags(oldListRoot) & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) == 0) {
+          let savedLexPos = lexPos;
+          let savedSrcLexPos = srcLexPos;
+          let savedLexLen = lexLen;
+          let savedScannerState = currentScannerState;
           let prefixSlice = extractListSlice(oldListRoot, oldListStart, oldSrcLexPos, g_editStart, headSym as u16, 0);
           if (prefixSlice != 0) {
             let newEndOfSlice = g_lastSlicedEnd;
@@ -434,9 +449,14 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               continue;
             }
           }
+          lexPos = savedLexPos;
+          srcLexPos = savedSrcLexPos;
+          lexLen = savedLexLen;
+          currentScannerState = savedScannerState;
         }
 
 
+        saveCursorCheckpoint();
         let reusedNode = findReusableNode(
           oldPos,
           oldSrcLexPos,
@@ -486,72 +506,79 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               consecutiveReductions = 0;
               continue;
             } else {
+              restoreCursorCheckpoint();
               srcLexPos = savedSrcLexPos;
               lexLen = savedLexLen;
             }
-          }
-          let nextState = -1;
-          if (nodeType > (MAX_TERMINAL_ID as u16)) {
-            if (currentState < goto_offsets.length) {
-              let gOffset = goto_offsets[currentState];
-              if (gOffset >= 0 && gOffset < goto_data.length) {
-                let gCount = goto_data[gOffset];
-                for (let gi = 0; gi < gCount; gi++) {
-                  if (goto_data[gOffset + 1 + gi * 2] == nodeType) {
-                    nextState = goto_data[gOffset + 1 + gi * 2 + 1];
-                    break;
+          } else {
+            let nextState = -1;
+            if (nodeType > (MAX_TERMINAL_ID as u16)) {
+              if (currentState < goto_offsets.length) {
+                let gOffset = goto_offsets[currentState];
+                if (gOffset >= 0 && gOffset < goto_data.length) {
+                  let gCount = goto_data[gOffset];
+                  for (let gi = 0; gi < gCount; gi++) {
+                    if (goto_data[gOffset + 1 + gi * 2] == nodeType) {
+                      nextState = goto_data[gOffset + 1 + gi * 2 + 1];
+                      break;
+                    }
                   }
                 }
               }
-            }
-          } else {
-            let numActions = lookupActions(currentState, nodeType as i32);
-            if (numActions > 0 && tempActions[0] == (ACTION_SHIFT as u32)) {
-              nextState = tempActions[1] as i32;
-            }
-          }
-          if (nextState != -1) {
-            let totalPadding = expectedPadding;
-            let endPos = srcLexPos + getNodeByteLength(reusedNode);
-            let savedSrcLexPos = srcLexPos;
-            let savedLexLen = lexLen;
-            t_lrStateStack[lrStackDepth] = nextState;
-            lrStackDepth++;
-            let nextTok = invokeLexer(endPos);
-            let nextPendingPad: u32 = 0;
-            while (load<u8>(is_extra_token + nextTok) == 1) {
-              if (lexLen == 0) {
-                break;
-              }
-              nextPendingPad += lexLen;
-              let nextEndPos = endPos + lexLen;
-              endPos = nextEndPos > endPos ? nextEndPos : endPos + 2;
-              nextTok = invokeLexer(endPos);
-            }
-            let canAccept = lookupActions(nextState, nextTok) > 0 || stateCanAcceptFnBool(nextState, nextTok);
-            if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
-              let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
-              let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
-              if (dist == 0) {
-                canAccept = true;
-              }
-            }
-            if (canAccept) {
-              let clone = cloneNodeShallow(reusedNode);
-              setNodePadding(clone, totalPadding);
-              setNodeFlags(clone, getNodeFlags(clone) | FLAG_EXTRACTED);
-              t_lrNodeStack[lrStackDepth - 1] = clone;
-              pos = endPos;
-              token = nextTok;
-              pendingPadding = nextPendingPad;
-              consecutiveReductions = 0;
-              continue;
             } else {
-              lrStackDepth--;
-              srcLexPos = savedSrcLexPos;
-              lexLen = savedLexLen;
+              let numActions = lookupActions(currentState, nodeType as i32);
+              if (numActions > 0 && tempActions[0] == (ACTION_SHIFT as u32)) {
+                nextState = tempActions[1] as i32;
+              }
+            }
+            if (nextState != -1) {
+              let totalPadding = expectedPadding;
+              let endPos = srcLexPos + getNodeByteLength(reusedNode);
+              let savedSrcLexPos = srcLexPos;
+              let savedLexLen = lexLen;
+              t_lrStateStack[lrStackDepth] = nextState;
+              lrStackDepth++;
+              let nextTok = invokeLexer(endPos);
+              let nextPendingPad: u32 = 0;
+              while (load<u8>(is_extra_token + nextTok) == 1) {
+                if (lexLen == 0) {
+                  break;
+                }
+                nextPendingPad += lexLen;
+                let nextEndPos = endPos + lexLen;
+                endPos = nextEndPos > endPos ? nextEndPos : endPos + 2;
+                nextTok = invokeLexer(endPos);
+              }
+              let canAccept = lookupActions(nextState, nextTok) > 0 || stateCanAcceptFnBool(nextState, nextTok);
+              if (!canAccept && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
+                let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
+                let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
+                if (dist == 0) {
+                  canAccept = true;
+                }
+              }
+              if (canAccept) {
+                let clone = cloneNodeShallow(reusedNode);
+                setNodePadding(clone, totalPadding);
+                setNodeFlags(clone, getNodeFlags(clone) | FLAG_EXTRACTED);
+                t_lrNodeStack[lrStackDepth - 1] = clone;
+                pos = endPos;
+                token = nextTok;
+                pendingPadding = nextPendingPad;
+                consecutiveReductions = 0;
+                continue;
+              } else {
+                restoreCursorCheckpoint();
+                lrStackDepth--;
+                srcLexPos = savedSrcLexPos;
+                lexLen = savedLexLen;
+              }
+            } else {
+              restoreCursorCheckpoint();
             }
           }
+        } else {
+          restoreCursorCheckpoint();
         }
       }
     }
@@ -1598,6 +1625,9 @@ function copyChildren(p: u32, leftNode: u32): u32 {
   while (gc != 0) {
     let clone = cloneNodeShallow(gc);
     if (lastChild == 0) {
+      if (getNodePadding(p) == 0 && getNodePadding(gc) > 0) {
+        setNodePadding(p, getNodePadding(gc));
+      }
       setNodePadding(clone, 0);
       setFirstChild(p, clone);
     } else {
@@ -1639,7 +1669,14 @@ export function fixNodeLength(node: u32): void {
   let pPad = getNodePadding(node);
   let totalLen = getNodeByteLength(gc);
 
-  if (pPad == 0 && firstPad > 0) {
+  // Invariant: parent.padding absorbs the first child's leading whitespace,
+  // and the first child's padding must be 0. The LSP tree walker relies on
+  // this: it does NOT add the first child's padding to currOffset.
+  if (firstPad > 0 && pPad != firstPad) {
+    // Absorb (or re-absorb) the first child's padding into the parent.
+    // When pPad == 0, this is the initial absorption.
+    // When pPad != firstPad (both non-zero), the parent was allocated with
+    // explicit padding that doesn't match — re-absorb to restore invariant.
     setNodePadding(node, firstPad);
     if (isMutable(gc)) {
       setNodePadding(gc, 0);
@@ -1648,10 +1685,17 @@ export function fixNodeLength(node: u32): void {
       setNodePadding(clone, 0);
       setFirstChild(node, clone);
       setNextSibling(clone, getNodeNextSibling(gc));
+      // Bug #1 fix: Mark the remaining siblings as shared so they can't be
+      // mutated in-place by operations that share this sibling chain via the
+      // clone. Without this, isMutable() could return true for a sibling that
+      // is referenced by both the original tree and the clone's tree.
+      let sib = getNodeNextSibling(gc);
+      while (sib != 0) {
+        setNodeFlags(sib, getNodeFlags(sib) | FLAG_IS_SHARED);
+        sib = getNodeNextSibling(sib);
+      }
       gc = clone;
     }
-  } else if (pPad != 0 && pPad != firstPad) {
-    totalLen += firstPad;
   }
 
   gc = getNodeNextSibling(gc);
@@ -1753,6 +1797,13 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     if (type_is_list[listSym] != 1) {
       listSym = 0; // Prevent non-list structural symbols (Equation/Decl) from creating phantom wrapper nodes
     }
+  }
+  if (listSym == 0) {
+    // Cannot determine a valid list symbol — don't wrap in ERROR-typed nodes.
+    // Return whichever operand has content, or clone rightNode by default.
+    _listRecurDepth--;
+    if (getNodeByteLength(leftNode) > 0) return cloneNodeShallow(leftNode);
+    return cloneNodeShallow(rightNode);
   }
 
   if (leftNode == 0) {
@@ -1906,7 +1957,10 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
         setNodePadding(clone, getNodePadding(clone) + pAdd);
 
         if (lastChild == 0) {
-           setNodePadding(p, getNodePadding(p) + getNodePadding(clone));
+           // Bug #3 fix: Accumulate the first child's padding on cloneLeft (its
+           // direct parent), not on p (the outer wrapper). fixNodeLength(p) will
+           // later absorb cloneLeft's padding via the standard invariant.
+           setNodePadding(cloneLeft, getNodePadding(cloneLeft) + getNodePadding(clone));
            setNodePadding(clone, 0);
            setFirstChild(cloneLeft, clone);
         } else {
@@ -1980,14 +2034,29 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   let nrDepth = getListDepth(newRightMost, listSym);
   if (nrDepth == lDepth) {
     let origC1 = getNodeFirstChild(newRightMost);
-    let origC2 = origC1 != 0 ? getNodeNextSibling(origC1) : 0; // B5 fix: null check
+    if (origC1 == 0) {
+      // Degenerate: recursive concat returned an empty list. Just attach newRightMost directly.
+      if (lastChild == 0) setFirstChild(p, newRightMost);
+      else setNextSibling(lastChild, newRightMost);
+      setNextSibling(newRightMost, 0);
+      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+      fixNodeLength(p);
+      _listRecurDepth--;
+      return p;
+    }
+    let origC2 = getNodeNextSibling(origC1); // origC1 is non-null here
 
     let c1 = cloneNodeShallow(origC1);
     let c2 = origC2 != 0 ? cloneNodeShallow(origC2) : 0; // B5 fix: null check
 
     if (lDirectChildCount < LIST_MAX_CHILDREN) {
-      if (lastChild == 0) setFirstChild(p, c1);
-      else setNextSibling(lastChild, c1);
+      if (lastChild == 0) {
+        setNodePadding(p, getNodePadding(p) + getNodePadding(newRightMost));
+        setFirstChild(p, c1);
+      } else {
+        setNodePadding(c1, getNodePadding(c1) + getNodePadding(newRightMost));
+        setNextSibling(lastChild, c1);
+      }
       if (c2 != 0) setNextSibling(c1, c2);
       if (c2 != 0) setNextSibling(c2, 0);
       setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
@@ -2025,8 +2094,13 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
         lastChild2 = clone;
         gc2 = getNodeNextSibling(gc2);
       }
-      if (lastChild2 == 0) setFirstChild(newRightChunk, c1);
-      else setNextSibling(lastChild2, c1);
+      if (lastChild2 == 0) {
+        setNodePadding(newRightChunk, getNodePadding(newRightChunk) + getNodePadding(newRightMost));
+        setFirstChild(newRightChunk, c1);
+      } else {
+        setNodePadding(c1, getNodePadding(c1) + getNodePadding(newRightMost));
+        setNextSibling(lastChild2, c1);
+      }
       if (c2 != 0) {
         setNextSibling(c1, c2);
         setNextSibling(c2, 0);
@@ -2139,12 +2213,29 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
           if (getNodeNextSibling(splitTail) == 0) break;
           splitTail = getNodeNextSibling(splitTail);
         }
-        // Advance splitTail until it is a grammatical boundary
-        while (getNodeNextSibling(splitTail) != 0 && (getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) == 0) {
+        let initialSplitTail = splitTail;
+        let foundBoundary = false;
+        while (getNodeNextSibling(splitTail) != 0) {
+          if ((getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) != 0) {
+            foundBoundary = true;
+            break;
+          }
           splitTail = getNodeNextSibling(splitTail);
+        }
+        if (!foundBoundary) {
+          splitTail = initialSplitTail;
         }
         
         let splitHead = getNodeNextSibling(splitTail);
+        if (splitHead == 0) {
+          // No boundary found — splitTail is the last child. Just append the leaf directly.
+          setNextSibling(splitTail, leaf);
+          setNextSibling(leaf, 0);
+          setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
+          fixNodeLength(leftNode);
+          _listRecurDepth--;
+          return leftNode;
+        }
         setNextSibling(splitTail, 0); // truncate leftNode
         setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
         fixNodeLength(leftNode);
@@ -2187,8 +2278,17 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
           if (getNodeNextSibling(splitTail) == 0) break;
           splitTail = getNodeNextSibling(splitTail);
         }
-        while (getNodeNextSibling(splitTail) != 0 && (getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) == 0) {
+        let initialSplitTail = splitTail;
+        let foundBoundary = false;
+        while (getNodeNextSibling(splitTail) != 0) {
+          if ((getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) != 0) {
+            foundBoundary = true;
+            break;
+          }
           splitTail = getNodeNextSibling(splitTail);
+        }
+        if (!foundBoundary) {
+          splitTail = initialSplitTail;
         }
 
         let actualSplitCount = 0;
@@ -2215,6 +2315,23 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         fixNodeLength(cloneLeft);
 
         let splitHead = gc;
+        if (splitHead == 0) {
+          // No children remain after split — append leaf directly to cloneLeft.
+          if (lastChild == 0) {
+            setNodePadding(cloneLeft, getNodePadding(cloneLeft) + getNodePadding(leaf));
+            setNodePadding(leaf, 0);
+            setFirstChild(cloneLeft, leaf);
+          } else {
+            setNextSibling(lastChild, leaf);
+          }
+          setNextSibling(leaf, 0);
+          fixNodeLength(cloneLeft);
+          setFirstChild(p, cloneLeft);
+          setNextSibling(cloneLeft, 0);
+          fixNodeLength(p);
+          _listRecurDepth--;
+          return p;
+        }
         let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash, false, getNodeStartState(splitHead));
         setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
@@ -2267,10 +2384,19 @@ export function extractListSlice(
   if (nodeContentEnd <= sliceStart || nodeContentStart >= sliceEnd) return 0;
 
   let flags = getNodeFlags(node);
+  if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) != 0 || getNodeType(node) == 0) {
+    return 0;
+  }
   let isList = (flags & FLAG_IS_LIST) != 0;
 
   if (!isList) {
     if (nodeContentStart >= sliceStart && nodeContentEnd <= sliceEnd) {
+      if (sliceEnd == g_editStart && g_editStart > 0) {
+        let isTerm = getNodeType(node) <= (MAX_TERMINAL_ID as u16);
+        if (nodeContentEnd == sliceEnd || (!isTerm && isWhitespaceBetween(nodeContentEnd, sliceEnd))) {
+          return 0;
+        }
+      }
       let clone = cloneNodeShallow(node);
       setNextSibling(clone, 0);
       g_lastSlicedEnd = nodeContentEnd;
@@ -2281,10 +2407,18 @@ export function extractListSlice(
 
   // If the entire node is cleanly inside [sliceStart, sliceEnd], reuse it directly!
   if (nodeContentStart >= sliceStart && nodeContentEnd <= sliceEnd) {
-    let clone = cloneNodeShallow(node);
-    setNextSibling(clone, 0);
-    g_lastSlicedEnd = nodeContentEnd;
-    return clone;
+    let touchesEdit = false;
+    if (sliceEnd == g_editStart && g_editStart > 0) {
+      if (nodeContentEnd == sliceEnd || isWhitespaceBetween(nodeContentEnd, sliceEnd)) {
+        touchesEdit = true;
+      }
+    }
+    if (!touchesEdit) {
+      let clone = cloneNodeShallow(node);
+      setNextSibling(clone, 0);
+      g_lastSlicedEnd = nodeContentEnd;
+      return clone;
+    }
   }
 
   let firstSlicedChild: u32 = 0;
@@ -2295,6 +2429,11 @@ export function extractListSlice(
   let firstChildIncluded = false;
 
   while (child != 0) {
+    let childFlags = getNodeFlags(child);
+    if ((childFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) != 0 || getNodeType(child) == 0) {
+      return 0;
+    }
+
     let cPad = getNodeLeadingPad(child);
     let cStart = isFirstChild ? curOffset : curOffset + cPad;
     let cLen = getNodeByteLength(child);
@@ -2312,16 +2451,41 @@ export function extractListSlice(
       break;
     }
 
-    let childIsList = (getNodeFlags(child) & FLAG_IS_LIST) != 0;
+    let childIsList = (childFlags & FLAG_IS_LIST) != 0;
     let extractedChild: u32 = 0;
 
     if (cStart >= sliceStart && cEnd <= sliceEnd) {
-      extractedChild = cloneNodeShallow(child);
-      setNextSibling(extractedChild, 0);
-      g_lastSlicedEnd = cEnd;
-      if (wasFirst) firstChildIncluded = true;
+      if (sliceEnd == g_editStart && g_editStart > 0) {
+        let isTerm = getNodeType(child) <= (MAX_TERMINAL_ID as u16);
+        if (cEnd == sliceEnd || (!isTerm && isWhitespaceBetween(cEnd, sliceEnd))) {
+          if (childIsList) {
+            let savedSlicedEnd = g_lastSlicedEnd;
+            extractedChild = extractListSlice(child, cStart, sliceStart, sliceEnd, listSym, envHash);
+            if (extractedChild == 0) {
+              g_lastSlicedEnd = savedSlicedEnd;
+            }
+            if (wasFirst && extractedChild != 0) firstChildIncluded = true;
+          } else {
+            break;
+          }
+        } else {
+          extractedChild = cloneNodeShallow(child);
+          setNextSibling(extractedChild, 0);
+          g_lastSlicedEnd = cEnd;
+          if (wasFirst) firstChildIncluded = true;
+        }
+      } else {
+        extractedChild = cloneNodeShallow(child);
+        setNextSibling(extractedChild, 0);
+        g_lastSlicedEnd = cEnd;
+        if (wasFirst) firstChildIncluded = true;
+      }
     } else if (childIsList) {
+      let savedSlicedEnd = g_lastSlicedEnd;
       extractedChild = extractListSlice(child, cStart, sliceStart, sliceEnd, listSym, envHash);
+      if (extractedChild == 0) {
+        g_lastSlicedEnd = savedSlicedEnd; // Don't let failed recursion advance the end pointer
+      }
       if (wasFirst && extractedChild != 0) firstChildIncluded = true;
     }
 
@@ -2343,7 +2507,7 @@ export function extractListSlice(
 
   let leadingPad = firstChildIncluded ? getNodePadding(node) : 0;
   let p = allocNode(listSym, leadingPad, 0, envHash);
-  setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | (flags & FLAG_HAS_ERROR));
+  setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
   if (leadingPad > 0) {
     setNodePadding(firstSlicedChild, 0);
   }
@@ -2962,12 +3126,7 @@ function breakdownTopOfStack(head: ParseHead): ParseHead | null {
     }
 
     if (nextState == -1) {
-      let childStartState = getNodeStartState(childPtr);
-      if (childStartState != 0) {
-        nextState = childStartState as i32;
-      } else {
-        return null;
-      }
+      return null;
     }
 
     currPos += childPad + childByteLen;
@@ -4066,6 +4225,7 @@ export function advanceGLR(): void {
       let reusedNode: u32 = 0;
       let expectedPadding: u32 = (srcLexPos > frontierPos ? srcLexPos - frontierPos : 0) + head.pendingPadding;
       if (frontierPos < inputLength && tok != TOKEN_EOF && oldSrcLexPos != 0xffffffff) {
+        saveCursorCheckpoint();
         reusedNode = findReusableNode(
           oldPos,
           oldSrcLexPos,
@@ -4080,6 +4240,8 @@ export function advanceGLR(): void {
           let freshReuse = cloneNodeShallow(reusedNode);
           if (freshReuse != 0) reusedNode = freshReuse;
           setNodePadding(reusedNode, expectedPadding);
+        } else {
+          restoreCursorCheckpoint();
         }
       }
 
@@ -4179,6 +4341,8 @@ export function advanceGLR(): void {
           );
           pushNextHead(changetype<u32>(nextHead));
           continue;
+        } else {
+          restoreCursorCheckpoint();
         }
       }
 
@@ -4333,7 +4497,7 @@ export function advanceGLR(): void {
             if (!didRecover && (head.prev != null || head.inErrorState)) {
               didRecover = recoverStackSummary(head, tok, frontierPos);
             }
-            if (configEnableBranchA1) {
+            if (!didRecover && configEnableBranchA1) {
               recoverSkipToken(head, tok, frontierPos);
             }
           }
@@ -4378,7 +4542,7 @@ export function advanceGLR(): void {
         if (!didRecover && (bestPausedHead.prev != null || bestPausedHead.inErrorState)) {
           didRecover = recoverStackSummary(bestPausedHead, resumeTok, bestPausedHead.pos);
         }
-        if (configEnableBranchA1) {
+        if (!didRecover && configEnableBranchA1) {
           recoverSkipToken(bestPausedHead, resumeTok, bestPausedHead.pos);
         }
       } else {
@@ -4401,7 +4565,7 @@ export function advanceGLR(): void {
               if (!didRec && (cand.prev != null || cand.inErrorState)) {
                 didRec = recoverStackSummary(cand, cTok, cand.pos);
               }
-              if (configEnableBranchA1) {
+              if (!didRec && configEnableBranchA1) {
                 recoverSkipToken(cand, cTok, cand.pos);
               }
             } else {
@@ -4876,7 +5040,9 @@ export function findReusableNode(
     return 0;
   }
 
+  let _cursorSearchIter: u32 = 0;
   while (globalCursorDepth >= 0) {
+    if (++_cursorSearchIter > (MAX_AST_TRAVERSAL_DEPTH as u32)) return 0; // Depth guard: prevent infinite loops on deeply nested error-lists
     let cPtr = cursorNodeStack[globalCursorDepth];
     if (cPtr == 0) {
       if (!globalCursorGotoParent()) return 0;
@@ -4926,7 +5092,9 @@ export function findReusableNode(
     let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
     let nodeEnvHash = getNodeEnvHash(cPtr) & 0xff;
     let nodeStartState = getNodeStartState(cPtr);
-    let canReuse = (!isError && !isMissing && nodeEnvHash == envHash);
+    let typeFlags = getNodeFlags(cPtr);
+    let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) != 0;
+    let canReuse = (!isError && !isMissing && !hasErrorFlags && nodeEnvHash == envHash);
 
     if (canReuse) {
       let isTouchingEdit = false;
@@ -4940,10 +5108,25 @@ export function findReusableNode(
                              (prevChar >= 97 && prevChar <= 122) || // a-z
                              prevChar == 95 || // _
                              prevChar == 46;   // .
-            if (isWordChar || !isTerminalLeaf || nodeType <= (MAX_TERMINAL_ID as u16)) {
+            if (isWordChar || !isTerminalLeaf) {
               isTouchingEdit = true;
             }
           } else if (!isTerminalLeaf && isWhitespaceBetween(end, g_editStart)) {
+            isTouchingEdit = true;
+          }
+        }
+        if (!isTouchingEdit && start == g_editOldEnd && g_editNewEnd > 0 && pad == 0) {
+          let prevChar = peekPrevChar(g_editNewEnd);
+          let nextChar = peekChar(g_editNewEnd);
+          let prevIsWord = (prevChar >= 48 && prevChar <= 57) ||
+                           (prevChar >= 65 && prevChar <= 90) ||
+                           (prevChar >= 97 && prevChar <= 122) ||
+                           prevChar == 95 || prevChar == 46;
+          let nextIsWord = (nextChar >= 48 && nextChar <= 57) ||
+                           (nextChar >= 65 && nextChar <= 90) ||
+                           (nextChar >= 97 && nextChar <= 122) ||
+                           nextChar == 95 || nextChar == 46;
+          if (prevIsWord && nextIsWord) {
             isTouchingEdit = true;
           }
         }
@@ -4960,7 +5143,7 @@ export function findReusableNode(
                                (prevChar >= 97 && prevChar <= 122) ||
                                prevChar == 95 ||
                                prevChar == 46;
-              if (isWordChar || !isTerminalLeaf || nodeType <= (MAX_TERMINAL_ID as u16)) {
+              if (isWordChar || !isTerminalLeaf) {
                 isTouchingEdit = true;
               }
             } else if (!isTerminalLeaf && isWhitespaceBetween(end, oldStart)) {
@@ -4968,30 +5151,33 @@ export function findReusableNode(
             }
             break;
           }
+          if (start == edit.oldEnd && edit.newEnd > 0 && pad == 0) {
+            let prevChar = peekPrevChar(edit.newEnd);
+            let nextChar = peekChar(edit.newEnd);
+            let prevIsWord = (prevChar >= 48 && prevChar <= 57) ||
+                             (prevChar >= 65 && prevChar <= 90) ||
+                             (prevChar >= 97 && prevChar <= 122) ||
+                             prevChar == 95 || prevChar == 46;
+            let nextIsWord = (nextChar >= 48 && nextChar <= 57) ||
+                             (nextChar >= 65 && nextChar <= 90) ||
+                             (nextChar >= 97 && nextChar <= 122) ||
+                             nextChar == 95 || nextChar == 46;
+            if (prevIsWord && nextIsWord) {
+              isTouchingEdit = true;
+              break;
+            }
+          }
           prevDelta += (edit.newEnd - edit.oldEnd) as i32;
         }
       }
       if (!isTouchingEdit && !isOldRangeEdited(start, end)) {
         let isTerminalLeaf = nodeType <= (MAX_TERMINAL_ID as u16);
         let canTransition = false;
-        let typeFlags = getNodeFlags(cPtr);
         let isListChunk = (currentParserMode == MODE_LR) && ((typeFlags & FLAG_IS_LIST) != 0) && ((nodeType as u32) == headSym);
         if (isListChunk) {
           canTransition = true;
         } else if (!isTerminalLeaf) {
           canTransition = (nodeStartState == (currentState as u32));
-          if (!canTransition && (currentState as i32) >= 0 && (currentState as i32) < goto_offsets.length) {
-            let gOffset = goto_offsets[currentState];
-            if (gOffset >= 0 && gOffset < goto_data.length) {
-              let gCount = goto_data[gOffset];
-              for (let gi = 0; gi < gCount; gi++) {
-                if (goto_data[gOffset + 1 + gi * 2] == (nodeType as i32)) {
-                  canTransition = true;
-                  break;
-                }
-              }
-            }
-          }
         } else {
           // Terminal leaf reuse: verify currentState has a valid shift action for this token
           let numActions = lookupActions(currentState as i32, nodeType as i32);
@@ -5000,12 +5186,8 @@ export function findReusableNode(
           }
         }
         if (canTransition) {
-          let typeFlags = getNodeFlags(cPtr);
-          let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
-          if (!hasErrorFlags) {
-            debugLog(9008, cPtr, start, end);
-            return cPtr;
-          }
+          debugLog(9008, cPtr, start, end);
+          return cPtr;
         }
       }
     }
@@ -5013,8 +5195,7 @@ export function findReusableNode(
     // Node cannot be reused as a whole.
     // If this node contains errors and is a single non-list construct (e.g. broken statement),
     // do not drill down into its broken pieces; reparse it cleanly.
-    let typeFlags = getNodeFlags(cPtr);
-    let hasErr = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
+    let hasErr = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) != 0;
     if (hasErr && (typeFlags & FLAG_IS_LIST) == 0) {
       return 0;
     }

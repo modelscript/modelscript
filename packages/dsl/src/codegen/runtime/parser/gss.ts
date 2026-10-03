@@ -52,6 +52,9 @@ import {
   treeCursorGotoFirstChild,
   treeCursorGotoNextSibling,
   treeCursorGotoParent,
+  treeCursorNodeAtDepth,
+  treeCursorOffsetAtDepth,
+  TREE_CURSOR_SIZE,
 } from "../arena";
 
 import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "../core/array";
@@ -644,4 +647,39 @@ export function globalCursorGotoParent(): boolean {
     globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
   }
   return ok;
+}
+
+export let g_cursorCheckpoint: usize = 0;
+export let g_checkpointDepth: i32 = -1;
+
+export function ensureCursorCheckpoint(): usize {
+  if (g_cursorCheckpoint == 0) {
+    g_cursorCheckpoint = treeCursorAlloc();
+  }
+  return g_cursorCheckpoint;
+}
+
+/**
+ * Saves a transactional snapshot of the global tree cursor and its path stacks.
+ */
+export function saveCursorCheckpoint(): void {
+  let src = ensureGlobalTreeCursor();
+  let dst = ensureCursorCheckpoint();
+  memory.copy(dst, src, TREE_CURSOR_SIZE as usize);
+  g_checkpointDepth = globalCursorDepth;
+}
+
+/**
+ * Restores the global tree cursor and path stacks to the last saved checkpoint.
+ */
+export function restoreCursorCheckpoint(): void {
+  if (g_cursorCheckpoint == 0 || g_checkpointDepth < 0) return;
+  let src = g_cursorCheckpoint;
+  let dst = ensureGlobalTreeCursor();
+  memory.copy(dst, src, TREE_CURSOR_SIZE as usize);
+  globalCursorDepth = g_checkpointDepth;
+  for (let d = 0; d <= globalCursorDepth; d++) {
+    cursorNodeStack[d] = treeCursorNodeAtDepth(src, d);
+    cursorContentStartStack[d] = treeCursorOffsetAtDepth(src, d);
+  }
 }

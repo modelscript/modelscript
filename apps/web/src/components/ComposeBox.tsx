@@ -61,16 +61,17 @@ const ActionIconButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #71767b;
-  transition: background-color 0.2s;
+  color: var(--color-text-muted);
+  transition: all 0.2s ease;
   padding: 0;
 
   &:hover:not(:disabled) {
-    background-color: var(--color-action-list-item-default-hover-bg, rgba(128, 128, 128, 0.15));
+    background-color: rgba(6, 182, 212, 0.12);
+    color: var(--color-accent-cyan);
   }
 
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
@@ -128,8 +129,8 @@ const ComposeInput = styled.textarea`
   position: relative;
   z-index: 1;
   &::placeholder {
-    color: #71767b;
-    -webkit-text-fill-color: #71767b;
+    color: var(--color-text-muted);
+    -webkit-text-fill-color: var(--color-text-muted);
     opacity: 1;
   }
 `;
@@ -139,6 +140,7 @@ const QuoteWrapper = styled.div`
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.02);
 `;
 
 import type { SpatialPin } from "./artifacts/spatial-pin";
@@ -484,7 +486,8 @@ export default function ComposeBox({
               right: 0,
               bottom: 0,
               zIndex: 99998,
-              backgroundColor: "rgba(0,0,0,0.4)",
+              backgroundColor: "rgba(0, 0, 0, 0.7)",
+              backdropFilter: "blur(6px)",
             }}
             onClick={() => setShowRecipientsModal(false)}
           />
@@ -495,18 +498,20 @@ export default function ComposeBox({
             style={{
               transform: "translate(-50%, -50%)",
               width: "600px",
-              maxWidth: "100%",
+              maxWidth: "92vw",
               maxHeight: "90vh",
               overflowY: "auto",
+              backdropFilter: "blur(16px)",
             }}
-            bg="var(--color-bg-primary)"
+            bg="rgba(14, 20, 36, 0.95)"
+            border="1px solid var(--color-border-glass)"
             borderRadius="16px"
             zIndex={99999}
-            boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+            boxShadow="0 20px 50px rgba(0,0,0,0.6)"
             display="flex"
             flexDirection="column"
           >
-            <Box display="flex" alignItems="center" px={3} py={2}>
+            <Box display="flex" alignItems="center" px={3} py={2} borderBottom="1px solid var(--color-border)">
               <IconButton
                 icon={() => <XIcon size={20} />}
                 variant="invisible"
@@ -531,7 +536,7 @@ export default function ComposeBox({
                     borderRadius: "50%",
                     flexShrink: 0,
                     objectFit: "cover",
-                    backgroundColor: "var(--color-canvas-subtle)",
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
                     marginRight: "12px",
                   }}
                 />
@@ -546,7 +551,7 @@ export default function ComposeBox({
 
               {allMentionedUsers.length > 1 && (
                 <>
-                  <Box borderBottom="1px solid var(--color-border-subtle)" my={3} />
+                  <Box borderBottom="1px solid var(--color-border)" my={3} />
                   <Heading as="h3" sx={{ fontSize: "18px", mb: 3 }}>
                     Others in this conversation
                   </Heading>
@@ -571,11 +576,11 @@ export default function ComposeBox({
                             width: "40px",
                             height: "40px",
                             borderRadius: "50%",
-                            backgroundColor: "var(--color-canvas-subtle)",
+                            backgroundColor: "rgba(255, 255, 255, 0.05)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            color: "var(--color-fg-muted)",
+                            color: "var(--color-text-muted)",
                             fontWeight: "bold",
                             flexShrink: 0,
                             marginRight: "12px",
@@ -592,7 +597,12 @@ export default function ComposeBox({
                             type="checkbox"
                             checked={!excludedUsers.has(u)}
                             readOnly
-                            style={{ width: "20px", height: "20px", pointerEvents: "none", accentColor: "#1d9bf0" }}
+                            style={{
+                              width: "20px",
+                              height: "20px",
+                              pointerEvents: "none",
+                              accentColor: "var(--color-accent-cyan)",
+                            }}
                           />
                         </Box>
                       </Box>
@@ -616,12 +626,14 @@ export default function ComposeBox({
             display="flex"
             gap={1}
             fontSize="14px"
-            color="var(--color-fg-muted)"
+            color="var(--color-text-muted)"
             onClick={() => setShowRecipientsModal(true)}
             style={{ cursor: "pointer" }}
           >
             <span className="handle-text">Replying to</span>
-            <span style={{ color: "#1d9bf0", fontWeight: "500" }}>{includedUsers.map((u) => `@${u}`).join(", ")}</span>
+            <span style={{ color: "var(--color-accent-cyan)", fontWeight: "500" }}>
+              {includedUsers.map((u) => `@${u}`).join(", ")}
+            </span>
           </Box>
         )}
         <Box display="flex" gap={3} width="100%" flex={isModal ? 1 : undefined}>
@@ -634,7 +646,7 @@ export default function ComposeBox({
               borderRadius: "50%",
               flexShrink: 0,
               objectFit: "cover",
-              backgroundColor: "var(--color-canvas-subtle)",
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
             }}
           />
           <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
@@ -642,7 +654,7 @@ export default function ComposeBox({
               <Backdrop>
                 {content.split(/(@\w+)/g).map((part, i) =>
                   part.startsWith("@") ? (
-                    <span key={i} style={{ color: "#1d9bf0" }}>
+                    <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
                       {part}
                     </span>
                   ) : (
@@ -673,10 +685,11 @@ export default function ComposeBox({
             {mentionQuery && mentionSuggestions.length > 0 && (
               <Box
                 position="absolute"
-                bg="var(--color-canvas-default)"
+                bg="rgba(14, 20, 36, 0.95)"
                 border="1px solid var(--color-border)"
                 borderRadius="12px"
-                boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                boxShadow="0 8px 24px rgba(0,0,0,0.5)"
+                style={{ backdropFilter: "blur(12px)" }}
                 zIndex={100}
                 top="100%"
                 left={0}
@@ -691,7 +704,7 @@ export default function ComposeBox({
                     display="flex"
                     alignItems="center"
                     p={2}
-                    sx={{ cursor: "pointer", "&:hover": { bg: "var(--color-canvas-subtle)" } }}
+                    sx={{ cursor: "pointer", "&:hover": { bg: "rgba(255, 255, 255, 0.06)" } }}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       insertMention(u.username);
@@ -726,7 +739,7 @@ export default function ComposeBox({
                   marginBottom: "8px",
                   borderRadius: "12px",
                   overflow: "hidden",
-                  border: "1px solid var(--color-border-subtle)",
+                  border: "1px solid var(--color-border)",
                 }}
               >
                 <ArtifactViewCard artifactId={artifactId} />
@@ -755,11 +768,11 @@ export default function ComposeBox({
               <Box
                 mb={2}
                 p={2}
-                border="1px solid var(--color-border-subtle)"
+                border="1px solid var(--color-border)"
                 borderRadius="8px"
-                backgroundColor="var(--color-canvas-subtle)"
+                backgroundColor="rgba(255, 255, 255, 0.03)"
               >
-                <span style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                   📍 Pinned to <b>{pendingPin.fieldName}</b> = {pendingPin.scalarValue.toFixed(2)}
                 </span>
               </Box>
@@ -792,10 +805,16 @@ export default function ComposeBox({
                   style={{ cursor: "pointer", width: "fit-content" }}
                   onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
                 >
-                  {replyVisibility === "everyone" && <GlobeIcon size={16} style={{ color: "#1d9bf0" }} />}
-                  {replyVisibility === "following" && <PersonIcon size={16} style={{ color: "#1d9bf0" }} />}
-                  {replyVisibility === "mentioned" && <MentionIcon size={16} style={{ color: "#1d9bf0" }} />}
-                  <span style={{ color: "#1d9bf0", fontWeight: "bold", fontSize: "14px" }}>
+                  {replyVisibility === "everyone" && (
+                    <GlobeIcon size={16} style={{ color: "var(--color-accent-cyan)" }} />
+                  )}
+                  {replyVisibility === "following" && (
+                    <PersonIcon size={16} style={{ color: "var(--color-accent-cyan)" }} />
+                  )}
+                  {replyVisibility === "mentioned" && (
+                    <MentionIcon size={16} style={{ color: "var(--color-accent-cyan)" }} />
+                  )}
+                  <span style={{ color: "var(--color-accent-cyan)", fontWeight: "bold", fontSize: "14px" }}>
                     {replyVisibility === "everyone" && "Everyone can reply"}
                     {replyVisibility === "following" && "Accounts you follow can reply"}
                     {replyVisibility === "mentioned" && "Only accounts you mention can reply"}
@@ -814,15 +833,16 @@ export default function ComposeBox({
                       position="absolute"
                       top="100%"
                       left={0}
-                      bg="var(--color-bg-primary)"
-                      border="1px solid var(--color-border-subtle)"
+                      bg="rgba(14, 20, 36, 0.95)"
+                      border="1px solid var(--color-border)"
                       borderRadius="16px"
-                      boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                      boxShadow="0 8px 24px rgba(0,0,0,0.5)"
+                      style={{ backdropFilter: "blur(12px)" }}
                       zIndex={100}
                       width="280px"
                       py={2}
                     >
-                      <Box px={3} pb={2} borderBottom="1px solid var(--color-border-subtle)" mb={2}>
+                      <Box px={3} pb={2} borderBottom="1px solid var(--color-border)" mb={2}>
                         <Text style={{ fontWeight: "bold", fontSize: "15px" }}>Who can reply?</Text>
                       </Box>
                       <Box
@@ -832,7 +852,7 @@ export default function ComposeBox({
                         px={3}
                         py={2}
                         style={{ cursor: "pointer" }}
-                        sx={{ "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
+                        sx={{ "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" } }}
                         onClick={() => {
                           setReplyVisibility("everyone");
                           setShowVisibilityMenu(false);
@@ -845,8 +865,8 @@ export default function ComposeBox({
                           width="36px"
                           height="36px"
                           borderRadius="50%"
-                          bg="#1d9bf0"
-                          color="white"
+                          bg="var(--color-accent-cyan)"
+                          color="#06080f"
                         >
                           <GlobeIcon size={20} />
                         </Box>
@@ -854,9 +874,9 @@ export default function ComposeBox({
                           Everyone
                         </Text>
                         {replyVisibility === "everyone" ? (
-                          <CheckCircleIcon size={20} style={{ color: "#1d9bf0" }} />
+                          <CheckCircleIcon size={20} style={{ color: "var(--color-accent-cyan)" }} />
                         ) : (
-                          <CircleIcon size={20} style={{ color: "var(--color-fg-muted)" }} />
+                          <CircleIcon size={20} style={{ color: "var(--color-text-muted)" }} />
                         )}
                       </Box>
                       <Box
@@ -866,7 +886,7 @@ export default function ComposeBox({
                         px={3}
                         py={2}
                         style={{ cursor: "pointer" }}
-                        sx={{ "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
+                        sx={{ "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" } }}
                         onClick={() => {
                           setReplyVisibility("following");
                           setShowVisibilityMenu(false);
@@ -879,8 +899,8 @@ export default function ComposeBox({
                           width="36px"
                           height="36px"
                           borderRadius="50%"
-                          bg="#1d9bf0"
-                          color="white"
+                          bg="var(--color-accent-cyan)"
+                          color="#06080f"
                         >
                           <PersonIcon size={20} />
                         </Box>
@@ -888,9 +908,9 @@ export default function ComposeBox({
                           Accounts you follow
                         </Text>
                         {replyVisibility === "following" ? (
-                          <CheckCircleIcon size={20} style={{ color: "#1d9bf0" }} />
+                          <CheckCircleIcon size={20} style={{ color: "var(--color-accent-cyan)" }} />
                         ) : (
-                          <CircleIcon size={20} style={{ color: "var(--color-fg-muted)" }} />
+                          <CircleIcon size={20} style={{ color: "var(--color-text-muted)" }} />
                         )}
                       </Box>
                       <Box
@@ -900,7 +920,7 @@ export default function ComposeBox({
                         px={3}
                         py={2}
                         style={{ cursor: "pointer" }}
-                        sx={{ "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
+                        sx={{ "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" } }}
                         onClick={() => {
                           setReplyVisibility("mentioned");
                           setShowVisibilityMenu(false);
@@ -913,8 +933,8 @@ export default function ComposeBox({
                           width="36px"
                           height="36px"
                           borderRadius="50%"
-                          bg="#1d9bf0"
-                          color="white"
+                          bg="var(--color-accent-cyan)"
+                          color="#06080f"
                         >
                           <MentionIcon size={20} />
                         </Box>
@@ -922,9 +942,9 @@ export default function ComposeBox({
                           Only accounts you mention
                         </Text>
                         {replyVisibility === "mentioned" ? (
-                          <CheckCircleIcon size={20} style={{ color: "#1d9bf0" }} />
+                          <CheckCircleIcon size={20} style={{ color: "var(--color-accent-cyan)" }} />
                         ) : (
-                          <CircleIcon size={20} style={{ color: "var(--color-fg-muted)" }} />
+                          <CircleIcon size={20} style={{ color: "var(--color-text-muted)" }} />
                         )}
                       </Box>
                     </Box>

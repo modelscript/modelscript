@@ -24,22 +24,7 @@ const EXCLUDED_PATTERNS = [
 ];
 
 // Known backward-compatibility shims
-const ALLOWED_SHIMS = new Set([
-  "packages/ide/src/browserClientMain.ts",
-  "packages/lsp/src/LspContext.ts",
-  "packages/lsp/src/services/DiagramService.ts",
-  "packages/lsp/src/services/DocumentManager.ts",
-  "packages/lsp/src/services/HierarchyService.ts",
-  "packages/lsp/src/services/ParserService.ts",
-  "packages/lsp/src/services/ReasonerService.ts",
-  "packages/lsp/src/services/ValidationService.ts",
-  "packages/lsp/src/services/WorkspaceManager.ts",
-  "packages/lsp/src/services/WritebackService.ts",
-  "packages/lsp/src/utils/arenaUtils.ts",
-  "packages/lsp/src/utils/astUtils.ts",
-  "packages/lsp/src/utils/hierarchyUtils.ts",
-  "packages/lsp/src/utils/lspUtils.ts",
-]);
+const ALLOWED_SHIMS = new Set<string>();
 
 interface Violation {
   file: string;

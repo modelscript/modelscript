@@ -52,9 +52,10 @@ const Overlay = styled.div`
 const PaletteCard = styled.div`
   width: 100%;
   max-width: 620px;
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 14px;
+  background: rgba(14, 20, 36, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass);
+  border-radius: 16px;
   box-shadow:
     0 20px 50px rgba(0, 0, 0, 0.6),
     0 0 30px rgba(139, 92, 246, 0.2);
@@ -78,7 +79,7 @@ const InputHeader = styled.div`
   align-items: center;
   padding: 14px 16px;
   gap: 12px;
-  border-bottom: 1px solid var(--color-border-subtle, #21262d);
+  border-bottom: 1px solid var(--color-border);
 
   input {
     flex: 1;
@@ -86,21 +87,21 @@ const InputHeader = styled.div`
     border: none;
     outline: none;
     font-size: 16px;
-    color: var(--color-fg-default, #e6edf3);
+    color: var(--color-text-primary);
     font-family: inherit;
 
     &::placeholder {
-      color: var(--color-fg-muted, #8b949e);
+      color: var(--color-text-muted);
     }
   }
 
   kbd {
-    background: var(--color-canvas-subtle, #161b22);
-    border: 1px solid var(--color-border-default, #30363d);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--color-border);
     border-radius: 4px;
     padding: 2px 6px;
     font-size: 11px;
-    color: var(--color-fg-muted, #8b949e);
+    color: var(--color-text-muted);
     font-family: var(--font-mono, monospace);
   }
 `;
@@ -119,7 +120,7 @@ const CategoryHeader = styled.div`
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-fg-muted, #8b949e);
+  color: var(--color-text-muted);
   padding: 8px 12px 4px 12px;
 `;
 
@@ -130,13 +131,13 @@ const ResultItem = styled.div<{ $active: boolean }>`
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  background: ${(props) => (props.$active ? "var(--color-accent-subtle, rgba(139, 92, 246, 0.15))" : "transparent")};
-  color: ${(props) => (props.$active ? "var(--color-fg-default, #fff)" : "var(--color-fg-muted, #c9d1d9)")};
+  background: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.15)" : "transparent")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-primary)")};
   transition: all 0.1s ease;
 
   &:hover {
-    background: var(--color-accent-subtle, rgba(139, 92, 246, 0.15));
-    color: var(--color-fg-default, #fff);
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--color-text-heading);
   }
 
   .left {
@@ -149,7 +150,7 @@ const ResultItem = styled.div<{ $active: boolean }>`
       display: flex;
       align-items: center;
       justify-content: center;
-      color: ${(props) => (props.$active ? "var(--color-accent-cyan, #58a6ff)" : "var(--color-fg-muted, #8b949e)")};
+      color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted)")};
     }
 
     .info {
@@ -167,7 +168,7 @@ const ResultItem = styled.div<{ $active: boolean }>`
 
       .subtitle {
         font-size: 12px;
-        color: var(--color-fg-muted, #8b949e);
+        color: var(--color-text-muted);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -177,7 +178,7 @@ const ResultItem = styled.div<{ $active: boolean }>`
 
   .enter-hint {
     font-size: 11px;
-    color: var(--color-fg-muted, #8b949e);
+    color: var(--color-text-muted);
     display: ${(props) => (props.$active ? "flex" : "none")};
     align-items: center;
     gap: 4px;
@@ -189,10 +190,10 @@ const Footer = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  border-top: 1px solid var(--color-border-subtle, #21262d);
-  background: var(--color-canvas-subtle, #161b22);
+  border-top: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.02);
   font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
+  color: var(--color-text-muted);
 
   .keys {
     display: flex;
@@ -205,8 +206,8 @@ const Footer = styled.div`
       gap: 4px;
 
       kbd {
-        background: var(--color-canvas-default, #0d1117);
-        border: 1px solid var(--color-border-default, #30363d);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--color-border);
         border-radius: 4px;
         padding: 1px 5px;
         font-size: 10px;

@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { LbmCoSimParticipant } from "@modelscript/exchange/cosim";
+import {
+  CfdFieldArena,
+  LBM_D3Q19_WGSL,
+  LbmVoxelizer,
+  WebGPULbmRunner,
+  type LbmGridConfig,
+} from "@modelscript/simulate";
 import assert from "node:assert";
-import { CfdFieldArena, LBM_D3Q19_WGSL, LbmVoxelizer, WebGPULbmRunner, type LbmGridConfig } from "../src/cfd/index.js";
 
 console.log("=== Testing HPC CFD Arena, SoA Memory Coalescing & Binary Streaming ===");
 

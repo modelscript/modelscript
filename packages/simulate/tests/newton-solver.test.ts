@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { describe, expect, test } from "@jest/globals";
 import { generateNewtonSolver } from "@modelscript/dsl/codegen/newton.js";
 
 describe("Non-Linear Newton-Raphson Solver Generator", () => {

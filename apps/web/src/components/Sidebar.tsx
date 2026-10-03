@@ -182,7 +182,8 @@ const SidebarAvatar = styled.div<{ $url?: string }>`
   min-width: 40px;
   min-height: 40px;
   border-radius: 50%;
-  background-color: var(--color-done-emphasis);
+  background: var(--gradient-ai);
+  box-shadow: var(--glow-ai-sm);
   background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
   background-size: cover;
   display: flex;
@@ -198,10 +199,12 @@ const LogoutMenu = styled.div`
   bottom: calc(100% + 8px);
   left: 0;
   width: 100%;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border-subtle);
+  background-color: rgba(14, 20, 36, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-glass);
   border-radius: 16px;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--glow-card);
   padding: 12px 0;
   z-index: 99999;
 
@@ -217,11 +220,11 @@ const LogoutMenu = styled.div`
     text-align: left;
     font-size: 15px;
     font-weight: bold;
-    color: var(--color-fg-default);
+    color: var(--color-text-primary);
     cursor: pointer;
 
     &:hover {
-      background-color: rgba(128, 128, 128, 0.15);
+      background-color: rgba(255, 255, 255, 0.06);
     }
   }
 `;
@@ -237,14 +240,14 @@ const ProfileFooterContainer = styled.div`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: rgba(128, 128, 128, 0.15);
+    background-color: rgba(255, 255, 255, 0.06);
   }
 `;
 
 const GuestFooter = styled.div`
   margin-top: auto;
   padding: 12px 8px 8px 8px;
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -417,7 +420,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
         {user && (
           <>
             <Box mt={4} mb={4} px={4} className="sidebar-separator">
-              <div style={{ height: "1px", backgroundColor: "var(--color-border-subtle)", width: "100%" }} />
+              <div style={{ height: "1px", backgroundColor: "var(--color-border)", width: "100%" }} />
             </Box>
             <Box mt={4} width="100%" px={2} className="post-btn-container">
               <button
@@ -486,7 +489,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                 </Text>
               </Box>
             </Box>
-            <Box className="profile-details" color="var(--color-fg-default)">
+            <Box className="profile-details" color="var(--color-text-muted)">
               <KebabHorizontalIcon size={16} />
             </Box>
           </ProfileFooterContainer>

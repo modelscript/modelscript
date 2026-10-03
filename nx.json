@@ -73,6 +73,7 @@
       "packages/lsp",
       "packages/cad",
       "packages/mcp",
+      "packages/ide",
       "languages/modelica",
       "languages/sysml2",
       "languages/step",
@@ -82,6 +83,7 @@
       "languages/csv",
       "languages/cfd",
       "languages/fea",
+      "languages/modelscript",
       "apps/api",
       "apps/cli"
     ],

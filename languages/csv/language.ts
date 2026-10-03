@@ -28,6 +28,10 @@ export const csvLanguage = language({
   fileExtensions: [".csv"],
   lsp: {
     fileExtensions: [".csv"],
+    icons: {
+      light: "./assets/csv/icon-light.png",
+      dark: "./assets/csv/icon-dark.png",
+    },
   },
 
   writeback: (ctx) => {
