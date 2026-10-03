@@ -32,8 +32,8 @@
     "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.3.2",
-    "http-proxy-middleware": "^3.0.7",
+    "express-rate-limit": "^8.7.0",
+    "http-proxy-middleware": "^4.2.0",
     "path-to-regexp": "^8.4.2"
   },
   "devDependencies": {
@@ -44,7 +44,7 @@
     "esbuild": "^0.28.1",
     "eslint": "^9.13.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.39.0"
   }
 }
