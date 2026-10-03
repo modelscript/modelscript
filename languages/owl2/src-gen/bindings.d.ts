@@ -91,6 +91,7 @@ export declare class Parser {
     oldTree?: ASTNode | null,
     editStart?: number,
     editOldEnd?: number,
+    editNewEnd?: number,
   ): ASTNode | null;
   /** Reads a WASM-allocated length-prefixed string into a JavaScript string. */
   readString(ptr: number): string;
@@ -1080,7 +1081,11 @@ export declare class SyntaxNode {
   /** Returns true if the node or any of its descendants represents a syntax error. */
   hasError(): boolean;
   /** Finds the smallest syntax node covering the character range [start, end]. */
-  descendantForIndex(start: number, end?: number): SyntaxNode | null;
+  descendantForIndex(
+    start: number,
+    end?: number,
+    visited?: Set<number>,
+  ): SyntaxNode | null;
   /** Finds the smallest named syntax node covering the character range [start, end]. */
   namedDescendantForIndex(start: number, end?: number): SyntaxNode | null;
   /** Finds the smallest syntax node covering the given Point range. */

@@ -213,6 +213,91 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   }
 }
 
+/**
+ * Read-only filesystem provider for the `modelica://` virtual scheme.
+ * Resolves standard library files (e.g. MSL) hosted in the language server's virtual VFS.
+ */
+class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
+  private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+  readonly onDidChangeFile = this._emitter.event;
+  private cache = new Map<string, Uint8Array>();
+
+  watch(): vscode.Disposable {
+    return new vscode.Disposable(() => undefined);
+  }
+
+  async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
+    const cached = this.cache.get(uri.toString());
+    if (cached) {
+      return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: cached.length };
+    }
+    if (!client) {
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
+    try {
+      const res: any = await client.sendRequest("modelscript/getVirtualFile", { uri: uri.toString() });
+      if (res && res.exists) {
+        if (res.isDirectory) {
+          return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
+        }
+        return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: res.size ?? (res.content?.length || 0) };
+      }
+    } catch (e) {
+      console.warn("[ModelicaFileSystemProvider] stat error:", e);
+    }
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
+
+  async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+    const cached = this.cache.get(uri.toString());
+    if (cached) return cached;
+
+    if (!client) {
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
+    try {
+      const res: any = await client.sendRequest("modelscript/getVirtualFile", { uri: uri.toString() });
+      if (res && res.exists && typeof res.content === "string") {
+        const data = new TextEncoder().encode(res.content);
+        this.cache.set(uri.toString(), data);
+        return data;
+      }
+    } catch (e) {
+      console.warn("[ModelicaFileSystemProvider] readFile error:", e);
+    }
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
+
+  async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
+    if (!client) return [];
+    try {
+      const res: any = await client.sendRequest("modelscript/readVirtualDirectory", { uri: uri.toString() });
+      if (Array.isArray(res)) {
+        return res.map((e: any) => [e.name, e.isDirectory ? vscode.FileType.Directory : vscode.FileType.File]);
+      }
+    } catch (e) {
+      console.warn("[ModelicaFileSystemProvider] readDirectory error:", e);
+    }
+    return [];
+  }
+
+  createDirectory(): void {
+    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
+  }
+
+  writeFile(): void {
+    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
+  }
+
+  delete(): void {
+    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
+  }
+
+  rename(): void {
+    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
+  }
+}
+
 import { StoppedEvent } from "@vscode/debugadapter";
 import { activeDebugSession, setLspDebugCallbacks } from "./debug-adapter";
 
@@ -355,6 +440,12 @@ export async function activate(context: vscode.ExtensionContext) {
   const memFs = new MemoryFileSystemProvider();
   context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
   console.log("[blank-project] Registered memfs:// filesystem provider");
+
+  const modelicaFs = new ModelicaFileSystemProvider();
+  context.subscriptions.push(
+    workspace.registerFileSystemProvider("modelica", modelicaFs, { isReadonly: true, isCaseSensitive: true }),
+  );
+  console.log("[modelica-vfs] Registered modelica:// filesystem provider");
 
   const folders = workspace.workspaceFolders;
   let memfsRootUri: vscode.Uri | undefined;

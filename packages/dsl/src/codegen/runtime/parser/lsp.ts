@@ -490,8 +490,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
 
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
-    let isMutated = (type & 0x8000) != 0;
-    let isErrorNode = type == 0 || inError || (isLeaf && (((flags & FLAG_HAS_ERROR) != 0) || isMutated));
+    let isErrorNode = type == 0 || inError || (isLeaf && ((flags & FLAG_HAS_ERROR) != 0));
 
     let hasInsertedSibling = getHasInsertedSiblingFromStack(offsetStackVal);
 
@@ -502,14 +501,14 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
       while (chk != 0) {
         let chkFlags = getNodeFlags(chk);
         let chkType = getNodeType(chk);
-        if (chkType == 0 || ((chkFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) || ((chkType & 0x8000) != 0)) {
+        if (chkType == 0 || ((chkFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0)) {
           hasChildError = true;
           break;
         }
         chk = getNodeNextSibling(chk);
       }
     }
-    let isActualError = (type == 0 && !inError) || ((flags & FLAG_IS_INSERTED) != 0) || (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0)) && !inError);
+    let isActualError = (type == 0 && !inError) || ((flags & FLAG_IS_INSERTED) != 0) || (isLeaf && (type == 0 || ((flags & FLAG_HAS_ERROR) != 0)) && !inError);
     let allocatedDiag = false;
 
     if (isActualError) {
@@ -707,7 +706,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
           lsp_allocDiagnostic(dStart, dEnd, 0, 2, tokType as u32, exp1, exp2);
           allocatedDiag = true;
         }
-      } else if (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0))) {
+      } else if (isLeaf && (type == 0 || ((flags & FLAG_HAS_ERROR) != 0))) {
         let fallbackStart = nodeStart < totalInputBytes ? nodeStart : (totalInputBytes >= step ? totalInputBytes - step : 0);
         let fallbackEnd = fallbackStart + step <= totalInputBytes ? fallbackStart + step : totalInputBytes;
         if (fallbackEnd > fallbackStart) {
@@ -758,7 +757,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
           let chkFlags = getNodeFlags(chk);
           let chkType = getNodeType(chk);
           if ((chkFlags & FLAG_IS_INSERTED) != 0) hasAnyInserted = true;
-          if (chkType == 0 || ((chkFlags & FLAG_HAS_ERROR) != 0) || ((chkType & 0x8000) != 0)) hasAnyError = true;
+          if (chkType == 0 || ((chkFlags & FLAG_HAS_ERROR) != 0)) hasAnyError = true;
           chk = getNodeNextSibling(chk);
         }
         

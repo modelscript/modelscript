@@ -97,19 +97,31 @@ function ensureClassIndexed(
           docTrees.set(effectiveUri, { text: docText, tree });
         }
 
-        const cstWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.() ?? {
+        const cstWrapper = {
           getText: (s: number, e: number, entry?: any) => {
-            const dt = docTrees?.get?.(entry?.resourceId ?? effectiveUri);
-            return dt ? dt.text.substring(s, e) : docText!.substring(s, e);
+            const resUri = entry?.resourceId ?? effectiveUri;
+            const norm = resUri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            const dt = docTrees?.get?.(resUri) ?? docTrees?.get?.(norm);
+            if (dt?.text) return dt.text.substring(s, e);
+            const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
+            if (sharedWrapper) return sharedWrapper.getText(s, e, entry);
+            return docText ? docText.substring(s, e) : null;
           },
           getNode: (s: number, e: number, entry?: any) => {
-            const dt = docTrees?.get?.(entry?.resourceId ?? effectiveUri);
-            const rNode = dt ? dt.tree?.rootNode : tree.rootNode;
-            return typeof rNode?.descendantForIndex === "function"
-              ? rNode.descendantForIndex(s, e)
-              : typeof rNode?.getNode === "function"
-                ? rNode.getNode(s, e)
-                : null;
+            const resUri = entry?.resourceId ?? effectiveUri;
+            const norm = resUri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            const dt = docTrees?.get?.(resUri) ?? docTrees?.get?.(norm);
+            const rNode = dt ? dt.tree?.rootNode : resUri === effectiveUri ? tree.rootNode : null;
+            if (rNode) {
+              return typeof rNode.descendantForIndex === "function"
+                ? rNode.descendantForIndex(s, Math.max(s, e - 1))
+                : typeof rNode.getNode === "function"
+                  ? rNode.getNode(s, e)
+                  : null;
+            }
+            const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
+            if (sharedWrapper) return sharedWrapper.getNode(s, e, entry);
+            return null;
           },
         };
         if (typeof queryEngine.updateTree === "function") {

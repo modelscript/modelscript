@@ -11,6 +11,7 @@ import {
   PlusCircleIcon,
   RepoIcon,
   SearchIcon,
+  ZapIcon,
 } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,7 +20,7 @@ import { API_BASE_URL } from "../config";
 
 interface CommandItem {
   id: string;
-  category: "Navigation" | "Actions" | "Users" | "Packages" | "Repositories";
+  category: "AI Copilot" | "Navigation" | "Actions" | "Users" | "Packages" | "Repositories";
   title: string;
   subtitle?: string;
   icon: React.ReactNode;
@@ -52,7 +53,7 @@ const Overlay = styled.div`
 const PaletteCard = styled.div`
   width: 100%;
   max-width: 620px;
-  background: rgba(14, 20, 36, 0.95);
+  background: var(--surface-overlay);
   backdrop-filter: blur(16px);
   border: 1px solid var(--color-border-glass);
   border-radius: 16px;
@@ -432,7 +433,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       },
     }));
 
-    return [...matchingNav, ...userItems, ...packageItems, ...repoItems];
+    const aiItems: CommandItem[] = [
+      {
+        id: `ai-ask-${query}`,
+        category: "AI Copilot",
+        title: `Ask Copilot: "${query}"`,
+        subtitle: "Query physical models, equation semantics, and solvers",
+        icon: <ZapIcon size={16} />,
+        action: () => {
+          navigate(`/explore?q=${encodeURIComponent(query)}`);
+          onClose();
+        },
+      },
+      {
+        id: `ai-synth-${query}`,
+        category: "AI Copilot",
+        title: `Synthesize: /synthesize ${query}`,
+        subtitle: "Generate Modelica code and DAE architecture from specification",
+        icon: <CodeIcon size={16} />,
+        action: () => {
+          onClose();
+          if (onOpenCompose) onOpenCompose();
+        },
+      },
+    ];
+
+    return [...aiItems, ...matchingNav, ...userItems, ...packageItems, ...repoItems];
   }, [query, completions, navigate, onClose, onOpenCompose]);
 
   // Keyboard navigation

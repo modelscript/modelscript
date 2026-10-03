@@ -126,14 +126,19 @@ export function flattenTargetClass(
       arena = null;
     }
   }
-  const qe = context.workspaceManager.getQueryEngine("modelica");
+  const qe = context.workspaceManager.globalModelicaQueryEngine ?? context.workspaceManager.getQueryEngine("modelica");
   if (!arena && qe) {
     try {
       const FlattenerClass = (globalThis as any).ArenaQueryFlattener;
       if (FlattenerClass) {
         const queryDB = qe.toQueryDB();
         const flattener = new FlattenerClass(queryDB);
-        arena = flattener.flatten(target.symbolId);
+        let simClassId = target.symbolId;
+        if (!qe.index?.symbols?.has(simClassId)) {
+          const c = qe.index?.byName?.get(target.className);
+          if (c && c.length > 0) simClassId = c[0];
+        }
+        arena = flattener.flatten(simClassId);
       }
     } catch (e: any) {
       return { error: `Failed to flatten class '${target.className}': ${e?.message ?? e}` };
@@ -559,15 +564,18 @@ export function registerSimulationEndpoints(context: LspContext) {
           `[simulate] Result: ${result.t.length} time points, ${result.states.length} states`,
         );
 
+        const tArr = Array.from(result.t);
+        const yArr = (result.y || []).map((row: any) => (Array.isArray(row) ? row : Array.from(row)));
+
         if (params.format === "csv") {
           const lines = [`time,${result.states.join(",")}`];
-          for (let i = 0; i < result.t.length; i++) {
-            const values = [result.t[i], ...result.states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+          for (let i = 0; i < tArr.length; i++) {
+            const values = [tArr[i], ...result.states.map((_: string, vi: number) => yArr[i]?.[vi] ?? 0)];
             lines.push(values.join(","));
           }
           return {
-            t: result.t,
-            y: result.y,
+            t: tArr,
+            y: yArr,
             states: result.states,
             parameters: getArenaParameterInfo(arena),
             experiment: exp,
@@ -575,8 +583,8 @@ export function registerSimulationEndpoints(context: LspContext) {
         }
 
         return {
-          t: result.t,
-          y: result.y,
+          t: tArr,
+          y: yArr,
           states: result.states,
           parameters: getArenaParameterInfo(arena),
           experiment: exp,

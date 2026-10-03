@@ -268,11 +268,12 @@ export class ParserService {
       getText: (startByte: number, endByte: number, entry?: any): string | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
+        const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
         const docTrees =
           this.documentManager?.documentTrees ??
           (this.workspaceManager as any)?.documentManager?.documentTrees ??
           (this.documentManager as any)?.documentManager?.documentTrees;
-        const docTree = docTrees?.get(uri);
+        const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri);
         if (docTree && docTree.tree && docTree.text) return docTree.text.substring(startByte, endByte);
 
         const lazyLibTrees =
@@ -318,11 +319,12 @@ export class ParserService {
       getNode: (startByte: number, endByte: number, entry?: any): any | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
+        const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
         const docTrees =
           this.documentManager?.documentTrees ??
           (this.workspaceManager as any)?.documentManager?.documentTrees ??
           (this.documentManager as any)?.documentManager?.documentTrees;
-        const docTree = docTrees?.get(uri);
+        const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri);
         if (docTree && docTree.tree) {
           let n = docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
           if (n && n.type === "source_file") {
@@ -683,12 +685,16 @@ export class ParserService {
           if (ext === ".sysml" || ext === ".sysml2") return (this.sysml2Parser as any)?.parse(input, ...rest);
           return (this.parser as any)?.parse(input, ...rest);
         },
-        flattenArena: (name: string, classId?: any, uri?: string) => {
-          const engine = this.workspaceManager.globalModelicaQueryEngine;
+        flattenArena: (name: string, classId?: any, _uri?: string, options?: any) => {
+          const engine =
+            this.workspaceManager.globalModelicaQueryEngine ?? this.workspaceManager.getQueryEngine("modelica");
           if (!engine) return null;
           let targetId = classId;
+          if (targetId !== undefined && !engine.index?.symbols?.has(targetId)) {
+            targetId = undefined;
+          }
           if (targetId === undefined) {
-            const candidates = (engine as any).index?.byName.get(name);
+            const candidates = (engine as any).index?.byName?.get(name);
             if (candidates && candidates.length > 0) {
               targetId = candidates[0];
             }
@@ -697,8 +703,8 @@ export class ParserService {
           const queryDB = engine.toQueryDB();
           const flattenerClass = (globalThis as any).ArenaQueryFlattener;
           if (!flattenerClass) return null;
-          const flattener = new flattenerClass(queryDB);
-          return flattener.flatten(targetId, uri);
+          const flattener = new flattenerClass(queryDB, options);
+          return flattener.flatten(targetId, null, options);
         },
       };
       (globalThis as any).sharedContext = this.sharedContext;

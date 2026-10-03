@@ -132,15 +132,15 @@ export class Parser {
    * Parses the given source string or byte array, optionally performing an incremental parse
    * if an old tree and edit bounds are provided.
    */
-  parse(source, oldTree = null, editStart = 0, editOldEnd = 0) {
+  parse(source, oldTree = null, editStart = 0, editOldEnd = 0, editNewEnd = 0) {
+    const currentEnc =
+      typeof this.runtime.getInputEncoding === "function"
+        ? this.runtime.getInputEncoding()
+        : (this.runtime.wasmExports?.getInputEncoding?.() ??
+          this.runtime.nativeAddon?.getInputEncoding?.() ??
+          InputEncoding.UTF8);
     let view;
     if (typeof source === "string") {
-      const currentEnc =
-        typeof this.runtime.getInputEncoding === "function"
-          ? this.runtime.getInputEncoding()
-          : (this.runtime.wasmExports?.getInputEncoding?.() ??
-            this.runtime.nativeAddon?.getInputEncoding?.() ??
-            InputEncoding.UTF8);
       if (currentEnc === InputEncoding.UTF16LE) {
         const u8 = new Uint8Array(source.length * 2);
         const u16 = new Uint16Array(u8.buffer);
@@ -202,12 +202,31 @@ export class Parser {
     ) {
       this.runtime.nativeAddon.setInputLength(view.length);
     }
+    const encMul =
+      currentEnc === InputEncoding.UTF16LE ||
+      currentEnc === InputEncoding.UTF16BE
+        ? 2
+        : currentEnc === InputEncoding.UTF32LE ||
+            currentEnc === InputEncoding.UTF32BE
+          ? 4
+          : 1;
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
+    let editStartByte = editStart * encMul;
+    let editOldEndByte = editOldEnd * encMul;
+    let editNewEndByte = editNewEnd > 0 ? editNewEnd * encMul : view.length;
+    if (
+      oldTreePtr === 0 ||
+      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+    ) {
+      editStartByte = 0;
+      editOldEndByte = 0;
+      editNewEndByte = view.length;
+    }
     const astRoot = this.runtime.parse(
       oldTreePtr,
-      editStart,
-      editOldEnd,
-      view.length,
+      editStartByte,
+      editOldEndByte,
+      editNewEndByte,
     );
     return astRoot === 0 ? null : new ASTNode(this.runtime, astRoot);
   }
@@ -488,6 +507,9 @@ export class LspFacade {
     return "";
   }
   _childTailCache = new Map();
+  /** Reusable WASM buffer for `TextEditRange` arrays passed to `parseWithEdits`. */
+  _editsScratchPtr = 0;
+  _editsScratchCapacity = 0;
   currentInputLength = 0;
   rootSourceCode = new Map();
   uriSourceCode = new Map();
@@ -708,29 +730,22 @@ export class LspFacade {
     }
     const oldTotalLength = newTotalLength + rangeLength - changeText.length;
     const oldTextPtr = getInputBuf();
-    // Snapshot old buffer contents BEFORE ensureInputBuffer which may grow memory
-    // and detach existing typed array views
-    let oldSnapshot = null;
-    if (oldTotalLength > 0) {
-      const oldView = new Uint16Array(
-        this.wasmMemory.buffer,
-        oldTextPtr,
-        oldTotalLength,
-      );
-      oldSnapshot = new Uint16Array(oldTotalLength);
-      oldSnapshot.set(oldView);
-    }
     const maxLen = Math.max(oldTotalLength, newTotalLength);
     const lenBytesAlloc = maxLen * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytesAlloc)
       : oldTextPtr;
-    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
-    // If the buffer was reallocated, copy the snapshot into the new buffer
-    if (oldTextPtr !== textPtr && oldSnapshot) {
-      const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
-      memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
+    // If the buffer was reallocated, move the old text into it. `ensureInputBuffer` never
+    // frees the previous buffer, so its contents are still valid in linear memory; this
+    // avoids snapshotting the whole document on every keystroke.
+    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
+      new Uint8Array(this.wasmMemory.buffer).copyWithin(
+        textPtr,
+        oldTextPtr,
+        oldTextPtr + oldTotalLength * 2,
+      );
     }
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
     if (changeText.length !== rangeLength) {
       const sourceIndex = rangeOffset + rangeLength;
       const targetIndex = rangeOffset + changeText.length;
@@ -854,29 +869,20 @@ export class LspFacade {
     if (this.exports.abortSuspend) this.exports.abortSuspend();
     const lenBytes = newTotalLength * 2;
     const oldTextPtr = this.exports.getInputBuffer();
-    let oldSnapshot = null;
-    if (oldTotalLength > 0) {
-      const oldView = new Uint16Array(
-        this.wasmMemory.buffer,
-        oldTextPtr,
-        oldTotalLength,
-      );
-      oldSnapshot = new Uint16Array(oldTotalLength);
-      oldSnapshot.set(oldView);
-    }
     const maxLen = Math.max(oldTotalLength, newTotalLength);
     const lenBytesAlloc = maxLen * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytesAlloc)
       : oldTextPtr;
-    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
-    if (oldTextPtr !== textPtr && oldSnapshot) {
-      const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
-      memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
+    // Old input buffers are never freed, so relocated text can be copied in place.
+    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
+      new Uint8Array(this.wasmMemory.buffer).copyWithin(
+        textPtr,
+        oldTextPtr,
+        oldTextPtr + oldTotalLength * 2,
+      );
     }
-    console.log(
-      `[Bindings] parseIncrementalBatch START: ${edits.length} edits, netDelta=${netDelta}, oldLen=${oldTotalLength}, newLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
-    );
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
     // Sort edits in descending order so mutations at higher offsets do not shift lower offsets
     const sortedEdits = edits
       .slice()
@@ -3940,7 +3946,15 @@ export class LspFacade {
         this.exports.parseWithEdits &&
         this.exports.atomicChunkAlloc
       ) {
-        const editsPtr = this.exports.atomicChunkAlloc(edits.length * 12);
+        // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
+        // per call leaked 12 bytes per edit on every keystroke.
+        if (this._editsScratchCapacity < edits.length) {
+          this._editsScratchCapacity = Math.max(16, edits.length * 2);
+          this._editsScratchPtr = this.exports.atomicChunkAlloc(
+            this._editsScratchCapacity * 12,
+          );
+        }
+        const editsPtr = this._editsScratchPtr;
         const mem32 = new Uint32Array(this.wasmMemory.buffer);
         for (let i = 0; i < edits.length; i++) {
           const base = (editsPtr >>> 2) + i * 3;
@@ -4938,15 +4952,22 @@ export class SyntaxNode {
     return (this._cachedHasError = false);
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
-  descendantForIndex(start, end = start) {
+  descendantForIndex(start, end = start, visited) {
+    if (this.ptr) {
+      if (!visited) visited = new Set();
+      if (visited.has(this.ptr)) return null;
+      visited.add(this.ptr);
+    }
     if (
       this.parent !== null &&
       (start < this.startIndex || end > this.endIndex)
     )
       return null;
     for (const kid of this.children) {
+      if (kid.ptr === this.ptr) continue;
       if (start >= kid.startIndex && end <= kid.endIndex) {
-        return kid.descendantForIndex(start, end);
+        const res = kid.descendantForIndex(start, end, visited);
+        if (res) return res;
       }
     }
     return this;

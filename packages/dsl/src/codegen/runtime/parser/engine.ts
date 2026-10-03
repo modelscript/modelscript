@@ -629,6 +629,7 @@ export {
 
 export let t_lrStateStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_lrNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+export let t_lrScannerStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let lrStackDepth: i32 = 0;
 export const MAX_LR_STACK_DEPTH: i32 = 65536;
 export let tempActions: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
@@ -887,12 +888,13 @@ export class FieldCursor {
       let hasError = (flags & FLAG_HAS_ERROR) != 0;
 
       let idx = 0;
-      while (child != 0 && idx < logicalIndex) {
+      while (child != 0) {
         let childType = getNodeType(child);
-        if (childType == NODE_TYPE_ERROR) {
+        if (childType == NODE_TYPE_ERROR || childType == 0) {
           child = getNodeNextSibling(child);
           continue;
         }
+        if (idx == logicalIndex) break;
         idx++;
         child = getNodeNextSibling(child);
       }

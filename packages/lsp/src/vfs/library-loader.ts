@@ -543,17 +543,30 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     }
 
     if (!fileEntries) {
-      const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
-      if (!response.ok) {
-        ctx.logger.warn("MSL zip not found — library features will be unavailable");
-        return;
+      let zipData: Uint8Array;
+      if (
+        serverDistBase.startsWith("file://") ||
+        (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://"))
+      ) {
+        const filePath = serverDistBase.startsWith("file://")
+          ? serverDistBase.replace(/^file:\/\//, "")
+          : serverDistBase;
+        const zipPath = `${filePath}/ModelicaStandardLibrary_v4.1.0.zip`;
+        const nodeFs = await import("node:fs");
+        zipData = nodeFs.readFileSync(zipPath);
+      } else {
+        const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
+        if (!response.ok) {
+          ctx.logger.warn("MSL zip not found — library features will be unavailable");
+          return;
+        }
+        ctx.connectionState.sendNotification("modelscript/status", {
+          state: "loading",
+          message: "Decompressing MSL...",
+        });
+        const buffer = await response.arrayBuffer();
+        zipData = new Uint8Array(buffer);
       }
-      ctx.connectionState.sendNotification("modelscript/status", {
-        state: "loading",
-        message: "Decompressing MSL...",
-      });
-      const buffer = await response.arrayBuffer();
-      const zipData = new Uint8Array(buffer);
       fileEntries = unzipSync(zipData);
 
       try {

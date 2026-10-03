@@ -499,7 +499,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   s.allocCount++;
   let ptr: u32 = 0;
 
-  let flags: u32 = (type == 0 || (type & 0x8000) != 0) ? FLAG_HAS_ERROR : 0;
+  let flags: u32 = type == 0 ? FLAG_HAS_ERROR : 0;
   // Perform atomic bump allocation in the currently active generation (Immutable Append-Only)
   let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
 
@@ -584,10 +584,9 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
 
   // 6. Assemble using the unmanaged wrapper
   let initialFlags: u32 = 0;
-  let isMutated = (type & 0x8000) != 0;
-  let typ = type & 0x7FFF;
+  let typ = type & 0x03ff;
   
-  if (typ == 0 || isMutated) { // 0 is NODE_TYPE_ERROR, isMutated is 0x8000 recovered error
+  if (typ == 0) { // 0 is NODE_TYPE_ERROR
     initialFlags |= (FLAG_HAS_ERROR as u32) << 10;
   }
   if (isTainted) {

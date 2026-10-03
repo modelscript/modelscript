@@ -145,10 +145,13 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 (function() {
   var originalWarn = console.warn;
   console.warn = function() {
-    if (typeof arguments[0] === 'string' && (
-      arguments[0].includes('ENOPRO: No file system provider found for resource') ||
-      arguments[0].includes('No search provider registered for scheme: memfs')
-    )) return;
+    for (var i = 0; i < arguments.length; i++) {
+      if (typeof arguments[i] === 'string' && (
+        arguments[i].includes('ENOPRO: No file system provider found for resource') ||
+        arguments[i].includes('No search provider registered for scheme: memfs') ||
+        arguments[i].includes('Ignoring the error while validating workspace folder')
+      )) return;
+    }
     originalWarn.apply(console, arguments);
   };
   

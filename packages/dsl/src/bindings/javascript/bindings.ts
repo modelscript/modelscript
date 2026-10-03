@@ -178,15 +178,16 @@ export class Parser {
     oldTree: ASTNode | null = null,
     editStart: number = 0,
     editOldEnd: number = 0,
+    editNewEnd: number = 0,
   ): ASTNode | null {
+    const currentEnc =
+      typeof this.runtime.getInputEncoding === "function"
+        ? this.runtime.getInputEncoding()
+        : ((this.runtime as any).wasmExports?.getInputEncoding?.() ??
+          (this.runtime as any).nativeAddon?.getInputEncoding?.() ??
+          InputEncoding.UTF8);
     let view: Uint8Array;
     if (typeof source === "string") {
-      const currentEnc =
-        typeof this.runtime.getInputEncoding === "function"
-          ? this.runtime.getInputEncoding()
-          : ((this.runtime as any).wasmExports?.getInputEncoding?.() ??
-            (this.runtime as any).nativeAddon?.getInputEncoding?.() ??
-            InputEncoding.UTF8);
       if (currentEnc === InputEncoding.UTF16LE) {
         const u8 = new Uint8Array(source.length * 2);
         const u16 = new Uint16Array(u8.buffer);
@@ -239,8 +240,23 @@ export class Parser {
       (this.runtime as any).nativeAddon.setInputLength(view.length);
     }
 
+    const encMul =
+      currentEnc === InputEncoding.UTF16LE || currentEnc === InputEncoding.UTF16BE
+        ? 2
+        : currentEnc === InputEncoding.UTF32LE || currentEnc === InputEncoding.UTF32BE
+          ? 4
+          : 1;
+
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-    const astRoot = this.runtime.parse(oldTreePtr, editStart, editOldEnd, view.length);
+    let editStartByte = editStart * encMul;
+    let editOldEndByte = editOldEnd * encMul;
+    let editNewEndByte = editNewEnd > 0 ? editNewEnd * encMul : view.length;
+    if (oldTreePtr === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
+      editStartByte = 0;
+      editOldEndByte = 0;
+      editNewEndByte = view.length;
+    }
+    const astRoot = this.runtime.parse(oldTreePtr, editStartByte, editOldEndByte, editNewEndByte);
     return astRoot === 0 ? null : new ASTNode(this.runtime, astRoot);
   }
 
@@ -4934,11 +4950,18 @@ export class SyntaxNode {
   }
 
   /** Finds the smallest syntax node covering the character range [start, end]. */
-  descendantForIndex(start: number, end: number = start): SyntaxNode | null {
+  descendantForIndex(start: number, end: number = start, visited?: Set<number>): SyntaxNode | null {
+    if (this.ptr) {
+      if (!visited) visited = new Set<number>();
+      if (visited.has(this.ptr)) return null;
+      visited.add(this.ptr);
+    }
     if (this.parent !== null && (start < this.startIndex || end > this.endIndex)) return null;
     for (const kid of this.children) {
+      if (kid.ptr === this.ptr) continue;
       if (start >= kid.startIndex && end <= kid.endIndex) {
-        return kid.descendantForIndex(start, end);
+        const res = kid.descendantForIndex(start, end, visited);
+        if (res) return res;
       }
     }
     return this;

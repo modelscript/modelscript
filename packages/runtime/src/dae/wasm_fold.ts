@@ -342,7 +342,7 @@ export function evaluateConstantArenaExpression(
               return a * b;
             case BinOp.Div:
             case BinOp.ElemDiv:
-              return b !== 0 ? a / b : 0;
+              return b !== 0 ? a / b : null;
             case BinOp.ElemPow:
               return Math.pow(a, b);
           }
@@ -373,7 +373,7 @@ export function evaluateConstantArenaExpression(
         return lNum * rNum;
       case BinOp.Div:
       case BinOp.ElemDiv:
-        return rNum !== 0 ? lNum / rNum : 0;
+        return rNum !== 0 ? lNum / rNum : null;
       case BinOp.Pow:
       case BinOp.ElemPow:
         return Math.pow(lNum, rNum);

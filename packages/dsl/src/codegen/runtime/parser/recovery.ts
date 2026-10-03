@@ -387,26 +387,20 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
     let childLeaf = allocNode(childTokType, pad, tLen, 0, false);
     setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
-    if (lastChild != 0 && getNodeNextSibling(lastChild) == 0) {
-      // Fast path: nobody has extended this chain yet, so the tail can be shared.
-      setFirstChild(tNode, getNodeFirstChild(oldNode));
-      setNextSibling(lastChild, childLeaf);
-    } else {
-      // Another fork already appended after `lastChild` (or the tail is unknown):
-      // copy the chain up to our tail so both forks keep consistent children.
-      let src = getNodeFirstChild(oldNode);
-      let tail: u32 = 0;
-      while (src != 0) {
-        let c = cloneNodeShallow(src);
-        if (tail == 0) setFirstChild(tNode, c);
-        else setNextSibling(tail, c);
-        tail = c;
-        if (src == lastChild) break;
-        src = getNodeNextSibling(src);
-      }
-      if (tail == 0) setFirstChild(tNode, childLeaf);
-      else setNextSibling(tail, childLeaf);
+    // Pure copy-on-write: clone the chain up to `lastChild` so each fork gets its own
+    // independent children list and no existing node or sibling pointer is mutated in-place.
+    let src = getNodeFirstChild(oldNode);
+    let tail: u32 = 0;
+    while (src != 0) {
+      let c = cloneNodeShallow(src);
+      if (tail == 0) setFirstChild(tNode, c);
+      else setNextSibling(tail, c);
+      tail = c;
+      if (src == lastChild) break;
+      src = getNodeNextSibling(src);
     }
+    if (tail == 0) setFirstChild(tNode, childLeaf);
+    else setNextSibling(tail, childLeaf);
     lastChild = childLeaf;
   }
 
@@ -650,7 +644,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
       if (insCost < 50 || (isDelimLookahead && insCost <= 50) || bestRep == 1) {
         let aTarget = findShiftTarget(state, bestRep as u16);
         if (aTarget != -1 && stateCanAccept(head, aTarget, token, 0, 1) > 0) {
-          let insNode = allocNode((bestRep | 0x8000) as u16, 0, 0, 0, false);
+          let insNode = allocNode(bestRep as u16, 0, 0, 0, false);
           setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
 
           let diagStart = srcLexPos;
@@ -801,7 +795,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
           let canAcceptAfterSubst = stateCanAccept(head, aTarget, nextTok, 0, 1);
           if (canAcceptAfterSubst > 0) {
             let pad = (curSrcLexPos > pos ? curSrcLexPos - pos : 0) + head.pendingPadding;
-            let mutatedNode = allocNode((sym | 0x8000) as u16, pad, curTLen, 0, false);
+            let mutatedNode = allocNode(sym as u16, pad, curTLen, 0, false);
             setNodeFlags(mutatedNode, FLAG_HAS_ERROR);
 
             let diagStart = curSrcLexPos;
@@ -832,7 +826,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
         if (insCost < 50 || (isDelimLookahead && insCost <= 50) || sym == 1 || pos == 0) {
           let canAcceptNext = stateCanAccept(head, aTarget, token, 0, 1);
           if (canAcceptNext > 0) {
-            let insNode = allocNode((sym | 0x8000) as u16, 0, 0, 0, false);
+            let insNode = allocNode(sym as u16, 0, 0, 0, false);
             setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
 
             let diagStart = curSrcLexPos;
@@ -898,7 +892,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
   if (bestSubstResolvedHead != null) {
     let nextPosAfterTok = curSrcLexPos + bestSubstSpan;
     let pad = (curSrcLexPos > pos ? curSrcLexPos - pos : 0) + head.pendingPadding;
-    let mutatedNode = allocNode((bestSubstSym | 0x8000) as u16, pad, bestSubstSpan, 0, false);
+    let mutatedNode = allocNode(bestSubstSym as u16, pad, bestSubstSpan, 0, false);
     setNodeFlags(mutatedNode, FLAG_HAS_ERROR);
 
     let diagStart = curSrcLexPos;

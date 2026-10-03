@@ -691,173 +691,189 @@ function exprContainsNonConstantRef(exprId: number, dae: DAEBuilder, visited = n
   return false;
 }
 
-function evalDaeExpr(exprId: number, dae: DAEBuilder): any {
+function evalDaeExpr(exprId: number, dae: DAEBuilder, visitedExprs?: Set<number>, visitedVars?: Set<number>): any {
   if (exprId < 0) return null;
-  const kind = dae.getExprKind(exprId);
-  switch (kind) {
-    case ExprKind.IntLiteral:
-      return dae.getExprData1(exprId);
-    case ExprKind.RealLiteral:
-      return dae.getExprRealValue(exprId);
-    case ExprKind.BoolLiteral:
-      return dae.getExprData1(exprId) !== 0;
-    case ExprKind.Name: {
-      const name = dae.interner.resolve(dae.getExprData1(exprId));
-      if (!name) return null;
-      if (name === "true") return true;
-      if (name === "false") return false;
-      const varIdx = dae.lookupVariable(name);
-      if (varIdx >= 0) {
-        const v = dae.getVarVariability(varIdx);
-        if (v === Variability.Constant || v === Variability.Parameter) {
-          const bindingId = dae.getVarExpression(varIdx);
-          if (bindingId !== undefined && bindingId >= 0 && bindingId !== exprId) {
-            return evalDaeExpr(bindingId, dae);
-          }
-          if (!dae.isVarFixed(varIdx)) {
-            return null;
-          }
-          const startVal = dae.getVarStartValue(varIdx);
-          if (dae.getVarType(varIdx) === VarType.Boolean) {
-            return startVal !== 0;
-          }
-          return startVal;
-        }
-      }
-      return null;
-    }
-    case ExprKind.Negate: {
-      const operand = evalDaeExpr(dae.getExprLeft(exprId), dae);
-      if (typeof operand === "number") return -operand;
-      return null;
-    }
-    case ExprKind.Unary: {
-      const op = dae.getExprData1(exprId);
-      const operand = evalDaeExpr(dae.getExprLeft(exprId), dae);
-      if (operand === null) return null;
-      if (op === UnaryOp.Negate && typeof operand === "number") return -operand;
-      if (op === UnaryOp.Not) {
-        if (typeof operand === "boolean") return !operand;
-        if (typeof operand === "number") return operand === 0;
-      }
-      return null;
-    }
-    case ExprKind.Binary: {
-      const op = dae.getExprData1(exprId);
-      const left = evalDaeExpr(dae.getExprLeft(exprId), dae);
-      const right = evalDaeExpr(dae.getExprRight(exprId), dae);
-      if (left === null || right === null) return null;
-      if (typeof left === "number" && typeof right === "number") {
-        switch (op) {
-          case BinOp.Add:
-            return left + right;
-          case BinOp.Sub:
-            return left - right;
-          case BinOp.Mul:
-            return left * right;
-          case BinOp.Div:
-            return right !== 0 ? left / right : null;
-          case BinOp.Pow:
-            return Math.pow(left, right);
-          case BinOp.Eq:
-            return left === right;
-          case BinOp.Neq:
-            return left !== right;
-          case BinOp.Lt:
-            return left < right;
-          case BinOp.Lte:
-            return left <= right;
-          case BinOp.Gt:
-            return left > right;
-          case BinOp.Gte:
-            return left >= right;
-        }
-      } else if (typeof left === "boolean" && typeof right === "boolean") {
-        switch (op) {
-          case BinOp.And:
-            return left && right;
-          case BinOp.Or:
-            return left || right;
-          case BinOp.Eq:
-            return left === right;
-          case BinOp.Neq:
-            return left !== right;
-        }
-      }
-      return null;
-    }
-    case ExprKind.StringLiteral:
-      return dae.interner.resolve(dae.getExprData1(exprId));
-    case ExprKind.ArrayCtor: {
-      const count = dae.getExprData1(exprId);
-      const result: any[] = [];
-      for (let i = 0; i < count; i++) {
-        const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
-        const val = evalDaeExpr(elemId, dae);
-        if (val === null) return null;
-        result.push(val);
-      }
-      return result;
-    }
-    case ExprKind.Call: {
-      const fnNameId = dae.getExprData1(exprId);
-      const fnName = dae.interner.resolve(fnNameId);
-      if (!fnName) return null;
-      const cleanFn = fnName.split(".").pop() ?? fnName;
-      const argCount = dae.getExprRight(exprId);
-      const firstArg = dae.getExprLeft(exprId);
-      const args: any[] = [];
-      for (let i = 0; i < argCount; i++) {
-        const aId = i === 0 ? firstArg : dae.getExprLeft(exprId + i);
-        const aVal = evalDaeExpr(aId, dae);
-        if (aVal === null) return null;
-        args.push(aVal);
-      }
-      if (cleanFn === "/*Real*/" || cleanFn === "Real") {
-        return typeof args[0] === "number" ? args[0] : null;
-      }
-      if (cleanFn === "/*Integer*/" || cleanFn === "Integer") {
-        return typeof args[0] === "number" ? Math.floor(args[0]) : null;
-      }
-      if (cleanFn === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
-        return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
-      }
-      if (cleanFn === "rem" && typeof args[0] === "number" && typeof args[1] === "number") {
-        return args[1] !== 0 ? args[0] - Math.trunc(args[0] / args[1]) * args[1] : null;
-      }
-      if (cleanFn === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
-        return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
-      }
-      const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
-      if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
-        return scalarBuiltin.fold(...args);
-      }
-      return null;
-    }
-    case ExprKind.IfElse: {
-      const condVal = evalDaeExpr(dae.getExprData1(exprId), dae);
-      if (typeof condVal === "boolean") {
-        return condVal ? evalDaeExpr(dae.getExprLeft(exprId), dae) : evalDaeExpr(dae.getExprRight(exprId), dae);
-      }
-      return null;
-    }
-    case ExprKind.Subscript: {
-      const baseVal = evalDaeExpr(dae.getExprData1(exprId), dae);
-      if (!Array.isArray(baseVal)) return null;
-      const subCount = dae.getExprRight(exprId);
-      if (subCount === 1) {
-        const subVal = evalDaeExpr(dae.getExprLeft(exprId), dae);
-        if (typeof subVal === "number" && Number.isInteger(subVal)) {
-          const idx = subVal - 1;
-          if (idx >= 0 && idx < baseVal.length) {
-            return baseVal[idx];
+  if (!visitedExprs) visitedExprs = new Set<number>();
+  if (visitedExprs.has(exprId)) return null;
+  visitedExprs.add(exprId);
+  try {
+    const kind = dae.getExprKind(exprId);
+    switch (kind) {
+      case ExprKind.IntLiteral:
+        return dae.getExprData1(exprId);
+      case ExprKind.RealLiteral:
+        return dae.getExprRealValue(exprId);
+      case ExprKind.BoolLiteral:
+        return dae.getExprData1(exprId) !== 0;
+      case ExprKind.Name: {
+        const name = dae.interner.resolve(dae.getExprData1(exprId));
+        if (!name) return null;
+        if (name === "true") return true;
+        if (name === "false") return false;
+        const varIdx = dae.lookupVariable(name);
+        if (varIdx >= 0) {
+          if (!visitedVars) visitedVars = new Set<number>();
+          if (visitedVars.has(varIdx)) return null;
+          visitedVars.add(varIdx);
+          try {
+            const v = dae.getVarVariability(varIdx);
+            if (v === Variability.Constant || v === Variability.Parameter) {
+              const bindingId = dae.getVarExpression(varIdx);
+              if (bindingId !== undefined && bindingId >= 0 && bindingId !== exprId) {
+                return evalDaeExpr(bindingId, dae, visitedExprs, visitedVars);
+              }
+              if (!dae.isVarFixed(varIdx)) {
+                return null;
+              }
+              const startVal = dae.getVarStartValue(varIdx);
+              if (dae.getVarType(varIdx) === VarType.Boolean) {
+                return startVal !== 0;
+              }
+              return startVal;
+            }
+          } finally {
+            visitedVars.delete(varIdx);
           }
         }
+        return null;
       }
-      return null;
+      case ExprKind.Negate: {
+        const operand = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
+        if (typeof operand === "number") return -operand;
+        return null;
+      }
+      case ExprKind.Unary: {
+        const op = dae.getExprData1(exprId);
+        const operand = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
+        if (operand === null) return null;
+        if (op === UnaryOp.Negate && typeof operand === "number") return -operand;
+        if (op === UnaryOp.Not) {
+          if (typeof operand === "boolean") return !operand;
+          if (typeof operand === "number") return operand === 0;
+        }
+        return null;
+      }
+      case ExprKind.Binary: {
+        const op = dae.getExprData1(exprId);
+        const left = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
+        const right = evalDaeExpr(dae.getExprRight(exprId), dae, visitedExprs, visitedVars);
+        if (left === null || right === null) return null;
+        if (typeof left === "number" && typeof right === "number") {
+          switch (op) {
+            case BinOp.Add:
+              return left + right;
+            case BinOp.Sub:
+              return left - right;
+            case BinOp.Mul:
+              return left * right;
+            case BinOp.Div:
+              return right !== 0 ? left / right : null;
+            case BinOp.Pow:
+              return Math.pow(left, right);
+            case BinOp.Eq:
+              return left === right;
+            case BinOp.Neq:
+              return left !== right;
+            case BinOp.Lt:
+              return left < right;
+            case BinOp.Lte:
+              return left <= right;
+            case BinOp.Gt:
+              return left > right;
+            case BinOp.Gte:
+              return left >= right;
+          }
+        } else if (typeof left === "boolean" && typeof right === "boolean") {
+          switch (op) {
+            case BinOp.And:
+              return left && right;
+            case BinOp.Or:
+              return left || right;
+            case BinOp.Eq:
+              return left === right;
+            case BinOp.Neq:
+              return left !== right;
+          }
+        }
+        return null;
+      }
+      case ExprKind.StringLiteral:
+        return dae.interner.resolve(dae.getExprData1(exprId));
+      case ExprKind.ArrayCtor: {
+        const count = dae.getExprData1(exprId);
+        const result: any[] = [];
+        for (let i = 0; i < count; i++) {
+          const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+          const val = evalDaeExpr(elemId, dae, visitedExprs, visitedVars);
+          if (val === null) return null;
+          result.push(val);
+        }
+        return result;
+      }
+      case ExprKind.Call: {
+        const fnNameId = dae.getExprData1(exprId);
+        const fnName = dae.interner.resolve(fnNameId);
+        if (!fnName) return null;
+        const cleanFn = fnName.split(".").pop() ?? fnName;
+        const argCount = dae.getExprRight(exprId);
+        const firstArg = dae.getExprLeft(exprId);
+        const args: any[] = [];
+        for (let i = 0; i < argCount; i++) {
+          const aId = i === 0 ? firstArg : dae.getExprLeft(exprId + i);
+          const aVal = evalDaeExpr(aId, dae, visitedExprs, visitedVars);
+          if (aVal === null) return null;
+          args.push(aVal);
+        }
+        if (cleanFn === "/*Real*/" || cleanFn === "Real") {
+          return typeof args[0] === "number" ? args[0] : null;
+        }
+        if (cleanFn === "/*Integer*/" || cleanFn === "Integer") {
+          return typeof args[0] === "number" ? Math.floor(args[0]) : null;
+        }
+        if (cleanFn === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
+          return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
+        }
+        if (cleanFn === "rem" && typeof args[0] === "number" && typeof args[1] === "number") {
+          return args[1] !== 0 ? args[0] - Math.trunc(args[0] / args[1]) * args[1] : null;
+        }
+        if (cleanFn === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
+          return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
+        }
+        const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
+        if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
+          return scalarBuiltin.fold(...args);
+        }
+        return null;
+      }
+      case ExprKind.IfElse: {
+        const condVal = evalDaeExpr(dae.getExprData1(exprId), dae, visitedExprs, visitedVars);
+        if (typeof condVal === "boolean") {
+          return condVal
+            ? evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars)
+            : evalDaeExpr(dae.getExprRight(exprId), dae, visitedExprs, visitedVars);
+        }
+        return null;
+      }
+      case ExprKind.Subscript: {
+        const baseVal = evalDaeExpr(dae.getExprData1(exprId), dae, visitedExprs, visitedVars);
+        if (!Array.isArray(baseVal)) return null;
+        const subCount = dae.getExprRight(exprId);
+        if (subCount === 1) {
+          const subVal = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
+          if (typeof subVal === "number" && Number.isInteger(subVal)) {
+            const idx = subVal - 1;
+            if (idx >= 0 && idx < baseVal.length) {
+              return baseVal[idx];
+            }
+          }
+        }
+        return null;
+      }
+      default:
+        return null;
     }
-    default:
-      return null;
+  } finally {
+    visitedExprs.delete(exprId);
   }
 }
 
@@ -2174,10 +2190,14 @@ function getExprDims(exprId: number, dae: DAEBuilder, db?: any): number[] | null
         } else if (subKind === ExprKind.ArrayCtor) {
           remainingDims.push(dae.getExprData1(subExpr));
         } else if (subKind === ExprKind.Range) {
-          const rStart = evalDaeExpr(dae.getExprLeft(subExpr), dae);
-          const rEnd = evalDaeExpr(dae.getExprRight(subExpr), dae);
-          if (typeof rStart === "number" && typeof rEnd === "number") {
-            remainingDims.push(Math.max(0, Math.trunc(rEnd - rStart + 1)));
+          const startId = dae.getExprData1(subExpr);
+          const stepId = dae.getExprLeft(subExpr);
+          const stopId = dae.getExprRight(subExpr);
+          const rStart = evalDaeExpr(startId, dae);
+          const rEnd = evalDaeExpr(stopId, dae);
+          const rStep = stepId !== -1 && stepId !== 0xffffffff ? (evalDaeExpr(stepId, dae) ?? 1) : 1;
+          if (typeof rStart === "number" && typeof rEnd === "number" && typeof rStep === "number" && rStep !== 0) {
+            remainingDims.push(Math.max(0, Math.floor((rEnd - rStart) / rStep + 1e-9) + 1));
           }
         }
       }
@@ -2282,7 +2302,7 @@ function expandVarToArrayCtor(baseName: string, dae: DAEBuilder): number | null 
       const key = currentIndices.join(",");
       const expr = table.get(key);
       if (expr !== undefined) return expr;
-      return dae.addExpression(ExprKind.RealLiteral, dae.interner.intern("0.0"));
+      return dae.addRealLiteral(0.0);
     }
     const childExprs: number[] = [];
     const dimSize = maxDims[currentDim]!;
@@ -2634,7 +2654,7 @@ function addArrayBinaryExpr(op: BinOp, leftId: number, rightId: number, dae: DAE
         res = lVal * rVal;
         break;
       case BinOp.Div:
-        res = rVal !== 0 ? lVal / rVal : 0;
+        res = rVal !== 0 ? lVal / rVal : null;
         break;
     }
     if (res !== null) {
@@ -2703,7 +2723,7 @@ function broadcastElemBinOp(
         res = lVal * rVal;
         break;
       case BinOp.Div:
-        res = rVal !== 0 ? lVal / rVal : 0;
+        res = rVal !== 0 ? lVal / rVal : null;
         break;
       case BinOp.Pow:
         res = Math.pow(lVal, rVal);
@@ -3651,9 +3671,9 @@ const SCALAR_VECTORIZABLE_FUNCTIONS = new Map<string, { arity: number; fold?: (.
   ["sign", { arity: 1, fold: Math.sign }],
   ["floor", { arity: 1, fold: Math.floor }],
   ["ceil", { arity: 1, fold: Math.ceil }],
-  ["div", { arity: 2, fold: (a, b) => (b !== 0 ? Math.trunc(a / b) : 0) }],
-  ["rem", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : 0) }],
-  ["mod", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : 0) }],
+  ["div", { arity: 2, fold: (a, b) => (b !== 0 ? Math.trunc(a / b) : (null as any)) }],
+  ["rem", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : (null as any)) }],
+  ["mod", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : (null as any)) }],
 ]);
 
 function vectorizeFunctionCall(
@@ -3878,8 +3898,10 @@ function vectorizeFunctionCall(
       }
       if (allConst && constVals.length === subArgs.length) {
         const folded = scalarBuiltin.fold(...constVals);
-        elemResults.push(dae.addRealLiteral(folded));
-        continue;
+        if (folded !== null && typeof folded === "number" && isFinite(folded)) {
+          elemResults.push(dae.addRealLiteral(folded));
+          continue;
+        }
       }
     } else if (fnDae) {
       const constVals: any[] = [];
@@ -4218,7 +4240,16 @@ function lowerCSTExpression(
                 e = evaluateCSTNumber(colonNodes[2], substitutions as any, undefined, db, dae, prefix);
               }
               if (s !== null && e !== null) {
-                for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
+                if (step === 0 || Math.abs(step) < 1e-12) {
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
+                    message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(step)),
+                    range: { startByte: 0, endByte: 0 },
+                  });
+                } else {
+                  for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
+                }
               }
             } else {
               const rangeText = rangeNode.text?.trim() ?? "";
@@ -6371,7 +6402,16 @@ function lowerCSTExpression(
                         e = evaluateCSTNumber(colonNodes[2], substitutions as any, undefined, db, dae, prefix);
                       }
                       if (s !== null && e !== null) {
-                        for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
+                        if (step === 0 || Math.abs(step) < 1e-12) {
+                          dae.diagnostics.push({
+                            severity: "error",
+                            code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
+                            message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(step)),
+                            range: { startByte: 0, endByte: 0 },
+                          });
+                        } else {
+                          for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
+                        }
                       }
                     } else {
                       const parts = rangeText.split(":");
@@ -8804,33 +8844,40 @@ function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
   return parts.join(".");
 }
 
-function getConstVal(id: number, dae: DAEBuilder): number | null {
+function getConstVal(id: number, dae: DAEBuilder, visited?: Set<number>): number | null {
   if (id < 0) return null;
-  const k = dae.getExprKind(id);
-  if (k === ExprKind.IntLiteral) return dae.getExprData1(id);
-  if (k === ExprKind.RealLiteral) return dae.getExprRealValue(id);
-  if (k === ExprKind.Unary && dae.getExprData1(id) === 0 /* UnOp.Neg */) {
-    const inner = getConstVal(dae.getExprLeft(id), dae);
-    return inner !== null ? -inner : null;
-  }
-  if (k === ExprKind.Negate) {
-    const inner = getConstVal(dae.getExprLeft(id), dae);
-    return inner !== null ? -inner : null;
-  }
-  if (k === ExprKind.Name) {
-    const name = dae.interner.resolve(dae.getExprData1(id));
-    if (name) {
-      const vIdx = dae.getVarIdxByName(name);
-      if (vIdx >= 0) {
-        const v = dae.getVarVariability(vIdx);
-        if (v === Variability.Constant || v === Variability.Parameter) {
-          const vExp = dae.getVarExpression(vIdx);
-          if (vExp >= 0) return getConstVal(vExp, dae);
+  if (!visited) visited = new Set<number>();
+  if (visited.has(id)) return null;
+  visited.add(id);
+  try {
+    const k = dae.getExprKind(id);
+    if (k === ExprKind.IntLiteral) return dae.getExprData1(id);
+    if (k === ExprKind.RealLiteral) return dae.getExprRealValue(id);
+    if (k === ExprKind.Unary && dae.getExprData1(id) === 0 /* UnOp.Neg */) {
+      const inner = getConstVal(dae.getExprLeft(id), dae, visited);
+      return inner !== null ? -inner : null;
+    }
+    if (k === ExprKind.Negate) {
+      const inner = getConstVal(dae.getExprLeft(id), dae, visited);
+      return inner !== null ? -inner : null;
+    }
+    if (k === ExprKind.Name) {
+      const name = dae.interner.resolve(dae.getExprData1(id));
+      if (name) {
+        const vIdx = dae.getVarIdxByName(name);
+        if (vIdx >= 0) {
+          const v = dae.getVarVariability(vIdx);
+          if (v === Variability.Constant || v === Variability.Parameter) {
+            const vExp = dae.getVarExpression(vIdx);
+            if (vExp >= 0) return getConstVal(vExp, dae, visited);
+          }
         }
       }
     }
+    return null;
+  } finally {
+    visited.delete(id);
   }
-  return null;
 }
 
 function isInsideForIndex(node: any): boolean {
@@ -10550,10 +10597,8 @@ export class ModelicaFlattener {
       ((this.options.backend === "hybrid" || !this.options.backend) &&
         Boolean(this.options.useWasmKernel) &&
         !this.classHasRedeclare(rootClassId) &&
-        !(
-          this.options.omcCompatibility &&
-          (this.classHasConnect(rootClassId) || this.classHasUnsupportedWasmFeatures(rootClassId))
-        ));
+        !this.classHasConnect(rootClassId) &&
+        !this.classHasUnsupportedWasmFeatures(rootClassId));
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -12838,6 +12883,55 @@ export class ModelicaFlattener {
           this.innerOuterComponents.add(fullCompName);
         }
 
+        const elemCst = this.db.cstNode(elemId) as any;
+
+        // Check conditional component attribute ('if <cond>')
+        let conditionAttrNode: any = null;
+        if (elemCst) {
+          const findCondAttr = (n: any): any => {
+            if (!n) return null;
+            if (n.type === "condition_attribute") return n;
+            for (const c of n.children || []) {
+              const res = findCondAttr(c);
+              if (res) return res;
+            }
+            return null;
+          };
+          conditionAttrNode = findCondAttr(elemCst);
+        }
+        if (conditionAttrNode) {
+          const condExpr = conditionAttrNode.children?.find((c: any) => c.type === "expression");
+          if (condExpr) {
+            const condText = condExpr.text?.trim() ?? "";
+            let condVal: boolean | null = null;
+            const isNeg = condText.startsWith("not ");
+            const varName = isNeg ? condText.substring(4).trim() : condText;
+            const arg = parentMods?.args?.find((a: any) => a.name === varName);
+            if (arg?.value) {
+              if (arg.value.kind === "literal" && typeof arg.value.value === "boolean") {
+                condVal = isNeg ? !arg.value.value : arg.value.value;
+              } else if (arg.value.kind === "expression" && (arg.value.text === "true" || arg.value.text === "false")) {
+                const b = arg.value.text === "true";
+                condVal = isNeg ? !b : b;
+              }
+            }
+            if (condVal === null) {
+              const vIdx = dae.getVarIdxByName(prefix ? `${prefix}.${varName}` : varName);
+              if (vIdx >= 0) {
+                const exprId = dae.getVarExpression(vIdx);
+                if (exprId !== undefined && exprId >= 0 && dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
+                  const b = dae.getExprData1(exprId) !== 0;
+                  condVal = isNeg ? !b : b;
+                }
+              }
+            }
+            if (condVal === false) {
+              this.disabledComponents.add(fullCompName);
+              continue;
+            }
+          }
+        }
+
         // FAST-PATH: Primitive scalar declarations without complex hierarchy or condition attributes
         const isPrimType =
           compInst.typeSpecifier === "Real" ||
@@ -12859,7 +12953,7 @@ export class ModelicaFlattener {
           !compInst.isRedeclare &&
           !compInst.isReplaceable &&
           !compInst.isProtected &&
-          !this.isCstNodeProtected(this.db.cstNode(elemId)) &&
+          !this.isCstNodeProtected(elemCst) &&
           !parentMods?.isProtected &&
           !parentMods?.protectedNames?.has(compInst.name)
         ) {
@@ -13062,8 +13156,6 @@ export class ModelicaFlattener {
             continue;
           }
         }
-
-        const elemCst = this.db.cstNode(elemId) as any;
         const isElemProtected =
           Boolean(compInst?.isProtected) ||
           this.isCstNodeProtected(elemCst) ||
@@ -13072,52 +13164,6 @@ export class ModelicaFlattener {
 
         const name = prefix ? `${prefix}.${compInst.name}` : compInst.name;
         const meta = (this.db.symbol(elemId)?.metadata as any) || {};
-
-        let conditionAttrNode: any = null;
-        if (elemCst) {
-          const findCondAttr = (n: any): any => {
-            if (!n) return null;
-            if (n.type === "condition_attribute") return n;
-            for (const c of n.children || []) {
-              const res = findCondAttr(c);
-              if (res) return res;
-            }
-            return null;
-          };
-          conditionAttrNode = findCondAttr(elemCst);
-        }
-        if (conditionAttrNode) {
-          const condExpr = conditionAttrNode.children?.find((c: any) => c.type === "expression");
-          if (condExpr) {
-            const condText = condExpr.text?.trim() ?? "";
-            let condVal: boolean | null = null;
-            const isNeg = condText.startsWith("not ");
-            const varName = isNeg ? condText.substring(4).trim() : condText;
-            const arg = parentMods?.args?.find((a: any) => a.name === varName);
-            if (arg?.value) {
-              if (arg.value.kind === "literal" && typeof arg.value.value === "boolean") {
-                condVal = isNeg ? !arg.value.value : arg.value.value;
-              } else if (arg.value.kind === "expression" && (arg.value.text === "true" || arg.value.text === "false")) {
-                const b = arg.value.text === "true";
-                condVal = isNeg ? !b : b;
-              }
-            }
-            if (condVal === null) {
-              const vIdx = dae.getVarIdxByName(prefix ? `${prefix}.${varName}` : varName);
-              if (vIdx >= 0) {
-                const exprId = dae.getVarExpression(vIdx);
-                if (exprId !== undefined && exprId >= 0 && dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
-                  const b = dae.getExprData1(exprId) !== 0;
-                  condVal = isNeg ? !b : b;
-                }
-              }
-            }
-            if (condVal === false) {
-              this.disabledComponents.add(name);
-              continue;
-            }
-          }
-        }
 
         let classTargetId = compInst.classInstance;
         if (this.currentClassId && compInst.typeSpecifier) {
@@ -16881,7 +16927,9 @@ export class ModelicaFlattener {
                             const rV =
                               rK === ExprKind.IntLiteral ? dae.getExprData1(rInner) : dae.getExprRealValue(rInner);
                             const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
-                            return rV !== 0 ? dae.addRealLiteral(eV / rV) : dae.addRealLiteral(0);
+                            if (rV !== 0) {
+                              return dae.addRealLiteral(eV / rV);
+                            }
                           }
                           return dae.addBinaryExpr(BinOp.Div, e, rInner);
                         }),

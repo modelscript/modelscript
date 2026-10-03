@@ -280,7 +280,8 @@ export class SimulationPanel {
                 result.t = Array.isArray(result.t) ? result.t : Object.values(result.t);
               }
               if (result && result.y) {
-                result.y = Array.isArray(result.y) ? result.y : Object.values(result.y);
+                const rawY = Array.isArray(result.y) ? result.y : Object.values(result.y);
+                result.y = rawY.map((row: any) => (Array.isArray(row) ? row : Object.values(row)));
               }
 
               if (result.error) {

@@ -133,8 +133,8 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   }
 
   &:hover > div {
-    background-color: var(--color-bg-card-hover, rgba(255, 255, 255, 0.06));
-    border-color: rgba(255, 255, 255, 0.12);
+    background-color: var(--surface-row-hover);
+    border-color: var(--color-border);
   }
 
   @media (max-width: 1280px) {
@@ -149,9 +149,8 @@ const NavPill = styled.div<{ $active?: boolean }>`
   padding: 10px 14px;
   border-radius: 10px;
   width: 100%;
-  border: 1px solid ${(props) => (props.$active ? "rgba(6, 182, 212, 0.35)" : "transparent")};
-  background: ${(props) =>
-    props.$active ? "linear-gradient(90deg, rgba(6, 182, 212, 0.14), transparent)" : "transparent"};
+  border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
+  background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   @media (max-width: 1280px) {
@@ -199,7 +198,7 @@ const LogoutMenu = styled.div`
   bottom: calc(100% + 8px);
   left: 0;
   width: 100%;
-  background-color: rgba(14, 20, 36, 0.95);
+  background-color: var(--surface-overlay);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--color-border-glass);
@@ -224,7 +223,7 @@ const LogoutMenu = styled.div`
     cursor: pointer;
 
     &:hover {
-      background-color: rgba(255, 255, 255, 0.06);
+      background-color: var(--surface-row-hover);
     }
   }
 `;
@@ -305,7 +304,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
-  const { user, token, logout, unreadCount, setUnreadCount } = useAuth();
+  const { user, logout, unreadCount, setUnreadCount } = useAuth();
   const { theme } = useTheme();
   const location = useLocation();
   const [showLogoutMenu, setShowLogoutMenu] = React.useState(false);

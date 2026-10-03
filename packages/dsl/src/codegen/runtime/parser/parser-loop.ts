@@ -43,7 +43,7 @@ import {
     CHAR_LBRACE, CHAR_RBRACE, CHAR_LBRACKET, CHAR_RBRACKET, CHAR_LPAREN, CHAR_RPAREN,
     LIST_MAX_CHILDREN, LIST_SPLIT_POINT,
     t_tokenBufferArena, t_tokenBufferLenArena,
-    t_lrStateStack, t_lrNodeStack, lrStackDepth,
+    t_lrStateStack, t_lrNodeStack, t_lrScannerStack, lrStackDepth,
     t_globalChildNodes, t_globalChildren, t_globalReduceCollected,
     MODE_LR, MODE_GLR, currentParserMode,
     reportGlobalError, debugLog, pushDiagnostic,
@@ -179,12 +179,13 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
     }
     
     
+    let headScannerState = i == 0 ? 0 : t_lrScannerStack[i];
     let head = allocParseHead(
       state,
       node,
       prevHead,
       currentPos,
-      scannerState,
+      headScannerState,
       0,
       0,
       0,
@@ -298,6 +299,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
   if (startToken == -1) {
     t_lrStateStack[0] = 0;
     t_lrNodeStack[0] = 0;
+    t_lrScannerStack[0] = currentScannerState;
     lrStackDepth = 1;
 
     token = skipExtraTokens(invokeLexer(pos), pos, 1);
@@ -420,6 +422,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                       setNodeFlags(emptyList, FLAG_IS_LIST | FLAG_INVISIBLE);
                       t_lrStateStack[lrStackDepth] = gotoState;
                       t_lrNodeStack[lrStackDepth] = emptyList;
+                      t_lrScannerStack[lrStackDepth] = lrStackDepth > 0 ? t_lrScannerStack[lrStackDepth - 1] : 0;
                       speculativeEmptyIdx = lrStackDepth as i32;
                       lrStackDepth++;
                       // Re-derive state variables for the new stack top.
@@ -598,6 +601,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               let savedLexLen = lexLen;
               let savedScannerState = currentScannerState;
               t_lrStateStack[lrStackDepth] = nextState;
+              t_lrScannerStack[lrStackDepth] = currentScannerState;
               lrStackDepth++;
               let nextTok = skipExtraTokens(invokeLexer(endPos), endPos, 0);
               let nextPendingPad: u32 = g_skipPad;
@@ -718,6 +722,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
 
       t_lrStateStack[lrStackDepth] = target;
       t_lrNodeStack[lrStackDepth] = leaf;
+      t_lrScannerStack[lrStackDepth] = currentScannerState;
       lrStackDepth++;
       
       pos = srcLexPos + lexLen;
@@ -887,6 +892,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
 
       t_lrStateStack[lrStackDepth] = nextState;
       t_lrNodeStack[lrStackDepth] = parentNode;
+      t_lrScannerStack[lrStackDepth] = lrStackDepth > 0 ? t_lrScannerStack[lrStackDepth - 1] : 0;
       lrStackDepth++;
       
     } else if (type == ACTION_ACCEPT) {
@@ -1384,7 +1390,7 @@ function nodeHasAnyErrors(node: u32): boolean {
     let flags = getNodeFlags(curr);
     if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) { found = true; break; }
     let type = getNodeType(curr);
-    if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0) { found = true; break; }
+    if (type == NODE_TYPE_ERROR) { found = true; break; }
     let child = getNodeFirstChild(curr);
     let sibCount: u32 = 0;
     while (child != 0 && sibCount < 50) {
@@ -1522,10 +1528,7 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
  * @returns The wrapped node.
  */
 function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
-  if (acceptedPos >= inputLength) return acceptedNode;
   let nodeSpan = getNodePadding(acceptedNode) + getNodeByteLength(acceptedNode);
-  if (acceptedPos > nodeSpan) nodeSpan = acceptedPos;
-  
   if (nodeSpan >= inputLength) return acceptedNode;
 
   // There is unparsed input after the accepted node — lex it into an ERROR node
@@ -1552,7 +1555,18 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
   currentScannerState = savedScannerState;
 
   // If the first token is EOF, there's only trailing whitespace
-  if (firstTok == TOKEN_EOF) return acceptedNode;
+  if (firstTok == TOKEN_EOF) {
+    if (trailingLen > 0) {
+      if (isMutable(acceptedNode)) {
+        setNodeByteLength(acceptedNode, getNodeByteLength(acceptedNode) + trailingLen);
+      } else {
+        let cloned = cloneNodeShallow(acceptedNode);
+        setNodeByteLength(cloned, getNodeByteLength(cloned) + trailingLen);
+        acceptedNode = cloned;
+      }
+    }
+    return acceptedNode;
+  }
 
   let errByteLen = trailingLen > errPad ? trailingLen - errPad : 0;
   if (errByteLen == 0) return acceptedNode;
@@ -2850,7 +2864,7 @@ function constructReducedParentNode(
         setNodePadding(clone, 0);
       }
 
-      let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeType(child) & 0x8000) != 0;
+      let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeFlags(child) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0;
       if (!isError && aliasPtr >= 0) {
         for (let a = 0; a < aliasCount; a++) {
           let aIndex = alias_data[aliasPtr + 1 + a * 2];
@@ -3405,7 +3419,8 @@ function processAcceptAction(head: ParseHead): void {
       if (rc.astNode != 0) {
         let nType = getNodeType(rc.astNode);
         if (nType != TOKEN_EOF && nType != NODE_TYPE_ERROR) {
-          realBytes += getNodeByteLength(rc.astNode);
+          let nodePad = rc.prev != null ? getNodePadding(rc.astNode) : 0;
+          realBytes += nodePad + getNodeByteLength(rc.astNode);
         }
       }
       rc = rc.prev;
@@ -3484,6 +3499,7 @@ function processAcceptAction(head: ParseHead): void {
       bestAcceptedRealBytes = realBytes;
       bestAcceptedCount = t_count;
       bestAcceptedPad = firstPad;
+      bestAcceptedPrec = head.dynamicPrec;
       lastBestCost = bestAcceptedCost;
 
       let c_idx: i32 = (t_count as i32) - 1;
@@ -4840,11 +4856,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     t_tokenBufferLenArena = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
     t_lrStateStack = createChunkedUint32Array(10000);
     t_lrNodeStack = createChunkedUint32Array(10000);
+    t_lrScannerStack = createChunkedUint32Array(10000);
 
     initQueryArena();
   } else {
     t_lrStateStack.clear();
     t_lrNodeStack.clear();
+    t_lrScannerStack.clear();
   }
 
   let pos: u32 = 0;
@@ -4924,6 +4942,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       commitDiagnostics(bah.errorTail);
     }
       sanitizeTree(acceptedNode);
+      fixNodeLengthRecursive(acceptedNode);
       let acceptedPos: u32 = bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).pos : 0;
       let finalTree = wrapWithTrailingErrors(acceptedNode, acceptedPos);
       fixNodeLengthRecursive(finalTree);
@@ -5005,7 +5024,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           continue;
         }
 
-        let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, lastTokNode == 0 ? 0 : pad, tLen, 0, false);
+        let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, lastTokNode == 0 ? 0 : pad, tLen, 0, false);
         setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
         if (lastTokNode == 0) {
           setFirstChild(unparsedNode, tNode);

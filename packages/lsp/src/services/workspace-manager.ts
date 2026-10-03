@@ -359,10 +359,15 @@ export class WorkspaceManager {
       }
 
       if (norm === "modelica") {
+        if (this.globalModelicaQueryEngine) {
+          this.setQueryEngine(norm, this.globalModelicaQueryEngine);
+          return this.globalModelicaQueryEngine;
+        }
         const idx = this.getWorkspaceIndex("modelica");
         if (idx) {
           const uIdx = typeof idx.toUnifiedPartial === "function" ? idx.toUnifiedPartial() : idx;
-          const qe = createModelicaQueryEngine(uIdx);
+          const cstWrapper = (this as any).parserService?.getSharedCstTreeWrapper?.();
+          const qe = createModelicaQueryEngine(uIdx, cstWrapper);
           this.setQueryEngine(norm, qe);
           return qe;
         }
@@ -906,14 +911,29 @@ export class WorkspaceManager {
       return classInstance;
     };
 
+    const isClassLike = (e: any): boolean =>
+      e != null &&
+      (e.kind === "Class" ||
+        e.kind === "Def" ||
+        e.kind === "Package" ||
+        e.kind === "Model" ||
+        e.kind === "Block" ||
+        e.kind === "Connector" ||
+        e.kind === "Record" ||
+        e.kind === "Function" ||
+        e.kind === "Type" ||
+        e.kind === "Part");
+
     if (className) {
       if (typeof (this.unifiedWorkspace as any)?.ensureFQNIndexed === "function") {
         (this.unifiedWorkspace as any).ensureFQNIndexed(className);
-      } else if (typeof (this.unifiedWorkspace as any)?.ensureChildrenIndexed === "function") {
+      }
+      if (typeof (this.unifiedWorkspace as any)?.ensureChildrenIndexed === "function") {
         (this.unifiedWorkspace as any).ensureChildrenIndexed(className);
-        const lastDot = className.lastIndexOf(".");
-        if (lastDot > 0) {
-          (this.unifiedWorkspace as any).ensureChildrenIndexed(className.substring(0, lastDot));
+        const parts = className.split(".");
+        for (let p = 0; p < parts.length; p++) {
+          const prefix = parts.slice(0, p + 1).join(".");
+          (this.unifiedWorkspace as any).ensureChildrenIndexed(prefix);
         }
       }
 
@@ -922,7 +942,7 @@ export class WorkspaceManager {
       // Prefer actual Class/Def symbols over Extends or Import references
       let symbolIds = rawSymbolIds.filter((id: number) => {
         const e = idx.symbols.get(id);
-        return e && (e.kind === "Class" || e.kind === "Def");
+        return isClassLike(e);
       });
 
       // Try multi-part resolution for fully qualified names ("A.B.C")
@@ -934,7 +954,7 @@ export class WorkspaceManager {
           const prefix = parts.slice(0, prefixLen).join(".");
           let currentIds = (idx.byName.get(prefix) || []).filter((id: number) => {
             const e = idx.symbols.get(id);
-            return e && (e.kind === "Class" || e.kind === "Def");
+            return isClassLike(e);
           });
           if (currentIds.length === 0) continue;
 
@@ -946,11 +966,7 @@ export class WorkspaceManager {
               if (children) {
                 for (const childId of children) {
                   const childEntry = idx.symbols.get(childId);
-                  if (
-                    childEntry &&
-                    childEntry.name === part &&
-                    (childEntry.kind === "Class" || childEntry.kind === "Def")
-                  ) {
+                  if (childEntry && childEntry.name === part && isClassLike(childEntry)) {
                     nextIds.push(childId);
                   }
                 }
@@ -969,7 +985,7 @@ export class WorkspaceManager {
           for (let startIdx = 0; startIdx < parts.length && symbolIds.length === 0; startIdx++) {
             let currentIds = (idx.byName.get(parts[startIdx]) || []).filter((id: number) => {
               const e = idx.symbols.get(id);
-              return e && (e.kind === "Class" || e.kind === "Def");
+              return isClassLike(e);
             });
             if (currentIds.length === 0) continue;
             for (let i = startIdx + 1; i < parts.length && currentIds.length > 0; i++) {
@@ -980,11 +996,7 @@ export class WorkspaceManager {
                 if (children) {
                   for (const childId of children) {
                     const childEntry = idx.symbols.get(childId);
-                    if (
-                      childEntry &&
-                      childEntry.name === part &&
-                      (childEntry.kind === "Class" || childEntry.kind === "Def")
-                    ) {
+                    if (childEntry && childEntry.name === part && isClassLike(childEntry)) {
                       nextIds.push(childId);
                     }
                   }
@@ -1005,7 +1017,7 @@ export class WorkspaceManager {
         let bestMatchLen = 0;
         let bestMatchId: number | null = null;
         for (const [id, e] of idx.symbols) {
-          if ((e.kind === "Class" || e.kind === "Def") && e.name === className.split(".").pop()) {
+          if (isClassLike(e) && e.name === className.split(".").pop()) {
             const fqn = getCompositeName(e, idx);
             if (fqn === className) {
               bestMatchId = id;
@@ -1073,7 +1085,7 @@ export class WorkspaceManager {
     for (const entry of idx.symbols.values()) {
       if (
         (entry.resourceId === uri || (entry.resourceId && normUri(entry.resourceId) === targetNorm)) &&
-        (entry.kind === "Class" || entry.kind === "Def") &&
+        isClassLike(entry) &&
         entry.parentId === null
       ) {
         let engine =

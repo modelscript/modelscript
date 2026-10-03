@@ -1490,6 +1490,7 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
 
   // Must be a parameter or constant with an integer binding
   if (resolved.kind !== "Component") return null;
+  if (evaluatingDimensionsStack.some((f) => f.symbolId === resolved.id)) return null;
   const meta = resolved.metadata as Record<string, unknown>;
   const variability = (meta?.variability as string) ?? db.query<string | null>("variability", resolved.id);
   if (variability !== "parameter" && variability !== "constant") return null;

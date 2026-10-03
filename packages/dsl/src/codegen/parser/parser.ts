@@ -160,6 +160,11 @@ export function generateParserTables(
       maxSymbolId = id;
     }
   }
+  if (maxSymbolId > 1023) {
+    throw new Error(
+      `Grammar '${originalGrammar.name}' exceeds maximum supported symbol count of 1023 (has ${maxSymbolId}). AST node type is packed into 10 bits.`,
+    );
+  }
   const startSymName = Object.keys(originalGrammar.rules)[0] || "Program";
   const startSymId = symToInt.get(startSymName) || 1;
   code += `export const SYMBOL_COUNT = ${maxSymbolId};\n`;

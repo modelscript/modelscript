@@ -708,6 +708,49 @@ end ElectricalCircuit;
     }
   });
 
+  it("should resolve lhs and rhs fields on broken binary expression with extra invalid token", () => {
+    const code = `model TestModel
+  Real a;
+  Real b;
+  Real c;
+  c = a + 999 b;
+end TestModel;
+`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+
+    const allNodes: number[] = [];
+    const traverse = (ptr: number) => {
+      if (ptr === 0) return;
+      allNodes.push(ptr);
+      let child = activeFacade.exports.getNodeFirstChild(ptr);
+      while (child !== 0) {
+        traverse(child);
+        child = activeFacade.exports.getNodeNextSibling(child);
+      }
+    };
+    traverse(ast);
+
+    const addExprNode = allNodes.find((ptr) => {
+      const type = activeFacade.exports.getNodeType(ptr);
+      return activeFacade.syntaxNames?.[type] === "AddExpr";
+    });
+
+    expect(addExprNode).toBeDefined();
+    if (!addExprNode) return;
+
+    const leftFieldId = activeFacade.fieldNames?.left;
+    const rightFieldId = activeFacade.fieldNames?.right;
+    expect(leftFieldId).toBeGreaterThan(0);
+    expect(rightFieldId).toBeGreaterThan(0);
+
+    const left = activeFacade.exports.getChildByFieldId(addExprNode, leftFieldId);
+    const right = activeFacade.exports.getChildByFieldId(addExprNode, rightFieldId);
+
+    expect(left).toBeGreaterThan(0);
+    expect(right).toBeGreaterThan(0);
+  });
+
   it("should emit syntax error diagnostic for error recovery tokens 'error error ElectricalCircuit'", () => {
     const code = `error error ElectricalCircuit\n  Real power;\n  end ElectricalCircuit;\n`;
     activeFacade.lastAstRoot = 0;

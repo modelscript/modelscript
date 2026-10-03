@@ -503,7 +503,7 @@ export default function ComposeBox({
               overflowY: "auto",
               backdropFilter: "blur(16px)",
             }}
-            bg="rgba(14, 20, 36, 0.95)"
+            bg="var(--surface-overlay)"
             border="1px solid var(--color-border-glass)"
             borderRadius="16px"
             zIndex={99999}
@@ -685,7 +685,7 @@ export default function ComposeBox({
             {mentionQuery && mentionSuggestions.length > 0 && (
               <Box
                 position="absolute"
-                bg="rgba(14, 20, 36, 0.95)"
+                bg="var(--surface-overlay)"
                 border="1px solid var(--color-border)"
                 borderRadius="12px"
                 boxShadow="0 8px 24px rgba(0,0,0,0.5)"
@@ -833,7 +833,7 @@ export default function ComposeBox({
                       position="absolute"
                       top="100%"
                       left={0}
-                      bg="rgba(14, 20, 36, 0.95)"
+                      bg="var(--surface-overlay)"
                       border="1px solid var(--color-border)"
                       borderRadius="16px"
                       boxShadow="0 8px 24px rgba(0,0,0,0.5)"
@@ -977,7 +977,7 @@ export default function ComposeBox({
                     borderRadius: "6px",
                     cursor: "pointer",
                   }}
-                  onClick={() => setContent((prev) => (prev ? prev + " " : "") + "/synthesize model ")}
+                  onClick={() => setContent(content ? `${content} /synthesize model ` : "/synthesize model ")}
                 >
                   ✨ /synthesize model
                 </span>
@@ -992,7 +992,9 @@ export default function ComposeBox({
                     borderRadius: "6px",
                     cursor: "pointer",
                   }}
-                  onClick={() => setContent((prev) => (prev ? prev + " " : "") + "/benchmark solver=cvode ")}
+                  onClick={() =>
+                    setContent(content ? `${content} /benchmark solver=cvode ` : "/benchmark solver=cvode ")
+                  }
                 >
                   ⚡ /benchmark solver
                 </span>
@@ -1000,7 +1002,22 @@ export default function ComposeBox({
                   style={{
                     fontFamily: "var(--font-mono)",
                     fontSize: "11px",
-                    background: "rgba(255, 255, 255, 0.05)",
+                    background: "rgba(16, 185, 129, 0.12)",
+                    color: "var(--color-status-verified)",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setContent(content ? `${content} /analyze dae_index=1 ` : "/analyze dae_index=1 ")}
+                >
+                  🔬 /analyze DAE
+                </span>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "11px",
+                    background: "var(--color-btn-secondary-bg)",
                     color: "var(--color-text-secondary)",
                     border: "1px solid var(--color-border-glass)",
                     padding: "3px 8px",
@@ -1066,7 +1083,7 @@ export default function ComposeBox({
                         <div style={{ position: "absolute", top: "100%", zIndex: 1000, marginTop: "8px" }}>
                           <SimpleEmojiPicker
                             onEmojiClick={(emojiData) => {
-                              setContent((prev) => prev + emojiData.emoji);
+                              setContent(content + emojiData.emoji);
                             }}
                           />
                         </div>

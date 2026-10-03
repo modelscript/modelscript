@@ -169,10 +169,10 @@ const DropdownItem = styled.div`
 `;
 
 const Card = styled.div`
-  background: var(--color-bg-card, rgba(15, 23, 42, 0.65));
+  background: var(--color-bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--color-border-glass);
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 16px;
@@ -180,9 +180,7 @@ const Card = styled.div`
 
   &:hover {
     border-color: rgba(139, 92, 246, 0.35);
-    box-shadow:
-      0 8px 24px -6px rgba(0, 0, 0, 0.5),
-      0 0 16px rgba(139, 92, 246, 0.12);
+    box-shadow: var(--glow-card);
   }
 `;
 
@@ -256,7 +254,7 @@ const ProviderButton = styled.button`
   justify-content: center;
   gap: 8px;
   height: 40px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-btn-secondary-bg);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-glass);
   border-radius: 9999px;
@@ -267,7 +265,7 @@ const ProviderButton = styled.button`
   width: 100%;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-row-hover);
     border-color: var(--color-border-strong);
   }
 `;
@@ -283,7 +281,7 @@ const TrendingItem = styled.div`
   border-radius: 6px;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: var(--surface-row-hover);
   }
 `;
 
@@ -765,7 +763,7 @@ const RightPanel: React.FC = () => {
             alignItems="center"
             pt={2}
             style={{
-              borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+              borderTop: "1px solid var(--color-border)",
               fontSize: "11px",
               fontFamily: "var(--font-mono)",
             }}
@@ -810,16 +808,21 @@ const RightPanel: React.FC = () => {
             <span
               style={{
                 fontSize: "10px",
-                color: clusterInfo?.slurmRunning ? "var(--color-status-verified)" : "var(--color-accent-cyan)",
+                color: clusterInfo?.connected ? "var(--color-status-verified)" : "var(--color-accent-cyan)",
                 fontFamily: "var(--font-mono)",
-                background: clusterInfo?.slurmRunning ? "rgba(16, 185, 129, 0.12)" : "rgba(6, 182, 212, 0.12)",
-                border: `1px solid ${clusterInfo?.slurmRunning ? "rgba(16, 185, 129, 0.3)" : "rgba(6, 182, 212, 0.3)"}`,
+                background: clusterInfo?.connected ? "var(--status-verified-bg)" : "var(--status-solver-bg)",
+                border: `1px solid ${clusterInfo?.connected ? "var(--status-verified-border)" : "var(--status-solver-border)"}`,
                 padding: "1px 6px",
                 borderRadius: "4px",
                 fontWeight: 600,
               }}
             >
-              ● {clusterInfo?.slurmRunning ? `${clusterInfo.nodes} NODES` : "ONLINE"}
+              ●{" "}
+              {clusterInfo?.connected
+                ? clusterInfo.backend === "slurm-rest" || clusterInfo.backend === "slurm"
+                  ? `${clusterInfo.nodesCount || 0} NODES`
+                  : "ONLINE"
+                : "OFFLINE"}
             </span>
             <button
               onClick={() => fetchJobsAndCluster()}
@@ -893,7 +896,7 @@ const RightPanel: React.FC = () => {
                   <div
                     style={{
                       height: "4px",
-                      background: "rgba(255, 255, 255, 0.08)",
+                      background: "var(--color-border)",
                       borderRadius: "9999px",
                       overflow: "hidden",
                     }}
@@ -1071,7 +1074,7 @@ const RightPanel: React.FC = () => {
                               alignItems: "center",
                               gap: "12px",
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.04)")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
                             <span style={{ fontSize: "16px", color: "var(--color-text-muted)", lineHeight: 1 }}>
@@ -1103,7 +1106,7 @@ const RightPanel: React.FC = () => {
                     borderRadius: "6px",
                     transition: "background-color 0.2s",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.04)")}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                 >
                   <div style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{topic.category}</div>

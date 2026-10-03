@@ -50,7 +50,7 @@ const TopGlobalHud = styled.header`
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: rgba(6, 8, 15, 0.85);
+  background: var(--surface-hud);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--color-border);
@@ -244,7 +244,7 @@ const BottomBarContainer = styled.div`
   left: 0;
   right: 0;
   height: 60px;
-  background-color: rgba(6, 8, 15, 0.9);
+  background-color: var(--surface-hud);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--color-border);
@@ -309,11 +309,11 @@ const Banner = styled.div`
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: rgba(15, 23, 42, 0.95);
+  background-color: var(--surface-overlay);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid var(--color-border-glass);
-  color: #fff;
+  color: var(--color-text-primary);
   padding: 12px 24px;
   display: flex;
   justify-content: center;

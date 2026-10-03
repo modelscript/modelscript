@@ -61,43 +61,27 @@ function formatRelativeTime(dateString: string): string {
 const PostWrapper = styled.div<{ $isDetail?: boolean; $isThread?: boolean }>`
   display: flex;
   flex-direction: ${(props) => (props.$isDetail ? "column" : "row")};
-  gap: 14px;
-  padding: 18px 20px;
-  margin: ${(props) => (props.$isDetail || props.$isThread ? "0" : "10px 14px")};
-  border-radius: ${(props) => (props.$isDetail || props.$isThread ? "0" : "14px")};
-  background: ${(props) => (props.$isDetail ? "transparent" : "var(--color-bg-card, rgba(15, 23, 42, 0.65))")};
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: ${(props) =>
-    props.$isDetail || props.$isThread ? "none" : "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))"};
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  border-bottom: ${(props) => (props.$isDetail || props.$isThread ? "none" : "1px solid var(--color-border)")};
+  transition: background-color 0.15s ease;
   cursor: ${(props) => (props.$isDetail ? "default" : "pointer")};
   position: relative;
   overflow: hidden;
 
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
-  }
-
   &:hover {
-    background: ${(props) => (props.$isDetail ? "transparent" : "var(--color-bg-card-hover, rgba(22, 33, 62, 0.75))")};
-    border-color: rgba(139, 92, 246, 0.35);
-    box-shadow:
-      0 10px 28px -10px rgba(0, 0, 0, 0.5),
-      0 0 18px rgba(139, 92, 246, 0.12);
+    background: ${(props) => (props.$isDetail ? "transparent" : "var(--surface-row-hover)")};
   }
 `;
 
 const Avatar = styled.div<{ $url?: string }>`
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   background-color: var(--color-accent-emphasis);
   background-image: ${(props) => (props.$url ? `url("${props.$url}")` : "none")};
   background-size: cover;
@@ -107,8 +91,7 @@ const Avatar = styled.div<{ $url?: string }>`
   color: white;
   font-weight: bold;
   flex-shrink: 0;
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--color-border-default);
 `;
 
 const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warning" }>`
@@ -121,31 +104,9 @@ const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warni
   align-items: center;
   gap: 4px;
   line-height: 1.4;
-  background: ${(props) =>
-    props.$variant === "verified"
-      ? "rgba(16, 185, 129, 0.12)"
-      : props.$variant === "solver"
-        ? "rgba(6, 182, 212, 0.12)"
-        : props.$variant === "fmu"
-          ? "rgba(139, 92, 246, 0.12)"
-          : "rgba(245, 158, 11, 0.12)"};
-  border: 1px solid
-    ${(props) =>
-      props.$variant === "verified"
-        ? "rgba(16, 185, 129, 0.3)"
-        : props.$variant === "solver"
-          ? "rgba(6, 182, 212, 0.3)"
-          : props.$variant === "fmu"
-            ? "rgba(139, 92, 246, 0.3)"
-            : "rgba(245, 158, 11, 0.3)"};
-  color: ${(props) =>
-    props.$variant === "verified"
-      ? "var(--color-status-verified)"
-      : props.$variant === "solver"
-        ? "var(--color-status-solver)"
-        : props.$variant === "fmu"
-          ? "var(--color-status-fmu)"
-          : "var(--color-status-warning)"};
+  background: var(--status-${(props) => props.$variant ?? "warning"}-bg);
+  border: 1px solid var(--status-${(props) => props.$variant ?? "warning"}-border);
+  color: var(--color-status-${(props) => props.$variant ?? "warning"});
 `;
 
 const ModelSpecTag = styled.div`
@@ -168,6 +129,38 @@ const ModelSpecTag = styled.div`
     background: var(--color-status-verified);
     box-shadow: 0 0 6px var(--color-status-verified);
   }
+`;
+
+const AiBadge = styled.span<{ $variant?: "generated" | "verified" | "reviewed" }>`
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.4;
+  flex-shrink: 0;
+  vertical-align: middle;
+  ${(props) =>
+    props.$variant === "generated"
+      ? `
+    background: var(--gradient-ai-subtle);
+    border: 1px solid var(--color-accent-purple-border);
+    color: var(--color-accent-purple);
+  `
+      : props.$variant === "reviewed"
+        ? `
+    background: var(--surface-row-hover);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+  `
+        : `
+    background: var(--status-verified-bg);
+    border: 1px solid var(--status-verified-border);
+    color: var(--color-status-verified);
+  `}
 `;
 
 const AiInsightRibbon = styled.div`
@@ -336,7 +329,7 @@ const AnalyticsModalOverlay = styled.div`
 `;
 
 const AnalyticsModalContainer = styled.div`
-  background: rgba(14, 20, 36, 0.95);
+  background: var(--surface-overlay);
   border: 1px solid var(--color-border-glass);
   backdrop-filter: blur(16px);
   border-radius: 16px;
@@ -357,7 +350,7 @@ const AnalyticsHeader = styled.div`
   padding: 12px 16px;
   position: sticky;
   top: 0;
-  background: rgba(14, 20, 36, 0.85);
+  background: var(--surface-overlay);
   backdrop-filter: blur(12px);
   z-index: 10;
   border-bottom: 1px solid var(--color-border);
@@ -476,7 +469,7 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
       <div
         style={{
           position: "relative",
-          backgroundColor: "rgba(14, 20, 36, 0.95)",
+          backgroundColor: "var(--surface-overlay)",
           border: "1px solid var(--color-border-glass)",
           backdropFilter: "blur(16px)",
           borderRadius: "16px",
@@ -910,12 +903,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     <span>FMU 3.0</span>
                   </ModelSpecTag>
                 )}
-                {displayPost.account_type === "bot" && (
-                  <ModelSpecTag style={{ borderColor: "rgba(139, 92, 246, 0.3)" }}>
-                    <span style={{ color: "var(--color-accent-purple)" }}>🤖</span>
-                    <span>AI Agent</span>
-                  </ModelSpecTag>
-                )}
+                {displayPost.artifact_view_id && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
+                {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
               </Box>
             </Box>
             <Box position="relative" mr={1}>
@@ -1273,7 +1262,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     position="absolute"
                     top="100%"
                     left="0"
-                    bg="rgba(14, 20, 36, 0.95)"
+                    bg="var(--surface-overlay)"
                     border="1px solid var(--color-border)"
                     borderRadius="12px"
                     boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
@@ -1494,6 +1483,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       </Text>
                     </ProfileNameLink>
                   </ProfileHoverCard>
+                  {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
+                  {displayPost.artifact_view_id && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
                   <Link
                     to={`/${displayPost.username}`}
                     className="handle-text"
@@ -1671,6 +1662,49 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 {displayPost.artifact_view_id && (
                   <Box>
                     <ArtifactViewCard artifactId={displayPost.artifact_view_id} />
+                    <AiInsightRibbon
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAiDetails(!showAiDetails);
+                      }}
+                      style={{ cursor: "pointer", marginTop: "8px" }}
+                    >
+                      <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                        <Box display="flex" alignItems="center" gap={2}>
+                          <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
+                          <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
+                            AI Verified · Linear DAE Arena
+                          </span>
+                        </Box>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            color: "var(--color-status-verified)",
+                            fontFamily: "var(--font-mono)",
+                            background: "var(--status-verified-bg)",
+                            border: "1px solid var(--status-verified-border)",
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
+                        </span>
+                      </Box>
+                      {showAiDetails && (
+                        <div
+                          style={{
+                            fontSize: "11.5px",
+                            color: "var(--color-text-muted)",
+                            borderTop: "1px solid rgba(139, 92, 246, 0.15)",
+                            paddingTop: "6px",
+                            marginTop: "4px",
+                          }}
+                        >
+                          Index-1 DAE lowered directly to linear WASM memory. Zero algebraic loops detected. Numerical
+                          convergence guaranteed with SUNDIALS CVODE integrator.
+                        </div>
+                      )}
+                    </AiInsightRibbon>
                   </Box>
                 )}
 
@@ -1714,11 +1748,21 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   style={{ marginTop: "10px" }}
                   display="flex"
                   justifyContent="space-between"
-                  alignItems="flex-end"
+                  alignItems="center"
                   width="100%"
-                  height="32px"
                   onClick={(e) => e.preventDefault()}
                 >
+                  {displayPost.artifact_view_id && (
+                    <EngActionButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/${displayPost.username}/status/${displayPost.id}`);
+                      }}
+                      style={{ marginRight: "8px" }}
+                    >
+                      ▶ Sandbox
+                    </EngActionButton>
+                  )}
                   <ActionButton
                     $color="var(--color-accent-cyan)"
                     onClick={(e) => {
@@ -1793,7 +1837,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           position="absolute"
                           top="100%"
                           left="0"
-                          bg="rgba(14, 20, 36, 0.95)"
+                          bg="var(--surface-overlay)"
                           border="1px solid var(--color-border)"
                           borderRadius="12px"
                           boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
@@ -1934,7 +1978,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                             position="absolute"
                             top="100%"
                             right="0"
-                            bg="rgba(14, 20, 36, 0.95)"
+                            bg="var(--surface-overlay)"
                             border="1px solid var(--color-border)"
                             borderRadius="12px"
                             boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"

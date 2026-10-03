@@ -483,6 +483,69 @@ export function registerClassQueryEndpoints(context: LspContext) {
       return buildComponentTree(target);
     },
   );
+
+  const getVirtualFsPath = (raw: string): string => {
+    let uStr = raw;
+    try {
+      uStr = decodeURIComponent(uStr);
+    } catch {}
+    // Normalize modelica://lib/..., modelica:///lib/..., modelica:/lib/...
+    const m = uStr.match(/^modelica:(?:\/\/lib\/|\/{1,3})(.*)$/i);
+    let p = m ? m[1] : uStr;
+    if (!p.startsWith("lib/") && !p.startsWith("/lib/")) {
+      p = "lib/" + p.replace(/^\/+/, "");
+    }
+    return p.startsWith("/") ? p : "/" + p;
+  };
+
+  context.connection.onRequest(
+    "modelscript/getVirtualFile",
+    (params: {
+      uri?: string;
+      path?: string;
+    }): { content?: string; size?: number; exists: boolean; isDirectory?: boolean } => {
+      const target = params?.uri || params?.path || "";
+      if (!target) return { exists: false };
+      const fsPath = getVirtualFsPath(target);
+      const fs = (globalThis as any).sharedFs;
+      if (!fs) return { exists: false };
+      if (typeof fs.exists === "function" && fs.exists(fsPath)) {
+        const stat = typeof fs.stat === "function" ? fs.stat(fsPath) : null;
+        if (stat?.isDirectory?.()) {
+          return { exists: true, isDirectory: true, size: 0 };
+        }
+        const content = typeof fs.read === "function" ? fs.read(fsPath) : "";
+        return {
+          exists: true,
+          isDirectory: false,
+          content,
+          size: stat?.size ?? content.length,
+        };
+      }
+      return { exists: false };
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/readVirtualDirectory",
+    (params: { uri?: string; path?: string }): { name: string; isDirectory: boolean }[] => {
+      const target = params?.uri || params?.path || "";
+      if (!target) return [];
+      const fsPath = getVirtualFsPath(target);
+      const fs = (globalThis as any).sharedFs;
+      if (!fs || typeof fs.readdir !== "function") return [];
+      try {
+        const entries = fs.readdir(fsPath);
+        if (Array.isArray(entries)) {
+          return entries.map((e: any) => ({
+            name: e.name,
+            isDirectory: typeof e.isDirectory === "function" ? e.isDirectory() : Boolean(e.isDirectory),
+          }));
+        }
+      } catch {}
+      return [];
+    },
+  );
 }
 
 // @ts-nocheck
