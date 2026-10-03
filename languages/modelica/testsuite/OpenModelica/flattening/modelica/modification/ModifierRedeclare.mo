@@ -1,7 +1,6 @@
 // name: ModifierRedeclare
 // keywords: modifier, redeclare, replaceable
 // status: correct
-// xfail:    true
 //
 // Tests redeclarations
 //

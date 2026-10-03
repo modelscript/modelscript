@@ -47,7 +47,7 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalCard = styled.div`
-  background: rgba(14, 20, 36, 0.95);
+  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
   backdrop-filter: blur(16px);
   border: 1px solid var(--color-border-glass);
   border-radius: 16px;
@@ -66,7 +66,7 @@ const ModalHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(14, 20, 36, 0.85);
+  background: var(--surface-hud, rgba(14, 20, 36, 0.85));
 `;
 
 const ModalBody = styled.div`
@@ -644,7 +644,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
           display="flex"
           justifyContent="space-between"
           alignItems="center"
-          bg="rgba(14, 20, 36, 0.95)"
+          bg="var(--surface-overlay, rgba(14, 20, 36, 0.95))"
         >
           {phase === "config" && (
             <>

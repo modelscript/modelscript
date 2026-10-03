@@ -1,7 +1,6 @@
 // name:     InnerOuter2
 // keywords: dynamic scope, lookup
 // status:   correct
-// xfail:    true
 //
 //  components with inner prefix references an outer component with
 //  the same name and one variable is generated for all of them.

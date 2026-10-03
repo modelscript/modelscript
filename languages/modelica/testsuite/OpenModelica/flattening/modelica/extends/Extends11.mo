@@ -1,7 +1,6 @@
 // name:     Extends11
 // keywords: extends
 // status:   correct
-// xfail:    true
 //
 // Testing that short-hand extend works for functions.
 //

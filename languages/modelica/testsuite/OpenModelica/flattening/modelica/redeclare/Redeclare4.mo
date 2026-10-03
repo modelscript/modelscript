@@ -1,7 +1,6 @@
 // name:     Redeclare4
 // keywords: redeclare, bug #36
 // status:   correct
-// xfail:    true
 //
 
 package A

@@ -1,7 +1,6 @@
 // name: OperatorFunction1
 // keywords: operator
 // status: correct
-// xfail:    true
 //
 // tests the shorthand operator function keyword
 //

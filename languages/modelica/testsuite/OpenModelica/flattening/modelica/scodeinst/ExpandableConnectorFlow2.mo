@@ -1,7 +1,6 @@
 // name: ExpandableConnectorFlow2
 // keywords: expandable connector
 // status: correct
-// xfail:    true
 //
 // Expandable connectors may not contain elements declared as flow, but may
 // contain non-expandable connector components with flow components.

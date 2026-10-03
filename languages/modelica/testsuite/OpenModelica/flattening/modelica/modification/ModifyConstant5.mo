@@ -1,7 +1,6 @@
 // name:     ModifyConstant5
 // keywords: scoping,modification
 // status:   incorrect
-// xfail:    true
 //
 // Finalized members can not be redeclared.
 //

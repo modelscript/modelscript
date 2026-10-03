@@ -1,7 +1,6 @@
 // name:     Lookup2
 // keywords: scoping
 // status:   correct
-// xfail:    true
 //
 // Note that in order to use Lookup2Package.a
 // Either Lookup2Package must satisfy the requirements of

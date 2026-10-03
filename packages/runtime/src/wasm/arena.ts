@@ -18,16 +18,17 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
  * Arena Allocator for AST Nodes (Persistent / Structural Sharing)
  *
  * Provides a zero-GC, thread-safe linear memory allocator for Abstract Syntax Tree (AST) nodes.
- * Each AST node is allocated a fixed size of 16 bytes.
+ * Each AST node is allocated a fixed size of 32 bytes (NODE_SIZE = 32).
  *
- * Node Memory Layout:
- * Node Memory Layout (24 bytes, 8-byte aligned):
- * offset + 0:  type (10 bits) | flags (12 bits) | paddingLength (10 bits)
- * offset + 4:  byteLength (23 bits) | isFatPadding (1 bit) | envHash (8 bits)
+ * Node Memory Layout (32 bytes, 8-byte aligned):
+ * offset + 0:  word0: type (10 bits) | flags (12 bits) | paddingLength (10 bits)
+ * offset + 4:  word1: byteLength (23 bits) | isFatPadding (1 bit) | envHash (8 bits)
  * offset + 8:  startState (u32): LR state (16 bits) | reduction lookahead (15 bits) | FLAG_FRAGILE (bit 31)
  * offset + 12: firstChild (u32, arena ptr / freeListNext)
  * offset + 16: nextSibling (u32, arena ptr)
- * offset + 20: pad (u32, 8-byte alignment padding)
+ * offset + 20: merkleLow (u32)
+ * offset + 24: merkleHigh (u32)
+ * offset + 28: fatPadding (u32, used when isFatPadding is true)
  *
  * The logical `flags` value is 13 bits wide: bits 0-11 live in word0 and bit 12
  * (FLAG_FRAGILE) is stored in bit 31 of startState, because word0 has no spare bits.
@@ -154,6 +155,10 @@ class SharedState {
   gcStackPtr: UnmanagedUint32Array;
   gcStackCapacity: u32;
   allocLock: u32; // Used for thread-safe spinlocking during chunk rollovers
+  pageStampTable: UnmanagedUint32Array;
+  chunkSequence: u32;
+  parseStartSeq: u32;
+  parseStartOffset: u32;
 
   @inline atomicAddOffset(amount: u32): u32 {
     let offsetField = this.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : (this.activeGeneration == 1 ? offsetof<SharedState>("gen1_offset") : offsetof<SharedState>("gen2_offset"));
@@ -206,19 +211,30 @@ export function S(): SharedState {
     global_shared_ptr = newPtr;
 
     let state = changetype<SharedState>(newPtr);
+    state.pageStampTable = changetype<UnmanagedUint32Array>(atomicChunkAlloc(65536 * 4));
+    state.chunkSequence = 1;
+    state.parseStartSeq = 0;
+    state.parseStartOffset = 0;
+
     state.currentInputBufferSize = INPUT_BUFFER_SIZE;
     state.arenaBuffer = atomicChunkAlloc(state.currentInputBufferSize);
     state.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen1_chunk_count = 1;
-    state.gen1_chunks[0] = atomicChunkAlloc(AST_CHUNK_SIZE);
+    let c1 = allocAlignedAstChunk();
+    state.gen1_chunks[0] = c1;
+    stampChunkPages(c1, 1, ++state.chunkSequence);
 
     state.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen0_chunk_count = 1;
-    state.gen0_chunks[0] = atomicChunkAlloc(AST_CHUNK_SIZE);
+    let c0 = allocAlignedAstChunk();
+    state.gen0_chunks[0] = c0;
+    stampChunkPages(c0, 0, ++state.chunkSequence);
 
     state.gen2_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen2_chunk_count = 1;
-    state.gen2_chunks[0] = atomicChunkAlloc(AST_CHUNK_SIZE);
+    let c2 = allocAlignedAstChunk();
+    state.gen2_chunks[0] = c2;
+    stampChunkPages(c2, 2, ++state.chunkSequence);
 
     state.activeGeneration = 1;
     state.activeRootsCapacity = 16384;
@@ -226,6 +242,28 @@ export function S(): SharedState {
     return state;
   }
   return changetype<SharedState>(global_shared_ptr);
+}
+
+export const PAGE_STAMP_CAPACITY: u32 = 65536;
+
+export function allocAlignedAstChunk(): u32 {
+  let raw = atomicChunkAlloc(AST_CHUNK_SIZE + 65536);
+  let aligned = (raw + 65535) & ~65535;
+  return aligned as u32;
+}
+
+export function stampChunkPages(chunkStart: u32, gen: u8, seq: u32): void {
+  let s = S();
+  let table = s.pageStampTable;
+  if (changetype<usize>(table) == 0) return;
+  let startPage = chunkStart >>> 16;
+  let endPage = (chunkStart + AST_CHUNK_SIZE - 1) >>> 16;
+  let val: u32 = ((gen as u32) << 24) | (seq & 0x00FFFFFF);
+  for (let p = startPage; p <= endPage; p++) {
+    if (p < PAGE_STAMP_CAPACITY) {
+      table[p] = val;
+    }
+  }
 }
 
 /**
@@ -323,6 +361,7 @@ export function resetGeneration(gen: u8): void {
       S().gen1_offset = S().gen1_chunks[0];
       S().arenaOffset = S().gen1_offset;
       S().gen1_endLimit = S().gen1_offset + AST_CHUNK_SIZE;
+      stampChunkPages(S().gen1_chunks[0], 1, ++S().chunkSequence);
     }
   } else if (gen == 0) {
     if (S().gen0_chunk_count > 0) {
@@ -335,6 +374,7 @@ export function resetGeneration(gen: u8): void {
       S().gen0_active_chunk = 0;
       S().gen0_offset = S().gen0_chunks[0];
       S().gen0_endLimit = S().gen0_offset + AST_CHUNK_SIZE;
+      stampChunkPages(S().gen0_chunks[0], 0, ++S().chunkSequence);
     }
   } else if (gen == 2) {
     replayUndoLog();
@@ -348,6 +388,7 @@ export function resetGeneration(gen: u8): void {
       S().gen2_active_chunk = 0;
       S().gen2_offset = S().gen2_chunks[0];
       S().gen2_endLimit = S().gen2_offset + AST_CHUNK_SIZE;
+      stampChunkPages(S().gen2_chunks[0], 2, ++S().chunkSequence);
     }
   }
 }
@@ -447,9 +488,10 @@ export function initArena(sizeBytes: u32): void {
   // Initialize first chunk for Generation 1 (Persistent)
   let chunk1 = s.gen1_chunks[0];
   if (chunk1 == 0) {
-    chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
+    chunk1 = allocAlignedAstChunk();
     s.gen1_chunks[0] = chunk1;
   }
+  stampChunkPages(chunk1, 1, ++s.chunkSequence);
   s.gen1_chunk_count = 1;
   s.gen1_active_chunk = 0;
   s.gen1_offset = chunk1;
@@ -458,9 +500,10 @@ export function initArena(sizeBytes: u32): void {
   // Initialize first chunk for Generation 0 (Transient)
   let chunk0 = s.gen0_chunks[0];
   if (chunk0 == 0) {
-    chunk0 = atomicChunkAlloc(AST_CHUNK_SIZE);
+    chunk0 = allocAlignedAstChunk();
     s.gen0_chunks[0] = chunk0;
   }
+  stampChunkPages(chunk0, 0, ++s.chunkSequence);
   s.gen0_chunk_count = 1;
   s.gen0_active_chunk = 0;
   s.gen0_offset = chunk0;
@@ -469,9 +512,10 @@ export function initArena(sizeBytes: u32): void {
   // Initialize first chunk for Generation 2 (Scratch Arena)
   let chunk2 = s.gen2_chunks[0];
   if (chunk2 == 0) {
-    chunk2 = atomicChunkAlloc(AST_CHUNK_SIZE);
+    chunk2 = allocAlignedAstChunk();
     s.gen2_chunks[0] = chunk2;
   }
+  stampChunkPages(chunk2, 2, ++s.chunkSequence);
   s.gen2_chunk_count = 1;
   s.gen2_active_chunk = 0;
   s.gen2_offset = chunk2;
@@ -529,8 +573,11 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
           newChunk = chunkArray[activeChunk + 1];
           usingRecycled = true;
         } else {
-          newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
+          newChunk = allocAlignedAstChunk();
         }
+
+        let gen: u8 = isGen0 ? 0 : (isGen2 ? 2 : 1);
+        stampChunkPages(newChunk, gen, ++s.chunkSequence);
 
         if (isGen0) {
           s.gen0_active_chunk++;
@@ -1114,13 +1161,19 @@ export function getNodeLeadingPad(ptr: u32): u32 {
   if (ptr == 0) return 0;
   let pad = getNodePadding(ptr);
   if (pad > 0) return pad;
-  let curr = ptr;
-  while (curr != 0) {
-    let first = getNodeFirstChild(curr);
-    if (first == 0) return getNodePadding(curr);
-    let p = getNodePadding(first);
-    if (p > 0) return p;
-    curr = first;
+  let first = getNodeFirstChild(ptr);
+  if (first == 0) return 0;
+  let p = getNodePadding(first);
+  if (p > 0) return p;
+  let curr = first;
+  let depth: i32 = 0;
+  while (curr != 0 && depth < 2) {
+    let f = getNodeFirstChild(curr);
+    if (f == 0) return 0;
+    let fp = getNodePadding(f);
+    if (fp > 0) return fp;
+    curr = f;
+    depth++;
   }
   return 0;
 }
@@ -1652,52 +1705,55 @@ export function initUndoLog(): void {
 
 export let g_parseStartChunk: u32 = 0;
 export let g_parseStartOffset: u32 = 0;
+export let g_parseStartSeq: u32 = 0;
 
 export function setParseWatermark(isIncremental: boolean): void {
   let s = S();
   if (!isIncremental) {
     g_parseStartChunk = 0;
     g_parseStartOffset = 0;
+    g_parseStartSeq = 0;
+    s.parseStartSeq = 0;
+    s.parseStartOffset = 0;
   } else {
     g_parseStartChunk = s.gen1_active_chunk;
     g_parseStartOffset = s.gen1_offset;
+    let page = s.gen1_offset >>> 16;
+    let table = s.pageStampTable;
+    let stamp = (changetype<usize>(table) != 0 && page < PAGE_STAMP_CAPACITY) ? table[page] : 0;
+    let seq = stamp & 0x00FFFFFF;
+    g_parseStartSeq = seq;
+    s.parseStartSeq = seq;
+    s.parseStartOffset = s.gen1_offset;
   }
 }
 
 export function isCurrentParseNode(ptr: u32, oldTree: u32 = 0): boolean {
   if (ptr == 0) return false;
   if (oldTree == 0) return true;
-  if (isNodeGen2(ptr)) return true;
   let s = S();
-  let count = s.gen1_chunk_count;
-  let chunks = s.gen1_chunks;
-  let startChunk = g_parseStartChunk;
-  let startOffset = g_parseStartOffset;
-  if (startChunk < count) {
-    let base = chunks[startChunk];
-    if (ptr >= base && ptr < base + AST_CHUNK_SIZE) {
-      return ptr >= startOffset;
-    }
-  }
-  for (let i = startChunk + 1; i < count; i++) {
-    let base = chunks[i];
-    if (ptr >= base && ptr < base + AST_CHUNK_SIZE) {
-      return true;
-    }
-  }
+  let table = s.pageStampTable;
+  if (changetype<usize>(table) == 0) return true;
+  let page = ptr >>> 16;
+  if (page >= PAGE_STAMP_CAPACITY) return false;
+  let stamp = table[page];
+  let gen = stamp >>> 24;
+  if (gen == 2) return true; // gen2 speculative nodes are always current
+  if (gen != 1) return false; // not in gen1
+  let seq = stamp & 0x00FFFFFF;
+  if (seq > s.parseStartSeq) return true;
+  if (seq == s.parseStartSeq && ptr >= s.parseStartOffset) return true;
   return false;
 }
 
 export function isNodeGen2(ptr: u32): boolean {
   if (ptr == 0) return false;
   let s = S();
-  let count = s.gen2_chunk_count;
-  let chunks = s.gen2_chunks;
-  for (let i: u32 = 0; i < count; i++) {
-    let start = chunks[i];
-    if (ptr >= start && ptr < start + AST_CHUNK_SIZE) return true;
-  }
-  return false;
+  let table = s.pageStampTable;
+  if (changetype<usize>(table) == 0) return false;
+  let page = ptr >>> 16;
+  if (page >= PAGE_STAMP_CAPACITY) return false;
+  return (table[page] >>> 24) == 2;
 }
 
 export function assertGen(parent: u32, child: u32): void {

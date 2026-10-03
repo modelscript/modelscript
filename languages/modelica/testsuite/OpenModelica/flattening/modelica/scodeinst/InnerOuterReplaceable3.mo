@@ -1,7 +1,6 @@
 // name: InnerOuterReplaceable3
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 block A

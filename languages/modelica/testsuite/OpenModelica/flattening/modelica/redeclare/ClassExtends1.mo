@@ -1,7 +1,6 @@
 // name:     ClassExtends1
 // keywords: class,extends
 // status:   correct
-// xfail:    true
 //
 //
 

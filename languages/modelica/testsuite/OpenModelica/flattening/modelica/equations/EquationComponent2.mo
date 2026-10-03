@@ -1,7 +1,6 @@
 // name:     EquationComponent2
 // keywords: equation
 // status:   correct
-// xfail:    true
 //
 // When an equation is between to complex types, the equation is split
 // into separate equations for the components.

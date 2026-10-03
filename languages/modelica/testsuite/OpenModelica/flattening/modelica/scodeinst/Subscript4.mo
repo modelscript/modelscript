@@ -1,6 +1,5 @@
 // name: Subscript4
 // status: correct
-// xfail:    true
 //
 //
 

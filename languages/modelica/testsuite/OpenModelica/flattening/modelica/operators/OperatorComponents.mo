@@ -1,7 +1,6 @@
 // name: OperatorComponents
 // keywords: operator
 // status: correct
-// xfail:    true
 //
 // Tests operator overloading, operators can only contain function declarations
 //

@@ -1,7 +1,6 @@
 // name: ClassExtends4
 // keywords: class, extends
 // status: correct
-// xfail:    true
 //
 // Checks that repeated class extends are handled correctly.
 //

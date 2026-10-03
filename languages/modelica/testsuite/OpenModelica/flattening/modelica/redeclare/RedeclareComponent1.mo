@@ -1,7 +1,6 @@
 // name:     RedeclareComponent1
 // keywords: redeclare component
 // status:   correct
-// xfail:    true
 //
 // Tests simple redeclaration of an inherited component.
 //

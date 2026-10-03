@@ -1,7 +1,6 @@
 //name:        ExpandableVariableUsed.mo [BUG: #2385]
 //keyword:     expandable
 //status:      correct
-// xfail:    true
 //
 // instantiate/check model example
 //

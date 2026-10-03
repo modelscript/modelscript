@@ -124,14 +124,39 @@ export class ModelicaDiagramBackend implements DiagramBackend {
   }
 
   async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-    await this.deps.flushValidation(params.uri);
-    const instances = this.deps.getDocumentInstances(params.uri);
-    const docText = this.deps.getDocumentText(params.uri);
+    let instances = this.deps.getDocumentInstances(params.uri);
+    let docText = this.deps.getDocumentText(params.uri);
+
+    // Only flush validation synchronously if instances are not yet available
+    if (!instances?.[0] || !docText) {
+      await this.deps.flushValidation(params.uri);
+      instances = this.deps.getDocumentInstances(params.uri);
+      docText = this.deps.getDocumentText(params.uri);
+    }
+
     if (!instances?.[0] || !docText) {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
-    return processDiagramEditBatch(params, instances[0], docText);
+    let result = processDiagramEditBatch(params, instances[0], docText);
+
+    // If no edits could be produced (e.g. stale AST where component ranges no longer match),
+    // flush validation once to synchronize AST and retry.
+    if (
+      result.edits.length === 0 &&
+      params.actions.some(
+        (a) => a.type === "move" || a.type === "resize" || a.type === "rotate" || a.type === "moveEdge",
+      )
+    ) {
+      await this.deps.flushValidation(params.uri);
+      const freshInstances = this.deps.getDocumentInstances(params.uri);
+      const freshDocText = this.deps.getDocumentText(params.uri);
+      if (freshInstances?.[0] && freshDocText) {
+        result = processDiagramEditBatch(params, freshInstances[0], freshDocText);
+      }
+    }
+
+    return result;
   }
 
   async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
@@ -443,7 +468,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
     };
   }
 
-  getPalette(params: DiagramGetPaletteParams): DiagramPalette | null {
+  getPalette(_params: DiagramGetPaletteParams): DiagramPalette | null {
     return {
       categories: [
         {

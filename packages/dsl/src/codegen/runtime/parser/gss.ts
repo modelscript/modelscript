@@ -105,6 +105,14 @@ export function initGSS(): void {
     t_nextHeadProbe = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
     memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
   }
+  if (changetype<usize>(t_activeSummary) == 0) {
+    t_activeSummary = changetype<FrontierSummary>(heap.alloc(512));
+  }
+  if (changetype<usize>(t_nextSummary) == 0) {
+    t_nextSummary = changetype<FrontierSummary>(heap.alloc(512));
+  }
+  resetFrontierSummary(t_activeSummary);
+  resetFrontierSummary(t_nextSummary);
   activeHeadsCount = 0;
   nextHeadsCount = 0;
   candidateHeadsCount = 0;
@@ -145,18 +153,325 @@ export function pushCandidateHead(headPtr: u32): boolean {
 
 export const MAX_COST_DIFFERENCE: i32 = 7000;
 
-/**
- * Evaluates whether an existing version in the frontier is decisively superior to candidate.
- * Implements Tree-sitter's (deltaCost) * (1 + progress) > MAX_COST_DIFFERENCE pruning.
- */
-export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32Array, count: u32): boolean {
+export let debugVerifyFrontierPruning: bool = false;
+export let configEnableActivePruning: bool = true;
+export let gssBestAcceptingHead: u32 = 0;
+export let gssBestDyingHead: u32 = 0;
+
+@unmanaged
+export class FrontierSummary {
+  healthyCount: u32;
+  minHealthyCost: i32;
+  minHealthyCostPos: u32;
+  maxHealthyPos: u32;
+  maxHealthyNodeCount: u32;
+
+  nonPausedCount: u32;
+  minNonPausedCost: i32;
+  minNonPausedCostPos: u32;
+  maxNonPausedPos: u32;
+
+  inErrorCount: u32;
+  minInErrorCost: i32;
+  maxInErrorNodeCount: u32;
+
+  posHealthyCount: u32;
+  posNonPausedCount: u32;
+  paretoErrCount: u32;
+  paretoHealthyCount: u32;
+  hasOverflow: bool;
+
+  @inline getHealthyPos(i: i32): u32 {
+    return load<u32>(changetype<usize>(this) + 68 + ((i as usize) << 2));
+  }
+  @inline setHealthyPos(i: i32, val: u32): void {
+    store<u32>(changetype<usize>(this) + 68 + ((i as usize) << 2), val);
+  }
+  @inline getHealthyCost(i: i32): i32 {
+    return load<i32>(changetype<usize>(this) + 100 + ((i as usize) << 2));
+  }
+  @inline setHealthyCost(i: i32, val: i32): void {
+    store<i32>(changetype<usize>(this) + 100 + ((i as usize) << 2), val);
+  }
+
+  @inline getNonPausedPos(i: i32): u32 {
+    return load<u32>(changetype<usize>(this) + 132 + ((i as usize) << 2));
+  }
+  @inline setNonPausedPos(i: i32, val: u32): void {
+    store<u32>(changetype<usize>(this) + 132 + ((i as usize) << 2), val);
+  }
+  @inline getNonPausedCost(i: i32): i32 {
+    return load<i32>(changetype<usize>(this) + 164 + ((i as usize) << 2));
+  }
+  @inline setNonPausedCost(i: i32, val: i32): void {
+    store<i32>(changetype<usize>(this) + 164 + ((i as usize) << 2), val);
+  }
+
+  @inline getParetoErrCost(i: i32): i32 {
+    return load<i32>(changetype<usize>(this) + 196 + ((i as usize) << 2));
+  }
+  @inline setParetoErrCost(i: i32, val: i32): void {
+    store<i32>(changetype<usize>(this) + 196 + ((i as usize) << 2), val);
+  }
+  @inline getParetoErrNodes(i: i32): u32 {
+    return load<u32>(changetype<usize>(this) + 228 + ((i as usize) << 2));
+  }
+  @inline setParetoErrNodes(i: i32, val: u32): void {
+    store<u32>(changetype<usize>(this) + 228 + ((i as usize) << 2), val);
+  }
+
+  @inline getParetoHealthyCost(i: i32): i32 {
+    return load<i32>(changetype<usize>(this) + 260 + ((i as usize) << 2));
+  }
+  @inline setParetoHealthyCost(i: i32, val: i32): void {
+    store<i32>(changetype<usize>(this) + 260 + ((i as usize) << 2), val);
+  }
+  @inline getParetoHealthyNodes(i: i32): u32 {
+    return load<u32>(changetype<usize>(this) + 292 + ((i as usize) << 2));
+  }
+  @inline setParetoHealthyNodes(i: i32, val: u32): void {
+    store<u32>(changetype<usize>(this) + 292 + ((i as usize) << 2), val);
+  }
+
+  updateParetoHealthy(newCost: i32, newNodes: u32): void {
+    let count = this.paretoHealthyCount;
+    for (let i: i32 = 0; i < (count as i32); i++) {
+      if (this.getParetoHealthyCost(i) <= newCost && this.getParetoHealthyNodes(i) >= newNodes) {
+        return;
+      }
+    }
+    let writeIdx: i32 = 0;
+    for (let i: i32 = 0; i < (count as i32); i++) {
+      if (!(newCost <= this.getParetoHealthyCost(i) && newNodes >= this.getParetoHealthyNodes(i))) {
+        if (writeIdx != i) {
+          this.setParetoHealthyCost(writeIdx, this.getParetoHealthyCost(i));
+          this.setParetoHealthyNodes(writeIdx, this.getParetoHealthyNodes(i));
+        }
+        writeIdx++;
+      }
+    }
+    count = writeIdx as u32;
+    if (count < 8) {
+      this.setParetoHealthyCost(count as i32, newCost);
+      this.setParetoHealthyNodes(count as i32, newNodes);
+      this.paretoHealthyCount = count + 1;
+    } else {
+      this.hasOverflow = true;
+    }
+  }
+
+  updateParetoInError(newCost: i32, newNodes: u32): void {
+    let count = this.paretoErrCount;
+    for (let i: i32 = 0; i < (count as i32); i++) {
+      if (this.getParetoErrCost(i) <= newCost && this.getParetoErrNodes(i) >= newNodes) {
+        return;
+      }
+    }
+    let writeIdx: i32 = 0;
+    for (let i: i32 = 0; i < (count as i32); i++) {
+      if (!(newCost <= this.getParetoErrCost(i) && newNodes >= this.getParetoErrNodes(i))) {
+        if (writeIdx != i) {
+          this.setParetoErrCost(writeIdx, this.getParetoErrCost(i));
+          this.setParetoErrNodes(writeIdx, this.getParetoErrNodes(i));
+        }
+        writeIdx++;
+      }
+    }
+    count = writeIdx as u32;
+    if (count < 8) {
+      this.setParetoErrCost(count as i32, newCost);
+      this.setParetoErrNodes(count as i32, newNodes);
+      this.paretoErrCount = count + 1;
+    } else {
+      this.hasOverflow = true;
+    }
+  }
+}
+
+export let t_activeSummary: FrontierSummary = changetype<FrontierSummary>(0);
+export let t_nextSummary: FrontierSummary = changetype<FrontierSummary>(0);
+
+export function resetFrontierSummary(s: FrontierSummary): void {
+  if (changetype<usize>(s) == 0) return;
+  memory.fill(changetype<usize>(s), 0, 512);
+  s.minHealthyCost = 0x7fffffff;
+  s.minNonPausedCost = 0x7fffffff;
+  s.minInErrorCost = 0x7fffffff;
+}
+
+export function addToFrontierSummary(s: FrontierSummary, h: ParseHead): void {
+  if (changetype<usize>(s) == 0 || h.isDead) return;
+
+  if (!h.isPaused) {
+    s.nonPausedCount++;
+    if (h.errorCost < s.minNonPausedCost) {
+      s.minNonPausedCost = h.errorCost;
+      s.minNonPausedCostPos = h.pos;
+    }
+    if (h.pos > s.maxNonPausedPos) {
+      s.maxNonPausedPos = h.pos;
+    }
+    let n = s.posNonPausedCount;
+    let found = false;
+    for (let i: u32 = 0; i < n; i++) {
+      if (s.getNonPausedPos(i as i32) == h.pos) {
+        if (h.errorCost < s.getNonPausedCost(i as i32)) {
+          s.setNonPausedCost(i as i32, h.errorCost);
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (n < 8) {
+        s.setNonPausedPos(n as i32, h.pos);
+        s.setNonPausedCost(n as i32, h.errorCost);
+        s.posNonPausedCount++;
+      } else {
+        s.hasOverflow = true;
+      }
+    }
+  }
+
+  if (!h.inErrorState) {
+    s.healthyCount++;
+    if (h.errorCost < s.minHealthyCost) {
+      s.minHealthyCost = h.errorCost;
+      s.minHealthyCostPos = h.pos;
+    }
+    if (h.pos > s.maxHealthyPos) {
+      s.maxHealthyPos = h.pos;
+    }
+    if (h.nodeCount > s.maxHealthyNodeCount) {
+      s.maxHealthyNodeCount = h.nodeCount;
+    }
+
+    let n = s.posHealthyCount;
+    let found = false;
+    for (let i: u32 = 0; i < n; i++) {
+      if (s.getHealthyPos(i as i32) == h.pos) {
+        if (h.errorCost < s.getHealthyCost(i as i32)) {
+          s.setHealthyCost(i as i32, h.errorCost);
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      if (n < 8) {
+        s.setHealthyPos(n as i32, h.pos);
+        s.setHealthyCost(n as i32, h.errorCost);
+        s.posHealthyCount++;
+      } else {
+        s.hasOverflow = true;
+      }
+    }
+
+    s.updateParetoHealthy(h.errorCost, h.nodeCount);
+  } else {
+    s.inErrorCount++;
+    if (h.errorCost < s.minInErrorCost) {
+      s.minInErrorCost = h.errorCost;
+    }
+    if (h.nodeCount > s.maxInErrorNodeCount) {
+      s.maxInErrorNodeCount = h.nodeCount;
+    }
+
+    s.updateParetoInError(h.errorCost, h.nodeCount);
+  }
+}
+
+export function rebuildFrontierSummary(kind: u32, frontier: UnmanagedUint32Array, count: u32): void {
+  let s = kind == 1 ? t_nextSummary : t_activeSummary;
+  resetFrontierSummary(s);
+  for (let i: u32 = 0; i < count; i++) {
+    let h = changetype<ParseHead>(frontier[i]);
+    if (!h.isDead) {
+      addToFrontierSummary(s, h);
+    }
+  }
+}
+
+export function fastBetterVersionExists(candidate: ParseHead, s: FrontierSummary): boolean {
+  if (changetype<usize>(s) == 0 || s.hasOverflow) return false;
+
+  // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
+  // and is at or ahead in the stream.
+  if (candidate.inErrorState && s.healthyCount > 0) {
+    if (s.minHealthyCost < candidate.errorCost && s.maxHealthyPos >= candidate.pos) {
+      if (s.minHealthyCostPos >= candidate.pos) {
+        return true;
+      }
+      let n = s.posHealthyCount;
+      for (let i: u32 = 0; i < n; i++) {
+        if (s.getHealthyPos(i as i32) >= candidate.pos && s.getHealthyCost(i as i32) < candidate.errorCost) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 1b. Active head dominates paused head if equal or lower cost
+  if (candidate.isPaused && s.nonPausedCount > 0) {
+    if (s.minNonPausedCost <= candidate.errorCost && s.maxNonPausedPos >= candidate.pos) {
+      if (s.minNonPausedCostPos >= candidate.pos) {
+        return true;
+      }
+      let n = s.posNonPausedCount;
+      for (let i: u32 = 0; i < n; i++) {
+        if (s.getNonPausedPos(i as i32) >= candidate.pos && s.getNonPausedCost(i as i32) <= candidate.errorCost) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 2. Both in error: Tree-sitter relative cost comparison
+  if (candidate.inErrorState && s.inErrorCount > 0) {
+    let diff = candidate.errorCost - s.minInErrorCost;
+    if (diff > 0 && diff * (1 + (s.maxInErrorNodeCount as i32)) > MAX_COST_DIFFERENCE) {
+      let n = s.paretoErrCount;
+      for (let i: u32 = 0; i < n; i++) {
+        let eCost = s.getParetoErrCost(i as i32);
+        if (eCost < candidate.errorCost) {
+          let costDiff = candidate.errorCost - eCost;
+          let progress = 1 + (s.getParetoErrNodes(i as i32) as i32);
+          if (costDiff * progress > MAX_COST_DIFFERENCE) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Both healthy: relative error cost pruning
+  if (!candidate.inErrorState && s.healthyCount > 0) {
+    let diff = candidate.errorCost - s.minHealthyCost;
+    if (diff > 0 && diff * (1 + (s.maxHealthyNodeCount as i32)) > MAX_COST_DIFFERENCE) {
+      let n = s.paretoHealthyCount;
+      for (let i: u32 = 0; i < n; i++) {
+        let eCost = s.getParetoHealthyCost(i as i32);
+        if (eCost < candidate.errorCost) {
+          let costDiff = candidate.errorCost - eCost;
+          let progress = 1 + (s.getParetoHealthyNodes(i as i32) as i32);
+          if (costDiff * progress > MAX_COST_DIFFERENCE) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function slowBetterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32Array, count: u32): boolean {
   for (let i: u32 = 0; i < count; i++) {
     let existing = changetype<ParseHead>(frontier[i]);
-    if (existing == candidate) continue;
+    if (existing == candidate || existing.isDead) continue;
 
     // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
     // and is at or ahead in the stream (Tree-sitter parser.c:252-257).
-    // If existing.errorCost >= candidate.errorCost, the candidate's repair is cheaper and must survive.
     if (!existing.inErrorState && candidate.inErrorState) {
       if (existing.errorCost < candidate.errorCost && existing.pos >= candidate.pos) {
         return true;
@@ -171,7 +486,6 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
     }
 
     // 2. Both in error: Tree-sitter relative cost comparison
-    // D3 fix: use nodeCount instead of successfulShifts for progress metric
     if (candidate.inErrorState && existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
@@ -197,6 +511,93 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
 }
 
 /**
+ * Evaluates whether an existing version in the frontier is decisively superior to candidate.
+ * Implements Tree-sitter's (deltaCost) * (1 + progress) > MAX_COST_DIFFERENCE pruning.
+ */
+export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32Array, count: u32, isNext: bool = false): boolean {
+  if (count == 0) return false;
+  let s = isNext ? t_nextSummary : t_activeSummary;
+
+  let fast = fastBetterVersionExists(candidate, s);
+  if (debugVerifyFrontierPruning || changetype<usize>(s) == 0 || s.hasOverflow) {
+    let slow = slowBetterVersionExists(candidate, frontier, count);
+    if (fast != slow) {
+      debugLog(9601, fast ? 1 : 0, slow ? 1 : 0, count);
+      return slow;
+    }
+  }
+  return fast;
+}
+
+/**
+ * Prunes dominated existing heads in the frontier when a new decisively superior head is added.
+ */
+export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint32Array, count: u32): void {
+  let healthyCount: u32 = 0;
+  for (let i: u32 = 0; i < count; i++) {
+    let h = changetype<ParseHead>(frontier[i]);
+    if (!h.isDead && !h.inErrorState) healthyCount++;
+  }
+
+  for (let i: u32 = 0; i < count; i++) {
+    let existing = changetype<ParseHead>(frontier[i]);
+    if (existing == newHead || existing.isDead) continue;
+
+    if (existing.processed) continue;
+
+    let existingPtr = changetype<u32>(existing);
+    if (existingPtr == gssBestAcceptingHead || existingPtr == gssBestDyingHead) continue;
+
+    if (!existing.inErrorState && healthyCount <= 1) continue;
+
+    let dominated = false;
+
+    // Rule 1: healthy newHead dominates in-error existing
+    if (!newHead.inErrorState && existing.inErrorState) {
+      if (newHead.errorCost < existing.errorCost && newHead.pos >= existing.pos) {
+        dominated = true;
+      }
+    }
+
+    // Rule 1b: active newHead dominates paused existing
+    if (!newHead.isPaused && existing.isPaused) {
+      if (newHead.errorCost <= existing.errorCost && newHead.pos >= existing.pos) {
+        dominated = true;
+      }
+    }
+
+    // Rule 2: both in error
+    if (newHead.inErrorState && existing.inErrorState) {
+      if (newHead.errorCost < existing.errorCost) {
+        let costDiff = existing.errorCost - newHead.errorCost;
+        let progress = 1 + (newHead.nodeCount as i32);
+        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+          dominated = true;
+        }
+      }
+    }
+
+    // Rule 3: both healthy
+    if (!newHead.inErrorState && !existing.inErrorState) {
+      if (newHead.errorCost < existing.errorCost) {
+        let costDiff = existing.errorCost - newHead.errorCost;
+        let progress = 1 + (newHead.nodeCount as i32);
+        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+          dominated = true;
+        }
+      }
+    }
+
+    if (dominated) {
+      existing.isDead = true;
+      if (!existing.inErrorState) {
+        healthyCount--;
+      }
+    }
+  }
+}
+
+/**
  * Pushes a new active parse head to the current GSS queue.
  * @param headPtr Pointer to the ParseHead instance.
  * @returns true if pushed successfully, false if the queue is full.
@@ -204,7 +605,7 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
 export function pushActiveHead(headPtr: u32): boolean {
   if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   let newHead = changetype<ParseHead>(headPtr);
-  if (betterVersionExists(newHead, t_activeHeads, activeHeadsCount)) {
+  if (betterVersionExists(newHead, t_activeHeads, activeHeadsCount, false)) {
     return false;
   }
   if (activeHeadsCount == 0 && changetype<usize>(t_activeHeadProbe) != 0) {
@@ -217,11 +618,15 @@ export function pushActiveHead(headPtr: u32): boolean {
       t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
       t_activeHeads[activeHeadsCount] = headPtr;
       activeHeadsCount++;
+      addToFrontierSummary(t_activeSummary, newHead);
+      if (configEnableActivePruning) {
+        pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount);
+      }
       return true;
     }
   }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
-    let r = mergeIntoFrontierSlot(t_activeHeads, i, newHead);
+    let r = mergeIntoFrontierSlot(t_activeHeads, i, newHead, false);
     if (r != MERGE_NONE) return true;
   }
   if (changetype<usize>(t_activeHeadProbe) != 0) {
@@ -229,6 +634,10 @@ export function pushActiveHead(headPtr: u32): boolean {
   }
   t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
+  addToFrontierSummary(t_activeSummary, newHead);
+  if (configEnableActivePruning) {
+    pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount);
+  }
   return true;
 }
 
@@ -256,7 +665,7 @@ function inheritEdges(to: ParseHead, from: ParseHead): void {
  * (state, pos). Returns MERGE_DONE if `newHead` was merged, replaced the entry, or was
  * dropped as dominated; MERGE_NONE if the entry is unrelated (or must not be merged).
  */
-function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: ParseHead): i32 {
+function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: ParseHead, isNext: bool = false): i32 {
   let existingHead = changetype<ParseHead>(frontier[i]);
   // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
   if (existingHead.state != newHead.state || existingHead.pos != newHead.pos) return MERGE_NONE;
@@ -275,6 +684,10 @@ function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: 
       setNodeFlags(winner.astNode, getNodeFlags(winner.astNode) | FLAG_FRAGILE);
     }
     frontier[i] = changetype<u32>(winner);
+    if (winner == newHead) {
+      let s = isNext ? t_nextSummary : t_activeSummary;
+      addToFrontierSummary(s, winner);
+    }
     return MERGE_DONE;
   }
 
@@ -295,7 +708,7 @@ function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: 
 export function pushNextHead(headPtr: u32): boolean {
   if (nextHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   let newHead = changetype<ParseHead>(headPtr);
-  if (betterVersionExists(newHead, t_nextHeads, nextHeadsCount)) {
+  if (betterVersionExists(newHead, t_nextHeads, nextHeadsCount, true)) {
     return false;
   }
   if (nextHeadsCount == 0 && changetype<usize>(t_nextHeadProbe) != 0) {
@@ -308,11 +721,15 @@ export function pushNextHead(headPtr: u32): boolean {
       t_nextHeadProbe[probeKey] = nextHeadsCount + 1;
       t_nextHeads[nextHeadsCount] = headPtr;
       nextHeadsCount++;
+      addToFrontierSummary(t_nextSummary, newHead);
+      if (configEnableActivePruning) {
+        pruneDominatedHeads(newHead, t_nextHeads, nextHeadsCount);
+      }
       return true;
     }
   }
   for (let i: u32 = 0; i < nextHeadsCount; i++) {
-    let r = mergeIntoFrontierSlot(t_nextHeads, i, newHead);
+    let r = mergeIntoFrontierSlot(t_nextHeads, i, newHead, true);
     if (r != MERGE_NONE) return true;
   }
   if (changetype<usize>(t_nextHeadProbe) != 0) {
@@ -320,6 +737,10 @@ export function pushNextHead(headPtr: u32): boolean {
   }
   t_nextHeads[nextHeadsCount] = headPtr;
   nextHeadsCount++;
+  addToFrontierSummary(t_nextSummary, newHead);
+  if (configEnableActivePruning) {
+    pruneDominatedHeads(newHead, t_nextHeads, nextHeadsCount);
+  }
   return true;
 }
 
@@ -327,6 +748,17 @@ export function pushNextHead(headPtr: u32): boolean {
  * Swaps active and next head double buffers at the end of a lockstep token frontier.
  */
 export function swapActiveAndNextHeads(): void {
+  if (configEnableActivePruning) {
+    let writeIdx: u32 = 0;
+    for (let i: u32 = 0; i < nextHeadsCount; i++) {
+      let h = changetype<ParseHead>(t_nextHeads[i]);
+      if (!h.isDead) {
+        t_nextHeads[writeIdx++] = changetype<u32>(h);
+      }
+    }
+    nextHeadsCount = writeIdx;
+  }
+
   let tmp = t_activeHeads;
   t_activeHeads = t_nextHeads;
   t_nextHeads = tmp;
@@ -338,6 +770,11 @@ export function swapActiveAndNextHeads(): void {
   if (changetype<usize>(t_nextHeadProbe) != 0) {
     memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
   }
+
+  let tmpSummary = t_activeSummary;
+  t_activeSummary = t_nextSummary;
+  t_nextSummary = tmpSummary;
+  resetFrontierSummary(t_nextSummary);
 }
 
 /**
@@ -525,6 +962,9 @@ export class ParseHead {
    * that edge (the classic GLR "missed reductions" problem), so such heads are not merged.
    */
   processed: bool;
+
+  /** True if this head has been dominated by a better head and should be ignored/compacted. */
+  isDead: bool;
 }
 
 /**
@@ -577,6 +1017,7 @@ export function allocParseHead(
   h.isPaused = isPaused;
   h.pausedLookahead = pausedLookahead;
   h.processed = false;
+  h.isDead = false;
   return h;
 }
 

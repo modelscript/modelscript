@@ -1,7 +1,6 @@
 // name: AbsWithTupleInput [BUG: https://trac.openmodelica.org/OpenModelica/ticket/1946]
 // keywords: abs
 // status: correct
-// xfail:    true
 //
 // Testing the built-in abs function that gets a tuple input from another function call
 //

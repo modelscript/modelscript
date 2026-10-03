@@ -1,7 +1,6 @@
 // name: Connect13
 // keywords:  connector, array components
 // status: correct
-// xfail:    true
 //
 // Test that arrays can be used n connectors.
 //

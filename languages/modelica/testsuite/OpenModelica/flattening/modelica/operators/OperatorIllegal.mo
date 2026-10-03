@@ -1,7 +1,6 @@
 // name: OperatorIllegal
 // keywords: operator
 // status: incorrect
-// xfail:    true
 //
 // extending from a record containing operator overloads should be illegal
 //

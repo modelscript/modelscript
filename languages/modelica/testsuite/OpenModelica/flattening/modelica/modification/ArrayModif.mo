@@ -1,7 +1,6 @@
 // name:     ArrayModif
 // keywords: modification
 // status:   correct
-// xfail:    true
 //
 // Test that we don't give wrong errors about missing each
 

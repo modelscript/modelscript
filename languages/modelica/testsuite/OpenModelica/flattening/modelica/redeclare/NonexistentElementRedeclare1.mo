@@ -1,7 +1,6 @@
 // name:     NonexistentElementRedeclare1
 // keywords: redeclare
 // status:   incorrect
-// xfail:    true
 //
 // Element redeclares must redeclare inherited elements.
 //

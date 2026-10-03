@@ -1,7 +1,6 @@
 // name: OperatorSimple
 // keywords: operator
 // status: correct
-// xfail:    true
 //
 // Tests simple operator overloading
 //

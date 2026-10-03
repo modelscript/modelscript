@@ -1,7 +1,6 @@
 // name:     Equations
 // keywords: equation
 // status:   correct
-// xfail:    true
 //
 // Drmodelica:
 //

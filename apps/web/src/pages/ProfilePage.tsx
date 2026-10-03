@@ -320,7 +320,7 @@ const ProfilePage: React.FC = () => {
                         right="0"
                         mt={1}
                         style={{
-                          backgroundColor: "rgba(14, 20, 36, 0.95)",
+                          backgroundColor: "var(--surface-overlay, rgba(14, 20, 36, 0.95))",
                           backdropFilter: "blur(16px)",
                           WebkitBackdropFilter: "blur(16px)",
                           border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
@@ -597,9 +597,15 @@ const ProfilePage: React.FC = () => {
         )}
       </Box>
 
-      <TabBar>
+      <TabBar role="tablist" aria-label="Profile tabs">
         {["Posts", ...(profile.account_type === "rss" ? [] : ["Replies", "Artifacts", "Repos"])].map((tab) => (
-          <Tab key={tab} $active={activeTab === tab} onClick={() => setActiveTab(tab)}>
+          <Tab
+            key={tab}
+            role="tab"
+            aria-selected={activeTab === tab}
+            $active={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+          >
             {tab}
           </Tab>
         ))}
@@ -647,12 +653,13 @@ const ProfilePage: React.FC = () => {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.4)",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            backdropFilter: "blur(4px)",
           }}
         >
           <Box
             style={{
-              backgroundColor: "rgba(14, 20, 36, 0.95)",
+              backgroundColor: "var(--surface-overlay, rgba(14, 20, 36, 0.95))",
               backdropFilter: "blur(16px)",
               WebkitBackdropFilter: "blur(16px)",
               border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",

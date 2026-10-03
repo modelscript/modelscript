@@ -1,7 +1,6 @@
 // name:     EquationIf4
 // keywords: equation
 // status:   correct
-// xfail:    true
 //
 // Testing `if' clauses in equations.
 // The condition may be a non-parameter expresion if all

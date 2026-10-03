@@ -1,7 +1,6 @@
 // name:     Lookup3
 // keywords: scoping
 // status:   incorrect
-// xfail:    true
 //
 // Non-constants in an outer scope can not be referred to.
 //

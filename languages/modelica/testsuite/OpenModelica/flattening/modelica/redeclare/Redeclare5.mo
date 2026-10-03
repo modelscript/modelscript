@@ -1,7 +1,6 @@
 // name:     Redeclare5
 // keywords: redeclare, bug #36
 // status:   correct
-// xfail:    true
 //
 model B
   parameter Real b=1.0;

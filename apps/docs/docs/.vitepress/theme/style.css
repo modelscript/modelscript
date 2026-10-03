@@ -78,7 +78,30 @@ body {
   overflow: visible !important;
 }
 
+/* Align Hero and Feature content with Header Navbar */
 @media (min-width: 960px) {
+  .VPHero {
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+  }
+
+  .VPHero .container {
+    max-width: calc(var(--vp-layout-max-width) - 64px) !important;
+  }
+
+  .VPHero.has-image .main {
+    max-width: 640px !important;
+  }
+
+  .VPFeatures {
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+  }
+
+  .VPFeatures .container {
+    max-width: calc(var(--vp-layout-max-width) - 64px) !important;
+  }
+
   .VPHero .image {
     display: flex;
     align-items: center;

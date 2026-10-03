@@ -1,7 +1,6 @@
 // name:     Protected1
 // keywords: protected
 // status:   correct
-// xfail:    true
 //
 // This file tests information hiding using the 'protect' keyword
 //

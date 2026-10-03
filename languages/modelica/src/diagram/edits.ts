@@ -156,13 +156,53 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const compRange = getNodeRange(abstractNode);
   if (!compRange) return null;
 
-  const { startLine, startCol, endLine, endCol } = compRange;
+  let startLine = compRange.startLine;
+  let startCol = compRange.startCol;
+  let endLine = compRange.endLine;
+  let endCol = compRange.endCol;
+
+  let text = getTextInRange(lines, startLine, startCol, endLine, endCol);
+
+  // Validate extracted text contains the component name (guards against stale AST / line shifts)
+  let lineDelta = 0;
+  if (!text.includes(item.name)) {
+    const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const nameRegex = new RegExp(`\\b${escName}\\b`);
+    let foundLine = -1;
+    const minLine = Math.max(0, startLine - 15);
+    const maxLine = Math.min(lines.length - 1, startLine + 15);
+    for (let l = minLine; l <= maxLine; l++) {
+      if (nameRegex.test(lines[l])) {
+        foundLine = l;
+        break;
+      }
+    }
+    if (foundLine === -1) {
+      for (let l = 0; l < lines.length; l++) {
+        if (nameRegex.test(lines[l])) {
+          foundLine = l;
+          break;
+        }
+      }
+    }
+    if (foundLine !== -1) {
+      lineDelta = foundLine - startLine;
+      startLine += lineDelta;
+      endLine += lineDelta;
+      text = getTextInRange(lines, startLine, startCol, endLine, endCol);
+      if (!text.includes(item.name)) {
+        startLine = foundLine;
+        endLine = foundLine;
+        startCol = 0;
+        endCol = lines[foundLine].length;
+        text = lines[foundLine];
+      }
+    }
+  }
+
+  if (!text.includes(item.name)) return null;
 
   const range = Range.create(startLine, startCol, endLine, endCol);
-  const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
-
-  // Validate extracted text contains the component name (guards against stale AST)
-  if (!text.includes(item.name)) return null;
 
   const rotationPart = r !== 0 ? `, rotation=${r}` : "";
 
@@ -189,19 +229,10 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const annRangeInfo = getNodeRange(annotationClause);
 
   if (annRangeInfo) {
-    const annRange = Range.create(
-      annRangeInfo.startLine,
-      annRangeInfo.startCol,
-      annRangeInfo.endLine,
-      annRangeInfo.endCol,
-    );
-    const annText = getTextInRange(
-      lines,
-      annRangeInfo.startLine,
-      annRangeInfo.startCol,
-      annRangeInfo.endLine,
-      annRangeInfo.endCol,
-    );
+    const annStartLine = annRangeInfo.startLine + lineDelta;
+    const annEndLine = annRangeInfo.endLine + lineDelta;
+    const annRange = Range.create(annStartLine, annRangeInfo.startCol, annEndLine, annRangeInfo.endCol);
+    const annText = getTextInRange(lines, annStartLine, annRangeInfo.startCol, annEndLine, annRangeInfo.endCol);
 
     const annotationMatch = annText.match(/annotation\s*\(/);
     if (annotationMatch) {

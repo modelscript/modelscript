@@ -1,7 +1,6 @@
 // name: ClassExtends3
 // keywords: class, extends
 // status: correct
-// xfail:    true
 //
 // Tests that partial packages may be extended, and functions inside
 // redeclared. Constants inherited will use the full functions to calculate

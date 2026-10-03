@@ -1,7 +1,6 @@
 // name:     reinit
 // keywords: reinit
 // status:   correct
-// xfail:    true
 //
 // using reinit in when initial() is not allowed, changed to assignment
 //

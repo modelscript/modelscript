@@ -1,7 +1,6 @@
 // name:     ImportNamed2
 // keywords: named import
 // status:   correct
-// xfail:    true
 //
 // Checks that named imports with renaming works.
 //

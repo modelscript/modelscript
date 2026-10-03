@@ -140,6 +140,12 @@ export interface LanguageOptions<
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?: string[][];
 
+  /**
+   * Declarative bracket pairs for delimiter tracking, indentation, and AST balance hash.
+   * Defaults to `[["{", "}"], ["[", "]"], ["(", ")"]]` if not specified.
+   */
+  brackets?: [string, string][];
+
   /** Reserved keywords to omit from generic identifier matching. */
   reserved?: Record<string, ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[]>;
 

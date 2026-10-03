@@ -1,7 +1,6 @@
 // name:     Connect5
 // keywords: connect,type
 // status:   correct
-// xfail:    true
 //
 // Booleans are allowed in connectors
 //

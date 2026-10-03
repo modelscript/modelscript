@@ -1,7 +1,6 @@
 // name:     Influenza
 // keywords: connect, equation, modification
 // status:   correct
-// xfail:    true
 
 connector Port = Real;
 

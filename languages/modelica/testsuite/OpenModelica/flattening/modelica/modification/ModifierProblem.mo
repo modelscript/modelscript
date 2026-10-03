@@ -1,7 +1,6 @@
 // name:     ModifiersProblem
 // keywords: deep, modifiers
 // status:   correct
-// xfail:    true
 //
 // This tests deep modifiers problem that appeared (and was fixed):
 //  Error: Variable s: In modifier (s), class or component s, not found in the built-in class Real

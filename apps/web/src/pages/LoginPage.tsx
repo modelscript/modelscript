@@ -26,8 +26,29 @@ const GitLabIcon = () => (
 );
 
 const XIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+const GoogleIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24">
+    <path
+      fill="#4285F4"
+      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.665-5.17 3.665-9.12z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.13C3.26 21.36 7.33 24 12 24z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.13z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.13c.95-2.83 3.6-4.96 6.72-4.96z"
+    />
   </svg>
 );
 
@@ -35,91 +56,141 @@ const PageWrapper = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  padding: 40px 20px;
+  min-height: calc(100vh - 60px);
+  padding: 40px 16px;
 `;
 
 const Card = styled.div`
   width: 100%;
-  max-width: 600px;
-  background: var(--color-glass-bg);
-  border: none;
-  border-radius: 16px;
-  padding: 48px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  max-width: 440px;
+  background: var(--surface-overlay, rgba(14, 20, 36, 0.9));
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-xl, 16px);
+  padding: 40px 32px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow:
+    0 20px 48px -12px rgba(0, 0, 0, 0.4),
+    var(--glow-card);
   display: flex;
   flex-direction: column;
   align-items: center;
+  box-sizing: border-box;
+`;
+
+const LogoBadge = styled.div`
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg, 14px);
+  background: var(--surface-hud, rgba(14, 20, 36, 0.65));
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 24px rgba(6, 182, 212, 0.22);
+  margin-bottom: 14px;
 `;
 
 const Title = styled.h1`
-  font-size: 31px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
   color: var(--color-text-heading);
-  margin: 32px 0;
+  margin: 0 0 6px 0;
   text-align: center;
+  letter-spacing: -0.02em;
+`;
+
+const Subtitle = styled.p`
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0 0 24px 0;
+  text-align: center;
+  font-weight: 500;
+  line-height: 1.4;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   width: 100%;
-  max-width: 300px;
-`;
-
-const Label = styled.label`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-primary);
 `;
 
 const Input = styled.input`
-  height: 48px;
-  padding: 16px;
-  background: var(--color-search-bg);
-  border: 1px solid var(--color-search-border);
-  border-radius: 4px;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--color-search-bg, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
   color: var(--color-text-primary);
-  font-size: 15px;
+  font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
   width: 100%;
   box-sizing: border-box;
 
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+
   &:focus {
-    border-color: var(--color-accent-cyan);
-    box-shadow: 0 0 10px var(--color-search-focus);
+    border-color: var(--color-accent-cyan, #06b6d4);
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18);
   }
 `;
 
 const Button = styled.button`
-  height: 40px;
+  height: 44px;
   background: var(--gradient-cta);
   color: #ffffff;
   border: none;
   border-radius: 9999px;
   font-size: 15px;
-  font-weight: bold;
+  font-weight: 700;
   cursor: pointer;
   transition:
     opacity 0.2s,
+    transform 0.15s ease,
     box-shadow 0.2s;
-  box-shadow: var(--glow-ai-sm);
-  margin-top: 12px;
+  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
+  margin-top: 6px;
   width: 100%;
 
   &:hover {
-    opacity: 0.9;
+    opacity: 0.95;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(6, 182, 212, 0.45);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const GhostButton = styled.button`
+  height: 38px;
+  background: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+
+  &:hover {
+    background: var(--surface-row-hover, rgba(255, 255, 255, 0.04));
+    color: var(--color-text-primary);
+    border-color: var(--color-text-muted);
   }
 `;
 
@@ -127,20 +198,27 @@ const ProviderButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  height: 40px;
-  background: var(--color-canvas-subtle);
-  color: var(--color-fg-default);
-  border: 1px solid #cfd9de;
+  gap: 10px;
+  height: 42px;
+  background: var(--surface-overlay, var(--color-canvas-subtle));
+  color: var(--color-text-primary, var(--color-fg-default));
+  border: 1px solid var(--color-border);
   border-radius: 9999px;
-  font-size: 15px;
-  font-weight: bold;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.15s ease;
   width: 100%;
 
   &:hover {
-    background: var(--color-canvas-default);
+    background: var(--surface-row-hover, var(--color-canvas-default));
+    border-color: var(--color-accent-cyan, #06b6d4);
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.15);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -148,11 +226,13 @@ const Divider = styled.div`
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 24px 0;
+  margin: 20px 0;
   color: var(--color-text-muted);
-  font-size: 15px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   width: 100%;
-  max-width: 300px;
 
   &::before,
   &::after {
@@ -162,35 +242,35 @@ const Divider = styled.div`
   }
 
   &:not(:empty)::before {
-    margin-right: 0.5em;
+    margin-right: 0.8em;
   }
 
   &:not(:empty)::after {
-    margin-left: 0.5em;
+    margin-left: 0.8em;
   }
 `;
 
 const ErrorBanner = styled.div`
-  background: rgba(248, 81, 73, 0.1);
-  border: 1px solid rgba(248, 81, 73, 0.4);
-  color: #f85149;
+  background: var(--status-unstable-bg, rgba(248, 81, 73, 0.1));
+  border: 1px solid var(--status-unstable-border, rgba(248, 81, 73, 0.4));
+  color: var(--status-unstable-fg, #f85149);
   padding: 10px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-md, 8px);
   font-size: 13px;
+  line-height: 1.4;
 `;
 
 const FooterText = styled.p`
-  text-align: left;
-  font-size: 15px;
+  text-align: center;
+  font-size: 14px;
   color: var(--color-text-muted);
-  margin: 48px 0 0 0;
+  margin: 28px 0 0 0;
   width: 100%;
-  max-width: 300px;
 
   a {
     color: var(--color-accent-cyan);
     text-decoration: none;
-    font-weight: bold;
+    font-weight: 700;
 
     &:hover {
       text-decoration: underline;
@@ -229,23 +309,27 @@ export default function LoginPage() {
   return (
     <PageWrapper>
       <Card>
-        <img src="/ms-logo.png" alt="ModelScript" width="40" height="40" />
+        <LogoBadge>
+          <img src="/ms-logo.png" alt="ModelScript" width="34" height="34" />
+        </LogoBadge>
         <Title>Sign in to ModelScript</Title>
+        <Subtitle>Physical Modeling, Systems & Simulation Hub</Subtitle>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", maxWidth: "300px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
           <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
             <MarkGithubIcon size={16} />
-            Sign up with GitHub
+            Continue with GitHub
           </ProviderButton>
           <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
             <GitLabIcon />
-            Sign up with GitLab
+            Continue with GitLab
           </ProviderButton>
           <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
             <XIcon />
             Continue with X
           </ProviderButton>
           <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
+            <GoogleIcon />
             Continue with Google
           </ProviderButton>
         </div>
@@ -261,7 +345,7 @@ export default function LoginPage() {
                 border: "1px solid rgba(6, 182, 212, 0.35)",
                 color: "var(--color-accent-cyan)",
                 padding: "10px 14px",
-                borderRadius: "8px",
+                borderRadius: "var(--radius-md, 8px)",
                 fontSize: "13px",
                 textAlign: "left",
                 lineHeight: "1.4",
@@ -287,19 +371,11 @@ export default function LoginPage() {
             required
           />
           <Button type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Next"}
+            {loading ? "Signing in…" : "Sign In"}
           </Button>
-          <Button
-            type="button"
-            onClick={() => setForgotNotice(true)}
-            style={{
-              backgroundColor: "transparent",
-              color: "var(--color-fg-default, #c9d1d9)",
-              border: "1px solid var(--color-border-default, rgba(255,255,255,0.15))",
-            }}
-          >
+          <GhostButton type="button" onClick={() => setForgotNotice(true)}>
             Forgot password?
-          </Button>
+          </GhostButton>
         </Form>
 
         <FooterText>

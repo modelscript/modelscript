@@ -1,7 +1,6 @@
 // name: OperatorOverloadConstructorHideDefault
 // keywords: operator overload constructor
 // status: correct
-// xfail:    true
 //
 // Checks that overloaded constructor has precedence over deafault constructor 
 // which would otherwise cause ambiguity. 

@@ -1,7 +1,6 @@
 // name: Symmetric3
 // keywords: symmetric
 // status: correct
-// xfail:    true
 //
 // Tests the built-in symmetric function
 //

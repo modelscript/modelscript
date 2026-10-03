@@ -18,7 +18,8 @@ import {
     ParseHead, GssEdge, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
     t_pausedHeads, pausedHeadsCount, resetPausedHeads,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild,
-    saveCursorCheckpoint, restoreCursorCheckpoint
+    saveCursorCheckpoint, restoreCursorCheckpoint,
+    rebuildFrontierSummary, gssBestAcceptingHead, gssBestDyingHead
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
@@ -35,7 +36,8 @@ import {
 } from "../parser";
 import {
     TOKEN_EOF, TOKEN_UNKNOWN, NODE_TYPE_ERROR, ACTION_SHIFT, ACTION_REDUCE, ACTION_ACCEPT,
-    action_offsets, action_data, goto_offsets, goto_data, mrd_data, token_insert_costs,
+    action_offsets, action_data, action_entry_offsets, action_entry_data, goto_offsets, goto_data, mrd_data, token_insert_costs,
+    token_bracket_deltas, isOpenBracketChar, isCloseBracketChar,
     prod_lengths, prod_right_offsets, prod_right_symbols, prod_lhs, prod_is_structural, prod_is_invisible, prod_is_list, prod_dynamic_prec, prod_aliases, alias_data,
     type_fields, type_field_data, type_is_list,
     MAX_ERRORS, MAX_PARALLEL_HEADS, INFINITE_COST, MAX_CHILD_NODES, MIN_LOOP_LIMIT, ARENA_BUFFER_SIZE,
@@ -49,7 +51,7 @@ import {
     reportGlobalError, debugLog, pushDiagnostic,
     expected_tokens, getExpectedTokensForState,
     findMergeCandidate, registerMergeCandidate,
-    TOKEN_SUSPEND, releaseFieldCursor,
+    TOKEN_SUSPEND, releaseFieldCursor, resetExpectedTokensPool,
     globalIsCatastrophic, commitDiagnostics, DiagnosticNode,
     lastBestCost, lastIterCount, lastMaxHeads,
     tokenBufferReadIdx, tokenBufferWriteIdx,
@@ -68,7 +70,6 @@ export let diag_count_append: u32 = 0;
 export let diag_count_shift: u32 = 0;
 
 
-const configEnableBranchA2 = false;
 import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget } from "./recovery";
 import { MAX_PRODUCTION_LENGTH } from "./recovery-config";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
@@ -80,6 +81,60 @@ let g_lookupMemoCount: i32 = 0;
 
 /** Maximum number of actions copied into `tempActions` (it holds 32 u32 = 16 pairs). */
 const MAX_LOOKUP_ACTIONS: i32 = 16;
+
+/**
+ * Finds the index of the matching action entry in `action_data` for a given state and token.
+ * Uses binary search when `action_entry_offsets` is available and `actionCount > 8`.
+ * Falls back to default entry (`sym == 0`) if exact match is not found.
+ */
+export function findActionEntry(state: i32, token: i32): i32 {
+  let actionOffset = action_offsets[state];
+  if (actionOffset < 0 || actionOffset + 1 >= action_data.length) return -1;
+  let actionCount = action_data[actionOffset];
+  if (actionCount == 0) return -1;
+
+  if (actionCount > 8 && changetype<usize>(action_entry_data) != 0 && changetype<usize>(action_entry_offsets) != 0) {
+    let entryBase = action_entry_offsets[state];
+    let low = 0;
+    let high = actionCount - 1;
+    let defaultIdx = -1;
+    let firstIdx = action_entry_data[entryBase];
+    if (action_data[firstIdx] == 0) {
+      defaultIdx = firstIdx;
+      low = 1;
+    }
+    while (low <= high) {
+      let mid = (low + high) >> 1;
+      let entryIdx = action_entry_data[entryBase + mid];
+      let sym = action_data[entryIdx];
+      if (sym == token) {
+        return entryIdx;
+      } else if (sym < token) {
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return defaultIdx;
+  }
+
+  // Linear path for <= 8 entries or unindexed tables
+  let idx = actionOffset + 1;
+  let exactIdx = -1;
+  let defaultIdx = -1;
+  for (let i = 0; i < actionCount; i++) {
+    let sym = action_data[idx];
+    let actCount = action_data[idx + 1];
+    if (sym == token) {
+      exactIdx = idx;
+      break;
+    } else if (sym == 0) {
+      defaultIdx = idx;
+    }
+    idx += 2 + actCount * 2;
+  }
+  return exactIdx != -1 ? exactIdx : defaultIdx;
+}
 
 /**
  * Looks up the GLR action count for a given parser state and token.
@@ -96,32 +151,12 @@ export function lookupActions(state: i32, token: i32): i32 {
       g_lookupMemoTable == changetype<usize>(action_data) && changetype<usize>(tempActions) != 0) {
     return g_lookupMemoCount;
   }
-  let actionOffset = action_offsets[state];
-  if (actionOffset < 0 || actionOffset + 1 >= action_data.length) {
-    return 0;
-  }
-  let actionCount = action_data[actionOffset];
-  let idx = actionOffset + 1;
-  let exactIdx = -1;
-  let defaultIdx = -1;
-  
-  for (let i = 0; i < actionCount; i++) {
-    let sym = action_data[idx];
-    let actCount = action_data[idx + 1];
-    if (sym == token) {
-      exactIdx = idx;
-      break;
-    } else if (sym == 0) {
-      defaultIdx = idx;
-    }
-    idx += 2 + actCount * 2;
-  }
-  
-  let matchIdx = exactIdx != -1 ? exactIdx : defaultIdx;
+
+  let matchIdx = findActionEntry(state, token);
   if (matchIdx == -1) {
     return 0;
   }
-  
+
   if (changetype<usize>(tempActions) == 0) {
     tempActions = changetype<UnmanagedUint32Array>(atomicChunkAlloc(32 * sizeof<u32>()));
   }
@@ -202,6 +237,7 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
     prevHead.pendingPadding = pendingPadding;
     activeHeadsCount = 0;
     t_activeHeads[activeHeadsCount++] = changetype<u32>(prevHead);
+    rebuildFrontierSummary(0, t_activeHeads, activeHeadsCount);
   }
   
   currentParserMode = MODE_GLR;
@@ -2614,7 +2650,7 @@ export function extractListSlice(
  * @param maxTokens The maximum number of tokens to simulate.
  */
 export function resetSimulator(targetCost: i32, maxTokens: i32): void {
-  bestAcceptingHead = 0;
+  setBestAcceptingHead(0);
   bestAcceptedCost = targetCost;
   g_simulatorMaxCost = targetCost;
   g_simulatorMaxTokens = maxTokens;
@@ -2683,7 +2719,7 @@ export function restoreSimulationState(): void {
   g_simulatorMaxCost = savedSimulatorMaxCost;
   g_simulatorMaxTokens = savedSimulatorMaxTokens;
   
-  bestAcceptingHead = savedBestAcceptingHead;
+  setBestAcceptingHead(savedBestAcceptingHead);
   acceptedNode = savedAcceptedNode;
   bestAcceptedCost = savedBestAcceptedCost;
   bestAcceptedRealBytes = savedBestAcceptedRealBytes;
@@ -2705,6 +2741,18 @@ export function getBestAcceptingHead(): u32 {
 export let furthestDyingPos: u32 = 0;
 export let bestDyingHead: u32 = 0;
 export let bestAcceptingHead: u32 = 0;
+
+@inline
+export function setBestDyingHead(val: u32): void {
+  bestDyingHead = val;
+  gssBestDyingHead = val;
+}
+
+@inline
+export function setBestAcceptingHead(val: u32): void {
+  bestAcceptingHead = val;
+  gssBestAcceptingHead = val;
+}
 export let acceptedNode: u32 = 0;
 export let bestAcceptedCost: i32 = 999999;
 export let bestAcceptedRealBytes: u32 = 0;
@@ -2729,11 +2777,19 @@ export let g_configIslandMode: boolean = true;
  */
 function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, isVirtual: boolean, cameFromVirtualQueue: boolean): void {
   let newBalance = head.balanceHash;
-  let charLen = peekCharLen(lexPos);
-  if (lexLen == charLen) {
-    let c = peekChar(lexPos);
-    if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
-    else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) newBalance--;
+  let delta: i32 = 0;
+  if (token >= 0 && token <= MAX_TERMINAL_ID && changetype<usize>(token_bracket_deltas) != 0) {
+    delta = token_bracket_deltas[token];
+  }
+  if (delta != 0) {
+    newBalance += delta;
+  } else {
+    let charLen = peekCharLen(lexPos);
+    if (lexLen == charLen) {
+      let c = peekChar(lexPos);
+      if (isOpenBracketChar(c)) newBalance++;
+      else if (isCloseBracketChar(c)) newBalance--;
+    }
   }
 
   let paddingLength: u32 = 0;
@@ -3458,7 +3514,7 @@ function processAcceptAction(head: ParseHead): void {
     (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && head.dynamicPrec == bestAcceptedPrec && firstPad == bestAcceptedPad && t_count > bestAcceptedCount)
   )) {
     if (t_count <= 1) {
-      bestAcceptingHead = changetype<u32>(head);
+      setBestAcceptingHead(changetype<u32>(head));
       bestAcceptedCost = effectiveCost;
       bestAcceptedRealBytes = realBytes;
       bestAcceptedCount = t_count;
@@ -3494,7 +3550,7 @@ function processAcceptAction(head: ParseHead): void {
         acceptedNode = head.astNode;
       }
     } else {
-      bestAcceptingHead = changetype<u32>(head);
+      setBestAcceptingHead(changetype<u32>(head));
       bestAcceptedCost = effectiveCost;
       bestAcceptedRealBytes = realBytes;
       bestAcceptedCount = t_count;
@@ -4314,6 +4370,7 @@ export function advanceGLR(): void {
     let frontierPos: u32 = 0xffffffff;
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let h = changetype<ParseHead>(t_activeHeads[i]);
+      if (h.isDead) continue;
       if (h.pos < frontierPos) {
         frontierPos = h.pos;
       }
@@ -4326,9 +4383,10 @@ export function advanceGLR(): void {
     // 2. Process all heads at frontierPos
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let head: ParseHead = changetype<ParseHead>(t_activeHeads[i]);
+      if (head.isDead) continue;
       if (head.pos > furthestDyingPos || (head.pos == furthestDyingPos && bestDyingHead == 0)) {
         furthestDyingPos = head.pos;
-        bestDyingHead = changetype<u32>(head);
+        setBestDyingHead(changetype<u32>(head));
       }
       if (head.pos != frontierPos) {
         pushNextHead(changetype<u32>(head));
@@ -4467,6 +4525,7 @@ export function advanceGLR(): void {
             head.errorTail
           );
           pushNextHead(changetype<u32>(nextHead));
+          restoreCursorCheckpoint();
           continue;
         } else {
           restoreCursorCheckpoint();
@@ -4487,39 +4546,14 @@ export function advanceGLR(): void {
         let actionOffset = action_offsets[head.state];
         if (actionOffset < 0 || actionOffset >= action_data.length) break;
 
-        let actCount = action_data[actionOffset];
-        let idx = actionOffset + 1;
+        let matchIdx = findActionEntry(head.state, tok);
         let foundTok = false;
         let actOffsetInActions = -1;
         let totalActionsForSym = 0;
-
-        // Pass 1: exact match for sym == tok
-        for (let a = 0; a < actCount; a++) {
-          let sym = action_data[idx++];
-          let numActions = action_data[idx++];
-          if (sym == tok) {
-            foundTok = true;
-            actOffsetInActions = idx;
-            totalActionsForSym = numActions;
-            break;
-          }
-          idx += numActions * 2;
-        }
-
-        // Pass 2: wildcard match sym == 0 if no exact match found
-        if (!foundTok) {
-          idx = actionOffset + 1;
-          for (let a = 0; a < actCount; a++) {
-            let sym = action_data[idx++];
-            let numActions = action_data[idx++];
-            if (sym == 0) {
-              foundTok = true;
-              actOffsetInActions = idx;
-              totalActionsForSym = numActions;
-              break;
-            }
-            idx += numActions * 2;
-          }
+        if (matchIdx != -1) {
+          foundTok = true;
+          totalActionsForSym = action_data[matchIdx + 1];
+          actOffsetInActions = matchIdx + 2;
         }
 
         // Pass 3: Reused node decomposition & default reduction
@@ -4537,7 +4571,8 @@ export function advanceGLR(): void {
           // Step 3b: Default reduction if state has only reductions and no shifts
           let hasAnyShift = false;
           let candidateReduce = -1;
-          idx = actionOffset + 1;
+          let actCount = action_data[actionOffset];
+          let idx = actionOffset + 1;
           for (let a = 0; a < actCount; a++) {
             let sym = action_data[idx++];
             let numActions = action_data[idx++];
@@ -4774,6 +4809,7 @@ export function advanceGLR(): void {
         t_nextHeads[ei] = t_extractedHeadsBuffer[ei];
       }
       nextHeadsCount = MAX_PARALLEL_HEADS;
+      rebuildFrontierSummary(1, t_nextHeads, nextHeadsCount);
     }
 
     // 4. Swap buffers and advance
@@ -4889,6 +4925,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     resetGeneration(0);
     resetQueryArena();
     clearDiagnostics();
+    resetExpectedTokensPool();
     diag_count_reduce = 0;
     diag_count_clone = 0;
     diag_count_append = 0;
@@ -4921,9 +4958,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
   // Error recovery trackers
   furthestDyingPos = 0;
-  bestDyingHead = 0;
+  setBestDyingHead(0);
 
-  bestAcceptingHead = 0;
+  setBestAcceptingHead(0);
   acceptedNode = 0;
   bestAcceptedCost = 999999;
   bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
@@ -4936,7 +4973,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   advanceGLR();
 
   if (acceptedNode != 0) {
-    bestDyingHead = 0;
+    setBestDyingHead(0);
     if (bestAcceptingHead != 0) {
       let bah = changetype<ParseHead>(bestAcceptingHead);
       commitDiagnostics(bah.errorTail);

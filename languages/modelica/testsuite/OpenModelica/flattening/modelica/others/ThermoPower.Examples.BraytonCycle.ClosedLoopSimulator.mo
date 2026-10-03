@@ -1,4 +1,3 @@
-// xfail:    true
 package ThermoPower
   extends Modelica.Icons.Package;
 

@@ -1,7 +1,6 @@
 // name:     ArrayModTypeError
 // keywords: modification array type
 // status:   incorrect
-// xfail:    true
 //
 
 model ArrayModTypeError

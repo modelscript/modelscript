@@ -1,7 +1,6 @@
 // name:     LotkaVolterra
 // keywords: der
 // status:   correct
-// xfail:    true
 //
 // <insert description here>
 //

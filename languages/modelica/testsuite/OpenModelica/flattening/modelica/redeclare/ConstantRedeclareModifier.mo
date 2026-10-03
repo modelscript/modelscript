@@ -1,7 +1,6 @@
 // name:     ConstantRedeclareModifier
 // keywords: redeclare, modification, constant
 // status:   incorrect
-// xfail:    true
 //
 // Checks that it's not allowed to redeclare a component declared as constant.
 //

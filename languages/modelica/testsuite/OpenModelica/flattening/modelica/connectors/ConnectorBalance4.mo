@@ -1,7 +1,6 @@
 // name: ConnectorBalance4
 // keywords: connector
 // status: correct
-// xfail:    true
 //
 //
 

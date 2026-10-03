@@ -1,7 +1,6 @@
 // name:     ConnectTwoSources
 // keywords: connect
 // status:   correct
-// xfail:    true
 //
 // Connecting two sources should not be allowed.
 //

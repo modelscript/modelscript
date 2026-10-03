@@ -1,7 +1,6 @@
 // name:     Enum11
 // keywords: enumeration enum
 // status:   correct
-// xfail:    true
 //
 // Tests integer conversion of enumeration types.
 //

@@ -1,7 +1,6 @@
 // name:     ModifierSubModMerging1
 // keywords: modification #2789
 // status:   correct
-// xfail:    true
 //
 // Checks that submodifiers are merged correctly.
 //

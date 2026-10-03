@@ -1,7 +1,6 @@
 // name: ConnectorBalance2
 // keywords: connector
 // status: correct
-// xfail:    true
 //
 // Tests an illegal connector definition
 //

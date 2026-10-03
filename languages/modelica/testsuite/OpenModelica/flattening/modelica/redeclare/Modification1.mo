@@ -1,7 +1,6 @@
 // name:     Modification1
 // keywords: redeclare, modification
 // status:   correct
-// xfail:    true
 //
 // Checks that modifiers are propagated and merged correctly when redeclaring
 // components.

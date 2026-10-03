@@ -1,7 +1,6 @@
 // name: FuncBuiltinShiftSample1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model FuncBuiltinShiftSample1

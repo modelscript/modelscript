@@ -1,7 +1,6 @@
 // name:     HelloWorld
 // keywords: equation
 // status:   correct
-// xfail:    true
 //
 // Equation handling
 // Drmodelica: 2.1 Hello World (p. 19)

@@ -1073,6 +1073,21 @@ export function isElementReplaceable(db: CodeGraph, node: u32, $: Record<string,
       return true;
     }
   }
+  for (const c of db.ast.getDescendants(node, 0xffff)) {
+    if (db.ast.textEquals(c, "replaceable")) return true;
+  }
+  for (const anc of db.ast.getAncestors(node)) {
+    if (anc == node) continue;
+    const at = db.ast.getType(anc);
+    if ($.element_replaceable != 0 && at == $.element_replaceable) return true;
+    if (db.ast.startsWith(anc, "replaceable")) return true;
+    let ach = db.ast.getFirstChild(anc);
+    while (ach != 0) {
+      if (db.ast.textEquals(ach, "replaceable")) return true;
+      ach = db.ast.getNextSibling(ach);
+    }
+    if (at == $.composition || at == $.class_definition || at == $.root) break;
+  }
   return false;
 }
 

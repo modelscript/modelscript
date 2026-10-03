@@ -1,6 +1,5 @@
 // name: IfExpCombiTable1
 // status: correct
-// xfail:    true
 // This should succeed without error messages
 
 class IfExpCombiTable1

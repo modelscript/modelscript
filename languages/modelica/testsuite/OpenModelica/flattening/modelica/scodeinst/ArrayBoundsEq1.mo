@@ -1,7 +1,6 @@
 // name: ArrayBoundsEq1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model ArrayBoundsEq1

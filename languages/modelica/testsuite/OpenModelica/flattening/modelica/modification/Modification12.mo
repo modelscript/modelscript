@@ -1,7 +1,6 @@
 // name:     Modification12
 // keywords: modification, attributes, arrays
 // status:   correct
-// xfail:    true
 //
 //
 

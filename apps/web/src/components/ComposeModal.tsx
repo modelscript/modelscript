@@ -25,7 +25,7 @@ const Overlay = styled.div`
 `;
 
 const ModalPanel = styled.div`
-  background: rgba(14, 20, 36, 0.95);
+  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   width: 100%;

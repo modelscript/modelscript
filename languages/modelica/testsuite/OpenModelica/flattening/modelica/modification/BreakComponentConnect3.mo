@@ -1,7 +1,6 @@
 // name:     BreakComponentConnect3
 // keywords: modification break
 // status:   correct
-// xfail:    true
 //
 
 connector C

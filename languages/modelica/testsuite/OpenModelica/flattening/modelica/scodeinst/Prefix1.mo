@@ -1,7 +1,6 @@
 // name: Prefix1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

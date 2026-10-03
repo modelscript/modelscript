@@ -1,7 +1,6 @@
 // name: FuncBuiltinSmooth
 // keywords: smooth
 // status: correct
-// xfail:    true
 //
 // Tests the builtin smooth operator.
 //

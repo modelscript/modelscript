@@ -1,7 +1,6 @@
 // name: FuncBuiltinSum
 // keywords: sum
 // status: correct
-// xfail:    true
 //
 // Tests the builtin sum operator.
 //

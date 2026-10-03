@@ -1,7 +1,6 @@
 // name:     Bug2784.mo [BUG: #2784]
 // keywords: redeclare modifier handling
 // status:   correct
-// xfail:    true
 //
 // check that modifiers on redeclare are not lost
 //

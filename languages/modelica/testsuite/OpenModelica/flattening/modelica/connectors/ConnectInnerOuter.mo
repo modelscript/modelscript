@@ -1,7 +1,6 @@
 // name:     ConnectInnerOuter
 // keywords: connect inner outer
 // status:   correct
-// xfail:    true
 //
 // Connections to inner outer references
 

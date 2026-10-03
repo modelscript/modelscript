@@ -1,7 +1,6 @@
 // name:     Extends9
 // keywords: extends
 // status:   correct
-// xfail:    true
 //
 // Testing modifiers that are looked up through the same base class
 //

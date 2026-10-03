@@ -8,7 +8,7 @@ import Box from "./Box";
 
 const MapContainer = styled(Box)`
   width: 100%;
-  background-color: rgba(14, 20, 36, 0.65);
+  background-color: var(--surface-hud, rgba(14, 20, 36, 0.65));
   backdrop-filter: blur(16px);
   border-radius: 12px;
   overflow: hidden;
@@ -150,7 +150,7 @@ const Tooltip = styled.div<{ $show: boolean; $x: number; $y: number; $flipX: boo
   pointer-events: none;
   opacity: ${(props) => (props.$show ? 1 : 0)};
   transition: opacity 0.15s ease;
-  background-color: rgba(14, 20, 36, 0.95);
+  background-color: var(--surface-overlay, rgba(14, 20, 36, 0.95));
   border: 1px solid var(--color-border-glass);
   border-radius: 8px;
   padding: 8px 12px;
@@ -170,8 +170,8 @@ const Tooltip = styled.div<{ $show: boolean; $x: number; $y: number; $flipX: boo
     border-style: solid;
     border-color: ${(props) =>
       props.$flipY
-        ? "transparent transparent rgba(14, 20, 36, 0.95) transparent"
-        : "rgba(14, 20, 36, 0.95) transparent transparent transparent"};
+        ? "transparent transparent var(--surface-overlay, rgba(14, 20, 36, 0.95)) transparent"
+        : "var(--surface-overlay, rgba(14, 20, 36, 0.95)) transparent transparent transparent"};
   }
 `;
 

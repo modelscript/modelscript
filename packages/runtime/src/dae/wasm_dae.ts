@@ -2707,7 +2707,7 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       ) {
         return VarType.Real;
       }
-      if (fnName === "min" || fnName === "max" || fnName === "abs") {
+      if (fnName === "min" || fnName === "max" || fnName === "abs" || fnName === "sum" || fnName === "product") {
         const argCount = dae.getExprRight(exprId);
         if (argCount > 0) {
           const t0 = inferArenaExprVarType(dae, dae.getExprLeft(exprId));

@@ -1,7 +1,6 @@
 // name:     Skew
 // keywords: skew
 // status:   correct
-// xfail:    true
 //
 // Tests the builtin skew function.
 //

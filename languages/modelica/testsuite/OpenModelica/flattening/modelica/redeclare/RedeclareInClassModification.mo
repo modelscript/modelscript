@@ -1,7 +1,6 @@
 // name:     RedeclareInClassModification.mo [BUG: #3247]
 // keywords: redeclare in class modification
 // status:   correct
-// xfail:    true
 //
 
 model B

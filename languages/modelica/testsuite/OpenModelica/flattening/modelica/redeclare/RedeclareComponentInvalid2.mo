@@ -1,7 +1,6 @@
 // name:     RedeclareComponentInvalid2
 // keywords: redeclare component
 // status:   incorrect
-// xfail:    true
 //
 // Tests that only inherited components can be redeclared.
 //

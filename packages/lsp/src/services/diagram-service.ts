@@ -150,6 +150,10 @@ export class DiagramService {
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
         flushValidation: async (uri: string) => {
+          if (this.validationService?.flushValidation) {
+            await this.validationService.flushValidation(uri);
+            return;
+          }
           const f = (globalThis as any).validateTextDocument;
           if (f) {
             const doc = this.documentManager.documents.get(uri);

@@ -1,7 +1,6 @@
 // name: PackageBinding1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 package A

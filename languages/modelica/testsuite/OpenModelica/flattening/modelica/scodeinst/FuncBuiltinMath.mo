@@ -1,7 +1,6 @@
 // name: FuncBuiltinMath
 // keywords: 
 // status: correct
-// xfail:    true
 //
 // Tests the builtin math functions.
 //

@@ -285,6 +285,113 @@ function createTurbineEngine() {
   addPart(bypassNozzleGeom, solidNacelleMat, false, 24);
 
   // ==========================================
+  // NACELLE & CASING WIREFRAME GRID / FABRIC (Horizontal Stringer Lines)
+  // Connects the circumferential rings along the engine axis into a CAD grid
+  // ==========================================
+  const gridPositions: number[] = [];
+
+  // 1. Outer Nacelle Longitudinal Stringers (connecting the rings into a structural grid fabric)
+  const numOuterStringers = 40; // 40 longitudinal lines around circumference (matching 40-seg rings)
+  const outerGridStations = [
+    { z: 2.32, r: 2.42 }, // Intake cowl lip rim
+    { z: 2.10, r: 2.44 }, // Flange 1
+    { z: 1.70, r: 2.44 }, // Intermediate hoop
+    { z: 1.30, r: 2.44 }, // Flange 2
+    { z: 0.85, r: 2.44 }, // Intermediate hoop
+    { z: 0.40, r: 2.44 }, // Flange 3
+    { z: 0.00, r: 2.44 }, // Intermediate hoop
+    { z: -0.40, r: 2.44 }, // Flange 4
+    { z: -0.70, r: 2.44 }, // Intermediate hoop
+    { z: -1.00, r: 2.44 }, // Flange 5
+    { z: -1.30, r: 2.36 }, // Aft bypass nozzle start
+    { z: -1.60, r: 2.26 }, // Aft bypass nozzle trailing edge
+  ];
+
+  for (let i = 0; i < numOuterStringers; i++) {
+    const angle = (i * Math.PI * 2) / numOuterStringers;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    for (let s = 0; s < outerGridStations.length - 1; s++) {
+      const s0 = outerGridStations[s];
+      const s1 = outerGridStations[s + 1];
+      gridPositions.push(
+        s0.r * cosA, s0.r * sinA, s0.z,
+        s1.r * cosA, s1.r * sinA, s1.z,
+      );
+    }
+  }
+
+  // Intermediate circumferential hoop rings on outer nacelle for complete grid fabric
+  const intermediateOuterHoops = [1.70, 0.85, 0.00, -0.70];
+  for (const z of intermediateOuterHoops) {
+    const segs = 40;
+    const r = 2.44;
+    for (let j = 0; j < segs; j++) {
+      const a0 = (j * Math.PI * 2) / segs;
+      const a1 = ((j + 1) * Math.PI * 2) / segs;
+      gridPositions.push(
+        r * Math.cos(a0), r * Math.sin(a0), z,
+        r * Math.cos(a1), r * Math.sin(a1), z,
+      );
+    }
+  }
+
+  // 2. Inner Bypass Duct Longitudinal Stringers
+  const numInnerStringers = 24;
+  const innerStations = [
+    { z: 2.25, r: 2.18 },
+    { z: 1.30, r: 2.19 },
+    { z: 0.40, r: 2.20 },
+    { z: -0.40, r: 2.21 },
+    { z: -1.05, r: 2.22 },
+  ];
+  for (let i = 0; i < numInnerStringers; i++) {
+    const angle = (i * Math.PI * 2) / numInnerStringers;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    for (let s = 0; s < innerStations.length - 1; s++) {
+      const s0 = innerStations[s];
+      const s1 = innerStations[s + 1];
+      gridPositions.push(
+        s0.r * cosA, s0.r * sinA, s0.z,
+        s1.r * cosA, s1.r * sinA, s1.z,
+      );
+    }
+  }
+
+  // 3. Core Stator Casing Longitudinal Stringers (connecting stator rings)
+  const numCoreStringers = 16;
+  const coreStations = [
+    { z: 1.20, r: 0.96 },
+    { z: 0.85, r: 0.96 },
+    { z: 0.52, r: 0.96 },
+    { z: 0.24, r: 0.96 },
+    { z: -0.04, r: 0.96 },
+    { z: -0.65, r: 0.86 },
+  ];
+  for (let i = 0; i < numCoreStringers; i++) {
+    const angle = (i * Math.PI * 2) / numCoreStringers;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    for (let s = 0; s < coreStations.length - 1; s++) {
+      const s0 = coreStations[s];
+      const s1 = coreStations[s + 1];
+      gridPositions.push(
+        s0.r * cosA, s0.r * sinA, s0.z,
+        s1.r * cosA, s1.r * sinA, s1.z,
+      );
+    }
+  }
+
+  const gridGeom = new THREE.BufferGeometry();
+  gridGeom.setAttribute("position", new THREE.Float32BufferAttribute(gridPositions, 3));
+  const gridLines = new THREE.LineSegments(gridGeom, wireLineMat);
+  wire.add(gridLines);
+
+  // ==========================================
   // 2. OUTLET GUIDE VANES (OGV) & STRUTS (Stationary)
   // ==========================================
   // 24 Stator Vanes behind the fan

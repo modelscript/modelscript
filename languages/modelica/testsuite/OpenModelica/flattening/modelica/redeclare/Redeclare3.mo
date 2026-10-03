@@ -1,7 +1,6 @@
 // name:     Redeclare3
 // keywords: redeclare
 // status:   correct
-// xfail:    true
 //
 
 class A

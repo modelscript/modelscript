@@ -1,7 +1,6 @@
 // name: ProtectedAccess
 // keywords: protected, access
 // status: correct
-// xfail:    true
 //
 // Tests that we give a warning when accessing protected elements of another class
 //

@@ -27,7 +27,7 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalContent = styled.div`
-  background: rgba(14, 20, 36, 0.95);
+  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
   backdrop-filter: blur(16px);
   border: 1px solid var(--color-border-glass);
   border-radius: 16px;
@@ -385,7 +385,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
           display="flex"
           justifyContent="space-between"
           alignItems="center"
-          bg="rgba(14, 20, 36, 0.95)"
+          bg="var(--surface-overlay, rgba(14, 20, 36, 0.95))"
         >
           <Box display="flex" alignItems="center" gap={2}>
             <span style={{ fontSize: "12px", color: "var(--color-text-muted)", fontWeight: "600" }}>Colormap:</span>

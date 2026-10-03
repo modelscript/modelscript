@@ -1,7 +1,6 @@
 // name:     EnumInnerOuterDim
 // keywords: enumeration enum inner outer dimension
 // status:   correct
-// xfail:    true
 //
 // Tests that inner outer arrays with enumeration dimensions are handled
 // correctly.

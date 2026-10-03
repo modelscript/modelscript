@@ -1,7 +1,6 @@
 // name:     ZeroDimUnconnectedFlow1
 // keywords: connect
 // status:   correct
-// xfail:    true
 //
 // Checks that equations for unconnected flow variables in arrays with zero dims
 // are not generated.

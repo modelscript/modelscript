@@ -1,7 +1,6 @@
 // name:     ConnectorSubtypeComp
 // keywords: connect, connector, #2741
 // status:   correct
-// xfail:    true
 //
 // Checks that subtype components are counted correctly in connectors.
 //

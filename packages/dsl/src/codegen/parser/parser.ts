@@ -20,7 +20,6 @@ import {
   cseCode,
   daeAccessorsCode,
   daeBuilderCode,
-  daeCode,
   daeTypesCode,
   delayCode,
   doeCode,
@@ -173,15 +172,16 @@ export function generateParserTables(
 
   const actionOffsets: number[] = [];
   const actionData: number[] = [];
+  const actionEntryOffsets: number[] = [];
+  const actionEntryData: number[] = [];
 
   for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
     actionOffsets.push(actionData.length);
+    actionEntryOffsets.push(actionEntryData.length);
     const actions = table.actionTable.get(stateId)!;
-    actionData.push(actions.size);
-    for (const [sym, acts] of actions.entries()) {
-      actionData.push(symToInt.get(sym)!);
-      actionData.push(acts.length);
 
+    const entries: { symId: number; acts: any[] }[] = [];
+    for (const [sym, acts] of actions.entries()) {
       const sortedActs = [...acts].sort((a, b) => {
         if (a.type !== 1 || b.type !== 1) return 0; // 1 is ActionType.REDUCE
         const prodA = grammar.productions.find((p) => p.id === a.target);
@@ -190,8 +190,20 @@ export function generateParserTables(
         if (precDiff !== 0) return precDiff;
         return (b.target || 0) - (a.target || 0);
       });
+      entries.push({
+        symId: symToInt.get(sym) ?? 0,
+        acts: sortedActs,
+      });
+    }
 
-      for (const act of sortedActs) {
+    entries.sort((a, b) => a.symId - b.symId);
+
+    actionData.push(entries.length);
+    for (const entry of entries) {
+      actionEntryData.push(actionData.length);
+      actionData.push(entry.symId);
+      actionData.push(entry.acts.length);
+      for (const act of entry.acts) {
         actionData.push(act.type);
         actionData.push(act.target || 0);
       }
@@ -210,6 +222,8 @@ export function generateParserTables(
 
   code += generateStaticArray(actionOffsets, "action_offsets");
   code += generateStaticArray(actionData, "action_data");
+  code += generateStaticArray(actionEntryOffsets, "action_entry_offsets");
+  code += generateStaticArray(actionEntryData, "action_entry_data");
 
   const gotoOffsets: number[] = [];
   const gotoData: number[] = [];
@@ -298,14 +312,14 @@ export function generateParserTables(
     const symId = symToInt.get(sym) ?? i;
     const cleanSym = sym.replace(/^"|"$/g, "");
 
-    const isCustomDelim = customDelims.includes(sym) || customDelims.includes(cleanSym);
-    const isOperator = grammarOperators.has(sym) || grammarOperators.has(cleanSym);
-    const isWord = /^[a-zA-Z_]/.test(cleanSym);
+    const _isCustomDelim = customDelims.includes(sym) || customDelims.includes(cleanSym);
+    const _isOperator = grammarOperators.has(sym) || grammarOperators.has(cleanSym);
+    const _isWord = /^[a-zA-Z_]/.test(cleanSym);
 
-    const isStructuralDelimiter =
-      isCustomDelim ||
+    const _isStructuralDelimiter =
+      _isCustomDelim ||
       ((structuralClosers.has(sym) || structuralOpeners.has(sym)) &&
-        !isWord &&
+        !_isWord &&
         cleanSym !== ";" &&
         cleanSym !== "," &&
         cleanSym !== ":");
@@ -406,7 +420,7 @@ export function generateParserTables(
       const actions = table.actionTable.get(stateId);
       const gotos = table.gotoTable.get(stateId);
       if (actions) {
-        for (const [sym, acts] of actions.entries()) {
+        for (const [, acts] of actions.entries()) {
           for (const act of acts) {
             if (act.type === 0 && act.target !== undefined) {
               const nextState = act.target;
@@ -437,7 +451,7 @@ export function generateParserTables(
         }
       }
       if (gotos) {
-        for (const [sym, nextState] of gotos.entries()) {
+        for (const [, nextState] of gotos.entries()) {
           const cost = 1; // GOTO counts as 1 GSS transition (shifting a non-terminal)
           for (let t = 1; t <= maxTerminalId; t++) {
             const altCost = cost + reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
@@ -892,6 +906,41 @@ export function generateParserTables(
   code += generateStaticArray(symbolNameField, "symbol_name_field");
   code += generateStaticArray(symbolIsScope, "symbol_is_scope");
 
+  const defaultBrackets: [string, string][] = [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+  ];
+  const declaredBrackets: [string, string][] =
+    originalGrammar.brackets && originalGrammar.brackets.length > 0 ? originalGrammar.brackets : defaultBrackets;
+
+  const tokenBracketDeltas: number[] = new Array(maxTerminalId + 1).fill(0);
+  const openBracketChars: number[] = [];
+  const closeBracketChars: number[] = [];
+
+  for (const [open, close] of declaredBrackets) {
+    const openTokenId = symToInt.get(open) ?? symToInt.get(`"${open}"`);
+    if (openTokenId !== undefined && openTokenId <= maxTerminalId) {
+      tokenBracketDeltas[openTokenId] = 1;
+    }
+    const closeTokenId = symToInt.get(close) ?? symToInt.get(`"${close}"`);
+    if (closeTokenId !== undefined && closeTokenId <= maxTerminalId) {
+      tokenBracketDeltas[closeTokenId] = -1;
+    }
+    if (open.length === 1) {
+      const codePoint = open.charCodeAt(0);
+      if (!openBracketChars.includes(codePoint)) openBracketChars.push(codePoint);
+    }
+    if (close.length === 1) {
+      const codePoint = close.charCodeAt(0);
+      if (!closeBracketChars.includes(codePoint)) closeBracketChars.push(codePoint);
+    }
+  }
+
+  code += generateStaticArray(tokenBracketDeltas, "token_bracket_deltas");
+  code += generateStaticArray(openBracketChars.length > 0 ? openBracketChars : [0], "open_bracket_chars");
+  code += generateStaticArray(closeBracketChars.length > 0 ? closeBracketChars : [0], "close_bracket_chars");
+
   code += generateLexer(originalGrammar, grammar);
 
   code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${maxSymbolId};\nexport const MAX_FIELD_CURSOR_DEPTH: i32 = ${maxFieldCursorDepth};\n`;
@@ -949,6 +998,11 @@ export function generateParserTables(
     const ignoreList = new Set([
       "action_offsets",
       "action_data",
+      "action_entry_offsets",
+      "action_entry_data",
+      "token_bracket_deltas",
+      "open_bracket_chars",
+      "close_bracket_chars",
       "goto_offsets",
       "goto_data",
       "mrd_data",
@@ -1077,8 +1131,6 @@ export function generateParserTables(
   }
 
   let engineCodeTemplate = engineCode;
-  let daeCodeTemplate = daeCode;
-  let bltCodeTemplate = bltCode;
 
   const hasToken = (str: string) => Array.from(symToInt.keys()).includes(`"${str}"`);
   engineCodeTemplate = engineCodeTemplate

@@ -1,7 +1,6 @@
 // name: ModifierTypeError
 // keywords: abs
 // status: incorrect
-// xfail:    true
 //
 // Tests that type errors are caught.
 //

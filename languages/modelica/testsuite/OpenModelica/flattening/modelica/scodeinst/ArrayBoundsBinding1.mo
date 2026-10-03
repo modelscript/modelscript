@@ -1,7 +1,6 @@
 // name: ArrayBoundsBinding1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model ArrayBoundsBinding1

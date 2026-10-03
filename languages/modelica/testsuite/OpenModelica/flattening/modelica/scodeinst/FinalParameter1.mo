@@ -1,7 +1,6 @@
 // name: FinalParameter1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model FinalParameter1

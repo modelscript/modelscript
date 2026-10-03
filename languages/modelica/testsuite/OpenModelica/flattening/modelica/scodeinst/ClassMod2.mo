@@ -1,6 +1,5 @@
 // name: ClassMod2
 // status: correct
-// xfail:    true
 
 model A
   model B

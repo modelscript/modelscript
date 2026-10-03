@@ -1,7 +1,6 @@
 // name: EventFunctions
 // keywords: functions, builtin
 // status: correct
-// xfail:    true
 //
 // Testing built in event triggering mathematical functions
 //

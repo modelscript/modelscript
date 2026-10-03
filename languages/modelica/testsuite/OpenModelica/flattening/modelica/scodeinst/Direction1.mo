@@ -1,7 +1,6 @@
 // name: Direction1
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Checks that the direction of components are set correctly in the flat model.
 // 

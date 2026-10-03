@@ -1,7 +1,6 @@
 // name:     ConnectTheSameConnector
 // keywords: connect(A, A) should be ignored
 // status:   correct
-// xfail:    true
 //
 //
 

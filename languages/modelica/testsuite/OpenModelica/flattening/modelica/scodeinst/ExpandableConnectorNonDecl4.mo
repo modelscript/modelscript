@@ -1,7 +1,6 @@
 // name: ExpandableConnectorNonDecl4
 // keywords: expandable connector
 // status: incorrect
-// xfail:    true
 //
 //
 

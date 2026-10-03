@@ -1,7 +1,6 @@
 // name:     ConnectionOrder1
 // keywords: connect
 // status:   correct
-// xfail:    true
 //
 // Makes sure that the connection order is preserved when
 // +orderConnections=false is used.

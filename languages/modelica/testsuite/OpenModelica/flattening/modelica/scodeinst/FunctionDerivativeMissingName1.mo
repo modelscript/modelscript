@@ -1,6 +1,5 @@
 // name: FunctionDerivativeMissingName1
 // status: correct
-// xfail:    true
 //
 //
 

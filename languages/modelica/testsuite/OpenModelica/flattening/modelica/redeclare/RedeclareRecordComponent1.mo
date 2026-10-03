@@ -1,7 +1,6 @@
 // name:     RedeclareRecordComponent1
 // keywords: redeclare record binding #3467
 // status:   correct
-// xfail:    true
 //
 // Checks that redeclares of record components are handled correctly.
 //

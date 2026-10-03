@@ -1,7 +1,6 @@
 // name: InnerOuter3
 // keywords:
 // status: correct
-// xfail:    true
 //
 // inner/outer example from the specification.
 //

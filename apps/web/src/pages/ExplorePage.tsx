@@ -994,7 +994,11 @@ const ExplorePage: React.FC = () => {
       ) : (
         <Box>
           {/* Starter Engineering Workspaces */}
-          <Box p={3} borderBottom="1px solid var(--color-border)" style={{ background: "rgba(14, 20, 36, 0.4)" }}>
+          <Box
+            p={3}
+            borderBottom="1px solid var(--color-border)"
+            style={{ background: "var(--surface-hud, rgba(14, 20, 36, 0.4))" }}
+          >
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Box>
                 <Heading
@@ -1126,7 +1130,11 @@ const ExplorePage: React.FC = () => {
           </Box>
 
           {trending.length > 0 && (
-            <Box p={3} borderBottom="1px solid var(--color-border)" style={{ background: "rgba(14, 20, 36, 0.2)" }}>
+            <Box
+              p={3}
+              borderBottom="1px solid var(--color-border)"
+              style={{ background: "var(--surface-hud, rgba(14, 20, 36, 0.2))" }}
+            >
               <Heading
                 as="h3"
                 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px", color: "var(--color-text-heading)" }}

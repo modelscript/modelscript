@@ -1,4 +1,3 @@
-// xfail:    true
 package Modelica
   package Fluid
     package Interfaces

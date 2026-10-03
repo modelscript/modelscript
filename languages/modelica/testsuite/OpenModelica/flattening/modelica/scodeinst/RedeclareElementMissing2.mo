@@ -1,7 +1,6 @@
 // name: RedeclareElementMissing2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model RedeclareElementMissing2

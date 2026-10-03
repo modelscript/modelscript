@@ -209,11 +209,24 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 },
               ];
               break;
-            case "diagramEdit":
+            case "diagramEdit": {
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
-              webviewPanel.webview.postMessage({ type: "loading" }); // Show spinner immediately
+              const isOptimistic = actions?.every(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (a: any) =>
+                  a.type === "move" ||
+                  a.type === "resize" ||
+                  a.type === "rotate" ||
+                  a.type === "moveEdge" ||
+                  a.type === "updateParameter" ||
+                  a.type === "updateProperty",
+              );
+              if (!isOptimistic) {
+                webviewPanel.webview.postMessage({ type: "loading" }); // Show spinner only for semantic/structural edits
+              }
               break;
+            }
             case "changeDiagramType": {
               currentDiagramType = message.diagramType;
               immediateUpdate();
@@ -307,6 +320,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               (a: any) =>
                 a.type === "move" ||
                 a.type === "resize" ||
+                a.type === "rotate" ||
                 a.type === "moveEdge" ||
                 a.type === "updateParameter" ||
                 a.type === "updateProperty",

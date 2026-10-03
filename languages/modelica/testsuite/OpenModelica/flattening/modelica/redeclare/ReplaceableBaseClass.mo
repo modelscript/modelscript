@@ -1,7 +1,6 @@
 // name:     ReplaceableBaseClass
 // keywords: redeclare, replaceable, extends
 // status:   incorrect
-// xfail:    true
 //
 // Checks that the compiler gives an error if the base class in an extends
 // clause is replaceable.

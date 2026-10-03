@@ -1,7 +1,6 @@
 // name: MultipleInheritanceConnect
 // keywords: connector
 // status: correct
-// xfail:    true
 //
 // Tests that multiple inheritance is handled correctly with regards to connect.
 //

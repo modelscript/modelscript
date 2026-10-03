@@ -1,7 +1,6 @@
 // name:     Lookup8
 // keywords: scoping
 // status:   incorrect
-// xfail:    true
 //
 // A component is not allowed to have the same name as its type specifier.
 //

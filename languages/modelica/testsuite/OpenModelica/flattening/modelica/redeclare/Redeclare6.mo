@@ -1,7 +1,6 @@
 // name:     Redeclare6
 // keywords: redeclare
 // status:   correct
-// xfail:    true
 //
 
 package Lib

@@ -263,7 +263,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
 
     const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
-    if (isSpatial) setIsDiagramLoading(true);
+    if (!isSpatial) setIsDiagramLoading(true);
     const delay = isSpatial ? 10 : 0; // reduced delay since diagram-core batches correctly now
 
     diagramActionTimerRef.current = setTimeout(() => {

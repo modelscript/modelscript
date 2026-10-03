@@ -1,4 +1,3 @@
-// xfail:    true
 model QuotedIdentifier
   Real 'a"b'(start = 1, fixed = true);
   Real 'c d'(start = 1, fixed = true);

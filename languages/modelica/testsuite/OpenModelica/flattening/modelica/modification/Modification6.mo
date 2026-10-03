@@ -1,7 +1,6 @@
 // name:     Modification6
 // keywords: modification
 // status:   correct
-// xfail:    true
 //
 // This file tests modification precedence.
 //

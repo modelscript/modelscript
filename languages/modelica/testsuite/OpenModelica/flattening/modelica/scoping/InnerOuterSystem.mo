@@ -1,7 +1,6 @@
 // name:     InnerOuterSystem
 // keywords: inner, outer, innerouter, modifications
 // status:   correct
-// xfail:    true
 //
 // Modelica specification example, 5.5 Simultaneous Inner/Outer Declarations
 //

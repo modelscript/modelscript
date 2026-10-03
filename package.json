@@ -25,6 +25,7 @@
     "languages/*/*"
   ],
   "scripts": {
+    "bench:parser": "npm run bench:parser --workspace=@modelscript/modelica",
     "prebuild": "mkdir -p data",
     "build": "nx run-many --target=build --exclude=@modelscript/morsel --parallel=8",
     "build:affected": "nx affected --target=build --exclude=@modelscript/morsel --parallel=8",

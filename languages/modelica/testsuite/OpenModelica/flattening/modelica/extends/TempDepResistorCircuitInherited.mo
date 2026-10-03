@@ -1,7 +1,6 @@
 // name:     TempDepResistorCircuitInherited
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 //
 //
 // The flattened model should be the same for test TempDepResistorCircuit and

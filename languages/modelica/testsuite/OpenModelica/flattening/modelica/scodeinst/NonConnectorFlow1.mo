@@ -1,7 +1,6 @@
 // name: NonConnectorFlow1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model NonConnectorFlow1

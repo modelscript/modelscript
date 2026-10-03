@@ -36,6 +36,11 @@ import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
 import {
   action_data as _action_data,
   action_offsets as _action_offsets,
+  action_entry_offsets as _action_entry_offsets,
+  action_entry_data as _action_entry_data,
+  token_bracket_deltas as _token_bracket_deltas,
+  open_bracket_chars as _open_bracket_chars,
+  close_bracket_chars as _close_bracket_chars,
   alias_data as _alias_data,
   goto_data as _goto_data,
   goto_offsets as _goto_offsets,
@@ -77,7 +82,7 @@ import {
   setSrcLexPos,
   srcLexPos,
 } from "../parser";
-import { ParseHead, activeHeadsCount, t_activeHeads } from "./gss";
+import { ParseHead, activeHeadsCount, t_activeHeads, resetFrontierSummary, t_activeSummary, t_nextSummary, globalCursorDepth, cursorNodeStack } from "./gss";
 export function getInputBuffer(): usize {
   return _getInputBuffer();
 }
@@ -118,6 +123,11 @@ class StaticTable {
 
 export let action_offsets: StaticTable = changetype<StaticTable>(0);
 export let action_data: StaticTable = changetype<StaticTable>(0);
+export let action_entry_offsets: StaticTable = changetype<StaticTable>(0);
+export let action_entry_data: StaticTable = changetype<StaticTable>(0);
+export let token_bracket_deltas: StaticTable = changetype<StaticTable>(0);
+export let open_bracket_chars: StaticTable = changetype<StaticTable>(0);
+export let close_bracket_chars: StaticTable = changetype<StaticTable>(0);
 export let goto_offsets: StaticTable = changetype<StaticTable>(0);
 export let goto_data: StaticTable = changetype<StaticTable>(0);
 export let mrd_data: StaticTable = changetype<StaticTable>(0);
@@ -148,6 +158,11 @@ export let type_is_list: StaticTable = changetype<StaticTable>(0);
 export function initStaticTables(): void {
   action_offsets = changetype<StaticTable>(_action_offsets);
   action_data = changetype<StaticTable>(_action_data);
+  action_entry_offsets = changetype<StaticTable>(_action_entry_offsets);
+  action_entry_data = changetype<StaticTable>(_action_entry_data);
+  token_bracket_deltas = changetype<StaticTable>(_token_bracket_deltas);
+  open_bracket_chars = changetype<StaticTable>(_open_bracket_chars);
+  close_bracket_chars = changetype<StaticTable>(_close_bracket_chars);
   goto_offsets = changetype<StaticTable>(_goto_offsets);
   goto_data = changetype<StaticTable>(_goto_data);
   mrd_data = changetype<StaticTable>(_mrd_data);
@@ -520,6 +535,30 @@ export const CHAR_RBRACKET: u8 = 93; // ']'
 export const CHAR_LPAREN: u8 = 40; // '('
 export const CHAR_RPAREN: u8 = 41; // ')'
 
+@inline
+export function isOpenBracketChar(c: i32): bool {
+  if (changetype<usize>(open_bracket_chars) != 0) {
+    let len = open_bracket_chars.length;
+    for (let i = 0; i < len; i++) {
+      if (open_bracket_chars[i] == c) return true;
+    }
+    return false;
+  }
+  return c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN;
+}
+
+@inline
+export function isCloseBracketChar(c: i32): bool {
+  if (changetype<usize>(close_bracket_chars) != 0) {
+    let len = close_bracket_chars.length;
+    for (let i = 0; i < len; i++) {
+      if (close_bracket_chars[i] == c) return true;
+    }
+    return false;
+  }
+  return c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN;
+}
+
 export const LIST_MAX_CHILDREN: i32 = 21;
 export const LIST_SPLIT_POINT: i32 = 11;
 
@@ -728,6 +767,9 @@ export function resetParser(): void {
   lexLen = 0;
   errorCount = 0;
   resetExpectedTokensPool();
+  resetCursorPool();
+  resetFrontierSummary(t_activeSummary);
+  resetFrontierSummary(t_nextSummary);
 }
 
 export function getActiveHeadsCount(): u32 {
@@ -756,6 +798,9 @@ export class FieldCursor {
   indexCount: i32;
   currentIdxPtr: i32;
 
+  currentChild: u32;
+  currentChildIdx: i32;
+
   frameDepth: i32;
   stackPtr: usize;
   private cachedNext: u32;
@@ -765,11 +810,13 @@ export class FieldCursor {
   @inline
   pushFrame(node: u32, offset: i32, count: i32, ptr: i32): void {
     if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
-      let base = this.stackPtr + ((this.frameDepth as usize) << 4);
+      let base = this.stackPtr + ((this.frameDepth as usize) << 5);
       store<u32>(base, node);
       store<i32>(base + 4, offset);
       store<i32>(base + 8, count);
       store<i32>(base + 12, ptr);
+      store<u32>(base + 16, this.currentChild);
+      store<i32>(base + 20, this.currentChildIdx);
       this.frameDepth++;
     }
   }
@@ -778,18 +825,20 @@ export class FieldCursor {
   popFrame(): void {
     if (this.frameDepth > 0) {
       this.frameDepth--;
-      let base = this.stackPtr + ((this.frameDepth as usize) << 4);
+      let base = this.stackPtr + ((this.frameDepth as usize) << 5);
       this.node = load<u32>(base);
       this.offset = load<i32>(base + 4);
       this.indexCount = load<i32>(base + 8);
       this.currentIdxPtr = load<i32>(base + 12);
+      this.currentChild = load<u32>(base + 16);
+      this.currentChildIdx = load<i32>(base + 20);
     }
   }
 
   @inline
   init(node: u32, fieldId: i32): void {
     if (this.stackPtr == 0) {
-      this.stackPtr = atomicChunkAlloc(64 << 4) as usize;
+      this.stackPtr = atomicChunkAlloc(64 << 5) as usize;
     }
     this.node = node;
     this.fieldId = fieldId;
@@ -798,6 +847,8 @@ export class FieldCursor {
     this.offset = -1;
     this.indexCount = 0;
     this.currentIdxPtr = 0;
+    this.currentChild = node != 0 ? getNodeFirstChild(node) : 0;
+    this.currentChildIdx = 0;
     this.frameDepth = 0;
     this.isActive = true;
     
@@ -882,21 +933,28 @@ export class FieldCursor {
 
       let isSyntheticField = (rawIndex & 0x8000) != 0;
       let logicalIndex = rawIndex & 0x7fff;
+      let targetIdx = logicalIndex;
       
-      let child = getNodeFirstChild(this.node);
-      let flags = getNodeFlags(this.node);
-      let hasError = (flags & FLAG_HAS_ERROR) != 0;
+      if (targetIdx < this.currentChildIdx) {
+        this.currentChild = getNodeFirstChild(this.node);
+        this.currentChildIdx = 0;
+      }
 
-      let idx = 0;
-      while (child != 0) {
-        let childType = getNodeType(child);
+      while (this.currentChild != 0) {
+        let childType = getNodeType(this.currentChild);
         if (childType == NODE_TYPE_ERROR || childType == 0) {
-          child = getNodeNextSibling(child);
+          this.currentChild = getNodeNextSibling(this.currentChild);
           continue;
         }
-        if (idx == logicalIndex) break;
-        idx++;
-        child = getNodeNextSibling(child);
+        if (this.currentChildIdx == targetIdx) break;
+        this.currentChildIdx++;
+        this.currentChild = getNodeNextSibling(this.currentChild);
+      }
+
+      let child = this.currentChild;
+      if (child != 0) {
+        this.currentChildIdx++;
+        this.currentChild = getNodeNextSibling(this.currentChild);
       }
 
       if (child == 0) continue;
@@ -919,6 +977,8 @@ export class FieldCursor {
           this.node = child;
           this.offset = -1;
           this.indexCount = 0;
+          this.currentChild = getNodeFirstChild(child);
+          this.currentChildIdx = 0;
           
           let type = getNodeType(child);
           if (type < (type_fields.length as u16)) {
@@ -979,20 +1039,29 @@ export class FieldCursor {
 }
 
 let cursorPoolInitialized: boolean = false;
+const CURSOR_POOL_CAPACITY: i32 = 64;
 let cursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let cursorPoolDepth: i32 = 0;
 
 function initCursorPool(): void {
-  cursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
-  for (let i = 0; i < 16; i++) {
+  cursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(CURSOR_POOL_CAPACITY * 4));
+  for (let i = 0; i < CURSOR_POOL_CAPACITY; i++) {
     let ptr = atomicChunkAlloc(sizeof<FieldCursor>());
     let cursor = changetype<FieldCursor>(ptr);
     cursor.isActive = false;
-    cursor.stackPtr = atomicChunkAlloc(64 << 4) as usize;
+    cursor.stackPtr = atomicChunkAlloc(64 << 5) as usize;
     cursorPool[i] = ptr as u32;
   }
-  cursorPoolDepth = 16;
+  cursorPoolDepth = CURSOR_POOL_CAPACITY;
   cursorPoolInitialized = true;
+}
+
+export function resetCursorPool(): void {
+  if (!cursorPoolInitialized) return;
+  for (let i = 0; i < cursorPoolDepth; i++) {
+    let c = changetype<FieldCursor>(cursorPool[i]);
+    if (changetype<usize>(c) != 0) c.isActive = false;
+  }
 }
 
 export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
@@ -1004,7 +1073,7 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
   } else {
     let ptr = atomicChunkAlloc(sizeof<FieldCursor>());
     cursor = changetype<FieldCursor>(ptr);
-    cursor.stackPtr = atomicChunkAlloc(64 << 4) as usize;
+    cursor.stackPtr = atomicChunkAlloc(64 << 5) as usize;
   }
   cursor.init(node, fieldId);
   return cursor;
@@ -1012,7 +1081,8 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
 
 export function releaseFieldCursor(cursor: FieldCursor): void {
   if (!cursorPoolInitialized) initCursorPool();
-  if (cursorPoolDepth < 16) {
+  cursor.isActive = false;
+  if (cursorPoolDepth < CURSOR_POOL_CAPACITY) {
     cursorPool[cursorPoolDepth] = changetype<u32>(cursor);
     cursorPoolDepth++;
   }
@@ -1088,6 +1158,18 @@ export class AncestorCursor {
      this.isActive = true;
      
      if (targetNode == rootNode || rootNode == 0) return;
+
+     if (globalCursorDepth >= 0 && cursorNodeStack[globalCursorDepth] == targetNode) {
+       let depth = globalCursorDepth;
+       if (depth > 4096) depth = 4096;
+       let stack = this.pathStack;
+       for (let d = 0; d < depth; d++) {
+         store<u32>(stack + (d << 2), cursorNodeStack[d]);
+       }
+       this.pathLength = depth;
+       this.currentIndex = depth - 1;
+       return;
+     }
      
      // Iterative DFS to find targetNode
      let stack = this.pathStack; 

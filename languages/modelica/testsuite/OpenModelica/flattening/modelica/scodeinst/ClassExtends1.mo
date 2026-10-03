@@ -1,7 +1,6 @@
 // name: ClassExtends1.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Tests that basic class extends works.
 //

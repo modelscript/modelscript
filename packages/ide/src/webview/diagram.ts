@@ -54,7 +54,7 @@ function enqueueDiagramAction(action: any) {
   if (diagramActionTimer) clearTimeout(diagramActionTimer);
 
   const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
-  const delay = isSpatial ? 200 : 0;
+  const delay = isSpatial ? 10 : 0;
 
   diagramActionTimer = setTimeout(() => {
     const actions = pendingDiagramActions;

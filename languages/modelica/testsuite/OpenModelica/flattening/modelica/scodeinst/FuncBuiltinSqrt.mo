@@ -1,7 +1,6 @@
 // name: FuncBuiltinSqrt
 // keywords: sqrt
 // status: correct
-// xfail:    true
 //
 // Tests the builtin sqrt function.
 //

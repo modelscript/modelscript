@@ -1,7 +1,6 @@
 // name: FuncBuiltinInteger
 // keywords: integer
 // status: correct
-// xfail:    true
 //
 // Tests the builtin integer function.
 //
