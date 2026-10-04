@@ -43,6 +43,7 @@ export function generateMultiDomainScaffold(
   } catch {
     sysmlDef = {
       name: fallbackBaseName,
+      kind: "part def",
       attributes: [],
       ports: [],
       connections: [],
@@ -239,7 +240,7 @@ export class SysmlScaffoldCodeLensProvider implements vscode.CodeLensProvider {
 /**
  * Registers multi-domain scaffolding commands and CodeLens providers in VS Code / Web IDE.
  */
-export function registerMultiDomainScaffolding(context: vscode.ExtensionContext): vscode.Disposable {
+export function registerMultiDomainScaffolding(_context: vscode.ExtensionContext): vscode.Disposable {
   const disposables: vscode.Disposable[] = [];
 
   // 1. Command registration

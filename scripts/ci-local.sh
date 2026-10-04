@@ -127,7 +127,8 @@ if [ "$MODE_LINT" = true ]; then
   log_info "Verifying file headers and filename conventions..."
   npm run lint:headers
   npm run lint:filenames
-  run_task "lint" "Lint and TypeScript checking"
+  run_task "lint" "ESLint checking"
+  run_task "typecheck" "TypeScript type checking"
 fi
 
 # 2. Test Step
@@ -141,9 +142,14 @@ if [ "$MODE_TEST" = true ]; then
 
   run_task "test" "Unit and integration tests"
 
-  if [ -f "scripts/summarize-ctrf.cjs" ]; then
+  if [ -f "scripts/consolidate-test-reports.ts" ]; then
+    npx tsx scripts/consolidate-test-reports.ts --output-json=ctrf/ctrf-consolidated.json --output-html=ctrf/test-report-unified.html || true
+  elif [ -f "scripts/summarize-ctrf.cjs" ]; then
     node scripts/summarize-ctrf.cjs || true
   fi
+
+  log_info "Consolidating test code coverage..."
+  npm run coverage:consolidate || true
 
   # If full mode is active, run FMI validation
   if [ "$MODE_FULL" = true ]; then
@@ -172,7 +178,7 @@ if [ "$MODE_BUILD" = true ]; then
     npm run build:extension
     if [ -d "dist/extension" ]; then
       log_info "Packaging VS Code extension (.vsix)..."
-      (cd dist/extension && npx --yes @vscode/vsce package --no-dependencies)
+      (cd dist/extension && npx --yes @vscode/vsce package --no-dependencies --allow-star-activation)
       log_success "VS Code extension packaged successfully"
     fi
   fi

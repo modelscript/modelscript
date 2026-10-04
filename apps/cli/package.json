@@ -35,7 +35,8 @@
     "clean": "rimraf dist",
     "test": "npm run test:jest && npm run test:node",
     "test:jest": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:node": "npx tsx --test --test-concurrency=2 --test-timeout=120000 tests/archive-cli.test.ts tests/cosim-optimize-cli.test.ts tests/db-cli.test.ts tests/dhf-export.test.ts tests/digital-thread-complete.test.ts tests/fmu-import-cli.test.ts tests/hub-init.test.ts tests/multidomain-falsify-cli.test.ts tests/package-verify.test.ts tests/polyglot-cli.test.ts tests/pr-diff.test.ts tests/simulate-cloud.test.ts tests/surrogate-cli.test.ts tests/tgg-multi-domain.test.ts tests/unified-verify.test.ts",
+    "test:node": "mkdir -p coverage && npx tsx --test --experimental-test-coverage --test-concurrency=2 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/node-lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/archive-cli.test.ts tests/cosim-optimize-cli.test.ts tests/db-cli.test.ts tests/dhf-export.test.ts tests/digital-thread-complete.test.ts tests/fmu-import-cli.test.ts tests/hub-init.test.ts tests/multidomain-falsify-cli.test.ts tests/package-verify.test.ts tests/polyglot-cli.test.ts tests/pr-diff.test.ts tests/simulate-cloud.test.ts tests/surrogate-cli.test.ts tests/tgg-multi-domain.test.ts tests/unified-verify.test.ts",
+    "typecheck": "tsc --noEmit",
     "watch": "tsc --watch"
   },
   "dependencies": {

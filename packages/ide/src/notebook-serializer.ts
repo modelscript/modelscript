@@ -45,6 +45,7 @@ export class ModelScriptNotebookSerializer implements vscode.NotebookSerializer 
       if (language === "modelscript") {
         language = "modelica";
       }
+      const kind = cell.cell_type === "markdown" ? vscode.NotebookCellKind.Markup : vscode.NotebookCellKind.Code;
       const cellData = new vscode.NotebookCellData(kind, cell.source.join("\n"), language);
 
       // Restore persisted outputs

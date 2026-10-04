@@ -61,6 +61,12 @@
       "cache": true,
       "dependsOn": ["^build"],
       "maxParallel": 4
+    },
+    "typecheck": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
+      "maxParallel": 4
     }
   },
   "release": {

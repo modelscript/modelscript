@@ -16,10 +16,24 @@ import { generateThumbnail } from "./workers/thumbnailWorker.js";
 // ── Seed ─────────────────────────────────────────────────────────
 
 export async function seedDroneCfd(db: LibraryDatabase) {
+  const isNpmDev =
+    process.env["SEED_POSTS"] === "true" ||
+    process.env["npm_lifecycle_event"] === "dev" ||
+    process.env["npm_lifecycle_event"] === "dev:api";
+  const isDirectCli = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/.*\//, ""));
+
+  if (!isNpmDev && !isDirectCli) {
+    return;
+  }
+
   const devUser = db.getUserByUsername("dev");
 
   if (!devUser) {
     console.error("No 'dev' user found. Run test-reset.ts first.");
+    return;
+  }
+
+  if (db.getArtifactViewByTitle("Drone Chassis CFD — Forward Flight Envelope")) {
     return;
   }
 

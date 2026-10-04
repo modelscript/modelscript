@@ -858,6 +858,10 @@ export function runTestCase(
           };
         }
 
+        if (diagnostics.some((existing) => existing.message === d.message)) {
+          continue;
+        }
+
         diagnostics.push({
           type: d.severity,
           code,
@@ -878,6 +882,9 @@ export function runTestCase(
               : cd.severity === 3 || cd.severity === 4
                 ? "notification"
                 : "info";
+        if (diagnostics.some((existing) => existing.message === cd.message)) {
+          continue;
+        }
         diagnostics.push({
           type: sevStr,
           code: cd.code,

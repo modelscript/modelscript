@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   AlertIcon,
   CheckCircleIcon,
@@ -11,6 +11,7 @@ import {
   PlusIcon,
   ReportIcon,
   ShieldLockIcon,
+  SlidersIcon,
   SyncIcon,
   TrashIcon,
 } from "@primer/octicons-react";
@@ -23,8 +24,10 @@ import {
   getAdminAuditLogs,
   getAdminDbStatus,
   getAdminDmcaNotices,
+  getAdminFeatureFlags,
   getAdminFederationDomains,
   getAdminModerationQueue,
+  patchAdminFeatureFlag,
   resolveAdminDmcaNotice,
   resolveAdminModerationReport,
   runAdminDbUpgrade,
@@ -33,12 +36,13 @@ import {
   type AdminAuditLog,
   type AdminDbStatus,
   type AdminDmcaNotice,
+  type AdminFeatureFlag,
   type AdminFederationDomain,
   type AdminModerationReport,
 } from "../api";
 import Box from "../components/Box";
 
-type AdminTab = "moderation" | "federation" | "dmca" | "audit" | "database";
+type AdminTab = "moderation" | "federation" | "dmca" | "audit" | "database" | "flags";
 
 const AdminContainer = styled.div`
   display: flex;
@@ -316,7 +320,7 @@ export const AdminPage: React.FC = () => {
 
   const activeTab: AdminTab = useMemo(() => {
     const raw = (subRoute || "").split("/")[0]?.toLowerCase();
-    if (raw === "federation" || raw === "dmca" || raw === "audit" || raw === "database") {
+    if (raw === "federation" || raw === "dmca" || raw === "audit" || raw === "database" || raw === "flags") {
       return raw;
     }
     return "moderation";
@@ -329,6 +333,43 @@ export const AdminPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Feature flags state
+  const [featureFlags, setFeatureFlags] = useState<AdminFeatureFlag[]>([]);
+  const [togglingFlagKey, setTogglingFlagKey] = useState<string | null>(null);
+
+  const loadFeatureFlags = async () => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const data = await getAdminFeatureFlags();
+      setFeatureFlags(data.flags || []);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to load feature flags");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleFlag = async (flag: AdminFeatureFlag) => {
+    setTogglingFlagKey(flag.key);
+    clearMessages();
+    try {
+      const newEnabled = !flag.currentEnabled;
+      await patchAdminFeatureFlag(
+        flag.key,
+        newEnabled,
+        newEnabled ? "user,admin,guest" : "admin",
+        flag.rolloutPercentage ?? 100,
+      );
+      setSuccess(`Feature flag '${flag.name}' updated to ${newEnabled ? "ACTIVE" : "DISABLED"}.`);
+      await loadFeatureFlags();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update feature flag");
+    } finally {
+      setTogglingFlagKey(null);
+    }
+  };
 
   // Moderation state
   const [reports, setReports] = useState<AdminModerationReport[]>([]);
@@ -440,6 +481,8 @@ export const AdminPage: React.FC = () => {
     else if (activeTab === "dmca") void loadDmcaNotices();
     else if (activeTab === "audit") void loadAuditLogs();
     else if (activeTab === "database") void loadDbStatus();
+    else if (activeTab === "flags") void loadFeatureFlags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, modFilter, dmcaFilter, auditActionFilter]);
 
   // ── Moderation Handlers ──
@@ -599,6 +642,10 @@ export const AdminPage: React.FC = () => {
             <DatabaseIcon size={16} />
             <span>Database & Migrations</span>
           </TabButton>
+          <TabButton $active={activeTab === "flags"} onClick={() => setActiveTab("flags")}>
+            <SlidersIcon size={16} />
+            <span>Feature Flags Switchboard</span>
+          </TabButton>
         </Box>
       </MenuColumn>
 
@@ -610,6 +657,7 @@ export const AdminPage: React.FC = () => {
             {activeTab === "dmca" && "DMCA Takedown Notices"}
             {activeTab === "audit" && "System Audit Log"}
             {activeTab === "database" && "Database Status & Migrations"}
+            {activeTab === "flags" && "Feature Flags Switchboard"}
           </span>
           <Box ml="auto">
             <ActionButton
@@ -620,6 +668,7 @@ export const AdminPage: React.FC = () => {
                 else if (activeTab === "dmca") void loadDmcaNotices();
                 else if (activeTab === "audit") void loadAuditLogs();
                 else if (activeTab === "database") void loadDbStatus();
+                else if (activeTab === "flags") void loadFeatureFlags();
               }}
               disabled={loading}
             >
@@ -1175,6 +1224,111 @@ export const AdminPage: React.FC = () => {
                 </div>
               );
             })()}
+
+          {/* ── FEATURE FLAGS SWITCHBOARD TAB ── */}
+          {activeTab === "flags" && (
+            <Box display="flex" flexDirection="column" gap={3}>
+              <Box
+                p={3}
+                style={{
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: "8px",
+                  background: "var(--color-canvas-subtle)",
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--color-fg-default)" }}>
+                  Launch Readiness & Subsystem Feature Gates
+                </div>
+                <div style={{ color: "var(--color-fg-muted)", fontSize: "13px", marginTop: "4px" }}>
+                  Control subsystem availability in real time across API routes and web UI. Toggling a flag takes effect
+                  immediately without restarting backend services.
+                </div>
+              </Box>
+
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Feature Name & Description</th>
+                    <th>Category</th>
+                    <th>Maturity</th>
+                    <th>Status</th>
+                    <th>Default</th>
+                    <th style={{ textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {featureFlags.map((flag) => (
+                    <tr key={flag.key}>
+                      <td>
+                        <Box display="flex" flexDirection="column">
+                          <span style={{ fontWeight: 700, color: "var(--color-fg-default)", fontSize: "14px" }}>
+                            {flag.name}
+                          </span>
+                          <span style={{ color: "var(--color-fg-muted)", fontSize: "12px", marginTop: "2px" }}>
+                            {flag.description}
+                          </span>
+                          <code
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--color-accent-cyan)",
+                              marginTop: "4px",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {flag.key}
+                          </code>
+                        </Box>
+                      </td>
+                      <td>
+                        <span style={{ textTransform: "capitalize", fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                          {flag.category}
+                        </span>
+                      </td>
+                      <td>
+                        <Badge
+                          $variant={
+                            flag.maturity === "production"
+                              ? "approved"
+                              : flag.maturity === "beta"
+                                ? "warning"
+                                : "pending"
+                          }
+                        >
+                          {flag.maturity.toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td>
+                        <Badge $variant={flag.currentEnabled ? "approved" : "rejected"}>
+                          {flag.currentEnabled ? "ACTIVE" : "DISABLED"}
+                        </Badge>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                          {flag.defaultValue ? "True" : "False"}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <ActionButton
+                          $variant={flag.currentEnabled ? "danger" : "primary"}
+                          onClick={() => handleToggleFlag(flag)}
+                          disabled={togglingFlagKey === flag.key}
+                        >
+                          {togglingFlagKey === flag.key ? "Saving..." : flag.currentEnabled ? "Disable" : "Enable"}
+                        </ActionButton>
+                      </td>
+                    </tr>
+                  ))}
+                  {featureFlags.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "var(--color-fg-muted)" }}>
+                        No feature flags registered.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </Table>
+            </Box>
+          )}
         </Box>
       </DetailColumn>
 

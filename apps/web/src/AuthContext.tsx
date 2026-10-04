@@ -71,7 +71,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (typeof res.data?.balance === "number") {
         setCreditBalance(res.data.balance);
       }
-    } catch {}
+    } catch {
+      // Ignore wallet fetch error
+    }
   }, [token]);
 
   useEffect(() => {

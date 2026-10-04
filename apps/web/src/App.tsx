@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "./AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { FeatureFlagProvider, useFeatureFlag } from "./FeatureFlagContext";
 import AdminPage from "./pages/AdminPage";
 import BookmarksPage from "./pages/BookmarksPage";
 import ClassDetailPage from "./pages/ClassDetailPage";
@@ -41,6 +42,8 @@ import { ThemeContextProvider, useTheme } from "./theme";
 function App() {
   const { theme } = useTheme();
   const { user, isLoading } = useAuth();
+  const hasIde = useFeatureFlag("heavy_vscode_ide");
+  const hasCae = useFeatureFlag("cae_cloud_solver");
 
   if (isLoading) {
     return <div style={{ minHeight: "100vh", backgroundColor: "var(--color-canvas-default)" }} />;
@@ -84,18 +87,30 @@ function App() {
                 <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
 
                 {/* ModelScript IDE Workbench */}
-                <Route path="/ide" element={<IdeWorkspacePage />} />
-                <Route path="/ide/:templateId" element={<IdeWorkspacePage />} />
+                <Route path="/ide" element={hasIde ? <IdeWorkspacePage /> : <Navigate to="/playground" replace />} />
+                <Route
+                  path="/ide/:templateId"
+                  element={hasIde ? <IdeWorkspacePage /> : <Navigate to="/playground" replace />}
+                />
 
                 {/* Repositories */}
                 <Route path="/repos" element={<RepositoryListPage />} />
-                <Route path="/repos/:provider/:namespace/:project/ide" element={<IdeWorkspacePage />} />
+                <Route
+                  path="/repos/:provider/:namespace/:project/ide"
+                  element={hasIde ? <IdeWorkspacePage /> : <Navigate to="/playground" replace />}
+                />
                 <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
 
                 {/* Scripts */}
-                <Route path="/scripts" element={<ScriptsListPage />} />
-                <Route path="/scripts/templates/:id" element={<TemplateDetailPage />} />
-                <Route path="/scripts/:id" element={<ScriptDetailPage />} />
+                <Route path="/scripts" element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />} />
+                <Route
+                  path="/scripts/templates/:id"
+                  element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
+                />
+                <Route
+                  path="/scripts/:id"
+                  element={hasCae ? <ScriptDetailPage /> : <Navigate to="/packages" replace />}
+                />
 
                 {/* Instance Administration */}
                 <Route
@@ -128,7 +143,9 @@ function AppWithTheme() {
   return (
     <ThemeContextProvider>
       <AuthProvider>
-        <App />
+        <FeatureFlagProvider>
+          <App />
+        </FeatureFlagProvider>
       </AuthProvider>
     </ThemeContextProvider>
   );

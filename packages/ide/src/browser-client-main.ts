@@ -375,7 +375,7 @@ export async function activate(context: vscode.ExtensionContext) {
       if (varsResult?.values) {
         for (const [k, v] of Object.entries(varsResult.values)) {
           if (markdownVarCache[k] !== v) {
-            markdownVarCache[k] = v;
+            markdownVarCache[k] = String(v);
             changed = true;
           }
         }
@@ -1197,7 +1197,7 @@ export async function activate(context: vscode.ExtensionContext) {
             }
           }
         };
-        extractClasses(symbols, "");
+        extractClasses(symbols as vscode.DocumentSymbol[], "");
       }
 
       let className: string | undefined;
@@ -1379,7 +1379,7 @@ END-ISO-10303-21;`;
         // Wait a short bit to allow the LSP to index the step file when it's created
         setTimeout(() => {
           // Open the Step viewer in the right pane natively using the custom editor
-          vscode.commands.executeCommand("vscode.open", vscode.Uri.parse(stepUri), {
+          vscode.commands.executeCommand("vscode.open", stepUri, {
             viewColumn: vscode.ViewColumn.Two,
             preserveFocus: true,
           });
@@ -2036,7 +2036,7 @@ END-ISO-10303-21;`;
         },
       );
     }),
-    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, secondArg?: string) => {
+    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, _secondArg?: string) => {
       if (!client) return;
 
       // Support context menu (LibraryTreeItem), palette item, and direct call

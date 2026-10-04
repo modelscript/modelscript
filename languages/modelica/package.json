@@ -146,7 +146,8 @@
     "test:omc:both:allow-wasm": "npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
     "test:omc:js": "npx tsx tests/testsuite-runner.ts --flattener=ts",
     "test:omc:wasm": "npx tsx tests/testsuite-runner.ts --flattener=wasm",
-    "test:unit": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=2 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
+    "test:unit": "mkdir -p coverage && npx tsx --import ./tests/test-setup.ts --test --experimental-test-coverage --test-concurrency=2 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelscript/cad": "*",

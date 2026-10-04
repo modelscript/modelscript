@@ -25,7 +25,6 @@ import {
   TrashIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import {
@@ -55,6 +54,7 @@ import {
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { useTheme } from "../theme";
 
 const SettingsContainer = styled.div`
@@ -425,6 +425,8 @@ type TabType =
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("account");
   const [searchQuery, setSearchQuery] = useState("");
+  const hasBilling = useFeatureFlag("billing_stripe_live");
+  const hasBots = useFeatureFlag("bot_accounts");
   const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("password");
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
   const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
@@ -784,20 +786,28 @@ const SettingsPage: React.FC = () => {
               keywords: "2fa security access keys ssh token sessions",
               isActive: activeTab === "security",
             },
-            {
-              id: "billing",
-              label: "Billing & Compute Quotas",
-              tab: "billing" as TabType,
-              keywords: "billing quota compute invoice payment usage",
-              isActive: activeTab === "billing",
-            },
-            {
-              id: "bots",
-              label: "Developer / Bots",
-              tab: "bots" as TabType,
-              keywords: "bots developer tokens webhook agents",
-              isActive: activeTab === "bots",
-            },
+            ...(hasBilling
+              ? [
+                  {
+                    id: "billing",
+                    label: "Billing & Compute Quotas",
+                    tab: "billing" as TabType,
+                    keywords: "billing quota compute invoice payment usage",
+                    isActive: activeTab === "billing",
+                  },
+                ]
+              : []),
+            ...(hasBots
+              ? [
+                  {
+                    id: "bots",
+                    label: "Developer / Bots",
+                    tab: "bots" as TabType,
+                    keywords: "bots developer tokens webhook agents",
+                    isActive: activeTab === "bots",
+                  },
+                ]
+              : []),
             {
               id: "privacy",
               label: "Privacy & Data Protection",

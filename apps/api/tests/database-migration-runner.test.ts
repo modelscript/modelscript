@@ -29,9 +29,10 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
 
   await t.test("getStatus identifies applied and pending migrations", () => {
     const runner = db.migrationRunner;
+    const initialApplied = runner.getApplied();
     const customMigration: Migration = {
-      id: "0002_test_feature",
-      name: "0002_test_feature",
+      id: "9999_test_feature",
+      name: "9999_test_feature",
       up(ctx) {
         ctx.execute("CREATE TABLE IF NOT EXISTS test_items (id INTEGER PRIMARY KEY, title TEXT);");
       },
@@ -42,16 +43,17 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
       customMigration,
     ]);
 
-    assert.equal(status.applied.length, 1);
+    assert.equal(status.applied.length, initialApplied.length);
     assert.equal(status.pending.length, 1);
-    assert.equal(status.pending[0]!.name, "0002_test_feature");
+    assert.equal(status.pending[0]!.name, "9999_test_feature");
   });
 
   await t.test("applies pending migration within a transaction and updates ledger", async () => {
     const runner = db.migrationRunner;
+    const initialApplied = runner.getApplied();
     const customMigration: Migration = {
-      id: "0002_test_feature",
-      name: "0002_test_feature",
+      id: "9999_test_feature",
+      name: "9999_test_feature",
       up(ctx) {
         ctx.execute("CREATE TABLE IF NOT EXISTS test_items (id INTEGER PRIMARY KEY, title TEXT);");
       },
@@ -61,8 +63,8 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
     assert.equal(result.appliedCount, 1);
 
     const applied = runner.getApplied();
-    assert.equal(applied.length, 2);
-    assert.equal(applied[1]!.name, "0002_test_feature");
+    assert.equal(applied.length, initialApplied.length + 1);
+    assert.equal(applied[applied.length - 1]!.name, "9999_test_feature");
 
     // Verify table exists
     const row = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='test_items'").get();

@@ -262,7 +262,7 @@ export class TraceReplayPanel {
 
     const rows = [headers.join(",")];
     for (let i = 0; i < trace.times.length; i++) {
-      const row = [trace.times[i]];
+      const row: (string | number | boolean)[] = [trace.times[i]];
       for (const k of contKeys) row.push(trace.continuousSignals[k]?.[i] ?? "");
       for (const k of discKeys) row.push(trace.discreteSignals?.[k]?.[i] ?? "");
       rows.push(row.join(","));

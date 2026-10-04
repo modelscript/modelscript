@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 export function parseStepReferences(text: string) {
   const definitions = new Map<string, { startOffset: number; endOffset: number; text: string; type: string }>();

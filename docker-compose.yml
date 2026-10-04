@@ -1,7 +1,7 @@
 services:
   caddy:
     image: caddy:2-alpine
-    profiles: ["federated"]
+    profiles: ["standalone", "federated"]
     ports:
       - "80:80"
       - "443:443"
@@ -67,8 +67,9 @@ services:
       - PORT=3000
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
       - JWT_SECRET=${JWT_SECRET:-modelscript-dev-secret}
-      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
-      - TIMESCALE_URL=${TIMESCALE_URL:-postgresql://modelscript:modelscript@timescaledb:5432/modelscript_historian}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-}
+      - TIMESCALE_URL=${TIMESCALE_URL:-}
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
     restart: unless-stopped
 
   morsel:
@@ -111,6 +112,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3003
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
     restart: unless-stopped
 
 volumes:

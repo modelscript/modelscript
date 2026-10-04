@@ -67,7 +67,7 @@ export class CaeCloudClient {
    */
   public async uploadGeometry(fileBytes: Uint8Array, fileName: string): Promise<{ hash: string; cached: boolean }> {
     const formData = new FormData();
-    const blob = new Blob([fileBytes], { type: "application/octet-stream" });
+    const blob = new Blob([fileBytes as any], { type: "application/octet-stream" });
     formData.append("file", blob, fileName);
 
     const res = await fetch(`${this.apiBaseUrl}/cae/upload`, {

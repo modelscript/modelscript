@@ -4,6 +4,7 @@ import express, { type Request, type Response, type Router } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { requireAdmin } from "../middleware/auth-middleware.js";
 import { allMigrations } from "../migrations/index.js";
+import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import { FederationWorker } from "../services/federation-worker.js";
 
 // Enforce admin privileges
@@ -19,7 +20,11 @@ const adminAuth = (req: Request, res: Response, next: express.NextFunction) => {
   return requireAdmin(req, res, next);
 };
 
-export function adminRouter(database: LibraryDatabase, worker?: FederationWorker): Router {
+export function adminRouter(
+  database: LibraryDatabase,
+  worker?: FederationWorker,
+  featureFlagService?: FeatureFlagService,
+): Router {
   const router = express.Router();
 
   // ── Moderation Queue ──
@@ -393,6 +398,60 @@ export function adminRouter(database: LibraryDatabase, worker?: FederationWorker
       res.json(check);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Failed to verify database integrity" });
+    }
+  });
+
+  // ── Feature Flag Switchboard ──
+
+  /**
+   * GET /api/v1/admin/flags
+   * Lists all feature flags with current database, environment, and computed state
+   */
+  router.get("/admin/flags", adminAuth, (_req: Request, res: Response) => {
+    try {
+      if (!featureFlagService) {
+        res.status(503).json({ error: "FeatureFlagService not initialized" });
+        return;
+      }
+      const flags = featureFlagService.listAllForAdmin();
+      res.json({ flags });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch feature flags" });
+    }
+  });
+
+  /**
+   * PATCH /api/v1/admin/flags/:key
+   * Toggles or updates a feature flag
+   */
+  router.patch("/admin/flags/:key", adminAuth, express.json(), (req: Request, res: Response) => {
+    try {
+      if (!featureFlagService) {
+        res.status(503).json({ error: "FeatureFlagService not initialized" });
+        return;
+      }
+      const key = req.params["key"] as string;
+      const { isEnabled, allowedRoles, rolloutPercentage } = req.body;
+
+      if (typeof isEnabled !== "boolean") {
+        res.status(400).json({ error: "isEnabled must be a boolean" });
+        return;
+      }
+
+      featureFlagService.setFlag(key, isEnabled, allowedRoles, rolloutPercentage ?? 100);
+
+      database.logAudit({
+        actorId: (req as any).user?.id || null,
+        action: "update_feature_flag",
+        resourceType: "feature_flag",
+        resourceId: key,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { key, isEnabled, allowedRoles, rolloutPercentage },
+      });
+
+      res.json({ success: true, key, isEnabled });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to update feature flag" });
     }
   });
 

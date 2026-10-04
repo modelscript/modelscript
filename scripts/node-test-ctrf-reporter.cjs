@@ -100,6 +100,14 @@ module.exports = async function* ctrfReporter(source) {
   try {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(ctrfReport, null, 2), "utf-8");
+
+    if (packageName && packageName !== "node-test") {
+      const pkgSafeName = packageName.replace(/[@/]/g, "-").replace(/^-+/, "");
+      const namedPath = path.join(outputDir, `ctrf-${pkgSafeName}.json`);
+      if (namedPath !== outputPath) {
+        fs.writeFileSync(namedPath, JSON.stringify(ctrfReport, null, 2), "utf-8");
+      }
+    }
   } catch (err) {
     console.error("[ctrf-reporter] Failed to write CTRF report:", err);
   }

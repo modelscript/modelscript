@@ -232,4 +232,75 @@ describe("CstUnparser (Generalized Node Unparser & Patch Engine)", () => {
     // Slices through ", " as well
     expect(result.endIndex).toBe(36);
   });
+
+  it("should surgically sync polyglot changes into existing source preserving comments", () => {
+    const existingSysml = `// Top-level Motor Definition
+part def Motor {
+  // Winding resistance
+  attribute R : Real = 1.0;
+}`;
+
+    const attrIdx = existingSysml.indexOf("attribute R");
+    const mockAttr: any = {
+      type: "AttributeUsage",
+      text: "attribute R : Real = 1.0;",
+      startIndex: attrIdx,
+      endIndex: attrIdx + "attribute R : Real = 1.0;".length,
+      startPosition: { row: 3, column: 2 },
+      endPosition: { row: 3, column: 27 },
+      children: [],
+    };
+
+    const mockDef: any = {
+      type: "PartDefinition",
+      text: existingSysml.substring(existingSysml.indexOf("part def")),
+      startIndex: existingSysml.indexOf("part def"),
+      endIndex: existingSysml.length,
+      startPosition: { row: 1, column: 0 },
+      endPosition: { row: 4, column: 1 },
+      children: [mockAttr],
+    };
+
+    const mockRoot: any = {
+      type: "Namespace",
+      text: existingSysml,
+      startIndex: 0,
+      endIndex: existingSysml.length,
+      startPosition: { row: 0, column: 0 },
+      endPosition: { row: 4, column: 1 },
+      children: [mockDef],
+    };
+
+    const mockTree = {
+      rootNode: mockRoot,
+      sourceCode: existingSysml,
+    };
+    mockDef.tree = mockTree;
+    mockAttr.tree = mockTree;
+
+    const mockParser = {
+      parse: () => mockTree,
+    };
+
+    const updatedNode = {
+      name: "Motor",
+      attributes: [
+        { name: "R", type: "Real", value: "2.5" },
+        { name: "L", type: "Real", value: "0.005" },
+      ],
+      ports: [{ name: "p", type: "Pin" }],
+    };
+
+    const result = CstUnparser.syncTargetSource(existingSysml, updatedNode, "sysml2", mockParser);
+
+    // Comments must be preserved
+    expect(result.text).toContain("// Top-level Motor Definition");
+    expect(result.text).toContain("// Winding resistance");
+    // Attribute R updated
+    expect(result.text).toContain("attribute R : Real = 2.5;");
+    // New attribute L inserted
+    expect(result.text).toContain("attribute L : Real = 0.005;");
+    // New port p inserted
+    expect(result.text).toContain("port p : Pin;");
+  });
 });

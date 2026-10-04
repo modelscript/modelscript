@@ -2950,6 +2950,10 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT id, view_type, view_config FROM artifact_views`).all();
   }
 
+  getArtifactViewByTitle(title: string): any {
+    return this.#db.prepare(`SELECT id, view_type, title FROM artifact_views WHERE title = ? LIMIT 1`).get();
+  }
+
   updateArtifactViewConfig(id: number, viewConfig: string): void {
     this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
   }
@@ -5153,6 +5157,45 @@ export class LibraryDatabase {
       .prepare(`SELECT rel_json FROM sysml2_relationships WHERE commit_id = ?`)
       .all(commitId) as any[];
     return rows.map((r) => JSON.parse(r.rel_json));
+  }
+
+  getFeatureFlags(): Array<{
+    flag_key: string;
+    is_enabled: number;
+    rollout_percentage: number;
+    allowed_roles: string;
+    updated_at: string;
+  }> {
+    return this.#db.prepare(`SELECT * FROM feature_flags`).all() as any[];
+  }
+
+  getFeatureFlag(key: string):
+    | {
+        flag_key: string;
+        is_enabled: number;
+        rollout_percentage: number;
+        allowed_roles: string;
+        updated_at: string;
+      }
+    | undefined {
+    return this.#db.prepare(`SELECT * FROM feature_flags WHERE flag_key = ?`).get(key) as any;
+  }
+
+  setFeatureFlag(key: string, isEnabled: boolean, allowedRoles?: string, rolloutPercentage = 100): void {
+    const roles = allowedRoles !== undefined ? allowedRoles : "";
+    this.#db
+      .prepare(
+        `
+      INSERT INTO feature_flags (flag_key, is_enabled, rollout_percentage, allowed_roles, updated_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(flag_key) DO UPDATE SET
+        is_enabled = excluded.is_enabled,
+        rollout_percentage = excluded.rollout_percentage,
+        allowed_roles = excluded.allowed_roles,
+        updated_at = datetime('now')
+    `,
+      )
+      .run(key, isEnabled ? 1 : 0, rolloutPercentage, roles);
   }
 
   close(): void {

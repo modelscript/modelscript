@@ -13,7 +13,8 @@ const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
-import { setAuthDatabase } from "./middleware/auth-middleware.js";
+import { optionalAuth, setAuthDatabase } from "./middleware/auth-middleware.js";
+import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
 import { adminRouter } from "./routes/admin.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
@@ -51,6 +52,7 @@ import { seedDroneCfd } from "./seed-drone-cfd.js";
 import { seedDroneFea } from "./seed-drone-fea.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
 import { defaultArchiveQueue } from "./services/archive-queue.js";
+import { FeatureFlagService } from "./services/feature-flag-service.js";
 import { FederationWorker } from "./services/federation-worker.js";
 import { locationService } from "./services/location.js";
 import { defaultMailer } from "./services/mailer.js";
@@ -89,8 +91,13 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
 
+  const featureFlagService = new FeatureFlagService(database);
+  app.locals.featureFlagService = featureFlagService;
+
   const federationWorker = new FederationWorker(database);
-  federationWorker.start();
+  if (featureFlagService.isEnabled("activitypub_federation")) {
+    federationWorker.start();
+  }
   app.locals.federationWorker = federationWorker;
 
   setAuthDatabase(database);
@@ -114,6 +121,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     });
   }
 
+  const isNpmDev =
+    process.env["SEED_POSTS"] === "true" ||
+    process.env["npm_lifecycle_event"] === "dev" ||
+    process.env["npm_lifecycle_event"] === "dev:api";
+
   if (
     (process.env["NODE_ENV"] !== "production" && process.env["NODE_ENV"] !== "test") ||
     process.env["SEED_EXAMPLES"] === "true"
@@ -134,13 +146,18 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       }
     }
 
-    // Seed FEA examples
-    seedDroneFea(database);
-    seedCadAssembly(database);
-    seedDroneCfd(database);
+    // Post seeding is strictly disabled for everything except when running npm run dev
+    if (isNpmDev) {
+      console.log("[DevServer] npm run dev detected: seeding example posts...");
+      seedDroneFea(database);
+      seedCadAssembly(database);
+      seedDroneCfd(database);
+      seedCfdAnimation(database).catch(console.error);
+    } else {
+      console.log("[DevServer] Post seeding skipped (only enabled during npm run dev).");
+    }
+
     seedScriptsAndTemplates(database);
-    seedCfdAnimation(database).catch(console.error);
-    console.log("[DevServer] Restarted to fix parabolic flow 92% cap issue!");
 
     // Run asynchronously in the background
     void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
@@ -164,10 +181,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
             }
           }
 
-          // Seed some dummy posts
+          // Seed some dummy posts (only when running npm run dev)
           const devUser = database.getUserByUsername("dev");
           const alice = database.getUserByUsername("alice");
-          if (devUser && alice) {
+          if (devUser && alice && isNpmDev) {
             const devPost = database.createPost(
               devUser.id,
               "Welcome to the new ModelScript social platform! We're excited to see what you build. #welcome",
@@ -300,11 +317,13 @@ graph TD
             );
 
             // FEA Simulation
-            seedDroneFea(database);
-            seedCadAssembly(database);
-            seedDroneCfd(database);
+            if (isNpmDev) {
+              seedDroneFea(database);
+              seedCadAssembly(database);
+              seedDroneCfd(database);
+              await seedCfdAnimation(database);
+            }
             seedScriptsAndTemplates(database);
-            await seedCfdAnimation(database);
           }
 
           await seedExamplePackages(libraryStorage, database, jobQueue);
@@ -399,6 +418,11 @@ graph TD
     next();
   });
 
+  // Feature flags endpoint (evaluated for requesting user)
+  app.get("/api/v1/flags", optionalAuth, (req, res) => {
+    res.json(featureFlagService.getAllFlagsForUser((req as any).user));
+  });
+
   // Auth routes
   app.use("/api/v1/auth", authRouter(database));
   app.use("/api/v1/users", usersRouter(database, federationWorker));
@@ -406,7 +430,7 @@ graph TD
   app.use("/api/v1/repos", reposRouter(database));
   app.use("/api/v1/search", searchRouter(database));
   app.use("/api/v1/storage", storageRouter());
-  app.use("/api/v1", adminRouter(database, federationWorker));
+  app.use("/api/v1", adminRouter(database, federationWorker, featureFlagService));
   app.use("/", federationRouter(database, federationWorker));
 
   // Mount the library routers
@@ -414,27 +438,90 @@ graph TD
   app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
-  app.use("/api/v1/libraries", sparqlRouter(database));
+  app.use(
+    "/api/v1/libraries/sparql",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "sparql_rdf_endpoints"),
+    sparqlRouter(database),
+  );
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", physicsRouter(jobQueue, database));
+
+  // Gated HPC / CAE Compute routes
+  app.use(
+    "/api/v1/cae",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
+  );
   app.use("/api/v1", caeRouter(jobQueue, database));
+
+  app.use(
+    "/api/v1/cloud",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
+  );
   app.use("/api/v1", cloudRouter(libraryStorage, jobQueue, database));
+
+  // Gated Billing route
+  app.use(
+    "/api/v1/billing",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "billing_stripe_live"),
+  );
   app.use("/api/v1", billingRouter(database));
+
+  // Gated MCP SSE gateway
+  app.use(
+    "/api/v1/mcp",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "mcp_gateway_sse"),
+  );
   app.use("/api/v1", mcpRouter(database));
+
   app.use("/api/v1/jobs", scriptsRouter(database));
 
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));
 
   // Digital Thread Hypergraph Explorer routes
-  app.use("/api/v1/threads", threadRouter());
+  app.use(
+    "/api/v1/threads",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "digital_thread_explorer"),
+    threadRouter(),
+  );
 
   // Co-simulation routes (with MQTT client injection)
-  app.use("/api/v1/cosim", cosimRouter(mqttClient));
-  app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
-  app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
-  app.use("/api/v1/instances", instancesRouter(database, dbPool));
-  app.use("/api/v1/twins", twinsRouter(database));
+  app.use(
+    "/api/v1/cosim",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
+    cosimRouter(mqttClient),
+  );
+  app.use(
+    "/api/v1/mqtt/participants",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
+    mqttParticipantsRouter(mqttClient),
+  );
+  app.use(
+    "/api/v1/historian",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
+    historianRouter(dbPool, mqttClient),
+  );
+  app.use(
+    "/api/v1/instances",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "digital_twins"),
+    instancesRouter(database, dbPool),
+  );
+  app.use(
+    "/api/v1/twins",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "digital_twins"),
+    twinsRouter(database),
+  );
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/git", gitRouter());
   app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility
@@ -543,8 +630,18 @@ graph TD
 
   // ── OMG Systems Modeling REST API (SysML v2 - ptc/2024-02-03) ──
   const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
-  app.use("/api/v1/sysml2", omgRouter);
-  app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
+  app.use(
+    "/api/v1/sysml2",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
+    omgRouter,
+  );
+  app.use(
+    "/",
+    optionalAuth,
+    requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
+    omgRouter,
+  ); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
 
   // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
   app.use("/", npmAuthRouter(database));

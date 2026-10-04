@@ -253,7 +253,7 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
             const npe = currentMesh.nodesPerElement;
 
             for (let e = 0; e < currentMesh.numElements; e++) {
-              const s = stepResult.vonMisesStress[e];
+              const s = stepResult.elementVonMises[e];
               const base = e * npe;
               for (let i = 0; i < npe; i++) {
                 const n = currentMesh.elements[base + i];

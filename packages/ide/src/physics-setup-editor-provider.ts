@@ -141,8 +141,8 @@ export class SimulationViewPanel {
         // Send study config to webview
         this._panel.webview.postMessage({ type: "configData", data: config });
 
-        // Also fetch step meshes
-        const stepFile = config.parameters?.stepFile || config.stepFile || "";
+        const cfg = config as any;
+        const stepFile = cfg.parameters?.stepFile || cfg.stepFile || "";
         let stepUri = this._documentUri;
         if (stepFile) {
           const docDir = this._documentUri.replace(/[^/]+$/, "");

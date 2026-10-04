@@ -21,12 +21,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
+import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import Box from "./Box";
 import HpcArtifactPickerModal from "./HpcArtifactPickerModal";
 import MorselComposeModal from "./MorselComposeModal";
 import SimpleEmojiPicker from "./SimpleEmojiPicker";
-import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 
 const TweetButton = styled.button`
   background: var(--gradient-cta);
@@ -206,6 +207,8 @@ export default function ComposeBox({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [showMorselModal, setShowMorselModal] = useState(false);
+  const hasHpc = useFeatureFlag("cae_cloud_solver");
+  const hasExperimental = useFeatureFlag("experimental_viewers");
   const [replyVisibility, setReplyVisibility] = useState<"everyone" | "following" | "mentioned">("everyone");
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1050,14 +1053,16 @@ export default function ComposeBox({
                   >
                     <CodeIcon size={20} />
                   </ActionIconButton>
-                  <ActionIconButton
-                    onClick={() => setShowHpcPicker(true)}
-                    disabled={artifactId !== null}
-                    aria-label="Attach HPC Artifact"
-                    title="Attach HPC Simulation Artifact (FEA, CFD, DOEs)"
-                  >
-                    <ServerIcon size={20} />
-                  </ActionIconButton>
+                  {hasHpc && (
+                    <ActionIconButton
+                      onClick={() => setShowHpcPicker(true)}
+                      disabled={artifactId !== null}
+                      aria-label="Attach HPC Artifact"
+                      title="Attach HPC Simulation Artifact (FEA, CFD, DOEs)"
+                    >
+                      <ServerIcon size={20} />
+                    </ActionIconButton>
+                  )}
                   <input
                     type="file"
                     style={{ display: "none" }}
@@ -1109,14 +1114,16 @@ export default function ComposeBox({
                   >
                     <SlidersIcon size={20} />
                   </ActionIconButton>
-                  <ActionIconButton
-                    onClick={() => createDummyArtifact("tei-document")}
-                    disabled={artifactId !== null}
-                    aria-label="Add TEI Document"
-                    title="Add TEI Document"
-                  >
-                    <BookIcon size={20} />
-                  </ActionIconButton>
+                  {hasExperimental && (
+                    <ActionIconButton
+                      onClick={() => createDummyArtifact("tei-document")}
+                      disabled={artifactId !== null}
+                      aria-label="Add TEI Document"
+                      title="Add TEI Document"
+                    >
+                      <BookIcon size={20} />
+                    </ActionIconButton>
+                  )}
                   {uploadingFile && (
                     <span style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginLeft: "8px" }}>
                       Uploading...
@@ -1132,16 +1139,18 @@ export default function ComposeBox({
         </Box>
       </Box>
 
-      <HpcArtifactPickerModal
-        isOpen={showHpcPicker}
-        onClose={() => setShowHpcPicker(false)}
-        onSelect={(res) => {
-          setArtifactId(res.artifactId);
-          if (!content.trim() && res.suggestedCaption) {
-            setContent(res.suggestedCaption);
-          }
-        }}
-      />
+      {hasHpc && (
+        <HpcArtifactPickerModal
+          isOpen={showHpcPicker}
+          onClose={() => setShowHpcPicker(false)}
+          onSelect={(res) => {
+            setArtifactId(res.artifactId);
+            if (!content.trim() && res.suggestedCaption) {
+              setContent(res.suggestedCaption);
+            }
+          }}
+        />
+      )}
 
       <MorselComposeModal
         isOpen={showMorselModal}

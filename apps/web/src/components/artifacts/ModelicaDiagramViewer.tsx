@@ -10,7 +10,7 @@ import { compressMorselPayload } from "../morsel/util/permalink";
 const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
 
 interface ModelicaDiagramViewerProps {
-  viewConfig: any;
+  viewConfig: Record<string, unknown>;
   isFullScreen?: boolean;
 }
 

@@ -11,6 +11,7 @@ import path from "node:path";
 import type { CommandModule } from "yargs";
 
 import { cfdLanguage } from "@modelscript/cfd";
+import { CstUnparser } from "@modelscript/dsl";
 import { feaLanguage } from "@modelscript/fea";
 import { modelicaLanguage } from "@modelscript/modelica";
 import { owl2Language } from "@modelscript/owl2";
@@ -27,6 +28,36 @@ function findNodes(node: any, type: string, results: any[] = []): any[] {
   if (node.type === type) results.push(node);
   for (const c of node.children || []) findNodes(c, type, results);
   return results;
+}
+
+let moParserInstance: any = null;
+function getModelicaParser(): any {
+  if (moParserInstance) return moParserInstance;
+  try {
+    const { createWasmParserSync } = require("@modelscript/dsl");
+    const { SYNTAX_NAMES } = require("@modelscript/modelica/parser");
+    const wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
+    const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
+    moParserInstance = res.parser;
+    return moParserInstance;
+  } catch {
+    return null;
+  }
+}
+
+let sysmlParserInstance: any = null;
+function getSysmlParser(): any {
+  if (sysmlParserInstance) return sysmlParserInstance;
+  try {
+    const { createWasmParserSync } = require("@modelscript/dsl");
+    const { SYNTAX_NAMES } = require("@modelscript/sysml2/parser");
+    const wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
+    const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
+    sysmlParserInstance = res.parser;
+    return sysmlParserInstance;
+  } catch {
+    return null;
+  }
 }
 
 let scadParserInstance: any = null;
@@ -416,9 +447,33 @@ const ProjectCommand: CommandModule<{}, ProjectArgs> = {
     if (args.out) {
       const resolvedOut = path.resolve(process.cwd(), args.out);
       fs.mkdirSync(path.dirname(resolvedOut), { recursive: true });
-      fs.writeFileSync(resolvedOut, output, "utf-8");
+
+      let finalOutput = output;
+      if (fs.existsSync(resolvedOut)) {
+        try {
+          const existingText = fs.readFileSync(resolvedOut, "utf-8");
+          if (existingText.trim().length > 0) {
+            let targetParser: any = null;
+            if (args.target === "sysml2") {
+              targetParser = getSysmlParser();
+            } else if (args.target === "modelica") {
+              targetParser = getModelicaParser();
+            }
+            if (targetParser) {
+              const synced = CstUnparser.syncTargetSource(existingText, node, args.target, targetParser);
+              if (synced && synced.text) {
+                finalOutput = synced.text;
+              }
+            }
+          }
+        } catch {
+          // Fallback to direct output
+        }
+      }
+
+      fs.writeFileSync(resolvedOut, finalOutput, "utf-8");
       console.log(
-        `✔ Projected '${args.sourceFile}' -> '${args.out}' [domain: ${args.target}] (${output.length} bytes)`,
+        `✔ Projected '${args.sourceFile}' -> '${args.out}' [domain: ${args.target}] (${finalOutput.length} bytes)`,
       );
     } else {
       console.log(output);

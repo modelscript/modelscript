@@ -64,9 +64,10 @@
     "clean": "rimraf dist",
     "fetch:fmusim": "tsx validation/fmi/scripts/fetch-fmusim.ts",
     "lint": "eslint src --no-warn-ignored",
-    "test": "npx tsx --test --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout validation/*.test.ts validation/test-*.ts validation/lens-*.ts",
+    "test": "mkdir -p coverage && npx tsx --test --experimental-test-coverage --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout validation/*.test.ts validation/test-*.ts validation/lens-*.ts",
     "test:fmusim": "tsx validation/fmi/scripts/fmusim-verify.ts",
     "test:omc": "tsx validation/fmi/scripts/omc-verify.ts",
+    "typecheck": "tsc --noEmit",
     "validate": "tsx validation/fmi/scripts/validate.ts"
   },
   "dependencies": {

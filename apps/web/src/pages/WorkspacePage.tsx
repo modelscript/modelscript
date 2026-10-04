@@ -59,6 +59,7 @@ import {
 } from "../api";
 import Box from "../components/Box";
 import CloudSimulationModal from "../components/CloudSimulationModal";
+import { useFeatureFlag } from "../FeatureFlagContext";
 
 // Helper for formatting relative time
 function getRelativeTime(dateString: string) {
@@ -215,6 +216,7 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
   const [error, setError] = useState("");
   const [showCloudSim, setShowCloudSim] = useState(false);
   const [copiedClone, setCopiedClone] = useState(false);
+  const hasCae = useFeatureFlag("cae_cloud_solver");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -503,15 +505,17 @@ git push -u origin main`}
                 </ActionMenu>
               </>
             )}
-            <Button
-              variant="default"
-              leadingVisual={CloudIcon}
-              size="small"
-              style={{ height: "32px", gap: "6px" }}
-              onClick={() => setShowCloudSim(true)}
-            >
-              Run on Cloud
-            </Button>
+            {hasCae && (
+              <Button
+                variant="default"
+                leadingVisual={CloudIcon}
+                size="small"
+                style={{ height: "32px", gap: "6px" }}
+                onClick={() => setShowCloudSim(true)}
+              >
+                Run on Cloud
+              </Button>
+            )}
             <Button
               variant="default"
               leadingVisual={PlayIcon}
@@ -666,14 +670,16 @@ git push -u origin main`}
                     </Text>
                   </Box>
                   <Box display="flex" alignItems="center" gap={2}>
-                    <Button
-                      size="small"
-                      variant="primary"
-                      leadingVisual={CloudIcon}
-                      onClick={() => setShowCloudSim(true)}
-                    >
-                      Run on Cloud HPC
-                    </Button>
+                    {hasCae && (
+                      <Button
+                        size="small"
+                        variant="primary"
+                        leadingVisual={CloudIcon}
+                        onClick={() => setShowCloudSim(true)}
+                      >
+                        Run on Cloud HPC
+                      </Button>
+                    )}
                     <Button
                       size="small"
                       variant="default"
@@ -814,13 +820,15 @@ git push -u origin main`}
         </Box>
       </Box>
 
-      <CloudSimulationModal
-        isOpen={showCloudSim}
-        onClose={() => setShowCloudSim(false)}
-        fileName={currentFile || ""}
-        fileContent={fileContent || ""}
-        libraryName={repo?.name}
-      />
+      {hasCae && (
+        <CloudSimulationModal
+          isOpen={showCloudSim}
+          onClose={() => setShowCloudSim(false)}
+          fileName={currentFile || ""}
+          fileContent={fileContent || ""}
+          libraryName={repo?.name}
+        />
+      )}
     </Box>
   );
 }

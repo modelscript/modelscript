@@ -52,8 +52,9 @@ export interface SysML2GenericDefinition {
   constraints?: string[];
 }
 
-import { createWasmParser as createMoParser } from "@modelscript/modelica/parser";
-import { createWasmParser as createSysmlParser } from "@modelscript/sysml2/parser";
+import { createWasmParserSync } from "@modelscript/dsl";
+import { SYNTAX_NAMES as moSyntax } from "@modelscript/modelica/parser";
+import { SYNTAX_NAMES as sysmlSyntax } from "@modelscript/sysml2/parser";
 import { createRequire } from "node:module";
 
 let moParser: any = null;
@@ -65,14 +66,8 @@ try {
     const modelicaWasm = req?.resolve ? req.resolve("@modelscript/modelica/parser.wasm") : null;
     const sysmlWasm = req?.resolve ? req.resolve("@modelscript/sysml2/parser.wasm") : null;
     if (modelicaWasm && sysmlWasm) {
-      Promise.all([createMoParser(modelicaWasm), createSysmlParser(sysmlWasm)])
-        .then(([moRes, sysmlRes]) => {
-          moParser = moRes.parser;
-          sysmlParser = sysmlRes.parser;
-        })
-        .catch(() => {
-          // Graceful fallback if parsers are not yet compiled
-        });
+      moParser = createWasmParserSync(modelicaWasm, { syntaxNames: moSyntax })?.parser;
+      sysmlParser = createWasmParserSync(sysmlWasm, { syntaxNames: sysmlSyntax })?.parser;
     }
   }
 } catch {
@@ -126,7 +121,12 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
     const compDecls = compList ? findNodes(compList, "component_declaration") : [];
     for (const cd of compDecls) {
       const decl = cd.childForFieldName("declaration") || cd;
-      const compName = decl.childForFieldName("name")?.text?.trim() || "";
+      const compName =
+        decl.childForFieldName("name")?.text?.trim() ||
+        findNodes(decl, "identifier")[0]?.text?.trim() ||
+        cd.childForFieldName("name")?.text?.trim() ||
+        findNodes(cd, "identifier")[0]?.text?.trim() ||
+        "";
       const mod = decl.childForFieldName("modification");
       const modExpr = mod
         ? (mod.childForFieldName("modification_expression")?.text || mod.text.replace(/^=\s*/, "")).trim()
@@ -205,9 +205,11 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
 
   const simpleEqs = findNodes(root, "simple_equation");
   for (const eq of simpleEqs) {
-    const lhs = eq.childForFieldName("lhs")?.text?.trim() || "";
-    const rhs = eq.childForFieldName("rhs")?.text?.trim() || "";
-    constraints.push(`${lhs} = ${rhs}`);
+    const lhs = eq.childForFieldName("lhs")?.text?.trim() || findNodes(eq, "lhs_expression")[0]?.text?.trim() || "";
+    const rhs = eq.childForFieldName("rhs")?.text?.trim() || findNodes(eq, "expression")[0]?.text?.trim() || "";
+    if (lhs || rhs) {
+      constraints.push(`${lhs} = ${rhs}`);
+    }
   }
 
   return {
@@ -507,6 +509,7 @@ export class GenericModelicaBridge {
       }
     }
 
+    // @deprecated Legacy regex fallback - retained solely for environments lacking WebAssembly GLR parser support.
     // Extract definition name (prioritizing composite part defs containing subpart usages)
     const defMatches = Array.from(
       sysmlSource.matchAll(/(?:part|item|action|constraint)\s+def\s+([A-Za-z_][A-Za-z0-9_]*)/g),
@@ -687,6 +690,7 @@ export class GenericModelicaBridge {
       }
     }
 
+    // @deprecated Legacy regex fallback - retained solely for environments lacking WebAssembly GLR parser support.
     const nameMatch = modelicaSource.match(/(?:model|block)\s+([A-Za-z_][A-Za-z0-9_]*)/);
     const name = nameMatch ? nameMatch[1] : "ModelicaTranslation";
     const isAbstract = /partial\s+(?:model|block)/.test(modelicaSource);

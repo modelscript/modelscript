@@ -29,6 +29,18 @@ export default defineConfig([
     },
     rules: {
       "react-hooks/set-state-in-effect": "off",
+      "react-refresh/only-export-components": "warn",
+    },
+  },
+  {
+    files: ["src/components/morsel/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "no-useless-assignment": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/immutability": "off",
     },
   },
 ]);

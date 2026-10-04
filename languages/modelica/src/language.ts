@@ -352,7 +352,6 @@ export const modelicaLanguage = language({
     [$.for_statement],
     [$.algorithm_section, $.annotation_clause],
     [$.equation_section, $.annotation_clause],
-    [$.element_list, $.annotation_clause],
   ],
 
   inline: ["element_list", "component_list", "statement_or_procedure", "lhs_expression", "lhs_primary"],
@@ -731,8 +730,7 @@ export const modelicaLanguage = language({
             $.algorithm_section,
           ),
         ),
-        optional(seq($.external_clause, ";")),
-        optional(seq($.annotation_clause, ";")),
+        optional(seq($.external_clause, ";", optional(seq(field("annotation_clause", $.annotation_clause), ";")))),
       ),
 
     external_clause: ($) =>
@@ -751,13 +749,12 @@ export const modelicaLanguage = language({
         seq($.identifier, "(", optional($.expression_list), ")"),
       ),
 
-    element_list: ($) => repeat(seq($.element, ";")),
+    element_list: ($) => repeat(choice(seq($.element, ";"), seq(field("annotation_clause", $.annotation_clause), ";"))),
 
     element: ($) =>
       choice(
         field("import_clause", $.import_clause),
         field("extends_clause", $.extends_clause),
-        field("annotation_clause", $.annotation_clause),
         seq(
           optional("redeclare"),
           optional("final"),

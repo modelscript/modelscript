@@ -40,6 +40,7 @@
     "ci:local": "bash scripts/ci-local.sh",
     "ci:quick": "bash scripts/ci-local.sh --quick",
     "clean": "nx run-many --target=clean",
+    "coverage:consolidate": "npx tsx scripts/consolidate-coverage.ts",
     "predev": "mkdir -p data",
     "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/web,@modelscript/morsel,@modelscript/ide,@modelscript/docs --parallel=6",
     "dev:api": "npm run dev --workspace=@modelscript/api",
@@ -64,6 +65,7 @@
     "release:dry-run": "nx release --dry-run",
     "test": "NODE_OPTIONS='--max-old-space-size=2048' nx affected --target=test --parallel=2",
     "test:all": "NODE_OPTIONS='--max-old-space-size=2048' nx run-many --target=test --parallel=3",
+    "test:consolidate": "npx tsx scripts/consolidate-test-reports.ts",
     "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
     "test:modelica:both": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both",
     "test:modelica:both:allow-wasm": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
@@ -76,7 +78,9 @@
     "test:msl:icon": "npx tsx languages/modelica/tests/msl-comparison-runner.ts --stage=icon",
     "test:msl:sim": "npx tsx languages/modelica/tests/msl-comparison-runner.ts --stage=simulate",
     "test:quick": "NODE_OPTIONS='--max-old-space-size=2048' nx affected --target=test --parallel=3",
-    "test:single": "npx tsx languages/modelica/tests/testsuite-runner.ts"
+    "test:single": "npx tsx languages/modelica/tests/testsuite-runner.ts",
+    "typecheck": "nx affected --target=typecheck --parallel=4",
+    "typecheck:all": "nx run-many --target=typecheck --parallel=4"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
@@ -152,6 +156,8 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.8.0",
+    "@commitlint/config-conventional": "^19.8.0",
     "@eslint/config-array": "^0.19.2",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^10.0.1",

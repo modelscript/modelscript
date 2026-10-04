@@ -1447,14 +1447,14 @@ export enum SyntaxKind {
   annotation_clause = 185,
   START = 186,
   _START = 186,
-  Identifier = 340,
-  identifier = 340,
-  StringLiteral = 341,
-  string_literal = 341,
-  UnsignedInteger = 342,
-  unsigned_integer = 342,
-  UnsignedReal = 343,
-  unsigned_real = 343,
+  Identifier = 341,
+  identifier = 341,
+  StringLiteral = 342,
+  string_literal = 342,
+  UnsignedInteger = 343,
+  unsigned_integer = 343,
+  UnsignedReal = 344,
+  unsigned_real = 344,
   EOF = 1023,
 }
 
@@ -1481,12 +1481,12 @@ export enum FieldId {
   class_modification = 10,
   EnumList = 11,
   enum_list = 11,
-  ImportClause = 12,
-  import_clause = 12,
-  ExtendsClause = 13,
-  extends_clause = 13,
-  AnnotationClause = 14,
-  annotation_clause = 14,
+  AnnotationClause = 12,
+  annotation_clause = 12,
+  ImportClause = 13,
+  import_clause = 13,
+  ExtendsClause = 14,
+  extends_clause = 14,
   ClassDefinition = 15,
   class_definition = 15,
   ComponentClause = 16,
@@ -2031,6 +2031,8 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CompositionNode;
+    annotationClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    annotationClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ExternalClause: {
     readonly typeId: number;
@@ -2051,6 +2053,8 @@ export namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ElementListNode;
+    annotationClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    annotationClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const Element: {
     readonly typeId: number;
@@ -2060,8 +2064,6 @@ export namespace Cst {
     importClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
     extendsClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
     extendsClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    annotationClause(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    annotationClauseList(node: SyntaxNode | null | undefined): SyntaxNode[];
     classDefinition(node: SyntaxNode | null | undefined): SyntaxNode | null;
     classDefinitionList(node: SyntaxNode | null | undefined): SyntaxNode[];
     componentClause(node: SyntaxNode | null | undefined): SyntaxNode | null;

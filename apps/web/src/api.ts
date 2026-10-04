@@ -1001,7 +1001,9 @@ export const getUnifiedUserJobs = async (): Promise<UnifiedJob[]> => {
         });
       }
     }
-  } catch {}
+  } catch {
+    // Ignore error fetching jobs
+  }
 
   try {
     const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit: 5 } });
@@ -1022,7 +1024,9 @@ export const getUnifiedUserJobs = async (): Promise<UnifiedJob[]> => {
         }
       }
     }
-  } catch {}
+  } catch {
+    // Ignore error fetching cae jobs
+  }
 
   return jobs;
 };
@@ -1181,6 +1185,34 @@ export const verifyAdminDbIntegrity = async (): Promise<{
   issues?: string[];
 }> => {
   const { data } = await api.get("/admin/db/verify");
+  return data;
+};
+
+export interface AdminFeatureFlag {
+  key: string;
+  name: string;
+  description: string;
+  defaultValue: boolean;
+  category: string;
+  maturity: string;
+  allowedRoles?: string[];
+  currentEnabled: boolean;
+  rolloutPercentage: number;
+  dbAllowedRoles: string[];
+}
+
+export const getAdminFeatureFlags = async (): Promise<{ flags: AdminFeatureFlag[] }> => {
+  const { data } = await api.get("/admin/flags");
+  return data;
+};
+
+export const patchAdminFeatureFlag = async (
+  key: string,
+  isEnabled: boolean,
+  allowedRoles?: string,
+  rolloutPercentage?: number,
+): Promise<{ success: boolean; key: string; isEnabled: boolean }> => {
+  const { data } = await api.patch(`/admin/flags/${key}`, { isEnabled, allowedRoles, rolloutPercentage });
   return data;
 };
 

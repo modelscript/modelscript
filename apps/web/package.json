@@ -8,7 +8,8 @@
     "clean": "rimraf dist",
     "dev": "vite --port 3001",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@antv/layout": "^0.3.25",

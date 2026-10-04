@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   BellIcon,
   BookmarkIcon,
@@ -23,6 +22,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { useTheme } from "../theme";
 import Box from "./Box";
 
@@ -328,6 +328,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     }
   }, [location.pathname, setUnreadCount]);
 
+  const hasIde = useFeatureFlag("heavy_vscode_ide");
+  const hasCae = useFeatureFlag("cae_cloud_solver");
+
   const navLinks = [];
   if (user) navLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
   navLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore" });
@@ -339,8 +342,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   navLinks.push({ to: "/playground", icon: PlayIcon, label: "Playground" });
   navLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   navLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
-  navLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
-  navLinks.push({ to: "/scripts", icon: TerminalIcon, label: "Scripts" });
+  if (hasIde) {
+    navLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
+  }
+  if (hasCae) {
+    navLinks.push({ to: "/scripts", icon: TerminalIcon, label: "Scripts" });
+  }
 
   if (user) {
     navLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
