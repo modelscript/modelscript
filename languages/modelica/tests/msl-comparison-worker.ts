@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { Cst } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
 import { AnnotationEvaluator } from "../src/diagram/annotation-evaluator.js";
 import { buildDiagramData, getClassIconSvg, renderDiagramSvg, x6MarkupToSvg } from "../src/diagram/data.js";
@@ -38,13 +39,41 @@ const repoRoot = path.resolve(__dirname, "../../..");
 
 // ── Hierarchy & Package Reconstruction ──────────────────────────────────────────
 
-function linkMslPackageHierarchy(
+export function linkMslPackageHierarchy(
   symbolIndex: { symbols: Map<number, any>; byName: Map<string, number[]>; childrenOf: Map<number, number[]> },
   mslDir: string,
 ): void {
   let nextId = 100000;
   for (const id of symbolIndex.symbols.keys()) {
     if (id > nextId) nextId = id + 1;
+  }
+
+  // Pre-index existing package symbols by their FQN
+  for (const [id, sym] of symbolIndex.symbols.entries()) {
+    if (
+      sym.kind === "Class" &&
+      sym.ruleName === "class_definition" &&
+      sym.resourceId &&
+      sym.resourceId.startsWith(mslDir)
+    ) {
+      const rel = path.relative(mslDir, sym.resourceId).replace(/\\/g, "/");
+      if (rel.endsWith("/package.mo") || rel === "package.mo") {
+        const parts = rel
+          .replace(/\/?package\.mo$/, "")
+          .split("/")
+          .filter(Boolean);
+        const isPkgMatch =
+          (parts.length === 0 && sym.name === "Modelica") || (parts.length > 0 && sym.name === parts[parts.length - 1]);
+        if (isPkgMatch) {
+          const fqn = ["Modelica", ...parts].join(".");
+          const list = symbolIndex.byName.get(fqn) || [];
+          if (!list.includes(id)) {
+            list.unshift(id);
+            symbolIndex.byName.set(fqn, list);
+          }
+        }
+      }
+    }
   }
 
   function getOrCreatePackageSymbol(fqn: string): number {
@@ -55,10 +84,37 @@ function linkMslPackageHierarchy(
     for (const part of parts) {
       currentFQN = currentFQN ? `${currentFQN}.${part}` : part;
       const foundList = symbolIndex.byName.get(currentFQN);
-      let symId: number;
+      let symId: number | undefined;
 
       if (foundList && foundList.length > 0) {
-        symId = foundList[0];
+        for (const candidateId of foundList) {
+          const candidate = symbolIndex.symbols.get(candidateId);
+          if (
+            candidate &&
+            candidate.kind === "Class" &&
+            (candidate.ruleName === "class_definition" || candidate.metadata?.classKind === "package")
+          ) {
+            symId = candidateId;
+            break;
+          }
+        }
+      }
+
+      if (symId !== undefined) {
+        if (currentFQN === "Modelica") {
+          const modSym = symbolIndex.symbols.get(symId);
+          if (modSym) modSym.parentId = null;
+        } else if (parentId !== null && symId !== parentId) {
+          const existingSym = symbolIndex.symbols.get(symId);
+          if (existingSym && (existingSym.parentId === null || existingSym.parentId === undefined)) {
+            existingSym.parentId = parentId;
+            const childList = symbolIndex.childrenOf.get(parentId) || [];
+            if (!childList.includes(symId)) {
+              childList.push(symId);
+              symbolIndex.childrenOf.set(parentId, childList);
+            }
+          }
+        }
       } else {
         symId = nextId++;
         const entry = {
@@ -79,7 +135,7 @@ function linkMslPackageHierarchy(
         symbolIndex.symbols.set(symId, entry);
 
         const byFQN = symbolIndex.byName.get(currentFQN) || [];
-        byFQN.push(symId);
+        byFQN.unshift(symId);
         symbolIndex.byName.set(currentFQN, byFQN);
 
         const childList = symbolIndex.childrenOf.get(parentId ?? 0) || [];
@@ -104,25 +160,36 @@ function linkMslPackageHierarchy(
       if (dirParts[dirParts.length - 1] === sym.name) {
         parentPkgFQN = ["Modelica", ...dirParts.slice(0, -1)].join(".");
       } else if (dirParts[dirParts.length - 1] === "package") {
-        parentPkgFQN = ["Modelica", ...dirParts.slice(0, -2)].join(".");
+        if (dirParts.length <= 1) {
+          parentPkgFQN = "";
+        } else {
+          const pkgName = dirParts[dirParts.length - 2];
+          if (sym.name === pkgName) {
+            parentPkgFQN = ["Modelica", ...dirParts.slice(0, -2)].join(".");
+          } else {
+            parentPkgFQN = ["Modelica", ...dirParts.slice(0, -1)].join(".");
+          }
+        }
       } else {
         parentPkgFQN = ["Modelica", ...dirParts].join(".");
       }
 
       if (parentPkgFQN) {
         const parentPkgId = getOrCreatePackageSymbol(parentPkgFQN);
-        sym.parentId = parentPkgId;
-        const childList = symbolIndex.childrenOf.get(parentPkgId) || [];
-        if (!childList.includes(id)) {
-          childList.push(id);
-          symbolIndex.childrenOf.set(parentPkgId, childList);
+        if (parentPkgId !== id) {
+          sym.parentId = parentPkgId;
+          const childList = symbolIndex.childrenOf.get(parentPkgId) || [];
+          if (!childList.includes(id)) {
+            childList.push(id);
+            symbolIndex.childrenOf.set(parentPkgId, childList);
+          }
         }
       }
     }
   }
 }
 
-function resolveSymbolId(context: Context, name: string): number | null {
+export function resolveSymbolId(context: Context, name: string): number | null {
   const index = context.queryEngine.index;
   const parts = name.split(".");
   let currentIds = index.byName.get(parts[0]);
@@ -426,9 +493,206 @@ end if;
   }
 }
 
+function runOmcDiagram(task: WorkerTask): {
+  success: boolean;
+  cached: boolean;
+  durationMs: number;
+  cpuMs?: number;
+  peakMemoryMB?: number;
+  nodeCount: number;
+  edgeCount: number;
+  components: { name: string; type: string; placement?: any }[];
+  connections: { from: string; to: string }[];
+  error?: string;
+} {
+  const omcCacheDir = path.join(task.cacheDir, "omc", task.version, "diagram");
+  fs.mkdirSync(omcCacheDir, { recursive: true });
+  const cacheFile = path.join(omcCacheDir, `${task.modelFqn}.json`);
+
+  if (!task.forceOmc && fs.existsSync(cacheFile)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
+      return {
+        ...data,
+        cached: true,
+      };
+    } catch {
+      // cache corrupted, re-run
+    }
+  }
+
+  const pkgMo = path.join(task.mslDir, "package.mo");
+  const mosScript = `
+loadFile("${pkgMo.replace(/\\/g, "/")}");
+cCount := getConnectionCount(${task.modelFqn});
+print("CONNECTIONS_COUNT=" + String(cCount) + "\\n");
+for i in 1:cCount loop
+  c := getNthConnection(${task.modelFqn}, i);
+  print("CONN:" + c[1] + "->" + c[2] + "\\n");
+end for;
+print("COMPS_START\\n");
+getComponents(${task.modelFqn});
+print("COMPS_END\\n");
+print("ANNOTS_START\\n");
+getComponentAnnotations(${task.modelFqn});
+print("ANNOTS_END\\n");
+print("DIAG_START\\n");
+getDiagramAnnotation(${task.modelFqn});
+print("DIAG_END\\n");
+`;
+
+  const tmpMos = path.join(task.cacheDir, `temp_diag_${process.pid}_${Date.now()}.mos`);
+  fs.writeFileSync(tmpMos, mosScript, "utf-8");
+
+  try {
+    const omcRes = runOmcWithStats(["omc", tmpMos], { timeout: 45_000 });
+    const stdout = omcRes.stdout;
+
+    if (stdout.includes("Error:") && !stdout.includes("COMPS_START")) {
+      return {
+        success: false,
+        cached: false,
+        durationMs: omcRes.durationMs,
+        cpuMs: omcRes.cpuMs,
+        peakMemoryMB: omcRes.peakMemoryMB,
+        nodeCount: 0,
+        edgeCount: 0,
+        components: [],
+        connections: [],
+        error: stdout.slice(0, 300),
+      };
+    }
+
+    // Parse connections
+    const connections: { from: string; to: string }[] = [];
+    for (const line of stdout.split(/\r?\n/)) {
+      if (line.startsWith("CONN:")) {
+        const arrowIdx = line.indexOf("->");
+        if (arrowIdx >= 0) {
+          const from = line.slice(5, arrowIdx).trim();
+          const to = line.slice(arrowIdx + 2).trim();
+          if (from && to) {
+            connections.push({ from, to });
+          }
+        }
+      }
+    }
+
+    // Parse components
+    const compsStart = stdout.indexOf("COMPS_START");
+    const compsEnd = stdout.indexOf("COMPS_END");
+    const rawComps: { type: string; name: string }[] = [];
+    if (compsStart >= 0 && compsEnd > compsStart) {
+      const compsSection = stdout.slice(compsStart, compsEnd);
+      const compRe = /\{([a-zA-Z0-9_.]+),\s*([a-zA-Z0-9_]+),/g;
+      let compM;
+      while ((compM = compRe.exec(compsSection)) !== null) {
+        rawComps.push({ type: compM[1], name: compM[2] });
+      }
+    }
+
+    // Parse component placement annotations (1:1 per component)
+    const annotsStart = stdout.indexOf("ANNOTS_START");
+    const annotsEnd = stdout.indexOf("ANNOTS_END");
+    const placements: (any | null)[] = [];
+    if (annotsStart >= 0 && annotsEnd > annotsStart) {
+      const annotsSection = stdout.slice(annotsStart, annotsEnd);
+      let depth = 0;
+      let current = "";
+      const items: string[] = [];
+      const trimmed = annotsSection.trim();
+      const firstBrace = trimmed.indexOf("{");
+      const lastBrace = trimmed.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const inner = trimmed.slice(firstBrace + 1, lastBrace);
+        for (const ch of inner) {
+          if (ch === "{" || ch === "(") depth++;
+          else if (ch === "}" || ch === ")") depth--;
+
+          if (depth === 0 && ch === ",") {
+            items.push(current.trim());
+            current = "";
+          } else {
+            current += ch;
+          }
+        }
+        if (current.trim()) items.push(current.trim());
+      }
+
+      const placementRe =
+        /Placement\((true|false|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-)/;
+      for (let i = 0; i < rawComps.length; i++) {
+        const annotStr = items[i] || "";
+        const pm = placementRe.exec(annotStr);
+        if (pm) {
+          placements.push({
+            visible: pm[1] === "true",
+            origin: [pm[2] === "-" || !pm[2] ? 0 : parseFloat(pm[2]), pm[3] === "-" || !pm[3] ? 0 : parseFloat(pm[3])],
+            extent: [
+              [pm[4] === "-" || !pm[4] ? -10 : parseFloat(pm[4]), pm[5] === "-" || !pm[5] ? -10 : parseFloat(pm[5])],
+              [pm[6] === "-" || !pm[6] ? 10 : parseFloat(pm[6]), pm[7] === "-" || !pm[7] ? 10 : parseFloat(pm[7])],
+            ],
+            rotation: pm[8] === "-" || !pm[8] ? 0 : parseFloat(pm[8]),
+          });
+        } else {
+          placements.push(null);
+        }
+      }
+    }
+
+    const placedComps = rawComps
+      .map((c, idx) => ({
+        ...c,
+        placement: placements[idx],
+      }))
+      .filter((c) => c.placement != null);
+
+    const result = {
+      success: true,
+      cached: false,
+      durationMs: omcRes.durationMs,
+      cpuMs: omcRes.cpuMs,
+      peakMemoryMB: omcRes.peakMemoryMB,
+      nodeCount: placedComps.length,
+      edgeCount: connections.length,
+      components: placedComps,
+      connections,
+    };
+
+    fs.writeFileSync(cacheFile, JSON.stringify(result), "utf-8");
+    return result;
+  } catch (err: any) {
+    return {
+      success: false,
+      cached: false,
+      durationMs: 0,
+      nodeCount: 0,
+      edgeCount: 0,
+      components: [],
+      connections: [],
+      error: err.message || String(err),
+    };
+  } finally {
+    try {
+      if (fs.existsSync(tmpMos)) fs.unlinkSync(tmpMos);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 // ── Modelica Adapter Builder for Headless Diagrams and Icons ───────────────────
 
-function buildClassAdapter(context: Context, symbolId: number, visited = new Set<number>()): any {
+export function getScopeFromResourceId(resId: string): string[] {
+  if (!resId) return [];
+  const normalized = resId.replace(/\\/g, "/");
+  const match = normalized.match(/(?:Modelica[^/]*\/)(.+)\.mo$/);
+  if (!match) return [];
+  const parts = match[1].split("/").filter(Boolean);
+  return ["Modelica", ...parts];
+}
+
+export function buildClassAdapter(context: Context, symbolId: number, visited = new Set<number>()): any {
   if (visited.has(symbolId)) return null;
   visited.add(symbolId);
 
@@ -436,39 +700,121 @@ function buildClassAdapter(context: Context, symbolId: number, visited = new Set
   const entry = queryDB.symbol(symbolId);
   if (!entry) return null;
   const cstNode = queryDB.cstNode(symbolId);
-  const evaluator = new AnnotationEvaluator();
   const children = queryDB.childrenOf(symbolId) || [];
   const components: any[] = [];
   const connectEquations: any[] = [];
+  const extendsClassInstances: any[] = [];
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
       const childCst = queryDB.cstNode(child.id);
       const childClassId = queryDB.query("classInstance", child.id);
       const compCls = childClassId ? buildClassAdapter(context, childClassId, new Set(visited)) : null;
+      const childMod = queryDB.query("effectiveModification", child.id) as any;
+      let exprText = childMod?.bindingExpression?.text ?? childMod?.bindingExpression?.value;
+      if (exprText === undefined && childMod?.args) {
+        const startArg = childMod.args.find((a: any) => a.name === "start");
+        if (startArg) {
+          exprText = startArg.value?.text ?? startArg.value;
+        }
+      }
       components.push({
+        id: child.id,
         name: child.name,
         classInstance: compCls,
-        annotation: (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null),
+        modification: {
+          expression: exprText !== undefined ? { text: String(exprText) } : undefined,
+          getModificationArgument: (argName: string) => {
+            const foundArg = childMod?.args?.find((a: any) => a.name === argName);
+            if (foundArg) {
+              const valText = foundArg.value?.text ?? foundArg.value;
+              return { expression: valText !== undefined ? { text: String(valText) } : undefined };
+            }
+            return undefined;
+          },
+        },
       });
     } else if (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) {
       const connCst = queryDB.cstNode(child.id);
+      let lhs = "";
+      let rhs = "";
+      if (connCst) {
+        const lhsNode = Cst?.ConnectEquation?.lhs ? Cst.ConnectEquation.lhs(connCst) : null;
+        const rhsNode = Cst?.ConnectEquation?.rhs ? Cst.ConnectEquation.rhs(connCst) : null;
+        lhs = lhsNode?.text?.trim() ?? "";
+        rhs = rhsNode?.text?.trim() ?? "";
+        if (!lhs || !rhs) {
+          const cRefs = (connCst.children || []).filter(
+            (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+          );
+          if (!lhs && cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
+          if (!rhs && cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
+        }
+      }
+      if (!lhs && child.metadata?.lhs) lhs = String(child.metadata.lhs);
+      if (!rhs && child.metadata?.rhs) rhs = String(child.metadata.rhs);
       connectEquations.push({
+        lhs,
+        rhs,
         cstNode: connCst,
-        annotation: (name: string) => (connCst ? evaluator.evaluate(connCst, name) : null),
+        annotation: (name: string) => (connCst ? new AnnotationEvaluator().evaluate(connCst, name) : null),
       });
+    } else if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
+      let baseSym = queryDB.query("resolvedBaseClass", child.id);
+      if (!baseSym && child.name) {
+        let baseId = resolveSymbolId(context, child.name);
+        if (!baseId && entry.resourceId) {
+          const fullScope = getScopeFromResourceId(entry.resourceId);
+          if (fullScope.length > 0) fullScope.pop(); // drop class or package filename
+          while (fullScope.length > 0 && !baseId) {
+            baseId = resolveSymbolId(context, `${fullScope.join(".")}.${child.name}`);
+            fullScope.pop();
+          }
+        }
+        if (baseId) baseSym = queryDB.symbol(baseId);
+      }
+      if (baseSym && !visited.has(baseSym.id)) {
+        const baseAdapter = buildClassAdapter(context, baseSym.id, new Set(visited));
+        if (baseAdapter) {
+          extendsClassInstances.push({ classInstance: baseAdapter });
+        }
+      }
     }
   }
 
-  return {
+  const adapter: any = {
     id: symbolId,
     db: queryDB,
+    context,
     name: entry.name,
     components,
     connectEquations,
-    extendsClassInstances: [],
-    annotation: (name: string) => (cstNode ? evaluator.evaluate(cstNode, name) : null),
+    extendsClassInstances,
   };
+
+  adapter.resolveName = (parts: string[]): any => {
+    if (!parts || parts.length === 0) return null;
+    const [first, ...rest] = parts;
+    let found = components.find((c) => c.name === first);
+    if (!found) {
+      for (const ext of extendsClassInstances) {
+        found = ext.classInstance?.resolveName?.([first]);
+        if (found) break;
+      }
+    }
+    if (!found) return null;
+    if (rest.length === 0) return found;
+    return found.classInstance?.resolveName?.(rest) ?? null;
+  };
+
+  const evaluator = new AnnotationEvaluator(adapter);
+  for (const comp of components) {
+    const childCst = queryDB.cstNode(comp.id);
+    comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
+  }
+
+  adapter.annotation = (name: string) => (cstNode ? evaluator.evaluate(cstNode, name) : null);
+  return adapter;
 }
 
 // ── Verification Stage Executors ───────────────────────────────────────────────
@@ -735,6 +1081,17 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
   };
 }
 
+function hasAnyIconAnnotation(cls: any, visited = new Set<any>()): boolean {
+  if (!cls || visited.has(cls)) return false;
+  visited.add(cls);
+  if (cls.annotation?.("Icon")) return true;
+  for (const ext of cls.extendsClassInstances || []) {
+    const base = ext.classInstance;
+    if (base && hasAnyIconAnnotation(base, visited)) return true;
+  }
+  return false;
+}
+
 function executeIconStage(context: Context, task: WorkerTask): IconValidationResult {
   const symId = resolveSymbolId(context, task.modelFqn);
   if (!symId) {
@@ -757,23 +1114,6 @@ function executeIconStage(context: Context, task: WorkerTask): IconValidationRes
   const cpuStart = process.cpuUsage();
   try {
     const cls = buildClassAdapter(context, symId);
-    const iconAnn = cls.annotation?.("Icon");
-    if (!iconAnn) {
-      const cpuDelta = process.cpuUsage(cpuStart);
-      return {
-        modelscript: {
-          success: true,
-          durationMs: Date.now() - t0,
-          cpuMs: Math.round((cpuDelta.user + cpuDelta.system) / 1000),
-          peakMemoryMB: Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(2)),
-          svgLength: 0,
-          elementCount: 0,
-        },
-        validSvg: true,
-        hasGraphics: false,
-      };
-    }
-
     const svg = getClassIconSvg(cls, 80, true);
     const durationMs = Date.now() - t0;
     const cpuDelta = process.cpuUsage(cpuStart);
@@ -781,23 +1121,24 @@ function executeIconStage(context: Context, task: WorkerTask): IconValidationRes
     const peakMemoryMB = Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(2));
 
     if (!svg || svg.length === 0) {
+      const hasIcon = hasAnyIconAnnotation(cls);
       return {
         modelscript: {
-          success: false,
+          success: !hasIcon,
           durationMs,
           cpuMs,
           peakMemoryMB,
           svgLength: 0,
           elementCount: 0,
-          error: "Icon SVG was empty",
+          error: hasIcon ? "Icon SVG was empty" : undefined,
         },
-        validSvg: false,
+        validSvg: true,
         hasGraphics: false,
       };
     }
 
     const validSvg = svg.startsWith("<svg") && svg.endsWith("</svg>") && !svg.includes("NaN");
-    const elemMatches = svg.match(/<(path|rect|polygon|ellipse|line|text|circle)\b/gi);
+    const elemMatches = svg.match(/<(path|rect|polygon|polyline|ellipse|line|text|circle|image)\b/gi);
     const elementCount = elemMatches ? elemMatches.length : 0;
     const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
     const svgPreview = validSvg && svg.length <= 40_000 ? svg : undefined;
@@ -898,10 +1239,41 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
     const peakMemoryMB = Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(2));
     const validSvg =
       (fullSvg.startsWith("<svg") && fullSvg.endsWith("</svg>") && !fullSvg.includes("NaN")) ||
-      (nodeCount > 0 && unresolved.length === 0);
+      (nodeCount > 0 && unresolved.length === 0) ||
+      (nodeCount === 0 && edgeCount === 0);
     const svgPreview = validSvg && fullSvg.length <= 80_000 ? fullSvg : undefined;
 
+    const omcDiag = runOmcDiagram(task);
+    const nodeCountMatch = !omcDiag.success || nodeCount === omcDiag.nodeCount;
+    const edgeCountMatch = !omcDiag.success || edgeCount === omcDiag.edgeCount;
+
+    let diffSummary: string | undefined;
+    if (omcDiag.success && (!nodeCountMatch || !edgeCountMatch)) {
+      const msNames = diagData.nodes?.map((n: any) => n.id) || [];
+      const omcNames = omcDiag.components?.map((c: any) => c.name) || [];
+      const extraInMs = msNames.filter((n: string) => !omcNames.includes(n));
+      const extraInOmc = omcNames.filter((n: string) => !msNames.includes(n));
+      diffSummary = `Nodes: MS=${nodeCount} vs OMC=${omcDiag.nodeCount} | Edges: MS=${edgeCount} vs OMC=${omcDiag.edgeCount}`;
+      if (extraInMs.length > 0) diffSummary += ` | Extra MS: [${extraInMs.join(", ")}]`;
+      if (extraInOmc.length > 0) diffSummary += ` | Extra OMC: [${extraInOmc.join(", ")}]`;
+    } else if (unresolved.length > 0) {
+      diffSummary = `${unresolved.length} unresolved nodes: ${unresolved.map((u: any) => u.id).join(", ")}`;
+    }
+
     return {
+      omc: omcDiag.success
+        ? {
+            success: true,
+            cached: omcDiag.cached,
+            durationMs: omcDiag.durationMs,
+            cpuMs: omcDiag.cpuMs,
+            peakMemoryMB: omcDiag.peakMemoryMB,
+            nodeCount: omcDiag.nodeCount,
+            edgeCount: omcDiag.edgeCount,
+            components: omcDiag.components,
+            connections: omcDiag.connections,
+          }
+        : undefined,
       modelscript: {
         success: validSvg && unresolved.length === 0,
         durationMs,
@@ -913,8 +1285,11 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
         svgLength: fullSvg.length,
         svgPreview,
       },
+      nodeCountMatch,
+      edgeCountMatch,
       hasUnresolvedNodes: unresolved.length > 0,
       validSvg,
+      diffSummary,
     };
   } catch (err: any) {
     const cpuDelta = process.cpuUsage(cpuStart);
@@ -959,6 +1334,7 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
 
   linkMslPackageHierarchy(symbolIndex, task.mslDir);
   context.setSymbolIndex(symbolIndex);
+  await context.addLibrary(task.mslDir, { skipIndex: true });
 
   // 3. Route according to task.stage
   let status: WorkerResult["status"] = "MATCH";
@@ -1005,7 +1381,11 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
         status = "MS_ERROR";
       } else if (diagRes.modelscript.nodeCount === 0 && diagRes.modelscript.svgLength === 0) {
         status = "SKIPPED";
-      } else if (diagRes.hasUnresolvedNodes) {
+      } else if (
+        diagRes.hasUnresolvedNodes ||
+        (diagRes.nodeCountMatch !== undefined && !diagRes.nodeCountMatch) ||
+        (diagRes.edgeCountMatch !== undefined && !diagRes.edgeCountMatch)
+      ) {
         status = "DIFF";
       }
     }

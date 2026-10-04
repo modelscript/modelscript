@@ -126,13 +126,13 @@ end ElectricalCircuit;
     const syntaxErrors = diags.filter((d: any) => d.severity === 1);
     expect(syntaxErrors.length).toBeGreaterThan(0);
 
-    // Diagnostic should be located on line 1 (editor line 2), columns 2..5 targeting 'Pin'
+    // Diagnostic should be located on line 1 (editor line 2), columns 6..7 targeting 'p'
     const syntaxDiag = syntaxErrors[0];
     expect(syntaxDiag).toBeDefined();
     expect(syntaxDiag.range.start.line).toBe(1);
-    expect(syntaxDiag.range.start.character).toBe(2);
+    expect(syntaxDiag.range.start.character).toBe(6);
     expect(syntaxDiag.range.end.line).toBe(1);
-    expect(syntaxDiag.range.end.character).toBe(5);
+    expect(syntaxDiag.range.end.character).toBe(7);
   });
 
   it("should emit a syntax error diagnostic during parseIncremental when typing ' ERROR' keystroke by keystroke with exact range", () => {
@@ -160,12 +160,12 @@ end ElectricalCircuit;
     const syntaxErrors = diags.filter((d: any) => d.severity === 1);
     expect(syntaxErrors.length).toBeGreaterThan(0);
 
-    // Assert exact line/column range on line 1 (editor line 2), columns 2..5 targeting 'Pin'
+    // Assert exact line/column range on line 1 (editor line 2), columns 6..7 targeting 'p'
     const syntaxDiag = syntaxErrors[0];
     expect(syntaxDiag).toBeDefined();
     expect(syntaxDiag.range.start.line).toBe(1);
-    expect(syntaxDiag.range.start.character).toBe(2);
+    expect(syntaxDiag.range.start.character).toBe(6);
     expect(syntaxDiag.range.end.line).toBe(1);
-    expect(syntaxDiag.range.end.character).toBe(5);
+    expect(syntaxDiag.range.end.character).toBe(7);
   });
 });

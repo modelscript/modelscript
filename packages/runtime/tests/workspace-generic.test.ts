@@ -20,6 +20,19 @@ async function runTests() {
     const nextId = "model MyNewModel end MyNewModel;";
     const rangesId = computeEditRanges(prevId, nextId);
     assert(rangesId.length > 0, "Identifier edit should produce ranges");
+
+    // Surrogate pair boundary preservation test (emoji "🚀" is code units \uD83D\uDE80)
+    const prevSurr = "Real 🚀_power = 10;";
+    const nextSurr = "Real 🚀_speed = 10;";
+    const rangesSurr = computeEditRanges(prevSurr, nextSurr);
+    assert(rangesSurr.length > 0, "Diff with surrogate pair should produce ranges");
+    // Verify that the prefix does not bisect the surrogate pair
+    for (const r of rangesSurr) {
+      const slicePrev = prevSurr.slice(0, r.startIndex);
+      const lastCode = slicePrev.length > 0 ? slicePrev.charCodeAt(slicePrev.length - 1) : 0;
+      assert(!(lastCode >= 0xd800 && lastCode <= 0xdbff), "Diff boundary must not end on high surrogate");
+    }
+
     console.log("✓ computeEditRanges tests passed");
   }
 

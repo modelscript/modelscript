@@ -139,14 +139,15 @@ export function findDeclInClass(db: CodeGraph, classNode: u32, targetId: u32, $:
       const sType = db.ast.getType(sec);
       if (sType != $.equation_section && sType != $.algorithm_section) {
         for (const decl of db.ast.getDescendants(sec, $.declaration)) {
-          if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
           let declId: u32 = 0;
           for (const id of db.ast.getDescendants(decl, $.identifier)) {
             declId = id;
             break;
           }
           if (declId == 0 && db.ast.getType(decl) == $.identifier) declId = decl;
+          // Cheap name match first: isDescendantOfInnerClass walks from the tree root, so only run it on matches.
           if (declId != 0 && db.ast.textEqualsNode(targetId, declId)) {
+            if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
             return decl;
           }
         }
@@ -156,7 +157,6 @@ export function findDeclInClass(db: CodeGraph, classNode: u32, targetId: u32, $:
     return 0;
   }
   for (const decl of db.ast.getDescendants(classNode, $.declaration)) {
-    if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
     let declId: u32 = 0;
     for (const id of db.ast.getDescendants(decl, $.identifier)) {
       declId = id;
@@ -164,6 +164,7 @@ export function findDeclInClass(db: CodeGraph, classNode: u32, targetId: u32, $:
     }
     if (declId == 0 && db.ast.getType(decl) == $.identifier) declId = decl;
     if (declId != 0 && db.ast.textEqualsNode(targetId, declId)) {
+      if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
       return decl;
     }
   }
@@ -859,7 +860,13 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
  * TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK, or TYPE_UNKNOWN.
  */
 export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Record<string, u16>): u16 {
-  return resolveBasePrimitiveTypeInternal(db, typeNameId, $, 0);
+  if (typeNameId == 0) return TYPE_UNKNOWN;
+  const span = db.ast.getTextSpan(typeNameId);
+  const cached = db.ast.getCachedByName(1, span);
+  if (cached >= 0) return cached as u16;
+  const res = resolveBasePrimitiveTypeInternal(db, typeNameId, $, 0);
+  db.ast.setCachedByName(1, span, res as u32);
+  return res;
 }
 
 function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Record<string, u16>, depth: u32): u16 {
@@ -1279,23 +1286,39 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
     leafId = id;
   }
 
+  const leafSpan = db.ast.getTextSpan(leafId);
+  const cachedCls = db.ast.getCachedByName(0, leafSpan);
+  if (cachedCls >= 0) return cachedCls as u32;
+
+  let result: u32 = 0;
   for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+    if (result != 0) break;
     const nameId = db.ast.getChildByFieldId(spec, "name");
     if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
       for (const cls of db.ast.getAncestors(spec)) {
-        if (db.ast.getType(cls) == $.class_definition) return cls;
+        if (db.ast.getType(cls) == $.class_definition) {
+          result = cls;
+          break;
+        }
       }
     }
   }
-  for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
-    const nameId = db.ast.getChildByFieldId(spec, "name");
-    if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
-      for (const cls of db.ast.getAncestors(spec)) {
-        if (db.ast.getType(cls) == $.class_definition) return cls;
+  if (result == 0) {
+    for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+      if (result != 0) break;
+      const nameId = db.ast.getChildByFieldId(spec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
+        for (const cls of db.ast.getAncestors(spec)) {
+          if (db.ast.getType(cls) == $.class_definition) {
+            result = cls;
+            break;
+          }
+        }
       }
     }
   }
-  return 0;
+  db.ast.setCachedByName(0, leafSpan, result);
+  return result;
 }
 
 export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u32 {

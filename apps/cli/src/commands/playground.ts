@@ -234,7 +234,7 @@ end ChuaCircuit;`;
         res.writeHead(302, { Location: "/node_modules/assemblyscript/dist/asc.js" });
         res.end();
       } else if (urlPath === "/favicon.ico") {
-        const faviconPath = join(__dirname, "../../../../apps/morsel/public/favicon.ico");
+        const faviconPath = join(__dirname, "../../../../apps/web/public/favicon.ico");
         if (existsSync(faviconPath)) {
           res.writeHead(200, { "Content-Type": "image/x-icon" });
           res.end(readFileSync(faviconPath));
@@ -271,7 +271,7 @@ end ChuaCircuit;`;
             const files = bundleExtension(langInput, payload.options);
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: true, files }));
-          } catch (e: any) {
+          } catch (_e: any) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: "Failed to bundle extension" }));
           }

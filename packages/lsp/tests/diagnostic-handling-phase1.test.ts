@@ -595,6 +595,20 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       assert.strictEqual(range.end.character, 6);
     });
 
+    it("should ensure rangeFromBytes delegates to rangeFromOffsets with character offsets", () => {
+      const text = "🚀 = 1;\nReal π = 3.14;\n";
+      const posIndex = new PositionIndex(text);
+      const piCharOffset = text.indexOf("π");
+
+      // Calling rangeFromBytes with character offsets must produce identical character coordinates
+      const rangeBytes = posIndex.rangeFromBytes(piCharOffset, piCharOffset + 1);
+      const rangeOffsets = posIndex.rangeFromOffsets(piCharOffset, piCharOffset + 1);
+
+      assert.deepStrictEqual(rangeBytes, rangeOffsets);
+      assert.strictEqual(rangeBytes.start.line, 1);
+      assert.strictEqual(rangeBytes.start.character, 5);
+    });
+
     it("should populate startOffset and endOffset on SymbolEntry during workspace indexing", () => {
       const ws = new LanguageWorkspaceIndex([
         {

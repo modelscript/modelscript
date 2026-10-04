@@ -111,6 +111,52 @@ function collectAllComponents(ci: ModelicaClassInstance, visited = new Set<any>(
   return Array.from(byName.values());
 }
 
+function collectAllConnectEquations(ci: ModelicaClassInstance, visited = new Set<any>()): any[] {
+  if (!ci || visited.has(ci)) return [];
+  visited.add(ci);
+  const result: any[] = [];
+  const extendsList = ci.extendsClassInstances ?? [];
+  for (const ext of extendsList) {
+    const base = (ext as any)?.classInstance ?? ext;
+    if (base && typeof base === "object") {
+      result.push(...collectAllConnectEquations(base, visited));
+    }
+  }
+  if (ci.connectEquations) {
+    result.push(...ci.connectEquations);
+  }
+  return result;
+}
+
+function splitComponentRef(ref: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  let inQuote = false;
+  for (let i = 0; i < ref.length; i++) {
+    const ch = ref[i];
+    if (ch === "'" && (i === 0 || ref[i - 1] !== "\\")) {
+      inQuote = !inQuote;
+      current += ch;
+    } else if (!inQuote && (ch === "[" || ch === "(")) {
+      depth++;
+      current += ch;
+    } else if (!inQuote && (ch === "]" || ch === ")")) {
+      depth = Math.max(0, depth - 1);
+      current += ch;
+    } else if (!inQuote && ch === "." && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+  return parts;
+}
+
 export async function buildDiagramData(classInstance: ModelicaClassInstance): Promise<DiagramData> {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
@@ -122,8 +168,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   let tPlacement = 0;
   let componentCount = 0;
 
-  // Guard classInstance and extract components from Salsa if not already present
-  const components: any[] = classInstance?.components ? [...classInstance.components] : [];
+  // Gather components (including inherited ones)
+  const components: any[] = classInstance ? collectAllComponents(classInstance) : [];
   if (components.length === 0 && classInstance?.db && classInstance.id !== undefined) {
     const db = classInstance.db;
     const children = db.childrenOf ? (db.childrenOf(classInstance.id) ?? []) : [];
@@ -140,6 +186,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
                 db,
                 entry: childClassEntry,
                 name: childClassEntry.name,
+                classKind: (childClassEntry.metadata as any)?.classKind ?? (childClassEntry as any).classKind,
                 annotation: () => null,
                 components: [],
                 extendsClassInstances: [],
@@ -152,14 +199,21 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     }
   }
 
+  // Pre-gather all connect equations (including inherited ones)
+  const connectEquations = classInstance ? collectAllConnectEquations(classInstance) : [];
+
+  let lastYield = performance.now();
   // Build nodes for each component
   for (let _ci = 0; _ci < components.length; _ci++) {
     const component = components[_ci];
     if (!component.name) continue;
 
-    // Yield to the event loop periodically so the LSP worker can process
-    // keystrokes and other messages while we build the diagram.
-    if (_ci % 5 === 0) await yieldToEventLoop();
+    // Yield cooperatively to the event loop when work budget is exceeded (20ms)
+    // so the LSP worker remains responsive without incurring 1-4ms timer penalties per component.
+    if (performance.now() - lastYield > 20) {
+      await yieldToEventLoop();
+      lastYield = performance.now();
+    }
     const tc0 = performance.now();
     const condition = evaluateCondition(component, classInstance);
     tCondition += performance.now() - tc0;
@@ -173,6 +227,21 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     let componentTransform = computeIconPlacement(component);
     const autoLayout = !componentTransform;
     if (!componentTransform) {
+      const hasPlacement = typeof component?.annotation === "function" && component.annotation("Placement") != null;
+      if (!hasPlacement) {
+        const kind = componentClassInstance?.classKind ?? componentClassInstance?.entry?.metadata?.classKind;
+        const isPrimitive =
+          componentClassInstance?.name &&
+          ["Real", "Integer", "Boolean", "String", "ExternalObject"].includes(componentClassInstance.name);
+        const isExcludedKind =
+          kind === ModelicaClassKind.TYPE ||
+          kind === ModelicaClassKind.FUNCTION ||
+          kind === ModelicaClassKind.RECORD ||
+          kind === ModelicaClassKind.PACKAGE;
+        if (isPrimitive || isExcludedKind) {
+          continue;
+        }
+      }
       const icon = componentClassInstance?.annotation
         ? (componentClassInstance.annotation("Icon", component) as IIcon | null)
         : null;
@@ -301,7 +370,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const tpr0 = performance.now();
     if (isUnresolved) {
       const referencedPorts = new Set<string>();
-      for (const eq of classInstance?.connectEquations ?? []) {
+      for (const eq of connectEquations) {
         const p1 =
           eq.lhs ?? eq.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
         const p2 =
@@ -450,20 +519,23 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
 
   // Build edges from connect equations
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const allConnectionPaths: ({ points: { x: number; y: number }[] } | null)[] = [];
+  const allCompNames = new Set(components.map((c) => c.name));
 
-  const connectEquations = classInstance?.connectEquations ?? [];
   for (const connectEquation of connectEquations) {
     let c1 = connectEquation.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "");
     let c2 = connectEquation.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "");
     if ((!c1 || c1.length === 0) && connectEquation.lhs) {
-      c1 = typeof connectEquation.lhs === "string" ? connectEquation.lhs.split(".") : undefined;
+      c1 = typeof connectEquation.lhs === "string" ? splitComponentRef(connectEquation.lhs) : undefined;
     }
     if ((!c2 || c2.length === 0) && connectEquation.rhs) {
-      c2 = typeof connectEquation.rhs === "string" ? connectEquation.rhs.split(".") : undefined;
+      c2 = typeof connectEquation.rhs === "string" ? splitComponentRef(connectEquation.rhs) : undefined;
     }
     if (!c1 || !c2 || c1.length === 0 || c2.length === 0) continue;
-    if (!nodeIds.has(c1[0]) || !nodeIds.has(c2[0])) continue;
+    const baseC1 = c1[0].indexOf("[") >= 0 ? c1[0].slice(0, c1[0].indexOf("[")).trim() : c1[0].trim();
+    const baseC2 = c2[0].indexOf("[") >= 0 ? c2[0].slice(0, c2[0].indexOf("[")).trim() : c2[0].trim();
+    const isC1Valid = nodeIds.has(baseC1) || allCompNames.has(baseC1) || c1.length === 1;
+    const isC2Valid = nodeIds.has(baseC2) || allCompNames.has(baseC2) || c2.length === 1;
+    if (!isC1Valid || !isC2Valid) continue;
 
     const line: ILine | null =
       typeof connectEquation.annotation === "function" ? connectEquation.annotation("Line") : null;
@@ -505,10 +577,20 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const targetMarker = buildMarker(line?.arrow?.[1], strokeColor, strokeWidth);
 
     edges.push({
-      id: `${c1[0]}.${c1?.[1]}-${c2[0]}.${c2?.[1]}`,
+      id: `${c1.join(".")}-${c2.join(".")}`,
       zIndex: 1,
-      source: { cell: c1[0], port: c1?.[1] ?? "", anchor: "center", connectionPoint: { name: "anchor" } },
-      target: { cell: c2[0], port: c2?.[1] ?? "", anchor: "center", connectionPoint: { name: "anchor" } },
+      source: {
+        cell: c1.length > 1 ? baseC1 : "",
+        port: c1.length > 1 ? (c1[1] ?? "") : c1[0],
+        anchor: "center",
+        connectionPoint: { name: "anchor" },
+      },
+      target: {
+        cell: c2.length > 1 ? baseC2 : "",
+        port: c2.length > 1 ? (c2[1] ?? "") : c2[0],
+        anchor: "center",
+        connectionPoint: { name: "anchor" },
+      },
       vertices: line?.points
         ?.slice(1, -1)
         ?.map((p: IPoint) => convertPoint(p))
@@ -526,15 +608,6 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         },
       },
     });
-
-    if (line?.points && line.points.length >= 2) {
-      const convertedPts = line.points
-        .map((p: IPoint) => convertPoint(p))
-        .map((p: [number, number]) => ({ x: p[0], y: p[1] }));
-      allConnectionPaths.push({ points: convertedPts });
-    } else {
-      allConnectionPaths.push(null);
-    }
   }
 
   // Coordinate system
@@ -640,8 +713,15 @@ export function renderIconX6(
       }
     }
   }
-  const cacheKey = classInstance.name ? classInstance.name + modKey : null;
-  const canCache = isTopLevel && cacheKey;
+  const identityKey =
+    classInstance.id !== undefined
+      ? `id:${classInstance.id}`
+      : ((classInstance as any).fullName ??
+        (classInstance as any).entry?.fullName ??
+        (classInstance as any).entry?.name ??
+        classInstance.name);
+  const cacheKey = isTopLevel && identityKey ? `${identityKey}${modKey}` : null;
+  const canCache = Boolean(cacheKey);
 
   if (canCache && cacheKey) {
     const cached = iconCache.get(cacheKey);
@@ -661,21 +741,30 @@ export function renderIconX6(
     children: [],
   };
 
-  const hasExtends = classInstance.extendsClassInstances?.some((e: any) => e.classInstance);
-  for (const extendsClassInstance of classInstance.extendsClassInstances) {
+  const extendsList = classInstance.extendsClassInstances ?? [];
+  const hasExtends = extendsList.some((e: any) => e.classInstance);
+  for (const extendsClassInstance of extendsList) {
     if (extendsClassInstance.classInstance && svg.children) {
       svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports, localDefs));
     }
   }
 
+  const hasAnnotationFn = typeof classInstance.annotation === "function";
   const ownIcon: IIcon | null = hasExtends
-    ? classInstance.annotation("Icon", {
-        ...(typeof componentInstance === "object" ? componentInstance : {}),
-        ownOnly: true,
-      })
-    : classInstance.annotation("Icon", componentInstance);
-  const icon: IIcon | null = ownIcon ?? (hasExtends ? null : classInstance.annotation("Icon", componentInstance));
-  const coordSys = ownIcon?.coordinateSystem ?? classInstance.annotation("Icon", componentInstance)?.coordinateSystem;
+    ? hasAnnotationFn
+      ? classInstance.annotation("Icon", {
+          ...(typeof componentInstance === "object" ? componentInstance : {}),
+          ownOnly: true,
+        })
+      : null
+    : hasAnnotationFn
+      ? classInstance.annotation("Icon", componentInstance)
+      : null;
+  const icon: IIcon | null =
+    ownIcon ?? (hasExtends || !hasAnnotationFn ? null : classInstance.annotation("Icon", componentInstance));
+  const coordSys =
+    ownIcon?.coordinateSystem ??
+    (hasAnnotationFn ? classInstance.annotation("Icon", componentInstance)?.coordinateSystem : null);
 
   if (isRoot) {
     applyCoordinateSystemX6(svg, coordSys, true);
@@ -792,7 +881,7 @@ function renderGraphicItemX6(
   let shape: X6Markup;
   switch (graphicItem["@type"]) {
     case "Bitmap":
-      shape = renderBitmapX6(graphicItem as IBitmap, defs);
+      shape = renderBitmapX6(graphicItem as IBitmap, defs, classInstance);
       break;
     case "Ellipse":
       shape = renderEllipseX6(graphicItem as IEllipse, defs);
@@ -825,9 +914,23 @@ function renderGraphicItemX6(
   };
 }
 
-function renderBitmapX6(graphicItem: IBitmap, defs: X6Markup[]): X6Markup {
-  const p1 = convertPoint(graphicItem.extent?.[0], [-100, -100]);
-  const href = graphicItem.imageSource ? `data:image/png;base64,${graphicItem.imageSource}` : graphicItem.fileName;
+function renderBitmapX6(graphicItem: IBitmap, defs: X6Markup[], classInstance?: ModelicaClassInstance): X6Markup {
+  const [x1, y1] = convertPoint(graphicItem.extent?.[0], [-100, -100]);
+  const [x2, y2] = convertPoint(graphicItem.extent?.[1], [100, 100]);
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  let href = graphicItem.imageSource
+    ? graphicItem.imageSource.startsWith("data:")
+      ? graphicItem.imageSource
+      : `data:image/png;base64,${graphicItem.imageSource}`
+    : graphicItem.fileName;
+
+  if (href && href.startsWith("modelica://")) {
+    const resolved = resolveModelicaBitmapUri(href, classInstance);
+    if (resolved) {
+      href = resolved;
+    }
+  }
 
   const shape: X6Markup = {
     tagName: "image",
@@ -835,8 +938,8 @@ function renderBitmapX6(graphicItem: IBitmap, defs: X6Markup[]): X6Markup {
       href,
       width: computeWidth(graphicItem.extent),
       height: computeHeight(graphicItem.extent),
-      x: p1[0],
-      y: p1[1],
+      x,
+      y,
     },
   };
   renderFilledShapeX6(shape, graphicItem, defs);
@@ -967,8 +1070,8 @@ export function evalMacroCondition(
     if (c.includes(op)) {
       const parts = c.split(op).map((s) => s.trim());
       if (parts.length === 2) {
-        const lhs = evaluateMacroExpression(parts[0], classInstance, componentInstance);
-        const rhs = evaluateMacroExpression(parts[1], classInstance, componentInstance);
+        const lhs = stripQuotes(evaluateMacroExpression(parts[0], classInstance, componentInstance));
+        const rhs = stripQuotes(evaluateMacroExpression(parts[1], classInstance, componentInstance));
         let res = false;
         if (op === "==") res = lhs === rhs;
         else if (op === "!=") res = lhs !== rhs;
@@ -1014,22 +1117,23 @@ export function evaluateMacroExpression(
 
   const name = trimmed;
   // 1. Check if the specific component instance overrides this parameter
-  const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument(name)?.expression;
+  const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument?.(name)?.expression;
   const compVal = formatPropertyValue(compArgExpr);
 
   const namedElement =
     typeof classInstance?.resolveName === "function" ? classInstance.resolveName(name.split(".")) : null;
 
   // 2. Check if the class provides a default value for this parameter
-  const elemExpr = (namedElement as any)?.modification?.expression;
-  const elemVal = formatPropertyValue(elemExpr);
+  const elemMod = (namedElement as any)?.modification;
+  const elemExpr = elemMod?.expression ?? elemMod?.getModificationArgument?.("start")?.expression;
+  const elemVal = formatPropertyValue(elemExpr) ?? formatPropertyValue((namedElement as any)?.value);
 
   const finalVal = compVal ?? elemVal;
 
   let unitString = "";
   if (namedElement && "classInstance" in namedElement) {
     const mod = (namedElement as ModelicaComponentInstance).classInstance?.modification as any;
-    const unitExpr = mod?.getModificationArgument("unit")?.expression;
+    const unitExpr = mod?.getModificationArgument?.("unit")?.expression;
     const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
     if (rawUnit) unitString = " " + formatUnit(rawUnit);
   }
@@ -1320,7 +1424,13 @@ function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
     defs.push(def);
     return;
   }
-  if (!defs.find((d) => d.attrs?.id === id)) {
+  let idSet: Set<string | number> = (defs as any).__idSet;
+  if (!idSet) {
+    idSet = new Set(defs.map((d) => d.attrs?.id).filter((v): v is string | number => v !== undefined && v !== ""));
+    Object.defineProperty(defs, "__idSet", { value: idSet, enumerable: false, writable: true });
+  }
+  if (!idSet.has(id)) {
+    idSet.add(id);
     defs.push(def);
   }
 }
@@ -1500,7 +1610,7 @@ export function x6MarkupToSvg(markup: X6Markup): string {
 }
 
 export function hasGraphicElements(node: X6Markup): boolean {
-  const shapeTags = new Set(["rect", "ellipse", "circle", "polygon", "polyline", "path", "line", "image"]);
+  const shapeTags = new Set(["rect", "ellipse", "circle", "polygon", "polyline", "path", "line", "image", "text"]);
   if (shapeTags.has(node.tagName)) return true;
   return Array.isArray(node.children) ? node.children.some(hasGraphicElements) : false;
 }
@@ -1620,6 +1730,92 @@ function stripHtmlEnvelope(html: string): string {
     .replace(/^\s*<body[^>]*>\s*/i, "")
     .replace(/\s*<\/body>\s*$/i, "")
     .trim();
+}
+
+/**
+ * Resolves a `modelica://` URI into a base64 data URI for bitmaps/images.
+ */
+export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaClassInstance): string | null {
+  if (!uri || !uri.startsWith("modelica://")) return null;
+
+  const match = uri.match(/^modelica:\/\/([^/]+)\/(.*)$/);
+  if (!match) return null;
+  const [, libraryName, relativePath] = match;
+
+  // 1. Try classInstance.context or classInstance.db?.context
+  const ctx = (classInstance as any)?.context ?? (classInstance as any)?.db?.context;
+  if (typeof ctx?.resolveURI === "function" && typeof ctx?.fs?.readBinary === "function") {
+    const resolved = ctx.resolveURI(uri);
+    if (resolved) {
+      try {
+        const binary = ctx.fs.readBinary(resolved);
+        if (binary && binary.length > 0) {
+          const chunks: string[] = [];
+          const chunkSize = 8192;
+          for (let i = 0; i < binary.length; i += chunkSize) {
+            chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
+          }
+          const base64 = btoa(chunks.join(""));
+          const ext = (resolved.split(".").pop() || "png").toLowerCase();
+          const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+          return `data:${mime};base64,${base64}`;
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Node.js environment resolution fallback (works dynamically without static fs imports)
+  try {
+    let nodeFs: any = null;
+    let nodePath: any = null;
+    if (typeof (globalThis as any).process?.getBuiltinModule === "function") {
+      nodeFs = (globalThis as any).process.getBuiltinModule("node:fs");
+      nodePath = (globalThis as any).process.getBuiltinModule("node:path");
+    }
+    if (nodeFs && nodePath) {
+      const candidates: string[] = [];
+
+      if (classInstance?.id && classInstance.db?.symbol) {
+        const sym = classInstance.db.symbol(classInstance.id);
+        if (sym?.resourceId) {
+          let dir = nodePath.dirname(sym.resourceId);
+          while (dir && dir !== nodePath.dirname(dir)) {
+            const base = nodePath.basename(dir);
+            if (base === libraryName || base.startsWith(`${libraryName} `) || base.startsWith(`${libraryName}+`)) {
+              candidates.push(nodePath.join(dir, relativePath));
+              break;
+            }
+            dir = nodePath.dirname(dir);
+          }
+        }
+      }
+
+      const cwd = (globalThis as any).process?.cwd?.();
+      if (cwd) {
+        candidates.push(nodePath.join(cwd, "scripts", "msl", `${libraryName} 4.0.0`, relativePath));
+        candidates.push(nodePath.join(cwd, "scripts", "msl", libraryName, relativePath));
+      }
+      const home = (globalThis as any).process?.env?.HOME;
+      if (home) {
+        candidates.push(
+          nodePath.join(home, ".openmodelica", "libraries", `${libraryName} 4.0.0+maint.om`, relativePath),
+        );
+        candidates.push(nodePath.join(home, ".openmodelica", "libraries", `${libraryName} 4.0.0`, relativePath));
+        candidates.push(nodePath.join(home, ".openmodelica", "libraries", libraryName, relativePath));
+      }
+
+      for (const candidate of candidates) {
+        if (nodeFs.existsSync(candidate)) {
+          const buf = nodeFs.readFileSync(candidate);
+          const ext = (candidate.split(".").pop() || "png").toLowerCase();
+          const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+          return `data:${mime};base64,${buf.toString("base64")}`;
+        }
+      }
+    }
+  } catch {}
+
+  return null;
 }
 
 function processHtml(html: string | undefined, context: any): string | undefined {
@@ -1962,10 +2158,13 @@ export function buildComponentProperties(
   }
 
   // Extract documentation
-  const docAnnotation = componentClassInstance.annotation("Documentation") as {
-    info?: string;
-    revisions?: string;
-  } | null;
+  const docAnnotation =
+    typeof componentClassInstance.annotation === "function"
+      ? (componentClassInstance.annotation("Documentation") as {
+          info?: string;
+          revisions?: string;
+        } | null)
+      : null;
 
   const context = (classInstance as any).context;
   const docInfo = processHtml(docAnnotation?.info, context);

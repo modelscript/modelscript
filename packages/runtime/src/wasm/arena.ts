@@ -8,6 +8,7 @@ import {
 } from "./core/array";
 export { atomicChunkAlloc };
 import { inputEncoding } from "./parser";
+export { inputEncoding };
 
 @external("engine", "debugLog")
 export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;

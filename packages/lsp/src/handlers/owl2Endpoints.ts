@@ -335,7 +335,8 @@ export function registerOwl2Endpoints(context: LspContext): void {
             if (entry?.resourceId) {
               const bridge = context.state.documentLSPBridges.get(entry.resourceId);
               if (bridge) {
-                const pos = (bridge as any).positions.offsetToPosition(entry.startByte);
+                const startOff = typeof entry.startOffset === "number" ? entry.startOffset : entry.startByte;
+                const pos = (bridge as any).positions.charOffsetToPosition(startOff);
                 return { uri: entry.resourceId, line: pos.line, character: pos.character };
               }
             }

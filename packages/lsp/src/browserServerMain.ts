@@ -10,6 +10,7 @@ import {
   CodeActionKind,
   Diagnostic,
   InitializeResult,
+  PositionEncodingKind,
   ServerCapabilities,
   TextDocumentSyncKind,
   TextDocuments,
@@ -612,6 +613,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   }
 
   const capabilities: ServerCapabilities = {
+    positionEncoding: PositionEncodingKind.UTF16,
     textDocumentSync: TextDocumentSyncKind.Full,
     completionProvider: {
       triggerCharacters: ["."],

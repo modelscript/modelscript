@@ -72,21 +72,6 @@ services:
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
     restart: unless-stopped
 
-  morsel:
-    image: ghcr.io/modelscript/morsel:latest
-    profiles: ["internal", "federated"]
-    build:
-      context: .
-      target: morsel
-    ports:
-      - "3002:3002"
-    depends_on:
-      - api
-    environment:
-      - NODE_ENV=production
-      - PORT=3002
-    restart: unless-stopped
-
   web:
     image: ghcr.io/modelscript/web:latest
     profiles: ["standalone", "internal", "federated"]

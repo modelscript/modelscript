@@ -27,6 +27,7 @@ import {
   portOrthogonalRouter,
 } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
+import { computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout } from "./swimlane-layout.js";
 import { animateCells } from "./telemetry.js";
@@ -683,6 +684,16 @@ export function initGraph(isDark: boolean): Graph | null {
     }, 500);
   });
 
+  // Synchronize topological solder dots across graph lifecycle and interactive edits
+  g.on("node:change:position", () => scheduleUpdateSolderDots(g));
+  g.on("node:moved", () => scheduleUpdateSolderDots(g));
+  g.on("node:resized", () => scheduleUpdateSolderDots(g));
+  g.on("edge:change:vertices", () => scheduleUpdateSolderDots(g));
+  g.on("edge:connected", () => scheduleUpdateSolderDots(g));
+  g.on("edge:added", () => scheduleUpdateSolderDots(g));
+  g.on("edge:removed", () => scheduleUpdateSolderDots(g));
+  g.on("render:done", () => scheduleUpdateSolderDots(g));
+
   // Delete key: delete selected edges/components
   document.addEventListener("keydown", (e) => {
     if (e.key === "Delete" || e.key === "Backspace") {
@@ -725,6 +736,7 @@ export function initGraph(isDark: boolean): Graph | null {
         enqueueDiagramAction({ type: "deleteComponents", names: componentNames });
       }
       g.removeCells(cells);
+      scheduleUpdateSolderDots(g);
     } else {
       const nav = navigator as unknown as {
         platform?: string;
@@ -1373,6 +1385,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       }
 
       updateSolderDots(g);
+      scheduleUpdateSolderDots(g);
       return;
     }
   }
@@ -1435,6 +1448,12 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   }
 
   updateSolderDots(g);
+  scheduleUpdateSolderDots(g);
+  setTimeout(() => {
+    if (graph === g && !(g as any).disposed) {
+      updateSolderDots(g);
+    }
+  }, 50);
 }
 
 // Handle deferred diagram updates to avoid interrupting active interactions
@@ -1657,140 +1676,111 @@ function showProperties(nodeData: any) {
   }
 }
 
+let solderDotsRaf: number | null = null;
+
+export function scheduleUpdateSolderDots(g: Graph) {
+  if (!g || (g as any).disposed) return;
+  if (solderDotsRaf !== null) return;
+  solderDotsRaf = requestAnimationFrame(() => {
+    solderDotsRaf = null;
+    if (g && !(g as any).disposed) {
+      updateSolderDots(g);
+    }
+  });
+}
+
 export function updateSolderDots(g: Graph) {
+  if (!g || (g as any).disposed) return;
+
   const edges = g.getEdges();
-  const allPaths: { id: string; points: { x: number; y: number }[]; color: string }[] = [];
-  const candidateVertices = new Map<string, { x: number; y: number; pathId: string; color: string }>();
+  const existingDots = g.getNodes().filter((n: any) => n.id.startsWith("solder_dot_"));
+
+  if (!edges || edges.length === 0) {
+    if (existingDots.length > 0) {
+      g.batchUpdate("solder-dots", () => {
+        for (const dot of existingDots) g.removeCell(dot);
+      });
+    }
+    return;
+  }
+
+  const allPaths: EdgePath[] = [];
+  const portPoints: { x: number; y: number }[] = [];
 
   for (const edge of edges) {
     const source = edge.getSourcePoint();
     const target = edge.getTargetPoint();
     if (!source || !target) continue;
 
+    // Collect port positions so solder dots are never placed on component pins
+    const src = edge.getSource() as any;
+    if (src?.port) {
+      portPoints.push(source);
+    }
+    const tgt = edge.getTarget() as any;
+    if (tgt?.port) {
+      portPoints.push(target);
+    }
+
     const vertices = edge.getVertices() || [];
     const points = [source, ...vertices, target];
 
     const stroke = edge.attr("line/stroke") as string | undefined;
-    const color = stroke && stroke !== "none" ? stroke : "blue";
+    const color = stroke && stroke !== "none" ? stroke : "#1890ff";
     allPaths.push({ id: edge.id, points, color });
-
-    for (const v of points) {
-      const key = `${v.x.toFixed(1)},${v.y.toFixed(1)}`;
-      candidateVertices.set(key, { x: v.x, y: v.y, pathId: edge.id, color });
-    }
   }
 
-  // Spatial hash index for path segments to achieve O(V) junction queries
-  const CELL_SIZE = 40;
-  const grid = new Map<string, { pathId: string; p1: { x: number; y: number }; p2: { x: number; y: number } }[]>();
-
-  for (const path of allPaths) {
-    for (let k = 0; k < path.points.length - 1; k++) {
-      const p1 = path.points[k];
-      const p2 = path.points[k + 1];
-      const minX = Math.floor(Math.min(p1.x, p2.x) / CELL_SIZE);
-      const maxX = Math.floor(Math.max(p1.x, p2.x) / CELL_SIZE);
-      const minY = Math.floor(Math.min(p1.y, p2.y) / CELL_SIZE);
-      const maxY = Math.floor(Math.max(p1.y, p2.y) / CELL_SIZE);
-
-      const segment = { pathId: path.id, p1, p2 };
-      for (let gx = minX; gx <= maxX; gx++) {
-        for (let gy = minY; gy <= maxY; gy++) {
-          const key = `${gx}:${gy}`;
-          let bucket = grid.get(key);
-          if (!bucket) {
-            bucket = [];
-            grid.set(key, bucket);
-          }
-          bucket.push(segment);
-        }
+  // Also collect port coordinates from all component nodes in graph
+  for (const node of g.getNodes()) {
+    if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
+    const ports = (node as any).getPorts?.() || [];
+    for (const p of ports) {
+      const pos = (node as any).getPortProp?.(p.id, "args");
+      if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+        const nodePos = node.getPosition();
+        portPoints.push({ x: nodePos.x + pos.x, y: nodePos.y + pos.y });
       }
     }
   }
 
-  const solderDots: { x: number; y: number; color: string; path1: string; path2: string }[] = [];
-
-  for (const candidate of candidateVertices.values()) {
-    let isJunction = false;
-    let intersectingPathId = "";
-
-    const gx = Math.floor(candidate.x / CELL_SIZE);
-    const gy = Math.floor(candidate.y / CELL_SIZE);
-
-    outer: for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const bucket = grid.get(`${gx + dx}:${gy + dy}`);
-        if (!bucket) continue;
-        for (const seg of bucket) {
-          if (seg.pathId === candidate.pathId) continue;
-          if (distToSegmentSquared(candidate.x, candidate.y, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y) < 1.0) {
-            isJunction = true;
-            intersectingPathId = seg.pathId;
-            break outer;
-          }
-        }
-      }
-    }
-
-    if (isJunction) {
-      solderDots.push({ ...candidate, path1: candidate.pathId, path2: intersectingPathId });
-    }
-  }
-
-  const existingDots = g.getNodes().filter((n) => n.id.startsWith("solder_dot_"));
-  const existingIds = new Set<string>(existingDots.map((n) => n.id));
-
+  const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints });
+  const existingIds = new Set<string>(existingDots.map((n: any) => n.id));
   const newIds = new Set<string>();
-  for (const dot of solderDots) {
-    const ids = [dot.path1, dot.path2].sort();
-    const id = `solder_dot_${ids[0]}_${ids[1]}`;
-    newIds.add(id);
 
-    const existing = g.getCellById(id);
-    if (existing && existing.isNode()) {
-      if (existing.getPosition().x !== dot.x - 0.75 || existing.getPosition().y !== dot.y - 0.75) {
-        existing.setPosition(dot.x - 0.75, dot.y - 0.75);
+  const dotSize = 3;
+  const radius = dotSize / 2;
+
+  g.batchUpdate("solder-dots", () => {
+    for (const dot of dots) {
+      newIds.add(dot.id);
+      const targetX = dot.x - radius;
+      const targetY = dot.y - radius;
+
+      const existing = g.getCellById(dot.id);
+      if (existing && existing.isNode()) {
+        const curPos = existing.getPosition();
+        if (Math.abs(curPos.x - targetX) > 0.1 || Math.abs(curPos.y - targetY) > 0.1) {
+          existing.setPosition(targetX, targetY);
+        }
+        if (existing.attr("body/fill") !== dot.color) {
+          existing.attr("body/fill", dot.color);
+        }
+      } else {
+        g.addNode(solderDotToDiagramNode(dot, dotSize));
       }
-    } else {
-      g.addNode({
-        id,
-        shape: "circle",
-        x: dot.x - 0.75,
-        y: dot.y - 0.75,
-        width: 1.5,
-        height: 1.5,
-        zIndex: 20,
-        attrs: {
-          body: {
-            fill: dot.color,
-            stroke: "none",
-          },
-        },
-      });
     }
-  }
 
-  for (const oldId of existingIds) {
-    if (!newIds.has(oldId)) {
-      const cell = g.getCellById(oldId);
-      if (cell) g.removeCell(cell);
+    for (const oldId of existingIds) {
+      if (!newIds.has(oldId)) {
+        const cell = g.getCellById(oldId);
+        if (cell) g.removeCell(cell);
+      }
     }
-  }
+  });
 
   if (typeof window !== "undefined") {
-    (window as /* eslint-disable-line @typescript-eslint/no-explicit-any */ any).debugSolderDotsInfo =
-      `Edges: ${edges.length}, Paths: ${allPaths.length}, Candidates: ${candidateVertices.size}, Dots: ${solderDots.length}`;
+    (window as any).debugSolderDotsInfo = `Edges: ${edges.length}, Paths: ${allPaths.length}, Dots: ${dots.length}`;
   }
-}
-
-function distToSegmentSquared(px: number, py: number, vx: number, vy: number, wx: number, wy: number) {
-  const l2 = (wx - vx) * (wx - vx) + (wy - vy) * (wy - vy);
-  if (l2 === 0) return (px - vx) * (px - vx) + (py - vy) * (py - vy);
-  let t = ((px - vx) * (wx - vx) + (py - vy) * (wy - vy)) / l2;
-  t = Math.max(0, Math.min(1, t));
-  const projX = vx + t * (wx - vx);
-  const projY = vy + t * (wy - vy);
-  return (px - projX) * (px - projX) + (py - projY) * (py - projY);
 }
 
 export function disposeDiagram() {

@@ -141,7 +141,7 @@ export default defineConfig({
       {
         text: "Ecosystem",
         items: [
-          { text: "Morsel (Playground)", link: "https://morsel.modelscript.org" },
+          { text: "Playground", link: "https://modelscript.org/playground" },
           { text: "Web IDE", link: "https://ide.modelscript.org" },
           {
             text: "VS Code Extension",
@@ -197,6 +197,7 @@ export default defineConfig({
             { text: "Triple Graph Grammars", link: "/architecture/tgg" },
             { text: "Nelson-Oppen Coordinator", link: "/architecture/theory-coordinator" },
             { text: "Simulation Solvers", link: "/architecture/simulation-solvers" },
+            { text: "SIL & Real-Time HIL", link: "/architecture/hil-wasm-runtime" },
           ],
         },
       ],

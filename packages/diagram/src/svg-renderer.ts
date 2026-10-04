@@ -272,6 +272,14 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const nh = node.height ?? 60;
 
     let fill = (node.attrs?.body?.fill as string) || defaultNodeFill;
+
+    if (node.id.startsWith("solder_dot_") || (node as any).shape === "circle") {
+      const r = nw / 2;
+      bodyParts.push(
+        `<circle id="${escapeXml(node.id)}" cx="${nx + r}" cy="${ny + r}" r="${r}" fill="${escapeXml(fill)}" stroke="none"/>`,
+      );
+      continue;
+    }
     const fillPattern = (node.attrs?.body?.fillPattern as string) || (node.data?.fillPattern as string);
     if (fillPattern === "HorizontalCylinder") {
       fill = "url(#grad-cylinder-horizontal)";

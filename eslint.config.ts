@@ -169,19 +169,6 @@ export default defineConfig([
     },
   },
   {
-    files: ["apps/morsel/**/*.{ts,tsx}"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-non-null-assertion": "off",
-      "@typescript-eslint/no-unused-vars": "off",
-      "@typescript-eslint/no-empty-function": "off",
-      "@typescript-eslint/class-literal-property-style": "off",
-      "@typescript-eslint/no-dynamic-delete": "off",
-      "no-useless-assignment": "off",
-      "prefer-const": "off",
-    },
-  },
-  {
     files: [
       "packages/*/src/**/*.{ts,tsx}",
       "languages/**/src/**/*.{ts,tsx}",

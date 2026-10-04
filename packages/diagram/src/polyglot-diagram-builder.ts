@@ -2357,14 +2357,54 @@ export function buildPolyglotDiagram(
 
   // Topological solder dots for multi-connection junctions
   if (opts.solderDots) {
+    const nodeMap = new Map<string, any>(nodes.map((n) => [n.id, n]));
+    const portPoints: { x: number; y: number }[] = [];
+
+    for (const n of nodes) {
+      if (!n.ports?.items) continue;
+      for (const p of n.ports.items as any[]) {
+        if (p.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
+          portPoints.push({ x: (n.x ?? 0) + p.args.x, y: (n.y ?? 0) + p.args.y });
+        }
+      }
+    }
+
+    const resolveEndpoint = (endpoint: any): { x: number; y: number } | null => {
+      if (!endpoint) return null;
+      if (typeof endpoint.x === "number" && typeof endpoint.y === "number") {
+        return { x: endpoint.x, y: endpoint.y };
+      }
+      if (endpoint.cell) {
+        const n = nodeMap.get(endpoint.cell);
+        if (!n) return null;
+        if (endpoint.port && n.ports?.items) {
+          const p = (n.ports.items as any[]).find((item: any) => item.id === endpoint.port);
+          if (p?.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
+            return { x: (n.x ?? 0) + p.args.x, y: (n.y ?? 0) + p.args.y };
+          }
+        }
+        return { x: (n.x ?? 0) + (n.width ?? 0) / 2, y: (n.y ?? 0) + (n.height ?? 0) / 2 };
+      }
+      return null;
+    };
+
     const edgePaths = edges
-      .filter((e) => e.vertices && e.vertices.length > 0)
-      .map((e) => ({
-        id: e.id,
-        points: e.vertices!,
-        color: (e.attrs?.line as any)?.stroke as string,
-      }));
-    const dots = computeSolderDots(edgePaths);
+      .map((e) => {
+        const src = resolveEndpoint(e.source);
+        const tgt = resolveEndpoint(e.target);
+        const pts: { x: number; y: number }[] = [];
+        if (src) pts.push(src);
+        if (e.vertices && e.vertices.length > 0) pts.push(...e.vertices);
+        if (tgt) pts.push(tgt);
+        return {
+          id: e.id,
+          points: pts,
+          color: (e.attrs?.line as any)?.stroke as string,
+        };
+      })
+      .filter((e) => e.points.length >= 2);
+
+    const dots = computeSolderDots(edgePaths, { cellSize: 40, tolerance: 3.0, portPoints });
     for (const dot of dots) {
       nodes.push(solderDotToDiagramNode(dot));
     }

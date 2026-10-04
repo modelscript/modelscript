@@ -30,7 +30,7 @@ import {
 } from "./arena";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
 import { globalAstRoot, globalEnclosingClassRoot, globalEnclosingClassNode, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
-import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog } from "./engine";
+import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog, lintRunGeneration } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
@@ -790,10 +790,39 @@ let globalClassHasUnitsResult: boolean = false;
 let globalClassHasInnerRoot: u32 = 0;
 let globalClassHasInnerResult: boolean = false;
 
+let globalClassByNameMap: Map<u64, u32> | null = null;
+let globalClassByNameGen: u32 = 0xFFFFFFFF;
+
+function classByNameMap(): Map<u64, u32> {
+  if (globalClassByNameMap === null || globalClassByNameGen != lintRunGeneration) {
+    globalClassByNameMap = new Map<u64, u32>();
+    globalClassByNameGen = lintRunGeneration;
+  }
+  return globalClassByNameMap!;
+}
+
+@inline function classNameKey(span: u64, kind: u32): u64 {
+  let h1 = ast_hashSpan(span, 2166136261) as u64;
+  let h2 = ast_hashSpan(span, 5381) as u64;
+  return ((h1 << 32) | h2) ^ ((kind as u64) * 0x9E3779B97F4A7C15);
+}
+
 /**
  * AST navigation and node span query API.
  */
 export class AstAPI {
+  /**
+   * Per-lint-run memo keyed by (kind, text of span). Returns -1 on miss, else the stored value.
+   * kind 0 = findClassByName (class node), kind 1 = resolveBasePrimitiveType (type id).
+   */
+  getCachedByName(kind: u32, nameSpan: u64): i32 {
+    let m = classByNameMap();
+    let key = classNameKey(nameSpan, kind);
+    return m.has(key) ? (m.get(key) as i32) : -1;
+  }
+  setCachedByName(kind: u32, nameSpan: u64, value: u32): void {
+    classByNameMap().set(classNameKey(nameSpan, kind), value);
+  }
   @inline getCachedHasUnits(classNode: u32): i32 {
     return classNode == globalClassHasUnitsRoot ? (globalClassHasUnitsResult ? 1 : 0) : -1;
   }

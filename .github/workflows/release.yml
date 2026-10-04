@@ -96,19 +96,7 @@ jobs:
         run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
         working-directory: dist/extension
 
-      # --- Deploy Apps (Morsel, IDE) ---
-      - name: Build Morsel
-        run: npm run build --workspace=@modelscript/morsel
-        env:
-          NODE_OPTIONS: "--max-old-space-size=8192"
-      - name: SPA fallback for Morsel
-        run: cp apps/morsel/build/client/index.html apps/morsel/build/client/404.html
-      - name: Deploy Morsel
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.MODELSCRIPT_MORSEL_DEPLOY_PAT }}
-          external_repository: modelscript-morsel/modelscript-morsel.github.io
-          publish_dir: ./apps/morsel/build/client
+      # --- Deploy Apps (IDE) ---
 
       - name: Cache WebLLM Model
         id: cache-model
@@ -171,8 +159,6 @@ jobs:
             *.args.PREBUILT=true
             api.tags=ghcr.io/modelscript/api:latest
             api.tags=ghcr.io/modelscript/api:${{ steps.version.outputs.version }}
-            morsel.tags=ghcr.io/modelscript/morsel:latest
-            morsel.tags=ghcr.io/modelscript/morsel:${{ steps.version.outputs.version }}
             web.tags=ghcr.io/modelscript/web:latest
             web.tags=ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
             ide.tags=ghcr.io/modelscript/ide:latest

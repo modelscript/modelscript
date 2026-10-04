@@ -92,6 +92,15 @@ export function publishRouter(
         }
       }
 
+      // 1.6 RBAC authorization check for scoped packages and package maintainership
+      if (req.user) {
+        const authCheck = database.canUserPublishPackage(name, req.user.id);
+        if (!authCheck.allowed) {
+          res.status(403).json({ error: authCheck.reason || "Unauthorized to publish to this package namespace" });
+          return;
+        }
+      }
+
       // 2. Validate file upload
       if (!req.file) {
         res.status(400).json({ error: "A zip file must be uploaded as the 'file' field" });

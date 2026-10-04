@@ -1,6 +1,6 @@
 # ==============================================================================
 # Unified multi-stage Dockerfile for all ModelScript services.
-# Each service is a named target: api, morsel, web, ide.
+# Each service is a named target: api, web, ide.
 # Usage: docker compose build (targets configured in docker-compose.yml)
 #
 # Optimization: Set PREBUILT=true when the build context already contains
@@ -23,7 +23,6 @@ COPY apps/cli/package.json apps/cli/
 COPY apps/docs/package.json apps/docs/
 COPY apps/ide/package.json apps/ide/
 COPY apps/ide/github-fs/package.json apps/ide/github-fs/
-COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 
 # Packages manifests
@@ -82,34 +81,6 @@ ENV NODE_ENV=production
 CMD ["node", "apps/api/dist/main.js"]
 
 # ==============================================================================
-# Morsel
-# ==============================================================================
-FROM deps AS build-morsel-false
-COPY scripts scripts
-COPY packages packages
-COPY languages languages
-COPY apps/morsel apps/morsel
-RUN node scripts/download-msl.cjs && node scripts/download-sysml2.cjs
-RUN npx nx build @modelscript/morsel
-
-
-FROM deps AS build-morsel-true
-COPY apps/morsel/package.json apps/morsel/
-COPY apps/morsel/package.json apps/morsel/buil[d] /app/apps/morsel/build/
-
-FROM build-morsel-${PREBUILT} AS build-morsel
-
-FROM node:24-alpine AS morsel
-WORKDIR /app
-COPY --from=build-morsel /app/apps/morsel/build apps/morsel/build
-COPY --from=build-morsel /app/apps/morsel/package.json apps/morsel/
-COPY --from=build-morsel /app/package.json /app/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm install --omit=dev -w apps/morsel --ignore-scripts
-EXPOSE 3000
-ENV NODE_ENV=production
-CMD ["npx", "react-router-serve", "./apps/morsel/build/server/index.js"]
-
-# ==============================================================================
 # Web
 # ==============================================================================
 FROM deps AS build-web-false
@@ -146,7 +117,6 @@ COPY scripts scripts
 COPY packages packages
 COPY languages languages
 COPY apps/ide apps/ide
-COPY apps/morsel apps/morsel
 RUN npx nx build @modelscript/ide
 
 
@@ -154,7 +124,6 @@ FROM deps AS build-ide-true
 COPY apps/ide/dist apps/ide/dist
 COPY apps/ide/vscode-web apps/ide/vscode-web
 COPY apps/ide/github-fs/dist apps/ide/github-fs/dist
-COPY apps/morsel/public apps/morsel/public
 
 FROM build-ide-${PREBUILT} AS build-ide
 
@@ -163,7 +132,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/ide/package.json apps/ide/
 COPY apps/api/package.json apps/api/
-COPY apps/morsel/package.json apps/morsel/
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
 COPY packages/dsl/package.json packages/dsl/
@@ -174,7 +142,6 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 COPY --from=build-ide /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide /app/apps/ide/vscode-web apps/ide/vscode-web
 COPY --from=build-ide /app/apps/ide/github-fs/dist apps/ide/github-fs/dist
-COPY --from=build-ide /app/apps/morsel/public apps/morsel/public
 COPY --from=build-ide /app/node_modules/@vscode node_modules/@vscode
 COPY --from=download-model /app/apps/ide/models apps/ide/models
 EXPOSE 3003

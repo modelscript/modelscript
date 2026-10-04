@@ -507,12 +507,23 @@ function generateHtmlReport(
         drawerContent += `
         <div class="drawer-grid">
           <div class="drawer-card">
-            <div class="drawer-label">Diagram Metrics</div>
+            <div class="drawer-label">Diagram Metrics (ModelScript)</div>
             <div class="metric-row"><span>Nodes / Components:</span> <strong>${dg.modelscript.nodeCount}</strong></div>
             <div class="metric-row"><span>Connections / Edges:</span> <strong>${dg.modelscript.edgeCount}</strong></div>
             <div class="metric-row"><span>Unresolved Components:</span> <strong>${dg.modelscript.unresolvedCount}</strong></div>
             <div class="metric-row"><span>Duration:</span> <strong>${dg.modelscript.durationMs}ms</strong></div>
           </div>
+          ${
+            dg.omc
+              ? `
+          <div class="drawer-card">
+            <div class="drawer-label">OpenModelica Ground Truth</div>
+            <div class="metric-row"><span>OMC Nodes:</span> <strong>${dg.omc.nodeCount}</strong></div>
+            <div class="metric-row"><span>OMC Connections:</span> <strong>${dg.omc.edgeCount}</strong></div>
+            <div class="metric-row"><span>Duration:</span> <strong>${dg.omc.durationMs}ms</strong> (cached: ${dg.omc.cached})</div>
+          </div>`
+              : ""
+          }
           ${resourceCard}
         </div>`;
         if (dg.modelscript.svgPreview) {
@@ -754,17 +765,17 @@ async function main() {
   // Apply filters
   let selectedModels = allModels;
 
-  // Default to examples-only for simulation and flattening unless --all is passed
-  if (!options.all && (options.stage === "simulate" || options.stage === "flatten" || !options.packagePrefix)) {
-    selectedModels = selectedModels.filter((m) => m.isExample);
-  }
-
-  if (options.packagePrefix) {
-    selectedModels = selectedModels.filter((m) => m.fqn.startsWith(options.packagePrefix!));
-  }
-
   if (options.modelFqn) {
-    selectedModels = selectedModels.filter((m) => m.fqn === options.modelFqn);
+    selectedModels = allModels.filter((m) => m.fqn === options.modelFqn);
+  } else {
+    // Default to examples-only for simulation and flattening unless --all is passed
+    if (!options.all && (options.stage === "simulate" || options.stage === "flatten" || !options.packagePrefix)) {
+      selectedModels = selectedModels.filter((m) => m.isExample);
+    }
+
+    if (options.packagePrefix) {
+      selectedModels = selectedModels.filter((m) => m.fqn.startsWith(options.packagePrefix!));
+    }
   }
 
   if (options.limit && options.limit > 0) {
@@ -839,7 +850,8 @@ async function main() {
         let details = "";
         if (result.flatten) details = result.flatten.comparison.diffSummary || "";
         else if (result.simulation) details = result.simulation.comparison.errorSummary || "";
-        else if (result.diagram) details = `Unresolved nodes: ${result.diagram.modelscript.unresolvedCount}`;
+        else if (result.diagram)
+          details = result.diagram.diffSummary || `Unresolved nodes: ${result.diagram.modelscript.unresolvedCount}`;
         statusDisplay = `\x1b[33mDIFF\x1b[0m      ${details}`;
       } else if (result.status === "SKIPPED") {
         statusDisplay = `\x1b[90mSKIPPED\x1b[0m   (not applicable/no annotation)`;

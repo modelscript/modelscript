@@ -754,8 +754,27 @@ export function runTestCase(
     for (let i = 0; i < testCase.source.length; i++) {
       if (testCase.source[i] === "\n") lineOffsets.push(i + 1);
     }
+    const lspPositionToUtf8Column = (row: number, charCol: number): number => {
+      const lineStartChar = lineOffsets[row] ?? 0;
+      let byteCol = 0;
+      const target = Math.min(lineStartChar + charCol, testCase.source.length);
+      for (let i = lineStartChar; i < target; i++) {
+        const code = testCase.source.charCodeAt(i);
+        if (code <= 0x7f) {
+          byteCol += 1;
+        } else if (code <= 0x7ff) {
+          byteCol += 2;
+        } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < target) {
+          byteCol += 4;
+          i++; // Skip low surrogate
+        } else {
+          byteCol += 3;
+        }
+      }
+      return byteCol;
+    };
     const byteToPosition = (byte: number): { row: number; column: number } => {
-      // Binary search for the line containing this byte
+      // Binary search for the line containing this character offset
       let lo = 0;
       let hi = lineOffsets.length - 1;
       while (lo < hi) {
@@ -763,7 +782,8 @@ export function runTestCase(
         if ((lineOffsets[mid] ?? 0) <= byte) lo = mid;
         else hi = mid - 1;
       }
-      return { row: lo, column: byte - (lineOffsets[lo] ?? 0) };
+      const charCol = byte - (lineOffsets[lo] ?? 0);
+      return { row: lo, column: lspPositionToUtf8Column(lo, charCol) };
     };
 
     // ── Lint diagnostics ──
@@ -892,8 +912,14 @@ export function runTestCase(
           resource: testCase.file,
           range: cd.range
             ? {
-                startPosition: { row: cd.range.start.line, column: cd.range.start.character },
-                endPosition: { row: cd.range.end.line, column: cd.range.end.character },
+                startPosition: {
+                  row: cd.range.start.line,
+                  column: lspPositionToUtf8Column(cd.range.start.line, cd.range.start.character),
+                },
+                endPosition: {
+                  row: cd.range.end.line,
+                  column: lspPositionToUtf8Column(cd.range.end.line, cd.range.end.character),
+                },
               }
             : null,
         });

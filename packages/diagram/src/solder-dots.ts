@@ -8,13 +8,19 @@ export interface SolderDot {
   x: number;
   y: number;
   color: string;
-  edgeIds: [string, string];
+  edgeIds: [string, string] | string[];
 }
 
 export interface EdgePath {
   id: string;
   points: { x: number; y: number }[];
   color?: string;
+}
+
+export interface ComputeSolderDotsOptions {
+  cellSize?: number;
+  tolerance?: number;
+  portPoints?: { x: number; y: number }[];
 }
 
 export function distToSegmentSquared(px: number, py: number, vx: number, vy: number, wx: number, wy: number): number {
@@ -27,89 +33,245 @@ export function distToSegmentSquared(px: number, py: number, vx: number, vy: num
 }
 
 /**
- * Computes solder junction dots for an array of edge paths using an O(V) spatial hash grid.
+ * Computes solder junction dots for an array of edge paths using an O(V) spatial hash grid,
+ * topological branch degree counting, and subpixel coordinate clustering.
  */
-export function computeSolderDots(edges: EdgePath[], cellSize = 40): SolderDot[] {
-  const allPaths: { id: string; points: { x: number; y: number }[]; color: string }[] = [];
-  const candidateVertices = new Map<string, { x: number; y: number; pathId: string; color: string }>();
+export function computeSolderDots(
+  edges: EdgePath[],
+  optionsOrCellSize: number | ComputeSolderDotsOptions = 40,
+): SolderDot[] {
+  const opts: ComputeSolderDotsOptions =
+    typeof optionsOrCellSize === "number" ? { cellSize: optionsOrCellSize } : optionsOrCellSize || {};
+  const cellSize = opts.cellSize ?? 40;
+  const tolerance = opts.tolerance ?? 2.5;
+  const tolSq = tolerance * tolerance;
+  const portPoints = opts.portPoints;
 
-  for (const edge of edges) {
-    if (!edge.points || edge.points.length < 2) continue;
+  const validEdges = edges.filter((e) => e.points && e.points.length >= 2);
+  if (validEdges.length === 0) return [];
+
+  // 1. Gather all candidate vertices from all valid edges
+  interface RawCandidate {
+    x: number;
+    y: number;
+    color: string;
+  }
+  const rawCandidates: RawCandidate[] = [];
+  for (const edge of validEdges) {
     const color = edge.color && edge.color !== "none" ? edge.color : "#333333";
-    allPaths.push({ id: edge.id, points: edge.points, color });
-
-    for (const v of edge.points) {
-      const key = `${v.x.toFixed(1)},${v.y.toFixed(1)}`;
-      candidateVertices.set(key, { x: v.x, y: v.y, pathId: edge.id, color });
+    for (const pt of edge.points) {
+      rawCandidates.push({ x: pt.x, y: pt.y, color });
     }
   }
 
-  // Spatial hash index for path segments to achieve O(V) junction queries
-  const grid = new Map<string, { pathId: string; p1: { x: number; y: number }; p2: { x: number; y: number } }[]>();
+  // 2. Cluster candidate points within tolerance to eliminate subpixel jitter and duplicate junctions
+  interface JunctionCluster {
+    x: number;
+    y: number;
+    count: number;
+    preferredColor?: string;
+  }
+  const clusters: JunctionCluster[] = [];
+  const clusterGrid = new Map<string, JunctionCluster[]>();
+  const clusterCellSize = Math.max(cellSize, 40);
 
-  for (const path of allPaths) {
-    for (let k = 0; k < path.points.length - 1; k++) {
-      const p1 = path.points[k];
-      const p2 = path.points[k + 1];
+  for (const rc of rawCandidates) {
+    const gx = Math.floor(rc.x / clusterCellSize);
+    const gy = Math.floor(rc.y / clusterCellSize);
+    let matchedCluster: JunctionCluster | null = null;
+
+    outerCluster: for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = clusterGrid.get(`${gx + dx}:${gy + dy}`);
+        if (!bucket) continue;
+        for (const cl of bucket) {
+          const d2 = (rc.x - cl.x) * (rc.x - cl.x) + (rc.y - cl.y) * (rc.y - cl.y);
+          if (d2 <= tolSq) {
+            matchedCluster = cl;
+            break outerCluster;
+          }
+        }
+      }
+    }
+
+    if (matchedCluster) {
+      matchedCluster.x = (matchedCluster.x * matchedCluster.count + rc.x) / (matchedCluster.count + 1);
+      matchedCluster.y = (matchedCluster.y * matchedCluster.count + rc.y) / (matchedCluster.count + 1);
+      matchedCluster.count++;
+      if (!matchedCluster.preferredColor && rc.color !== "#333333") {
+        matchedCluster.preferredColor = rc.color;
+      }
+    } else {
+      const newCluster: JunctionCluster = {
+        x: rc.x,
+        y: rc.y,
+        count: 1,
+        preferredColor: rc.color !== "#333333" ? rc.color : undefined,
+      };
+      clusters.push(newCluster);
+      const key = `${gx}:${gy}`;
+      let bucket = clusterGrid.get(key);
+      if (!bucket) {
+        bucket = [];
+        clusterGrid.set(key, bucket);
+      }
+      bucket.push(newCluster);
+    }
+  }
+
+  // 3. Spatial hash index for path segments
+  interface IndexedSegment {
+    edgeId: string;
+    color: string;
+    p1: { x: number; y: number };
+    p2: { x: number; y: number };
+    isStartSegment: boolean;
+    isEndSegment: boolean;
+  }
+  const segmentGrid = new Map<string, IndexedSegment[]>();
+
+  for (const edge of validEdges) {
+    const color = edge.color && edge.color !== "none" ? edge.color : "#333333";
+    for (let k = 0; k < edge.points.length - 1; k++) {
+      const p1 = edge.points[k];
+      const p2 = edge.points[k + 1];
+      const seg: IndexedSegment = {
+        edgeId: edge.id,
+        color,
+        p1,
+        p2,
+        isStartSegment: k === 0,
+        isEndSegment: k === edge.points.length - 2,
+      };
+
       const minX = Math.floor(Math.min(p1.x, p2.x) / cellSize);
       const maxX = Math.floor(Math.max(p1.x, p2.x) / cellSize);
       const minY = Math.floor(Math.min(p1.y, p2.y) / cellSize);
       const maxY = Math.floor(Math.max(p1.y, p2.y) / cellSize);
 
-      const segment = { pathId: path.id, p1, p2 };
       for (let gx = minX; gx <= maxX; gx++) {
         for (let gy = minY; gy <= maxY; gy++) {
           const key = `${gx}:${gy}`;
-          let bucket = grid.get(key);
+          let bucket = segmentGrid.get(key);
           if (!bucket) {
             bucket = [];
-            grid.set(key, bucket);
+            segmentGrid.set(key, bucket);
           }
-          bucket.push(segment);
+          bucket.push(seg);
         }
       }
     }
   }
 
+  // 4. Test each cluster for topological junction criteria
   const dots: SolderDot[] = [];
   const seenIds = new Set<string>();
 
-  for (const candidate of candidateVertices.values()) {
-    let isJunction = false;
-    let intersectingPathId = "";
+  for (const C of clusters) {
+    // Exclude clusters located on component connection ports/pins
+    if (portPoints && portPoints.length > 0) {
+      let isAtPort = false;
+      for (const pp of portPoints) {
+        const d2 = (C.x - pp.x) * (C.x - pp.x) + (C.y - pp.y) * (C.y - pp.y);
+        if (d2 <= tolSq * 1.5) {
+          isAtPort = true;
+          break;
+        }
+      }
+      if (isAtPort) continue;
+    }
 
-    const gx = Math.floor(candidate.x / cellSize);
-    const gy = Math.floor(candidate.y / cellSize);
+    const cgx = Math.floor(C.x / cellSize);
+    const cgy = Math.floor(C.y / cellSize);
 
-    outer: for (let dx = -1; dx <= 1; dx++) {
+    const edgeBranches = new Map<string, number>();
+    const edgeColors = new Map<string, string>();
+    const checkedSegments = new Set<IndexedSegment>();
+
+    let snapX = C.x;
+    let snapY = C.y;
+    let hasThroughWire = false;
+
+    for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
-        const bucket = grid.get(`${gx + dx}:${gy + dy}`);
+        const bucket = segmentGrid.get(`${cgx + dx}:${cgy + dy}`);
         if (!bucket) continue;
+
         for (const seg of bucket) {
-          if (seg.pathId === candidate.pathId) continue;
-          if (distToSegmentSquared(candidate.x, candidate.y, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y) < 1.0) {
-            isJunction = true;
-            intersectingPathId = seg.pathId;
-            break outer;
+          if (checkedSegments.has(seg)) continue;
+          checkedSegments.add(seg);
+
+          const vx = seg.p1.x;
+          const vy = seg.p1.y;
+          const wx = seg.p2.x;
+          const wy = seg.p2.y;
+          const segDx = wx - vx;
+          const segDy = wy - vy;
+          const l2 = segDx * segDx + segDy * segDy;
+          if (l2 === 0) continue;
+
+          const tRaw = ((C.x - vx) * segDx + (C.y - vy) * segDy) / l2;
+          const tClamped = Math.max(0, Math.min(1, tRaw));
+          const projX = vx + tClamped * segDx;
+          const projY = vy + tClamped * segDy;
+          const d2 = (C.x - projX) * (C.x - projX) + (C.y - projY) * (C.y - projY);
+
+          if (d2 <= tolSq) {
+            const dP1 = Math.hypot(C.x - vx, C.y - vy);
+            const dP2 = Math.hypot(C.x - wx, C.y - wy);
+
+            let branches = 0;
+            if (dP1 <= tolerance) {
+              branches = seg.isStartSegment ? 1 : 2;
+            } else if (dP2 <= tolerance) {
+              branches = seg.isEndSegment ? 1 : 2;
+            } else {
+              // In interior of segment -> continuous line through cluster
+              branches = 2;
+              if (!hasThroughWire) {
+                snapX = projX;
+                snapY = projY;
+                hasThroughWire = true;
+              }
+            }
+
+            const current = edgeBranches.get(seg.edgeId) || 0;
+            edgeBranches.set(seg.edgeId, Math.max(current, branches));
+            if (!edgeColors.has(seg.edgeId)) {
+              edgeColors.set(seg.edgeId, seg.color);
+            }
           }
         }
       }
     }
 
-    if (isJunction) {
-      const ids = [candidate.pathId, intersectingPathId].sort();
-      const id = `solder_dot_${ids[0]}_${ids[1]}`;
-      if (!seenIds.has(id)) {
-        seenIds.add(id);
-        dots.push({
-          id,
-          x: candidate.x,
-          y: candidate.y,
-          color: candidate.color,
-          edgeIds: [ids[0], ids[1]],
-        });
-      }
+    let totalBranches = 0;
+    for (const b of edgeBranches.values()) {
+      totalBranches += b;
     }
+
+    // Must be a true junction: at least 3 branches meeting and at least 2 distinct edges
+    if (totalBranches < 3) continue;
+    if (edgeBranches.size < 2) continue;
+
+    const incidentEdgeIds = Array.from(edgeBranches.keys()).sort();
+    const id =
+      incidentEdgeIds.length === 2
+        ? `solder_dot_${incidentEdgeIds[0]}_${incidentEdgeIds[1]}`
+        : `solder_dot_${incidentEdgeIds.join("_")}`;
+
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
+
+    const color = C.preferredColor || edgeColors.get(incidentEdgeIds[0]) || "#333333";
+
+    dots.push({
+      id,
+      x: Math.round(snapX * 10) / 10,
+      y: Math.round(snapY * 10) / 10,
+      color,
+      edgeIds: incidentEdgeIds as any,
+    });
   }
 
   return dots;
@@ -118,14 +280,15 @@ export function computeSolderDots(edges: EdgePath[], cellSize = 40): SolderDot[]
 /**
  * Converts a SolderDot into an AntV X6 node suitable for serialization.
  */
-export function solderDotToDiagramNode(dot: SolderDot): any {
+export function solderDotToDiagramNode(dot: SolderDot, size = 3): any {
+  const r = size / 2;
   return {
     id: dot.id,
     shape: "circle",
-    x: dot.x - 1.5,
-    y: dot.y - 1.5,
-    width: 3,
-    height: 3,
+    x: dot.x - r,
+    y: dot.y - r,
+    width: size,
+    height: size,
     angle: 0,
     opacity: 1,
     zIndex: 20,
@@ -135,11 +298,13 @@ export function solderDotToDiagramNode(dot: SolderDot): any {
         tagName: "circle",
         selector: "body",
         attrs: {
-          cx: 1.5,
-          cy: 1.5,
-          r: 1.5,
+          cx: r,
+          cy: r,
+          r,
           fill: dot.color,
           stroke: "none",
+          pointerEvents: "none",
+          style: "pointer-events: none;",
         },
       },
     ],
@@ -147,6 +312,8 @@ export function solderDotToDiagramNode(dot: SolderDot): any {
       body: {
         fill: dot.color,
         stroke: "none",
+        pointerEvents: "none",
+        style: { pointerEvents: "none" },
       },
     },
     ports: { items: [], groups: {} },

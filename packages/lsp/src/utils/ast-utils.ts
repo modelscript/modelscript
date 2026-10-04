@@ -45,12 +45,42 @@ export function computeTreeEdit(
     prefixLen++;
   }
 
+  // Ensure prefixLen does not split a UTF-16 surrogate pair
+  if (
+    prefixLen > 0 &&
+    prefixLen < oldText.length &&
+    oldText.charCodeAt(prefixLen - 1) >= 0xd800 &&
+    oldText.charCodeAt(prefixLen - 1) <= 0xdbff &&
+    oldText.charCodeAt(prefixLen) >= 0xdc00 &&
+    oldText.charCodeAt(prefixLen) <= 0xdfff
+  ) {
+    prefixLen--;
+  }
+
   // Find common suffix (not overlapping with prefix)
   let oldSuffix = oldText.length;
   let newSuffix = newText.length;
   while (oldSuffix > prefixLen && newSuffix > prefixLen && oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
     oldSuffix--;
     newSuffix--;
+  }
+
+  // Ensure suffix boundary does not split a UTF-16 surrogate pair
+  if (
+    oldSuffix > 0 &&
+    oldSuffix < oldText.length &&
+    oldText.charCodeAt(oldSuffix - 1) >= 0xd800 &&
+    oldText.charCodeAt(oldSuffix - 1) <= 0xdbff &&
+    oldText.charCodeAt(oldSuffix) >= 0xdc00 &&
+    oldText.charCodeAt(oldSuffix) <= 0xdfff
+  ) {
+    if (oldSuffix + 1 <= oldText.length && newSuffix + 1 <= newText.length) {
+      oldSuffix++;
+      newSuffix++;
+    } else if (oldSuffix > prefixLen && newSuffix > prefixLen) {
+      oldSuffix--;
+      newSuffix--;
+    }
   }
 
   return {

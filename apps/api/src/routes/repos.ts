@@ -3,6 +3,7 @@
 /* eslint-disable */
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
 
@@ -68,6 +69,77 @@ export function reposRouter(database: LibraryDatabase): Router {
     } catch (err) {
       res.status(500).json({ error: "Failed to unlink repository" });
     }
+  });
+
+  /**
+   * GET /api/v1/repos/:id/webhooks
+   * List configured webhooks for a linked repository.
+   */
+  router.get("/:id/webhooks", requireAuth, (req: Request, res: Response) => {
+    const repoId = Number(req.params.id);
+    const repo = database.getLinkedRepoById(repoId);
+    if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
+      res.status(404).json({ error: "Repository not found or access denied" });
+      return;
+    }
+
+    const webhooks = database.getRepoWebhooks(repoId);
+    res.json({ webhooks });
+  });
+
+  /**
+   * POST /api/v1/repos/:id/webhooks
+   * Create a new webhook for automated CI/CD tag ingestion.
+   */
+  router.post("/:id/webhooks", requireAuth, (req: Request, res: Response) => {
+    const repoId = Number(req.params.id);
+    const repo = database.getLinkedRepoById(repoId);
+    if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
+      res.status(404).json({ error: "Repository not found or access denied" });
+      return;
+    }
+
+    const provider = (req.body?.provider || "github") as "github" | "gitlab" | "local" | "custom";
+    const secret = req.body?.secret || crypto.randomUUID();
+    const events = Array.isArray(req.body?.events) ? req.body.events : ["push", "release"];
+    const autoPublish = req.body?.autoPublish !== false;
+    const tagPattern = req.body?.tagPattern;
+
+    try {
+      const webhook = database.createRepoWebhook({
+        repoId,
+        provider,
+        secret,
+        events,
+        autoPublish,
+        tagPattern,
+      });
+      res.status(201).json({ webhook });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to create webhook" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/repos/:id/webhooks/:webhookId
+   * Delete a webhook.
+   */
+  router.delete("/:id/webhooks/:webhookId", requireAuth, (req: Request, res: Response) => {
+    const repoId = Number(req.params.id);
+    const webhookId = Number(req.params.webhookId);
+    const repo = database.getLinkedRepoById(repoId);
+    if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
+      res.status(404).json({ error: "Repository not found or access denied" });
+      return;
+    }
+
+    const deleted = database.deleteRepoWebhook(webhookId, repoId);
+    if (!deleted) {
+      res.status(404).json({ error: "Webhook not found" });
+      return;
+    }
+
+    res.json({ success: true, message: "Webhook deleted successfully" });
   });
 
   return router;

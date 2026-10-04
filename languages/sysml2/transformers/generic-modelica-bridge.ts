@@ -231,6 +231,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
   let name = "SysML2Translation";
   let isAbstract = false;
 
+  let targetNode: any = root;
   const partDefs = findNodes(root, "PartDefinition");
   if (partDefs.length > 0) {
     let selectedDef = partDefs[0];
@@ -243,6 +244,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     const nameNode = findNodes(selectedDef, "Name")[0] || findNodes(selectedDef, "ID")[0];
     if (nameNode) name = nameNode.text.trim();
     if (selectedDef.text.includes("abstract")) isAbstract = true;
+    targetNode = selectedDef;
   } else {
     const nameNode = findNodes(root, "Name")[0];
     if (nameNode) name = nameNode.text.trim();
@@ -255,7 +257,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
   const connections: SysML2Connection[] = [];
   const constraints: string[] = [];
 
-  const attrUsages = findNodes(root, "AttributeUsage");
+  const attrUsages = findNodes(targetNode, "AttributeUsage");
   for (const au of attrUsages) {
     if (hasAncestorType(au, "PartUsage")) continue;
 
@@ -275,7 +277,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     });
   }
 
-  const portUsages = findNodes(root, "PortUsage");
+  const portUsages = findNodes(targetNode, "PortUsage");
   for (const pu of portUsages) {
     if (hasAncestorType(pu, "PartUsage")) continue;
 
@@ -315,7 +317,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     });
   }
 
-  const partUsages = findNodes(root, "PartUsage");
+  const partUsages = findNodes(targetNode, "PartUsage");
   for (const pu of partUsages) {
     if (hasAncestorType(pu, "PartUsage")) continue;
 
@@ -348,7 +350,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     });
   }
 
-  const connUsages = findNodes(root, "ConnectionUsage");
+  const connUsages = findNodes(targetNode, "ConnectionUsage");
   for (const cu of connUsages) {
     const endMembers = findNodes(cu, "ConnectorEndMember");
     if (endMembers.length >= 2) {
@@ -360,7 +362,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     }
   }
 
-  const assertConstraints = findNodes(root, "AssertConstraintUsage");
+  const assertConstraints = findNodes(targetNode, "AssertConstraintUsage");
   for (const ac of assertConstraints) {
     const exprNodes = findNodes(ac, "_Expression").concat(
       findNodes(ac, "RelationalExpression"),
@@ -378,7 +380,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     }
   }
 
-  const constraintUsages = findNodes(root, "ConstraintUsage");
+  const constraintUsages = findNodes(targetNode, "ConstraintUsage");
   for (const cu of constraintUsages) {
     if (hasAncestorType(cu, "PartUsage")) continue;
     const exprNodes = findNodes(cu, "_Expression").concat(

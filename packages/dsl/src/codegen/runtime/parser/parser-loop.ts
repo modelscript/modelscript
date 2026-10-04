@@ -4357,6 +4357,27 @@ function recoverEofAccept(head: ParseHead, pos: u32): void {
 }
 
 /**
+ * Runs the error-recovery hypotheses for a head that cannot act on `tok`.
+ * A repair (insertion/substitution) is speculative, so it is always raced against the
+ * "stray token" hypothesis (skip it). Shared by the active and paused-head paths so the
+ * outcome does not depend on whether the head happened to be paused first.
+ */
+function recoverHeadHypotheses(head: ParseHead, tok: i32, pos: u32): void {
+  let didRecover = false;
+  let repairedByInsertion = false;
+  if (configEnableBranchB && head.consecutiveInsertions < 6) {
+    didRecover = recoverMissingToken(head, tok, pos);
+    repairedByInsertion = didRecover;
+  }
+  if (!didRecover && (head.prev != null || head.inErrorState)) {
+    didRecover = recoverStackSummary(head, tok, pos);
+  }
+  if ((!didRecover || repairedByInsertion) && configEnableBranchA1) {
+    recoverSkipToken(head, tok, pos);
+  }
+}
+
+/**
  * The main GLR parsing engine loop.
  * Operates in lockstep token-by-token rounds synchronized at the current byte position frontier.
  * Prunes and condenses heads in O(H) time without arbitrary iteration bounds.
@@ -4656,16 +4677,7 @@ export function advanceGLR(): void {
             head.pausedLookahead = tok;
             t_pausedHeads[pausedHeadsCount++] = changetype<u32>(head);
           } else {
-            let didRecover = false;
-            if (configEnableBranchB && head.consecutiveInsertions < 6) {
-              didRecover = recoverMissingToken(head, tok, frontierPos);
-            }
-            if (!didRecover && (head.prev != null || head.inErrorState)) {
-              didRecover = recoverStackSummary(head, tok, frontierPos);
-            }
-            if (!didRecover && configEnableBranchA1) {
-              recoverSkipToken(head, tok, frontierPos);
-            }
+            recoverHeadHypotheses(head, tok, frontierPos);
           }
         } else {
           // Graceful EOF Error Acceptance (Tree-sitter Strategy):
@@ -4701,16 +4713,7 @@ export function advanceGLR(): void {
       bestPausedHead.isPaused = false;
       let resumeTok = bestPausedHead.pausedLookahead;
       if (resumeTok != TOKEN_EOF) {
-        let didRecover = false;
-        if (configEnableBranchB && bestPausedHead.consecutiveInsertions < 6) {
-          didRecover = recoverMissingToken(bestPausedHead, resumeTok, bestPausedHead.pos);
-        }
-        if (!didRecover && (bestPausedHead.prev != null || bestPausedHead.inErrorState)) {
-          didRecover = recoverStackSummary(bestPausedHead, resumeTok, bestPausedHead.pos);
-        }
-        if (!didRecover && configEnableBranchA1) {
-          recoverSkipToken(bestPausedHead, resumeTok, bestPausedHead.pos);
-        }
+        recoverHeadHypotheses(bestPausedHead, resumeTok, bestPausedHead.pos);
       } else {
         recoverEofAccept(bestPausedHead, bestPausedHead.pos);
       }
@@ -4724,16 +4727,7 @@ export function advanceGLR(): void {
             cand.isPaused = false;
             let cTok = cand.pausedLookahead;
             if (cTok != TOKEN_EOF) {
-              let didRec = false;
-              if (configEnableBranchB && cand.consecutiveInsertions < 6) {
-                didRec = recoverMissingToken(cand, cTok, cand.pos);
-              }
-              if (!didRec && (cand.prev != null || cand.inErrorState)) {
-                didRec = recoverStackSummary(cand, cTok, cand.pos);
-              }
-              if (!didRec && configEnableBranchA1) {
-                recoverSkipToken(cand, cTok, cand.pos);
-              }
+              recoverHeadHypotheses(cand, cTok, cand.pos);
             } else {
               recoverEofAccept(cand, cand.pos);
             }

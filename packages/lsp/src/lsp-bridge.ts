@@ -241,10 +241,7 @@ export class PositionIndex {
 
   /** @deprecated Use {@link rangeFromOffsets} with character offsets instead. */
   rangeFromBytes(startByte: number, endByte: number): LSPRange {
-    return {
-      start: this.offsetToPosition(startByte),
-      end: this.offsetToPosition(endByte),
-    };
+    return this.rangeFromOffsets(startByte, endByte);
   }
 }
 

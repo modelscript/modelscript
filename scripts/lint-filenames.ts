@@ -73,8 +73,7 @@ export function checkFile(relPath: string): Violation[] {
 
   // 2. React UI Components must be PascalCase.tsx
   const isWebComponent = relPath.startsWith("apps/web/src/components/") && ext === ".tsx";
-  const isMorselComponent = relPath.startsWith("apps/morsel/app/components/") && ext === ".tsx";
-  if (isWebComponent || isMorselComponent) {
+  if (isWebComponent) {
     if (!isPascalCase(nameWithoutExt)) {
       violations.push({
         file: relPath,

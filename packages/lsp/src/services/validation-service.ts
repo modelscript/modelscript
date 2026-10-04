@@ -1300,11 +1300,12 @@ export class ValidationService {
           if (!node) return;
           if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
           if (node.isMissing || node.type === "ERROR") {
-            const start = bridge["positions"].offsetToPosition(node.startIndex);
-            const end = bridge["positions"].offsetToPosition(node.endIndex);
+            const startOff = typeof node.startOffset === "number" ? node.startOffset : node.startIndex;
+            const endOff = typeof node.endOffset === "number" ? node.endOffset : node.endIndex;
+            const range = bridge["positions"].rangeFromOffsets(startOff, endOff);
             stepDiagnostics.push({
               severity: DiagnosticSeverity.Error,
-              range: { start, end },
+              range,
               message: node.isMissing ? "Missing syntax element" : "Syntax error",
               source: "step",
             });

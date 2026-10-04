@@ -147,7 +147,10 @@ export function emitVerificationDiagnostics(
   results: VerificationResult[],
   db: any,
   documentUri: string,
-  positions: { offsetToPosition(offset: number): { line: number; character: number } },
+  positions: {
+    charOffsetToPosition?(offset: number): { line: number; character: number };
+    offsetToPosition?(offset: number): { line: number; character: number };
+  },
 ): any[] {
   const diagnostics = [];
 
@@ -160,12 +163,18 @@ export function emitVerificationDiagnostics(
     const targetId = vr.constraintId;
     const targetNode = db.symbols.get(targetId);
 
-    if (targetNode && typeof targetNode.startByte === "number" && typeof targetNode.endByte === "number") {
-      const s = positions.offsetToPosition(targetNode.startByte);
-      const e = positions.offsetToPosition(targetNode.endByte);
-      if (!isNaN(s.line) && !isNaN(e.line)) {
-        start = s;
-        end = e;
+    if (targetNode) {
+      const startOff = typeof targetNode.startOffset === "number" ? targetNode.startOffset : targetNode.startByte;
+      const endOff = typeof targetNode.endOffset === "number" ? targetNode.endOffset : targetNode.endByte;
+      if (typeof startOff === "number" && typeof endOff === "number") {
+        const toPos = (off: number) =>
+          positions.charOffsetToPosition ? positions.charOffsetToPosition(off) : positions.offsetToPosition!(off);
+        const s = toPos(startOff);
+        const e = toPos(endOff);
+        if (!isNaN(s.line) && !isNaN(e.line)) {
+          start = s;
+          end = e;
+        }
       }
     }
 

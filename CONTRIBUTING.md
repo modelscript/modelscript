@@ -16,13 +16,13 @@ npm run build
 
 ### Common Commands
 
-| Command          | Description                                |
-| ---------------- | ------------------------------------------ |
-| `npm run dev`    | Start all services (API, Morsel, Web, IDE) |
-| `npm run build`  | Build all packages                         |
-| `npm test`       | Run tests                                  |
-| `npm run lint`   | Run linters                                |
-| `npm run format` | Format with Prettier                       |
+| Command          | Description                              |
+| ---------------- | ---------------------------------------- |
+| `npm run dev`    | Start all services (API, Web, IDE, Docs) |
+| `npm run build`  | Build all packages                       |
+| `npm test`       | Run tests                                |
+| `npm run lint`   | Run linters                              |
+| `npm run format` | Format with Prettier                     |
 
 ## Making a Release
 
@@ -77,7 +77,7 @@ Every push to `main` and every pull request triggers the CI workflow (`.github/w
 - Runs tests
 - Runs linters
 - Packages the VS Code extension (VSIX artifact)
-- Deploys Morsel and IDE to GitHub Pages (main only)
+- Deploys IDE to GitHub Pages (main only)
 - Builds and pushes Docker images to GHCR as `:latest` (main only)
 
 ## Commit Messages

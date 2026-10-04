@@ -407,7 +407,8 @@ export declare class LspFacade {
     typeId: number;
     nodePtr: number;
   }[];
-  /** Locates the definition of the symbol at the given byte offset. */
+  private getEncodingDiv;
+  /** Locates the definition of the symbol at the given character offset. */
   getDefinition(
     astRoot: number,
     targetOffset: number,
@@ -416,7 +417,7 @@ export declare class LspFacade {
     start: number;
     end: number;
   } | null;
-  /** Locates all references to the symbol at the given byte offset across registered workspace files. */
+  /** Locates all references to the symbol at the given character offset across registered workspace files. */
   getReferences(
     astRoot: number,
     targetOffset: number,

@@ -95,8 +95,15 @@ export function transpileQuery(
   }
 
   let cursorCounter = 0;
+  /**
+   * Names of the cursor variables of the `for...of` loops currently being lowered (innermost last).
+   * A `return` inside such a loop bypasses the trailing `release()`, which leaks the cursor (and its
+   * 16 KB stack) forever under the non-freeing `stub` runtime, so every active cursor is released
+   * right before the return.
+   */
+  const activeCursors: string[] = [];
   const transformer: ts.TransformerFactory<ts.SourceFile> = (transformerContext) => {
-    const visit: ts.Visitor = (node) => {
+    const visitInner: ts.Visitor = (node) => {
       if (context === "scanner") {
         // Handle assignment: lexer.state = expr
         if (
@@ -194,6 +201,23 @@ export function transpileQuery(
           ]);
         }
       }
+      // A `return` inside a cursor loop must release every enclosing cursor first.
+      if (ts.isReturnStatement(node) && activeCursors.length > 0) {
+        const releases = [...activeCursors]
+          .reverse()
+          .map((name) =>
+            ts.factory.createExpressionStatement(
+              ts.factory.createCallExpression(
+                ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(name), "release"),
+                undefined,
+                [],
+              ),
+            ),
+          );
+        const visitedReturn = ts.visitEachChild(node, visit, transformerContext) as ts.Statement;
+        return ts.factory.createBlock([...releases, visitedReturn], true);
+      }
+
       // 3. Syntax Sugar: for...of loops over cursors
       if (ts.isForOfStatement(node)) {
         const iterExpr = visitNode(node.expression) as ts.Expression;
@@ -242,7 +266,13 @@ export function transpileQuery(
         );
 
         let bodyStmts: ts.Statement[] = [nextDecl];
-        const visitedBody = visitNode(node.statement) as ts.Statement;
+        activeCursors.push("_cursor_" + cursorCounter);
+        let visitedBody: ts.Statement;
+        try {
+          visitedBody = visitNode(node.statement) as ts.Statement;
+        } finally {
+          activeCursors.pop();
+        }
         if (ts.isBlock(visitedBody)) {
           bodyStmts = bodyStmts.concat(visitedBody.statements);
         } else {
@@ -861,6 +891,19 @@ export function transpileQuery(
       }
 
       return ts.visitEachChild(node, visit, transformerContext);
+    };
+
+    const visit: ts.Visitor = (node) => {
+      if (activeCursors.length > 0 && ts.isFunctionLike(node)) {
+        // A return inside a nested function belongs to that function, not to the enclosing cursor loops.
+        const saved = activeCursors.splice(0, activeCursors.length);
+        try {
+          return visitInner(node);
+        } finally {
+          activeCursors.push(...saved);
+        }
+      }
+      return visitInner(node);
     };
 
     function visitNode(node: ts.Node): ts.Node {

@@ -171,21 +171,48 @@ export class ArenaStringPool {
     if (charCount == 0) return 0;
 
     let tempStart = this.charOffset;
+    let outOffset = tempStart;
+
     for (let i: u32 = 0; i < charCount; i++) {
-      let ch = load<u16>(srcPtr + (i as usize) * 2);
-      this.charBuffer.set(tempStart + i, ch < 128 ? (ch as u8) : 63);
+      let ch = load<u16>(srcPtr + ((i as usize) << 1));
+      if (ch <= 0x7f) {
+        this.charBuffer.set(outOffset++, ch as u8);
+      } else if (ch <= 0x7ff) {
+        this.charBuffer.set(outOffset++, (0xc0 | ((ch >> 6) & 0x1f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | (ch & 0x3f)) as u8);
+      } else if (ch >= 0xd800 && ch <= 0xdbff && i + 1 < charCount) {
+        let low = load<u16>(srcPtr + (((i + 1) as usize) << 1));
+        if (low >= 0xdc00 && low <= 0xdfff) {
+          let codePoint: u32 = 0x10000 + (((ch as u32 - 0xd800) << 10) | (low as u32 - 0xdc00));
+          this.charBuffer.set(outOffset++, (0xf0 | ((codePoint >> 18) & 0x07)) as u8);
+          this.charBuffer.set(outOffset++, (0x80 | ((codePoint >> 12) & 0x3f)) as u8);
+          this.charBuffer.set(outOffset++, (0x80 | ((codePoint >> 6) & 0x3f)) as u8);
+          this.charBuffer.set(outOffset++, (0x80 | (codePoint & 0x3f)) as u8);
+          i++; // skip low surrogate
+        } else {
+          // Unpaired high surrogate
+          this.charBuffer.set(outOffset++, (0xe0 | ((ch >> 12) & 0x0f)) as u8);
+          this.charBuffer.set(outOffset++, (0x80 | ((ch >> 6) & 0x3f)) as u8);
+          this.charBuffer.set(outOffset++, (0x80 | (ch & 0x3f)) as u8);
+        }
+      } else {
+        this.charBuffer.set(outOffset++, (0xe0 | ((ch >> 12) & 0x0f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | ((ch >> 6) & 0x3f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | (ch & 0x3f)) as u8);
+      }
     }
 
-    let h = hashChunkedBytes64(this.charBuffer, tempStart, charCount);
+    let outLen = outOffset - tempStart;
+    let h = hashChunkedBytes64(this.charBuffer, tempStart, outLen);
     let existingId = this.getStringMap().get(h);
-    if (existingId != 0 && this._matchesChunk(existingId, tempStart, charCount)) {
+    if (existingId != 0 && this._matchesChunk(existingId, tempStart, outLen)) {
       return existingId;
     }
 
     let id = this.stringCount++;
     this.stringOffsets.set(id, tempStart);
-    this.stringLengths.set(id, charCount);
-    this.charOffset += charCount;
+    this.stringLengths.set(id, outLen);
+    this.charOffset += outLen;
     this.getStringMap().set(h, id);
     return id;
   }

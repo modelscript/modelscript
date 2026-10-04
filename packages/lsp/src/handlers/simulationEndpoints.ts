@@ -1034,7 +1034,7 @@ export function registerSimulationEndpoints(context: LspContext) {
     }
 
     // Generate the FMU result for scalar variable metadata
-    const { generateFmu } = await import("@modelscript/exchange");
+    const { generateFmu, generateFmuWasmSource } = await import("@modelscript/exchange");
     const fmuResult = generateFmu(arena, { modelIdentifier: targetClass }, stateVars);
 
     // Generate WASM-targeted C source

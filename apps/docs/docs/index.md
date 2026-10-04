@@ -13,8 +13,8 @@ hero:
       text: Get Started
       link: /guide/introduction
     - theme: alt
-      text: Try in Browser (Morsel)
-      link: https://morsel.modelscript.org
+      text: Try in Browser (Playground)
+      link: https://modelscript.org/playground
     - theme: alt
       text: Launch Web IDE
       link: https://ide.modelscript.org

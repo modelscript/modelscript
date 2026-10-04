@@ -1970,32 +1970,51 @@ export class LspFacade {
     }
     return symbols;
   }
-  /** Locates the definition of the symbol at the given byte offset. */
+  getEncodingDiv() {
+    const encoding = this.getInputEncoding
+      ? this.getInputEncoding()
+      : InputEncoding.UTF16LE;
+    return encoding === InputEncoding.UTF16LE ||
+      encoding === InputEncoding.UTF16BE
+      ? 2
+      : encoding === InputEncoding.UTF32LE || encoding === InputEncoding.UTF32BE
+        ? 4
+        : 1;
+  }
+  /** Locates the definition of the symbol at the given character offset. */
   getDefinition(astRoot, targetOffset) {
     if (!this.exports.lsp_getDefinition || !this.exports.lsp_getBinaryBuffer)
       return null;
-    const numElements = this.exports.lsp_getDefinition(astRoot, targetOffset);
+    const div = this.getEncodingDiv();
+    const numElements = this.exports.lsp_getDefinition(
+      astRoot,
+      targetOffset * div,
+    );
     if (numElements < 2) return null;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     if (numElements >= 3) {
       return {
         fileId: mem32[(dirPtr >>> 2) + 0],
-        start: mem32[(dirPtr >>> 2) + 1],
-        end: mem32[(dirPtr >>> 2) + 2],
+        start: Math.floor(mem32[(dirPtr >>> 2) + 1] / div),
+        end: Math.floor(mem32[(dirPtr >>> 2) + 2] / div),
       };
     }
     return {
       fileId: 0,
-      start: mem32[(dirPtr >>> 2) + 0],
-      end: mem32[(dirPtr >>> 2) + 1],
+      start: Math.floor(mem32[(dirPtr >>> 2) + 0] / div),
+      end: Math.floor(mem32[(dirPtr >>> 2) + 1] / div),
     };
   }
-  /** Locates all references to the symbol at the given byte offset across registered workspace files. */
+  /** Locates all references to the symbol at the given character offset across registered workspace files. */
   getReferences(astRoot, targetOffset) {
     if (!this.exports.lsp_getReferences || !this.exports.lsp_getBinaryBuffer)
       return [];
-    const numElements = this.exports.lsp_getReferences(astRoot, targetOffset);
+    const div = this.getEncodingDiv();
+    const numElements = this.exports.lsp_getReferences(
+      astRoot,
+      targetOffset * div,
+    );
     const references = [];
     if (numElements === 0) return references;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -2003,8 +2022,8 @@ export class LspFacade {
     for (let i = 0; i < numElements * 3; i += 3) {
       references.push({
         fileId: mem32[(dirPtr >>> 2) + i],
-        start: mem32[(dirPtr >>> 2) + i + 1],
-        end: mem32[(dirPtr >>> 2) + i + 2],
+        start: Math.floor(mem32[(dirPtr >>> 2) + i + 1] / div),
+        end: Math.floor(mem32[(dirPtr >>> 2) + i + 2] / div),
       });
     }
     return references;
@@ -2019,7 +2038,11 @@ export class LspFacade {
       !this.exports.lsp_getBinaryBuffer
     )
       return null;
-    const count = this.exports.lsp_getCompletionContext(astRoot, cursorOffset);
+    const div = this.getEncodingDiv();
+    const count = this.exports.lsp_getCompletionContext(
+      astRoot,
+      cursorOffset * div,
+    );
     if (count < 4) return null;
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -2053,8 +2076,14 @@ export class LspFacade {
     return {
       hasTarget: true,
       targetText,
-      targetRange: { start: targetStart, end: targetEnd },
-      replaceRange: { start: replaceStart, end: replaceEnd },
+      targetRange: {
+        start: Math.floor(targetStart / div),
+        end: Math.floor(targetEnd / div),
+      },
+      replaceRange: {
+        start: Math.floor(replaceStart / div),
+        end: Math.floor(replaceEnd / div),
+      },
     };
   }
   /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */

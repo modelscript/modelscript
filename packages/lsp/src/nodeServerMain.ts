@@ -40,6 +40,7 @@ import {
   createConnection,
   InitializeParams,
   InitializeResult,
+  PositionEncodingKind,
   ProposedFeatures,
   ServerCapabilities,
   TextDocuments,
@@ -467,6 +468,7 @@ export function startNodeServer(input?: any, output?: any) {
     }
 
     const capabilities: ServerCapabilities = {
+      positionEncoding: PositionEncodingKind.UTF16,
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
         resolveProvider: false,

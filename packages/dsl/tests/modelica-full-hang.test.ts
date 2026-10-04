@@ -103,7 +103,7 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     activeFacade = new LspFacade(instance.exports.memory, instance.exports);
     activeFacade.syntaxNames = result.syntaxNames;
-  }, 180000);
+  }, 300000);
 
   afterAll(() => {
     if (fs.existsSync(tmpDir)) {

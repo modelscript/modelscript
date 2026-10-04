@@ -15,7 +15,7 @@ const wasmCandidates = [
   "apps/ide/dist/extension/server/dist/modelica.wasm",
   "apps/ide/dist/extension/server/dist/tree-sitter-modelica.wasm",
   "apps/ide/dist/static/static/devextensions/server/dist/modelica.wasm",
-  "apps/morsel/build/client/lsp/server/dist/parser.wasm",
+  "apps/web/dist/lsp/server/dist/parser.wasm",
 ];
 
 const rlcCode = [

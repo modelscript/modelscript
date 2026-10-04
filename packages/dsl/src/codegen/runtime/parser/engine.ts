@@ -1143,6 +1143,108 @@ export function getDirectFieldIdForChild(type: u16, childIndex: u16, childType: 
   return getFieldIdForChild(type, childIndex, childType, 1);
 }
 
+// ---------------------------------------------------------------------------
+// Parent-table cache. Nodes carry no parent pointers, so without a cache every
+// getAncestors() call is an O(file size) DFS from the root. While a lint run is
+// active (tree immutable) we build a node->parent open-addressing hash table
+// once per root and answer ancestor queries in O(depth).
+// ---------------------------------------------------------------------------
+let ancestorCacheOn: boolean = false;
+let ancestorCacheRoot: u32 = 0;
+let ancestorTable: usize = 0; // entries of (key u32, parent u32)
+let ancestorTableCap: u32 = 0; // power of two
+let ancestorTableCount: u32 = 0;
+
+export let lintRunGeneration: u32 = 0;
+
+export function setAncestorCacheEnabled(on: boolean): void {
+  ancestorCacheOn = on;
+  ancestorCacheRoot = 0; // force rebuild on next use
+  if (on) lintRunGeneration++; // invalidates per-run lint memo caches
+}
+
+function ancestorTableInsert(key: u32, parent: u32): void {
+  let mask = ancestorTableCap - 1;
+  let i = (key * 2654435761) & mask;
+  while (true) {
+    let k = load<u32>(ancestorTable + ((<usize>i) << 3));
+    if (k == 0) {
+      store<u32>(ancestorTable + ((<usize>i) << 3), key);
+      store<u32>(ancestorTable + ((<usize>i) << 3) + 4, parent);
+      ancestorTableCount++;
+      return;
+    }
+    if (k == key) {
+      store<u32>(ancestorTable + ((<usize>i) << 3) + 4, parent);
+      return;
+    }
+    i = (i + 1) & mask;
+  }
+}
+
+function ancestorTableLookup(key: u32): i64 {
+  let mask = ancestorTableCap - 1;
+  let i = (key * 2654435761) & mask;
+  while (true) {
+    let k = load<u32>(ancestorTable + ((<usize>i) << 3));
+    if (k == 0) return -1;
+    if (k == key) return <i64>load<u32>(ancestorTable + ((<usize>i) << 3) + 4);
+    i = (i + 1) & mask;
+  }
+  return -1;
+}
+
+function ancestorTableGrow(): void {
+  let oldTable = ancestorTable;
+  let oldCap = ancestorTableCap;
+  let newCap: u32 = oldCap == 0 ? 1 << 16 : oldCap << 1;
+  ancestorTable = heap.alloc(<usize>newCap << 3);
+  memory.fill(ancestorTable, 0, <usize>newCap << 3);
+  ancestorTableCap = newCap;
+  ancestorTableCount = 0;
+  for (let j: u32 = 0; j < oldCap; j++) {
+    let k = load<u32>(oldTable + ((<usize>j) << 3));
+    if (k != 0) ancestorTableInsert(k, load<u32>(oldTable + ((<usize>j) << 3) + 4));
+  }
+  if (oldTable != 0) {
+    // old table intentionally not freed (runtime may use a stub allocator)
+  }
+}
+
+function buildAncestorTable(rootNode: u32): void {
+  if (ancestorTableCap == 0) ancestorTableGrow();
+  else memory.fill(ancestorTable, 0, <usize>ancestorTableCap << 3);
+  ancestorTableCount = 0;
+  ancestorTableInsert(rootNode, 0xFFFFFFFF);
+  let current = getNodeFirstChild(rootNode);
+  if (current != 0) ancestorTableInsert(current, rootNode);
+  let guard = 0;
+  while (current != 0 && ++guard < 50000000) {
+    if (ancestorTableCount * 2 > ancestorTableCap) ancestorTableGrow();
+    let child = getNodeFirstChild(current);
+    if (child != 0) {
+      ancestorTableInsert(child, current);
+      current = child;
+      continue;
+    }
+    // climb until a sibling exists
+    let n = current;
+    let next: u32 = 0;
+    while (n != 0 && n != rootNode) {
+      let sib = getNodeNextSibling(n);
+      let p = <u32>ancestorTableLookup(n);
+      if (sib != 0) {
+        ancestorTableInsert(sib, p);
+        next = sib;
+        break;
+      }
+      n = p;
+    }
+    current = next;
+  }
+  ancestorCacheRoot = rootNode;
+}
+
 @unmanaged
 export class AncestorCursor {
   pathStack: u32; 
@@ -1171,6 +1273,34 @@ export class AncestorCursor {
        return;
      }
      
+     if (ancestorCacheOn) {
+       if (ancestorCacheRoot != rootNode) buildAncestorTable(rootNode);
+       let tmp = ancestorTableLookup(targetNode);
+       if (tmp >= 0) {
+         let depth = 0;
+         let p = <u32>tmp;
+         while (p != 0xFFFFFFFF && p != 0 && depth < 4096) {
+           depth++;
+           let up = ancestorTableLookup(p);
+           if (up < 0) break;
+           p = <u32>up;
+         }
+         let stk = this.pathStack;
+         let idx = depth - 1;
+         p = <u32>tmp;
+         while (idx >= 0 && p != 0xFFFFFFFF && p != 0) {
+           store<u32>(stk + (<usize>idx << 2), p);
+           idx--;
+           let up = ancestorTableLookup(p);
+           if (up < 0) break;
+           p = <u32>up;
+         }
+         this.pathLength = depth;
+         this.currentIndex = depth - 1;
+       }
+       return;
+     }
+
      // Iterative DFS to find targetNode
      let stack = this.pathStack; 
      let stackDepth = 0;

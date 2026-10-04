@@ -106,10 +106,10 @@ export function initGSS(): void {
     memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
   }
   if (changetype<usize>(t_activeSummary) == 0) {
-    t_activeSummary = changetype<FrontierSummary>(heap.alloc(512));
+    t_activeSummary = changetype<FrontierSummary>(heap.alloc(FS_SIZE));
   }
   if (changetype<usize>(t_nextSummary) == 0) {
-    t_nextSummary = changetype<FrontierSummary>(heap.alloc(512));
+    t_nextSummary = changetype<FrontierSummary>(heap.alloc(FS_SIZE));
   }
   resetFrontierSummary(t_activeSummary);
   resetFrontierSummary(t_nextSummary);
@@ -158,6 +158,25 @@ export let configEnableActivePruning: bool = true;
 export let gssBestAcceptingHead: u32 = 0;
 export let gssBestDyingHead: u32 = 0;
 
+/**
+ * FrontierSummary byte layout. The class lives in a raw `FS_SIZE`-byte block (see initGSS):
+ * a 64-byte scalar header (fields below, hasOverflow at 64), then eight-slot (32-byte)
+ * arrays, then the unconfirmed-repair counter. Keep these in sync with the field list.
+ */
+const FS_OFF_HEALTHY_POS: usize = 68;
+const FS_OFF_HEALTHY_COST: usize = FS_OFF_HEALTHY_POS + 32;
+const FS_OFF_NONPAUSED_POS: usize = FS_OFF_HEALTHY_COST + 32;
+const FS_OFF_NONPAUSED_COST: usize = FS_OFF_NONPAUSED_POS + 32;
+const FS_OFF_PARETO_ERR_COST: usize = FS_OFF_NONPAUSED_COST + 32;
+const FS_OFF_PARETO_ERR_NODES: usize = FS_OFF_PARETO_ERR_COST + 32;
+const FS_OFF_PARETO_HEALTHY_COST: usize = FS_OFF_PARETO_ERR_NODES + 32;
+const FS_OFF_PARETO_HEALTHY_NODES: usize = FS_OFF_PARETO_HEALTHY_COST + 32;
+const FS_OFF_UNCONFIRMED_REPAIRS: usize = FS_OFF_PARETO_HEALTHY_NODES + 32;
+const FS_SIZE: usize = 512;
+// The scalar header must end before the first array, and everything must fit in the block.
+assert(offsetof<FrontierSummary>("hasOverflow") < FS_OFF_HEALTHY_POS);
+assert(FS_OFF_UNCONFIRMED_REPAIRS + 4 <= FS_SIZE);
+
 @unmanaged
 export class FrontierSummary {
   healthyCount: u32;
@@ -182,55 +201,63 @@ export class FrontierSummary {
   hasOverflow: bool;
 
   @inline getHealthyPos(i: i32): u32 {
-    return load<u32>(changetype<usize>(this) + 68 + ((i as usize) << 2));
+    return load<u32>(changetype<usize>(this) + FS_OFF_HEALTHY_POS + ((i as usize) << 2));
   }
   @inline setHealthyPos(i: i32, val: u32): void {
-    store<u32>(changetype<usize>(this) + 68 + ((i as usize) << 2), val);
+    store<u32>(changetype<usize>(this) + FS_OFF_HEALTHY_POS + ((i as usize) << 2), val);
   }
   @inline getHealthyCost(i: i32): i32 {
-    return load<i32>(changetype<usize>(this) + 100 + ((i as usize) << 2));
+    return load<i32>(changetype<usize>(this) + FS_OFF_HEALTHY_COST + ((i as usize) << 2));
   }
   @inline setHealthyCost(i: i32, val: i32): void {
-    store<i32>(changetype<usize>(this) + 100 + ((i as usize) << 2), val);
+    store<i32>(changetype<usize>(this) + FS_OFF_HEALTHY_COST + ((i as usize) << 2), val);
   }
 
   @inline getNonPausedPos(i: i32): u32 {
-    return load<u32>(changetype<usize>(this) + 132 + ((i as usize) << 2));
+    return load<u32>(changetype<usize>(this) + FS_OFF_NONPAUSED_POS + ((i as usize) << 2));
   }
   @inline setNonPausedPos(i: i32, val: u32): void {
-    store<u32>(changetype<usize>(this) + 132 + ((i as usize) << 2), val);
+    store<u32>(changetype<usize>(this) + FS_OFF_NONPAUSED_POS + ((i as usize) << 2), val);
   }
   @inline getNonPausedCost(i: i32): i32 {
-    return load<i32>(changetype<usize>(this) + 164 + ((i as usize) << 2));
+    return load<i32>(changetype<usize>(this) + FS_OFF_NONPAUSED_COST + ((i as usize) << 2));
   }
   @inline setNonPausedCost(i: i32, val: i32): void {
-    store<i32>(changetype<usize>(this) + 164 + ((i as usize) << 2), val);
+    store<i32>(changetype<usize>(this) + FS_OFF_NONPAUSED_COST + ((i as usize) << 2), val);
   }
 
   @inline getParetoErrCost(i: i32): i32 {
-    return load<i32>(changetype<usize>(this) + 196 + ((i as usize) << 2));
+    return load<i32>(changetype<usize>(this) + FS_OFF_PARETO_ERR_COST + ((i as usize) << 2));
   }
   @inline setParetoErrCost(i: i32, val: i32): void {
-    store<i32>(changetype<usize>(this) + 196 + ((i as usize) << 2), val);
+    store<i32>(changetype<usize>(this) + FS_OFF_PARETO_ERR_COST + ((i as usize) << 2), val);
   }
   @inline getParetoErrNodes(i: i32): u32 {
-    return load<u32>(changetype<usize>(this) + 228 + ((i as usize) << 2));
+    return load<u32>(changetype<usize>(this) + FS_OFF_PARETO_ERR_NODES + ((i as usize) << 2));
   }
   @inline setParetoErrNodes(i: i32, val: u32): void {
-    store<u32>(changetype<usize>(this) + 228 + ((i as usize) << 2), val);
+    store<u32>(changetype<usize>(this) + FS_OFF_PARETO_ERR_NODES + ((i as usize) << 2), val);
   }
 
   @inline getParetoHealthyCost(i: i32): i32 {
-    return load<i32>(changetype<usize>(this) + 260 + ((i as usize) << 2));
+    return load<i32>(changetype<usize>(this) + FS_OFF_PARETO_HEALTHY_COST + ((i as usize) << 2));
   }
   @inline setParetoHealthyCost(i: i32, val: i32): void {
-    store<i32>(changetype<usize>(this) + 260 + ((i as usize) << 2), val);
+    store<i32>(changetype<usize>(this) + FS_OFF_PARETO_HEALTHY_COST + ((i as usize) << 2), val);
   }
   @inline getParetoHealthyNodes(i: i32): u32 {
-    return load<u32>(changetype<usize>(this) + 292 + ((i as usize) << 2));
+    return load<u32>(changetype<usize>(this) + FS_OFF_PARETO_HEALTHY_NODES + ((i as usize) << 2));
   }
   @inline setParetoHealthyNodes(i: i32, val: u32): void {
-    store<u32>(changetype<usize>(this) + 292 + ((i as usize) << 2), val);
+    store<u32>(changetype<usize>(this) + FS_OFF_PARETO_HEALTHY_NODES + ((i as usize) << 2), val);
+  }
+
+  /** Number of heads in this frontier carrying an unconfirmed repair (see isUnconfirmedRepair). */
+  @inline get unconfirmedRepairs(): u32 {
+    return load<u32>(changetype<usize>(this) + FS_OFF_UNCONFIRMED_REPAIRS);
+  }
+  @inline set unconfirmedRepairs(val: u32) {
+    store<u32>(changetype<usize>(this) + FS_OFF_UNCONFIRMED_REPAIRS, val);
   }
 
   updateParetoHealthy(newCost: i32, newNodes: u32): void {
@@ -293,14 +320,22 @@ export let t_nextSummary: FrontierSummary = changetype<FrontierSummary>(0);
 
 export function resetFrontierSummary(s: FrontierSummary): void {
   if (changetype<usize>(s) == 0) return;
-  memory.fill(changetype<usize>(s), 0, 512);
+  memory.fill(changetype<usize>(s), 0, FS_SIZE);
   s.minHealthyCost = 0x7fffffff;
   s.minNonPausedCost = 0x7fffffff;
   s.minInErrorCost = 0x7fffffff;
 }
 
+/** A healthy-flagged head that still carries an unconfirmed repair (insertion/substitution). */
+@inline function isUnconfirmedRepair(h: ParseHead): bool {
+  return !h.inErrorState && h.errorCost > 0 && h.successfulShifts < 2;
+}
+
 export function addToFrontierSummary(s: FrontierSummary, h: ParseHead): void {
   if (changetype<usize>(s) == 0 || h.isDead) return;
+  if (isUnconfirmedRepair(h)) {
+    s.unconfirmedRepairs = s.unconfirmedRepairs + 1;
+  }
 
   if (!h.isPaused) {
     s.nonPausedCount++;
@@ -397,7 +432,7 @@ export function fastBetterVersionExists(candidate: ParseHead, s: FrontierSummary
 
   // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
   // and is at or ahead in the stream.
-  if (candidate.inErrorState && s.healthyCount > 0) {
+  if (candidate.inErrorState && s.healthyCount > s.unconfirmedRepairs) {
     if (s.minHealthyCost < candidate.errorCost && s.maxHealthyPos >= candidate.pos) {
       if (s.minHealthyCostPos >= candidate.pos) {
         return true;
@@ -472,7 +507,7 @@ function slowBetterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32
 
     // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
     // and is at or ahead in the stream (Tree-sitter parser.c:252-257).
-    if (!existing.inErrorState && candidate.inErrorState) {
+    if (!existing.inErrorState && !isUnconfirmedRepair(existing) && candidate.inErrorState) {
       if (existing.errorCost < candidate.errorCost && existing.pos >= candidate.pos) {
         return true;
       }
@@ -553,7 +588,7 @@ export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint3
     let dominated = false;
 
     // Rule 1: healthy newHead dominates in-error existing
-    if (!newHead.inErrorState && existing.inErrorState) {
+    if (!newHead.inErrorState && !isUnconfirmedRepair(newHead) && existing.inErrorState) {
       if (newHead.errorCost < existing.errorCost && newHead.pos >= existing.pos) {
         dominated = true;
       }

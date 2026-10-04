@@ -6,7 +6,6 @@
 [![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
 [![npm @modelscript/cli](https://img.shields.io/npm/v/@modelscript/cli?label=cli)](https://www.npmjs.com/package/@modelscript/cli)
 [![Docker API](https://img.shields.io/badge/ghcr.io-api-blue?logo=docker)](https://ghcr.io/modelscript/api)
-[![Docker Morsel](https://img.shields.io/badge/ghcr.io-morsel-blue?logo=docker)](https://ghcr.io/modelscript/morsel)
 [![Docker Web](https://img.shields.io/badge/ghcr.io-web-blue?logo=docker)](https://ghcr.io/modelscript/web)
 [![Docker IDE](https://img.shields.io/badge/ghcr.io-ide-blue?logo=docker)](https://ghcr.io/modelscript/ide)
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
@@ -124,14 +123,13 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ### Applications (`apps/`)
 
-| Package                                 | Responsibility                                                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)       | `modelscript` (`msx`) unified command-line toolchain — compile, simulate, optimize, lint, render, fmu, csg, surrogate, mc |
-| [`@modelscript/api`](./apps/api/)       | REST, GraphQL, SPARQL, and simulation backend API server                                                                  |
-| [`@modelscript/ide`](./apps/ide/)       | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                                     |
-| [`@modelscript/web`](./apps/web/)       | Web frontend for browsing and exploring libraries (NPM-style registry)                                                    |
-| [`@modelscript/morsel`](./apps/morsel/) | Interactive visual editor — code editing, diagram viewer, simulation, and plotting                                        |
-| [`@modelscript/docs`](./apps/docs/)     | Unified modelscript.org website and documentation portal (VitePress)                                                      |
+| Package                             | Responsibility                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)   | `modelscript` (`msx`) unified command-line toolchain — compile, simulate, optimize, lint, render, fmu, csg, surrogate, mc |
+| [`@modelscript/api`](./apps/api/)   | REST, GraphQL, SPARQL, and simulation backend API server                                                                  |
+| [`@modelscript/ide`](./apps/ide/)   | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                                     |
+| [`@modelscript/web`](./apps/web/)   | Web frontend — library registry, social explorer, and visual modeling playground (`/playground`)                          |
+| [`@modelscript/docs`](./apps/docs/) | Unified modelscript.org website and documentation portal (VitePress)                                                      |
 
 ---
 
@@ -170,16 +168,10 @@ npm install
 
 ### Building
 
-Build all packages in dependency order via Nx (excluding morsel):
+Build all packages in dependency order via Nx:
 
 ```bash
 npm run build
-```
-
-To build all packages including morsel:
-
-```bash
-npm run build:all
 ```
 
 ### Running (Development)
@@ -192,13 +184,12 @@ npm run dev
 
 This launches the primary development stack:
 
-| Service    | Port / URL              | Description                        |
-| ---------- | ----------------------- | ---------------------------------- |
-| **API**    | `http://localhost:3000` | REST / GraphQL / SPARQL API server |
-| **Web**    | `http://localhost:3001` | Package registry & model browser   |
-| **Morsel** | `http://localhost:3002` | Visual Modelica diagram editor     |
-| **IDE**    | `http://localhost:3003` | Browser-based VS Code Web IDE      |
-| **Docs**   | `http://localhost:5173` | VitePress documentation portal     |
+| Service  | Port / URL              | Description                                       |
+| -------- | ----------------------- | ------------------------------------------------- |
+| **API**  | `http://localhost:3000` | REST / GraphQL / SPARQL API server                |
+| **Web**  | `http://localhost:3001` | Package registry, hub, and interactive playground |
+| **IDE**  | `http://localhost:3003` | Browser-based VS Code Web IDE                     |
+| **Docs** | `http://localhost:5173` | VitePress documentation portal                    |
 
 #### Browser-Local AI Assistant (Optional)
 
@@ -296,8 +287,7 @@ npm run docker:up
 | Service         | Port           | Protocol | Description                                                            |
 | --------------- | -------------- | -------- | ---------------------------------------------------------------------- |
 | **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, and verification API              |
-| **Web**         | `3001`         | HTTP     | Library registry & documentation explorer                              |
-| **Morsel**      | `3002`         | HTTP     | Visual model editor, diagram canvas, and simulation plotter            |
+| **Web**         | `3001`         | HTTP     | Library registry, hub, and visual playground (`/playground`)           |
 | **IDE**         | `3003`         | HTTP     | Browser-based VS Code IDE with language server integration             |
 | **MQTT**        | `1883`, `9001` | TCP, WS  | Eclipse Mosquitto broker for event bus & telemetry streaming           |
 | **TimescaleDB** | `5432`         | TCP      | Time-series database for telemetry historian & simulation trajectories |

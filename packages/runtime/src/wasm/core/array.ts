@@ -590,7 +590,7 @@ export class SourceTextView {
   isUtf16: bool;
   charCount: u32;
 
-  @inline static at(ptr: usize, len: u32): SourceTextView {
+  @inline static at(ptr: usize, len: u32, isUtf16: bool = true): SourceTextView {
     if (g_sourceViewBuf == 0) {
       g_sourceViewBuf = atomicChunkAlloc(SOURCE_VIEW_SLOTS * sizeof<SourceTextView>());
     }
@@ -598,7 +598,6 @@ export class SourceTextView {
     let view = changetype<SourceTextView>(g_sourceViewBuf + slot * sizeof<SourceTextView>());
     view.ptr = ptr;
     view.byteLen = len;
-    let isUtf16 = (len >= 2 && ptr != 0 && load<u8>(ptr + 1) == 0);
     view.isUtf16 = isUtf16;
     view.charCount = isUtf16 ? (len >> 1) : len;
     return view;

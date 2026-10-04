@@ -175,6 +175,8 @@ export interface AstAPI<RuleName extends string, FieldName extends string = stri
   setCachedHasUnits(classNode: u32, hasUnits: boolean): void;
   getCachedHasInnerClass(classNode: u32): i32;
   setCachedHasInnerClass(classNode: u32, hasInner: boolean): void;
+  getCachedByName(kind: u32, nameSpan: u64): i32;
+  setCachedByName(kind: u32, nameSpan: u64, value: u32): void;
   hashSpan(span: u64): u32;
 }
 

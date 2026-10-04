@@ -197,6 +197,58 @@ export interface ScriptTemplateRow {
   updated_at: string;
 }
 
+export interface OrganizationRecord {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  avatar_url: string | null;
+  created_by: number;
+  created_at: string;
+}
+
+export type OrgRole = "owner" | "maintainer" | "contributor";
+
+export interface OrganizationMemberRecord {
+  org_id: number;
+  user_id: number;
+  username?: string;
+  role: OrgRole;
+  created_at: string;
+}
+
+export type CollaboratorPermission = "admin" | "write" | "read";
+
+export interface PackageCollaboratorRecord {
+  library_name: string;
+  user_id: number;
+  username?: string;
+  permission: CollaboratorPermission;
+  created_at: string;
+}
+
+export interface RepoWebhookRecord {
+  id: number;
+  repo_id: number;
+  provider: "github" | "gitlab" | "local" | "custom";
+  secret: string;
+  events: string;
+  auto_publish: number;
+  tag_pattern: string;
+  is_active: number;
+  created_at: string;
+}
+
+export interface WebhookDeliveryRecord {
+  id: number;
+  webhook_id: number;
+  event_type: string;
+  payload: string;
+  response_status: number | null;
+  error_message: string | null;
+  delivered_at: string;
+}
+
 /**
  * SQLite-backed storage for Modelica class metadata.
  */
@@ -3295,6 +3347,95 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM linked_repos WHERE id = ? AND user_id = ?`).run(repoId, userId);
   }
 
+  getLinkedRepoById(id: number): any {
+    return this.#db.prepare(`SELECT * FROM linked_repos WHERE id = ?`).get(id);
+  }
+
+  // ==========================================
+  // Repository Webhooks & CI/CD Ingestion
+  // ==========================================
+
+  createRepoWebhook(params: {
+    repoId: number;
+    provider: "github" | "gitlab" | "local" | "custom";
+    secret: string;
+    events?: string[];
+    autoPublish?: boolean;
+    tagPattern?: string;
+  }): RepoWebhookRecord {
+    const eventsJson = JSON.stringify(params.events ?? ["push", "release"]);
+    const autoPublish = params.autoPublish !== false ? 1 : 0;
+    const tagPattern = params.tagPattern || "^v?([0-9]+\\.[0-9]+\\.[0-9]+)$";
+
+    const info = this.#db
+      .prepare(
+        `INSERT INTO repo_webhooks (repo_id, provider, secret, events, auto_publish, tag_pattern)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(params.repoId, params.provider, params.secret, eventsJson, autoPublish, tagPattern);
+
+    return this.getRepoWebhookById(Number(info.lastInsertRowid))!;
+  }
+
+  getRepoWebhooks(repoId: number): RepoWebhookRecord[] {
+    return this.#db
+      .prepare(`SELECT * FROM repo_webhooks WHERE repo_id = ? ORDER BY created_at DESC`)
+      .all(repoId) as RepoWebhookRecord[];
+  }
+
+  getRepoWebhookById(id: number): RepoWebhookRecord | null {
+    const row = this.#db.prepare(`SELECT * FROM repo_webhooks WHERE id = ?`).get(id) as RepoWebhookRecord | undefined;
+    return row ?? null;
+  }
+
+  deleteRepoWebhook(id: number, repoId?: number): boolean {
+    let stmt;
+    if (repoId) {
+      stmt = this.#db.prepare(`DELETE FROM repo_webhooks WHERE id = ? AND repo_id = ?`).run(id, repoId);
+    } else {
+      stmt = this.#db.prepare(`DELETE FROM repo_webhooks WHERE id = ?`).run(id);
+    }
+    return stmt.changes > 0;
+  }
+
+  findWebhooksForRepo(
+    provider: string,
+    namespace: string,
+    project: string,
+  ): (RepoWebhookRecord & { namespace: string; project: string; user_id: number })[] {
+    return this.#db
+      .prepare(
+        `SELECT w.*, r.namespace, r.project, r.user_id
+         FROM repo_webhooks w
+         JOIN linked_repos r ON w.repo_id = r.id
+         WHERE w.provider = ? AND LOWER(r.namespace) = LOWER(?) AND LOWER(r.project) = LOWER(?) AND w.is_active = 1`,
+      )
+      .all(provider, namespace, project) as any[];
+  }
+
+  recordWebhookDelivery(params: {
+    webhookId: number;
+    eventType: string;
+    payload: string;
+    responseStatus?: number;
+    errorMessage?: string;
+  }): number {
+    const info = this.#db
+      .prepare(
+        `INSERT INTO webhook_deliveries (webhook_id, event_type, payload, response_status, error_message)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        params.webhookId,
+        params.eventType,
+        params.payload,
+        params.responseStatus ?? 200,
+        params.errorMessage ?? null,
+      );
+
+    return Number(info.lastInsertRowid);
+  }
+
   // ── Global Search ───────────────────────────────────────────────
 
   globalSearch(query: string, limitPerCategory: number = 3) {
@@ -3707,6 +3848,11 @@ export class LibraryDatabase {
     signature: string | null;
     published_by: number | null;
     published_at: string;
+    is_deprecated?: number | null;
+    deprecation_reason?: string | null;
+    is_yanked?: number | null;
+    yank_reason?: string | null;
+    yanked_at?: string | null;
   } | null {
     const stmt = this.#db.prepare(`
       SELECT * FROM library_releases
@@ -3724,6 +3870,400 @@ export class LibraryDatabase {
       WHERE library_name = ?
     `);
     return stmt.all(libraryName) as any[];
+  }
+
+  /**
+   * Mark a library release as deprecated (or clear deprecation if reason is null).
+   */
+  deprecateLibraryRelease(libraryName: string, libraryVersion: string, reason: string | null): boolean {
+    const isDeprecated = reason !== null ? 1 : 0;
+    const info = this.#db
+      .prepare(
+        `UPDATE library_releases
+         SET is_deprecated = ?, deprecation_reason = ?
+         WHERE library_name = ? AND library_version = ?`,
+      )
+      .run(isDeprecated, reason, libraryName, libraryVersion);
+    return info.changes > 0;
+  }
+
+  /**
+   * Yank a library release (tombstone download while preserving metadata).
+   */
+  yankLibraryRelease(libraryName: string, libraryVersion: string, reason: string | null): boolean {
+    const info = this.#db
+      .prepare(
+        `UPDATE library_releases
+         SET is_yanked = 1, yank_reason = ?, yanked_at = datetime('now')
+         WHERE library_name = ? AND library_version = ?`,
+      )
+      .run(reason, libraryName, libraryVersion);
+    return info.changes > 0;
+  }
+
+  /**
+   * Restore/unyank a library release.
+   */
+  unyankLibraryRelease(libraryName: string, libraryVersion: string): boolean {
+    const info = this.#db
+      .prepare(
+        `UPDATE library_releases
+         SET is_yanked = 0, yank_reason = NULL, yanked_at = NULL
+         WHERE library_name = ? AND library_version = ?`,
+      )
+      .run(libraryName, libraryVersion);
+    return info.changes > 0;
+  }
+
+  /**
+   * Check if a user has management permissions (owner/maintainer/admin) over a package.
+   */
+  canUserManagePackage(libraryName: string, userId: number): boolean {
+    const user = this.getUserById(userId);
+    if (!user) return false;
+    if (user.account_type === "admin") return true;
+
+    // Check if user is collaborator with admin or write
+    const collabPerm = this.getPackageCollaboratorPermission(libraryName, userId);
+    if (collabPerm === "admin" || collabPerm === "write") {
+      return true;
+    }
+
+    // If scoped package (@owner/pkg), check if user.username === owner or is org owner/maintainer
+    if (libraryName.startsWith("@")) {
+      const scope = libraryName.split("/")[0]!.slice(1).toLowerCase();
+      if (user.username.toLowerCase() === scope) {
+        return true;
+      }
+      const org = this.getOrganizationBySlug(scope);
+      if (org) {
+        const role = this.getOrganizationMemberRole(org.id, userId);
+        if (role === "owner" || role === "maintainer") {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // For unscoped packages, check if user is the primary owner (initial publisher / transfer recipient)
+    const initialRelease = this.#db
+      .prepare(`SELECT published_by FROM library_releases WHERE library_name = ? ORDER BY id ASC LIMIT 1`)
+      .get(libraryName) as { published_by: number } | undefined;
+    return initialRelease ? initialRelease.published_by === userId : false;
+  }
+
+  /**
+   * Initiate a package ownership transfer request.
+   */
+  createPackageTransfer(packageName: string, fromUserId: number, toUserId: number): number {
+    const info = this.#db
+      .prepare(
+        `INSERT INTO package_ownership_transfers (package_name, from_user_id, to_user_id, status)
+         VALUES (?, ?, ?, 'pending')`,
+      )
+      .run(packageName, fromUserId, toUserId);
+    return Number(info.lastInsertRowid);
+  }
+
+  /**
+   * Accept an ownership transfer request.
+   */
+  acceptPackageTransfer(transferId: number, toUserId: number): boolean {
+    const transfer = this.#db
+      .prepare(`SELECT * FROM package_ownership_transfers WHERE id = ? AND to_user_id = ? AND status = 'pending'`)
+      .get(transferId, toUserId) as { id: number; package_name: string; to_user_id: number } | undefined;
+
+    if (!transfer) return false;
+
+    const tx = this.#db.transaction(() => {
+      this.#db
+        .prepare(
+          `UPDATE package_ownership_transfers
+           SET status = 'accepted', resolved_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .run(transferId);
+
+      // Reassign published_by to new owner
+      this.#db
+        .prepare(`UPDATE library_releases SET published_by = ? WHERE library_name = ?`)
+        .run(toUserId, transfer.package_name);
+    });
+
+    tx();
+    return true;
+  }
+
+  /**
+   * Cancel an ownership transfer request.
+   */
+  cancelPackageTransfer(transferId: number, fromUserId: number): boolean {
+    const info = this.#db
+      .prepare(
+        `UPDATE package_ownership_transfers
+         SET status = 'canceled', resolved_at = datetime('now')
+         WHERE id = ? AND from_user_id = ? AND status = 'pending'`,
+      )
+      .run(transferId, fromUserId);
+    return info.changes > 0;
+  }
+
+  /**
+   * Get pending transfers for a user (incoming and outgoing).
+   */
+  getPendingTransfers(userId: number): any[] {
+    return this.#db
+      .prepare(
+        `SELECT t.*, u_from.username AS from_username, u_to.username AS to_username
+         FROM package_ownership_transfers t
+         JOIN users u_from ON t.from_user_id = u_from.id
+         JOIN users u_to ON t.to_user_id = u_to.id
+         WHERE (t.to_user_id = ? OR t.from_user_id = ?) AND t.status = 'pending'
+         ORDER BY t.created_at DESC`,
+      )
+      .all(userId, userId) as any[];
+  }
+
+  /**
+   * Record a package download event for daily aggregation.
+   */
+  recordPackageDownload(libraryName: string, libraryVersion: string, dateStr?: string): void {
+    const date = dateStr ?? new Date().toISOString().slice(0, 10);
+    this.#db
+      .prepare(
+        `INSERT INTO package_downloads_daily (library_name, library_version, download_date, downloads_count)
+         VALUES (?, ?, ?, 1)
+         ON CONFLICT(library_name, library_version, download_date)
+         DO UPDATE SET downloads_count = downloads_count + 1`,
+      )
+      .run(libraryName, libraryVersion, date);
+  }
+
+  /**
+   * Query aggregated download statistics for a package.
+   */
+  getPackageStats(
+    libraryName: string,
+    days: number = 30,
+  ): {
+    totalDownloads: number;
+    daily: { date: string; downloads: number }[];
+    versionBreakdown: Record<string, number>;
+  } {
+    const startDate = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
+
+    const totalRow = this.#db
+      .prepare(`SELECT COALESCE(SUM(downloads_count), 0) as total FROM package_downloads_daily WHERE library_name = ?`)
+      .get(libraryName) as { total: number };
+
+    const dailyRows = this.#db
+      .prepare(
+        `SELECT download_date as date, SUM(downloads_count) as downloads
+         FROM package_downloads_daily
+         WHERE library_name = ? AND download_date >= ?
+         GROUP BY download_date
+         ORDER BY download_date ASC`,
+      )
+      .all(libraryName, startDate) as { date: string; downloads: number }[];
+
+    const versionRows = this.#db
+      .prepare(
+        `SELECT library_version as version, SUM(downloads_count) as downloads
+         FROM package_downloads_daily
+         WHERE library_name = ?
+         GROUP BY library_version
+         ORDER BY downloads DESC`,
+      )
+      .all(libraryName) as { version: string; downloads: number }[];
+
+    const versionBreakdown: Record<string, number> = {};
+    for (const row of versionRows) {
+      versionBreakdown[row.version] = row.downloads;
+    }
+
+    return {
+      totalDownloads: totalRow?.total ?? 0,
+      daily: dailyRows,
+      versionBreakdown,
+    };
+  }
+
+  /**
+   * Check if a user is authorized to publish a package release.
+   */
+  canUserPublishPackage(libraryName: string, userId: number): { allowed: boolean; reason?: string } {
+    const user = this.getUserById(userId);
+    if (!user) return { allowed: false, reason: "User not found" };
+    if (user.account_type === "admin") return { allowed: true };
+
+    const existingReleases = this.getLibraryReleases(libraryName);
+    if (existingReleases.length > 0) {
+      if (this.canUserManagePackage(libraryName, userId)) {
+        return { allowed: true };
+      }
+      return {
+        allowed: false,
+        reason: `You do not have permission to publish new versions of package '${libraryName}'`,
+      };
+    }
+
+    // New package creation
+    if (libraryName.startsWith("@")) {
+      const scope = libraryName.split("/")[0]!.slice(1).toLowerCase();
+      if (user.username.toLowerCase() === scope) {
+        return { allowed: true };
+      }
+      const org = this.getOrganizationBySlug(scope);
+      if (org) {
+        const role = this.getOrganizationMemberRole(org.id, userId);
+        if (role === "owner" || role === "maintainer") {
+          return { allowed: true };
+        }
+        return {
+          allowed: false,
+          reason: `You must be an owner or maintainer of organization '@${scope}' to publish packages under its namespace`,
+        };
+      }
+      return {
+        allowed: false,
+        reason: `Namespace '@${scope}' does not match your username and is not a registered organization`,
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  // ==========================================
+  // Organizations and RBAC
+  // ==========================================
+
+  createOrganization(params: {
+    slug: string;
+    name: string;
+    description?: string | null;
+    avatarUrl?: string | null;
+    createdBy: number;
+  }): OrganizationRecord {
+    const slug = params.slug.trim().toLowerCase();
+    const info = this.#db
+      .prepare(
+        `INSERT INTO organizations (slug, name, description, avatar_url, created_by)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(slug, params.name, params.description ?? null, params.avatarUrl ?? null, params.createdBy);
+
+    const orgId = Number(info.lastInsertRowid);
+    // Add creator as owner
+    this.#db
+      .prepare(
+        `INSERT INTO organization_members (org_id, user_id, role)
+         VALUES (?, ?, 'owner')`,
+      )
+      .run(orgId, params.createdBy);
+
+    return this.getOrganizationById(orgId)!;
+  }
+
+  getOrganizationBySlug(slug: string): OrganizationRecord | null {
+    const row = this.#db.prepare(`SELECT * FROM organizations WHERE LOWER(slug) = LOWER(?)`).get(slug.trim()) as
+      | OrganizationRecord
+      | undefined;
+    return row ?? null;
+  }
+
+  getOrganizationById(id: number): OrganizationRecord | null {
+    const row = this.#db.prepare(`SELECT * FROM organizations WHERE id = ?`).get(id) as OrganizationRecord | undefined;
+    return row ?? null;
+  }
+
+  getUserOrganizations(userId: number): (OrganizationRecord & { role: OrgRole })[] {
+    return this.#db
+      .prepare(
+        `SELECT o.*, m.role
+         FROM organizations o
+         JOIN organization_members m ON o.id = m.org_id
+         WHERE m.user_id = ?
+         ORDER BY o.name ASC`,
+      )
+      .all(userId) as (OrganizationRecord & { role: OrgRole })[];
+  }
+
+  getOrganizationMembers(orgId: number): OrganizationMemberRecord[] {
+    return this.#db
+      .prepare(
+        `SELECT m.*, u.username
+         FROM organization_members m
+         JOIN users u ON m.user_id = u.id
+         WHERE m.org_id = ?
+         ORDER BY m.created_at ASC`,
+      )
+      .all(orgId) as OrganizationMemberRecord[];
+  }
+
+  getOrganizationMemberRole(orgId: number, userId: number): OrgRole | null {
+    const row = this.#db
+      .prepare(`SELECT role FROM organization_members WHERE org_id = ? AND user_id = ?`)
+      .get(orgId, userId) as { role: OrgRole } | undefined;
+    return row?.role ?? null;
+  }
+
+  addOrganizationMember(orgId: number, userId: number, role: OrgRole): void {
+    this.#db
+      .prepare(
+        `INSERT INTO organization_members (org_id, user_id, role)
+         VALUES (?, ?, ?)
+         ON CONFLICT(org_id, user_id)
+         DO UPDATE SET role = excluded.role`,
+      )
+      .run(orgId, userId, role);
+  }
+
+  removeOrganizationMember(orgId: number, userId: number): boolean {
+    const info = this.#db
+      .prepare(`DELETE FROM organization_members WHERE org_id = ? AND user_id = ?`)
+      .run(orgId, userId);
+    return info.changes > 0;
+  }
+
+  // ==========================================
+  // Package Collaborators
+  // ==========================================
+
+  addPackageCollaborator(libraryName: string, userId: number, permission: CollaboratorPermission): void {
+    this.#db
+      .prepare(
+        `INSERT INTO package_collaborators (library_name, user_id, permission)
+         VALUES (?, ?, ?)
+         ON CONFLICT(library_name, user_id)
+         DO UPDATE SET permission = excluded.permission`,
+      )
+      .run(libraryName, userId, permission);
+  }
+
+  removePackageCollaborator(libraryName: string, userId: number): boolean {
+    const info = this.#db
+      .prepare(`DELETE FROM package_collaborators WHERE library_name = ? AND user_id = ?`)
+      .run(libraryName, userId);
+    return info.changes > 0;
+  }
+
+  getPackageCollaborators(libraryName: string): PackageCollaboratorRecord[] {
+    return this.#db
+      .prepare(
+        `SELECT c.*, u.username
+         FROM package_collaborators c
+         JOIN users u ON c.user_id = u.id
+         WHERE c.library_name = ?
+         ORDER BY c.created_at ASC`,
+      )
+      .all(libraryName) as PackageCollaboratorRecord[];
+  }
+
+  getPackageCollaboratorPermission(libraryName: string, userId: number): CollaboratorPermission | null {
+    const row = this.#db
+      .prepare(`SELECT permission FROM package_collaborators WHERE library_name = ? AND user_id = ?`)
+      .get(libraryName, userId) as { permission: CollaboratorPermission } | undefined;
+    return row?.permission ?? null;
   }
 
   // ── npm registry methods ────────────────────────────────────────
@@ -3997,6 +4537,10 @@ export class LibraryDatabase {
         tarball: `${registryUrl}/${encodeURIComponent(name)}/-/${name}-${v.version}.tgz`,
       };
       manifest["_id"] = `${name}@${v.version}`;
+      const libRelease = this.getLibraryRelease(name, v.version);
+      if (libRelease?.is_deprecated && libRelease.deprecation_reason) {
+        manifest["deprecated"] = libRelease.deprecation_reason;
+      }
       versionsObj[v.version] = manifest;
     }
 

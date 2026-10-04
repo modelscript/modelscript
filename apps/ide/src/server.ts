@@ -295,10 +295,10 @@ app.use(
 );
 
 // Favicon
-const morselFavicon = resolve(__dirname, "..", "..", "morsel", "public", "favicon.ico");
+const webFavicon = resolve(__dirname, "..", "..", "web", "public", "favicon.ico");
 app.get("/favicon.ico", (req, res) => {
-  if (existsSync(morselFavicon)) {
-    res.sendFile(morselFavicon);
+  if (existsSync(webFavicon)) {
+    res.sendFile(webFavicon);
   } else {
     res.status(404).end();
   }

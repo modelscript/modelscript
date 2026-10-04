@@ -18,6 +18,21 @@ export interface LibraryVersion {
   description: string | null;
   modelicaVersion: string | null;
   size: number;
+  contentHash?: string;
+  signature?: string;
+  publishedAt?: string;
+  isDeprecated?: boolean;
+  deprecationReason?: string | null;
+  isYanked?: boolean;
+  yankReason?: string | null;
+  yankedAt?: string | null;
+}
+
+export interface PackageStats {
+  name: string;
+  totalDownloads: number;
+  daily: { date: string; downloads: number }[];
+  versionBreakdown: Record<string, number>;
 }
 
 export interface ClassSummary {
@@ -129,6 +144,51 @@ export const getIconUrl = (name: string, version: string, className: string) =>
 
 export const getDiagramUrl = (name: string, version: string, className: string) =>
   `/api/v1/libraries/${name}/${version}/classes/${className}/diagram.svg`;
+
+export const getPackageStats = async (name: string, days = 30): Promise<PackageStats> => {
+  const { data } = await api.get<PackageStats>(`/libraries/${name}/stats`, { params: { days } });
+  return data;
+};
+
+export const deprecatePackage = async (name: string, version: string, reason: string) => {
+  const { data } = await api.post(`/libraries/${name}/${version}/deprecate`, { reason });
+  return data;
+};
+
+export const undeprecatePackage = async (name: string, version: string) => {
+  const { data } = await api.delete(`/libraries/${name}/${version}/deprecate`);
+  return data;
+};
+
+export const yankPackage = async (name: string, version: string, reason: string) => {
+  const { data } = await api.post(`/libraries/${name}/${version}/yank`, { reason });
+  return data;
+};
+
+export const unyankPackage = async (name: string, version: string) => {
+  const { data } = await api.post(`/libraries/${name}/${version}/unyank`);
+  return data;
+};
+
+export const transferPackageOwnership = async (name: string, targetUsername: string) => {
+  const { data } = await api.post(`/libraries/${name}/transfer-ownership`, { targetUsername });
+  return data;
+};
+
+export const acceptPackageTransfer = async (transferId: number) => {
+  const { data } = await api.post(`/libraries/transfers/${transferId}/accept`);
+  return data;
+};
+
+export const cancelPackageTransfer = async (transferId: number) => {
+  const { data } = await api.post(`/libraries/transfers/${transferId}/cancel`);
+  return data;
+};
+
+export const getPendingPackageTransfers = async () => {
+  const { data } = await api.get<{ transfers: any[] }>(`/libraries/transfers/pending`);
+  return data.transfers;
+};
 
 /**
  * Rewrite `modelica://` URIs in documentation HTML:

@@ -24,6 +24,7 @@ import { cloudRouter } from "./routes/cloud.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { federationRouter } from "./routes/federation.js";
 import { fmuRouter } from "./routes/fmu.js";
+import { gitServerRouter } from "./routes/git-server.js";
 import { gitRouter } from "./routes/git.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
@@ -31,6 +32,7 @@ import { instancesRouter } from "./routes/instances.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
+import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
 import { publishRouter } from "./routes/publish.js";
@@ -46,6 +48,7 @@ import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
 import { threadRouter } from "./routes/thread.js";
 import { twinsRouter } from "./routes/twins.js";
 import { usersRouter } from "./routes/users.js";
+import { webhooksRouter } from "./routes/webhooks.js";
 import { seedCadAssembly } from "./seed-cad-assembly.js";
 import { seedCfdAnimation } from "./seed-cfd-animation.js";
 import { seedDroneCfd } from "./seed-drone-cfd.js";
@@ -387,7 +390,14 @@ graph TD
   }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
-  app.use(express.json({ limit: "50mb" }));
+  app.use(
+    express.json({
+      limit: "50mb",
+      verify: (req, _res, buf) => {
+        (req as any).rawBody = buf;
+      },
+    }),
+  );
 
   // Rate Limiting
   const limiter = rateLimit({
@@ -426,8 +436,10 @@ graph TD
   // Auth routes
   app.use("/api/v1/auth", authRouter(database));
   app.use("/api/v1/users", usersRouter(database, federationWorker));
+  app.use("/api/v1/organizations", organizationsRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker));
   app.use("/api/v1/repos", reposRouter(database));
+  app.use("/api/v1/webhooks", webhooksRouter(database, jobQueue, libraryStorage));
   app.use("/api/v1/search", searchRouter(database));
   app.use("/api/v1/storage", storageRouter());
   app.use("/api/v1", adminRouter(database, federationWorker, featureFlagService));
@@ -525,6 +537,8 @@ graph TD
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/git", gitRouter());
   app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility
+  app.use("/git", gitServerRouter(database));
+  app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
   app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 

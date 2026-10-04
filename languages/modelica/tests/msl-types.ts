@@ -110,9 +110,14 @@ export interface IconValidationResult {
 export interface DiagramComparisonResult {
   omc?: {
     success: boolean;
-    componentCount: number;
+    cached: boolean;
+    durationMs: number;
     cpuMs?: number;
     peakMemoryMB?: number;
+    nodeCount: number;
+    edgeCount: number;
+    components?: { name: string; type: string; placement?: any }[];
+    connections?: { from: string; to: string }[];
     error?: string;
   };
   modelscript: {
@@ -127,9 +132,12 @@ export interface DiagramComparisonResult {
     svgPreview?: string;
     error?: string;
   };
+  nodeCountMatch?: boolean;
+  edgeCountMatch?: boolean;
   placementMatch?: boolean;
   hasUnresolvedNodes: boolean;
   validSvg: boolean;
+  diffSummary?: string;
 }
 
 export interface WorkerResult {

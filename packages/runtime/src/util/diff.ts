@@ -41,6 +41,18 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     }
   }
 
+  // Ensure prefixLen does not split a UTF-16 surrogate pair
+  if (
+    prefixLen > 0 &&
+    prefixLen < prevText.length &&
+    prevText.charCodeAt(prefixLen - 1) >= 0xd800 &&
+    prevText.charCodeAt(prefixLen - 1) <= 0xdbff &&
+    prevText.charCodeAt(prefixLen) >= 0xdc00 &&
+    prevText.charCodeAt(prefixLen) <= 0xdfff
+  ) {
+    prefixLen--;
+  }
+
   let suffixLen = 0;
   while (
     suffixLen < minLen - prefixLen &&
@@ -60,6 +72,18 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     while (suffixLen > 0 && isIdentChar(prevText.charCodeAt(prevText.length - suffixLen))) {
       suffixLen--;
     }
+  }
+
+  // Ensure suffixLen does not split a UTF-16 surrogate pair
+  if (
+    suffixLen > 0 &&
+    prevText.length - suffixLen > 0 &&
+    prevText.charCodeAt(prevText.length - suffixLen - 1) >= 0xd800 &&
+    prevText.charCodeAt(prevText.length - suffixLen - 1) <= 0xdbff &&
+    prevText.charCodeAt(prevText.length - suffixLen) >= 0xdc00 &&
+    prevText.charCodeAt(prevText.length - suffixLen) <= 0xdfff
+  ) {
+    suffixLen--;
   }
 
   const prevDiffLen = prevText.length - prefixLen - suffixLen;

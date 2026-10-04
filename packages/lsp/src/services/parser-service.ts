@@ -890,17 +890,12 @@ export class ParserService {
     if (nameIds && nameIds.length > 0) {
       for (const id of nameIds) {
         const entry = db.symbols.get(id);
-        if (
-          entry &&
-          entry.resourceId === currentUri &&
-          typeof entry.startByte === "number" &&
-          typeof entry.endByte === "number"
-        ) {
+        const startOff = typeof entry.startOffset === "number" ? entry.startOffset : entry.startByte;
+        const endOff = typeof entry.endOffset === "number" ? entry.endOffset : entry.endByte;
+        if (entry && entry.resourceId === currentUri && typeof startOff === "number" && typeof endOff === "number") {
           const bridge = documentLSPBridges.get(currentUri);
           if (bridge) {
-            const start = bridge["positions"].offsetToPosition(entry.startByte);
-            const end = bridge["positions"].offsetToPosition(entry.endByte);
-            return { start, end };
+            return bridge["positions"].rangeFromOffsets(startOff, endOff);
           }
         }
       }

@@ -43,6 +43,7 @@ import {
   getInputBuffer,
   atomicChunkAlloc,
   ASTNode,
+  inputEncoding,
 } from "./arena";
 import { CorrespondenceIndex } from "./correspondence";
 import {
@@ -249,7 +250,7 @@ export function locIntern(pool: ArenaStringPool, loc: u64): u32 {
   let len = locLen(loc);
   if (len == 0) return 0;
   let bytes = locBytes(loc);
-  if (len >= 2 && load<u8>(bytes + 1) == 0) {
+  if (inputEncoding == 1 || inputEncoding == 2) {
     return pool.internUtf16(bytes, len);
   }
   return pool.intern(bytes, len);

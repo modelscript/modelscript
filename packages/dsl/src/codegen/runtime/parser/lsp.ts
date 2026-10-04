@@ -30,7 +30,7 @@ import {
   getNodeMerkleHash,
   S,
 } from "../arena";
-import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool } from "./engine";
+import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool, setAncestorCacheEnabled } from "./engine";
 import { inputLength, inputEncoding } from "../parser";
 import { UnmanagedMap64To64, createMap64To64, UnmanagedMap64 } from "../core/hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "../indexing/stub";
@@ -444,6 +444,13 @@ function lsp_clearVisited(): void {
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (4 u32s per diagnostic).
  */
 function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart: u32 = 0, rangeEnd: u32 = 0): void {
+  // The tree is immutable during a lint run; let getAncestors() use a parent table.
+  setAncestorCacheEnabled(true);
+  lsp_extractDiagnosticsForRootImpl(astRoot, fileId, rangeStart, rangeEnd);
+  setAncestorCacheEnabled(false);
+}
+
+function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeStart: u32 = 0, rangeEnd: u32 = 0): void {
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
 

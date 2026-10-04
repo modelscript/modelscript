@@ -423,10 +423,10 @@ writeFileSync(join(OUT_DIR, "404.html"), landingHtml);
 // 7. CNAME for custom domain
 writeFileSync(join(OUT_DIR, "CNAME"), "ide.modelscript.org\n");
 
-// 8. Copy favicon from morsel
-const morselFavicon = resolve(__dirname, "..", "..", "morsel", "public", "favicon.ico");
-if (existsSync(morselFavicon)) {
-  cpSync(morselFavicon, join(OUT_DIR, "favicon.ico"));
+// 8. Copy favicon from web
+const webFavicon = resolve(__dirname, "..", "..", "web", "public", "favicon.ico");
+if (existsSync(webFavicon)) {
+  cpSync(webFavicon, join(OUT_DIR, "favicon.ico"));
 }
 
 // 9. Disable Jekyll processing (ensures all files like .wasm are served as-is)
