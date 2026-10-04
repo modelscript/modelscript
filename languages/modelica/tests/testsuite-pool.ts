@@ -13,6 +13,8 @@ export interface TestCaseMetadata {
   fmiVersion?: "2.0" | "3.0";
   simulate?: boolean;
   xfail?: boolean | string;
+  xfailWasm?: boolean | string;
+  xfailJs?: boolean | string;
 }
 
 export interface TestCase {
@@ -29,6 +31,7 @@ export interface TestResult {
   status: "passed" | "failed" | "skipped";
   duration: number;
   cpuTime: number;
+  backend?: "wasm" | "ts" | "hybrid" | "diff";
   message?: string;
   keywords?: string;
   testStatus?: string;
@@ -42,6 +45,7 @@ export interface PoolOptions {
   testsuiteRoot: string;
   updateMode: boolean;
   omcMode?: boolean;
+  flattenerBackend?: string;
   timeoutMs?: number;
   maxTestsPerWorker?: number;
   maxWorkerRssBytes?: number;
@@ -49,12 +53,14 @@ export interface PoolOptions {
 
 interface QueuedTask {
   testCase: TestCase;
+  backend?: "wasm" | "ts" | "hybrid" | "diff";
   resolve: (res: TestResult) => void;
 }
 
 interface ActiveTask {
   id: number;
   testCase: TestCase;
+  backend?: "wasm" | "ts" | "hybrid" | "diff";
   startTime: number;
   timer: NodeJS.Timeout;
   resolve: (res: TestResult) => void;
@@ -169,6 +175,7 @@ export class TestsuitePool {
             status: "failed",
             duration: Date.now() - task.startTime,
             cpuTime: 0,
+            backend: task.backend,
             message: `Worker error: ${msg.error}\n${instance.stderr.slice(-2000)}`,
             keywords: task.testCase.metadata.keywords,
             testStatus: task.testCase.metadata.status,
@@ -196,6 +203,7 @@ export class TestsuitePool {
           status: "failed",
           duration: Date.now() - task.startTime,
           cpuTime: 0,
+          backend: task.backend,
           message: `Worker exited with code ${code}\n${instance.stderr.slice(-2000)}`,
           keywords: task.testCase.metadata.keywords,
           testStatus: task.testCase.metadata.status,
@@ -238,6 +246,7 @@ export class TestsuitePool {
           status: "failed",
           duration: Date.now() - active.startTime,
           cpuTime: 0,
+          backend: active.backend,
           message: `Worker timed out after ${this.options.timeoutMs / 1000}s`,
           keywords: active.testCase.metadata.keywords,
           testStatus: active.testCase.metadata.status,
@@ -249,6 +258,7 @@ export class TestsuitePool {
     worker.activeTask = {
       id: taskId,
       testCase: task.testCase,
+      backend: task.backend,
       startTime,
       timer,
       resolve: task.resolve,
@@ -261,6 +271,7 @@ export class TestsuitePool {
       testsuiteRoot: this.options.testsuiteRoot,
       updateMode: this.options.updateMode,
       omcMode: this.options.omcMode,
+      flattenerBackend: task.backend ?? this.options.flattenerBackend,
     });
 
     worker.child.stdin!.write(payload + "\n");
@@ -301,9 +312,9 @@ export class TestsuitePool {
     if (idleIdx >= 0) this.idleWorkers.splice(idleIdx, 1);
   }
 
-  public runTest(testCase: TestCase): Promise<TestResult> {
+  public runTest(testCase: TestCase, backend?: "wasm" | "ts" | "hybrid" | "diff"): Promise<TestResult> {
     return new Promise<TestResult>((resolve) => {
-      const task: QueuedTask = { testCase, resolve };
+      const task: QueuedTask = { testCase, backend, resolve };
       const idleWorker = this.idleWorkers.shift();
       if (idleWorker) {
         this.dispatchTask(idleWorker, task);

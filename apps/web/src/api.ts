@@ -1027,4 +1027,161 @@ export const getUnifiedUserJobs = async (): Promise<UnifiedJob[]> => {
   return jobs;
 };
 
+// ── Admin Section APIs ──────────────────────────────────────────────
+
+export interface AdminModerationReport {
+  id: number;
+  reporter_id: number | null;
+  reporter_username?: string;
+  target_type: "post" | "user" | "comment" | string;
+  target_id?: number | string;
+  post_id?: number;
+  post_content?: string;
+  author_username?: string;
+  reason: string;
+  status: "pending" | "resolved" | "dismissed";
+  resolution_notes?: string;
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface AdminFederationDomain {
+  domain: string;
+  tier: "allow" | "silence" | "suspend";
+  reason?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdminDmcaNotice {
+  id: number;
+  claimant_name: string;
+  claimant_email: string;
+  copyright_owner: string;
+  work_description: string;
+  infringing_url: string;
+  resource_type?: string;
+  resource_id?: string;
+  status: "pending" | "resolved" | "rejected";
+  action_taken?: string;
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface AdminAuditLog {
+  id: number;
+  actor_id: number | null;
+  actor_username?: string;
+  action: string;
+  resource_type?: string;
+  resource_id?: string;
+  ip_address?: string;
+  details?: any;
+  created_at: string;
+}
+
+export interface AdminDbStatus {
+  currentVersion: string | number | null;
+  latestVersion?: string | number | null;
+  pendingCount?: number;
+  applied?: { id: number; name: string; applied_at?: string; checksum?: string; execution_ms?: number }[];
+  pending?: { id?: number; name: string }[];
+  pendingMigrations?: { id: number; name: string }[];
+  appliedMigrations?: { id: number; name: string; applied_at?: string }[];
+}
+
+export const getAdminModerationQueue = async (
+  status?: string,
+  limit = 50,
+  offset = 0,
+): Promise<{ reports: AdminModerationReport[]; count: number }> => {
+  const { data } = await api.get("/admin/moderation/queue", { params: { status, limit, offset } });
+  return data;
+};
+
+export const resolveAdminModerationReport = async (
+  id: number,
+  data: {
+    status: "resolved" | "dismissed";
+    resolutionNotes?: string;
+    action?: "none" | "delete_post" | "silence_domain" | "suspend_domain";
+  },
+): Promise<{ success: boolean; reportId: number; status: string; actionExecuted: string }> => {
+  const res = await api.post(`/admin/moderation/reports/${id}/resolve`, data);
+  return res.data;
+};
+
+export const deleteAdminPost = async (
+  postId: number,
+): Promise<{ success: boolean; postId: number; tombstonePropagated: boolean }> => {
+  const { data } = await api.delete(`/admin/posts/${postId}`);
+  return data;
+};
+
+export const getAdminFederationDomains = async (): Promise<{ domains: AdminFederationDomain[]; count: number }> => {
+  const { data } = await api.get("/admin/federation/domains");
+  return data;
+};
+
+export const setAdminFederationDomainTier = async (
+  domain: string,
+  tier: "allow" | "silence" | "suspend",
+  reason?: string,
+): Promise<{ success: boolean; domain: string; tier: string; reason?: string }> => {
+  const { data } = await api.post("/admin/federation/domains", { domain, tier, reason });
+  return data;
+};
+
+export const deleteAdminFederationDomainTier = async (
+  domain: string,
+): Promise<{ success: boolean; domain: string }> => {
+  const { data } = await api.delete(`/admin/federation/domains/${domain}`);
+  return data;
+};
+
+export const getAdminDmcaNotices = async (status?: string): Promise<{ notices: AdminDmcaNotice[]; count: number }> => {
+  const { data } = await api.get("/admin/dmca/notices", { params: { status } });
+  return data;
+};
+
+export const resolveAdminDmcaNotice = async (
+  id: number,
+  actionTaken: string,
+): Promise<{ success: boolean; noticeId: number; actionTaken: string }> => {
+  const { data } = await api.post(`/admin/dmca/notices/${id}/resolve`, { actionTaken });
+  return data;
+};
+
+export const getAdminAuditLogs = async (
+  limit = 50,
+  offset = 0,
+  action?: string,
+): Promise<{ logs: AdminAuditLog[]; count: number }> => {
+  const { data } = await api.get("/admin/audit-logs", { params: { limit, offset, action } });
+  return data;
+};
+
+export const getAdminDbStatus = async (): Promise<AdminDbStatus> => {
+  const { data } = await api.get("/admin/db/status");
+  return data;
+};
+
+export const runAdminDbUpgrade = async (options?: {
+  dryRun?: boolean;
+  skipBackup?: boolean;
+}): Promise<{ success: boolean; appliedCount?: number; dryRun?: boolean; error?: string }> => {
+  const { data } = await api.post("/admin/db/upgrade", options || {});
+  return data;
+};
+
+export const verifyAdminDbIntegrity = async (): Promise<{
+  valid?: boolean;
+  foreignKeysOk?: boolean;
+  integrityOk?: boolean;
+  issues?: string[];
+}> => {
+  const { data } = await api.get("/admin/db/verify");
+  return data;
+};
+
 export default api;

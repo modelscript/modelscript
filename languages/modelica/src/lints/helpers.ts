@@ -390,7 +390,15 @@ export function classContainsElementRecursive(
 export function isDirectModificationChild(db: CodeGraph, redecl: u32, node: u32, $: Record<string, u16>): boolean {
   for (const anc of db.ast.getAncestors(redecl, 0)) {
     if (anc == node) break;
-    if (db.ast.getType(anc) == $.element_modification) {
+    if (anc == redecl) continue;
+    const t = db.ast.getType(anc);
+    if (
+      t == $.element_modification ||
+      t == $.class_modification ||
+      t == $.class_or_inheritance_modification ||
+      t == $.element_redeclaration ||
+      t == $.element_replaceable
+    ) {
       return false;
     }
   }

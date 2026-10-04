@@ -1,7 +1,6 @@
 // name:     ExternalObjectMod
 // keywords: external object, modifier
 // status:   incorrect
-// xfail:    true
 //
 // Checks that invalid modifiers on external objects are caught.
 //

@@ -61,6 +61,8 @@ interface TestCaseMetadata {
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
   xfail?: boolean | string;
+  xfailWasm?: boolean | string;
+  xfailJs?: boolean | string;
 }
 
 interface TestCase {
@@ -76,6 +78,7 @@ interface TestResult {
   status: "passed" | "failed" | "skipped";
   duration: number;
   cpuTime: number;
+  backend?: "wasm" | "ts" | "hybrid" | "diff";
   message?: string;
   keywords?: string;
   testStatus?: string;
@@ -319,6 +322,7 @@ export function runTestCase(
   testsuiteRoot: string,
   updateMode: boolean,
   omcMode = false,
+  flattenerBackendOverride?: string,
 ): TestResult {
   const start = performance.now();
   const cpuStart = process.cpuUsage();
@@ -328,11 +332,20 @@ export function runTestCase(
     return (delta.user + delta.system) / 1000;
   };
 
+  const rawBackend = flattenerBackendOverride ?? process.env.FLATTENER_BACKEND ?? "hybrid";
+  const flattenerBackend: "wasm" | "ts" | "hybrid" | "diff" = rawBackend === "js" ? "ts" : (rawBackend as any);
+
+  const effectiveXfail =
+    flattenerBackend === "wasm"
+      ? (testCase.metadata.xfailWasm ?? (testCase.metadata.xfail === "wasm" ? true : testCase.metadata.xfail))
+      : (testCase.metadata.xfailJs ?? (testCase.metadata.xfail === "wasm" ? false : testCase.metadata.xfail));
+
   const makeResult = (status: "passed" | "failed" | "skipped", message?: string): TestResult => ({
     name: path.basename(testCase.file),
     keywords: testCase.metadata.keywords,
     testStatus: testCase.metadata.status,
-    xfail: testCase.metadata.xfail,
+    xfail: effectiveXfail,
+    backend: flattenerBackend,
     file: testCase.file,
     status,
     duration: performance.now() - start,
@@ -625,7 +638,6 @@ export function runTestCase(
     };
 
     // ── Arena-native flattening ──
-    const flattenerBackend = (process.env.FLATTENER_BACKEND || "hybrid") as any;
     const arrayMode =
       testCase.metadata.arrayMode ?? (/\+a\b|-nfScalarize\b/.test(testCase.source) ? "preserve" : undefined);
     const intEnumConversion = /\+intEnumConversion\b/.test(testCase.source);
@@ -1214,14 +1226,15 @@ async function main() {
       chunks.push(chunk as Buffer);
     }
     const input = Buffer.concat(chunks).toString("utf-8");
-    const { testCase, testsuiteRoot, updateMode, omcMode } = JSON.parse(input) as {
+    const { testCase, testsuiteRoot, updateMode, omcMode, flattenerBackend } = JSON.parse(input) as {
       testCase: TestCase;
       testsuiteRoot: string;
       updateMode: boolean;
       omcMode?: boolean;
+      flattenerBackend?: string;
     };
 
-    const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
+    const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false, flattenerBackend);
     process.stdout.write(JSON.stringify(result) + "\n");
     return;
   }
@@ -1248,8 +1261,8 @@ async function main() {
         process.exit(0);
       }
       if (msg.type === "run") {
-        const { id, testCase, testsuiteRoot, updateMode, omcMode } = msg;
-        const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
+        const { id, testCase, testsuiteRoot, updateMode, omcMode, flattenerBackend } = msg;
+        const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false, flattenerBackend);
         if (typeof globalThis.gc === "function") {
           try {
             globalThis.gc();

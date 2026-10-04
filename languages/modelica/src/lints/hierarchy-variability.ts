@@ -48,6 +48,17 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const enclosingClass = getEnclosingClass(db, node, $);
       if (enclosingClass == 0) return;
 
+      if ($.connect_equation != 0) {
+        let nIdents = 0;
+        for (const _ of db.ast.getDescendants(node, $.identifier)) nIdents++;
+        if (nIdents > 1) {
+          for (const anc of db.ast.getAncestors(node, 0)) {
+            if (anc == enclosingClass) break;
+            if (db.ast.getType(anc) == $.connect_equation) return;
+          }
+        }
+      }
+
       // FAST PATH 1: Is it declared in enclosingClass?
       if (isDottedVariableDeclared(db, enclosingClass, node, $)) {
         return;
@@ -1708,49 +1719,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           }
           return;
         }
-      }
-    },
-  },
-
-  /**
-   * M4067: Invalid variability on connector instance.
-   */
-  invalidConnectorVariability: {
-    nodes: ["component_clause"],
-    severity: "error",
-    code: 4067,
-    message: (target, compName) =>
-      `Invalid variability ${target.text} on connector '${compName ? compName.text : "unknown"}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let varPrefix: u32 = 0;
-      if ($.type_prefix != 0) {
-        for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
-          if (db.ast.textEquals(tp, "parameter") || db.ast.textEquals(tp, "constant")) {
-            varPrefix = tp;
-            break;
-          }
-        }
-      }
-      if (varPrefix == 0) return;
-      let typeSpec: u32 = 0;
-      if ($.type_specifier != 0) {
-        for (const ts of db.ast.getDescendants(node, $.type_specifier)) {
-          typeSpec = ts;
-          break;
-        }
-      }
-      if (typeSpec == 0) return;
-      const targetClass = findClassByName(db, typeSpec, $);
-      if (targetClass != 0 && isClassKind(db, targetClass, "connector")) {
-        let declNode: u32 = 0;
-        if ($.declaration != 0) {
-          for (const decl of db.ast.getDescendants(node, $.declaration)) {
-            const id = db.ast.getChildByFieldId(decl, "name");
-            declNode = id != 0 ? id : decl;
-            break;
-          }
-        }
-        db.diagnostic(node, varPrefix, declNode != 0 ? declNode : node);
       }
     },
   },

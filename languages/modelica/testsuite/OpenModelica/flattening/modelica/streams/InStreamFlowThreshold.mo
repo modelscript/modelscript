@@ -1,7 +1,6 @@
 // name: InStreamFlowThreshold
 // keywords: stream instream connector outside
 // status: correct
-// xfail:    true
 //
 // Checks that the --flowThreshold flag works.
 //

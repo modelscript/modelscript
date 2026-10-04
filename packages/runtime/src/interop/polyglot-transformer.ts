@@ -55,6 +55,11 @@ export interface PolyglotNode {
     name: string;
     type: string;
     isInherited?: boolean;
+    acrossVar?: string;
+    flowVar?: string;
+    domain?: string;
+    isConjugated?: boolean;
+    direction?: "in" | "out" | "inout";
   }[];
   /** Sub-components, inner declarations, or child instances. */
   components?: {
@@ -64,12 +69,20 @@ export interface PolyglotNode {
     causality?: string;
     defaultValue?: string;
     isInherited?: boolean;
+    dimensions?: string;
+    multiplicity?: string;
+    modifications?: Record<string, string | number>;
   }[];
   /** Topological bindings or connector equations between sub-elements. */
   connections?: {
     source: string;
     target: string;
+    kind?: "flow" | "binding" | "physical";
   }[];
+  /** Mathematical equations (DAE/ODE relations). */
+  equations?: string[];
+  /** Formal constraints or invariant assertions. */
+  constraints?: string[];
   /** Dynamic extension properties for custom language schemas. */
   [key: string]: any;
 }
@@ -143,7 +156,7 @@ export class PolyglotTransformer {
     // 1. Modelica default emitter
     this.registerEmitter("modelica", (node, transformer) => {
       const lines: string[] = [];
-      const kind = node.isPartial || node.isAbstract ? "partial model" : node.kind || "model";
+      const kind = node.isPartial || node.isAbstract ? "partial model" : node.kind === "block" ? "block" : "model";
       lines.push(`${kind} ${node.name}`);
 
       const allExtends = [...(node.superclasses || []), ...(node.extends || [])];
@@ -160,15 +173,37 @@ export class PolyglotTransformer {
 
       if (node.ports && node.ports.length > 0) {
         for (const port of node.ports) {
-          lines.push(`  ${port.type} ${port.name};`);
+          let portType = port.type;
+          if (port.isConjugated) {
+            if (portType === "Pin" || portType === "PositivePin") portType = "NegativePin";
+            else if (portType === "NegativePin") portType = "PositivePin";
+            else if (portType.endsWith("_a")) portType = portType.slice(0, -2) + "_b";
+            else if (portType.endsWith("_b")) portType = portType.slice(0, -2) + "_a";
+            else if (portType === "Flange") portType = "Flange_b";
+            else if (portType === "HeatPort") portType = "HeatPort_b";
+            else if (portType === "RealInput" || port.direction === "in") portType = "RealOutput";
+            else if (portType === "RealOutput" || port.direction === "out") portType = "RealInput";
+          } else {
+            if (port.direction === "in" && portType !== "RealInput") portType = "RealInput";
+            else if (port.direction === "out" && portType !== "RealOutput") portType = "RealOutput";
+          }
+          lines.push(`  ${portType} ${port.name};`);
         }
       }
 
       if (node.components && node.components.length > 0) {
         for (const comp of node.components) {
           const varPrefix = comp.variability ? `${comp.variability} ` : "";
+          const dimStr = comp.dimensions || comp.multiplicity ? `[${comp.dimensions || comp.multiplicity}]` : "";
+          let modStr = "";
+          if (comp.modifications && Object.keys(comp.modifications).length > 0) {
+            const mods = Object.entries(comp.modifications)
+              .map(([k, v]) => `${k} = ${v}`)
+              .join(", ");
+            modStr = `(${mods})`;
+          }
           const valStr = comp.defaultValue !== undefined ? ` = ${comp.defaultValue}` : "";
-          lines.push(`  ${varPrefix}${comp.typeSpecifier} ${comp.name}${valStr};`);
+          lines.push(`  ${varPrefix}${comp.typeSpecifier} ${comp.name}${dimStr}${modStr}${valStr};`);
         }
       }
 
@@ -182,10 +217,26 @@ export class PolyglotTransformer {
         }
       }
 
-      if (node.connections && node.connections.length > 0) {
+      const hasConns = node.connections && node.connections.length > 0;
+      const hasEqs = (node.equations && node.equations.length > 0) || (node.constraints && node.constraints.length > 0);
+      if (hasConns || hasEqs) {
         lines.push("\nequation");
-        for (const conn of node.connections) {
+        for (const conn of node.connections || []) {
           lines.push(`  connect(${conn.source}, ${conn.target});`);
+        }
+        for (const eq of node.equations || []) {
+          const eqLine = eq.trim().endsWith(";") ? eq.trim() : `${eq.trim()};`;
+          lines.push(`  ${eqLine}`);
+        }
+        for (const cn of node.constraints || []) {
+          const trimmed = cn.trim().replace(/;$/, "");
+          const isInequality = /(?:<=|>=|<|>|!=)/.test(trimmed);
+          if (trimmed.startsWith("assert(") || (!isInequality && trimmed.includes("="))) {
+            const cnLine = trimmed.endsWith(";") ? trimmed : `${trimmed};`;
+            lines.push(`  ${cnLine}`);
+          } else {
+            lines.push(`  assert(${trimmed}, "Constraint violated: ${trimmed}");`);
+          }
         }
       }
 
@@ -210,17 +261,27 @@ export class PolyglotTransformer {
 
       if (node.ports && node.ports.length > 0) {
         for (const port of node.ports) {
-          lines.push(`  port ${port.name}: ${port.type};`);
+          const pPrefix = port.isConjugated ? "~" : "";
+          lines.push(`  port ${port.name}: ${pPrefix}${port.type};`);
         }
       }
 
       if (node.components && node.components.length > 0) {
         for (const comp of node.components) {
+          const multStr = comp.multiplicity || comp.dimensions ? `[${comp.multiplicity || comp.dimensions}]` : "";
           if (comp.variability === "parameter") {
             const valStr = comp.defaultValue !== undefined ? ` = ${comp.defaultValue}` : "";
-            lines.push(`  attribute ${comp.name}: ${comp.typeSpecifier}${valStr};`);
+            lines.push(`  attribute ${comp.name}: ${comp.typeSpecifier}${multStr}${valStr};`);
           } else {
-            lines.push(`  part ${comp.name}: ${comp.typeSpecifier};`);
+            if (comp.modifications && Object.keys(comp.modifications).length > 0) {
+              lines.push(`  part ${comp.name}: ${comp.typeSpecifier}${multStr} {`);
+              for (const [k, v] of Object.entries(comp.modifications)) {
+                lines.push(`    attribute ${k} = ${v};`);
+              }
+              lines.push(`  }`);
+            } else {
+              lines.push(`  part ${comp.name}: ${comp.typeSpecifier}${multStr};`);
+            }
           }
         }
       }
@@ -239,6 +300,18 @@ export class PolyglotTransformer {
         let connIdx = 1;
         for (const conn of node.connections) {
           lines.push(`  connection c${connIdx++} connect ${conn.source} to ${conn.target};`);
+        }
+      }
+
+      if (node.constraints && node.constraints.length > 0) {
+        for (const c of node.constraints) {
+          lines.push(`  assert constraint { ${c} }`);
+        }
+      }
+
+      if (node.equations && node.equations.length > 0) {
+        for (const eq of node.equations) {
+          lines.push(`  assert constraint { ${eq} }`);
         }
       }
 

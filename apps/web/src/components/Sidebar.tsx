@@ -10,10 +10,12 @@ import {
   KebabHorizontalIcon,
   PackageIcon,
   PersonIcon,
+  PlayIcon,
   PlusIcon,
   RepoIcon,
   RssIcon,
   SearchIcon,
+  ShieldLockIcon,
   TerminalIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
@@ -304,7 +306,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
-  const { user, logout, unreadCount, setUnreadCount } = useAuth();
+  const { user, isAdmin, logout, unreadCount, setUnreadCount } = useAuth();
   const { theme } = useTheme();
   const location = useLocation();
   const [showLogoutMenu, setShowLogoutMenu] = React.useState(false);
@@ -334,6 +336,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     navLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
     navLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
   }
+  navLinks.push({ to: "/playground", icon: PlayIcon, label: "Playground" });
   navLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   navLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
   navLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
@@ -342,6 +345,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   if (user) {
     navLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
     navLinks.push({ to: "/settings", icon: GearIcon, label: "Settings" });
+    if (isAdmin) {
+      navLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
+    }
   }
 
   return (

@@ -124,4 +124,24 @@ describe("Modelica Component Binding Restriction Linter Suite (M4029)", () => {
     const m4029 = diags.filter((d: any) => d.code === 4029);
     assert.equal(m4029.length, 0, "Did not expect M4029 for valid Real parameter");
   });
+
+  it("should not produce M4029 for type aliases of primitive types (e.g. type Point = Real[3])", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      type Point = Real[3];
+      class PointInst
+        Point[10] p1 = fill(8, 10, 3);
+      end PointInst;
+    `;
+
+    const uri = "file:///test/PointInst.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    const m4029 = diags.filter((d: any) => d.code === 4029);
+    assert.equal(m4029.length, 0, "Did not expect M4029 for Point alias");
+  });
 });

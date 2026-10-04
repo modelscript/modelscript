@@ -1489,7 +1489,11 @@ export function x6MarkupToSvg(markup: X6Markup): string {
         .join(" ")
     : "";
   const open = attrs ? `<${markup.tagName} ${attrs}` : `<${markup.tagName}`;
-  const childrenStr = markup.children?.map(x6MarkupToSvg).join("") ?? "";
+  const childrenStr = Array.isArray(markup.children)
+    ? markup.children.map(x6MarkupToSvg).join("")
+    : typeof markup.children === "string"
+      ? markup.children
+      : "";
   const text = markup.textContent ?? "";
   if (!childrenStr && !text) return `${open}/>`;
   return `${open}>${text}${childrenStr}</${markup.tagName}>`;
@@ -1498,7 +1502,7 @@ export function x6MarkupToSvg(markup: X6Markup): string {
 export function hasGraphicElements(node: X6Markup): boolean {
   const shapeTags = new Set(["rect", "ellipse", "circle", "polygon", "polyline", "path", "line", "image"]);
   if (shapeTags.has(node.tagName)) return true;
-  return node.children?.some(hasGraphicElements) ?? false;
+  return Array.isArray(node.children) ? node.children.some(hasGraphicElements) : false;
 }
 
 function bakeVectorEffect(markup: X6Markup, scale: number): void {
@@ -1531,7 +1535,7 @@ function bakeVectorEffect(markup: X6Markup, scale: number): void {
     }
   }
 
-  if (markup.children) {
+  if (Array.isArray(markup.children)) {
     for (const child of markup.children) {
       bakeVectorEffect(child, scale);
     }

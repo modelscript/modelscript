@@ -202,6 +202,8 @@ export class Context {
             return null;
           }
         }
+        const src = (tree as any).sourceCode as string | undefined;
+        if (src) return src.substring(startByte, endByte);
         const offset = tree.rootNode.startIndex;
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
@@ -275,6 +277,8 @@ export class Context {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
     if (!tree) return null;
+    const src = (tree as any).sourceCode as string | undefined;
+    if (src) return src.substring(startByte, endByte);
     return tree.rootNode.text.substring(startByte, endByte);
   }
 
@@ -313,6 +317,8 @@ export class Context {
             return null;
           }
         }
+        const src = (tree as any).sourceCode as string | undefined;
+        if (src) return src.substring(startByte, endByte);
         const offset = tree.rootNode.startIndex;
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },

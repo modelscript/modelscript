@@ -317,6 +317,13 @@ export const ModelicaErrorCode = {
     message: (variability: string, compName: string) =>
       `Invalid variability ${variability} on connector '${compName}'.`,
   },
+  REDECLARE_CONDITION_ATTRIBUTE: {
+    code: 4068,
+    rule: "redeclare-condition-attribute",
+    severity: "error",
+    message: (elementName: string) =>
+      `Invalid redeclaration of ${elementName}, a redeclare may not have a condition attribute.`,
+  },
   RANGE_STEP_TOO_SMALL: {
     code: 4021,
     rule: "range-step-too-small",

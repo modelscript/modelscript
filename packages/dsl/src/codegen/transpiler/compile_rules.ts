@@ -290,6 +290,8 @@ function parseSExpr(s: string): Expr {
       "exp",
       "log",
       "not",
+      "der",
+      "rate",
     ];
     if (knownFns.includes(fnName)) {
       let commaIdx = -1;
@@ -389,6 +391,7 @@ export function getOpCode(op: string): number {
   if (op === "gt") return 1539;
   if (op === "and") return 1792; // (7 << 8) | 0
   if (op === "or") return 1793;
+  if (op === "der" || op === "rate") return 3072; // (12 << 8) | 0 (ExprKind.Der)
   return 0;
 }
 
@@ -415,6 +418,25 @@ export const TRIG_RULES: RewriteRule[] = [
   { name: "sqrt_square", lhs: "sqrt(x ^ 2)", rhs: "abs(x)" },
 ];
 
+export const CROSS_DIALECT_RULES: RewriteRule[] = [
+  { name: "der_rate_equiv", lhs: "der(x)", rhs: "rate(x)" },
+  { name: "rate_der_equiv", lhs: "rate(x)", rhs: "der(x)" },
+  { name: "der_zero", lhs: "der(0)", rhs: "0" },
+  { name: "rate_zero", lhs: "rate(0)", rhs: "0" },
+  { name: "add_zero", lhs: "x + 0", rhs: "x" },
+  { name: "add_zero_left", lhs: "0 + x", rhs: "x" },
+  { name: "sub_zero", lhs: "x - 0", rhs: "x" },
+  { name: "sub_self", lhs: "x - x", rhs: "0" },
+  { name: "mul_one", lhs: "x * 1", rhs: "x" },
+  { name: "mul_one_left", lhs: "1 * x", rhs: "x" },
+  { name: "mul_zero", lhs: "x * 0", rhs: "0" },
+  { name: "mul_zero_left", lhs: "0 * x", rhs: "0" },
+  { name: "div_one", lhs: "x / 1", rhs: "x" },
+  { name: "neg_neg", lhs: "neg(neg(x))", rhs: "x" },
+];
+
+export const DEFAULT_REWRITE_RULES: RewriteRule[] = [...CROSS_DIALECT_RULES, ...TRIG_RULES];
+
 /**
  * Compiles a single rewrite rule into AssemblyScript conditional matching and union logic.
  */
@@ -438,6 +460,9 @@ function compileRule(rule: RewriteRule): string {
     indent: string,
   ): string {
     if (typeof expr === "string") {
+      if (expr === "") {
+        return ""; // Unary operator: no right child to match
+      }
       if (expr.startsWith("?")) {
         if (boundVars[expr]) {
           return `${indent}if (${targetEClass} == ${boundVars[expr]}) {\n`; // Variables must match exactly
@@ -502,6 +527,9 @@ function compileRule(rule: RewriteRule): string {
   // Generate RHS instantiation
   function genRHS(expr: Expr, indent: string): string {
     if (typeof expr === "string") {
+      if (expr === "") {
+        return "0xFFFFFFFF"; // Unary operator: dummy right operand
+      }
       if (expr.startsWith("?")) {
         return boundVars[expr] || "0";
       } else {

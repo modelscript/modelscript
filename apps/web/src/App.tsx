@@ -3,11 +3,14 @@
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
+import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
+import AdminPage from "./pages/AdminPage";
 import BookmarksPage from "./pages/BookmarksPage";
 import ClassDetailPage from "./pages/ClassDetailPage";
 import EditProfilePage from "./pages/EditProfilePage";
+import EmbedPlaygroundPage from "./pages/EmbedPlaygroundPage";
 import ExplorePage from "./pages/ExplorePage";
 import FeedsPage from "./pages/FeedsPage";
 import FollowersPage from "./pages/FollowersPage";
@@ -21,6 +24,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import PackageDetailPage from "./pages/PackageDetailPage";
+import PlaygroundPage from "./pages/PlaygroundPage";
 import PostActivityPage from "./pages/PostActivityPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -60,6 +64,10 @@ function App() {
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
               <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
+              <Route path="/playground" element={<PlaygroundPage />} />
+              <Route path="/embed/playground" element={<EmbedPlaygroundPage />} />
+              <Route path="/morsel" element={<Navigate to="/playground" replace />} />
+              <Route path="/embed/morsel" element={<Navigate to="/embed/playground" replace />} />
 
               {/* Social shell routes */}
               <Route element={<AppShell />}>
@@ -88,6 +96,16 @@ function App() {
                 <Route path="/scripts" element={<ScriptsListPage />} />
                 <Route path="/scripts/templates/:id" element={<TemplateDetailPage />} />
                 <Route path="/scripts/:id" element={<ScriptDetailPage />} />
+
+                {/* Instance Administration */}
+                <Route
+                  path="/admin/*"
+                  element={
+                    <AdminRoute>
+                      <AdminPage />
+                    </AdminRoute>
+                  }
+                />
 
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/profile" element={<EditProfilePage />} />

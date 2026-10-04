@@ -111,6 +111,14 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
       literals: ["warning", "error"],
     },
   },
+  {
+    name: "ExternalObject",
+    description: "The predefined type ExternalObject is used for external objects (Modelica Specification §12.9.7).",
+    attributes: {
+      isPartial: true,
+      classKind: "class",
+    },
+  },
 ];
 
 // Use negative IDs in a high range to avoid collisions with virtual entries

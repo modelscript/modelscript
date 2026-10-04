@@ -4427,6 +4427,7 @@ export class SyntaxNode {
   _cachedTypeId;
   _cachedChildren = null;
   _cachedNamedChildren = null;
+  _cachedText = null;
   _fieldId = -1;
   constructor(
     tree,
@@ -4476,6 +4477,7 @@ export class SyntaxNode {
   }
   /** Extracts the substring from the original source code corresponding to this node. */
   get text() {
+    if (this._cachedText !== null) return this._cachedText;
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
       : 1;
@@ -4490,11 +4492,17 @@ export class SyntaxNode {
           inputBufPtr + this._startOffset + this._cachedPad,
           this._cachedLen,
         );
-        return new TextDecoder("utf-8").decode(rawBytes);
+        return (this._cachedText =
+          typeof TextDecoder !== "undefined"
+            ? new TextDecoder("utf-8").decode(rawBytes)
+            : String.fromCharCode(...rawBytes));
       }
     }
     if (!this.tree.sourceCode) return "";
-    return this.tree.sourceCode.substring(this.startIndex, this.endIndex);
+    return (this._cachedText = this.tree.sourceCode.substring(
+      this.startIndex,
+      this.endIndex,
+    ));
   }
   /**
    * The encoding divisor to convert raw WASM byte offsets to character offsets.
@@ -5602,6 +5610,93 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
   const exports = wasmModule.instance
     ? wasmModule.instance.exports
     : wasmModule.exports;
+  const facade = new LspFacade(exports);
+  if (syntaxNames && syntaxNames.length > 0) {
+    facade.syntaxNames = syntaxNames;
+  }
+  if (fieldNames) {
+    facade.fieldNames = fieldNames;
+  }
+  if (lintMessages) {
+    facade.lintMessages = lintMessages;
+  }
+  if (lintSeverities) {
+    facade.lintSeverities = lintSeverities;
+  }
+  if (facade.exports.configEnableMultiFile) {
+    facade.exports.configEnableMultiFile.value = 1;
+  }
+  if (facade.exports.lsp_setConfigEnableMultiFile) {
+    facade.exports.lsp_setConfigEnableMultiFile(true);
+  }
+  const parser = new TreeSitterParser();
+  parser.setLanguage(facade);
+  return { facade, parser };
+}
+/**
+ * Synchronously instantiates a WebAssembly parser from a file path, Uint8Array buffer, or ArrayBuffer.
+ * Useful for synchronous compiler pipelines and CLI transformations.
+ */
+export function createWasmParserSync(wasmUrlOrBytes, options) {
+  let bytes;
+  const syntaxNames = options?.syntaxNames;
+  const fieldNames = options?.fieldNames;
+  const lintMessages = options?.lintMessages;
+  const lintSeverities = options?.lintSeverities;
+  if (typeof wasmUrlOrBytes === "string") {
+    let fsModule;
+    try {
+      if (
+        typeof process !== "undefined" &&
+        typeof process.getBuiltinModule === "function"
+      ) {
+        fsModule = process.getBuiltinModule("node:fs");
+      }
+    } catch {}
+    if (!fsModule) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        fsModule = typeof require !== "undefined" ? require("node:fs") : null;
+      } catch {}
+    }
+    if (!fsModule) {
+      throw new Error(
+        "createWasmParserSync requires a Node.js filesystem environment to read file paths synchronously.",
+      );
+    }
+    const buf = fsModule.readFileSync(wasmUrlOrBytes);
+    bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  } else if (wasmUrlOrBytes instanceof Uint8Array) {
+    bytes = wasmUrlOrBytes.buffer.slice(
+      wasmUrlOrBytes.byteOffset,
+      wasmUrlOrBytes.byteOffset + wasmUrlOrBytes.byteLength,
+    );
+  } else {
+    bytes = wasmUrlOrBytes;
+  }
+  const imports = {
+    env: {
+      abort: (msg, file, line, col) => {
+        console.error(`WASM abort: ${msg}:${file}:${line}:${col}`);
+      },
+    },
+    parser: {
+      logInt: (val) => {},
+    },
+    engine: {
+      debugLog: (id, p1, p2, p3) => {
+        if (process.env.DEBUG_PARSER) {
+          console.log(`[debugLog] id: ${id}, p1: ${p1}, p2: ${p2}, p3: ${p3}`);
+        }
+      },
+    },
+    host: {
+      runHostQuery: () => 0,
+    },
+  };
+  const wasmModule = new WebAssembly.Module(bytes);
+  const wasmInstance = new WebAssembly.Instance(wasmModule, imports);
+  const exports = wasmInstance.exports;
   const facade = new LspFacade(exports);
   if (syntaxNames && syntaxNames.length > 0) {
     facade.syntaxNames = syntaxNames;

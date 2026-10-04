@@ -459,6 +459,61 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
+   * M4068: Invalid redeclaration of element, a redeclare may not have a condition attribute.
+   */
+  redeclareConditionAttribute: {
+    nodes: ["condition_attribute"],
+    severity: "error",
+    code: 4068,
+    message: (target, elementName) => {
+      const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
+      return `Invalid redeclaration of ${eName}, a redeclare may not have a condition attribute.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      for (const compDecl of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(compDecl) == $.component_declaration) {
+          for (const anc of db.ast.getAncestors(compDecl, 0)) {
+            const t = db.ast.getType(anc);
+            if (t == $.element_redeclaration) {
+              let nameNode: u32 = 0;
+              for (const id of db.ast.getDescendants(compDecl, $.identifier)) {
+                nameNode = id;
+                break;
+              }
+              db.diagnostic(anc, nameNode);
+              return;
+            } else if (t == $.element) {
+              let hasRedecl = false;
+              if (db.ast.startsWith(anc, "redeclare")) {
+                hasRedecl = true;
+              } else {
+                let ch = db.ast.getFirstChild(anc);
+                while (ch != 0) {
+                  if (db.ast.startsWith(ch, "redeclare") || db.ast.textEquals(ch, "redeclare")) {
+                    hasRedecl = true;
+                    break;
+                  }
+                  ch = db.ast.getNextSibling(ch);
+                }
+              }
+              if (hasRedecl) {
+                let nameNode: u32 = 0;
+                for (const id of db.ast.getDescendants(compDecl, $.identifier)) {
+                  nameNode = id;
+                  break;
+                }
+                db.diagnostic(anc, nameNode);
+                return;
+              }
+            }
+          }
+          break;
+        }
+      }
+    },
+  },
+
+  /**
    * M4063: Invalid redeclaration of class, class extends only allowed on inherited classes.
    */
   classExtendsNonInherited: {

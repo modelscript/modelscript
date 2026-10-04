@@ -16,6 +16,12 @@ function findCtrfFiles(dir, maxDepth = 4, currentDepth = 0) {
     if (entry.isDirectory()) {
       results.push(...findCtrfFiles(fullPath, maxDepth, currentDepth + 1));
     } else if (entry.isFile() && entry.name.endsWith(".json") && path.basename(dir) === "ctrf") {
+      if (entry.name === "ctrf-testsuite-report.json") {
+        const hasIndividual =
+          fs.existsSync(path.join(dir, "ctrf-testsuite-report-wasm.json")) ||
+          fs.existsSync(path.join(dir, "ctrf-testsuite-report-js.json"));
+        if (hasIndividual) continue;
+      }
       results.push(fullPath);
     }
   }

@@ -11,11 +11,13 @@ import {
   PlusCircleIcon,
   RepoIcon,
   SearchIcon,
+  ShieldLockIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
 
 interface CommandItem {
@@ -245,6 +247,7 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onOpenCompose }) => {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [query, setQuery] = useState("");
   const [completions, setCompletions] = useState<{
     users: UserCompletion[];
@@ -369,6 +372,65 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           onClose();
         },
       },
+      ...(isAdmin
+        ? [
+            {
+              id: "nav-admin",
+              category: "Navigation" as const,
+              title: "Instance Admin Console",
+              subtitle: "Moderation queue, federation domains, DMCA, audit logs, and database migrations",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-moderation",
+              category: "Navigation" as const,
+              title: "Admin: Moderation Queue",
+              subtitle: "Review reported content and enforce takedowns",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/moderation");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-federation",
+              category: "Navigation" as const,
+              title: "Admin: Federation Domains",
+              subtitle: "Manage ActivityPub instance tiers (allow / silence / suspend)",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/federation");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-audit",
+              category: "Navigation" as const,
+              title: "Admin: Security Audit Logs",
+              subtitle: "Inspect immutable audit records",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/audit");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-database",
+              category: "Navigation" as const,
+              title: "Admin: Database Operations",
+              subtitle: "Check schema integrity and execute database migrations",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/database");
+                onClose();
+              },
+            },
+          ]
+        : []),
     ];
 
     const defaultActionItems: CommandItem[] = [

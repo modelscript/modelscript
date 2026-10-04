@@ -1,7 +1,6 @@
 // name: BlockIllegal
 // keywords: block
 // status: correct
-// xfail:    true
 //
 // Tests block connections of non-directional components
 // THIS TEST SHOULD FAIL

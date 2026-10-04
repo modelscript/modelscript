@@ -38,9 +38,12 @@ import {
   seq,
   tggComplement,
   tggDefaultVal,
+  tggDer,
   tggEq,
+  tggExprMap,
   tggForEach,
   tggFormatUri,
+  tggPhysicalPort,
   tggRule,
   tggTypeMap,
   token,
@@ -5551,19 +5554,36 @@ export const sysml2Language = language({
         sourceLang: "sysml2",
         priority: 0,
         source: ($, v) =>
-          $.PartUsage({ declaredName: v("compName"), declaredType: v("typeName"), redefinedAttributes: v("mods") }),
+          $.PartUsage({
+            declaredName: v("compName"),
+            declaredType: v("typeName"),
+            redefinedAttributes: v("mods"),
+            multiplicity: v("dims"),
+          }),
         target: ($, v) =>
           $.ComponentClause({
             name: v("compName"),
             typeSpecifier: v("typeName"),
             variability: "continuous",
             modifications: v("mods"),
+            dimensions: v("dims"),
           }),
         where: (v) => [
           tggEq(v("compName"), v("compName")),
           tggTypeMap(v("typeName"), v("typeName"), "modelica"),
+          tggEq(v("dims"), v("dims")),
           tggForEach(v("mods"), v("mod"), [tggEq(v("mod"), v("mod"))]),
         ],
+      }),
+      tggRule({
+        name: "SysmlElectricalPortToModelicaPin",
+        targetLang: "modelica",
+        sourceLang: "sysml2",
+        priority: 15,
+        source: ($, v) => $.PortUsage({ declaredName: v("portName"), declaredType: "ElectricalPort" }),
+        target: ($, v) =>
+          $.ComponentClause({ name: v("portName"), typeSpecifier: "Modelica.Electrical.Analog.Interfaces.Pin" }),
+        where: (v) => [tggEq(v("portName"), v("portName")), tggPhysicalPort(v("v"), v("i"), "electrical")],
       }),
       tggRule({
         name: "RequirementUsageToModelicaAssert",
@@ -5606,7 +5626,24 @@ export const sysml2Language = language({
         priority: 5,
         source: ($, v) => $.ConstraintUsage({ declaredName: v("eqName"), condition: v("eqExpr") }),
         target: ($, v) => $.SimpleEquation({ lhs: v("eqName"), rhs: v("eqExpr") }),
-        where: (v) => [tggEq(v("eqName"), v("eqName")), tggEq(v("eqExpr"), v("eqExpr"))],
+        where: (v) => [
+          tggEq(v("eqName"), v("eqName")),
+          tggEq(v("eqExpr"), v("eqExpr")),
+          tggExprMap(v("eqExpr"), v("eqExpr")),
+        ],
+      }),
+      tggRule({
+        name: "SysmlRateConstraintToModelicaDerEquation",
+        targetLang: "modelica",
+        sourceLang: "sysml2",
+        priority: 10,
+        source: ($, v) => $.ConstraintUsage({ declaredName: v("rateName"), condition: v("rate") }),
+        target: ($, v) => $.DerEquation({ stateVar: v("state"), rateExpr: v("rate") }),
+        where: (v) => [
+          tggDefaultVal(v("rateName"), "rate_eq"),
+          tggEq(v("state"), tggDer(v("state"), 1)),
+          tggExprMap(v("rate"), v("rate")),
+        ],
       }),
       tggRule({
         name: "SysmlCalcDefToModelicaFunction",

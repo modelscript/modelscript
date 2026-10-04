@@ -2892,7 +2892,36 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     // Plug-compatibility check for connect equations:
     // If both sides are connectors (records), they must have the same member names.
     // If only one side is a record and the other isn't (e.g., scalar vs array), that's also incompatible.
+    // For expandable connectors, member sets merge dynamically, so skip plug-compatibility check.
     if (kind === EqKind.Connect && recFields && recFields.length > 0) {
+      const lhsName = dae.getExprKind(lhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(lhsId)) : "";
+      const rhsName = dae.getExprKind(rhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(rhsId)) : "";
+      const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
+      const isBus = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
+      const isExpConnect = isBus(lhsName) || isBus(rhsName);
+
+      const hasStreamMember = (name: string): boolean => {
+        if (!name) return false;
+        const pfx = name + ".";
+        for (let vi = 0; vi < dae.varCount; vi++) {
+          if (dae.isVarStream(vi) && dae.getVarName(vi).startsWith(pfx)) return true;
+        }
+        return false;
+      };
+      const isOuterOuterStream = eqFlags === 3 && (hasStreamMember(lhsName) || hasStreamMember(rhsName));
+
+      if (isExpConnect || isOuterOuterStream) {
+        const newLhs = cloneExpr(lhsId, "", null);
+        const newRhs = cloneExpr(rhsId, "", null);
+        if (targetList) {
+          targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
+        } else {
+          out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
+        }
+        return;
+      }
+
       let isPlugCompatible = true;
       if (lhsRec && rhsRec) {
         // Both sides have record fields — check they match
@@ -2913,8 +2942,6 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         isPlugCompatible = false;
       }
       if (!isPlugCompatible) {
-        const lhsName = dae.getExprKind(lhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(lhsId)) : "";
-        const rhsName = dae.getExprKind(rhsId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(rhsId)) : "";
         if (lhsName && rhsName) {
           const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
           out.diagnostics.push({

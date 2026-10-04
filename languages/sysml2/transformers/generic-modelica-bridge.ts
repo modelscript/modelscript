@@ -52,6 +52,368 @@ export interface SysML2GenericDefinition {
   constraints?: string[];
 }
 
+import { createWasmParser as createMoParser } from "@modelscript/modelica/parser";
+import { createWasmParser as createSysmlParser } from "@modelscript/sysml2/parser";
+import { createRequire } from "node:module";
+
+let moParser: any = null;
+let sysmlParser: any = null;
+
+try {
+  if (typeof import.meta !== "undefined" && import.meta.url) {
+    const req = typeof createRequire === "function" ? createRequire(import.meta.url) : null;
+    const modelicaWasm = req?.resolve ? req.resolve("@modelscript/modelica/parser.wasm") : null;
+    const sysmlWasm = req?.resolve ? req.resolve("@modelscript/sysml2/parser.wasm") : null;
+    if (modelicaWasm && sysmlWasm) {
+      Promise.all([createMoParser(modelicaWasm), createSysmlParser(sysmlWasm)])
+        .then(([moRes, sysmlRes]) => {
+          moParser = moRes.parser;
+          sysmlParser = sysmlRes.parser;
+        })
+        .catch(() => {
+          // Graceful fallback if parsers are not yet compiled
+        });
+    }
+  }
+} catch {
+  // Graceful fallback if parsers are not yet compiled
+}
+
+function findNodes(node: any, type: string, results: any[] = []): any[] {
+  if (!node) return results;
+  if (node.type === type) results.push(node);
+  for (const c of node.children || []) findNodes(c, type, results);
+  return results;
+}
+
+function hasAncestorType(node: any, type: string): boolean {
+  let p = node.parent;
+  while (p) {
+    if (p.type === type) return true;
+    p = p.parent;
+  }
+  return false;
+}
+
+function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
+  const tree = moParser.parse(modelicaSource);
+  const root = tree.rootNode;
+
+  let name = "ModelicaTranslation";
+  let isAbstract = false;
+
+  const classDef = findNodes(root, "class_definition")[0];
+  if (classDef) {
+    const prefixes = findNodes(classDef, "class_prefixes")[0];
+    if (prefixes && prefixes.text.includes("partial")) isAbstract = true;
+    const nameNode = findNodes(classDef, "identifier")[0];
+    if (nameNode) name = nameNode.text.trim();
+  }
+
+  const attributes: SysML2Attribute[] = [];
+  const ports: SysML2Port[] = [];
+  const parts: SysML2PartUsage[] = [];
+  const connections: SysML2Connection[] = [];
+  const constraints: string[] = [];
+
+  const compClauses = findNodes(root, "component_clause");
+  for (const cc of compClauses) {
+    const typePrefix = cc.childForFieldName("type_prefix")?.text || "";
+    const typeSpec = cc.childForFieldName("type_specifier")?.text?.trim() || "";
+    const isParam = typePrefix.includes("parameter");
+
+    const compList = cc.childForFieldName("component_list");
+    const compDecls = compList ? findNodes(compList, "component_declaration") : [];
+    for (const cd of compDecls) {
+      const decl = cd.childForFieldName("declaration") || cd;
+      const compName = decl.childForFieldName("name")?.text?.trim() || "";
+      const mod = decl.childForFieldName("modification");
+      const modExpr = mod
+        ? (mod.childForFieldName("modification_expression")?.text || mod.text.replace(/^=\s*/, "")).trim()
+        : undefined;
+
+      // Extract array subscripts for multiplicity (e.g. Resistor r[2] or component_clause array_subscripts)
+      const subscriptsNode =
+        decl.childForFieldName("array_subscripts") ||
+        findNodes(decl, "array_subscripts")[0] ||
+        cc.childForFieldName("array_subscripts") ||
+        findNodes(cc, "array_subscripts")[0];
+      const multiplicity = subscriptsNode ? subscriptsNode.text.replace(/^\[|\]$/g, "").trim() : undefined;
+
+      // Extract inline element modifications (e.g. Resistor r(R=100))
+      const inlineAttrs: Record<string, string | number> = {};
+      const elemMods = findNodes(decl, "element_modification");
+      for (const em of elemMods) {
+        const n =
+          em.childForFieldName("name")?.text?.trim() ||
+          findNodes(em, "name")[0]?.text?.trim() ||
+          findNodes(em, "identifier")[0]?.text?.trim();
+        const v =
+          em.childForFieldName("modification_expression")?.text?.trim() ||
+          findNodes(em, "modification_expression")[0]?.text?.trim() ||
+          findNodes(em, "expression")[0]?.text?.trim();
+        if (n && v) {
+          const num = parseFloat(v);
+          inlineAttrs[n] = Number.isNaN(num) ? v : num;
+        }
+      }
+
+      const rawType = typeSpec.split(".").pop() || typeSpec;
+      const isKnownPort =
+        /^(?:Pin|PositivePin|NegativePin|Flange|Flange_[ab]|Port|HeatPort_[ab]|Terminal|Plug|RealInput|RealOutput)$/.test(
+          rawType,
+        );
+
+      if (isKnownPort) {
+        const isConjugated = rawType.endsWith("_b") || rawType.includes("NegativePin") || rawType === "RealOutput";
+        let baseType = rawType;
+        if (rawType.endsWith("_a") || rawType.endsWith("_b")) {
+          baseType = rawType.slice(0, -2);
+        } else if (rawType === "PositivePin" || rawType === "NegativePin") {
+          baseType = "Pin";
+        }
+        ports.push({
+          type: baseType,
+          name: compName,
+          direction: rawType === "RealInput" ? "in" : rawType === "RealOutput" ? "out" : "inout",
+          isConjugated,
+        });
+      } else if (/^(?:Real|Integer|Boolean|String)$/.test(rawType)) {
+        attributes.push({
+          name: compName,
+          type: rawType,
+          defaultValue: modExpr,
+          isParameter: isParam,
+        });
+      } else {
+        parts.push({
+          name: compName,
+          type: typeSpec,
+          ...(multiplicity ? { multiplicity } : {}),
+          ...(Object.keys(inlineAttrs).length > 0 ? { attributes: inlineAttrs } : {}),
+        });
+      }
+    }
+  }
+
+  const connectEqs = findNodes(root, "connect_equation");
+  for (const conn of connectEqs) {
+    const lhs = conn.childForFieldName("lhs")?.text?.trim() || "";
+    const rhs = conn.childForFieldName("rhs")?.text?.trim() || "";
+    connections.push({ source: lhs, target: rhs, kind: "physical" });
+  }
+
+  const simpleEqs = findNodes(root, "simple_equation");
+  for (const eq of simpleEqs) {
+    const lhs = eq.childForFieldName("lhs")?.text?.trim() || "";
+    const rhs = eq.childForFieldName("rhs")?.text?.trim() || "";
+    constraints.push(`${lhs} = ${rhs}`);
+  }
+
+  return {
+    name,
+    kind: "part def",
+    isAbstract,
+    attributes,
+    ports,
+    parts,
+    connections,
+    constraints,
+  };
+}
+
+function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
+  const tree = sysmlParser.parse(sysmlSource);
+  const root = tree.rootNode;
+
+  let name = "SysML2Translation";
+  let isAbstract = false;
+
+  const partDefs = findNodes(root, "PartDefinition");
+  if (partDefs.length > 0) {
+    let selectedDef = partDefs[0];
+    for (const pd of partDefs) {
+      if (findNodes(pd, "PartUsage").length > 0) {
+        selectedDef = pd;
+        break;
+      }
+    }
+    const nameNode = findNodes(selectedDef, "Name")[0] || findNodes(selectedDef, "ID")[0];
+    if (nameNode) name = nameNode.text.trim();
+    if (selectedDef.text.includes("abstract")) isAbstract = true;
+  } else {
+    const nameNode = findNodes(root, "Name")[0];
+    if (nameNode) name = nameNode.text.trim();
+    if (root.text.includes("abstract")) isAbstract = true;
+  }
+
+  const attributes: SysML2Attribute[] = [];
+  const ports: SysML2Port[] = [];
+  const parts: SysML2PartUsage[] = [];
+  const connections: SysML2Connection[] = [];
+  const constraints: string[] = [];
+
+  const attrUsages = findNodes(root, "AttributeUsage");
+  for (const au of attrUsages) {
+    if (hasAncestorType(au, "PartUsage")) continue;
+
+    const nameNode = findNodes(au, "Name")[0];
+    const typeNode = findNodes(au, "FeatureTyping")[0];
+    const valNode = findNodes(au, "FeatureValue")[0];
+
+    const attrName = nameNode ? nameNode.text.trim() : "";
+    const attrType = typeNode ? typeNode.text.replace(/^[:\s]+/, "").trim() : "Real";
+    const attrVal = valNode ? valNode.text.replace(/^[=:\s]+/, "").trim() : undefined;
+
+    attributes.push({
+      name: attrName,
+      type: attrType,
+      defaultValue: attrVal,
+      isParameter: true,
+    });
+  }
+
+  const portUsages = findNodes(root, "PortUsage");
+  for (const pu of portUsages) {
+    if (hasAncestorType(pu, "PartUsage")) continue;
+
+    const featureTypings = findNodes(pu, "FeatureTyping");
+    let portName = "";
+    let portType = "";
+    let isConjugated = pu.text.includes("~");
+
+    if (featureTypings.length >= 2) {
+      // Form: port ~housing : Flange;
+      const firstNameNode = findNodes(featureTypings[0], "Name")[0];
+      const secondNameNode = findNodes(featureTypings[1], "Name")[0];
+      portName = (firstNameNode ? firstNameNode.text.trim() : featureTypings[0].text.replace(/^[:\s~]+/, "")).trim();
+      portType = (secondNameNode ? secondNameNode.text.trim() : featureTypings[1].text.replace(/^[:\s~]+/, "")).trim();
+      isConjugated = true;
+    } else {
+      // Standard: port p : Pin; or port n : ~Pin;
+      const nameNode = findNodes(pu, "Name")[0];
+      const typeNode = featureTypings[0];
+
+      const rawName = nameNode ? nameNode.text.trim() : "";
+      const rawType = typeNode ? typeNode.text.replace(/^[:\s]+/, "").trim() : "";
+
+      if (rawName.startsWith("~") || rawType.startsWith("~")) isConjugated = true;
+      portName = rawName.replace(/^~\s*/, "");
+      portType = rawType.replace(/^~\s*/, "");
+    }
+
+    const isInput = portType.toLowerCase().includes("in") && !portType.toLowerCase().includes("pin");
+    const isOutput = portType.toLowerCase().includes("out");
+
+    ports.push({
+      name: portName,
+      type: portType,
+      isConjugated,
+      direction: isInput ? "in" : isOutput ? "out" : "inout",
+    });
+  }
+
+  const partUsages = findNodes(root, "PartUsage");
+  for (const pu of partUsages) {
+    if (hasAncestorType(pu, "PartUsage")) continue;
+
+    const nameNode = findNodes(pu, "Name")[0];
+    const typeNode = findNodes(pu, "FeatureTyping")[0];
+    const multNode = findNodes(pu, "OwnedMultiplicity")[0];
+
+    const partName = nameNode ? nameNode.text.trim() : "";
+    const partType = typeNode ? typeNode.text.replace(/^[:\s]+/, "").trim() : "";
+    const mult = multNode ? multNode.text.replace(/^\[|\]$/g, "").trim() : undefined;
+
+    const inlineAttrs: Record<string, string | number> = {};
+    const subAttrs = findNodes(pu, "AttributeUsage");
+    for (const sa of subAttrs) {
+      const saName = findNodes(sa, "Name")[0]?.text?.trim();
+      const saVal = findNodes(sa, "FeatureValue")[0]
+        ?.text?.replace(/^[=:\s]+/, "")
+        .trim();
+      if (saName && saVal !== undefined) {
+        const num = parseFloat(saVal);
+        inlineAttrs[saName] = Number.isNaN(num) ? saVal : num;
+      }
+    }
+
+    parts.push({
+      name: partName,
+      type: partType,
+      ...(mult ? { multiplicity: mult } : {}),
+      ...(Object.keys(inlineAttrs).length > 0 ? { attributes: inlineAttrs } : {}),
+    });
+  }
+
+  const connUsages = findNodes(root, "ConnectionUsage");
+  for (const cu of connUsages) {
+    const endMembers = findNodes(cu, "ConnectorEndMember");
+    if (endMembers.length >= 2) {
+      connections.push({
+        source: endMembers[0].text.trim(),
+        target: endMembers[1].text.trim(),
+        kind: "physical",
+      });
+    }
+  }
+
+  const assertConstraints = findNodes(root, "AssertConstraintUsage");
+  for (const ac of assertConstraints) {
+    const exprNodes = findNodes(ac, "_Expression").concat(
+      findNodes(ac, "RelationalExpression"),
+      findNodes(ac, "EqualityExpression"),
+    );
+    const text =
+      exprNodes.length > 0
+        ? exprNodes[0].text.trim()
+        : ac.text
+            .replace(/^assert\s+constraint\s*\{?/, "")
+            .replace(/\}?;?$/, "")
+            .trim();
+    if (text && !constraints.includes(text)) {
+      constraints.push(text);
+    }
+  }
+
+  const constraintUsages = findNodes(root, "ConstraintUsage");
+  for (const cu of constraintUsages) {
+    if (hasAncestorType(cu, "PartUsage")) continue;
+    const exprNodes = findNodes(cu, "_Expression").concat(
+      findNodes(cu, "RelationalExpression"),
+      findNodes(cu, "EqualityExpression"),
+    );
+    const text =
+      exprNodes.length > 0
+        ? exprNodes[0].text.trim()
+        : cu.text
+            .replace(/^constraint\s*\{?/, "")
+            .replace(/\}?;?$/, "")
+            .trim();
+    if (text && !constraints.includes(text)) {
+      constraints.push(text);
+    }
+  }
+
+  if (constraints.length === 0) {
+    const constrMatches = Array.from(sysmlSource.matchAll(/\bassert\s+constraint\s*\{([^}]*)\}/g));
+    for (const m of constrMatches) {
+      constraints.push(m[1].trim());
+    }
+  }
+
+  return {
+    name,
+    kind: "part def",
+    isAbstract,
+    attributes,
+    ports,
+    parts,
+    connections,
+    constraints,
+  };
+}
+
 export class GenericModelicaBridge {
   /**
    * Compiles a SysML v2 generic AST definition into Modelica source code.
@@ -134,9 +496,17 @@ export class GenericModelicaBridge {
   }
 
   /**
-   * Parses standard SysML v2 text into a SysML v2 Generic Definition.
+   * Parses standard SysML v2 text into a SysML v2 Generic Definition using native GLR CST parser.
    */
   static parseSysML2(sysmlSource: string): SysML2GenericDefinition {
+    if (sysmlParser) {
+      try {
+        return parseSysML2WithGLR(sysmlSource);
+      } catch {
+        // Fallback to regex parser
+      }
+    }
+
     // Extract definition name (prioritizing composite part defs containing subpart usages)
     const defMatches = Array.from(
       sysmlSource.matchAll(/(?:part|item|action|constraint)\s+def\s+([A-Za-z_][A-Za-z0-9_]*)/g),
@@ -306,9 +676,17 @@ export class GenericModelicaBridge {
   }
 
   /**
-   * Parses standard Modelica model text into a SysML v2 Part Definition.
+   * Parses standard Modelica model text into a SysML v2 Part Definition using native GLR CST parser.
    */
   static parseModelicaToSysML2(modelicaSource: string): SysML2GenericDefinition {
+    if (moParser) {
+      try {
+        return parseModelicaWithGLR(modelicaSource);
+      } catch {
+        // Fallback to regex parser
+      }
+    }
+
     const nameMatch = modelicaSource.match(/(?:model|block)\s+([A-Za-z_][A-Za-z0-9_]*)/);
     const name = nameMatch ? nameMatch[1] : "ModelicaTranslation";
     const isAbstract = /partial\s+(?:model|block)/.test(modelicaSource);

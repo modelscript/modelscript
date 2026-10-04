@@ -3,18 +3,21 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api from "./api";
 
-interface User {
+export interface User {
   id: number;
   username: string;
   email: string;
   display_name?: string;
   avatar_url?: string;
+  account_type?: string;
+  role?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
@@ -132,12 +135,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const isAdmin = Boolean(user && (user.account_type === "admin" || user.role === "admin"));
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isAuthenticated: !!user,
+        isAdmin,
         isLoading,
         login,
         register,

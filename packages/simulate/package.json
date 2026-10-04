@@ -75,7 +75,9 @@
     "targets": {
       "build": {
         "dependsOn": [
+          "@modelscript/cfd:build",
           "@modelscript/dsl:build",
+          "@modelscript/fea:build",
           "@modelscript/runtime:build"
         ]
       }

@@ -1,7 +1,6 @@
 // name:     InvalidExternalObject1
 // keywords: external object bug2043
 // status:   incorrect
-// xfail:    true
 //
 //
 

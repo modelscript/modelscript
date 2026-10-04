@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compileRewriteRules, TRIG_RULES } from "@modelscript/dsl/codegen/compile_rules.js";
 import expect from "expect";
 import { describe, it } from "node:test";
+import { compileRewriteRules, CROSS_DIALECT_RULES, TRIG_RULES } from "../src/codegen/transpiler/compile_rules.js";
 
 describe("E-Graph Rewrite Rules & Simplifications", () => {
   it("compiles string S-expression rules correctly", () => {
@@ -51,5 +51,14 @@ describe("E-Graph Rewrite Rules & Simplifications", () => {
     expect(code).toContain("1801"); // cos opcode
     expect(code).toContain("1284"); // pow opcode
     expect(code).toContain("1027"); // sqrt opcode
+  });
+
+  it("compiles cross-dialect differential rate rewrite rules correctly", () => {
+    const code = compileRewriteRules(CROSS_DIALECT_RULES);
+    expect(code).toContain("// Rule: der_rate_equiv");
+    expect(code).toContain("// Rule: rate_der_equiv");
+    expect(code).toContain("// Rule: der_zero");
+    expect(code).toContain("// Rule: add_zero");
+    expect(code).toContain("3072"); // der / rate opcode (ExprKind.Der)
   });
 });

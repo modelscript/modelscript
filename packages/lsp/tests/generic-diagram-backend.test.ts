@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { MemoryFsBridge } from "@modelscript/diagram/fs-bridge";
 import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
 import assert from "node:assert";
 import test from "node:test";
@@ -483,5 +484,68 @@ test("GenericDSLDiagramBackend & Diagram Dispatch", async (t) => {
     assert.strictEqual(res2.edits.length, 1);
     assert.strictEqual(res2.edits[0].newText, "220");
     assert.strictEqual(res2.edits[0].range.start.line, 1);
+  });
+
+  await t.test("should honor custom SidecarConfig and synchronize element rename via updateName", async () => {
+    const memoryFs = new MemoryFsBridge();
+    const docUri = "file:///workspace/models/Vehicle.sysml";
+
+    const customBackend = new GenericDSLDiagramBackend({
+      getDocumentText: () => "part def Vehicle { part ch: Chassis; }",
+      getDiagramConfig: () => ({
+        placement: {
+          persistence: "sidecar",
+          sidecar: {
+            extension: ".sysml.layout",
+            location: "subfolder",
+          },
+        },
+      }),
+      fsBridge: memoryFs,
+    });
+
+    // 1. Move element
+    await customBackend.applyEdits({
+      uri: docUri,
+      seq: 100,
+      actions: [
+        {
+          type: "move",
+          items: [{ name: "Vehicle", x: 250, y: 350, width: 100, height: 80 }],
+        },
+      ],
+    });
+
+    // Expected sidecar path: file:///workspace/models/.layouts/Vehicle.sysml.layout
+    const expectedSidecarUri = "file:///workspace/models/.layouts/Vehicle.sysml.layout";
+    const exists = await memoryFs.exists(expectedSidecarUri);
+    assert.strictEqual(exists, true, "Sidecar file should exist in subfolder with custom extension");
+
+    const content = await memoryFs.readFile(expectedSidecarUri);
+    assert.ok(content);
+    const layout = JSON.parse(content);
+    assert.strictEqual(layout.elements.Vehicle.x, 250);
+    assert.strictEqual(layout.elements.Vehicle.y, 350);
+
+    // 2. Rename element via updateName action
+    await customBackend.applyEdits({
+      uri: docUri,
+      seq: 101,
+      actions: [
+        {
+          type: "updateName",
+          oldName: "Vehicle",
+          newName: "Automobile",
+        },
+      ],
+    });
+
+    const updatedContent = await memoryFs.readFile(expectedSidecarUri);
+    assert.ok(updatedContent);
+    const updatedLayout = JSON.parse(updatedContent);
+    assert.strictEqual(updatedLayout.elements.Vehicle, undefined, "Old element name should be removed");
+    assert.ok(updatedLayout.elements.Automobile, "New element name should exist");
+    assert.strictEqual(updatedLayout.elements.Automobile.x, 250);
+    assert.strictEqual(updatedLayout.elements.Automobile.y, 350);
   });
 });

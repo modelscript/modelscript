@@ -88,9 +88,11 @@
     "targets": {
       "build": {
         "dependsOn": [
+          "@modelscript/diagram:build",
           "@modelscript/dsl:build",
+          "@modelscript/exchange:build",
           "@modelscript/runtime:build",
-          "@modelscript/diagram:build"
+          "@modelscript/simulate:build"
         ]
       }
     }

@@ -2,7 +2,7 @@
 
 import { LanguageOptions } from "../../dsl/language.js";
 import { egraph_engineCode } from "../../src-gen/runtime-templates.js";
-import { compileRewriteRules } from "../transpiler/compile_rules.js";
+import { compileRewriteRules, DEFAULT_REWRITE_RULES } from "../transpiler/compile_rules.js";
 
 /**
  * Generates an AssemblyScript e-graph saturation and Bellman-Ford DP extraction engine.
@@ -13,11 +13,12 @@ import { compileRewriteRules } from "../transpiler/compile_rules.js";
  * @param rules Array of rewrite rule definitions.
  * @returns AssemblyScript source code string for the e-graph runtime module.
  */
-export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): string {
+export function generateEGraphEngine(grammar: LanguageOptions, rules?: any[]): string {
   let out = egraph_engineCode.replace(/from "\.\.\//g, 'from "./') + "\n\n";
 
-  if (rules && rules.length > 0) {
-    out += compileRewriteRules(rules);
+  const effectiveRules = rules && rules.length > 0 ? rules : DEFAULT_REWRITE_RULES;
+  if (effectiveRules && effectiveRules.length > 0) {
+    out += compileRewriteRules(effectiveRules);
   } else {
     out += "export function saturateEGraph(): void {}\n";
     out += "export function initDPExtractor(): void {}\n";

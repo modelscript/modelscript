@@ -137,8 +137,16 @@
     "test:full": "npm run test:unit && npm run test:omc",
     "test:latex": "npx tsx tests/ctrf-to-latex.ts",
     "test:msl": "npx tsx tests/msl-comparison-runner.ts",
+    "test:msl:diagram": "npx tsx tests/msl-comparison-runner.ts --stage=diagram",
+    "test:msl:flatten": "npx tsx tests/msl-comparison-runner.ts --stage=flatten",
+    "test:msl:icon": "npx tsx tests/msl-comparison-runner.ts --stage=icon",
+    "test:msl:sim": "npx tsx tests/msl-comparison-runner.ts --stage=simulate",
     "test:omc": "npx tsx tests/testsuite-runner.ts",
-    "test:unit": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=2 tests/*.test.ts"
+    "test:omc:both": "npx tsx tests/testsuite-runner.ts --flattener=both",
+    "test:omc:both:allow-wasm": "npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
+    "test:omc:js": "npx tsx tests/testsuite-runner.ts --flattener=ts",
+    "test:omc:wasm": "npx tsx tests/testsuite-runner.ts --flattener=wasm",
+    "test:unit": "npx tsx --import ./tests/test-setup.ts --test --test-concurrency=2 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts"
   },
   "dependencies": {
     "@modelscript/cad": "*",

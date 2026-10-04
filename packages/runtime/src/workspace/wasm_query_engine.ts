@@ -170,6 +170,25 @@ export class WasmQueryEngine {
   private inputReverseDependencies = new Map<SymbolId, Set<number>>();
   private byNameReverseDependencies = new Map<string, Set<number>>();
 
+  private correspondenceIndex?: any;
+  private correspondenceSlotMap?: Map<SymbolId, number>;
+
+  public setCorrespondenceIndex(corr: any, slotMap?: Map<SymbolId, number>): void {
+    this.correspondenceIndex = corr;
+    if (slotMap) this.correspondenceSlotMap = slotMap;
+  }
+
+  public getCorrespondenceIndex(): any {
+    return this.correspondenceIndex;
+  }
+
+  public mapSymbolToCorrespondenceSlot(symbolId: SymbolId, slot: number): void {
+    if (!this.correspondenceSlotMap) {
+      this.correspondenceSlotMap = new Map();
+    }
+    this.correspondenceSlotMap.set(symbolId, slot);
+  }
+
   public volatileQueryNames = new Set<string>([
     "arrayDimensions",
     "effectiveModification",
@@ -466,6 +485,18 @@ export class WasmQueryEngine {
     for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
       for (const id of ids) {
         cacheDirtySet.add(id);
+      }
+    }
+
+    if (this.correspondenceIndex) {
+      for (const id of ids) {
+        if (typeof this.correspondenceIndex.markStale === "function") {
+          this.correspondenceIndex.markStale(id);
+        }
+        const parentSlot = this.correspondenceSlotMap?.get(id);
+        if (parentSlot !== undefined && typeof this.correspondenceIndex.markStaleCascading === "function") {
+          this.correspondenceIndex.markStaleCascading(parentSlot);
+        }
       }
     }
   }

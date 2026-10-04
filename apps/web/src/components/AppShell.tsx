@@ -584,6 +584,26 @@ const AppShell: React.FC = () => {
                 </span>
               </PillTelemetry>
               <span style={{ color: "var(--color-accent-cyan)" }}>WASM v3.4</span>
+              <button
+                onClick={() => navigate("/playground")}
+                title="Open ModelScript Visual Playground (No login needed)"
+                style={{
+                  background: "rgba(6, 182, 212, 0.12)",
+                  border: "1px solid rgba(6, 182, 212, 0.3)",
+                  color: "var(--color-accent-cyan, #06b6d4)",
+                  borderRadius: "6px",
+                  padding: "4px 10px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "all 0.2s",
+                }}
+              >
+                <span>⚡ Playground</span>
+              </button>
               {user && (
                 <WalletPill
                   onClick={() => setIsTopUpModalOpen(true)}

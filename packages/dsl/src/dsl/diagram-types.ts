@@ -508,6 +508,38 @@ export interface PropertyInspectorConfig<
 }
 
 /**
+ * Declarative sidecar configuration for diagram spatial persistence.
+ */
+export interface SidecarConfig {
+  /**
+   * File extension for the sidecar file. Default: ".layout".
+   * Examples: ".layout.json", ".sysml.layout", ".layout.yaml"
+   */
+  extension?: string;
+
+  /**
+   * Path resolution policy.
+   * - "alongside": Saved adjacent to source file: `dir/Model.sysml` -> `dir/Model.sysml.layout`
+   * - "hidden": Saved as hidden file: `dir/.Model.sysml.layout`
+   * - "subfolder": Saved in subfolder: `dir/.layouts/Model.sysml.layout`
+   * - Custom resolver function: `(docUri: string, extension: string) => string`
+   * Default: "alongside"
+   */
+  location?: "alongside" | "hidden" | "subfolder" | ((docUri: string, extension: string) => string);
+
+  /**
+   * Serialization format. Default: "json".
+   */
+  format?: "json" | "yaml" | "custom";
+
+  /** Custom serializer (Layout object -> string) */
+  serialize?: (layout: any) => string;
+
+  /** Custom parser (string -> Layout object) */
+  parse?: (content: string) => any;
+}
+
+/**
  * Universal 2D Visual Modeling & Diagram DSL Configuration
  */
 export interface DiagramConfig<
@@ -557,6 +589,8 @@ export interface DiagramConfig<
     rule?: string;
     formatPlacement?: (x: number, y: number, w?: number, h?: number, r?: number) => string;
     parsePlacement?: (node: any) => { x: number; y: number; width?: number; height?: number };
+    /** Declarative sidecar file options (used when persistence is "sidecar") */
+    sidecar?: SidecarConfig;
   };
 
   /** Grammar rule classification sets for structural parent & standalone children */

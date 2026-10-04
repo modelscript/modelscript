@@ -6,6 +6,7 @@
 // was previously scattered across 12 handlers in browserServerMain.ts.
 
 import { buildDiagramFromDSL, buildPolyglotDiagram } from "@modelscript/diagram/builder";
+import type { FileSystemBridge } from "@modelscript/diagram/fs-bridge";
 import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
 import { compileDiagramConfigToPolyglot } from "@modelscript/dsl";
 import {
@@ -782,6 +783,7 @@ export interface GenericDSLBackendDeps {
   getSymbolIndex?: (uri: string) => any;
   getScopeResolver?: (uri: string) => any;
   layoutStorage?: SidecarLayoutStorage;
+  fsBridge?: FileSystemBridge;
 }
 
 function findSectionClosingLine(lines: string[], sectionName: string): number | null {
@@ -921,10 +923,33 @@ export function maskComments(text: string): string {
  * Uses declarative grammar diagram configuration and SidecarLayoutStorage.
  */
 export class GenericDSLDiagramBackend implements DiagramBackend {
-  private readonly layoutStorage: SidecarLayoutStorage;
+  private readonly defaultLayoutStorage: SidecarLayoutStorage;
+  private readonly layoutStorageCache = new Map<string, SidecarLayoutStorage>();
 
   constructor(private readonly deps: GenericDSLBackendDeps) {
-    this.layoutStorage = deps.layoutStorage ?? new SidecarLayoutStorage();
+    this.defaultLayoutStorage =
+      deps.layoutStorage ??
+      new SidecarLayoutStorage({
+        fsBridge: deps.fsBridge,
+      });
+  }
+
+  getLayoutStorage(uri: string): SidecarLayoutStorage {
+    if (this.deps.layoutStorage) return this.deps.layoutStorage;
+    const cached = this.layoutStorageCache.get(uri);
+    if (cached) return cached;
+
+    const config = this.deps.getDiagramConfig?.(uri);
+    const sidecarConfig = config?.placement?.sidecar;
+    const storage = sidecarConfig
+      ? new SidecarLayoutStorage({
+          ...sidecarConfig,
+          fsBridge: this.deps.fsBridge,
+        })
+      : this.defaultLayoutStorage;
+
+    this.layoutStorageCache.set(uri, storage);
+    return storage;
   }
 
   async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
@@ -957,7 +982,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     if (!diagramData) return null;
 
     // Merge persisted layout if available
-    const layout = await this.layoutStorage.loadLayout(params.uri);
+    const layout = await this.getLayoutStorage(params.uri).loadLayout(params.uri);
     if (layout && diagramData) {
       for (const node of diagramData.nodes) {
         const nodeName = (node as any).name || node.properties?.description;
@@ -1206,7 +1231,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           }
 
           if (action.points && action.points.length > 0) {
-            await this.layoutStorage.updatePositions(params.uri, [
+            await this.getLayoutStorage(params.uri).updatePositions(params.uri, [
               {
                 name: action.source,
                 x: 0,
@@ -1365,7 +1390,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "moveEdge": {
           for (const e of action.edges) {
-            await this.layoutStorage.updatePositions(params.uri, [
+            await this.getLayoutStorage(params.uri).updatePositions(params.uri, [
               {
                 name: e.source,
                 x: 0,
@@ -1381,6 +1406,9 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           break;
         }
         case "updateName": {
+          if (action.oldName && action.newName) {
+            await this.getLayoutStorage(params.uri).renameElement(params.uri, action.oldName, action.newName);
+          }
           if (docText !== undefined && action.oldName && action.newName) {
             const escOld = action.oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const regex = new RegExp(`\\b${escOld}\\b`, "g");
@@ -1515,7 +1543,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     }
 
     if (itemsToSave.length > 0) {
-      await this.layoutStorage.updatePositions(params.uri, itemsToSave);
+      await this.getLayoutStorage(params.uri).updatePositions(params.uri, itemsToSave);
     }
 
     return {

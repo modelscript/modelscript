@@ -2,7 +2,9 @@
 
 import { buildParser, language, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -88,6 +90,9 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
     expect(wasmExports.corr_reset).toBeDefined();
     expect(wasmExports.corr_setComplement).toBeDefined();
     expect(wasmExports.corr_getComplement).toBeDefined();
+    expect(wasmExports.corr_getParentSlot).toBeDefined();
+    expect(wasmExports.corr_setParentSlot).toBeDefined();
+    expect(wasmExports.corr_markStaleCascading).toBeDefined();
   });
 
   it("should perform correspondence index link and lookup operations via WASM exports", () => {
@@ -109,6 +114,14 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
     expect(wasmExports.corr_getComplement(corrPtr, slot1)).toBe(0);
     wasmExports.corr_setComplement(corrPtr, slot1, 0xcafe);
     expect(wasmExports.corr_getComplement(corrPtr, slot1)).toBe(0xcafe);
+
+    // Parent slot & cascading invalidation
+    expect(wasmExports.corr_getParentSlot(corrPtr, slot2) >>> 0).toBe(0xffffffff);
+    wasmExports.corr_setParentSlot(corrPtr, slot2, slot1);
+    expect(wasmExports.corr_getParentSlot(corrPtr, slot2)).toBe(slot1);
+
+    const cascadeCount = wasmExports.corr_markStaleCascading(corrPtr, slot1);
+    expect(cascadeCount).toBe(2);
 
     wasmExports.corr_markStale(corrPtr, 101);
     wasmExports.corr_reset(corrPtr);

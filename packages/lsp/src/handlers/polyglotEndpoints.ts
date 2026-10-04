@@ -376,10 +376,34 @@ export function registerPolyglotEndpoints(
               type: a.type,
               value: a.defaultValue !== undefined ? String(a.defaultValue) : undefined,
             })),
-            ports: sysmlDef.ports.map((p) => ({ name: p.name, type: p.type })),
-            components: sysmlDef.parts?.map((p) => ({ name: p.name, typeSpecifier: p.type })),
-            connections: sysmlDef.connections.map((c) => ({ source: c.source, target: c.target })),
+            ports: sysmlDef.ports.map((p) => {
+              const isPin = p.type === "Pin" || p.type.includes("Pin") || p.type.includes("ElectricalPort");
+              const isFlange = p.type === "Flange" || p.type.includes("Flange");
+              const isHeat = p.type === "HeatPort" || p.type.includes("Heat");
+              return {
+                name: p.name,
+                type: p.type,
+                direction: p.direction,
+                isConjugated: p.isConjugated,
+                ...(isPin ? { acrossVar: "v", flowVar: "i", domain: "electrical" } : {}),
+                ...(isFlange ? { acrossVar: "s", flowVar: "f", domain: "translational" } : {}),
+                ...(isHeat ? { acrossVar: "T", flowVar: "Q_flow", domain: "thermal" } : {}),
+              };
+            }),
+            components: sysmlDef.parts?.map((p) => ({
+              name: p.name,
+              typeSpecifier: p.type,
+              multiplicity: p.multiplicity,
+              dimensions: p.multiplicity,
+              modifications: p.attributes,
+            })),
+            connections: sysmlDef.connections.map((c) => ({
+              source: c.source,
+              target: c.target,
+              kind: c.kind,
+            })),
             constraints: sysmlDef.constraints,
+            equations: sysmlDef.constraints,
           };
         } else if (ext === ".sysml" || ext === ".sysml2") {
           const sysmlDef = GenericModelicaBridge.parseSysML2(text);
@@ -393,10 +417,34 @@ export function registerPolyglotEndpoints(
               type: a.type,
               value: a.defaultValue !== undefined ? String(a.defaultValue) : undefined,
             })),
-            ports: sysmlDef.ports.map((p) => ({ name: p.name, type: p.type })),
-            components: sysmlDef.parts?.map((p) => ({ name: p.name, typeSpecifier: p.type })),
-            connections: sysmlDef.connections.map((c) => ({ source: c.source, target: c.target })),
+            ports: sysmlDef.ports.map((p) => {
+              const isPin = p.type === "Pin" || p.type.includes("Pin") || p.type.includes("ElectricalPort");
+              const isFlange = p.type === "Flange" || p.type.includes("Flange");
+              const isHeat = p.type === "HeatPort" || p.type.includes("Heat");
+              return {
+                name: p.name,
+                type: p.type,
+                direction: p.direction,
+                isConjugated: p.isConjugated,
+                ...(isPin ? { acrossVar: "v", flowVar: "i", domain: "electrical" } : {}),
+                ...(isFlange ? { acrossVar: "s", flowVar: "f", domain: "translational" } : {}),
+                ...(isHeat ? { acrossVar: "T", flowVar: "Q_flow", domain: "thermal" } : {}),
+              };
+            }),
+            components: sysmlDef.parts?.map((p) => ({
+              name: p.name,
+              typeSpecifier: p.type,
+              multiplicity: p.multiplicity,
+              dimensions: p.multiplicity,
+              modifications: p.attributes,
+            })),
+            connections: sysmlDef.connections.map((c) => ({
+              source: c.source,
+              target: c.target,
+              kind: c.kind,
+            })),
             constraints: sysmlDef.constraints,
+            equations: sysmlDef.constraints,
           };
         } else if (ext === ".scad") {
           const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
@@ -457,6 +505,46 @@ export function registerPolyglotEndpoints(
       }
     },
   );
+
+  // ── 6. Propagate Stale Correspondence Links ──────────────────────────────
+  connection.onRequest(
+    "modelscript/propagateStale",
+    async (params: { uri?: string; symbolIds?: number[]; parentSlot?: number }) => {
+      try {
+        const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
+        const corr = qe?.getCorrespondenceIndex();
+        let updatedCount = 0;
+        if (corr) {
+          if (params.parentSlot !== undefined && typeof corr.markStaleCascading === "function") {
+            updatedCount += corr.markStaleCascading(params.parentSlot);
+          } else if (params.symbolIds && params.symbolIds.length > 0) {
+            for (const symId of params.symbolIds) {
+              if (typeof corr.markStale === "function") corr.markStale(symId);
+              updatedCount++;
+            }
+          }
+        }
+        return { success: true, updatedCount };
+      } catch (err: any) {
+        return { success: false, error: err?.message || String(err) };
+      }
+    },
+  );
+
+  // ── 7. Reconcile Correspondence Conflicts ────────────────────────────────
+  connection.onRequest("modelscript/reconcileConflicts", async (params: { strategy?: number }) => {
+    try {
+      const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
+      const corr = qe?.getCorrespondenceIndex();
+      let resolvedCount = 0;
+      if (corr && typeof corr.reconcileAll === "function") {
+        resolvedCount = corr.reconcileAll(params.strategy ?? 0);
+      }
+      return { success: true, resolvedCount };
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  });
 }
 
 export interface ProjectModelRequest {

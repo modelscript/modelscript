@@ -294,6 +294,49 @@ npm run test:modelica:update -- OpenModelica/flattening/modelica/types/IntegerTo
 1. **Never** use `--filter` — it does not exist and the argument will be interpreted as a path.
 2. Pipe through `timeout 60` if running directly with `npx tsx` to guard against terminal hangs.
 
+## MSL Verification & Benchmark Suite
+
+**IMPORTANT:** The on-the-fly Modelica Standard Library (MSL) verification runner is located at `languages/modelica/tests/msl-comparison-runner.ts`. It compares ModelScript directly against OpenModelica (`omc`) dynamically without committing test artifacts, trajectories, or SVGs to Git (cached in `.cache/`).
+
+**Stages:**
+
+- `flatten`: DAE variable and equation count parity vs `omc instantiateModel`.
+- `simulate`: Numerical trajectory comparison against `omc simulate(..., outputFormat="csv")` with RMSE and Normalized Max Relative Error calculations.
+- `diagram`: Schematic component layout, connection routing, and SVG diagram generation.
+- `icon`: Headless SVG generation, coordinate bounds, and graphical primitives validation.
+
+**Run commands:**
+
+```bash
+# Run MSL benchmark suite across all stages
+npm run test:msl
+
+# Stage-specific benchmark commands
+npm run test:msl:flatten
+npm run test:msl:sim
+npm run test:msl:diagram
+npm run test:msl:icon
+
+# Filter by package or single model
+npm run test:msl:sim -- --model=Modelica.Electrical.Analog.Examples.ChuaCircuit
+npm run test:msl:icon -- --package=Modelica.Electrical.Analog.Basic
+
+# Export interactive dark-mode HTML dashboard or JSON summary
+npm run test:msl:sim -- --report-html=reports/msl-sim.html --report-json=reports/msl-sim.json
+```
+
+**Runner Flags:**
+
+- `--stage=all|flatten|simulate|diagram|icon`: Stage to execute (default: `all`).
+- `--package=<prefix>`: Filter models by package prefix (e.g. `Modelica.Electrical.Analog.Examples`).
+- `--model=<fqn>`: Test a single model by FQN.
+- `--all`: Test all indexed classes rather than defaulting to examples for simulation/flattening.
+- `--jobs=N`: Number of parallel worker processes.
+- `--tolerance=T`: Simulation numerical comparison relative error tolerance (default: `1e-3`).
+- `--force-omc`: Invalidate OMC cache and recompute ground truth.
+- `--report-html=<file>`: Export interactive dark-mode HTML dashboard with inline trajectory overlay charts and SVG previews.
+- `--report-json=<file>`: Export machine-readable JSON results.
+
 ## Linter and Flattener Synchronization
 
 **IMPORTANT:** The linter and the flattener must always be in sync. Do not move diagnostics or features from the linter to the flattener (or vice versa) simply to work around implementation difficulties.

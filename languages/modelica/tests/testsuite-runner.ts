@@ -44,6 +44,8 @@ interface TestCaseMetadata {
   fmiVersion?: "2.0" | "3.0";
   simulate?: boolean;
   xfail?: boolean | string;
+  xfailWasm?: boolean | string;
+  xfailJs?: boolean | string;
 }
 
 interface TestCase {
@@ -60,6 +62,7 @@ interface TestResult {
   status: "passed" | "failed" | "skipped";
   duration: number;
   cpuTime: number;
+  backend?: "wasm" | "ts" | "hybrid" | "diff";
   message?: string;
   keywords?: string;
   testStatus?: string;
@@ -69,6 +72,8 @@ interface TestResult {
 interface CtrfReport {
   results: {
     tool: { name: string };
+    environment?: Record<string, unknown>;
+    extra?: Record<string, unknown>;
     summary: {
       tests: number;
       passed: number;
@@ -79,6 +84,7 @@ interface CtrfReport {
       start: number;
       stop: number;
       cpuTime: number;
+      extra?: Record<string, unknown>;
     };
     tests: {
       name: string;
@@ -91,6 +97,7 @@ interface CtrfReport {
       retries: number;
       flaky: boolean;
       suite: string;
+      extra?: Record<string, unknown>;
       message?: string;
       keywords?: string;
       testStatus?: string;
@@ -151,11 +158,25 @@ function parseTestFile(filePath: string): TestCase | null {
   let fmiVersion: "2.0" | "3.0" | undefined = undefined;
   let simulate = false;
   let xfail: boolean | string | undefined = undefined;
+  let xfailWasm: boolean | string | undefined = undefined;
+  let xfailJs: boolean | string | undefined = undefined;
   for (const line of lines) {
-    const xfMatch = line.match(/^\/\/\s*xfail:\s*(.+)/i);
-    if (xfMatch && xfMatch[1]) {
+    const xfWasmMatch = line.match(/^\/\/\s*xfail\[(?:wasm)\]\s*:\s*(.+)/i);
+    if (xfWasmMatch && xfWasmMatch[1]) {
+      const val = xfWasmMatch[1].trim();
+      xfailWasm = val === "true" ? true : val === "false" ? false : val;
+    }
+    const xfJsMatch = line.match(/^\/\/\s*xfail\[(?:js|ts)\]\s*:\s*(.+)/i);
+    if (xfJsMatch && xfJsMatch[1]) {
+      const val = xfJsMatch[1].trim();
+      xfailJs = val === "true" ? true : val === "false" ? false : val;
+    }
+    const xfMatch = line.match(/^\/\/\s*xfail\s*:\s*(.+)/i);
+    if (xfMatch && xfMatch[1] && !line.includes("[")) {
       const val = xfMatch[1].trim();
       xfail = val === "true" ? true : val === "false" ? false : val;
+      if (val === "wasm") xfailWasm = true;
+      if (val === "js" || val === "ts") xfailJs = true;
     }
     const amMatch = line.match(/^\/\/\s*arrayMode:\s*(preserve|scalarize)/);
     if (amMatch && amMatch[1]) arrayMode = amMatch[1] as "preserve" | "scalarize";
@@ -210,6 +231,8 @@ function parseTestFile(filePath: string): TestCase | null {
       ...(arrayMode ? { arrayMode } : {}),
       ...(fmiVersion ? { fmiVersion } : {}),
       ...(xfail !== undefined ? { xfail } : {}),
+      ...(xfailWasm !== undefined ? { xfailWasm } : {}),
+      ...(xfailJs !== undefined ? { xfailJs } : {}),
       simulate,
     },
     source,
@@ -228,21 +251,22 @@ function runTestInWorker(
   testsuiteRoot: string,
   updateMode: boolean,
   omcMode = false,
+  flattenerBackend?: string,
 ): Promise<TestResult> {
   return new Promise((resolve) => {
-    console.log("STARTING TEST:", testCase.file);
     const start = Date.now();
     const child = spawn(process.execPath, ["--import", "tsx", "--expose-gc", WORKER_SCRIPT], {
       cwd: path.resolve(import.meta.dirname ?? __dirname, ".."),
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
+        ...(flattenerBackend ? { FLATTENER_BACKEND: flattenerBackend } : {}),
         NODE_OPTIONS: "--max-old-space-size=1536",
       },
     });
 
     // Send test case to worker via stdin
-    const payload = JSON.stringify({ testCase, testsuiteRoot, updateMode, omcMode });
+    const payload = JSON.stringify({ testCase, testsuiteRoot, updateMode, omcMode, flattenerBackend });
     child.stdin.write(payload);
     child.stdin.end();
 
@@ -277,6 +301,9 @@ function runTestInWorker(
           const result: TestResult = JSON.parse(lastLine);
           // Adjust duration to include spawn overhead
           result.duration = duration;
+          if (!result.backend && flattenerBackend) {
+            result.backend = flattenerBackend === "js" ? "ts" : (flattenerBackend as any);
+          }
           resolve(result);
           return;
         }
@@ -290,16 +317,23 @@ function runTestInWorker(
         ? `Worker timed out after ${WORKER_TIMEOUT_MS / 1000}s`
         : `Worker exited with code ${code}\n${stderr.slice(-2000)}`;
 
+      const normalizedBackend = flattenerBackend === "js" ? "ts" : ((flattenerBackend as any) ?? "hybrid");
+      const effectiveXfail =
+        normalizedBackend === "wasm"
+          ? (testCase.metadata.xfailWasm ?? (testCase.metadata.xfail === "wasm" ? true : testCase.metadata.xfail))
+          : (testCase.metadata.xfailJs ?? (testCase.metadata.xfail === "wasm" ? false : testCase.metadata.xfail));
+
       resolve({
         name: path.basename(testCase.file),
         file: testCase.file,
         status: "failed",
         duration,
         cpuTime: 0,
+        backend: normalizedBackend,
         message,
         keywords: testCase.metadata.keywords,
         testStatus: testCase.metadata.status,
-        xfail: testCase.metadata.xfail,
+        xfail: effectiveXfail,
       });
     });
   });
@@ -314,7 +348,7 @@ const YELLOW = "\x1b[33m";
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
 
-function printResult(result: TestResult): void {
+function printResult(result: TestResult, showBackend = false): void {
   const isXFail = result.status === "failed" && Boolean(result.xfail);
   const isXPass = result.status === "passed" && Boolean(result.xfail);
 
@@ -330,7 +364,9 @@ function printResult(result: TestResult): void {
 
   const duration = `${DIM}(${result.duration.toFixed(0)}ms, cpu ${result.cpuTime.toFixed(0)}ms)${RESET}`;
   const xfailReason = typeof result.xfail === "string" ? ` ${DIM}(reason: ${result.xfail})${RESET}` : "";
-  console.log(`  ${icon} ${result.name} ${duration}${xfailReason}`);
+  const backendLabel =
+    showBackend && result.backend ? `${DIM}[${result.backend === "ts" ? "js" : result.backend}]${RESET} ` : "";
+  console.log(`  ${icon} ${result.name} ${backendLabel}${duration}${xfailReason}`);
 
   if (result.message) {
     const indented = result.message
@@ -381,14 +417,23 @@ function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-function generateCtrfReport(results: TestResult[], startTime: number, stopTime: number): CtrfReport {
+function generateCtrfReport(
+  results: TestResult[],
+  startTime: number,
+  stopTime: number,
+  backendLabel?: string,
+  isCombined = false,
+): CtrfReport {
   const passed = results.filter((r) => r.status === "passed").length;
   const failed = results.filter((r) => r.status === "failed").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
 
+  const toolName = backendLabel ? `modelscript-testsuite (${backendLabel})` : "modelscript-testsuite";
+
   return {
     results: {
-      tool: { name: "modelscript-testsuite" },
+      tool: { name: toolName },
+      ...(backendLabel ? { environment: { backend: backendLabel } } : {}),
       summary: {
         tests: results.length,
         passed,
@@ -400,22 +445,30 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
         stop: Math.floor(stopTime),
         cpuTime: Math.floor(results.reduce((sum, r) => sum + r.cpuTime, 0)),
       },
-      tests: results.map((r) => ({
-        name: r.name,
-        duration: Math.floor(r.duration),
-        cpuTime: Math.floor(r.cpuTime),
-        status: r.status === "skipped" ? "pending" : r.status,
-        rawStatus: r.xfail ? (r.status === "failed" ? "xfail" : "xpass") : r.status,
-        type: "unit",
-        filePath: r.file,
-        retries: 0,
-        flaky: false,
-        suite: path.basename(path.dirname(r.file)),
-        ...(r.message ? { message: stripAnsi(r.message) } : {}),
-        ...(r.keywords ? { keywords: r.keywords } : {}),
-        ...(r.testStatus ? { testStatus: r.testStatus } : {}),
-        ...(r.xfail !== undefined ? { extra: { xfail: r.xfail } } : {}),
-      })),
+      tests: results.map((r) => {
+        const b = r.backend === "ts" ? "js" : r.backend;
+        const testName = isCombined && b ? `${r.name} [${b}]` : r.name;
+        return {
+          name: testName,
+          duration: Math.floor(r.duration),
+          cpuTime: Math.floor(r.cpuTime),
+          status: r.status === "skipped" ? "pending" : r.status,
+          rawStatus: r.xfail ? (r.status === "failed" ? "xfail" : "xpass") : r.status,
+          type: "unit",
+          filePath: r.file,
+          retries: 0,
+          flaky: false,
+          suite:
+            isCombined && b ? `${path.basename(path.dirname(r.file))} (${b})` : path.basename(path.dirname(r.file)),
+          extra: {
+            ...(b ? { backend: b } : {}),
+            ...(r.xfail !== undefined ? { xfail: r.xfail } : {}),
+          },
+          ...(r.message ? { message: stripAnsi(r.message) } : {}),
+          ...(r.keywords ? { keywords: r.keywords } : {}),
+          ...(r.testStatus ? { testStatus: r.testStatus } : {}),
+        };
+      }),
     },
   };
 }
@@ -512,24 +565,48 @@ async function main(): Promise<void> {
     concurrency = Math.max(1, Math.min(cpuWorkers, memBasedWorkers, process.env.CI ? cpuWorkers : 4));
   }
 
-  const flattenerArg = rawArgs.find((a) => a.startsWith("--flattener="));
-  const flattenerBackend = flattenerArg ? flattenerArg.split("=")[1] : process.env.FLATTENER_BACKEND || "hybrid";
-  process.env.FLATTENER_BACKEND = flattenerBackend;
+  const flattenerArg = rawArgs.find((a) => a.startsWith("--flattener=") || a.startsWith("--backend="));
+  const rawFlattener = flattenerArg ? flattenerArg.split("=")[1]?.trim() : process.env.FLATTENER_BACKEND || "hybrid";
+
+  let backendsToRun: ("wasm" | "ts" | "hybrid" | "diff")[];
+  if (
+    rawFlattener === "both" ||
+    rawFlattener === "dual" ||
+    rawFlattener === "all" ||
+    rawArgs.includes("--dual") ||
+    rawArgs.includes("--both")
+  ) {
+    backendsToRun = ["wasm", "ts"];
+  } else if (rawFlattener && rawFlattener.includes(",")) {
+    backendsToRun = rawFlattener.split(",").map((b) => (b.trim() === "js" ? "ts" : b.trim()) as any);
+  } else {
+    const single = rawFlattener === "js" ? "ts" : (rawFlattener as any);
+    backendsToRun = [single];
+  }
+  const isDualBackend = backendsToRun.length > 1;
+  process.env.FLATTENER_BACKEND = isDualBackend ? "both" : backendsToRun[0];
 
   const args = rawArgs.filter(
     (a) =>
       a !== "--update" &&
       a !== "--omc" &&
       a !== "--allow-failures" &&
+      a !== "--allow-wasm-failures" &&
       a !== "--fresh-process" &&
       a !== "--mark-xfail" &&
+      a !== "--dual" &&
+      a !== "--both" &&
       !a.startsWith("--concurrency=") &&
-      !a.startsWith("--flattener="),
+      !a.startsWith("--flattener=") &&
+      !a.startsWith("--backend="),
   );
 
   const modeStr = freshProcess ? "isolated processes" : "persistent worker pool";
+  const backendDesc = isDualBackend
+    ? `dual [${backendsToRun.map((b) => (b === "ts" ? "js" : b)).join(", ")}]`
+    : backendsToRun[0];
   console.log(
-    `${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, flattener=${flattenerBackend}, mode=${modeStr})`,
+    `${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, flattener=${backendDesc}, mode=${modeStr})`,
   );
   console.log();
 
@@ -580,6 +657,7 @@ async function main(): Promise<void> {
     testCase: TestCase;
     suiteName: string;
     suiteDir: string;
+    backend: "wasm" | "ts" | "hybrid" | "diff";
   }
   const allQueued: QueuedTest[] = [];
   const skippedResults: TestResult[] = [];
@@ -649,11 +727,13 @@ async function main(): Promise<void> {
         continue;
       }
 
-      allQueued.push({ testCase, suiteName, suiteDir });
+      for (const backend of backendsToRun) {
+        allQueued.push({ testCase, suiteName, suiteDir, backend });
+      }
     }
   }
 
-  console.log(`${BOLD}Queued ${allQueued.length} test(s) + ${skippedResults.length} skipped${RESET}`);
+  console.log(`${BOLD}Queued ${allQueued.length} test run(s) + ${skippedResults.length} skipped${RESET}`);
   console.log();
 
   const globalStart = Date.now();
@@ -673,11 +753,11 @@ async function main(): Promise<void> {
       : null;
 
   // Build task closures
-  const tasks = allQueued.map(({ testCase }) => {
+  const tasks = allQueued.map(({ testCase, backend }) => {
     if (pool) {
-      return () => pool.runTest(testCase);
+      return () => pool.runTest(testCase, backend);
     }
-    return () => runTestInWorker(testCase, baseTestsuiteRoot, updateMode, omcMode);
+    return () => runTestInWorker(testCase, baseTestsuiteRoot, updateMode, omcMode, backend);
   });
 
   // Run all tests in parallel with concurrency limit
@@ -717,10 +797,12 @@ async function main(): Promise<void> {
           readline.clearLine(process.stdout, 0);
           readline.cursorTo(process.stdout, 0);
         }
-        const q = allQueued.find((x) => x.testCase.file === r.file);
+        const q = allQueued.find((x) => x.testCase.file === r.file && x.backend === r.backend);
         const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
+        const backendStr =
+          isDualBackend && r.backend ? `${DIM}[${r.backend === "ts" ? "js" : r.backend}]${RESET} ` : "";
         const tag = r.xfail ? `${YELLOW}✗ [XFAIL]${RESET}` : `${RED}✗ [REGRESSION]${RESET}`;
-        console.log(`  ${tag} ${suiteStr}${r.name}`);
+        console.log(`  ${tag} ${suiteStr}${backendStr}${r.name}`);
         if (r.message) {
           console.log(
             r.message
@@ -763,7 +845,7 @@ async function main(): Promise<void> {
     console.log();
     console.log(`${BOLD}Suite: ${suiteName}${RESET} (${results.length} files)`);
     for (const result of results) {
-      printResult(result);
+      printResult(result, isDualBackend);
     }
     printSummary(results, `Summary: ${suiteName}`);
     allResults.push(...results);
@@ -783,14 +865,88 @@ async function main(): Promise<void> {
     const ctrfDir = path.resolve(import.meta.dirname ?? __dirname, "../ctrf");
     fs.mkdirSync(ctrfDir, { recursive: true });
 
-    const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
-    const report = generateCtrfReport(allResults, globalStart, globalStop);
-    fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
-    console.log(`\n${DIM}CTRF report written to ${ctrfPath}${RESET}`);
+    if (isDualBackend) {
+      const wasmResults = allResults.filter((r) => r.backend === "wasm");
+      const jsResults = allResults.filter((r) => r.backend === "ts" || r.backend === "hybrid");
 
-    // Generate HTML report
-    const htmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
-    generateHtmlReport(ctrfPath, htmlPath);
+      // 1. Separate WASM CTRF report
+      const wasmCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report-wasm.json");
+      const wasmReport = generateCtrfReport(wasmResults, globalStart, globalStop, "wasm");
+      fs.writeFileSync(wasmCtrfPath, JSON.stringify(wasmReport, null, 2) + "\n");
+      const wasmHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report-wasm.html");
+      generateHtmlReport(wasmCtrfPath, wasmHtmlPath);
+
+      // 2. Separate JS CTRF report
+      const jsCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report-js.json");
+      const jsReport = generateCtrfReport(jsResults, globalStart, globalStop, "js");
+      fs.writeFileSync(jsCtrfPath, JSON.stringify(jsReport, null, 2) + "\n");
+      const jsHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report-js.html");
+      generateHtmlReport(jsCtrfPath, jsHtmlPath);
+
+      // 3. Combined CTRF report
+      const combinedCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
+      const combinedReport = generateCtrfReport(allResults, globalStart, globalStop, undefined, true);
+      fs.writeFileSync(combinedCtrfPath, JSON.stringify(combinedReport, null, 2) + "\n");
+      const combinedHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
+      generateHtmlReport(combinedCtrfPath, combinedHtmlPath);
+
+      console.log(`\n${DIM}CTRF reports written:${RESET}`);
+      console.log(`  - WASM: ${wasmCtrfPath} & ${wasmHtmlPath}`);
+      console.log(`  - JS:   ${jsCtrfPath} & ${jsHtmlPath}`);
+      console.log(`  - Both: ${combinedCtrfPath} & ${combinedHtmlPath}`);
+
+      // Detailed dual breakdown
+      console.log();
+      console.log(`${BOLD}══════════════════════════════════════════════════════════════${RESET}`);
+      console.log(`${BOLD}Implementation Comparison Breakdown${RESET}`);
+      console.log(`${BOLD}══════════════════════════════════════════════════════════════${RESET}`);
+      printSummary(wasmResults, "WASM Implementation");
+      printSummary(jsResults, "JS/TS Implementation");
+
+      const uniqueFiles = new Set(allResults.map((r) => r.file));
+      let bothPassed = 0;
+      let bothFailed = 0;
+      let jsOnlyPassed = 0;
+      let wasmOnlyPassed = 0;
+
+      for (const file of uniqueFiles) {
+        const w = wasmResults.find((r) => r.file === file);
+        const j = jsResults.find((r) => r.file === file);
+        if (w && j) {
+          const wPass = w.status === "passed";
+          const jPass = j.status === "passed";
+          if (wPass && jPass) bothPassed++;
+          else if (!wPass && !jPass) bothFailed++;
+          else if (jPass && !wPass) jsOnlyPassed++;
+          else if (wPass && !jPass) wasmOnlyPassed++;
+        }
+      }
+
+      console.log();
+      console.log(`  Unique models evaluated: ${uniqueFiles.size}`);
+      console.log(`  ${GREEN}✓ Passed in both (parity):  ${bothPassed}${RESET}`);
+      console.log(`  ${RED}✗ Failed in both:          ${bothFailed}${RESET}`);
+      console.log(`  ${YELLOW}▶ JS passed, WASM failed:   ${jsOnlyPassed}${RESET}`);
+      console.log(`  ${YELLOW}▶ WASM passed, JS failed:   ${wasmOnlyPassed}${RESET}`);
+      console.log(`${BOLD}══════════════════════════════════════════════════════════════${RESET}`);
+    } else {
+      const activeBackend = backendsToRun[0] === "wasm" ? "wasm" : "js";
+      const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
+      const report = generateCtrfReport(allResults, globalStart, globalStop, activeBackend);
+      fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
+
+      // Also write dedicated backend report
+      const specificCtrfPath = path.join(ctrfDir, `ctrf-testsuite-report-${activeBackend}.json`);
+      fs.writeFileSync(specificCtrfPath, JSON.stringify(report, null, 2) + "\n");
+
+      console.log(`\n${DIM}CTRF report written to ${ctrfPath} and ${specificCtrfPath}${RESET}`);
+
+      // Generate HTML report
+      const htmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
+      generateHtmlReport(ctrfPath, htmlPath);
+      const specificHtmlPath = path.join(ctrfDir, `ctrf-testsuite-report-${activeBackend}.html`);
+      generateHtmlReport(specificCtrfPath, specificHtmlPath);
+    }
   }
 
   // Handle --mark-xfail: update .mo files based on current test run results
@@ -832,11 +988,19 @@ async function main(): Promise<void> {
   }
 
   // Exit with error code if any regressions occurred
-  const regressions = allResults.filter((r) => r.status === "failed" && !r.xfail);
+  const allowFailures = rawArgs.includes("--allow-failures");
+  const allowWasmFailures = rawArgs.includes("--allow-wasm-failures");
+
+  const regressions = allResults.filter((r) => {
+    if (r.status !== "failed" || r.xfail) return false;
+    if (allowWasmFailures && r.backend === "wasm") return false;
+    return true;
+  });
+  const wasmRegressions = allResults.filter((r) => r.status === "failed" && !r.xfail && r.backend === "wasm");
   const xfails = allResults.filter((r) => r.status === "failed" && Boolean(r.xfail));
 
   if (regressions.length > 0) {
-    if (rawArgs.includes("--allow-failures")) {
+    if (allowFailures) {
       console.log(
         `\n${YELLOW}Warning: ${regressions.length} regression(s) occurred, but exiting with code 0 because --allow-failures is set.${RESET}`,
       );
@@ -844,6 +1008,12 @@ async function main(): Promise<void> {
     }
     console.error(`\n${RED}${BOLD}Error: ${regressions.length} unexpected regression(s) detected!${RESET}`);
     process.exit(1);
+  }
+
+  if (allowWasmFailures && wasmRegressions.length > 0) {
+    console.log(
+      `\n${YELLOW}Notice: ${wasmRegressions.length} WASM regression(s) recorded, but ignored for exit code due to --allow-wasm-failures.${RESET}`,
+    );
   }
 
   if (xfails.length > 0) {

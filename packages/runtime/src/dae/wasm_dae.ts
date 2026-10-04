@@ -348,6 +348,9 @@ export interface IDaeBuilder {
   addIfElse(condExpr: number, trueExpr: number, falseExpr: number): number;
   addCall(funcId: number, firstArg: number, argCount: number): number;
   lookupVariable(name: string | StringId): number;
+  hasArrayElements?(baseName: string): boolean;
+  getArrayElementIndices?(baseName: string): number[];
+  free?(): void;
   getVarCount(): number;
   getEqCount(): number;
   getExprCount(): number;
@@ -498,6 +501,45 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   // Host-side maps for metadata and structured equations
   public namedArrayShapes = new Map<string, number[]>();
+  public baseArrayIndices = new Map<string, number[]>();
+  public _renamedVars = new Map<number, string>();
+  public _renamedVarsReverse = new Map<string, number>();
+
+  private _indexArrayVariable(varIdx: number, varName: string): void {
+    if (!varName.includes("[")) return;
+    let pos = 0;
+    while ((pos = varName.indexOf("[", pos)) !== -1) {
+      const base = varName.slice(0, pos);
+      let list = this.baseArrayIndices.get(base);
+      if (!list) {
+        list = [];
+        this.baseArrayIndices.set(base, list);
+      }
+      if (!list.includes(varIdx)) {
+        list.push(varIdx);
+      }
+      pos++;
+    }
+  }
+
+  private _unindexArrayVariable(varIdx: number, varName: string): void {
+    if (!varName.includes("[")) return;
+    let pos = 0;
+    while ((pos = varName.indexOf("[", pos)) !== -1) {
+      const base = varName.slice(0, pos);
+      const list = this.baseArrayIndices.get(base);
+      if (list) {
+        const idx = list.indexOf(varIdx);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          if (list.length === 0) {
+            this.baseArrayIndices.delete(base);
+          }
+        }
+      }
+      pos++;
+    }
+  }
   private varShapes = new Map<number, number[]>();
   private varShapeExprs = new Map<number, number[]>();
   private varAttrs = new Map<number, Map<string, number>>();
@@ -559,6 +601,15 @@ export class WasmDaeBridge implements IDaeBuilder {
       const nameStr = typeof nameOrPtr === "string" ? nameOrPtr : "Model";
       this.nameId = this.interner.intern(nameStr);
       this.descriptionId = this.interner.intern(desc);
+    }
+
+    if (typeof nameOrPtr === "number" && nameOrPtr !== 0 && this.varCount > 0) {
+      for (let i = 0; i < this.varCount; i++) {
+        const vName = this.getVarName(i);
+        if (vName) {
+          this._indexArrayVariable(i, vName);
+        }
+      }
     }
   }
 
@@ -646,41 +697,57 @@ export class WasmDaeBridge implements IDaeBuilder {
     const nameId = typeof nameIdOrString === "string" ? this.interner.intern(nameIdOrString) : nameIdOrString;
     if (this.exports?.dae_addVariable) {
       const idx = this.exports.dae_addVariable(this.ptr, nameId, type, variability, causality, startVal, flags);
-      if (shapeDim > 0) this.setVarShapeDim(idx, 0, shapeDim);
+      if (idx >= 0) {
+        if (shapeDim > 0) this.setVarShapeDim(idx, 0, shapeDim);
+        const nameStr = typeof nameIdOrString === "string" ? nameIdOrString : this.interner.resolve(nameId);
+        if (nameStr) {
+          this._indexArrayVariable(idx, nameStr);
+        }
+      }
       return idx;
     }
     return -1;
   }
 
   lookupVariable(nameOrId: string | StringId): number {
+    const targetName = typeof nameOrId === "string" ? nameOrId : this.interner.resolve(nameOrId);
     const nId = typeof nameOrId === "string" ? this.interner.lookup(nameOrId) : nameOrId;
     if (nId !== undefined && nId !== 0 && this.exports?.dae_lookupVariable) {
       const idx = this.exports.dae_lookupVariable(this.ptr, nId);
-      if (idx >= 0) return idx;
+      if (idx >= 0) {
+        if (this._renamedVars.has(idx)) {
+          if (this._renamedVars.get(idx) === targetName) {
+            return idx;
+          }
+        } else {
+          return idx;
+        }
+      }
     }
-    const renamed = (this as any)._renamedVars as Map<number, string> | undefined;
-    if (!renamed || renamed.size === 0) {
+    if (this._renamedVars.size === 0 || !targetName) {
       return -1;
     }
-    const targetName = typeof nameOrId === "string" ? nameOrId : this.interner.resolve(nameOrId);
-    if (!targetName) return -1;
-    for (const [vIdx, name] of renamed.entries()) {
-      if (name === targetName) return vIdx;
-    }
-    return -1;
+    const reverseIdx = this._renamedVarsReverse.get(targetName);
+    return reverseIdx !== undefined ? reverseIdx : -1;
   }
 
   renameVar(oldName: string, newName: string): boolean {
     const varIdx = this.getVarIdxByName(oldName);
     if (varIdx < 0) return false;
-    if (!(this as any)._renamedVars) (this as any)._renamedVars = new Map<number, string>();
-    (this as any)._renamedVars.set(varIdx, newName);
+    const currentName = this.getVarName(varIdx);
+    this._unindexArrayVariable(varIdx, currentName);
+    this._renamedVars.set(varIdx, newName);
+    this._renamedVarsReverse.set(newName, varIdx);
+    if (this._renamedVarsReverse.get(currentName) === varIdx) {
+      this._renamedVarsReverse.delete(currentName);
+    }
+    this._indexArrayVariable(varIdx, newName);
     (this as any)._isRealNameCache?.clear();
     return true;
   }
 
   getVarName(varIdx: number): string {
-    const renamed = (this as any)._renamedVars?.get(varIdx);
+    const renamed = this._renamedVars.get(varIdx);
     if (renamed !== undefined) return renamed;
     const nId = this.getVarNameId(varIdx);
     return this.interner.resolve(nId) ?? "";
@@ -904,10 +971,8 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   hasArrayElements(baseName: string): boolean {
     if (this.namedArrayShapes.has(baseName)) return true;
-    const prefix = `${baseName}[`;
-    for (let i = 0; i < this.varCount; i++) {
-      if (this.getVarName(i).startsWith(prefix)) return true;
-    }
+    const direct = this.baseArrayIndices.get(baseName);
+    if (direct && direct.length > 0) return true;
     if (baseName.includes(".")) {
       const labelMaps: Map<string, number>[] = [];
       for (let i = 0; i < this.varCount; i++) {
@@ -919,12 +984,12 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   getArrayElementIndices(baseName: string): number[] {
-    const prefix = `${baseName}[`;
-    const indices: number[] = [];
-    for (let i = 0; i < this.varCount; i++) {
-      if (this.getVarName(i).startsWith(prefix)) indices.push(i);
+    const direct = this.baseArrayIndices.get(baseName);
+    if (direct && direct.length > 0) {
+      return [...direct];
     }
-    if (indices.length === 0 && baseName.includes(".")) {
+    const indices: number[] = [];
+    if (baseName.includes(".")) {
       const labelMaps: Map<string, number>[] = [];
       for (let i = 0; i < this.varCount; i++) {
         const idxs = matchVarPath(this.getVarName(i), baseName, labelMaps);
@@ -932,6 +997,39 @@ export class WasmDaeBridge implements IDaeBuilder {
       }
     }
     return indices;
+  }
+
+  free(): void {
+    if (this.ptr && this.exports?.dae_free) {
+      try {
+        this.exports.dae_free(this.ptr);
+      } catch {
+        // ignore
+      }
+    }
+    this.ptr = 0;
+    this.baseArrayIndices.clear();
+    this._renamedVars.clear();
+    this._renamedVarsReverse.clear();
+    this.namedArrayShapes.clear();
+    this.varShapes.clear();
+    this.varShapeExprs.clear();
+    this.varAttrs.clear();
+    this.varExpressions.clear();
+    this.varDescriptions.clear();
+    this.eqDescriptions.clear();
+    this.varCadAnnotations.clear();
+    this.varCustomTypes.clear();
+    this.varEnumLiterals.clear();
+    this.whenMeta.clear();
+    this.forMeta.clear();
+    this.ifMeta.clear();
+    this.stateMachines = [];
+    this.eqSourceRanges.clear();
+    this.varSourceRanges.clear();
+    this.paramNameToEqs.clear();
+    this.origEqRhs.clear();
+    this.nameExprIndices = [];
   }
 
   getVarShape(varIdx: number): number[] {
@@ -1063,6 +1161,20 @@ export class WasmDaeBridge implements IDaeBuilder {
         this.getExprKind(exprId) === ExprKind.EnumLiteral
       ) {
         this.setVarStartValue(varIdx, this.getExprData1(exprId));
+      }
+    }
+  }
+
+  removeVarAttr(varIdx: number, attrName: string): void {
+    const map = this.getVarAttrExprIds(varIdx);
+    if (map) {
+      map.delete(attrName);
+    }
+    if (this.exports?.dae_setVarAttrExpr) {
+      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed"];
+      const k = ATTR_NAMES.indexOf(attrName);
+      if (k >= 0) {
+        this.exports.dae_setVarAttrExpr(this.ptr, varIdx, k, 0xffffffff);
       }
     }
   }
@@ -2003,8 +2115,9 @@ export class WasmDaeBridge implements IDaeBuilder {
       };
     }
 
-    if ((this as any)._renamedVars) {
-      (copy as any)._renamedVars = new Map((this as any)._renamedVars);
+    if (this._renamedVars.size > 0) {
+      copy._renamedVars = new Map(this._renamedVars);
+      copy._renamedVarsReverse = new Map(this._renamedVarsReverse);
     }
 
     for (let i = 0; i < this.varCount; i++) {

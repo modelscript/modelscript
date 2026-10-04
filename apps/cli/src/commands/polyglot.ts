@@ -18,6 +18,46 @@ import { scadLanguage } from "@modelscript/scad";
 import { sspLanguage } from "@modelscript/ssp";
 import { stepLanguage } from "@modelscript/step";
 import { sysml2Language } from "@modelscript/sysml2";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+
+function findNodes(node: any, type: string, results: any[] = []): any[] {
+  if (!node) return results;
+  if (node.type === type) results.push(node);
+  for (const c of node.children || []) findNodes(c, type, results);
+  return results;
+}
+
+let scadParserInstance: any = null;
+function getScadParser(): any {
+  if (scadParserInstance) return scadParserInstance;
+  try {
+    const { createWasmParserSync } = require("@modelscript/dsl");
+    const { SYNTAX_NAMES } = require("@modelscript/scad/parser");
+    const wasmPath = require.resolve("@modelscript/scad/parser.wasm");
+    const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
+    scadParserInstance = res.parser;
+    return scadParserInstance;
+  } catch {
+    return null;
+  }
+}
+
+let owlParserInstance: any = null;
+function getOwlParser(): any {
+  if (owlParserInstance) return owlParserInstance;
+  try {
+    const { createWasmParserSync } = require("@modelscript/dsl");
+    const { SYNTAX_NAMES } = require("@modelscript/owl2/parser");
+    const wasmPath = require.resolve("@modelscript/owl2/parser.wasm");
+    const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
+    owlParserInstance = res.parser;
+    return owlParserInstance;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Parses any supported source file format into a unified PolyglotNode AST.
@@ -40,21 +80,62 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
           if (a.defaultValue !== undefined) attr.value = String(a.defaultValue);
           return attr;
         }),
-        ports: sysmlDef.ports.map((p) => ({
-          name: p.name,
-          type: p.type,
-        })),
-        connections: sysmlDef.connections.map((c) => ({
-          source: c.source,
-          target: c.target,
-        })),
+        ports: sysmlDef.ports.map((p) => {
+          const isPin = p.type === "Pin" || p.type.includes("Pin");
+          const isFlange = p.type === "Flange" || p.type.includes("Flange");
+          const isHeat = p.type === "HeatPort" || p.type.includes("Heat");
+          const portItem: NonNullable<PolyglotNode["ports"]>[number] = {
+            name: p.name,
+            type: p.type,
+          };
+          if (p.direction !== undefined) portItem.direction = p.direction;
+          if (p.isConjugated !== undefined) portItem.isConjugated = p.isConjugated;
+          if (isPin) {
+            portItem.acrossVar = "v";
+            portItem.flowVar = "i";
+            portItem.domain = "electrical";
+          } else if (isFlange) {
+            portItem.acrossVar = "s";
+            portItem.flowVar = "f";
+            portItem.domain = "translational";
+          } else if (isHeat) {
+            portItem.acrossVar = "T";
+            portItem.flowVar = "Q_flow";
+            portItem.domain = "thermal";
+          }
+          return portItem;
+        }),
+        connections: sysmlDef.connections.map((c) => {
+          const connItem: NonNullable<PolyglotNode["connections"]>[number] = {
+            source: c.source,
+            target: c.target,
+          };
+          if (c.kind !== undefined) connItem.kind = c.kind;
+          return connItem;
+        }),
       };
       if (sysmlDef.isAbstract !== undefined) resNode.isAbstract = sysmlDef.isAbstract;
       if (sysmlDef.superclasses !== undefined) resNode.superclasses = sysmlDef.superclasses;
       if (sysmlDef.parts !== undefined) {
-        resNode.components = sysmlDef.parts.map((p) => ({ name: p.name, typeSpecifier: p.type }));
+        resNode.components = sysmlDef.parts.map((p) => {
+          const compItem: NonNullable<PolyglotNode["components"]>[number] = {
+            name: p.name,
+            typeSpecifier: p.type,
+          };
+          if (p.multiplicity !== undefined) {
+            compItem.multiplicity = p.multiplicity;
+            compItem.dimensions = p.multiplicity;
+          }
+          if (p.attributes !== undefined) {
+            compItem.modifications = p.attributes;
+          }
+          return compItem;
+        });
       }
-      if (sysmlDef.constraints !== undefined) resNode.constraints = sysmlDef.constraints;
+      if (sysmlDef.constraints !== undefined && sysmlDef.constraints.length > 0) {
+        resNode.constraints = sysmlDef.constraints;
+        resNode.equations = sysmlDef.constraints;
+      }
       return resNode;
     } catch {
       return { name: baseName, kind: "model" };
@@ -73,21 +154,62 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
           if (a.defaultValue !== undefined) attr.value = String(a.defaultValue);
           return attr;
         }),
-        ports: sysmlDef.ports.map((p) => ({
-          name: p.name,
-          type: p.type,
-        })),
-        connections: sysmlDef.connections.map((c) => ({
-          source: c.source,
-          target: c.target,
-        })),
+        ports: sysmlDef.ports.map((p) => {
+          const isPin = p.type === "Pin" || p.type.includes("Pin") || p.type.includes("ElectricalPort");
+          const isFlange = p.type === "Flange" || p.type.includes("Flange");
+          const isHeat = p.type === "HeatPort" || p.type.includes("Heat");
+          const portItem: NonNullable<PolyglotNode["ports"]>[number] = {
+            name: p.name,
+            type: p.type,
+          };
+          if (p.direction !== undefined) portItem.direction = p.direction;
+          if (p.isConjugated !== undefined) portItem.isConjugated = p.isConjugated;
+          if (isPin) {
+            portItem.acrossVar = "v";
+            portItem.flowVar = "i";
+            portItem.domain = "electrical";
+          } else if (isFlange) {
+            portItem.acrossVar = "s";
+            portItem.flowVar = "f";
+            portItem.domain = "translational";
+          } else if (isHeat) {
+            portItem.acrossVar = "T";
+            portItem.flowVar = "Q_flow";
+            portItem.domain = "thermal";
+          }
+          return portItem;
+        }),
+        connections: sysmlDef.connections.map((c) => {
+          const connItem: NonNullable<PolyglotNode["connections"]>[number] = {
+            source: c.source,
+            target: c.target,
+          };
+          if (c.kind !== undefined) connItem.kind = c.kind;
+          return connItem;
+        }),
       };
       if (sysmlDef.isAbstract !== undefined) resNode.isAbstract = sysmlDef.isAbstract;
       if (sysmlDef.superclasses !== undefined) resNode.superclasses = sysmlDef.superclasses;
       if (sysmlDef.parts !== undefined) {
-        resNode.components = sysmlDef.parts.map((p) => ({ name: p.name, typeSpecifier: p.type }));
+        resNode.components = sysmlDef.parts.map((p) => {
+          const compItem: NonNullable<PolyglotNode["components"]>[number] = {
+            name: p.name,
+            typeSpecifier: p.type,
+          };
+          if (p.multiplicity !== undefined) {
+            compItem.multiplicity = p.multiplicity;
+            compItem.dimensions = p.multiplicity;
+          }
+          if (p.attributes !== undefined) {
+            compItem.modifications = p.attributes;
+          }
+          return compItem;
+        });
       }
-      if (sysmlDef.constraints !== undefined) resNode.constraints = sysmlDef.constraints;
+      if (sysmlDef.constraints !== undefined && sysmlDef.constraints.length > 0) {
+        resNode.constraints = sysmlDef.constraints;
+        resNode.equations = sysmlDef.constraints;
+      }
       return resNode;
     } catch {
       return { name: baseName, kind: "part def" };
@@ -96,6 +218,46 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
 
   // 3. OpenSCAD source (.scad)
   if (ext === ".scad") {
+    try {
+      const sp = getScadParser();
+      if (sp) {
+        const tree = sp.parse(text);
+        const root = tree.rootNode;
+        const modDecls = findNodes(root, "ModuleDeclaration");
+        let name = baseName;
+        if (modDecls.length > 0) {
+          const idNode = findNodes(modDecls[0], "IDENTIFIER")[0];
+          if (idNode) name = idNode.text.trim();
+        }
+        const attributes: { name: string; type: string; value?: string }[] = [];
+        const varDecls = findNodes(root, "VariableDeclaration");
+        for (const vd of varDecls) {
+          const idNode = findNodes(vd, "IDENTIFIER")[0];
+          const exprNode = findNodes(vd, "Expression")[0] || findNodes(vd, "PrimaryExpression")[0];
+          if (idNode && !idNode.text.startsWith("//") && idNode.text !== "module") {
+            const valStr = exprNode
+              ? exprNode.text.trim()
+              : vd.text
+                  .replace(/^[^=]+=\s*/, "")
+                  .replace(/;$/, "")
+                  .trim();
+            attributes.push({ name: idNode.text.trim(), type: "Real", value: valStr });
+          }
+        }
+        const components: { name: string; typeSpecifier: string }[] = [];
+        if (findNodes(root, "CubePrimitive").length > 0 || /cube\s*\(/.test(text)) {
+          components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
+        }
+        if (findNodes(root, "CylinderPrimitive").length > 0 || /cylinder\s*\(/.test(text)) {
+          components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
+        }
+        if (findNodes(root, "SpherePrimitive").length > 0 || /sphere\s*\(/.test(text)) {
+          components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
+        }
+        return { name: name || baseName, kind: "module", attributes, components };
+      }
+    } catch {}
+
     const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
     const name = modMatch ? modMatch[1] : baseName;
     const attributes: { name: string; type: string; value?: string }[] = [];
@@ -139,6 +301,26 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
 
   // 6. OWL 2 Functional Syntax (.owl / .owl2)
   if (ext === ".owl" || ext === ".owl2") {
+    try {
+      const op = getOwlParser();
+      if (op) {
+        const tree = op.parse(text);
+        const root = tree.rootNode;
+        const decls = findNodes(root, "Declaration");
+        const classes: string[] = [];
+        for (const d of decls) {
+          const clsNodes = findNodes(d, "Class");
+          for (const cn of clsNodes) {
+            const clsName = cn.text.replace(/^[:\s<]+|[:>\s]+$/g, "").trim();
+            if (clsName && !classes.includes(clsName)) classes.push(clsName);
+          }
+        }
+        if (classes.length > 0 && classes[0]) {
+          return { name: classes[0], kind: "ontology_class", superclasses: classes.slice(1) };
+        }
+      }
+    } catch {}
+
     const classMatches = text.matchAll(
       /\b(?:Declaration\(Class\(:([A-Za-z_][A-Za-z0-9_]*)\)\)|Class:\s*([A-Za-z_][A-Za-z0-9_]*))/g,
     );
@@ -210,10 +392,16 @@ const ProjectCommand: CommandModule<{}, ProjectArgs> = {
     const transformer = new PolyglotTransformer();
 
     if (args.strict) {
-      const sysmlRules = (sysml2Language as any).polyglot?.rules || [];
-      const modelicaRules = (modelicaLanguage as any).polyglot?.rules || [];
-      const allRules = [...sysmlRules, ...modelicaRules];
-      const cpaReport = runCPA(allRules);
+      const activeRules =
+        args.target === "modelica"
+          ? (sysml2Language as any).polyglot?.rules || []
+          : args.target === "sysml2"
+            ? (modelicaLanguage as any).polyglot?.rules || []
+            : [
+                ...((sysml2Language as any).polyglot?.rules || []),
+                ...((modelicaLanguage as any).polyglot?.rules || []),
+              ];
+      const cpaReport = runCPA(activeRules);
       if (cpaReport.hasConflicts) {
         const errorConflicts = cpaReport.conflicts.filter((c) => c.severity === "error");
         if (errorConflicts.length > 0 && errorConflicts[0]) {

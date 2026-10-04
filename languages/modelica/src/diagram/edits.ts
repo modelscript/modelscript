@@ -6,9 +6,39 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 type ModelicaClassInstance = any;
+import { CstUnparser } from "@modelscript/dsl";
 import { Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
+
+function findChildByType(node: any, typeName: string): any {
+  if (!node) return null;
+  const targetLower = typeName.toLowerCase();
+  for (const ch of node.children || []) {
+    if (ch.type === typeName || ch.type?.toLowerCase() === targetLower) return ch;
+  }
+  return null;
+}
+
+function findDescendantModification(node: any, name: string): any {
+  if (!node) return null;
+  const isTarget =
+    (node.type === "element_modification" ||
+      node.type === "ElementModification" ||
+      node.type === "argument" ||
+      node.type === "Argument") &&
+    (node.text?.startsWith(name) ||
+      node.children?.some(
+        (c: any) =>
+          (c.type === "name" || c.type === "identifier" || c.type === "Identifier") && c.text?.trim() === name,
+      ));
+  if (isTarget) return node;
+  for (const ch of node.children || []) {
+    const res = findDescendantModification(ch, name);
+    if (res) return res;
+  }
+  return null;
+}
 
 function getNodeRange(node: any): { startLine: number; startCol: number; endLine: number; endCol: number } | null {
   if (!node) return null;
@@ -229,6 +259,48 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const annRangeInfo = getNodeRange(annotationClause);
 
   if (annRangeInfo) {
+    if (annotationClause) {
+      const placementNode = findDescendantModification(annotationClause, "Placement");
+      if (placementNode && placementNode.startPosition) {
+        const patchRes = CstUnparser.patchAndUnparse({
+          target: placementNode,
+          replaceText: newPlacement,
+        });
+        return TextEdit.replace(
+          Range.create(
+            patchRes.edit.range.start.line + lineDelta,
+            patchRes.edit.range.start.character,
+            patchRes.edit.range.end.line + lineDelta,
+            patchRes.edit.range.end.character,
+          ),
+          patchRes.edit.newText,
+        );
+      }
+
+      const classModNode = findChildByType(annotationClause, "class_modification");
+      if (classModNode && classModNode.children && classModNode.children.length > 0) {
+        const patchRes = CstUnparser.patchAndUnparse({
+          target: classModNode,
+          insertChildren: [
+            {
+              content: newPlacement,
+              position: "start",
+              separator: ", ",
+            },
+          ],
+        });
+        return TextEdit.replace(
+          Range.create(
+            patchRes.edit.range.start.line + lineDelta,
+            patchRes.edit.range.start.character,
+            patchRes.edit.range.end.line + lineDelta,
+            patchRes.edit.range.end.character,
+          ),
+          patchRes.edit.newText,
+        );
+      }
+    }
+
     const annStartLine = annRangeInfo.startLine + lineDelta;
     const annEndLine = annRangeInfo.endLine + lineDelta;
     const annRange = Range.create(annStartLine, annRangeInfo.startCol, annEndLine, annRangeInfo.endCol);
@@ -554,6 +626,54 @@ export function computeEdgePointEdits(
     const annRangeInfo = getNodeRange(annotationClause);
 
     if (annRangeInfo) {
+      if (annotationClause) {
+        const lineNode = findDescendantModification(annotationClause, "Line");
+        if (lineNode && lineNode.startPosition) {
+          const patchRes = CstUnparser.patchAndUnparse({
+            target: lineNode,
+            replaceText: newLineAnnotation,
+          });
+          edits.push(
+            TextEdit.replace(
+              Range.create(
+                patchRes.edit.range.start.line,
+                patchRes.edit.range.start.character,
+                patchRes.edit.range.end.line,
+                patchRes.edit.range.end.character,
+              ),
+              patchRes.edit.newText,
+            ),
+          );
+          continue;
+        }
+
+        const classModNode = findChildByType(annotationClause, "class_modification");
+        if (classModNode && classModNode.children && classModNode.children.length > 0) {
+          const patchRes = CstUnparser.patchAndUnparse({
+            target: classModNode,
+            insertChildren: [
+              {
+                content: newLineAnnotation,
+                position: "end",
+                separator: ", ",
+              },
+            ],
+          });
+          edits.push(
+            TextEdit.replace(
+              Range.create(
+                patchRes.edit.range.start.line,
+                patchRes.edit.range.start.character,
+                patchRes.edit.range.end.line,
+                patchRes.edit.range.end.character,
+              ),
+              patchRes.edit.newText,
+            ),
+          );
+          continue;
+        }
+      }
+
       const annRange = Range.create(
         annRangeInfo.startLine,
         annRangeInfo.startCol,

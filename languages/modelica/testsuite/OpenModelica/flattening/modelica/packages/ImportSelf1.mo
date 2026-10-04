@@ -1,7 +1,6 @@
 // name:     ImportSelf1
 // keywords: import, bug1445
 // status:   correct
-// xfail:    true
 //
 // Checks that importing a package in itself works.
 //

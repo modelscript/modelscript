@@ -59,7 +59,12 @@ export function discoverModelsFromIndex(rawSymbols: [number, any][], mslDir: str
       if (dirParts[dirParts.length - 1] === sym.name) {
         fqn = ["Modelica", ...dirParts].join(".");
       } else if (dirParts[dirParts.length - 1] === "package") {
-        fqn = ["Modelica", ...dirParts.slice(0, -1), sym.name].join(".");
+        const parentParts = dirParts.slice(0, -1);
+        if (parentParts[parentParts.length - 1] === sym.name) {
+          fqn = ["Modelica", ...parentParts].join(".");
+        } else {
+          fqn = ["Modelica", ...parentParts, sym.name].join(".");
+        }
       } else {
         fqn = ["Modelica", ...dirParts, sym.name].join(".");
       }

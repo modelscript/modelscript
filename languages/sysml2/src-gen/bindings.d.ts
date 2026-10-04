@@ -955,6 +955,7 @@ export declare class SyntaxNode {
   readonly _cachedTypeId: number;
   private _cachedChildren;
   private _cachedNamedChildren;
+  private _cachedText;
   _fieldId: number;
   constructor(
     tree: Tree,
@@ -1249,6 +1250,22 @@ export declare function createWasmParser(
   facade: LspFacade;
   parser: TreeSitterParser;
 }>;
+/**
+ * Synchronously instantiates a WebAssembly parser from a file path, Uint8Array buffer, or ArrayBuffer.
+ * Useful for synchronous compiler pipelines and CLI transformations.
+ */
+export declare function createWasmParserSync(
+  wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
+  options?: {
+    syntaxNames?: string[];
+    fieldNames?: Record<string, number>;
+    lintMessages?: Record<string, any>;
+    lintSeverities?: Record<string, number>;
+  },
+): {
+  facade: LspFacade;
+  parser: TreeSitterParser;
+};
 
 export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 

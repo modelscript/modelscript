@@ -1983,6 +1983,7 @@ export * from "./glyphs.js";
 export * from "./html-diff-bundle.js";
 export * from "./incremental-layout.js";
 export * from "./interactive.js";
+export * from "./layout-storage.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-ilp-solver.js";
 export * from "./port-router.js";

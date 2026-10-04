@@ -4,6 +4,14 @@
  * Triple Graph Grammar (TGG) & DPO Graph Rewriting Declarative DSL.
  */
 
+export type TGGExprPattern =
+  | { kind: "binary"; op: string; left: any; right: any }
+  | { kind: "unary"; op: string; arg: any }
+  | { kind: "der"; stateVar: any; order?: number }
+  | { kind: "call"; func: string; args: any[] }
+  | { kind: "ident"; name: any }
+  | { kind: "literal"; val: any };
+
 export interface TGGPattern {
   /** The syntax node type or fact predicate to match/create */
   nodeType: string;
@@ -11,6 +19,8 @@ export interface TGGPattern {
   bindings: Record<string, any>;
   /** Optional inner/nested patterns for child elements or body */
   children?: TGGPattern[];
+  /** Optional recursive AST expression for mathematical equations / constraints */
+  expr?: TGGExprPattern;
 }
 
 export type TGGConstraintKind =
@@ -27,7 +37,8 @@ export type TGGConstraintKind =
   | "reconcilePhysics"
   | "complement"
   | "invertible"
-  | "exprMap";
+  | "exprMap"
+  | "physicalPort";
 
 export interface TGGConstraint {
   kind: TGGConstraintKind;
@@ -185,9 +196,41 @@ export function tggInvertible(forwardExpr: string, backwardExpr?: string): TGGCo
 export function tggExprMap(
   sourceExprVar: any,
   targetExprVar: any,
-  dialect: "modelica-sysml2" | "sysml2-modelica" = "modelica-sysml2",
+  dialect: "modelica-sysml2" | "sysml2-modelica" | string = "modelica-sysml2",
 ): TGGConstraint {
   return { kind: "exprMap", args: [sourceExprVar, targetExprVar, dialect] };
+}
+
+/**
+ * Constitutive physical port balance constraint matching across (potential) and through (flow) variables.
+ */
+export function tggPhysicalPort(
+  acrossVar: any,
+  flowVar: any,
+  domain: "electrical" | "fluid" | "rotational" | "translational" | "thermal" | string = "electrical",
+): TGGConstraint {
+  return { kind: "physicalPort", args: [acrossVar, flowVar, domain] };
+}
+
+/**
+ * Infix binary operation expression pattern.
+ */
+export function tggBinary(op: string, left: any, right: any): TGGExprPattern {
+  return { kind: "binary", op, left, right };
+}
+
+/**
+ * State variable time derivative expression pattern.
+ */
+export function tggDer(stateVar: any, order: number = 1): TGGExprPattern {
+  return { kind: "der", stateVar, order };
+}
+
+/**
+ * Elementary math function call expression pattern.
+ */
+export function tggCall(func: string, args: any[]): TGGExprPattern {
+  return { kind: "call", func, args };
 }
 
 export interface TGGThreadRuleOptions<DomainNames extends string = string> {

@@ -16,6 +16,10 @@ import type { SyntaxNode } from "./utils/cst-facade.js";
 
 // Language Tools (I18n, Semantic Diff)
 export * from "./tools/index.js";
+
+// Generalized CST Unparser & Surgical Patch Engine
+export * from "./unparser/index.js";
+
 export type { SyntaxNode };
 
 export type CSTNode = SyntaxNode;

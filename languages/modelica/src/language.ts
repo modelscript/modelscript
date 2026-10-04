@@ -13,10 +13,13 @@ import {
   seq,
   tggComplement,
   tggDefaultVal,
+  tggDer,
   tggEq,
+  tggExprMap,
   tggForEach,
   tggFormatUri,
   tggInvertible,
+  tggPhysicalPort,
   tggRule,
   tggTypeMap,
   token,
@@ -1336,15 +1339,35 @@ export const modelicaLanguage = language({
         sourceLang: "modelica",
         targetLang: "sysml2",
         source: ($, v) =>
-          $.ComponentClause({ name: v("compName"), typeSpecifier: v("typeName"), modifications: v("mods") }),
+          $.ComponentClause({
+            name: v("compName"),
+            typeSpecifier: v("typeName"),
+            modifications: v("mods"),
+            dimensions: v("dims"),
+          }),
         target: ($, v) =>
-          $.PartUsage({ declaredName: v("compName"), declaredType: v("typeName"), redefinedAttributes: v("mods") }),
+          $.PartUsage({
+            declaredName: v("compName"),
+            declaredType: v("typeName"),
+            redefinedAttributes: v("mods"),
+            multiplicity: v("dims"),
+          }),
         where: (v) => [
           tggEq(v("compName"), v("compName")),
           tggTypeMap(v("typeName"), v("typeName"), "sysml2"),
+          tggEq(v("dims"), v("dims")),
           tggForEach(v("mods"), v("mod"), [tggEq(v("mod"), v("mod"))]),
-          tggComplement(["variability", "causality", "dimensions", "binding"]),
+          tggComplement(["variability", "causality", "binding"]),
         ],
+      }),
+      tggRule({
+        name: "ModelicaPinToSysmlElectricalPort",
+        sourceLang: "modelica",
+        targetLang: "sysml2",
+        priority: 15,
+        source: ($, v) => $.ComponentClause({ name: v("portName"), typeSpecifier: "Pin" }),
+        target: ($, v) => $.PortUsage({ declaredName: v("portName"), declaredType: "ElectricalPort" }),
+        where: (v) => [tggEq(v("portName"), v("portName")), tggPhysicalPort(v("v"), v("i"), "electrical")],
       }),
       tggRule({
         name: "ModelicaAssertToSysmlRequirement",
@@ -1379,6 +1402,8 @@ export const modelicaLanguage = language({
         target: ($, v) => $.ConstraintUsage({ declaredName: v("eqName"), condition: v("eqExpr") }),
         where: (v) => [
           tggDefaultVal(v("eqName"), "eq"),
+          tggExprMap(v("lhsExpr"), v("eqExpr")),
+          tggExprMap(v("rhsExpr"), v("eqExpr")),
           tggInvertible(v("lhsExpr"), v("rhsExpr")),
           tggComplement(["comment", "annotation"]),
         ],
@@ -1392,8 +1417,9 @@ export const modelicaLanguage = language({
         target: ($, v) => $.ConstraintUsage({ declaredName: v("rateName"), condition: v("rate") }),
         where: (v) => [
           tggDefaultVal(v("rateName"), "rate_eq"),
-          tggEq(v("rate"), v("rate")),
-          tggComplement(["stateVar", "comment"]),
+          tggEq(v("state"), tggDer(v("state"), 1)),
+          tggExprMap(v("rate"), v("rate")),
+          tggComplement(["comment"]),
         ],
       }),
       tggRule({

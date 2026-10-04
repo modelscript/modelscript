@@ -4,22 +4,25 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vitepress";
 
-let modelicaGrammar: Record<string, unknown> = { name: "modelica", displayName: "modelica", patterns: [] };
+let modelicaGrammar: Record<string, unknown> | null = null;
 const grammarPath = path.resolve(__dirname, "../../../../dist/extension/syntaxes/modelica.tmLanguage.json");
 if (fs.existsSync(grammarPath)) {
   try {
     modelicaGrammar = JSON.parse(fs.readFileSync(grammarPath, "utf-8"));
-    modelicaGrammar.name = "modelica";
-    modelicaGrammar.aliases = ["Modelica", "mo"];
+    if (modelicaGrammar) {
+      modelicaGrammar.name = "modelica";
+      modelicaGrammar.scopeName = modelicaGrammar.scopeName || "source.modelica";
+      modelicaGrammar.aliases = ["Modelica", "mo"];
+    }
   } catch {
-    // fallback
+    modelicaGrammar = null;
   }
 }
 
 export default defineConfig({
   markdown: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    languages: [modelicaGrammar as any],
+    languages: modelicaGrammar ? [modelicaGrammar as any] : [],
     config(md) {
       const defaultFence = md.renderer.rules.fence;
       md.renderer.rules.fence = (tokens, idx, options, env, self) => {
@@ -156,6 +159,7 @@ export default defineConfig({
             { text: "Introduction", link: "/guide/introduction" },
             { text: "Installation", link: "/guide/installation" },
             { text: "Getting Started", link: "/guide/getting-started" },
+            { text: "Administration", link: "/guide/administration" },
           ],
         },
       ],

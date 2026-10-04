@@ -2082,6 +2082,13 @@ export const classDefinitionQueries: Record<string, any> = {
     kind = kind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
     const words = kind.split(/\s+/).filter(Boolean);
     if (words.includes("expandable") && words.includes("connector")) return true;
+    const cst = db.cstNode(self.id) as any;
+    if (cst) {
+      const pfx = Cst.ClassDefinition.classPrefixes(cst);
+      const pfxText = (pfx?.text ?? cst.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      const pfxWords = pfxText.split(/\s+/).filter(Boolean);
+      if (pfxWords.includes("expandable") && pfxWords.includes("connector")) return true;
+    }
     const base = db.query<SymbolEntry | null>("resolvedBaseClass", self.id);
     if (base && base.id !== self.id) {
       return db.query<boolean>("isExpandableConnector", base.id) || false;
@@ -2863,6 +2870,29 @@ export const extendsClauseQueries: Record<string, any> = {
 
     if (baseName.includes(".")) {
       if (resolveQualified(db, baseName)) return null;
+      if (self.parentId !== null) {
+        const parts = baseName.split(".");
+        let currentScope: SymbolEntry | null = db.symbol(self.parentId);
+        for (let i = 0; i < parts.length - 1; i++) {
+          const part = parts[i];
+          let resolved: SymbolEntry | null = null;
+          if (i === 0) {
+            const resolver =
+              db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentScope?.id ?? self.parentId) ??
+              db.query<(n: string) => SymbolEntry | null>("resolveName", currentScope?.id ?? self.parentId);
+            resolved = resolver ? resolver(part) : null;
+            if (!resolved) {
+              resolved = db.byName(part).find((e: any) => e.kind === "Class" || e.kind === "Component") ?? null;
+            }
+          } else if (currentScope) {
+            resolved = db.childrenOf(currentScope.id).find((c: any) => c.name === part) ?? null;
+          }
+          if (resolved && resolved.kind === "Component") {
+            return null;
+          }
+          currentScope = resolved;
+        }
+      }
     } else {
       const entries = db.byName(baseName);
       if (entries?.some((e: any) => e.kind === "Class" || e.kind === "Package")) return null;
@@ -4061,16 +4091,53 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (resolved) {
       const meta = resolved.metadata as Record<string, unknown> | undefined;
       const rawKind = String(meta?.classPrefixes ?? meta?.classKind ?? resolved.kind ?? "").toLowerCase();
+      const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      const words = cleanKind.split(/\s+/).filter(Boolean);
+
+      if (words.includes("type")) {
+        return null;
+      }
+
       let specKind: string | null = null;
-      if (resolved.kind === "Package" || rawKind.includes("package")) {
+      if (resolved.kind === "Package" || words.includes("package")) {
         specKind = "package";
-      } else if (resolved.kind === "Model" || rawKind.includes("model")) {
+      } else if (resolved.kind === "Model" || words.includes("model")) {
         specKind = "model";
-      } else if (resolved.kind === "Block" || rawKind.includes("block")) {
+      } else if (resolved.kind === "Block" || words.includes("block")) {
         specKind = "block";
-      } else if (resolved.kind === "Connector" || rawKind.includes("connector")) {
-        specKind = "connector";
-      } else if (resolved.kind === "Function" || rawKind.includes("function")) {
+      } else if (resolved.kind === "Connector" || words.includes("connector")) {
+        const resolvedCst = db.cstNode(resolved.id) as any;
+        let isPrimitiveAlias = false;
+        if (resolvedCst) {
+          const shortSpec =
+            resolvedCst.type === "short_class_specifier" || resolvedCst.type === "ShortClassSpecifier"
+              ? resolvedCst
+              : (resolvedCst.children?.find(
+                  (c: any) =>
+                    c.type === "short_class_specifier" ||
+                    c.type === "ShortClassSpecifier" ||
+                    c.type === "class_specifier",
+                ) ?? null);
+          const actualSpec =
+            shortSpec?.type === "class_specifier"
+              ? shortSpec.children?.find(
+                  (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+                )
+              : shortSpec;
+          if (actualSpec) {
+            const typeSpec =
+              Cst.ShortClassSpecifier.typeSpecifier(actualSpec) ??
+              actualSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+            const typeText = typeSpec?.text?.trim() ?? "";
+            if (["Real", "Integer", "Boolean", "String", "Clock"].includes(typeText)) {
+              isPrimitiveAlias = true;
+            }
+          }
+        }
+        if (!isPrimitiveAlias) {
+          specKind = "connector";
+        }
+      } else if (resolved.kind === "Function" || words.includes("function")) {
         specKind = "function";
       }
 
@@ -4186,6 +4253,13 @@ export const connectEquationQueries: Record<string, any> = {
    */
   lint__validateConnect: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
+    let p = cst?.parent;
+    while (p) {
+      if (p.type === "inheritance_modification" || p.type === "InheritanceModification") {
+        return null;
+      }
+      p = p.parent;
+    }
     let lhsNode = cst ? Cst.ConnectEquation.lhs(cst) : null;
     let rhsNode = cst ? Cst.ConnectEquation.rhs(cst) : null;
     if (!lhsNode || !rhsNode) {
@@ -4210,10 +4284,15 @@ export const connectEquationQueries: Record<string, any> = {
       const rawSegments = refText.split(".");
       let currentClassId: SymbolId = parentClassId;
       let currentEntry: SymbolEntry | null = null;
+      let isInsideExpandable = false;
 
       for (let i = 0; i < rawSegments.length; i++) {
         const seg = rawSegments[i].replace(/\[.*\]$/, "").trim();
         if (!seg) return { resolved: false, missingSegment: rawSegments[i] };
+
+        if (i > 0 && db.query<boolean>("isExpandableConnector", currentClassId)) {
+          isInsideExpandable = true;
+        }
 
         const resolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
         let found: SymbolEntry | null = resolver ? resolver(seg) : null;
@@ -4222,6 +4301,21 @@ export const connectEquationQueries: Record<string, any> = {
           found = allElems.find((e) => e.name === seg) ?? null;
         }
         if (!found) {
+          if (
+            i > 0 &&
+            currentEntry?.kind === "Component" &&
+            db.query<boolean>("isExpandableConnector", currentClassId)
+          ) {
+            return {
+              resolved: true,
+              entry: currentEntry,
+              typeClassId: null,
+              isConnector: true,
+              isExpandable: false,
+              isInsideExpandable: true,
+              isVirtualExpandableMember: true,
+            };
+          }
           const fullMissing = rawSegments.slice(0, i + 1).join(".");
           return { resolved: false, missingSegment: fullMissing };
         }
@@ -4262,6 +4356,7 @@ export const connectEquationQueries: Record<string, any> = {
         typeClassId,
         isConnector: isConn,
         isExpandable: isExp,
+        isInsideExpandable,
       };
     };
 
@@ -4278,12 +4373,25 @@ export const connectEquationQueries: Record<string, any> = {
     };
 
     // 1. Check if endpoints resolve (M2002)
+    const selfRange = {
+      startByte: self.startByte,
+      endByte: self.endByte,
+      startCharOffset: self.startByte,
+      endCharOffset: self.endByte,
+    };
     if (!lhsRes.resolved && !lhsRes.unresolvableType) {
+      const dotted = lhsText.includes(".");
       diags.push(
-        error(ModelicaErrorCode.VARIABLE_NOT_FOUND.message(lhsRes.missingSegment || lhsText, parentClassName), {
-          ...getRange(lhsNode),
-          code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
-        }),
+        error(
+          ModelicaErrorCode.VARIABLE_NOT_FOUND.message(
+            dotted ? lhsText : lhsRes.missingSegment || lhsText,
+            parentClassName,
+          ),
+          {
+            ...(dotted ? selfRange : getRange(lhsNode)),
+            code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+          },
+        ),
       );
     }
     if (!rhsRes.resolved && !rhsRes.unresolvableType) {
@@ -4296,24 +4404,31 @@ export const connectEquationQueries: Record<string, any> = {
     }
     if (diags.length > 0 || !lhsRes.resolved || !rhsRes.resolved) return diags;
 
+    const isOldInst = Boolean(
+      cst?.tree?.rootNode?.text?.includes("-d=-newInst") ||
+      (parentClassId && (db.cstNode(parentClassId) as any)?.text?.includes("-d=-newInst")),
+    );
+
     // 2. Check if endpoints are connectors (M3004)
-    if (!lhsRes.isConnector && !lhsRes.isExpandable) {
-      diags.push(
-        error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, lhsText), {
-          ...getRange(lhsNode),
-          code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
-        }),
-      );
+    if (!isOldInst) {
+      if (!lhsRes.isConnector && !lhsRes.isExpandable && !lhsRes.isInsideExpandable) {
+        diags.push(
+          error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, lhsText), {
+            ...getRange(lhsNode),
+            code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
+          }),
+        );
+      }
+      if (!rhsRes.isConnector && !rhsRes.isExpandable && !rhsRes.isInsideExpandable) {
+        diags.push(
+          error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, rhsText), {
+            ...getRange(rhsNode),
+            code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
+          }),
+        );
+      }
+      if (diags.length > 0) return diags;
     }
-    if (!rhsRes.isConnector && !rhsRes.isExpandable) {
-      diags.push(
-        error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, rhsText), {
-          ...getRange(rhsNode),
-          code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
-        }),
-      );
-    }
-    if (diags.length > 0) return diags;
 
     // 3. Expandable connector compatibility (M4055)
     if (lhsRes.isExpandable && !rhsRes.isExpandable) {
@@ -4333,6 +4448,11 @@ export const connectEquationQueries: Record<string, any> = {
       );
       return diags;
     } else if (lhsRes.isExpandable && rhsRes.isExpandable) {
+      return null;
+    }
+
+    // 4. Standard connector plug-compatibility (M3003, M5004)
+    if (lhsRes.isInsideExpandable || rhsRes.isInsideExpandable) {
       return null;
     }
 

@@ -10,6 +10,7 @@ import {
   ImageIcon,
   MentionIcon,
   PersonIcon,
+  PulseIcon,
   ServerIcon,
   SlidersIcon,
   SmileyIcon,
@@ -23,6 +24,7 @@ import { API_BASE_URL } from "../config";
 import { getAvatarUrl } from "../util/avatar";
 import Box from "./Box";
 import HpcArtifactPickerModal from "./HpcArtifactPickerModal";
+import MorselComposeModal from "./MorselComposeModal";
 import SimpleEmojiPicker from "./SimpleEmojiPicker";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 
@@ -203,6 +205,7 @@ export default function ComposeBox({
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showHpcPicker, setShowHpcPicker] = useState(false);
+  const [showMorselModal, setShowMorselModal] = useState(false);
   const [replyVisibility, setReplyVisibility] = useState<"everyone" | "following" | "mentioned">("everyone");
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1032,6 +1035,14 @@ export default function ComposeBox({
               <Box display="flex" justifyContent="space-between" alignItems="center">
                 <Box display="flex" gap={2} alignItems="center">
                   <ActionIconButton
+                    onClick={() => setShowMorselModal(true)}
+                    disabled={artifactId !== null}
+                    aria-label="Add Morsel Diagram"
+                    title="Add Morsel Diagram & Simulation"
+                  >
+                    <PulseIcon size={20} />
+                  </ActionIconButton>
+                  <ActionIconButton
                     onClick={() => createDummyArtifact("modelica-code")}
                     disabled={artifactId !== null}
                     aria-label="Add Code"
@@ -1128,6 +1139,31 @@ export default function ComposeBox({
           setArtifactId(res.artifactId);
           if (!content.trim() && res.suggestedCaption) {
             setContent(res.suggestedCaption);
+          }
+        }}
+      />
+
+      <MorselComposeModal
+        isOpen={showMorselModal}
+        onClose={() => setShowMorselModal(false)}
+        onAttach={async ({ code, title, dialect }) => {
+          if (!token) return;
+          try {
+            const res = await fetch(`${API_BASE_URL}/social/artifact-views`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                artifact_type: "morsel",
+                view_config: JSON.stringify({ code, dialect, title }),
+                title: `⚡ ${title}`,
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setArtifactId(data.id);
+            }
+          } catch (err) {
+            console.error("Failed to attach morsel artifact:", err);
           }
         }}
       />

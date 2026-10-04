@@ -140,6 +140,14 @@
       "types": "./dist/tools/*.d.ts",
       "default": "./dist/tools/*.js"
     },
+    "./unparser": {
+      "types": "./dist/unparser/index.d.ts",
+      "default": "./dist/unparser/index.js"
+    },
+    "./unparser/*": {
+      "types": "./dist/unparser/*.d.ts",
+      "default": "./dist/unparser/*.js"
+    },
     "./*.js": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"

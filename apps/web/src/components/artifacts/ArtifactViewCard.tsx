@@ -116,6 +116,8 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
       case "modelica-code":
         return <ModelicaCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelica-diagram":
+      case "morsel":
+      case "polyglot-morsel":
         return <ModelicaDiagramViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "simulation-plot":
         return <SimulationPlotViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;

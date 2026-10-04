@@ -20,11 +20,13 @@ import {
   PlusIcon,
   ServerIcon,
   ShieldCheckIcon,
+  ShieldLockIcon,
   SyncIcon,
   TrashIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import {
   addPublicKey,
@@ -470,7 +472,8 @@ const SettingsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const { user, logout } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
   const [qualityFilter, setQualityFilter] = useState(true);
@@ -823,6 +826,18 @@ const SettingsPage: React.FC = () => {
               keywords: "display accessibility theme dark light language font",
               isActive: activeTab === "display",
             },
+            ...(isAdmin
+              ? [
+                  {
+                    id: "admin",
+                    label: "Instance Administration",
+                    tab: "account" as TabType,
+                    keywords: "admin instance moderation federation dmca audit database migrations",
+                    isActive: false,
+                    onClick: () => navigate("/admin"),
+                  },
+                ]
+              : []),
             {
               id: "resources",
               label: "Additional resources",
@@ -847,7 +862,11 @@ const SettingsPage: React.FC = () => {
           }
 
           return filtered.map((item) => (
-            <MenuItem key={item.id} $active={item.isActive} onClick={() => handleTabChange(item.tab)}>
+            <MenuItem
+              key={item.id}
+              $active={item.isActive}
+              onClick={() => (item.onClick ? item.onClick() : handleTabChange(item.tab))}
+            >
               <span>{item.label}</span>
               <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
             </MenuItem>
@@ -928,6 +947,20 @@ const SettingsPage: React.FC = () => {
               </DetailText>
               <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
             </DetailItem>
+            {isAdmin && (
+              <DetailItem $clickable onClick={() => navigate("/admin")}>
+                <DetailIcon>
+                  <ShieldLockIcon size={20} fill="var(--color-accent-purple)" />
+                </DetailIcon>
+                <DetailText>
+                  <DetailTitle>Instance Administration Console</DetailTitle>
+                  <DetailSubtitle>
+                    Manage moderation queue, federation domains, DMCA takedowns, audit logs, and database migrations.
+                  </DetailSubtitle>
+                </DetailText>
+                <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+              </DetailItem>
+            )}
           </>
         )}
 

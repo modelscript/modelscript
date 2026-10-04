@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Converts a CTRF JSON test report into a LaTeX table for the paper.
+ * Converts a CTRF JSON test report into a LaTeX table for academic papers and benchmarking.
+ * Supports comparing WASM and JS/TS implementations side-by-side or formatting single-backend reports.
  *
  * Usage:
  *   npx tsx tests/ctrf-to-latex.ts [input.json] [output.tex]
- *
- * Examples:
- *   npx tsx tests/ctrf-to-latex.ts
- *   npx tsx tests/ctrf-to-latex.ts ctrf/ctrf-testsuite-report.json /home/omar/Desktop/amc2026-final/tables/flattening_correctness.tex
+ *   npx tsx tests/ctrf-to-latex.ts [wasm.json] [js.json] [output.tex]
  */
 
 import fs from "node:fs";
@@ -21,6 +19,10 @@ interface CtrfTest {
   status: string;
   suite?: string;
   message?: string;
+  extra?: {
+    backend?: string;
+    [key: string]: unknown;
+  };
 }
 
 interface CtrfReport {
@@ -76,14 +78,163 @@ const MAIN_SUITES: Record<string, string> = {
   TestLibrary: "mosfiles",
 };
 
-export function generateLatexTable(inputPath: string, outputPath?: string): string {
-  const report: CtrfReport = JSON.parse(fs.readFileSync(inputPath, "utf-8"));
-  const { tests } = report.results;
+function normalizeSuite(s: string): string {
+  // Strip backend suffixes like "arrays (wasm)" or "arrays (js)"
+  const clean = s.replace(/\s*\((?:wasm|js|ts)\)$/i, "").trim();
+  return MAIN_SUITES[clean] || clean;
+}
 
+function getTestBackend(t: CtrfTest): string {
+  if (t.extra?.backend) return String(t.extra.backend);
+  if (t.name.includes("[wasm]")) return "wasm";
+  if (t.name.includes("[js]") || t.name.includes("[ts]")) return "js";
+  return "";
+}
+
+export function generateLatexTable(inputPath1: string, inputPath2OrOut?: string, finalOut?: string): string {
+  let wasmReport: CtrfReport | null = null;
+  let jsReport: CtrfReport | null = null;
+  let singleReport: CtrfReport | null = null;
+  let outputPath: string | undefined;
+
+  if (inputPath2OrOut && inputPath2OrOut.endsWith(".json")) {
+    // Two input files: wasm and js
+    const rep1: CtrfReport = JSON.parse(fs.readFileSync(inputPath1, "utf-8"));
+    const rep2: CtrfReport = JSON.parse(fs.readFileSync(inputPath2OrOut, "utf-8"));
+    outputPath = finalOut;
+
+    if (inputPath1.includes("wasm")) {
+      wasmReport = rep1;
+      jsReport = rep2;
+    } else {
+      jsReport = rep1;
+      wasmReport = rep2;
+    }
+  } else {
+    // Single input file
+    outputPath = inputPath2OrOut;
+    singleReport = JSON.parse(fs.readFileSync(inputPath1, "utf-8"));
+
+    const tests = singleReport.results.tests;
+    const hasWasm = tests.some((t) => getTestBackend(t) === "wasm");
+    const hasJs = tests.some((t) => getTestBackend(t) === "js" || getTestBackend(t) === "ts");
+
+    if (hasWasm && hasJs) {
+      wasmReport = {
+        results: {
+          ...singleReport.results,
+          tests: tests.filter((t) => getTestBackend(t) === "wasm"),
+        },
+      };
+      jsReport = {
+        results: {
+          ...singleReport.results,
+          tests: tests.filter((t) => getTestBackend(t) === "js" || getTestBackend(t) === "ts"),
+        },
+      };
+    }
+  }
+
+  // Dual-backend comparison mode
+  if (wasmReport && jsReport) {
+    const wasmStats = new Map<string, { total: number; passed: number }>();
+    const jsStats = new Map<string, { total: number; passed: number }>();
+
+    for (const t of wasmReport.results.tests) {
+      const s = normalizeSuite(t.suite || "unknown");
+      const cur = wasmStats.get(s) || { total: 0, passed: 0 };
+      cur.total += 1;
+      if (t.status === "passed") cur.passed += 1;
+      wasmStats.set(s, cur);
+    }
+
+    for (const t of jsReport.results.tests) {
+      const s = normalizeSuite(t.suite || "unknown");
+      const cur = jsStats.get(s) || { total: 0, passed: 0 };
+      cur.total += 1;
+      if (t.status === "passed") cur.passed += 1;
+      jsStats.set(s, cur);
+    }
+
+    let totalModels = 0;
+    let wasmTotalPassed = 0;
+    let jsTotalPassed = 0;
+
+    const lines: string[] = [
+      "\\begin{table}[H]",
+      "    \\centering",
+      "    \\caption{Flattening correctness comparison between WebAssembly and JavaScript implementations across the OpenModelica test suite.}",
+      "    \\label{tab:flattening_comparison}",
+      "    \\resizebox{\\columnwidth}{!}{",
+      "    \\begin{tabular}{lrrrrr}",
+      "        \\toprule",
+      "        \\textbf{Category} & \\textbf{Total} & \\textbf{JS Passed} & \\textbf{JS Rate} & \\textbf{WASM Passed} & \\textbf{WASM Rate} \\\\",
+      "        \\midrule",
+    ];
+
+    for (const [sectionName, suiteList] of SECTIONS) {
+      lines.push(`        \\multicolumn{6}{l}{\\textit{${sectionName}}} \\\\`);
+      for (const s of suiteList) {
+        const j = jsStats.get(s) || { total: 0, passed: 0 };
+        const w = wasmStats.get(s) || { total: 0, passed: 0 };
+        const total = Math.max(j.total, w.total);
+        const jRate = total > 0 ? (j.passed / total) * 100 : 0.0;
+        const wRate = total > 0 ? (w.passed / total) * 100 : 0.0;
+
+        totalModels += total;
+        jsTotalPassed += j.passed;
+        wasmTotalPassed += w.passed;
+
+        lines.push(
+          `        \\hspace{1em} ${s} & ${total} & ${j.passed} & ${jRate.toFixed(1)}\\% & ${w.passed} & ${wRate.toFixed(1)}\\% \\\\`,
+        );
+      }
+      lines.push("        \\midrule");
+    }
+
+    const jsOverallRate = totalModels > 0 ? (jsTotalPassed / totalModels) * 100 : 0.0;
+    const wasmOverallRate = totalModels > 0 ? (wasmTotalPassed / totalModels) * 100 : 0.0;
+
+    lines.push(
+      `        \\textbf{Total} & \\textbf{${totalModels}} & \\textbf{${jsTotalPassed}} & \\textbf{${jsOverallRate.toFixed(1)}\\%} & \\textbf{${wasmTotalPassed}} & \\textbf{${wasmOverallRate.toFixed(1)}\\%} \\\\`,
+    );
+    lines.push("        \\bottomrule");
+    lines.push("    \\end{tabular}");
+    lines.push("    }");
+    lines.push("\\end{table}");
+    lines.push("");
+
+    const latexContent = lines.join("\n");
+
+    if (outputPath) {
+      const outDir = path.dirname(outputPath);
+      if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+      }
+      fs.writeFileSync(outputPath, latexContent, "utf-8");
+      console.log(`LaTeX comparison table written to ${outputPath}`);
+
+      const metricsPath = path.join(outDir, "flattening_metrics.tex");
+      const metricsContent = [
+        `\\newcommand{\\FlatteningTotalModels}{${totalModels}}`,
+        `\\newcommand{\\FlatteningJsPassedModels}{${jsTotalPassed}}`,
+        `\\newcommand{\\FlatteningJsOverallPassRate}{${jsOverallRate.toFixed(1)}}`,
+        `\\newcommand{\\FlatteningWasmPassedModels}{${wasmTotalPassed}}`,
+        `\\newcommand{\\FlatteningWasmOverallPassRate}{${wasmOverallRate.toFixed(1)}}`,
+        "",
+      ].join("\n");
+      fs.writeFileSync(metricsPath, metricsContent, "utf-8");
+      console.log(`LaTeX metrics successfully written to ${metricsPath}`);
+    }
+
+    return latexContent;
+  }
+
+  // Single-backend mode (default)
+  const rep = singleReport!;
   const stats = new Map<string, { total: number; passed: number }>();
-  for (const t of tests) {
-    let s = t.suite || "unknown";
-    s = MAIN_SUITES[s] || s;
+  for (const t of rep.results.tests) {
+    const s = normalizeSuite(t.suite || "unknown");
     const current = stats.get(s) || { total: 0, passed: 0 };
     current.total += 1;
     if (t.status === "passed") {
@@ -139,7 +290,6 @@ export function generateLatexTable(inputPath: string, outputPath?: string): stri
     fs.writeFileSync(outputPath, latexContent, "utf-8");
     console.log(`LaTeX table successfully written to ${outputPath}`);
 
-    // If writing to a tables/ directory, also update flattening_metrics.tex
     const metricsPath = path.join(outDir, "flattening_metrics.tex");
     const calcRate = (key: string): string => {
       const s = stats.get(key);
@@ -168,10 +318,13 @@ export function generateLatexTable(inputPath: string, outputPath?: string): stri
 }
 
 // Standalone execution
-const input = process.argv[2] || "ctrf/ctrf-testsuite-report.json";
-const output = process.argv[3];
-const result = generateLatexTable(input, output);
+if (process.argv[1] && (process.argv[1].endsWith("ctrf-to-latex.ts") || process.argv[1].endsWith("ctrf-to-latex.js"))) {
+  const arg1 = process.argv[2] || "ctrf/ctrf-testsuite-report.json";
+  const arg2 = process.argv[3];
+  const arg3 = process.argv[4];
+  const result = generateLatexTable(arg1, arg2, arg3);
 
-if (!output) {
-  console.log(result);
+  if (!arg2 || (arg2.endsWith(".json") && !arg3)) {
+    console.log(result);
+  }
 }

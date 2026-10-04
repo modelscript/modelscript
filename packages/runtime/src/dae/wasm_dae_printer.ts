@@ -920,15 +920,7 @@ export class ArenaDAEPrinter {
 
     const type = a.getVarType(idx);
     const variability = a.getVarVariability(idx);
-    const isOldFrontend = Boolean(a.extensionMetadata?.isOldFrontend);
-    const isFinal =
-      a.isVarFinal(idx) ||
-      (this.omcCompatibility &&
-        !isOldFrontend &&
-        variability === Variability.Parameter &&
-        (type === VarType.Enumeration ||
-          rawCustomType?.startsWith("enumeration") ||
-          customType?.startsWith("enumeration")));
+    const isFinal = a.isVarFinal(idx);
     if (isFinal) this.out.write("final ");
 
     if (variability === Variability.Discrete) this.out.write("discrete ");
@@ -1039,7 +1031,19 @@ export class ArenaDAEPrinter {
       };
       const sortedKeys = [...attrs.keys()]
         .filter(
-          (k) => k !== "unbounded" && !(type === VarType.String && k === "fixed") && !(k === "start" && hasBindingExpr),
+          (k) =>
+            k !== "unbounded" &&
+            !(type === VarType.String && k === "fixed") &&
+            !(
+              k === "start" &&
+              hasBindingExpr &&
+              !attrs.has("fixed") &&
+              !(
+                this.isNumericLiteral(attrs.get("start")!) &&
+                this.isNumericLiteral(expr) &&
+                !isStartSameAsBinding(attrs.get("start"), expr)
+              )
+            ),
         )
         .sort((a, b) => {
           const ai = ORDER.indexOf(a);

@@ -1,7 +1,6 @@
 // name:     MissingModifiersPackages.mo [BUG: #3095]
 // keywords: class modification handling
 // status:   correct
-// xfail:    true
 //
 
 package Types

@@ -18,13 +18,16 @@ export const CORR_FLAG_USER_OVERRIDE: u16 = 0x0004;
 export const CORR_FLAG_CONFLICT: u16 = 0x0008;
 export const CORR_FLAG_REMOVED: u16 = 0x0010;
 
-export const CORR_STRIDE = 6;
+export const CORR_STRIDE = 7;
 export const CORR_SOURCE = 0;
 export const CORR_TARGET = 1;
 export const CORR_META = 2; // packed (u16 ruleId << 16) | (u16 flags)
 export const CORR_REVISION = 3;
 export const CORR_COMPLEMENT_PTR = 4;
 export const CORR_THREAD_ID = 5;
+export const CORR_PARENT_SLOT = 6;
+
+export const CORR_NO_PARENT: u32 = 0xffffffff;
 
 /**
  * Struct-of-Arrays (SoA) Correspondence Index for zero-GC polyglot model transformation.
@@ -47,7 +50,14 @@ export class CorrespondenceIndex {
    * Registers or updates a correspondence link between a source node and target node.
    */
   @inline
-  addLink(sourceNodeId: u32, targetNodeId: u32, ruleId: u16, flags: u16 = CORR_FLAG_SYNCED, revision: u32 = 0): u32 {
+  addLink(
+    sourceNodeId: u32,
+    targetNodeId: u32,
+    ruleId: u16,
+    flags: u16 = CORR_FLAG_SYNCED,
+    revision: u32 = 0,
+    parentSlot: u32 = CORR_NO_PARENT,
+  ): u32 {
     let key: u64 = sourceNodeId as u64;
     let existingSlotPlusOne = this.sourceToSlot.get(key);
 
@@ -75,6 +85,7 @@ export class CorrespondenceIndex {
     this.data.set(offset + CORR_REVISION, revision);
     this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
     this.data.set(offset + CORR_THREAD_ID, 0);
+    this.data.set(offset + CORR_PARENT_SLOT, parentSlot);
 
     return slot;
   }
@@ -256,6 +267,45 @@ export class CorrespondenceIndex {
   }
 
   @inline
+  getParentSlot(slot: u32): u32 {
+    if (slot >= this.count) return CORR_NO_PARENT;
+    return this.data.get(slot * CORR_STRIDE + CORR_PARENT_SLOT);
+  }
+
+  @inline
+  setParentSlot(slot: u32, parentSlot: u32): void {
+    if (slot >= this.count) return;
+    this.data.set(slot * CORR_STRIDE + CORR_PARENT_SLOT, parentSlot);
+  }
+
+  @inline
+  markStaleSlot(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    let meta = this.data.get(offset);
+    let ruleId = (meta >>> 16) as u16;
+    let flags = ((meta & 0xffff) as u16) | CORR_FLAG_STALE;
+    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+  }
+
+  /**
+   * Cascading invalidation: marks the parent slot and all child slots that point to it as STALE.
+   */
+  @inline
+  markStaleCascading(parentSlot: u32): u32 {
+    if (parentSlot >= this.count) return 0;
+    this.markStaleSlot(parentSlot);
+    let invalidatedCount: u32 = 1;
+    for (let s: u32 = 0; s < this.count; s++) {
+      if (this.getParentSlot(s) == parentSlot && !this.isRemoved(s)) {
+        this.markStaleSlot(s);
+        invalidatedCount++;
+      }
+    }
+    return invalidatedCount;
+  }
+
+  @inline
   reset(): void {
     this.count = 0;
     if (this.sourceToSlot != null) this.sourceToSlot.init();
@@ -331,6 +381,18 @@ export function corr_getThreadId(ptr: usize, slot: u32): u32 {
 
 export function corr_setThreadId(ptr: usize, slot: u32, threadId: u32): void {
   changetype<CorrespondenceIndex>(ptr).setThreadId(slot, threadId);
+}
+
+export function corr_getParentSlot(ptr: usize, slot: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).getParentSlot(slot);
+}
+
+export function corr_setParentSlot(ptr: usize, slot: u32, parentSlot: u32): void {
+  changetype<CorrespondenceIndex>(ptr).setParentSlot(slot, parentSlot);
+}
+
+export function corr_markStaleCascading(ptr: usize, parentSlot: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).markStaleCascading(parentSlot);
 }
 
 export function corr_reset(ptr: usize): void {

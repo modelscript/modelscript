@@ -109,8 +109,82 @@ jobs:
           if-no-files-found: ignore
         if: always()
 
+  modelica_testsuite:
+    name: Modelica OMC Testsuite (WASM vs JS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-
+      - name: Calculate Affected Bounds
+        uses: nrwl/nx-set-shas@v4
+      - name: Check If Modelica Affected
+        id: check-affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            AFFECTED=$(npx nx show projects --affected --projects=@modelscript/modelica,@modelscript/dsl,@modelscript/runtime,@modelscript/simulate || true)
+            if [ -n "$AFFECTED" ]; then
+              echo "Compiler projects affected: $AFFECTED"
+              echo "run_suite=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No Modelica compiler packages affected. Skipping testsuite."
+              echo "run_suite=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Direct push or manual trigger: running full testsuite."
+            echo "run_suite=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cache WASM Parsers
+        if: steps.check-affected.outputs.run_suite == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            languages/*/.cache
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+      - name: Build Prerequisites
+        if: steps.check-affected.outputs.run_suite == 'true'
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica
+      - name: Run Modelica Dual Testsuite (WASM vs JS)
+        if: steps.check-affected.outputs.run_suite == 'true'
+        run: npm run test:modelica:both:allow-wasm
+      - name: Upload CTRF Artifacts
+        if: always() && steps.check-affected.outputs.run_suite == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctrf-omc-testsuite
+          path: |
+            languages/modelica/ctrf/ctrf-testsuite-report-wasm.json
+            languages/modelica/ctrf/ctrf-testsuite-report-js.json
+          if-no-files-found: ignore
+      - name: Upload HTML Test Reports
+        if: always() && steps.check-affected.outputs.run_suite == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: omc-testsuite-html-reports
+          path: |
+            languages/modelica/ctrf/*.html
+          if-no-files-found: ignore
+
   publish_reports:
-    needs: test
+    needs: [test, modelica_testsuite]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 10
@@ -181,7 +255,7 @@ jobs:
           path: dist/extension/*.vsix
 
   deploy_site:
-    needs: [build, test, lint]
+    needs: [build, test, lint, modelica_testsuite]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -217,7 +291,7 @@ jobs:
           cname: modelscript.org
 
   deploy_docs:
-    needs: [build, test, lint]
+    needs: [build, test, lint, modelica_testsuite]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -253,7 +327,7 @@ jobs:
           cname: docs.modelscript.org
 
   docker_build:
-    needs: [build, test, lint]
+    needs: [build, test, lint, modelica_testsuite]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
