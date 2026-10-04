@@ -14,8 +14,8 @@
   },
   "devDependencies": {
     "@types/three": "^0.184.0",
-    "mermaid": "^11.16.1",
-    "three": "^0.184.0",
+    "mermaid": "^12.0.0",
+    "three": "^0.186.1",
     "vitepress": "^1.1.4"
   }
 }
