@@ -226,11 +226,15 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
 
           let safeGeometryPath: string | undefined;
           if (payload.geometryPath && typeof payload.geometryPath === "string") {
-            const resolved = path.resolve(payload.geometryPath);
-            const cwdRoot = path.resolve(process.cwd());
-            const tmpRoot = path.resolve(os.tmpdir());
-            if (resolved.startsWith(cwdRoot + path.sep) || resolved.startsWith(tmpRoot + path.sep)) {
-              safeGeometryPath = resolved;
+            try {
+              const real = fs.realpathSync(path.resolve(payload.geometryPath));
+              const cwdRoot = path.resolve(process.cwd());
+              const tmpRoot = path.resolve(os.tmpdir());
+              if (real.startsWith(cwdRoot + path.sep) || real.startsWith(tmpRoot + path.sep)) {
+                safeGeometryPath = real;
+              }
+            } catch {
+              safeGeometryPath = undefined;
             }
           }
 

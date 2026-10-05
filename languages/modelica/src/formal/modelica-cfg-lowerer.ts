@@ -24,6 +24,14 @@ export interface ModelicaStatement {
   rawText?: string;
 }
 
+function trimSemicolons(s: string): string {
+  let start = 0;
+  let end = s.length;
+  while (start < end && s[start] === ";") start++;
+  while (end > start && s[end - 1] === ";") end--;
+  return s.slice(start, end);
+}
+
 /**
  * Lowers structured Modelica statements into a language-agnostic GenericCFG.
  */
@@ -630,13 +638,8 @@ export class ModelicaCFGLowerer {
       }
       if (!targetVar && rawText.includes(":=")) {
         const parts = rawText.split(":=");
-        targetVar = parts[0]?.trim().replace(/^;+|;+$/g, "") || "";
-        valExpr =
-          parts
-            .slice(1)
-            .join(":=")
-            .trim()
-            .replace(/^;+|;+$/g, "") || "";
+        targetVar = trimSemicolons(parts[0]?.trim() || "");
+        valExpr = trimSemicolons(parts.slice(1).join(":=").trim());
       }
 
       return {

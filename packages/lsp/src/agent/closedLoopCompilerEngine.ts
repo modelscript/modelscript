@@ -415,7 +415,7 @@ export async function verifyGate2Dimensions(
     };
   } else if (norm === "modelica") {
     // 1. Check unit bracket additions: e.g. 5[m] + 10[s]
-    const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\s\r\n][^;\r\n]*);/g);
+    const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*);/g);
     for (const match of unitMatches) {
       const expr = match[2].trim();
       // Check for obvious incompatible addition of different unit markers if present
@@ -436,7 +436,7 @@ export async function verifyGate2Dimensions(
     // 2. Check SI unit type incompatibilities:
     // e.g. Modelica.SIunits.Length len = weight; where weight is Modelica.SIunits.Mass
     const declMatches = code.matchAll(
-      /\b(?:Modelica\s*\.\s*SIunits\s*\.\s*)?([A-Z][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\([^)]*\))?(?:\s*=\s*([^;\s\r\n][^;]*))?\s*;/g,
+      /\b(?:Modelica\s*\.\s*SIunits\s*\.\s*)?([A-Z][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\([^)]*\))?(?:\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;/g,
     );
     const varTypes = new Map<string, string>();
     const varAssignments: { varName: string; declaredType: string; rhs: string }[] = [];
@@ -650,7 +650,7 @@ export async function verifyGate4DAEBalance(
 
   if (norm === "modelica") {
     // Robust Modelica equation & variable structural balance
-    const cleanCode = code.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+    const cleanCode = code.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
 
     // 1. Separate declarations from equation/algorithm sections
     const eqMatch = cleanCode.match(/\bequation\b([\s\S]*?)(?:\balgorithm\b|\bend\b|$)/);
@@ -764,7 +764,7 @@ export async function verifyGate4DAEBalance(
     // Check parametric equations in SysML v2
     // Count unknown attributes (not parameter or initialized) vs equality constraints
     const attrMatches = code.matchAll(
-      /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([a-zA-Z0-9_:]+)(?:\s*=\s*([^;\s\r\n][^;\r\n]*))?\s*;/g,
+      /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([a-zA-Z0-9_:]+)(?:\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;/g,
     );
     const uninitializedAttrs: string[] = [];
     for (const am of attrMatches) {

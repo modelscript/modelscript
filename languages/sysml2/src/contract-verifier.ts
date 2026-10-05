@@ -302,6 +302,10 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
   return { entailed: true };
 }
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Verifies contract entailment (G_supplier => A_consumer) for an interface connection.
  * Given a supplier guaranteeing a range and a consumer assuming a range,
@@ -323,7 +327,7 @@ export function verifyAssumeGuaranteePair(
     effectiveGuarantees = guarantees.map((g) => {
       let mapped = g;
       for (const [src, dst] of mapEntries) {
-        const regex = new RegExp(`\\b${src.replace(/\./g, "\\.")}\\b`, "g");
+        const regex = new RegExp(`\\b${escapeRegex(src)}\\b`, "g");
         mapped = mapped.replace(regex, dst);
       }
       return mapped;

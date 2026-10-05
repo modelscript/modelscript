@@ -112,12 +112,13 @@
     "body-parser": "^2.3.0",
     "browserslist": "^4.28.7",
     "d3-color": "^3.1.0",
-    "dompurify": "^3.4.15",
+    "dompurify": "^3.4.16",
     "esbuild": "^0.28.1",
     "fast-uri": "^3.1.8",
     "fflate": "^0.8.3",
     "form-data": "^4.0.6",
     "hono": "^4.13.5",
+    "http-cache-semantics": "^4.3.0",
     "http-proxy-middleware": "^3.0.7",
     "image-size": "^2.0.4",
     "immutable": "^5.1.8",
@@ -126,6 +127,9 @@
     "mermaid": "^11.16.1",
     "minimatch": {
       "brace-expansion": "^1.1.7"
+    },
+    "monaco-editor": {
+      "dompurify": "^3.4.16"
     },
     "morgan": "^1.12.1",
     "multer": "^2.4.0",

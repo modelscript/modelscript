@@ -67,33 +67,28 @@ export class CaeSolverRunner {
 
       if (spec.geometryPath && typeof spec.geometryPath === "string") {
         const cleanBase = path.basename(spec.geometryPath).replace(/[^a-zA-Z0-9._-]/g, "_");
-        const resolvedGeom = path.resolve(spec.geometryPath);
         const cwdRoot = path.resolve(process.cwd());
         const tmpRoot = path.resolve(os.tmpdir());
-        const isAllowed =
-          resolvedGeom === cwdRoot ||
-          resolvedGeom.startsWith(cwdRoot + path.sep) ||
-          resolvedGeom === tmpRoot ||
-          resolvedGeom.startsWith(tmpRoot + path.sep);
-        if (
-          !isAllowed ||
-          (!resolvedGeom.startsWith(cwdRoot + path.sep) && !resolvedGeom.startsWith(tmpRoot + path.sep))
-        ) {
+        let realGeom: string;
+        try {
+          realGeom = fs.realpathSync(path.resolve(spec.geometryPath));
+        } catch {
+          throw new Error(`Unauthorized or nonexistent geometry path: ${spec.geometryPath}`);
+        }
+
+        if (!realGeom.startsWith(cwdRoot + path.sep) && !realGeom.startsWith(tmpRoot + path.sep)) {
           throw new Error(`Unauthorized geometry path: ${spec.geometryPath}`);
         }
-        if (fs.existsSync(resolvedGeom)) {
-          const realGeom = fs.realpathSync(resolvedGeom);
-          if (!realGeom.startsWith(cwdRoot + path.sep) && !realGeom.startsWith(tmpRoot + path.sep)) {
-            throw new Error(`Unauthorized geometry path: ${spec.geometryPath}`);
-          }
-          const geomDest = path.resolve(tmpDir, cleanBase);
-          if (geomDest.startsWith(tmpDir + path.sep)) {
-            try {
-              fs.symlinkSync(realGeom, geomDest);
-            } catch {
-              fs.copyFileSync(realGeom, geomDest);
-            }
-          }
+
+        const geomDest = path.resolve(tmpDir, cleanBase);
+        if (!geomDest.startsWith(tmpDir + path.sep)) {
+          throw new Error(`Unauthorized destination path: ${geomDest}`);
+        }
+
+        try {
+          fs.symlinkSync(realGeom, geomDest);
+        } catch {
+          fs.copyFileSync(realGeom, geomDest);
         }
       }
 

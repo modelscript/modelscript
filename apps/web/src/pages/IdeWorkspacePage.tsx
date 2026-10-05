@@ -211,6 +211,7 @@ export const IdeWorkspacePage: React.FC = () => {
 
   const sendSyncState = () => {
     if (!iframeRef.current?.contentWindow) return;
+    const targetOrigin = window.location.origin;
     try {
       // 1. Sync authentication
       if (token && user) {
@@ -225,7 +226,7 @@ export const IdeWorkspacePage: React.FC = () => {
               email: user.email,
             },
           },
-          "*",
+          targetOrigin,
         );
       }
 
@@ -235,7 +236,7 @@ export const IdeWorkspacePage: React.FC = () => {
           type: "MODELSCRIPT_THEME_SYNC",
           theme: theme === "dark" ? "night" : "day",
         },
-        "*",
+        targetOrigin,
       );
     } catch {
       // Cross-origin restriction fallback
@@ -277,6 +278,7 @@ export const IdeWorkspacePage: React.FC = () => {
     };
 
     const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       processMessageData(event.data);
     };
 

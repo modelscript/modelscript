@@ -779,10 +779,18 @@ export class WorkspaceManager {
           if ((!lhsStr || !rhsStr) && connCst) {
             try {
               const cstText = connCst.text ?? "";
-              const m = cstText.match(/connect\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)/);
-              if (m) {
-                lhsStr = m[1].trim();
-                rhsStr = m[2].trim();
+              const connectMatch = cstText.match(/connect\s*\(/);
+              if (connectMatch && connectMatch.index !== undefined) {
+                const start = connectMatch.index + connectMatch[0].length;
+                const closeIdx = cstText.lastIndexOf(")");
+                if (closeIdx > start) {
+                  const inner = cstText.slice(start, closeIdx);
+                  const commaIdx = inner.indexOf(",");
+                  if (commaIdx !== -1) {
+                    lhsStr = inner.slice(0, commaIdx).trim();
+                    rhsStr = inner.slice(commaIdx + 1).trim();
+                  }
+                }
               }
             } catch {
               // ignore

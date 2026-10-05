@@ -58,7 +58,9 @@ export function getSafePackageSource(text: string, fullPath: string, ctx?: Loade
   const pkgName = match[1];
 
   const afterMatch = text.slice(match.index! + match[0].length);
-  const nestedMatch = afterMatch.match(/\n\s*(model|block|connector|function|package|record|type)\s+[A-Za-z0-9_]+/);
+  const nestedMatch = afterMatch.match(
+    /\n[ \t]*(model|block|connector|function|package|record|type)[ \t]+[A-Za-z0-9_]+/,
+  );
   if (nestedMatch && nestedMatch.index !== undefined) {
     if (!warnedLargeFiles.has(fullPath)) {
       warnedLargeFiles.add(fullPath);

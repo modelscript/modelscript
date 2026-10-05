@@ -114,8 +114,8 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
    * Git Smart HTTP reference discovery
    */
   router.get("/:namespace/:project/info/refs", (req: Request, res: Response): void => {
-    const service = req.query["service"] as string | undefined;
-    if (service !== "git-upload-pack" && service !== "git-receive-pack") {
+    const service = req.query["service"];
+    if (typeof service !== "string" || (service !== "git-upload-pack" && service !== "git-receive-pack")) {
       res.status(400).send("Smart HTTP protocol required (?service=git-upload-pack or git-receive-pack)");
       return;
     }

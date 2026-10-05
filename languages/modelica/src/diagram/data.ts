@@ -2193,7 +2193,7 @@ export function buildComponentProperties(
         elemDescription = element.declaration.metadata.description;
       }
       if (!elemDescription && element.cstNode) {
-        const descMatch = element.cstNode.text?.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/);
+        const descMatch = element.cstNode.text?.match(/"((?:[^"\\]|\\.)*)"/);
         if (descMatch) {
           elemDescription = descMatch[1];
         }
