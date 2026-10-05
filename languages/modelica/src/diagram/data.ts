@@ -2012,6 +2012,24 @@ function processHtml(html: string | undefined, context: any): string | undefined
   });
 }
 
+function extractFirstQuotedString(text?: string): string | undefined {
+  if (!text) return undefined;
+  const start = text.indexOf('"');
+  if (start === -1) return undefined;
+  let end = start + 1;
+  const len = text.length;
+  while (end < len) {
+    if (text[end] === "\\") {
+      end += 2;
+    } else if (text[end] === '"') {
+      return text.slice(start + 1, end);
+    } else {
+      end++;
+    }
+  }
+  return undefined;
+}
+
 export function buildComponentProperties(
   classInstance: ModelicaClassInstance,
   componentName: string,
@@ -2192,11 +2210,8 @@ export function buildComponentProperties(
       if (!elemDescription && element.declaration?.metadata?.description) {
         elemDescription = element.declaration.metadata.description;
       }
-      if (!elemDescription && element.cstNode) {
-        const descMatch = element.cstNode.text?.match(/"((?:[^"\\]|\\.)*)"/);
-        if (descMatch) {
-          elemDescription = descMatch[1];
-        }
+      if (!elemDescription && element.cstNode?.text) {
+        elemDescription = extractFirstQuotedString(element.cstNode.text);
       }
 
       const isBoolean =

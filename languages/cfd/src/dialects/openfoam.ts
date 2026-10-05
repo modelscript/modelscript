@@ -12,6 +12,53 @@ interface FoamDict {
  * Supports recursive hierarchical dictionary parsing, boundaryField extraction,
  * and solver directive extraction.
  */
+function stripComments(source: string): string {
+  let result = "";
+  let i = 0;
+  const len = source.length;
+  while (i < len) {
+    const ch = source[i];
+    if (ch === '"') {
+      result += ch;
+      i++;
+      while (i < len) {
+        const c = source[i];
+        result += c;
+        if (c === "\\") {
+          i++;
+          if (i < len) result += source[i];
+        } else if (c === '"') {
+          break;
+        }
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (ch === "/" && i + 1 < len) {
+      const next = source[i + 1];
+      if (next === "/") {
+        i += 2;
+        while (i < len && source[i] !== "\n" && source[i] !== "\r") {
+          i++;
+        }
+        continue;
+      }
+      if (next === "*") {
+        i += 2;
+        while (i + 1 < len && !(source[i] === "*" && source[i + 1] === "/")) {
+          i++;
+        }
+        i += 2;
+        continue;
+      }
+    }
+    result += ch;
+    i++;
+  }
+  return result;
+}
+
 export class OpenFoamDialect implements CfdDialect {
   public readonly id = "openfoam";
   public readonly name = "OpenFOAM Case Dictionaries";
@@ -36,7 +83,7 @@ export class OpenFoamDialect implements CfdDialect {
     };
 
     // Strip comments
-    const stripped = content.replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, "");
+    const stripped = stripComments(content);
 
     const rootDict = this.parseDictionary(stripped);
 

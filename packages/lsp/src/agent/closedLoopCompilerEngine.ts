@@ -636,6 +636,53 @@ export async function verifyGate3Requirements(
   };
 }
 
+function stripComments(source: string): string {
+  let result = "";
+  let i = 0;
+  const len = source.length;
+  while (i < len) {
+    const ch = source[i];
+    if (ch === '"') {
+      result += ch;
+      i++;
+      while (i < len) {
+        const c = source[i];
+        result += c;
+        if (c === "\\") {
+          i++;
+          if (i < len) result += source[i];
+        } else if (c === '"') {
+          break;
+        }
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (ch === "/" && i + 1 < len) {
+      const next = source[i + 1];
+      if (next === "/") {
+        i += 2;
+        while (i < len && source[i] !== "\n" && source[i] !== "\r") {
+          i++;
+        }
+        continue;
+      }
+      if (next === "*") {
+        i += 2;
+        while (i + 1 < len && !(source[i] === "*" && source[i + 1] === "/")) {
+          i++;
+        }
+        i += 2;
+        continue;
+      }
+    }
+    result += ch;
+    i++;
+  }
+  return result;
+}
+
 /**
  * Gate 4: DAE Arena Structural Balance & BLT Causalization
  */
@@ -650,7 +697,7 @@ export async function verifyGate4DAEBalance(
 
   if (norm === "modelica") {
     // Robust Modelica equation & variable structural balance
-    const cleanCode = code.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+    const cleanCode = stripComments(code);
 
     // 1. Separate declarations from equation/algorithm sections
     const eqMatch = cleanCode.match(/\bequation\b([\s\S]*?)(?:\balgorithm\b|\bend\b|$)/);

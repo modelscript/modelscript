@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
-import { CaeSolverRunner, type CaeJobSpec } from "../services/cae-solver-runner.js";
+import { CaeSolverRunner, getValidatedGeometryPath, type CaeJobSpec } from "../services/cae-solver-runner.js";
 import {
   CaeTelemetryStreamer,
   type CaeSolverType,
@@ -227,12 +227,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           let safeGeometryPath: string | undefined;
           if (payload.geometryPath && typeof payload.geometryPath === "string") {
             try {
-              const real = fs.realpathSync(path.resolve(payload.geometryPath));
-              const cwdRoot = path.resolve(process.cwd());
-              const tmpRoot = path.resolve(os.tmpdir());
-              if (real.startsWith(cwdRoot + path.sep) || real.startsWith(tmpRoot + path.sep)) {
-                safeGeometryPath = real;
-              }
+              safeGeometryPath = getValidatedGeometryPath(payload.geometryPath);
             } catch {
               safeGeometryPath = undefined;
             }

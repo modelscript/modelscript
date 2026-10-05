@@ -33,6 +33,41 @@ export interface CaeExecutionResult {
   profile?: string | undefined;
 }
 
+export function getValidatedGeometryPath(rawPath: string): string {
+  if (typeof rawPath !== "string") {
+    throw new Error("Invalid geometry path: expected string");
+  }
+  const resolved = path.resolve(rawPath);
+
+  const cwdRoot = path.resolve(process.cwd());
+  const relCwd = path.relative(cwdRoot, resolved);
+  if (!relCwd.startsWith("..") && !path.isAbsolute(relCwd)) {
+    const candidate = path.resolve(cwdRoot, relCwd);
+    if (fs.existsSync(candidate)) {
+      const real = fs.realpathSync(candidate);
+      const relReal = path.relative(cwdRoot, real);
+      if (!relReal.startsWith("..") && !path.isAbsolute(relReal)) {
+        return path.resolve(cwdRoot, relReal);
+      }
+    }
+  }
+
+  const tmpRoot = path.resolve(os.tmpdir());
+  const relTmp = path.relative(tmpRoot, resolved);
+  if (!relTmp.startsWith("..") && !path.isAbsolute(relTmp)) {
+    const candidate = path.resolve(tmpRoot, relTmp);
+    if (fs.existsSync(candidate)) {
+      const real = fs.realpathSync(candidate);
+      const relReal = path.relative(tmpRoot, real);
+      if (!relReal.startsWith("..") && !path.isAbsolute(relReal)) {
+        return path.resolve(tmpRoot, relReal);
+      }
+    }
+  }
+
+  throw new Error(`Unauthorized or nonexistent geometry path: ${rawPath}`);
+}
+
 /**
  * Multi-Target Cloud Solver Runner.
  * Executes CalculiX (ccx), SU2 (SU2_CFD), and OpenFOAM solvers via the unified HPC engine
@@ -66,29 +101,21 @@ export class CaeSolverRunner {
       fs.writeFileSync(deckPath, spec.deckContent, "utf8");
 
       if (spec.geometryPath && typeof spec.geometryPath === "string") {
+        const safeSource = getValidatedGeometryPath(spec.geometryPath);
         const cleanBase = path.basename(spec.geometryPath).replace(/[^a-zA-Z0-9._-]/g, "_");
-        const cwdRoot = path.resolve(process.cwd());
-        const tmpRoot = path.resolve(os.tmpdir());
-        let realGeom: string;
-        try {
-          realGeom = fs.realpathSync(path.resolve(spec.geometryPath));
-        } catch {
-          throw new Error(`Unauthorized or nonexistent geometry path: ${spec.geometryPath}`);
+        if (!cleanBase || cleanBase === "." || cleanBase === "..") {
+          throw new Error("Invalid geometry filename");
         }
-
-        if (!realGeom.startsWith(cwdRoot + path.sep) && !realGeom.startsWith(tmpRoot + path.sep)) {
-          throw new Error(`Unauthorized geometry path: ${spec.geometryPath}`);
+        const relDest = path.relative(tmpDir, path.resolve(tmpDir, cleanBase));
+        if (relDest.startsWith("..") || path.isAbsolute(relDest)) {
+          throw new Error(`Unauthorized destination path: ${cleanBase}`);
         }
-
-        const geomDest = path.resolve(tmpDir, cleanBase);
-        if (!geomDest.startsWith(tmpDir + path.sep)) {
-          throw new Error(`Unauthorized destination path: ${geomDest}`);
-        }
+        const geomDest = path.resolve(tmpDir, relDest);
 
         try {
-          fs.symlinkSync(realGeom, geomDest);
+          fs.symlinkSync(safeSource, geomDest);
         } catch {
-          fs.copyFileSync(realGeom, geomDest);
+          fs.copyFileSync(safeSource, geomDest);
         }
       }
 
