@@ -45,29 +45,41 @@ export interface DiscoveredModel {
 }
 
 export function discoverModelsFromIndex(rawSymbols: [number, any][], mslDir: string): DiscoveredModel[] {
+  const symMap = new Map<number, any>(rawSymbols);
+
+  function getFullFQN(id: number): string {
+    const parts: string[] = [];
+    let curr = symMap.get(id);
+    while (curr) {
+      if (curr.name) parts.unshift(curr.name);
+      if (curr.parentId == null || curr.parentId === curr.id) break;
+      curr = symMap.get(curr.parentId);
+    }
+    return parts.join(".");
+  }
+
   const models: DiscoveredModel[] = [];
-  for (const [, sym] of rawSymbols) {
+  const seenFqns = new Set<string>();
+
+  for (const [id, sym] of rawSymbols) {
     if (
       sym.kind === "Class" &&
       sym.ruleName === "class_definition" &&
       sym.resourceId &&
       sym.resourceId.startsWith(mslDir)
     ) {
-      const rel = path.relative(mslDir, sym.resourceId);
-      const dirParts = rel.replace(/\.mo$/, "").split(path.sep);
-      let fqn: string;
-      if (dirParts[dirParts.length - 1] === sym.name) {
-        fqn = ["Modelica", ...dirParts].join(".");
-      } else if (dirParts[dirParts.length - 1] === "package") {
-        const parentParts = dirParts.slice(0, -1);
-        if (parentParts[parentParts.length - 1] === sym.name) {
-          fqn = ["Modelica", ...parentParts].join(".");
-        } else {
-          fqn = ["Modelica", ...parentParts, sym.name].join(".");
-        }
-      } else {
-        fqn = ["Modelica", ...dirParts, sym.name].join(".");
-      }
+      const parent = sym.parentId != null ? symMap.get(sym.parentId) : null;
+      const parentPrefix = parent?.metadata?.classPrefixes || parent?.metadata?.classKind;
+      const parentIsPackage = !parent || parentPrefix === "package" || parent.kind === "Package";
+
+      // Only include classes whose parent is a package or root (filter out inner classes/replacements inside models)
+      if (!parentIsPackage) continue;
+
+      const fqn = getFullFQN(id);
+      if (!fqn.startsWith("Modelica.") && fqn !== "Modelica") continue;
+      if (seenFqns.has(fqn)) continue;
+      seenFqns.add(fqn);
+
       const isExample = fqn.includes(".Examples.");
       const pkg = fqn.split(".").slice(0, 3).join(".");
       models.push({

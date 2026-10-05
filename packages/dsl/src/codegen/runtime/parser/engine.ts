@@ -1247,7 +1247,7 @@ function buildAncestorTable(rootNode: u32): void {
 
 @unmanaged
 export class AncestorCursor {
-  pathStack: u32; 
+  pathStack: usize; 
   pathLength: i32;
   currentIndex: i32;
   isActive: boolean;
@@ -1274,7 +1274,10 @@ export class AncestorCursor {
      }
      
      if (ancestorCacheOn) {
-       if (ancestorCacheRoot != rootNode) buildAncestorTable(rootNode);
+       // Rebuild only if rootNode is not already covered by the current table.
+       if (ancestorCacheRoot == 0 || (ancestorCacheRoot != rootNode && ancestorTableLookup(rootNode) < 0)) {
+         buildAncestorTable(rootNode);
+       }
        let tmp = ancestorTableLookup(targetNode);
        if (tmp >= 0) {
          let depth = 0;
@@ -1294,6 +1297,19 @@ export class AncestorCursor {
            let up = ancestorTableLookup(p);
            if (up < 0) break;
            p = <u32>up;
+         }
+         if (rootNode != ancestorCacheRoot) {
+           // Path must start at rootNode: drop everything above it.
+           let k = 0;
+           while (k < depth && load<u32>(stk + (<usize>k << 2)) != rootNode) k++;
+           if (k >= depth) {
+             depth = 0; // target is not under rootNode
+           } else if (k > 0) {
+             for (let m = k; m < depth; m++) {
+               store<u32>(stk + (<usize>(m - k) << 2), load<u32>(stk + (<usize>m << 2)));
+             }
+             depth -= k;
+           }
          }
          this.pathLength = depth;
          this.currentIndex = depth - 1;
@@ -1372,7 +1388,7 @@ for (let i = 0; i < 16; i++) {
   let ptr = heap.alloc(offsetof<AncestorCursor>());
   let cursor = changetype<AncestorCursor>(ptr);
   cursor.isActive = false;
-  cursor.pathStack = heap.alloc(4096 * 4) as u32;
+  cursor.pathStack = heap.alloc(4096 * 4);
   ancestorCursorPool[i] = cursor;
 }
 
@@ -1384,7 +1400,7 @@ export function getAncestors(node: u32, filterType: u16, rootNode: u32): Ancesto
   } else {
     let ptr = heap.alloc(offsetof<AncestorCursor>());
     cursor = changetype<AncestorCursor>(ptr);
-    cursor.pathStack = heap.alloc(4096 * 4) as u32;
+    cursor.pathStack = heap.alloc(4096 * 4);
   }
   cursor.init(node, filterType, rootNode);
   return cursor;

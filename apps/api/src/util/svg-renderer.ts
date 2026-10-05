@@ -39,31 +39,60 @@ export interface SvgResult {
 }
 
 /**
- * Extract modifier name/value pairs from a modification.
+ * Extract modifier name/value pairs from a modification or CST node.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractModifiers(modification: any | null): { name: string; value: string | null }[] {
+function extractModifiers(modification: any | null, cstNode?: any): { name: string; value: string | null }[] {
   const result: { name: string; value: string | null }[] = [];
-  if (!modification) return result;
+  if (!modification && !cstNode) return result;
 
-  for (const arg of modification.modificationArguments || []) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const name = (arg as any).name;
-    if (name) {
-      let value: string | null = null;
-      try {
-        const expr = arg.expression;
-        if (expr) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const json = (expr as any).toJSON;
-          value = typeof json === "string" ? json : JSON.stringify(json);
+  if (Array.isArray(modification?.modificationArguments)) {
+    for (const arg of modification.modificationArguments) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const name = (arg as any).name;
+      if (name) {
+        let value: string | null = null;
+        try {
+          const expr = arg.expression;
+          if (expr) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const json = (expr as any).toJSON;
+            value = typeof json === "string" ? json : JSON.stringify(json);
+          }
+        } catch {
+          // Skip modifiers that fail to evaluate
         }
-      } catch {
-        // Skip modifiers that fail to evaluate
+        result.push({ name, value });
       }
-      result.push({ name, value });
     }
+    return result;
   }
+
+  // Real CST traversal fallback
+  const targetNode = cstNode ?? modification;
+  if (!targetNode) return result;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (node: any) => {
+    if (!node) return;
+    if (node.type === "element_modification" || node.type === "ElementModification") {
+      const nameNode = node.children?.find(
+        (c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier" || c.type === "Identifier",
+      );
+      const valNode = node.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+      if (nameNode?.text) {
+        result.push({
+          name: nameNode.text.trim(),
+          value: valNode?.text?.replace(/^=\s*/, "").trim() ?? null,
+        });
+      }
+      return;
+    }
+    for (const child of node.children || []) {
+      walk(child);
+    }
+  };
+  walk(targetNode);
 
   return result;
 }
@@ -78,24 +107,51 @@ function extractComponentMetadata(component: any): ComponentMetadata | null {
 
   const typeName = component.classInstance?.compositeName ?? component.declaredType?.compositeName ?? "unknown";
   const description = component.description ?? null;
+  const cst = component.cstNode ?? component.abstractSyntaxNode;
 
-  // Get causality and variability from component properties, symbol metadata, or AST node
-  const causality =
+  // Get causality and variability from component properties, symbol metadata, or AST/CST node
+  let causality =
     component.causality?.toString() ??
     component.declaration?.metadata?.causality?.toString() ??
     (
       component.abstractSyntaxNode?.parent as { causality?: { toString(): string } | null } | undefined
     )?.causality?.toString() ??
     null;
-  const variability =
+  if (!causality && cst) {
+    let p = cst.parent;
+    while (p && !causality) {
+      if (p.type === "component_clause" || p.type === "ComponentClause") {
+        const tp = p.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix");
+        if (tp?.text?.includes("input")) causality = "input";
+        else if (tp?.text?.includes("output")) causality = "output";
+        break;
+      }
+      p = p.parent;
+    }
+  }
+
+  let variability =
     component.variability?.toString() ??
     component.declaration?.metadata?.variability?.toString() ??
     (
       component.abstractSyntaxNode?.parent as { variability?: { toString(): string } | null } | undefined
     )?.variability?.toString() ??
     null;
+  if (!variability && cst) {
+    let p = cst.parent;
+    while (p && !variability) {
+      if (p.type === "component_clause" || p.type === "ComponentClause") {
+        const tp = p.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix");
+        if (tp?.text?.includes("parameter")) variability = "parameter";
+        else if (tp?.text?.includes("constant")) variability = "constant";
+        else if (tp?.text?.includes("discrete")) variability = "discrete";
+        break;
+      }
+      p = p.parent;
+    }
+  }
 
-  const modifiers = extractModifiers(component.modification);
+  const modifiers = extractModifiers(component.modification, cst);
 
   return { name, typeName, description, causality, variability, modifiers };
 }

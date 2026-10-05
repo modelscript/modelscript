@@ -19,7 +19,8 @@ import {
     t_pausedHeads, pausedHeadsCount, resetPausedHeads,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild,
     saveCursorCheckpoint, restoreCursorCheckpoint,
-    rebuildFrontierSummary, gssBestAcceptingHead, gssBestDyingHead
+    rebuildFrontierSummary, gssBestAcceptingHead, gssBestDyingHead,
+    g_expectedVersion
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
@@ -74,10 +75,48 @@ import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTa
 import { MAX_PRODUCTION_LENGTH } from "./recovery-config";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
 
-let g_lookupMemoState: i32 = -1;
-let g_lookupMemoToken: i32 = 0;
-let g_lookupMemoTable: usize = 0;
-let g_lookupMemoCount: i32 = 0;
+const ACTION_CACHE_SIZE: u32 = 512;
+const ACTION_CACHE_MASK: u32 = 511;
+
+let t_actionCacheState: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_actionCacheToken: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_actionCacheMatchIdx: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_actionCacheTable: usize = 0;
+
+function initActionCache(): void {
+  if (changetype<usize>(t_actionCacheState) == 0) {
+    t_actionCacheState = changetype<UnmanagedInt32Array>(atomicChunkAlloc(ACTION_CACHE_SIZE * sizeof<i32>()));
+    t_actionCacheToken = changetype<UnmanagedInt32Array>(atomicChunkAlloc(ACTION_CACHE_SIZE * sizeof<i32>()));
+    t_actionCacheMatchIdx = changetype<UnmanagedInt32Array>(atomicChunkAlloc(ACTION_CACHE_SIZE * sizeof<i32>()));
+  }
+  for (let i: u32 = 0; i < ACTION_CACHE_SIZE; i++) {
+    t_actionCacheState[i] = -2;
+  }
+  t_actionCacheTable = changetype<usize>(action_data);
+}
+
+export let g_counter_lex_calls: u32 = 0;
+export let g_counter_expected_tokens_calls: u32 = 0;
+export let g_counter_action_memo_hits: u32 = 0;
+export let g_counter_action_memo_misses: u32 = 0;
+export let g_counter_peak_active_heads: u32 = 0;
+
+export function getDebugCounter(kind: i32): u32 {
+  if (kind == 0) return g_counter_lex_calls;
+  if (kind == 1) return g_counter_expected_tokens_calls;
+  if (kind == 2) return g_counter_action_memo_hits;
+  if (kind == 3) return g_counter_action_memo_misses;
+  if (kind == 4) return g_counter_peak_active_heads;
+  return 0;
+}
+
+export function resetDebugCounters(): void {
+  g_counter_lex_calls = 0;
+  g_counter_expected_tokens_calls = 0;
+  g_counter_action_memo_hits = 0;
+  g_counter_action_memo_misses = 0;
+  g_counter_peak_active_heads = 0;
+}
 
 /** Maximum number of actions copied into `tempActions` (it holds 32 u32 = 16 pairs). */
 const MAX_LOOKUP_ACTIONS: i32 = 16;
@@ -87,7 +126,8 @@ const MAX_LOOKUP_ACTIONS: i32 = 16;
  * Uses binary search when `action_entry_offsets` is available and `actionCount > 8`.
  * Falls back to default entry (`sym == 0`) if exact match is not found.
  */
-export function findActionEntry(state: i32, token: i32): i32 {
+function computeActionEntry(state: i32, token: i32): i32 {
+  if (state < 0 || state >= action_offsets.length) return -1;
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset + 1 >= action_data.length) return -1;
   let actionCount = action_data[actionOffset];
@@ -137,21 +177,38 @@ export function findActionEntry(state: i32, token: i32): i32 {
 }
 
 /**
+ * Finds the index of the matching action entry in `action_data` for a given state and token.
+ * Uses a direct-mapped cache (512 entries) in linear memory.
+ * Falls back to default entry (`sym == 0`) if exact match is not found.
+ */
+export function findActionEntry(state: i32, token: i32): i32 {
+  if (changetype<usize>(t_actionCacheState) == 0 || t_actionCacheTable != changetype<usize>(action_data)) {
+    initActionCache();
+  }
+  let cacheIdx: u32 = (((state as u32) * 31) ^ (token as u32)) & ACTION_CACHE_MASK;
+  if (t_actionCacheState[cacheIdx] == state && t_actionCacheToken[cacheIdx] == token) {
+    g_counter_action_memo_hits++;
+    return t_actionCacheMatchIdx[cacheIdx];
+  }
+  g_counter_action_memo_misses++;
+
+  let matchIdx = computeActionEntry(state, token);
+  t_actionCacheState[cacheIdx] = state;
+  t_actionCacheToken[cacheIdx] = token;
+  t_actionCacheMatchIdx[cacheIdx] = matchIdx;
+  return matchIdx;
+}
+
+/**
  * Looks up the GLR action count for a given parser state and token.
- * This checks the `action_offsets` and `action_data` tables.
+ * This checks the `action_offsets` and `action_data` tables via the direct-mapped cache.
+ * Populates `tempActions` with the action pairs.
  * 
  * @param state The current parser state.
  * @param token The token ID to look up (terminal or non-terminal).
  * @returns The number of possible actions (1 for LR, >1 for GLR conflicts).
  */
 export function lookupActions(state: i32, token: i32): i32 {
-  // One-entry memo: `tempActions` is only ever written below, so it still holds the
-  // actions of the previous lookup when the key (and the table) match.
-  if (state == g_lookupMemoState && token == g_lookupMemoToken &&
-      g_lookupMemoTable == changetype<usize>(action_data) && changetype<usize>(tempActions) != 0) {
-    return g_lookupMemoCount;
-  }
-
   let matchIdx = findActionEntry(state, token);
   if (matchIdx == -1) {
     return 0;
@@ -171,10 +228,6 @@ export function lookupActions(state: i32, token: i32): i32 {
     tempActions[i * 2] = action_data[actPtr + i * 2];
     tempActions[i * 2 + 1] = action_data[actPtr + i * 2 + 1];
   }
-  g_lookupMemoState = state;
-  g_lookupMemoToken = token;
-  g_lookupMemoTable = changetype<usize>(action_data);
-  g_lookupMemoCount = count;
   return count;
 }
 
@@ -240,13 +293,66 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
     rebuildFrontierSummary(0, t_activeHeads, activeHeadsCount);
   }
   
+  resetFrontierLexMemo();
   currentParserMode = MODE_GLR;
 }
+
+let g_memoFrontierPos: u32 = 0xffffffff;
+let g_memoScannerState: u32 = 0xffffffff;
+let g_memoExpectedVersion: u32 = 0xffffffff;
+let g_memoTok: i32 = 0;
+let g_memoLexLen: u32 = 0;
+let g_memoLexPos: u32 = 0;
+let g_memoSrcLexPos: u32 = 0;
+let g_memoSkipPos: u32 = 0;
+let g_memoSkipPad: u32 = 0;
+
+let g_expectedFrontierPos: u32 = 0xffffffff;
+let g_expectedFrontierVersion: u32 = 0xffffffff;
+
+export function resetFrontierLexMemo(): void {
+  g_memoFrontierPos = 0xffffffff;
+  g_memoScannerState = 0xffffffff;
+  g_memoExpectedVersion = 0xffffffff;
+  g_expectedFrontierPos = 0xffffffff;
+  g_expectedFrontierVersion = 0xffffffff;
+}
+
+/**
+ * Returns the lookahead token at frontierPos for the given scanner state.
+ * Memoized per (frontierPos, scannerState, expectedVersion) across all GLR heads at this frontier.
+ */
+function getFrontierToken(frontierPos: u32, scannerState: u32): i32 {
+  if (frontierPos == g_memoFrontierPos && scannerState == g_memoScannerState && g_expectedVersion == g_memoExpectedVersion) {
+    lexLen = g_memoLexLen;
+    lexPos = g_memoLexPos;
+    srcLexPos = g_memoSrcLexPos;
+    currentScannerState = scannerState;
+    g_skipPos = g_memoSkipPos;
+    g_skipPad = g_memoSkipPad;
+    return g_memoTok;
+  }
+  currentScannerState = scannerState;
+  let rawTok = invokeLexer(frontierPos);
+  let tok = skipExtraTokens(rawTok, frontierPos, 1);
+  g_memoFrontierPos = frontierPos;
+  g_memoScannerState = scannerState;
+  g_memoExpectedVersion = g_expectedVersion;
+  g_memoTok = tok;
+  g_memoLexLen = lexLen;
+  g_memoLexPos = lexPos;
+  g_memoSrcLexPos = srcLexPos;
+  g_memoSkipPos = g_skipPos;
+  g_memoSkipPad = g_skipPad;
+  return tok;
+}
+
 /**
  * Interacts with the lexer module to fetch the next token ID.
  * The `lex` function also updates global `lexLen` and `srcLexPos`.
  */
 function invokeLexer(pos: u32): i32 {
+  g_counter_lex_calls++;
   updateExpectedTokens(pos);
   let token = lex(pos);
   return token;
@@ -1026,6 +1132,8 @@ export function peekNextTokenInState(pos: u32, state: i32): i32 {
 
   memory.copy(expected_tokens, savedExpectedTokensPtr, copyLen);
   g_expectedMemoState = -1;
+  g_expectedFrontierPos = 0xffffffff;
+  g_expectedFrontierVersion = 0xffffffff;
   return tok;
 }
 
@@ -1041,6 +1149,10 @@ let g_expectedMemoState: i32 = -1;
  * This acts as context-aware feedback for the lexer (for keywords vs identifiers).
  */
 function updateExpectedTokens(frontierPos: u32 = 0): void {
+  if (currentParserMode == MODE_GLR && frontierPos == g_expectedFrontierPos && g_expectedVersion == g_expectedFrontierVersion) {
+    return;
+  }
+  g_counter_expected_tokens_calls++;
   if (expected_tokens == 0) {
     expected_tokens = atomicChunkAlloc(65536);
     g_expectedMemoState = -1;
@@ -1068,6 +1180,8 @@ function updateExpectedTokens(frontierPos: u32 = 0): void {
     if (healthyCount == 0) {
       memory.fill(expected_tokens, 1, copyLen);
     }
+    g_expectedFrontierPos = frontierPos;
+    g_expectedFrontierVersion = g_expectedVersion;
   }
 }
 
@@ -1649,6 +1763,8 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
 
   memory.copy(expected_tokens, savedExpectedTokensPtr, _copyLen);
   g_expectedMemoState = -1;
+  g_expectedFrontierPos = 0xffffffff;
+  g_expectedFrontierVersion = 0xffffffff;
   lexPos = savedLexPos;
   lexLen = savedLexLen;
   srcLexPos = savedSrcLexPos;
@@ -2731,6 +2847,8 @@ export function restoreSimulationState(): void {
   if (copyLen > 65536) copyLen = 65536;
   memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), copyLen);
   g_expectedMemoState = -1;
+  g_expectedFrontierPos = 0xffffffff;
+  g_expectedFrontierVersion = 0xffffffff;
 }
 /**
  * Retrieves the best accepting head found so far.
@@ -4384,6 +4502,8 @@ function recoverHeadHypotheses(head: ParseHead, tok: i32, pos: u32): void {
  */
 export function advanceGLR(): void {
   while (activeHeadsCount > 0) {
+    if (activeHeadsCount > g_counter_peak_active_heads) g_counter_peak_active_heads = activeHeadsCount;
+    if (nextHeadsCount > g_counter_peak_active_heads) g_counter_peak_active_heads = nextHeadsCount;
     if ((++globalLoopIterations as u32) > (inputLength > 1000 ? inputLength : 1000) * LOOP_MULTIPLIER_LIMIT) {
       break;
     }
@@ -4398,6 +4518,7 @@ export function advanceGLR(): void {
     }
     if (frontierPos == 0xffffffff) break;
 
+    resetFrontierLexMemo();
     updateExpectedTokens(frontierPos);
     resetPausedHeads();
 
@@ -4420,7 +4541,7 @@ export function advanceGLR(): void {
       // Skip token-type extras. The head stays at frontierPos: padding for the next
       // token is computed as `head.pendingPadding + (srcLexPos - frontierPos)`, which
       // already spans any skipped extras, so pendingPadding must not be bumped here.
-      let tok = skipExtraTokens(invokeLexer(frontierPos), frontierPos, 1);
+      let tok = getFrontierToken(frontierPos, head.scannerState);
 
       // Check for Subtree Reuse
       let oldPos = mapNewPosToOldPos(frontierPos);
@@ -4607,6 +4728,7 @@ export function advanceGLR(): void {
           if (!hasAnyShift && candidateReduce != -1) {
             let reducedHead = processReduceAction(head, candidateReduce, frontierPos);
             if (reducedHead != null) {
+              if (!reducedHead.inErrorState) g_expectedVersion++;
               head = reducedHead;
               continue;
             }
@@ -4639,6 +4761,7 @@ export function advanceGLR(): void {
           } else if (aType == ACTION_REDUCE) {
             let reducedHead = processReduceAction(head, aTarget, frontierPos);
             if (reducedHead != null) {
+              if (!reducedHead.inErrorState) g_expectedVersion++;
               head = reducedHead;
               continue;
             }
@@ -4676,6 +4799,7 @@ export function advanceGLR(): void {
             head.isPaused = true;
             head.pausedLookahead = tok;
             t_pausedHeads[pausedHeadsCount++] = changetype<u32>(head);
+            debugLog(9201, changetype<u32>(head), tok, pausedHeadsCount);
           } else {
             recoverHeadHypotheses(head, tok, frontierPos);
           }
@@ -4712,6 +4836,7 @@ export function advanceGLR(): void {
     if (bestPausedHead != null && (nextHeadsCount == 0 || bestPausedCost < minNextCost)) {
       bestPausedHead.isPaused = false;
       let resumeTok = bestPausedHead.pausedLookahead;
+      debugLog(9202, changetype<u32>(bestPausedHead), resumeTok, nextHeadsCount);
       if (resumeTok != TOKEN_EOF) {
         recoverHeadHypotheses(bestPausedHead, resumeTok, bestPausedHead.pos);
       } else {
@@ -4726,6 +4851,7 @@ export function advanceGLR(): void {
           if (cand != bestPausedHead && cand.errorCost <= bestPausedCost + 500) {
             cand.isPaused = false;
             let cTok = cand.pausedLookahead;
+            debugLog(9202, changetype<u32>(cand), cTok, nextHeadsCount);
             if (cTok != TOKEN_EOF) {
               recoverHeadHypotheses(cand, cTok, cand.pos);
             } else {
@@ -4875,6 +5001,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
   globalIsCatastrophic = false;
   globalSearchIterations = 0;
+  resetDebugCounters();
+  resetFrontierLexMemo();
   debugLog(9001, oldTree, editStart, editOldEnd);
 
   if (changetype<usize>(t_activeHeads) == 0) {
@@ -4944,6 +5072,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       globalAstRoot = accepted;
       debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
       debugLog(9101, diag_count_shift, 0, 0);
+      debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
+      debugLog(9702, g_counter_action_memo_hits as i32, g_counter_action_memo_misses as i32, 0);
       debugLog(9002, editNewEnd, accepted, currentParserMode);
       return accepted;
     }
@@ -4980,6 +5110,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       globalAstRoot = finalTree;
       debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
       debugLog(9101, diag_count_shift, activeHeadsCount, nextHeadsCount);
+      debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
+      debugLog(9702, g_counter_action_memo_hits as i32, g_counter_action_memo_misses as i32, 0);
       debugLog(9003, finalTree, bestAcceptedCost, errorCount);
       t_editRangesPtr = 0;
       t_editRangesCount = 0;
@@ -5044,6 +5176,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       if (_catCopyLen > 65536) _catCopyLen = 65536;
       memory.fill(expected_tokens, 1, _catCopyLen);
       g_expectedMemoState = -1;
+      g_expectedFrontierPos = 0xffffffff;
+      g_expectedFrontierVersion = 0xffffffff;
 
       while (p < inputLength) {
         let tok = lex(p);
@@ -5119,6 +5253,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     globalAstRoot = root;
+    debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
+    debugLog(9702, g_counter_action_memo_hits as i32, g_counter_action_memo_misses as i32, 0);
     debugLog(9003, root, 999999, errorCount);
     t_editRangesPtr = 0;
     t_editRangesCount = 0;
@@ -5128,6 +5264,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     return root;
   }
   globalAstRoot = 0;
+  debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
+  debugLog(9702, g_counter_action_memo_hits as i32, g_counter_action_memo_misses as i32, 0);
   debugLog(9003, 0, 999999, errorCount);
   t_editRangesPtr = 0;
   t_editRangesCount = 0;

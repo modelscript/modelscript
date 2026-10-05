@@ -11,7 +11,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 // Parse arguments
-let version = "4.0.0";
+let version = "4.1.0";
 let extract = false;
 let outDir = path.join(__dirname, "msl");
 
@@ -91,6 +91,16 @@ function unpackZip(zipPath, targetDir, ver) {
   try {
     execSync(`unzip -q -o "${zipPath}" -d "${targetDir}"`, { stdio: "inherit" });
     console.log(`[download-msl] Extracted MSL ${ver} to ${targetDir}`);
+    const verDir = path.join(targetDir, `Modelica ${ver}`);
+    const genericDir = path.join(targetDir, "Modelica");
+    if (fs.existsSync(verDir) && !fs.existsSync(genericDir)) {
+      try {
+        fs.symlinkSync(verDir, genericDir, "junction");
+        console.log(`[download-msl] Created symlink ${genericDir} -> ${verDir}`);
+      } catch (err) {
+        console.warn(`[download-msl] Could not create Modelica symlink: ${err.message}`);
+      }
+    }
   } catch (err) {
     console.error(`[download-msl] Failed to extract zip: ${err.message}`);
   }

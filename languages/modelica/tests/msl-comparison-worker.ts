@@ -493,10 +493,13 @@ end if;
   }
 }
 
-function runOmcDiagram(task: WorkerTask): {
+function runOmcDiagram(
+  task: WorkerTask,
+  inheritedFqns: string[] = [],
+): {
   success: boolean;
   cached: boolean;
-  durationMs: number;
+  durationMs?: number;
   cpuMs?: number;
   peakMemoryMB?: number;
   nodeCount: number;
@@ -504,6 +507,7 @@ function runOmcDiagram(task: WorkerTask): {
   components: { name: string; type: string; placement?: any }[];
   connections: { from: string; to: string }[];
   error?: string;
+  hasInherited?: boolean;
 } {
   const omcCacheDir = path.join(task.cacheDir, "omc", task.version, "diagram");
   fs.mkdirSync(omcCacheDir, { recursive: true });
@@ -512,30 +516,41 @@ function runOmcDiagram(task: WorkerTask): {
   if (!task.forceOmc && fs.existsSync(cacheFile)) {
     try {
       const data = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
-      return {
-        ...data,
-        cached: true,
-      };
+      if (!inheritedFqns || inheritedFqns.length === 0 || data.hasInherited) {
+        return {
+          ...data,
+          cached: true,
+        };
+      }
     } catch {
       // cache corrupted, re-run
     }
   }
 
   const pkgMo = path.join(task.mslDir, "package.mo");
+  const allClasses = [task.modelFqn, ...inheritedFqns];
+
   const mosScript = `
 loadFile("${pkgMo.replace(/\\/g, "/")}");
-cCount := getConnectionCount(${task.modelFqn});
-print("CONNECTIONS_COUNT=" + String(cCount) + "\\n");
-for i in 1:cCount loop
-  c := getNthConnection(${task.modelFqn}, i);
+${allClasses
+  .map(
+    (cls, idx) => `
+cCount_${idx} := getConnectionCount(${cls});
+print("CONN_START_${idx}\\n");
+for i in 1:cCount_${idx} loop
+  c := getNthConnection(${cls}, i);
   print("CONN:" + c[1] + "->" + c[2] + "\\n");
 end for;
-print("COMPS_START\\n");
-getComponents(${task.modelFqn});
-print("COMPS_END\\n");
-print("ANNOTS_START\\n");
-getComponentAnnotations(${task.modelFqn});
-print("ANNOTS_END\\n");
+print("CONN_END_${idx}\\n");
+print("COMPS_START_${idx}\\n");
+getComponents(${cls});
+print("COMPS_END_${idx}\\n");
+print("ANNOTS_START_${idx}\\n");
+getComponentAnnotations(${cls});
+print("ANNOTS_END_${idx}\\n");
+`,
+  )
+  .join("\n")}
 print("DIAG_START\\n");
 getDiagramAnnotation(${task.modelFqn});
 print("DIAG_END\\n");
@@ -548,7 +563,7 @@ print("DIAG_END\\n");
     const omcRes = runOmcWithStats(["omc", tmpMos], { timeout: 45_000 });
     const stdout = omcRes.stdout;
 
-    if (stdout.includes("Error:") && !stdout.includes("COMPS_START")) {
+    if (stdout.includes("Error:") && !stdout.includes("COMPS_START_0")) {
       return {
         success: false,
         cached: false,
@@ -563,8 +578,9 @@ print("DIAG_END\\n");
       };
     }
 
-    // Parse connections
+    // Parse connections across all classes
     const connections: { from: string; to: string }[] = [];
+    const connSet = new Set<string>();
     for (const line of stdout.split(/\r?\n/)) {
       if (line.startsWith("CONN:")) {
         const arrowIdx = line.indexOf("->");
@@ -572,80 +588,93 @@ print("DIAG_END\\n");
           const from = line.slice(5, arrowIdx).trim();
           const to = line.slice(arrowIdx + 2).trim();
           if (from && to) {
-            connections.push({ from, to });
+            const key = `${from}->${to}`;
+            if (!connSet.has(key)) {
+              connSet.add(key);
+              connections.push({ from, to });
+            }
           }
         }
       }
     }
 
-    // Parse components
-    const compsStart = stdout.indexOf("COMPS_START");
-    const compsEnd = stdout.indexOf("COMPS_END");
-    const rawComps: { type: string; name: string }[] = [];
-    if (compsStart >= 0 && compsEnd > compsStart) {
-      const compsSection = stdout.slice(compsStart, compsEnd);
-      const compRe = /\{([a-zA-Z0-9_.]+),\s*([a-zA-Z0-9_]+),/g;
-      let compM;
-      while ((compM = compRe.exec(compsSection)) !== null) {
-        rawComps.push({ type: compM[1], name: compM[2] });
+    // Parse components and annotations across all classes
+    const placedComps: { name: string; type: string; placement?: any }[] = [];
+    const compNameSet = new Set<string>();
+
+    for (let idx = 0; idx < allClasses.length; idx++) {
+      const compsStart = stdout.indexOf(`COMPS_START_${idx}`);
+      const compsEnd = stdout.indexOf(`COMPS_END_${idx}`);
+      const rawComps: { type: string; name: string }[] = [];
+      if (compsStart >= 0 && compsEnd > compsStart) {
+        const compsSection = stdout.slice(compsStart, compsEnd);
+        const compRe = /\{([a-zA-Z0-9_.]+),\s*([a-zA-Z0-9_]+),/g;
+        let compM;
+        while ((compM = compRe.exec(compsSection)) !== null) {
+          rawComps.push({ type: compM[1], name: compM[2] });
+        }
       }
-    }
 
-    // Parse component placement annotations (1:1 per component)
-    const annotsStart = stdout.indexOf("ANNOTS_START");
-    const annotsEnd = stdout.indexOf("ANNOTS_END");
-    const placements: (any | null)[] = [];
-    if (annotsStart >= 0 && annotsEnd > annotsStart) {
-      const annotsSection = stdout.slice(annotsStart, annotsEnd);
-      let depth = 0;
-      let current = "";
-      const items: string[] = [];
-      const trimmed = annotsSection.trim();
-      const firstBrace = trimmed.indexOf("{");
-      const lastBrace = trimmed.lastIndexOf("}");
-      if (firstBrace >= 0 && lastBrace > firstBrace) {
-        const inner = trimmed.slice(firstBrace + 1, lastBrace);
-        for (const ch of inner) {
-          if (ch === "{" || ch === "(") depth++;
-          else if (ch === "}" || ch === ")") depth--;
+      const annotsStart = stdout.indexOf(`ANNOTS_START_${idx}`);
+      const annotsEnd = stdout.indexOf(`ANNOTS_END_${idx}`);
+      const placements: (any | null)[] = [];
+      if (annotsStart >= 0 && annotsEnd > annotsStart) {
+        const annotsSection = stdout.slice(annotsStart, annotsEnd);
+        let depth = 0;
+        let current = "";
+        const items: string[] = [];
+        const trimmed = annotsSection.trim();
+        const firstBrace = trimmed.indexOf("{");
+        const lastBrace = trimmed.lastIndexOf("}");
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+          const inner = trimmed.slice(firstBrace + 1, lastBrace);
+          for (const ch of inner) {
+            if (ch === "{" || ch === "(") depth++;
+            else if (ch === "}" || ch === ")") depth--;
 
-          if (depth === 0 && ch === ",") {
-            items.push(current.trim());
-            current = "";
+            if (depth === 0 && ch === ",") {
+              items.push(current.trim());
+              current = "";
+            } else {
+              current += ch;
+            }
+          }
+          if (current.trim()) items.push(current.trim());
+        }
+
+        const placementRe =
+          /Placement\((true|false|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-)/;
+        for (let i = 0; i < rawComps.length; i++) {
+          const annotStr = items[i] || "";
+          const pm = placementRe.exec(annotStr);
+          if (pm) {
+            placements.push({
+              visible: pm[1] === "true",
+              origin: [
+                pm[2] === "-" || !pm[2] ? 0 : parseFloat(pm[2]),
+                pm[3] === "-" || !pm[3] ? 0 : parseFloat(pm[3]),
+              ],
+              extent: [
+                [pm[4] === "-" || !pm[4] ? -10 : parseFloat(pm[4]), pm[5] === "-" || !pm[5] ? -10 : parseFloat(pm[5])],
+                [pm[6] === "-" || !pm[6] ? 10 : parseFloat(pm[6]), pm[7] === "-" || !pm[7] ? 10 : parseFloat(pm[7])],
+              ],
+              rotation: pm[8] === "-" || !pm[8] ? 0 : parseFloat(pm[8]),
+            });
           } else {
-            current += ch;
+            placements.push(null);
           }
         }
-        if (current.trim()) items.push(current.trim());
       }
 
-      const placementRe =
-        /Placement\((true|false|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-),([-\d.]*|-)/;
       for (let i = 0; i < rawComps.length; i++) {
-        const annotStr = items[i] || "";
-        const pm = placementRe.exec(annotStr);
-        if (pm) {
-          placements.push({
-            visible: pm[1] === "true",
-            origin: [pm[2] === "-" || !pm[2] ? 0 : parseFloat(pm[2]), pm[3] === "-" || !pm[3] ? 0 : parseFloat(pm[3])],
-            extent: [
-              [pm[4] === "-" || !pm[4] ? -10 : parseFloat(pm[4]), pm[5] === "-" || !pm[5] ? -10 : parseFloat(pm[5])],
-              [pm[6] === "-" || !pm[6] ? 10 : parseFloat(pm[6]), pm[7] === "-" || !pm[7] ? 10 : parseFloat(pm[7])],
-            ],
-            rotation: pm[8] === "-" || !pm[8] ? 0 : parseFloat(pm[8]),
-          });
-        } else {
-          placements.push(null);
+        const c = rawComps[i];
+        const p = placements[i];
+        if (p != null && !compNameSet.has(c.name)) {
+          compNameSet.add(c.name);
+          placedComps.push({ ...c, placement: p });
         }
       }
     }
-
-    const placedComps = rawComps
-      .map((c, idx) => ({
-        ...c,
-        placement: placements[idx],
-      }))
-      .filter((c) => c.placement != null);
 
     const result = {
       success: true,
@@ -657,6 +686,7 @@ print("DIAG_END\\n");
       edgeCount: connections.length,
       components: placedComps,
       connections,
+      hasInherited: inheritedFqns.length > 0,
     };
 
     fs.writeFileSync(cacheFile, JSON.stringify(result), "utf-8");
@@ -692,6 +722,42 @@ export function getScopeFromResourceId(resId: string): string[] {
   return ["Modelica", ...parts];
 }
 
+export function collectInheritedClassFqns(cls: any, visited = new Set<string>()): string[] {
+  const fqns: string[] = [];
+  if (!cls || !cls.extendsClassInstances) return fqns;
+  for (const ext of cls.extendsClassInstances) {
+    const baseCls = ext?.classInstance;
+    if (!baseCls) continue;
+    let fqn = "";
+    if (baseCls.id != null && cls.context) {
+      const symIndex = cls.context.queryEngine?.index;
+      if (symIndex) {
+        const parts: string[] = [];
+        let curr = symIndex.symbols.get(baseCls.id);
+        while (curr) {
+          if (curr.name) parts.unshift(curr.name);
+          if (curr.parentId == null || curr.parentId === curr.id) break;
+          curr = symIndex.symbols.get(curr.parentId);
+        }
+        if (parts.length > 0) fqn = parts.join(".");
+      }
+    }
+    if (!fqn && baseCls.entry?.resourceId) {
+      const scope = getScopeFromResourceId(baseCls.entry.resourceId);
+      if (scope.length > 0) fqn = scope.join(".");
+    }
+    if (!fqn && baseCls.name) fqn = baseCls.name;
+    if (fqn && !visited.has(fqn)) {
+      visited.add(fqn);
+      if (!fqn.startsWith("Modelica.Icons.")) {
+        fqns.push(fqn);
+      }
+      fqns.push(...collectInheritedClassFqns(baseCls, visited));
+    }
+  }
+  return fqns;
+}
+
 export function buildClassAdapter(context: Context, symbolId: number, visited = new Set<number>()): any {
   if (visited.has(symbolId)) return null;
   visited.add(symbolId);
@@ -721,6 +787,7 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
       components.push({
         id: child.id,
         name: child.name,
+        entry: child,
         classInstance: compCls,
         modification: {
           expression: exprText !== undefined ? { text: String(exprText) } : undefined,
@@ -787,6 +854,8 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
     db: queryDB,
     context,
     name: entry.name,
+    classKind: entry.metadata?.classKind,
+    entry,
     components,
     connectEquations,
     extendsClassInstances,
@@ -1243,7 +1312,8 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
       (nodeCount === 0 && edgeCount === 0);
     const svgPreview = validSvg && fullSvg.length <= 80_000 ? fullSvg : undefined;
 
-    const omcDiag = runOmcDiagram(task);
+    const inheritedFqns = collectInheritedClassFqns(cls);
+    const omcDiag = runOmcDiagram(task, inheritedFqns);
     const nodeCountMatch = !omcDiag.success || nodeCount === omcDiag.nodeCount;
     const edgeCountMatch = !omcDiag.success || edgeCount === omcDiag.edgeCount;
 

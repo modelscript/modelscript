@@ -9,6 +9,7 @@ import {
   computeHeight,
   computeIconPlacement,
   computePortPlacement,
+  computeTransform,
   computeWidth,
   convertColor,
   convertPoint,
@@ -36,6 +37,7 @@ import {
   type ModelicaComponentInstance,
 } from "./index.js";
 
+import { Cst } from "../../src-gen/bindings.js";
 import { ModelicaClassKind, ModelicaVariability } from "../types.js";
 
 // Import canonical types from the protocol module and re-export for
@@ -225,23 +227,88 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
 
     const tp0 = performance.now();
     let componentTransform = computeIconPlacement(component);
+    const placement = typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+    if (!componentTransform && placement && !placement.iconTransformation) {
+      const icon =
+        typeof component.classInstance?.annotation === "function"
+          ? (component.classInstance.annotation("Icon") as IIcon)
+          : null;
+      componentTransform = computeTransform(
+        placement.transformation ?? {
+          extent: [
+            [-10, -10],
+            [10, 10],
+          ],
+          origin: [0, 0],
+        },
+        icon?.coordinateSystem,
+      );
+    }
     const autoLayout = !componentTransform;
     if (!componentTransform) {
-      const hasPlacement = typeof component?.annotation === "function" && component.annotation("Placement") != null;
-      if (!hasPlacement) {
-        const kind = componentClassInstance?.classKind ?? componentClassInstance?.entry?.metadata?.classKind;
-        const isPrimitive =
-          componentClassInstance?.name &&
-          ["Real", "Integer", "Boolean", "String", "ExternalObject"].includes(componentClassInstance.name);
-        const isExcludedKind =
-          kind === ModelicaClassKind.TYPE ||
-          kind === ModelicaClassKind.FUNCTION ||
-          kind === ModelicaClassKind.RECORD ||
-          kind === ModelicaClassKind.PACKAGE;
-        if (isPrimitive || isExcludedKind) {
-          continue;
-        }
+      // In real parsed Modelica classes from MSL / source code, components without a diagram
+      // transformation (e.g. outer scoping declarations like 'system', parameters, variables,
+      // or icon-only connectors) are never diagram nodes in OpenModelica or the Modelica spec.
+      const isRealClass = Boolean(
+        (classInstance as any)?.context ||
+        (classInstance as any)?.entry?.resourceId ||
+        (classInstance as any)?.db?.cstNode,
+      );
+      if (isRealClass) {
+        continue;
       }
+
+      if (placement) {
+        // Has a Placement annotation, but no diagram transformation (e.g. icon-only port)
+        continue;
+      }
+
+      const kind = componentClassInstance?.classKind ?? componentClassInstance?.entry?.metadata?.classKind;
+      const classPrefix = componentClassInstance?.entry?.metadata?.classPrefixes;
+      const isOuter =
+        Boolean(component.isOuter) ||
+        Boolean((component.declaration as any)?.isOuter) ||
+        Boolean((component.entry?.metadata as any)?.isOuter) ||
+        component.name === "system";
+      const isParam =
+        component.variability === ModelicaVariability.PARAMETER ||
+        (component.declaration as any)?.variability === "parameter" ||
+        (component.entry?.metadata as any)?.variability === "parameter" ||
+        (component.entry?.metadata as any)?.typePrefixes?.includes("parameter");
+      const isExcludedKind =
+        kind === ModelicaClassKind.TYPE ||
+        kind === ModelicaClassKind.FUNCTION ||
+        kind === ModelicaClassKind.RECORD ||
+        kind === ModelicaClassKind.PACKAGE ||
+        kind === ModelicaClassKind.CONNECTOR ||
+        Boolean(classPrefix?.includes("package")) ||
+        Boolean(classPrefix?.includes("connector")) ||
+        Boolean(classPrefix?.includes("type")) ||
+        Boolean(classPrefix?.includes("function")) ||
+        Boolean(classPrefix?.includes("record"));
+      const isPrimitive =
+        !componentClassInstance ||
+        (componentClassInstance?.name &&
+          [
+            "Real",
+            "Integer",
+            "Boolean",
+            "String",
+            "ExternalObject",
+            "Voltage",
+            "Current",
+            "Resistance",
+            "Frequency",
+            "Angle",
+            "Inductance",
+            "Capacitance",
+            "Power",
+          ].includes(componentClassInstance.name));
+
+      if (isOuter || isParam || isExcludedKind || isPrimitive) {
+        continue;
+      }
+
       const icon = componentClassInstance?.annotation
         ? (componentClassInstance.annotation("Icon", component) as IIcon | null)
         : null;
@@ -1091,6 +1158,101 @@ export function evalMacroCondition(
   return negate ? !truthy : truthy;
 }
 
+function findArgsInCst(node: any): any[] {
+  const results: any[] = [];
+  if (!node) return results;
+  if (Cst.Argument.is(node)) {
+    results.push(node);
+    return results;
+  }
+  for (const ch of node.children || []) {
+    results.push(...findArgsInCst(ch));
+  }
+  return results;
+}
+
+function findElemModInCst(node: any): any {
+  if (!node) return null;
+  if (Cst.ElementModification.is(node)) return node;
+  for (const ch of node.children || []) {
+    const found = findElemModInCst(ch);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findNameInCst(node: any): any {
+  if (!node) return null;
+  if (Cst.Identifier.is(node)) return node;
+  for (const ch of node.children || []) {
+    const found = findNameInCst(ch);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findClassModInCst(node: any): any {
+  if (!node) return null;
+  if (Cst.ClassModification.is(node)) return node;
+  for (const ch of node.children || []) {
+    const found = findClassModInCst(ch);
+    if (found) return found;
+  }
+  return null;
+}
+
+export function extractCstModifierValue(cstNode: any, paramName: string): string | undefined {
+  if (!cstNode) return undefined;
+  const args = findArgsInCst(cstNode);
+  for (const arg of args) {
+    const elemMod = findElemModInCst(arg);
+    if (!elemMod) continue;
+
+    const nameNode =
+      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ?? findNameInCst(elemMod);
+    if (nameNode && nameNode.text?.trim() === paramName) {
+      const valModNode =
+        (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
+        (elemMod.children || []).find((c: any) => Cst.Modification.is(c));
+      if (valModNode) {
+        const text = valModNode.text?.trim();
+        if (text?.startsWith("=")) {
+          return text.replace(/^=\s*/, "").trim();
+        }
+        return text;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function extractCstNestedModifierValue(
+  cstNode: any,
+  paramName: string,
+  subParamName: string,
+): string | undefined {
+  if (!cstNode) return undefined;
+  // 1. Direct dotted notation: e.g. V.start = 5
+  const dotted = extractCstModifierValue(cstNode, `${paramName}.${subParamName}`);
+  if (dotted) return dotted;
+
+  // 2. Nested class modification: e.g. V(start = 5)
+  const args = findArgsInCst(cstNode);
+  for (const arg of args) {
+    const elemMod = findElemModInCst(arg);
+    if (!elemMod) continue;
+    const nameNode = findNameInCst(elemMod);
+    if (nameNode && nameNode.text?.trim() === paramName) {
+      const classMod = findClassModInCst(elemMod);
+      if (classMod) {
+        const nestedVal = extractCstModifierValue(classMod, subParamName);
+        if (nestedVal) return nestedVal;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function evaluateMacroExpression(
   expr: string,
   classInstance?: ModelicaClassInstance,
@@ -1115,10 +1277,14 @@ export function evaluateMacroExpression(
     }
   }
 
-  const name = trimmed;
+  const name = trimmed.startsWith("%") ? trimmed.slice(1) : trimmed;
   // 1. Check if the specific component instance overrides this parameter
   const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument?.(name)?.expression;
-  const compVal = formatPropertyValue(compArgExpr);
+  let compVal = formatPropertyValue(compArgExpr);
+  if (!compVal) {
+    const compCst = (componentInstance as any)?.cstNode ?? (componentInstance as any)?.abstractSyntaxNode;
+    compVal = extractCstModifierValue(compCst, name);
+  }
 
   const namedElement =
     typeof classInstance?.resolveName === "function" ? classInstance.resolveName(name.split(".")) : null;
@@ -1928,8 +2094,10 @@ export function buildComponentProperties(
       let node = element.cstNode ?? element.abstractSyntaxNode;
       let p = node?.parent;
       while (p && !variability) {
-        if (p.type === "component_clause" || p.type === "ComponentClause") {
-          const tp = p.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix");
+        if (Cst.ComponentClause.is(p)) {
+          const tp =
+            (Cst.ComponentClause.is(p) ? Cst.ComponentClause.typePrefix(p) : null) ??
+            p.children?.find((c: any) => Cst.TypePrefix.is(c));
           if (tp?.text?.includes("parameter")) variability = ModelicaVariability.PARAMETER;
           else if (tp?.text?.includes("constant")) variability = ModelicaVariability.CONSTANT;
           break;
@@ -1953,6 +2121,10 @@ export function buildComponentProperties(
       if (compArgExpr != null) {
         value = formatPropertyValue(compArgExpr);
       }
+      if (!value) {
+        const compCst = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
+        value = extractCstModifierValue(compCst, element.name ?? "");
+      }
       if (!value && component.cstNode) {
         const compCstText = component.cstNode.text ?? "";
         const escapedName = (element.name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1975,6 +2147,10 @@ export function buildComponentProperties(
         if (elemStartMod != null) {
           value = formatPropertyValue(elemStartMod);
         }
+      }
+      if (!value) {
+        const elemCst = (element as any)?.cstNode ?? (element as any)?.abstractSyntaxNode;
+        value = extractCstModifierValue(elemCst, "start");
       }
       if (!value && element.cstNode) {
         const elemText = element.cstNode.text ?? "";
@@ -2140,8 +2316,24 @@ export function buildComponentProperties(
         const compStartArg = (component.modification as any)
           ?.getModificationArgument?.(element.name ?? "")
           ?.classModification?.getModificationArgument?.("start");
-        const startVal =
-          formatPropertyValue(compStartArg?.expression) ?? formatPropertyValue(startMod?.expression) ?? "-";
+        let startVal = formatPropertyValue(compStartArg?.expression) ?? formatPropertyValue(startMod?.expression);
+
+        if (!startVal) {
+          const compCst = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
+          const nestedStart = extractCstNestedModifierValue(compCst, element.name ?? "", "start");
+          if (nestedStart) {
+            startVal = nestedStart;
+          } else {
+            const elemCst = (element as any)?.cstNode ?? (element as any)?.abstractSyntaxNode;
+            const elemStart = extractCstModifierValue(elemCst, "start");
+            if (elemStart) {
+              startVal = elemStart;
+            }
+          }
+        }
+        if (!startVal) {
+          startVal = "-";
+        }
         const startKey = `${element.name}.start`;
         values[startKey] = startVal;
         getOrCreateGroup(tabName, groupName).push({

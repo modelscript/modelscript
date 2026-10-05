@@ -13,6 +13,7 @@ process.env["NODE_ENV"] = "test";
 
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
+import { JobQueue } from "../src/jobs.js";
 import { JWT_SECRET } from "../src/middleware/auth-middleware.js";
 import { LibraryStorage } from "../src/storage.js";
 import { isOfacSanctioned } from "../src/util/compliance.js";
@@ -44,10 +45,12 @@ test("Package Supply Chain Security & OFAC Compliance", async (t) => {
 
   const db = new LibraryDatabase(dbDir);
   const storage = new LibraryStorage(storageDir);
-  const app = createApp({ database: db, storage });
+  const jobQueue = new JobQueue();
+  const app = createApp({ database: db, storage, jobQueue });
 
   t.after(() => {
     try {
+      jobQueue.clear();
       db.db.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {
@@ -55,7 +58,7 @@ test("Package Supply Chain Security & OFAC Compliance", async (t) => {
     }
   });
 
-  const user = db.createUser("sec_engineer", "sec@modelscript.test", "hashed_pwd", { emailVerified: true });
+  const user = db.createUser("sec", "sec@modelscript.test", "hashed_pwd", { emailVerified: true });
   const authToken = jwt.sign({ id: user.id, username: user.username, email: user.email }, JWT_SECRET, {
     expiresIn: "1h",
   });

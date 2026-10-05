@@ -72,6 +72,7 @@ export let nextHeadsCount: u32 = 0;
 export let candidateHeadsCount: u32 = 0;
 export let t_pausedHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let pausedHeadsCount: u32 = 0;
+export let g_expectedVersion: u32 = 0;
 
 export const HEAD_PROBE_SIZE: u32 = 2048;
 export const HEAD_PROBE_MASK: u32 = 2047;
@@ -654,6 +655,7 @@ export function pushActiveHead(headPtr: u32): boolean {
       t_activeHeads[activeHeadsCount] = headPtr;
       activeHeadsCount++;
       addToFrontierSummary(t_activeSummary, newHead);
+      if (!newHead.inErrorState) g_expectedVersion++;
       if (configEnableActivePruning) {
         pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount);
       }
@@ -662,7 +664,10 @@ export function pushActiveHead(headPtr: u32): boolean {
   }
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let r = mergeIntoFrontierSlot(t_activeHeads, i, newHead, false);
-    if (r != MERGE_NONE) return true;
+    if (r != MERGE_NONE) {
+      if (!newHead.inErrorState) g_expectedVersion++;
+      return true;
+    }
   }
   if (changetype<usize>(t_activeHeadProbe) != 0) {
     t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
@@ -670,6 +675,7 @@ export function pushActiveHead(headPtr: u32): boolean {
   t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
   addToFrontierSummary(t_activeSummary, newHead);
+  if (!newHead.inErrorState) g_expectedVersion++;
   if (configEnableActivePruning) {
     pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount);
   }

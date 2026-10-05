@@ -31,7 +31,7 @@ import {
   S,
 } from "../arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool, setAncestorCacheEnabled } from "./engine";
-import { inputLength, inputEncoding } from "../parser";
+import { inputLength, inputEncoding, HAS_COMPILED_LINTS } from "../parser";
 import { UnmanagedMap64To64, createMap64To64, UnmanagedMap64 } from "../core/hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "../indexing/stub";
 
@@ -493,6 +493,11 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
       if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
         continue;
       }
+    }
+
+    // Diagnostics fast path: if grammar has no compiled lints, subtrees without error flags can be skipped
+    if (!HAS_COMPILED_LINTS && (flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0 && !inError && !inTainted) {
+      continue;
     }
 
     let firstChild = getNodeFirstChild(node);

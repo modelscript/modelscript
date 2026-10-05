@@ -5,12 +5,26 @@ import test from "node:test";
 import request from "supertest";
 process.env["NODE_ENV"] = "test";
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { createApp } from "../src/app.js";
+import { LibraryDatabase } from "../src/database.js";
 import { CaeResultProcessor } from "../src/services/cae-result-processor.js";
 import { CaeTelemetryStreamer } from "../src/services/cae-telemetry-streamer.js";
 
 test("Cloud Open-Source CAE Solver Backend Execution (@modelscript/api)", async (t) => {
-  const app = createApp();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cae-test-"));
+  const database = new LibraryDatabase(tmpDir);
+  const user = database.createUser("dev", "dev@example.com", "devpass123");
+  database.setUserCreditBalance(user.id, 1000);
+  const app = createApp({ database });
+  t.after(() => {
+    try {
+      database.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
+  });
 
   await t.test("CaeTelemetryStreamer: parses CalculiX (ccx) stdout logs", () => {
     const streamer = new CaeTelemetryStreamer("calculix");

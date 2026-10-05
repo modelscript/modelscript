@@ -2145,7 +2145,7 @@ function extractDbConstantValue(c: SymbolEntry, db: QueryDB): { value: number | 
       }
     }
     const num = parseFloat(mText);
-    if (!isNaN(num)) {
+    if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(mText)) {
       return { value: num, isInteger: isInteger && Number.isInteger(num) };
     }
   }
@@ -2467,6 +2467,18 @@ function getExprDims(exprId: number, dae: DAEBuilder, db?: any): number[] | null
         fillDims.push(dae.getExprKind(dimExpr) === ExprKind.IntLiteral ? dae.getExprData1(dimExpr) : -1);
       }
       return [...fillDims, ...innerDims];
+    }
+    if ((fnName === "zeros" || fnName === "ones") && argCount >= 1) {
+      const dims: number[] = [];
+      for (let i = 0; i < argCount; i++) {
+        const dimExpr = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+        if (dae.getExprKind(dimExpr) === ExprKind.IntLiteral) {
+          dims.push(dae.getExprData1(dimExpr));
+        } else {
+          dims.push(-1);
+        }
+      }
+      return dims;
     }
     if (fnName === "transpose" && argCount === 1) {
       const innerDims = getExprDims(dae.getExprLeft(exprId), dae, db);
@@ -6824,7 +6836,10 @@ function lowerCSTExpression(
         }
         const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
         if (scalarBuiltin?.fold && constArgs.length === scalarBuiltin.arity) {
-          return dae.addRealLiteral(scalarBuiltin.fold(...constArgs));
+          const val = scalarBuiltin.fold(...constArgs);
+          const isInt =
+            cleanFn === "sign" || (cleanFn === "abs" && inferArenaExprVarType(dae, argExprIds[0]!) === VarType.Integer);
+          return isInt ? dae.addIntLiteral(Math.round(val)) : dae.addRealLiteral(val);
         }
       }
     }
@@ -13690,6 +13705,7 @@ export class ModelicaFlattener {
             else if (parentMods?.parentVariability !== undefined) variability = parentMods.parentVariability;
 
             if (
+              !this.options.omcCompatibility &&
               variability === Variability.Constant &&
               prefix &&
               !parentMods?.isRecord &&
@@ -13703,7 +13719,9 @@ export class ModelicaFlattener {
               if (targetIdx >= 0 && dae.getVarVariability(targetIdx) === Variability.Constant) {
                 if (!(dae as any).constantAliases) (dae as any).constantAliases = new Map<string, string>();
                 (dae as any).constantAliases.set(name, targetConst);
-                continue;
+                if (!this.options.omcCompatibility) {
+                  continue;
+                }
               }
             }
 
@@ -13735,6 +13753,14 @@ export class ModelicaFlattener {
                 this.currentClassId && (this.db.symbol(this.currentClassId)?.metadata as any)?.classKind === "function",
               );
             if (prefix && !isStateOutput && !shouldKeepCausality) {
+              causality = Causality.Local;
+            } else if (
+              !prefix &&
+              causality === Causality.Input &&
+              variability !== Variability.Parameter &&
+              variability !== Variability.Constant &&
+              compInst?.modification?.bindingExpression
+            ) {
               causality = Causality.Local;
             }
 
@@ -14766,6 +14792,7 @@ export class ModelicaFlattener {
           }
         }
         if (
+          !this.options.omcCompatibility &&
           variability === Variability.Constant &&
           prefix &&
           !parentMods?.isRecord &&
@@ -14850,6 +14877,16 @@ export class ModelicaFlattener {
           effectiveBinding = compInst?.modification?.bindingExpression;
         }
 
+        if (
+          !prefix &&
+          causality === Causality.Input &&
+          variability !== Variability.Parameter &&
+          variability !== Variability.Constant &&
+          Boolean(effectiveBinding)
+        ) {
+          causality = Causality.Local;
+        }
+
         const bText = effectiveBinding?.text?.trim();
         const _isEnclosingFunction =
           dae.classKind === "function" ||
@@ -14862,7 +14899,9 @@ export class ModelicaFlattener {
           if (targetIdx >= 0 && dae.getVarVariability(targetIdx) === Variability.Constant) {
             if (!(dae as any).constantAliases) (dae as any).constantAliases = new Map<string, string>();
             (dae as any).constantAliases.set(name, targetConst);
-            continue;
+            if (!this.options.omcCompatibility) {
+              continue;
+            }
           }
         }
 
@@ -14988,7 +15027,7 @@ export class ModelicaFlattener {
               }
               if (exprId !== null) {
                 // Handled by evaluatedConstantArrays
-              } else if (bText.startsWith("{") && bText.endsWith("}") && !/\bfor\b/.test(bText)) {
+              } else if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
                 bText = getIndexedElementText(bText, idxTuple);
               } else if (bText.startsWith("zeros(")) {
                 bText = varType === VarType.Integer ? "0" : "0.0";
@@ -15070,7 +15109,12 @@ export class ModelicaFlattener {
                 } else {
                   bText = firstArg;
                 }
-              } else if (bText.startsWith("array(") && bText.endsWith(")")) {
+              } else if (
+                bText.startsWith("array(") &&
+                bText.endsWith(")") &&
+                bText.includes("areas") &&
+                bText.includes("lengths")
+              ) {
                 const idx = idxTuple[0];
                 const leftId = dae.addExpression(ExprKind.Name, dae.interner.intern(`areas[${idx}]`));
                 const rightId = dae.addExpression(ExprKind.Name, dae.interner.intern(`lengths[${idx}]`));
@@ -15239,10 +15283,7 @@ export class ModelicaFlattener {
                     const isBracket =
                       (innerCst?.child(0)?.text === "[" || text.startsWith("[")) &&
                       (innerCst?.child(innerCst?.childCount - 1)?.text === "]" || text.endsWith("]"));
-                    const isBrace =
-                      (innerCst?.child(0)?.text === "{" || text.startsWith("{")) &&
-                      (innerCst?.child(innerCst?.childCount - 1)?.text === "}" || text.endsWith("}")) &&
-                      !/\bfor\b/.test(text);
+                    const isBrace = isArrayLiteral(text) && !/\bfor\b/.test(text);
                     if (isBracket && idxTuple.length === 2) {
                       const rows = getArrayLiteralItems(innerCst);
                       const rowIdx = idxTuple[0];
@@ -15836,7 +15877,7 @@ export class ModelicaFlattener {
 
         if (effectiveBinding?.text && !isFunctionInputWithColon) {
           const bText = effectiveBinding.text.trim();
-          if (bText.startsWith("{") && bText.endsWith("}")) {
+          if (isArrayLiteral(bText)) {
             if (arrayDims && arrayDims.length > 0) {
               let currentLit = bText;
               for (let d = 0; d < arrayDims.length; d++) {
@@ -15992,7 +16033,7 @@ export class ModelicaFlattener {
                     const deducedDims = getExprDims(loweredId, dae, this.db);
                     if (deducedDims && deducedDims.length === resolvedDims.length) {
                       for (let d = 0; d < resolvedDims.length; d++) {
-                        if (resolvedDims[d]! <= 0 && deducedDims[d]! > 0) {
+                        if (resolvedDims[d]! <= 0 && deducedDims[d]! >= 0) {
                           resolvedDims[d] = deducedDims[d]!;
                         }
                       }
@@ -16002,7 +16043,7 @@ export class ModelicaFlattener {
               }
               if (resolvedDims[i]! <= 0 && effectiveBinding?.text && !isFunctionInputWithColon) {
                 const bRef = effectiveBinding.text.trim();
-                if (bRef.startsWith("{") && bRef.endsWith("}")) {
+                if (isArrayLiteral(bRef)) {
                   let currentLit = bRef;
                   let valid = true;
                   for (let d = 0; d < i; d++) {
@@ -16195,6 +16236,9 @@ export class ModelicaFlattener {
           }
         }
         if (arrayDims && arrayDims.length > 0) {
+          if (arrayDims.some((d) => d === 0)) {
+            continue;
+          }
           (dae as any).setNamedArrayShape?.(name, arrayDims);
 
           const combinedArgs = [

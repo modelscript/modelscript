@@ -21,8 +21,6 @@ import { createWasmParser } from "../src-gen/bindings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MSL_ROOT = path.resolve(__dirname, "../../../apps/api/data/libraries/Modelica/4.1.0/extracted/Modelica");
-const KEYSTROKES = 100;
-
 const args = Object.fromEntries(
   process.argv
     .slice(2)
@@ -32,7 +30,8 @@ const args = Object.fromEntries(
       return [k, v ?? "true"];
     }),
 );
-const FILE_COUNT = Number(args.files ?? 12);
+const KEYSTROKES = Number(args.keystrokes ?? 200);
+const FILE_COUNT = Number(args.files ?? 20);
 const RUNS = Number(args.runs ?? 5);
 // Files >= ~106 KB currently trap the parser (WASM `unreachable`), so cap the input size by default.
 const MAX_KB = Number(args.maxkb ?? 100);
@@ -87,7 +86,6 @@ function median(xs: number[]): number {
 
 async function main(): Promise<void> {
   const wasmPath = path.resolve(__dirname, "../dist/parser.wasm");
-  const { facade } = await createWasmParser(wasmPath);
 
   const all: string[] = [];
   walk(MSL_ROOT, all);
@@ -97,7 +95,19 @@ async function main(): Promise<void> {
     .sort((a, b) => b.size - a.size)
     .slice(0, FILE_COUNT);
 
-  const parse = (src: string): { ms: number; diagHash: string; diagCount: number } => {
+  let facade: any;
+  const parse = (
+    src: string,
+  ): {
+    ms: number;
+    diagHash: string;
+    diagCount: number;
+    lexCalls: number;
+    expectedCalls: number;
+    memoHits: number;
+    memoMisses: number;
+    peakHeads: number;
+  } => {
     facade.lastAstRoot = 0;
     const t0 = performance.now();
     const root = facade.parseIncremental(src, 0, 0, src.length);
@@ -107,11 +117,23 @@ async function main(): Promise<void> {
       .update(JSON.stringify(diags.map((d) => [d.message, d.range])))
       .digest("hex")
       .slice(0, 12);
-    return { ms, diagHash: h, diagCount: diags.length };
+    const getCounter = (idx: number) =>
+      typeof facade.exports?.getDebugCounter === "function" ? facade.exports.getDebugCounter(idx) : 0;
+    return {
+      ms,
+      diagHash: h,
+      diagCount: diags.length,
+      lexCalls: getCounter(0),
+      expectedCalls: getCounter(1),
+      memoHits: getCounter(2),
+      memoMisses: getCounter(3),
+      peakHeads: getCounter(4),
+    };
   };
 
   const results: Record<string, Record<string, unknown>> = {};
   for (const { f, size } of files) {
+    ({ facade } = await createWasmParser(wasmPath));
     const name = path.relative(MSL_ROOT, f);
     console.error(`[bench] ${name} (${Math.round(size / 1024)} KB)`);
     const src = fs.readFileSync(f, "utf8");
@@ -124,14 +146,34 @@ async function main(): Promise<void> {
     ] as const) {
       parse(text); // warm-up
       const times: number[] = [];
-      let last = { diagHash: "", diagCount: 0 };
+      let last: ReturnType<typeof parse> = {
+        ms: 0,
+        diagHash: "",
+        diagCount: 0,
+        lexCalls: 0,
+        expectedCalls: 0,
+        memoHits: 0,
+        memoMisses: 0,
+        peakHeads: 0,
+      };
       for (let i = 0; i < RUNS; i++) {
         const r = parse(text);
         times.push(r.ms);
         last = r;
       }
-      row[label] = { ms: +median(times).toFixed(2), diags: last.diagCount, hash: last.diagHash };
-      console.error(`[bench]   ${label}: median ${(row[label] as { ms: number }).ms} ms, diags=${last.diagCount}`);
+      row[label] = {
+        ms: +median(times).toFixed(2),
+        diags: last.diagCount,
+        hash: last.diagHash,
+        lex: last.lexCalls,
+        exp: last.expectedCalls,
+        memoHits: last.memoHits,
+        memoMisses: last.memoMisses,
+        peakHeads: last.peakHeads,
+      };
+      console.error(
+        `[bench]   ${label}: median ${(row[label] as { ms: number }).ms} ms, diags=${last.diagCount}, lex=${last.lexCalls}, exp=${last.expectedCalls}, peakH=${last.peakHeads}`,
+      );
     }
 
     // Incremental typing replay: type KEYSTROKES chars of a stray identifier after a ';' near the middle.
@@ -146,7 +188,9 @@ async function main(): Promise<void> {
       const t0 = performance.now();
       const root = facade.parseIncremental(typed[i], mid + i, 0, ++len);
       keyTimes.push(performance.now() - t0);
-      if (i === 0 || i === 9) console.error(`[bench]   typing keystroke ${i + 1}: ${keyTimes[i].toFixed(1)} ms`);
+      if (i === 0 || i === 9 || i === 49 || i === 99 || i === 199) {
+        console.error(`[bench]   typing keystroke ${i + 1}: ${keyTimes[i].toFixed(1)} ms`);
+      }
       if (i === typed.length - 1) {
         const diags = facade.getDiagnostics(root) as { message: string; range: unknown }[];
         lastHash = createHash("sha1")
@@ -161,26 +205,32 @@ async function main(): Promise<void> {
 
   // Report
   console.log(
-    "file".padEnd(52),
+    "file".padEnd(46),
     "KB".padStart(5),
     "clean ms".padStart(9),
-    "errors ms".padStart(10),
+    "err ms".padStart(8),
+    "clean lex/exp".padStart(15),
+    "err lex/exp".padStart(15),
+    "peakH".padStart(6),
     "type med".padStart(9),
     "type max".padStart(9),
   );
   let totalClean = 0;
   let totalErr = 0;
   for (const [name, row] of Object.entries(results)) {
-    const c = row.clean as { ms: number };
-    const e = row.errors as { ms: number };
+    const c = row.clean as { ms: number; lex: number; exp: number };
+    const e = row.errors as { ms: number; lex: number; exp: number; peakHeads: number };
     const t = row.typing as { medianMs: number; maxMs: number };
     totalClean += c.ms;
     totalErr += e.ms;
     console.log(
-      name.slice(-52).padEnd(52),
+      name.slice(-46).padEnd(46),
       String(row.kb).padStart(5),
       String(c.ms).padStart(9),
-      String(e.ms).padStart(10),
+      String(e.ms).padStart(8),
+      `${c.lex}/${c.exp}`.padStart(15),
+      `${e.lex}/${e.exp}`.padStart(15),
+      String(e.peakHeads).padStart(6),
       String(t.medianMs).padStart(9),
       String(t.maxMs).padStart(9),
     );

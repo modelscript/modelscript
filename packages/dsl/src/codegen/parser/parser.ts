@@ -970,6 +970,9 @@ export function generateParserTables(
     }
     if (validLintFns.length > 0) {
       code += `import { ${validLintFns.join(", ")} } from "./graph";\n`;
+      lintSwitchStr += `\nexport const HAS_COMPILED_LINTS: bool = true;\n`;
+    } else {
+      lintSwitchStr += `\nexport const HAS_COMPILED_LINTS: bool = false;\n`;
     }
     lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
     for (const [nodeName, fnCalls] of nodeLints.entries()) {
@@ -986,7 +989,7 @@ export function generateParserTables(
     }
     lintSwitchStr += "    default:\n      break;\n  }\n}\n";
   } else {
-    lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {}\n`;
+    lintSwitchStr += `\nexport const HAS_COMPILED_LINTS: bool = false;\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {}\n`;
   }
   code += lintSwitchStr;
 
@@ -1142,7 +1145,7 @@ export function generateParserTables(
     .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
-  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, peekCharLen, peekPrevChar, peekPrevCharLen, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, MAX_SYMBOL_ID, executeLints } from "../parser";\n`;
+  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, peekCharLen, peekPrevChar, peekPrevCharLen, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, MAX_SYMBOL_ID, executeLints, HAS_COMPILED_LINTS } from "../parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {

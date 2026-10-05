@@ -902,7 +902,7 @@ export function runTestCase(
               : cd.severity === 3 || cd.severity === 4
                 ? "notification"
                 : "info";
-        if (diagnostics.some((existing) => existing.message === cd.message)) {
+        if (diagnostics.some((existing) => existing.message === cd.message && existing.code === cd.code)) {
           continue;
         }
         diagnostics.push({

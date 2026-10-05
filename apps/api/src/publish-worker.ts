@@ -97,7 +97,11 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
 
         console.log(`[publish] ${name}@${version}: exporting lsp-bundle.zip (early, no icons)...`);
         const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
-        await exportLspBundle(queryEngineRef, libraryPath, bundlePath, {});
+        try {
+          await exportLspBundle(queryEngineRef, libraryPath, bundlePath, {});
+        } catch (err) {
+          console.warn(`[publish] ${name}@${version}: failed to export early lsp-bundle:`, err);
+        }
       },
     );
 
@@ -114,7 +118,11 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
       );
       const indexPath = storage.getIndexPath(name, version);
       const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
-      await exportLspBundle(queryEngineRef, libraryPath, bundlePath, iconSvgs);
+      try {
+        await exportLspBundle(queryEngineRef, libraryPath, bundlePath, iconSvgs);
+      } catch (err) {
+        console.warn(`[publish] ${name}@${version}: failed to re-export lsp-bundle:`, err);
+      }
     }
 
     // --- Automatic Artifact Scanning ---

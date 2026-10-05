@@ -77,11 +77,15 @@ jobs:
         id: cache-msl
         uses: actions/cache@v4
         with:
-          path: scripts/ModelicaStandardLibrary_v4.1.0.zip
+          path: |
+            scripts/ModelicaStandardLibrary_v4.1.0.zip
+            data/libraries/Modelica/4.1.0/extracted
           key: ${{ runner.os }}-msl-v4.1.0
-      - name: Download MSL
-        if: steps.cache-msl.outputs.cache-hit != 'true'
-        run: node scripts/download-msl.cjs
+      - name: Download and Extract MSL
+        run: |
+          if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
+            node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
+          fi
       - name: Cache FMI Simulator
         id: cache-fmusim
         uses: actions/cache@v4

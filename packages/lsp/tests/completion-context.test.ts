@@ -140,49 +140,43 @@ describe("SOTA CST Completion Context", () => {
   it("should extract target expression and replacement range for simple dot access", () => {
     const code = `model M\n  A a;\nequation\n  a.\nend M;`;
     const root = facade.parse(code);
-    const isUtf16 = facade.getInputEncoding ? facade.getInputEncoding() === 1 : false;
     const dotCharOffset = code.indexOf("a.") + 2;
-    const dotByteOffset = dotCharOffset * (isUtf16 ? 2 : 1);
-    const ctx = facade.getCompletionContext(root, dotByteOffset);
+    const ctx = facade.getCompletionContext(root, dotCharOffset);
 
     expect(ctx).not.toBeNull();
     if (ctx) {
       expect(ctx.hasTarget).toBe(true);
       expect(ctx.targetText).toBe("a");
-      expect(ctx.replaceRange.start).toBe(dotByteOffset);
-      expect(ctx.replaceRange.end).toBe(dotByteOffset);
+      expect(ctx.replaceRange.start).toBe(dotCharOffset);
+      expect(ctx.replaceRange.end).toBe(dotCharOffset);
     }
   });
 
   it("should extract target expression for array index lookup", () => {
     const code = `model M\n  A a[5];\nequation\n  a[0].\nend M;`;
     const root = facade.parse(code);
-    const isUtf16 = facade.getInputEncoding ? facade.getInputEncoding() === 1 : false;
     const dotCharOffset = code.indexOf("a[0].") + 5;
-    const dotByteOffset = dotCharOffset * (isUtf16 ? 2 : 1);
-    const ctx = facade.getCompletionContext(root, dotByteOffset);
+    const ctx = facade.getCompletionContext(root, dotCharOffset);
 
     expect(ctx).not.toBeNull();
     if (ctx) {
       expect(ctx.hasTarget).toBe(true);
       expect(ctx.targetText).toBe("a[0]");
-      expect(ctx.replaceRange.start).toBe(dotByteOffset);
+      expect(ctx.replaceRange.start).toBe(dotCharOffset);
     }
   });
 
   it("should extract target expression for function call lookup", () => {
     const code = `model M\n  A a;\nequation\n  getA().\nend M;`;
     const root = facade.parse(code);
-    const isUtf16 = facade.getInputEncoding ? facade.getInputEncoding() === 1 : false;
     const dotCharOffset = code.indexOf("getA().") + 7;
-    const dotByteOffset = dotCharOffset * (isUtf16 ? 2 : 1);
-    const ctx = facade.getCompletionContext(root, dotByteOffset);
+    const ctx = facade.getCompletionContext(root, dotCharOffset);
 
     expect(ctx).not.toBeNull();
     if (ctx) {
       expect(ctx.hasTarget).toBe(true);
       expect(ctx.targetText).toBe("getA()");
-      expect(ctx.replaceRange.start).toBe(dotByteOffset);
+      expect(ctx.replaceRange.start).toBe(dotCharOffset);
     }
   });
 });

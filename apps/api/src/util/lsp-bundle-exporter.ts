@@ -59,6 +59,9 @@ export async function exportLspBundle(
 
     // 3. Add source files
     function walkDir(dir: string, relPrefix = "sources/") {
+      if (!fs.existsSync(dir)) {
+        return;
+      }
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);

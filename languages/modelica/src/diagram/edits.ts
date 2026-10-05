@@ -10,29 +10,33 @@ import { CstUnparser } from "@modelscript/dsl";
 import { Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
-
-function findChildByType(node: any, typeName: string): any {
-  if (!node) return null;
-  const targetLower = typeName.toLowerCase();
-  for (const ch of node.children || []) {
-    if (ch.type === typeName || ch.type?.toLowerCase() === targetLower) return ch;
-  }
-  return null;
-}
+import { Cst } from "../../src-gen/bindings.js";
 
 function findDescendantModification(node: any, name: string): any {
   if (!node) return null;
-  const isTarget =
-    (node.type === "element_modification" ||
-      node.type === "ElementModification" ||
-      node.type === "argument" ||
-      node.type === "Argument") &&
-    (node.text?.startsWith(name) ||
-      node.children?.some(
-        (c: any) =>
-          (c.type === "name" || c.type === "identifier" || c.type === "Identifier") && c.text?.trim() === name,
-      ));
-  if (isTarget) return node;
+  const isModificationNode =
+    Cst.ElementModification.is(node) ||
+    Cst.Argument.is(node) ||
+    node.type === "element_modification" ||
+    node.type === "argument" ||
+    node.type === "named_argument" ||
+    (typeof (Cst as any).kind === "function" &&
+      ((Cst as any).kind(node) === "element_modification" || (Cst as any).kind(node) === "argument"));
+
+  const nameRegex = new RegExp(`^${name}(?:[\\s(=]|$)`);
+  const matchesName =
+    nameRegex.test(node.text?.trimStart() ?? "") ||
+    node.children?.some(
+      (c: any) => (Cst.Identifier.is(c) || c.type === "identifier" || c.name === name) && c.text?.trim() === name,
+    );
+
+  if (isModificationNode && matchesName) {
+    for (const ch of node.children || []) {
+      const inner = findDescendantModification(ch, name);
+      if (inner) return inner;
+    }
+    return node;
+  }
   for (const ch of node.children || []) {
     const res = findDescendantModification(ch, name);
     if (res) return res;
@@ -67,7 +71,7 @@ function getAnnotationClauseNode(node: any): any {
   if (node.annotationClause) return node.annotationClause;
   const findAnn = (n: any): any => {
     if (!n) return null;
-    if (n.type === "annotation_clause" || n.type === "AnnotationClause") return n;
+    if (Cst.AnnotationClause.is(n)) return n;
     for (const ch of n.children || []) {
       const res = findAnn(ch);
       if (res) return res;
@@ -80,9 +84,13 @@ function getAnnotationClauseNode(node: any): any {
 function getDeclarationNode(node: any): any {
   if (!node) return null;
   if (node.declaration) return node.declaration;
+  if (Cst.ComponentDeclaration.is(node)) {
+    const cstDecl = Cst.ComponentDeclaration.declaration(node);
+    if (cstDecl) return cstDecl;
+  }
   const findDecl = (n: any): any => {
     if (!n) return null;
-    if (n.type === "declaration" || n.type === "Declaration") return n;
+    if (Cst.Declaration.is(n)) return n;
     for (const ch of n.children || []) {
       const res = findDecl(ch);
       if (res) return res;
@@ -97,9 +105,13 @@ function getDeclarationIdentNode(node: any): any {
   if (node.declaration?.identifier) return node.declaration.identifier;
   if (node.identifier) return node.identifier;
   const decl = getDeclarationNode(node) ?? node;
+  if (Cst.Declaration.is(decl)) {
+    const cstName = Cst.Declaration.name(decl);
+    if (cstName) return cstName;
+  }
   const findIdent = (n: any): any => {
     if (!n) return null;
-    if (n.type === "identifier" || n.type === "Identifier") return n;
+    if (Cst.Identifier.is(n)) return n;
     for (const ch of n.children || []) {
       const res = findIdent(ch);
       if (res) return res;
@@ -113,9 +125,13 @@ function getModificationNode(node: any): any {
   if (!node) return null;
   const decl = getDeclarationNode(node) ?? node;
   if (decl.modification) return decl.modification;
+  if (Cst.Declaration.is(decl)) {
+    const cstMod = Cst.Declaration.modification(decl);
+    if (cstMod) return cstMod;
+  }
   const findMod = (n: any): any => {
     if (!n) return null;
-    if (n.type === "modification" || n.type === "Modification") return n;
+    if (Cst.Modification.is(n)) return n;
     for (const ch of n.children || []) {
       const res = findMod(ch);
       if (res) return res;
@@ -129,9 +145,13 @@ function getSubscriptsNode(node: any): any {
   if (!node) return null;
   const decl = getDeclarationNode(node) ?? node;
   if (decl.arraySubscripts) return decl.arraySubscripts;
+  if (Cst.Declaration.is(decl)) {
+    const cstSubs = Cst.Declaration.arraySubscripts(decl);
+    if (cstSubs) return cstSubs;
+  }
   const findSub = (n: any): any => {
     if (!n) return null;
-    if (n.type === "array_subscripts" || n.type === "ArraySubscripts") return n;
+    if (Cst.ArraySubscripts.is(n)) return n;
     for (const ch of n.children || []) {
       const res = findSub(ch);
       if (res) return res;
@@ -277,7 +297,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
         );
       }
 
-      const classModNode = findChildByType(annotationClause, "class_modification");
+      const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
       if (classModNode && classModNode.children && classModNode.children.length > 0) {
         const patchRes = CstUnparser.patchAndUnparse({
           target: classModNode,
@@ -409,7 +429,7 @@ export function computeConnectInsert(
   if (astNode) {
     const findEquationSection = (node: any): any => {
       if (!node) return null;
-      if (node.type === "equation_section" || node.type === "EquationSection") {
+      if (Cst.EquationSection.is(node)) {
         return node;
       }
       for (const child of node.children || []) {
@@ -430,7 +450,8 @@ export function computeConnectInsert(
     const classSpecifier =
       astNode.classOrInheritanceModification?.classSpecifier ||
       astNode.classSpecifier ||
-      astNode.children?.find?.((c: any) => c.type === "class_specifier" || c.type === "long_class_specifier");
+      (Cst.ClassDefinition.is(astNode) ? Cst.ClassDefinition.classSpecifier(astNode) : null) ||
+      astNode.children?.find?.((c: any) => Cst.ClassSpecifier.is(c) || Cst.LongClassSpecifier.is(c));
 
     const sections: any[] = classSpecifier?.sections ?? [];
 
@@ -507,6 +528,22 @@ export function computeConnectInsert(
 
 // ── Remove connect equation ──
 
+function getConnectEndpoints(ce: any): { source: string; target: string } {
+  const source =
+    ce.lhs ??
+    ce.componentReference1?.parts
+      ?.map((c: { identifier?: { text: string }; text?: string }) => c.identifier?.text ?? c.text ?? "")
+      ?.join(".") ??
+    "";
+  const target =
+    ce.rhs ??
+    ce.componentReference2?.parts
+      ?.map((c: { identifier?: { text: string }; text?: string }) => c.identifier?.text ?? c.text ?? "")
+      ?.join(".") ??
+    "";
+  return { source, target };
+}
+
 export function computeConnectRemove(
   docText: string,
   classInstance: ModelicaClassInstance,
@@ -516,12 +553,7 @@ export function computeConnectRemove(
   const lines = docText.split("\n");
 
   const connectEq: any = Array.from(classInstance.connectEquations).find((ce: any) => {
-    const c1 = ce.componentReference1?.parts
-      .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
-      .join(".");
-    const c2 = ce.componentReference2?.parts
-      .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
-      .join(".");
+    const { source: c1, target: c2 } = getConnectEndpoints(ce);
     return (c1 === source && c2 === target) || (c1 === target && c2 === source);
   });
 
@@ -546,12 +578,7 @@ export function computeComponentsDelete(
   // Remove connect equations involving these components
 
   Array.from(classInstance.connectEquations).forEach((ce: any) => {
-    const c1 = ce.componentReference1?.parts
-      .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
-      .join(".");
-    const c2 = ce.componentReference2?.parts
-      .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
-      .join(".");
+    const { source: c1, target: c2 } = getConnectEndpoints(ce);
     const involvesComponent = [...nameSet].some(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
     );
@@ -590,12 +617,7 @@ export function computeEdgePointEdits(
 
   for (const edge of edges) {
     const connectEq: any = Array.from(classInstance.connectEquations).find((ce: any) => {
-      const c1 = ce.componentReference1?.parts
-        .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
-        .join(".");
-      const c2 = ce.componentReference2?.parts
-        .map((c: { identifier?: { text: string } }) => c.identifier?.text ?? "")
-        .join(".");
+      const { source: c1, target: c2 } = getConnectEndpoints(ce);
       return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
     });
 
@@ -647,7 +669,7 @@ export function computeEdgePointEdits(
           continue;
         }
 
-        const classModNode = findChildByType(annotationClause, "class_modification");
+        const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
         if (classModNode && classModNode.children && classModNode.children.length > 0) {
           const patchRes = CstUnparser.patchAndUnparse({
             target: classModNode,
@@ -858,6 +880,32 @@ export function computeNameEdit(classInstance: ModelicaClassInstance, oldName: s
   return [];
 }
 
+function findDescriptionStringNode(node: any): any {
+  if (!node) return null;
+  const isString = (n: any) => Cst.DescriptionString.is(n) || Cst.StringLiteral.is(n);
+
+  if (isString(node)) return node;
+
+  // Search direct children first
+  for (const child of node.children || []) {
+    if (isString(child)) return child;
+  }
+
+  // If there is a description node, search within it (specifically avoiding annotation_clause)
+  const descNode =
+    node.description ??
+    (Cst.ComponentDeclaration.is(node) ? Cst.ComponentDeclaration.description(node) : null) ??
+    (node.children || []).find((c: any) => Cst.Description.is(c));
+  if (descNode) {
+    if (isString(descNode)) return descNode;
+    for (const child of descNode.children || []) {
+      if (isString(child)) return child;
+    }
+  }
+
+  return null;
+}
+
 export function computeDescriptionEdit(
   docText: string,
   classInstance: ModelicaClassInstance,
@@ -868,11 +916,7 @@ export function computeDescriptionEdit(
   if (!component) return [];
 
   const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-  const descriptionNode =
-    abstractNode?.description ??
-    abstractNode?.children?.find?.(
-      (c: any) => c.type === "comment" || c.type === "string_comment" || c.type === "description",
-    );
+  const descriptionNode = findDescriptionStringNode(abstractNode);
   const escapedDescription = newDescription.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
   const descRange = getNodeRange(descriptionNode);
@@ -899,9 +943,10 @@ export function computeDescriptionEdit(
     ];
   } else {
     if (newDescription === "") return [];
-    const identNode = getDeclarationIdentNode(abstractNode);
-    const modificationNode = getModificationNode(abstractNode);
-    const subscriptsNode = getSubscriptsNode(abstractNode);
+    const declNode = getDeclarationNode(abstractNode);
+    const modificationNode = getModificationNode(declNode ?? abstractNode);
+    const subscriptsNode = getSubscriptsNode(declNode ?? abstractNode);
+    const identNode = getDeclarationIdentNode(declNode ?? abstractNode);
 
     let pos: { row: number; column: number } | null = null;
     const modRange = getNodeRange(modificationNode);
@@ -923,6 +968,77 @@ export function computeDescriptionEdit(
   return [];
 }
 
+function findArgumentByName(
+  classModOrArgList: any,
+  name: string,
+): { argumentNode: any; elementModNode: any; valueModNode: any } | null {
+  if (!classModOrArgList) return null;
+  const findArgs = (node: any): any[] => {
+    const results: any[] = [];
+    if (!node) return results;
+    if (Cst.Argument.is(node)) {
+      results.push(node);
+      return results;
+    }
+    for (const ch of node.children || []) {
+      results.push(...findArgs(ch));
+    }
+    return results;
+  };
+
+  const args = findArgs(classModOrArgList);
+  for (const arg of args) {
+    const findElemMod = (n: any): any => {
+      if (!n) return null;
+      if (Cst.ElementModification.is(n)) return n;
+      for (const ch of n.children || []) {
+        const found = findElemMod(ch);
+        if (found) return found;
+      }
+      return null;
+    };
+    const elemMod = findElemMod(arg);
+    if (!elemMod) continue;
+
+    const findName = (n: any): any => {
+      if (!n) return null;
+      if (Cst.Identifier.is(n)) return n;
+      for (const ch of n.children || []) {
+        const found = findName(ch);
+        if (found) return found;
+      }
+      return null;
+    };
+    const nameNode =
+      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ?? findName(elemMod);
+    if (nameNode && nameNode.text?.trim() === name) {
+      const valueModNode =
+        (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
+        (elemMod.children || []).find((c: any) => Cst.Modification.is(c));
+      return { argumentNode: arg, elementModNode: elemMod, valueModNode };
+    }
+  }
+
+  return null;
+}
+
+function getAllArgumentNodes(classModOrArgList: any): any[] {
+  if (!classModOrArgList) return [];
+  const results: any[] = [];
+  const walk = (node: any) => {
+    if (!node) return;
+    if (Cst.Argument.is(node)) {
+      results.push(node);
+      return;
+    }
+    for (const ch of node.children || []) {
+      walk(ch);
+    }
+  };
+  walk(classModOrArgList);
+  return results;
+}
+
 export function computeParameterEdit(
   classInstance: ModelicaClassInstance,
   componentName: string,
@@ -936,12 +1052,127 @@ export function computeParameterEdit(
   if (!abstractNode) return [];
 
   const declNode = getDeclarationNode(abstractNode) ?? abstractNode;
-  const modification = getModificationNode(declNode);
-
   const shouldRemove = newValue === "";
 
-  if (modification?.classModification) {
-    const classMod = modification.classModification;
+  // 1. Check for real CST structure (nodes with children / startPosition)
+  const modNode = getModificationNode(declNode);
+  const classModNode = modNode
+    ? (modNode.children?.find((c: any) => Cst.ClassModification.is(c)) ??
+      (Cst.ClassModification.is(modNode) ? modNode : null))
+    : null;
+
+  if (classModNode && classModNode.children && classModNode.children.length > 0) {
+    const argListNode = classModNode.children?.find((c: any) => Cst.ArgumentList.is(c));
+    const containerNode = argListNode ?? classModNode;
+    const existingArg = findArgumentByName(containerNode, parameterName);
+
+    if (existingArg) {
+      if (shouldRemove) {
+        const allArgs = getAllArgumentNodes(containerNode);
+        if (allArgs.length <= 1) {
+          // Sole argument: remove entire modification
+          const target = modNode ?? classModNode;
+          const patchRes = CstUnparser.patchAndUnparse({
+            target,
+            replaceText: "",
+          });
+          return [
+            TextEdit.replace(
+              Range.create(
+                patchRes.edit.range.start.line,
+                patchRes.edit.range.start.character,
+                patchRes.edit.range.end.line,
+                patchRes.edit.range.end.character,
+              ),
+              patchRes.edit.newText,
+            ),
+          ];
+        }
+
+        // Multiple arguments: delete this argument from argument_list
+        const patchRes = CstUnparser.patchAndUnparse({
+          target: containerNode,
+          deleteChildren: [existingArg.argumentNode],
+        });
+        return [
+          TextEdit.replace(
+            Range.create(
+              patchRes.edit.range.start.line,
+              patchRes.edit.range.start.character,
+              patchRes.edit.range.end.line,
+              patchRes.edit.range.end.character,
+            ),
+            patchRes.edit.newText,
+          ),
+        ];
+      }
+
+      // Update existing argument value
+      if (existingArg.valueModNode) {
+        const hasSpaceAfterEq = /^=\s+/.test(existingArg.valueModNode.text || "");
+        const newModText = hasSpaceAfterEq ? `= ${newValue}` : `=${newValue}`;
+        const patchRes = CstUnparser.patchAndUnparse({
+          target: existingArg.valueModNode,
+          replaceText: newModText,
+        });
+        return [
+          TextEdit.replace(
+            Range.create(
+              patchRes.edit.range.start.line,
+              patchRes.edit.range.start.character,
+              patchRes.edit.range.end.line,
+              patchRes.edit.range.end.character,
+            ),
+            patchRes.edit.newText,
+          ),
+        ];
+      } else {
+        const patchRes = CstUnparser.patchAndUnparse({
+          target: existingArg.elementModNode,
+          replaceText: `${parameterName} = ${newValue}`,
+        });
+        return [
+          TextEdit.replace(
+            Range.create(
+              patchRes.edit.range.start.line,
+              patchRes.edit.range.start.character,
+              patchRes.edit.range.end.line,
+              patchRes.edit.range.end.character,
+            ),
+            patchRes.edit.newText,
+          ),
+        ];
+      }
+    } else {
+      // Argument not found, append to existing class modification
+      if (shouldRemove) return [];
+      const patchRes = CstUnparser.patchAndUnparse({
+        target: containerNode,
+        insertChildren: [
+          {
+            content: `${parameterName} = ${newValue}`,
+            position: "end",
+            separator: ", ",
+          },
+        ],
+      });
+      return [
+        TextEdit.replace(
+          Range.create(
+            patchRes.edit.range.start.line,
+            patchRes.edit.range.start.character,
+            patchRes.edit.range.end.line,
+            patchRes.edit.range.end.character,
+          ),
+          patchRes.edit.newText,
+        ),
+      ];
+    }
+  }
+
+  // 2. Legacy mock AST fallback (e.g. unit tests with modification.classModification.modificationArguments)
+  if (declNode.modification?.classModification?.modificationArguments) {
+    const classMod = declNode.modification.classModification;
 
     const argIndex = classMod.modificationArguments.findIndex((arg: any) => {
       if (!arg.name) return false;
@@ -1016,24 +1247,25 @@ export function computeParameterEdit(
         TextEdit.insert({ line: endLine, character: endCol - 1 }, `${hasArgs ? ", " : ""}${parameterName}=${newValue}`),
       ];
     }
-  } else {
-    // No existing modification — insert after identifier
-    if (shouldRemove) return [];
-    const identNode = getDeclarationIdentNode(declNode);
-    const subscriptsNode = getSubscriptsNode(declNode);
-    let pos: { row: number; column: number } | null = null;
-    const subRange = getNodeRange(subscriptsNode);
-    const idRange = getNodeRange(identNode);
-    if (subRange) {
-      pos = { row: subRange.endLine, column: subRange.endCol };
-    } else if (idRange) {
-      pos = { row: idRange.endLine, column: idRange.endCol };
-    }
-
-    if (pos) {
-      return [TextEdit.insert({ line: pos.row, character: pos.column }, `(${parameterName}=${newValue})`)];
-    }
   }
+
+  // 3. No existing modification — insert after identifier / subscripts
+  if (shouldRemove) return [];
+  const identNode = getDeclarationIdentNode(declNode);
+  const subscriptsNode = getSubscriptsNode(declNode);
+  let pos: { row: number; column: number } | null = null;
+  const subRange = getNodeRange(subscriptsNode);
+  const idRange = getNodeRange(identNode);
+  if (subRange) {
+    pos = { row: subRange.endLine, column: subRange.endCol };
+  } else if (idRange) {
+    pos = { row: idRange.endLine, column: idRange.endCol };
+  }
+
+  if (pos) {
+    return [TextEdit.insert({ line: pos.row, character: pos.column }, `(${parameterName}=${newValue})`)];
+  }
+
   return [];
 }
 

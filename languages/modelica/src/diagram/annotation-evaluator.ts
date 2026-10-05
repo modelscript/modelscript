@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { Cst } from "../../src-gen/bindings.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../types.js";
 
 // ── Annotation Enum Definitions ─────────────────────────────────────────────
@@ -874,16 +875,12 @@ export function evaluateCondition(component: any, parentContext?: any): boolean 
   let condition: any = null;
   if ("conditionAttribute" in node) {
     condition = node.conditionAttribute?.condition;
-  } else if (node.type === "component_declaration" || node.type === "ComponentDeclaration") {
-    const condAttr = node.children?.find(
-      (c: any) => c.type === "condition_attribute" || c.type === "ConditionAttribute",
-    );
-    condition = condAttr?.children?.find((c: any) => c.type === "expression") ?? condAttr?.children?.[1];
-  } else if (node.type === "component_clause" || node.type === "ComponentClause") {
-    const condAttr = node.children?.find(
-      (c: any) => c.type === "condition_attribute" || c.type === "ConditionAttribute",
-    );
-    condition = condAttr?.children?.find((c: any) => c.type === "expression") ?? condAttr?.children?.[1];
+  } else if (Cst.ComponentDeclaration.is(node)) {
+    const condAttr = node.children?.find((c: any) => Cst.ConditionAttribute.is(c));
+    condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
+  } else if (Cst.ComponentClause.is(node)) {
+    const condAttr = node.children?.find((c: any) => Cst.ConditionAttribute.is(c));
+    condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
   }
   if (!condition) return true;
 
@@ -917,14 +914,8 @@ function extractClassModNode(node: any): any {
   return (
     node.modification?.classModification ??
     node.classModification ??
-    node.children?.find(
-      (c: any) => c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
-    ) ??
-    node.children
-      ?.find((c: any) => c.type === "modification" || c.type === "Modification")
-      ?.children?.find(
-        (c: any) => c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
-      ) ??
+    node.children?.find((c: any) => Cst.ClassModification.is(c)) ??
+    node.children?.find((c: any) => Cst.Modification.is(c))?.children?.find((c: any) => Cst.ClassModification.is(c)) ??
     null
   );
 }
@@ -935,22 +926,10 @@ function extractModExprNode(node: any): any {
     node.modification?.modificationExpression?.expression ??
     node.modification?.expression ??
     node.expression ??
-    node.children?.find(
-      (c: any) =>
-        c.type === "modification_expression" ||
-        c.type === "ModificationExpression" ||
-        c.type === "expression" ||
-        c.type === "Expression",
-    ) ??
+    node.children?.find((c: any) => Cst.ModificationExpression.is(c) || Cst.Expression.is(c)) ??
     node.children
-      ?.find((c: any) => c.type === "modification" || c.type === "Modification")
-      ?.children?.find(
-        (c: any) =>
-          c.type === "modification_expression" ||
-          c.type === "ModificationExpression" ||
-          c.type === "expression" ||
-          c.type === "Expression",
-      ) ??
+      ?.find((c: any) => Cst.Modification.is(c))
+      ?.children?.find((c: any) => Cst.ModificationExpression.is(c) || Cst.Expression.is(c)) ??
     null
   );
 }
@@ -1081,7 +1060,7 @@ export class AnnotationEvaluator {
     }
     if (clauses.length === 0 && ast.nextNamedSibling) {
       const sib = ast.nextNamedSibling;
-      if (sib.type === "annotationClause" || sib.type === "AnnotationClause" || sib.type === "annotation_clause") {
+      if (Cst.AnnotationClause.is(sib)) {
         clauses.push(sib);
       }
     }
@@ -1097,10 +1076,7 @@ export class AnnotationEvaluator {
       }
       const children = ann.children || ann.namedChildren;
       if (Array.isArray(children)) {
-        const cm = children.find(
-          (c: any) =>
-            c.type === "classModification" || c.type === "ClassModification" || c.type === "class_modification",
-        );
+        const cm = children.find((c: any) => Cst.ClassModification.is(c));
         if (cm) {
           classMods.push(cm);
           continue;
@@ -1114,18 +1090,14 @@ export class AnnotationEvaluator {
 
   private findAllAnnotationClauses(node: any, depth = 0, collected: any[] = []): any[] {
     if (!node || depth > 8) return collected;
-    if (node.type === "annotationClause" || node.type === "AnnotationClause" || node.type === "annotation_clause") {
+    if (Cst.AnnotationClause.is(node)) {
       collected.push(node);
       return collected;
     }
     const children = node.children || node.namedChildren;
     if (Array.isArray(children)) {
       for (const child of children) {
-        if (
-          child.type === "annotationClause" ||
-          child.type === "AnnotationClause" ||
-          child.type === "annotation_clause"
-        ) {
+        if (Cst.AnnotationClause.is(child)) {
           collected.push(child);
         } else {
           this.findAllAnnotationClauses(child, depth + 1, collected);
@@ -1202,12 +1174,16 @@ export class AnnotationEvaluator {
     if (typeof arg.name === "string") return arg.name;
     const fromParts = arg.name?.parts?.[0]?.identifier?.text ?? arg.name?.parts?.[0]?.text ?? arg.name?.text;
     if (fromParts) return fromParts;
+    if (Cst.ElementModification.is(arg)) {
+      const n = Cst.ElementModification.name(arg);
+      if (n?.text) return n.text.trim();
+    }
     const children = arg.children || arg.namedChildren;
     if (Array.isArray(children)) {
       const nameNode = children.find(
-        (c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier" || c.type === "Identifier",
+        (c: any) => Cst.Identifier.is(c) || Cst.Name.is(c) || c.type === "identifier" || c.type === "name",
       );
-      if (nameNode) return nameNode.text ?? null;
+      if (nameNode) return nameNode.text?.trim() ?? null;
     }
     return null;
   }
@@ -1253,13 +1229,13 @@ export class AnnotationEvaluator {
     const result: any[] = [];
     const walk = (node: any) => {
       if (!node) return;
-      if (node.type === "element_modification" || node.type === "ElementModification") {
+      if (Cst.ElementModification.is(node)) {
         result.push(node);
         return;
       }
       const children = node.namedChildren || node.children || [];
       for (const child of children) {
-        if (child.type === "(" || child.type === ")" || child.type === ",") continue;
+        if (child.text === "(" || child.text === ")" || child.text === ",") continue;
         walk(child);
       }
     };
@@ -1340,29 +1316,21 @@ export class AnnotationEvaluator {
     const named: [string, any][] = [];
     const positional: any[] = [];
 
-    const callArgs = node.children?.find((c: any) => c.type === "function_call_args" || c.type === "FunctionCallArgs");
+    const callArgs = node.children?.find((c: any) => Cst.FunctionCallArgs.is(c));
     if (!callArgs) return { named, positional };
 
     const walkArgs = (n: any) => {
       if (!n) return;
-      if (n.type === "named_argument" || n.type === "NamedArgument") {
-        const identNode = n.children?.find(
-          (c: any) => c.type === "identifier" || c.type === "Identifier" || c.type?.includes("identifier"),
-        );
-        const funcArg = n.children?.find(
-          (c: any) =>
-            c.type === "function_argument" ||
-            c.type === "FunctionArgument" ||
-            c.type === "expression" ||
-            c.type === "Expression",
-        );
+      if (Cst.NamedArgument.is(n)) {
+        const identNode = n.children?.find((c: any) => Cst.Identifier.is(c));
+        const funcArg = n.children?.find((c: any) => Cst.FunctionArgument.is(c) || Cst.Expression.is(c));
         if (identNode && funcArg) {
           named.push([identNode.text?.trim() ?? "", funcArg]);
         }
         return;
       }
-      if (n.type === "function_argument" || n.type === "FunctionArgument") {
-        const expr = n.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ?? n;
+      if (Cst.FunctionArgument.is(n)) {
+        const expr = n.children?.find((c: any) => Cst.Expression.is(c)) ?? n;
         positional.push(expr);
         return;
       }
@@ -1381,14 +1349,12 @@ export class AnnotationEvaluator {
       funcName = funcNameParts ? funcNameParts[funcNameParts.length - 1] : "Unknown";
     } else {
       const compRef =
-        node.children?.find((c: any) => c.type === "component_reference" || c.type === "ComponentReference") ??
-        (node.type === "component_reference" || node.type === "ComponentReference" ? node : null);
+        node.children?.find((c: any) => Cst.ComponentReference.is(c)) ??
+        (Cst.ComponentReference.is(node) ? node : null);
       if (compRef) {
         funcName = compRef.text?.trim() ?? "Unknown";
       } else {
-        const ident = node.children?.find(
-          (c: any) => c.type === "identifier" || c.type === "Identifier" || c.type?.includes("identifier"),
-        );
+        const ident = node.children?.find((c: any) => Cst.Identifier.is(c));
         if (ident) funcName = ident.text?.trim() ?? "Unknown";
       }
     }
@@ -1483,31 +1449,26 @@ export class AnnotationEvaluator {
   private parseValueForExpr(expr: any, propName?: string): any {
     if (!expr) return null;
     let unwrapped = expr;
-    while (
-      unwrapped &&
-      (unwrapped.type === "function_argument" ||
-        unwrapped.type === "FunctionArgument" ||
-        unwrapped.type === "expression" ||
-        unwrapped.type === "Expression" ||
-        unwrapped.type === "modification_expression" ||
-        unwrapped.type === "ModificationExpression" ||
-        unwrapped.type === "simple_expression")
-    ) {
-      if (Array.isArray(unwrapped.children) && unwrapped.children.length === 1) {
-        unwrapped = unwrapped.children[0];
+    while (unwrapped) {
+      if (
+        Cst.FunctionArgument.is(unwrapped) ||
+        Cst.Expression.is(unwrapped) ||
+        Cst.ModificationExpression.is(unwrapped)
+      ) {
+        if (Array.isArray(unwrapped.children) && unwrapped.children.length === 1) {
+          unwrapped = unwrapped.children[0];
+        } else {
+          break;
+        }
       } else {
         break;
       }
     }
 
     if ("functionReference" in unwrapped) return this.parseFunctionCall(unwrapped, propName);
-    if (unwrapped.type === "primary" || unwrapped.type === "Primary") {
-      const compRef = unwrapped.children?.find(
-        (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
-      );
-      const callArgs = unwrapped.children?.find(
-        (c: any) => c.type === "function_call_args" || c.type === "FunctionCallArgs",
-      );
+    if (Cst.Primary.is(unwrapped)) {
+      const compRef = unwrapped.children?.find((c: any) => Cst.ComponentReference.is(c));
+      const callArgs = unwrapped.children?.find((c: any) => Cst.FunctionCallArgs.is(c));
       if (compRef && callArgs) return this.parseFunctionCall(unwrapped, propName);
     }
     return this.toJSON(evaluateCSTExpression(unwrapped, this.scope));
@@ -1521,13 +1482,9 @@ export class AnnotationEvaluator {
         graphics.push(this.parseFunctionCall(node));
         return;
       }
-      if (node.type === "primary" || node.type === "Primary") {
-        const compRef = node.children?.find(
-          (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
-        );
-        const callArgs = node.children?.find(
-          (c: any) => c.type === "function_call_args" || c.type === "FunctionCallArgs",
-        );
+      if (Cst.Primary.is(node)) {
+        const compRef = node.children?.find((c: any) => Cst.ComponentReference.is(c));
+        const callArgs = node.children?.find((c: any) => Cst.FunctionCallArgs.is(c));
         if (compRef && callArgs) {
           graphics.push(this.parseFunctionCall(node));
           return;
@@ -1550,7 +1507,7 @@ export class AnnotationEvaluator {
       const children = node.children || node.namedChildren;
       if (Array.isArray(children)) {
         for (const child of children) {
-          if (child.type === "{" || child.type === "}" || child.type === ",") continue;
+          if (child.text === "{" || child.text === "}" || child.text === ",") continue;
           walkGraphics(child);
         }
       }

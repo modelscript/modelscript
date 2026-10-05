@@ -179,8 +179,8 @@ describe("Two-Tier Storage Architecture & Stub Indexing", () => {
       1,
       0,
       "ExternalLibraryModel",
-      100, // startByte
-      250, // endByte
+      200, // startByte (100 characters in UTF-16)
+      500, // endByte (250 characters in UTF-16)
     );
 
     // Parse a local model in current file (fileId: 1) referencing ExternalLibraryModel
