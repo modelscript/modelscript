@@ -21,7 +21,7 @@ export { simpleHash };
 export function registerDiagramHandlers(context: LspContext) {
   context.connection.onRequest(
     DiagramMethods.getData,
-    async (params: { uri: string; className?: string; diagramType?: string }) => {
+    async (params: { uri: string; className?: string; diagramType?: string; sidecarContent?: string }) => {
       return await context.diagramService.handleGetDiagramData(params);
     },
   );

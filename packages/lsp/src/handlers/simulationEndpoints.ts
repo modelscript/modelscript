@@ -18,12 +18,12 @@ import { ModelScriptParticipant } from "./modelscriptParticipant.js";
 
 const notebookSessions = new Map<string, any>();
 
-function formatDebugValue(val: unknown): string {
+function _formatDebugValue(val: unknown): string {
   if (typeof val === "number") return val.toFixed(4);
   if (typeof val === "boolean") return val ? "true" : "false";
   if (typeof val === "object" && val !== null && "elements" in val) {
     const arrVal = val as { elements: unknown[] };
-    return `[${arrVal.elements.map(formatDebugValue).join(", ")}]`;
+    return `[${arrVal.elements.map(_formatDebugValue).join(", ")}]`;
   }
   return String(val);
 }
@@ -163,6 +163,11 @@ export function registerSimulationEndpoints(context: LspContext) {
       interval?: number;
       equidistant?: boolean;
       solver?: string;
+      rtol?: number;
+      atol?: number;
+      numberOfIntervals?: number;
+      maxStep?: number;
+      steadyStateOnly?: boolean;
       format?: string;
       parameterOverrides?: Record<string, number>;
       sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
@@ -186,6 +191,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
       error?: string;
       sweepResults?: { value: number; y: number[][] }[];
+      telemetry?: { executionTimeMs: number; stepCount: number };
     }> => {
       context.connection.console.info(
         `[simulate] Requested simulation for URI: ${params.uri} class: ${params.className}`,
@@ -514,6 +520,7 @@ export function registerSimulationEndpoints(context: LspContext) {
 
         context.connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
 
+        const t0 = Date.now();
         if (params.sweepConfig) {
           const { parameterName, start, end, steps } = params.sweepConfig;
           const sweepResults: { value: number; y: number[][] }[] = [];
@@ -529,7 +536,11 @@ export function registerSimulationEndpoints(context: LspContext) {
               startTime,
               stopTime,
               step,
+              numberOfIntervals: params.numberOfIntervals,
               solver: (params.solver ?? "dopri5") as any,
+              rtol: params.rtol,
+              atol: params.atol,
+              steadyStateOnly: params.steadyStateOnly,
               parameterOverrides: new Map(Object.entries(overrides)),
             });
 
@@ -540,6 +551,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             sweepResults.push({ value: val, y: arenaResult.y });
           }
 
+          const executionTimeMs = Date.now() - t0;
           return {
             t: baseT,
             y: sweepResults[0]?.y ?? [],
@@ -547,6 +559,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             parameters: getArenaParameterInfo(arena),
             experiment: exp,
             sweepResults,
+            telemetry: { executionTimeMs, stepCount: baseT.length },
           };
         }
 
@@ -554,14 +567,19 @@ export function registerSimulationEndpoints(context: LspContext) {
           startTime,
           stopTime,
           step,
+          numberOfIntervals: params.numberOfIntervals,
           solver: (params.solver ?? "dopri5") as any,
+          rtol: params.rtol,
+          atol: params.atol,
+          steadyStateOnly: params.steadyStateOnly,
           parameterOverrides: params.parameterOverrides
             ? new Map(Object.entries(params.parameterOverrides))
             : undefined,
         });
 
+        const executionTimeMs = Date.now() - t0;
         context.connection.console.info(
-          `[simulate] Result: ${result.t.length} time points, ${result.states.length} states`,
+          `[simulate] Result: ${result.t.length} time points, ${result.states.length} states in ${executionTimeMs}ms`,
         );
 
         const tArr = Array.from(result.t);
@@ -579,6 +597,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             states: result.states,
             parameters: getArenaParameterInfo(arena),
             experiment: exp,
+            telemetry: { executionTimeMs, stepCount: tArr.length },
           };
         }
 
@@ -588,6 +607,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           states: result.states,
           parameters: getArenaParameterInfo(arena),
           experiment: exp,
+          telemetry: { executionTimeMs, stepCount: tArr.length },
         };
       } catch (e) {
         console.error("[simulate] Error:", e);
@@ -1065,7 +1085,7 @@ export function registerSimulationEndpoints(context: LspContext) {
     if (!currentDebugEnv) return [];
     // Sort variables alphabetically for better UX
     const entries = Array.from(currentDebugEnv.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    return entries.map(([name, value]) => ({
+    return entries.map(([name]) => ({
       name,
       variablesReference: 0,
     }));

@@ -7,7 +7,7 @@
 
 import { buildDiagramFromDSL, buildPolyglotDiagram } from "@modelscript/diagram/builder";
 import type { FileSystemBridge } from "@modelscript/diagram/fs-bridge";
-import { SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
+import { SidecarLayoutStorage, parseLayout } from "@modelscript/diagram/layout-storage";
 import { compileDiagramConfigToPolyglot } from "@modelscript/dsl";
 import {
   buildOWL2DiagramData,
@@ -192,6 +192,10 @@ export interface SysML2BackendDeps {
   ) => any;
   updateConnectionVertices: (layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any;
   removeElements: (layout: any, names: string[]) => any;
+  renameElement?: (layout: any, oldName: string, newName: string) => any;
+  serializeLayout?: (layout: any) => string;
+  parseLayout?: (text: string) => any;
+  getSidecarUri?: (uri: string) => string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   buildDiagramData: (params: DiagramGetDataParams) => any;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
@@ -405,6 +409,9 @@ export class SysML2DiagramBackend implements DiagramBackend {
             needsRender = "immediate";
             break;
           case "updateName": {
+            if (action.oldName && action.newName && this.deps.renameElement) {
+              layout = this.deps.renameElement(layout, action.oldName, action.newName);
+            }
             if (tree) {
               allEdits.push(...this.deps.computeNameEdit(tree, docText, action.oldName, action.newName));
             }
@@ -462,10 +469,24 @@ export class SysML2DiagramBackend implements DiagramBackend {
       console.error("[sysml2-diagram] diagramEdit error:", e);
     }
 
+    let sidecarUri: string | undefined;
+    let sidecarContent: string | undefined;
+    if (layout) {
+      const serialize = this.deps.serializeLayout ?? ((l: any) => JSON.stringify(l, null, 2) + "\n");
+      try {
+        sidecarContent = serialize(layout);
+        sidecarUri = this.deps.getSidecarUri ? this.deps.getSidecarUri(params.uri) : `${params.uri}.layout`;
+      } catch (e) {
+        console.error("[sysml2-diagram] layout serialization error:", e);
+      }
+    }
+
     return {
       seq: params.seq,
       edits: deduplicateAndSort(allEdits),
       renderHint: needsRender,
+      sidecarUri,
+      sidecarContent,
     };
   }
 
@@ -739,10 +760,26 @@ export class Owl2DiagramBackend implements DiagramBackend {
       this.deps.setLayout(params.uri, layout);
     }
 
+    let sidecarUri: string | undefined;
+    let sidecarContent: string | undefined;
+    if (layout) {
+      const serialize = (this.deps as any).serializeLayout ?? ((l: any) => JSON.stringify(l, null, 2) + "\n");
+      try {
+        sidecarContent = serialize(layout);
+        sidecarUri = (this.deps as any).getSidecarUri
+          ? (this.deps as any).getSidecarUri(params.uri)
+          : `${params.uri}.layout`;
+      } catch {
+        // ignore
+      }
+    }
+
     return {
       seq: params.seq,
       edits: deduplicateAndSort(allEdits),
       renderHint: needsRender,
+      sidecarUri,
+      sidecarContent,
     };
   }
 
@@ -980,6 +1017,19 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     }
 
     if (!diagramData) return null;
+
+    if (params.sidecarContent) {
+      try {
+        const storage = this.getLayoutStorage(params.uri);
+        const parser = (storage as any).options?.parse ?? parseLayout;
+        const parsed = parser(params.sidecarContent);
+        if (parsed) {
+          (storage as any).cache?.set(params.uri, parsed);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     // Merge persisted layout if available
     const layout = await this.getLayoutStorage(params.uri).loadLayout(params.uri);
@@ -1542,14 +1592,29 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       }
     }
 
+    let sidecarUri: string | undefined;
+    let sidecarContent: string | undefined;
     if (itemsToSave.length > 0) {
-      await this.getLayoutStorage(params.uri).updatePositions(params.uri, itemsToSave);
+      const storage = this.getLayoutStorage(params.uri);
+      await storage.updatePositions(params.uri, itemsToSave);
+      const updatedLayout = await storage.loadLayout(params.uri);
+      if (updatedLayout) {
+        sidecarUri = storage.getSidecarUri(params.uri);
+        const serialize = (storage as any).options?.serialize ?? ((l: any) => JSON.stringify(l, null, 2) + "\n");
+        try {
+          sidecarContent = serialize(updatedLayout);
+        } catch {
+          // ignore
+        }
+      }
     }
 
     return {
       seq: params.seq,
       edits: allEdits,
       renderHint: allEdits.length > 0 ? "immediate" : itemsToSave.length > 0 ? "none" : "immediate",
+      sidecarUri,
+      sidecarContent,
     };
   }
 }
@@ -1657,7 +1722,14 @@ export function processDiagramEditBatch(
       case "connect":
         if (ops.computeConnectInsert)
           allEdits.push(
-            ...ops.computeConnectInsert(docText, classInstance, action.source, action.target, action.points),
+            ...ops.computeConnectInsert(
+              docText,
+              classInstance,
+              action.source,
+              action.target,
+              action.points,
+              action.color,
+            ),
           );
         needsRender = "immediate";
         break;
@@ -1670,7 +1742,16 @@ export function processDiagramEditBatch(
         if (ops.computeConnectRemove)
           allEdits.push(...ops.computeConnectRemove(docText, classInstance, action.oldSource, action.oldTarget));
         if (ops.computeConnectInsert)
-          allEdits.push(...ops.computeConnectInsert(docText, classInstance, action.newSource, action.newTarget));
+          allEdits.push(
+            ...ops.computeConnectInsert(
+              docText,
+              classInstance,
+              action.newSource,
+              action.newTarget,
+              action.points,
+              action.color,
+            ),
+          );
         needsRender = "immediate";
         break;
       case "addComponent": {

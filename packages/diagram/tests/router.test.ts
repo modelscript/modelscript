@@ -11,7 +11,10 @@ import {
   computeSmoothBezierPath,
   computeStemLines,
   findInternalChannelRoute,
+  regularizeOrthogonalPolyline,
   segmentIntersectsRect,
+  simplifyCollinearPoints,
+  translateConnectedEdgeStubs,
   type PointLike,
   type RectLike,
 } from "../src/port-router.js";
@@ -281,5 +284,76 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     assert.ok(filletedPath.startsWith("M 0 0"));
     assert.ok(filletedPath.includes("Q 100 0"), "Should contain quadratic Bezier fillet at corner");
     assert.ok(filletedPath.endsWith("L 100 100"));
+  });
+
+  it("should simplify collinear intermediate points and remove duplicates", () => {
+    // 3 collinear horizontal points + duplicate + 90 deg corner + collinear vertical
+    const points: PointLike[] = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 0.2 }, // duplicate / jitter
+      { x: 100, y: 50 },
+      { x: 100, y: 100 },
+    ];
+
+    const simplified = simplifyCollinearPoints(points, 1.0);
+    assert.deepStrictEqual(simplified, [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ]);
+  });
+
+  it("should regularize near-orthogonal polyline steps into strict Manhattan segments", () => {
+    const rawPoints: PointLike[] = [
+      { x: 10, y: 20 },
+      { x: 80, y: 22 }, // off-axis by 2px -> should snap to y: 20
+      { x: 80, y: 150 },
+      { x: 198, y: 150 },
+    ];
+
+    const regularized = regularizeOrthogonalPolyline(rawPoints, 5, 1.0);
+    assert.strictEqual(regularized[0].y, 20);
+    assert.strictEqual(regularized[1].y, 20);
+    assert.strictEqual(regularized[1].x, 80);
+    assert.strictEqual(regularized[2].y, 150);
+  });
+
+  it("should translate connected edge stubs when a source node moves", () => {
+    // Mock Graph and Edge
+    let currentVertices = [
+      { x: 150, y: 100 },
+      { x: 150, y: 200 },
+    ];
+
+    const mockEdge = {
+      isEdge: () => true,
+      getSourceCellId: () => "nodeA",
+      getTargetCellId: () => "nodeB",
+      getSourcePoint: () => ({ x: 100, y: 100 }),
+      getTargetPoint: () => ({ x: 300, y: 200 }),
+      getVertices: () => currentVertices,
+      setVertices: (verts: PointLike[]) => {
+        currentVertices = verts;
+      },
+    };
+
+    const mockGraph = {
+      getConnectedEdges: () => [mockEdge],
+    };
+
+    const mockNode = { id: "nodeA", isNode: () => true };
+
+    // Move nodeA downwards by dx = 0, dy = 30
+    translateConnectedEdgeStubs(mockGraph as any, mockNode as any, 0, 30);
+
+    // Departure stub was horizontal (from x=100 to x=150 at y=100).
+    // Moving source node by dy=30 should translate v0.y by 30 (to y=130),
+    // keeping the horizontal stub horizontal and leaving vertical trunk at x=150.
+    assert.strictEqual(currentVertices[0].x, 150);
+    assert.strictEqual(currentVertices[0].y, 130);
+    assert.strictEqual(currentVertices[1].x, 150);
+    assert.strictEqual(currentVertices[1].y, 200);
   });
 });

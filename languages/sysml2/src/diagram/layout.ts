@@ -124,3 +124,34 @@ export function removeElements(layout: SysML2Layout, names: string[]): SysML2Lay
 
   return { ...layout, elements: newElements, connections: newConnections };
 }
+
+/**
+ * Rename an element in the layout structure and update referencing connection keys.
+ * Returns a new layout (does not mutate the input).
+ */
+export function renameElement(layout: SysML2Layout, oldName: string, newName: string): SysML2Layout {
+  if (!layout.elements[oldName]) return layout;
+  const newElements: Record<string, SysML2ElementLayout> = {};
+  for (const [key, val] of Object.entries(layout.elements)) {
+    if (key === oldName) {
+      newElements[newName] = val;
+    } else {
+      newElements[key] = val;
+    }
+  }
+
+  const newConnections: Record<string, SysML2ConnectionLayout> = {};
+  for (const [connId, conn] of Object.entries(layout.connections)) {
+    const parts = connId.split("→");
+    const newParts = parts.map((p) => {
+      const segs = p.split(".");
+      if (segs[0] === oldName) {
+        segs[0] = newName;
+      }
+      return segs.join(".");
+    });
+    newConnections[newParts.join("→")] = conn;
+  }
+
+  return { ...layout, elements: newElements, connections: newConnections };
+}

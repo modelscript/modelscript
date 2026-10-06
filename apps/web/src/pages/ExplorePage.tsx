@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertIcon,
   ArrowLeftIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -607,91 +608,301 @@ const ExplorePage: React.FC = () => {
 
             {activeTab === "Templates" && (
               <Box p={3}>
-                <Box display="grid" gridTemplateColumns="repeat(auto-fill, minmax(280px, 1fr))" gap={3}>
-                  {STARTER_TEMPLATES.filter(
-                    (t) =>
-                      t.title.toLowerCase().includes(query.toLowerCase()) ||
-                      t.description.toLowerCase().includes(query.toLowerCase()) ||
-                      t.category.toLowerCase().includes(query.toLowerCase()) ||
-                      t.badge.toLowerCase().includes(query.toLowerCase()),
-                  ).map((template) => (
-                    <Box
-                      key={template.id}
-                      p={3}
-                      borderRadius="12px"
-                      border="1px solid var(--color-border-glass)"
-                      bg="var(--color-bg-card)"
-                      display="flex"
-                      flexDirection="column"
-                      justifyContent="space-between"
-                      sx={{
-                        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-                        "&:hover": {
-                          borderColor: "var(--color-accent-purple)",
-                          boxShadow: "var(--glow-card)",
-                        },
+                {/* Blank Project Workspace */}
+                <Box
+                  p={4}
+                  mb={3}
+                  borderRadius="12px"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, rgba(163, 113, 247, 0.12) 100%)",
+                    border: "1px solid rgba(163, 113, 247, 0.35)",
+                    boxShadow: "0 0 20px rgba(163, 113, 247, 0.1)",
+                  }}
+                  display="flex"
+                  flexDirection={["column", "row"]}
+                  alignItems={["flex-start", "center"]}
+                  justifyContent="space-between"
+                  gap={3}
+                >
+                  <Box>
+                    <Box display="flex" alignItems="center" gap={2} mb={2}>
+                      <span style={{ fontSize: "24px" }}>📁</span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontFamily: "var(--font-mono)",
+                          padding: "2px 8px",
+                          borderRadius: "9999px",
+                          backgroundColor: "rgba(6, 182, 212, 0.15)",
+                          color: "var(--color-accent-cyan)",
+                          border: "1px solid rgba(6, 182, 212, 0.4)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Clean Workspace
+                      </span>
+                    </Box>
+                    <Heading
+                      as="h3"
+                      style={{
+                        fontSize: "18px",
+                        fontWeight: "bold",
+                        marginBottom: "6px",
+                        color: "var(--color-text-heading)",
                       }}
                     >
-                      <Box>
-                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                          <span style={{ fontSize: "24px" }}>{template.icon}</span>
-                          <span
+                      Blank Project Workspace
+                    </Heading>
+                    <Text
+                      as="p"
+                      color="var(--color-text-muted)"
+                      style={{ fontSize: "14px", lineHeight: 1.5, margin: 0, maxWidth: "620px" }}
+                    >
+                      Start fresh with a clean in-memory filesystem workspace. Direct access to the full ModelScript
+                      polyglot compiler, Modelica 3.x, SysML v2, STEP CAD, and WebAssembly solvers with zero pre-loaded
+                      clutter.
+                    </Text>
+                  </Box>
+                  <Link
+                    to="/ide"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px 20px",
+                      borderRadius: "8px",
+                      background: "var(--gradient-cta)",
+                      color: "white",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      boxShadow: "var(--glow-ai-sm)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <CodeIcon size={16} /> Launch Blank Workspace
+                  </Link>
+                </Box>
+
+                {/* Bouncing Ball Workspace */}
+                <Box
+                  p={4}
+                  mb={4}
+                  borderRadius="12px"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.12) 100%)",
+                    border: "1px solid rgba(236, 72, 153, 0.35)",
+                    boxShadow: "0 0 20px rgba(236, 72, 153, 0.1)",
+                  }}
+                  display="flex"
+                  flexDirection={["column", "row"]}
+                  alignItems={["flex-start", "center"]}
+                  justifyContent="space-between"
+                  gap={3}
+                >
+                  <Box>
+                    <Box display="flex" alignItems="center" gap={2} mb={2}>
+                      <span style={{ fontSize: "24px" }}>⚽</span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontFamily: "var(--font-mono)",
+                          padding: "2px 8px",
+                          borderRadius: "9999px",
+                          backgroundColor: "rgba(236, 72, 153, 0.15)",
+                          color: "#f43f5e",
+                          border: "1px solid rgba(236, 72, 153, 0.4)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Physical Simulation
+                      </span>
+                    </Box>
+                    <Heading
+                      as="h3"
+                      style={{
+                        fontSize: "18px",
+                        fontWeight: "bold",
+                        marginBottom: "6px",
+                        color: "var(--color-text-heading)",
+                      }}
+                    >
+                      Bouncing Ball Workspace
+                    </Heading>
+                    <Text
+                      as="p"
+                      color="var(--color-text-muted)"
+                      style={{ fontSize: "14px", lineHeight: 1.5, margin: 0, maxWidth: "620px" }}
+                    >
+                      Classic hybrid continuous/discrete physical modeling. Simulate zero-crossing state event
+                      detection, restitution coefficient, and real-time WebAssembly numerical integration.
+                    </Text>
+                  </Box>
+                  <Link
+                    to="/ide/bouncing-ball"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px 20px",
+                      borderRadius: "8px",
+                      background: "linear-gradient(135deg, #e11d48, #9333ea)",
+                      color: "white",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      boxShadow: "0 2px 10px rgba(225, 29, 72, 0.35)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <CodeIcon size={16} /> Launch Bouncing Ball
+                  </Link>
+                </Box>
+
+                {/* Deprecation Notice Banner */}
+                <Box
+                  p={3}
+                  mb={4}
+                  borderRadius="8px"
+                  display="flex"
+                  alignItems="flex-start"
+                  gap={3}
+                  style={{
+                    backgroundColor: "rgba(210, 153, 34, 0.1)",
+                    border: "1px solid rgba(210, 153, 34, 0.3)",
+                    color: "var(--color-fg-default)",
+                  }}
+                >
+                  <AlertIcon size={18} style={{ color: "#d29922", marginTop: "2px", flexShrink: 0 }} />
+                  <Box>
+                    <div style={{ fontWeight: 600, fontSize: "13px", color: "#d29922", marginBottom: "2px" }}>
+                      Example Workspaces Deprecated
+                    </div>
+                    <Text as="p" style={{ fontSize: "12px", color: "var(--color-text-muted)", margin: 0 }}>
+                      Pre-configured example workspaces are currently deprecated in favor of clean-slate development in
+                      the Blank Project Workspace. The legacy workspaces below remain accessible for reference purposes.
+                    </Text>
+                  </Box>
+                </Box>
+
+                <Heading
+                  as="h4"
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "var(--color-text-muted)",
+                    marginBottom: "16px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Deprecated Example Workspaces (Legacy)
+                </Heading>
+
+                <Box display="grid" gridTemplateColumns="repeat(auto-fill, minmax(280px, 1fr))" gap={3}>
+                  {STARTER_TEMPLATES.filter((t) => t.id !== "bouncing-ball")
+                    .filter(
+                      (t) =>
+                        t.title.toLowerCase().includes(query.toLowerCase()) ||
+                        t.description.toLowerCase().includes(query.toLowerCase()) ||
+                        t.category.toLowerCase().includes(query.toLowerCase()) ||
+                        t.badge.toLowerCase().includes(query.toLowerCase()),
+                    )
+                    .map((template) => (
+                      <Box
+                        key={template.id}
+                        p={3}
+                        borderRadius="12px"
+                        border="1px solid var(--color-border-glass)"
+                        bg="var(--color-bg-card)"
+                        display="flex"
+                        flexDirection="column"
+                        justifyContent="space-between"
+                        sx={{
+                          transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                          "&:hover": {
+                            borderColor: "rgba(210, 153, 34, 0.5)",
+                            boxShadow: "0 0 16px rgba(210, 153, 34, 0.1)",
+                          },
+                        }}
+                      >
+                        <Box>
+                          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                            <span style={{ fontSize: "24px" }}>{template.icon}</span>
+                            <Box display="flex" gap="6px" alignItems="center">
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontFamily: "var(--font-mono)",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  backgroundColor: "rgba(210, 153, 34, 0.15)",
+                                  color: "#d29922",
+                                  border: "1px solid rgba(210, 153, 34, 0.3)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Deprecated
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontFamily: "var(--font-mono)",
+                                  padding: "2px 8px",
+                                  borderRadius: "9999px",
+                                  backgroundColor: "var(--color-accent-blue-bg)",
+                                  color: "var(--color-accent-cyan)",
+                                  border: "1px solid var(--color-accent-blue-border)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {template.badge}
+                              </span>
+                            </Box>
+                          </Box>
+                          <Heading
+                            as="h4"
                             style={{
-                              fontSize: "11px",
-                              fontFamily: "var(--font-mono)",
-                              padding: "2px 8px",
-                              borderRadius: "9999px",
-                              backgroundColor: "var(--color-accent-blue-bg)",
-                              color: "var(--color-accent-cyan)",
-                              border: "1px solid var(--color-accent-blue-border)",
-                              fontWeight: 600,
+                              fontSize: "15px",
+                              fontWeight: "bold",
+                              marginBottom: "6px",
+                              color: "var(--color-text-heading)",
                             }}
                           >
-                            {template.badge}
-                          </span>
+                            {template.title}
+                          </Heading>
+                          <Text
+                            as="p"
+                            color="var(--color-text-muted)"
+                            style={{ fontSize: "13px", lineHeight: 1.4, margin: 0 }}
+                          >
+                            {template.description}
+                          </Text>
                         </Box>
-                        <Heading
-                          as="h4"
-                          style={{
-                            fontSize: "15px",
-                            fontWeight: "bold",
-                            marginBottom: "6px",
-                            color: "var(--color-text-heading)",
-                          }}
-                        >
-                          {template.title}
-                        </Heading>
-                        <Text
-                          as="p"
-                          color="var(--color-text-muted)"
-                          style={{ fontSize: "13px", lineHeight: 1.4, margin: 0 }}
-                        >
-                          {template.description}
-                        </Text>
+                        <Box mt={3} pt={2} borderTop="1px solid var(--color-border)">
+                          <Link
+                            to={`/ide/${template.id}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                              padding: "8px 12px",
+                              borderRadius: "6px",
+                              background: "rgba(255, 255, 255, 0.05)",
+                              border: "1px solid var(--color-border-glass)",
+                              color: "var(--color-text-muted)",
+                              fontSize: "13px",
+                              fontWeight: 500,
+                              textDecoration: "none",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <CodeIcon size={14} /> Launch Legacy Workspace
+                          </Link>
+                        </Box>
                       </Box>
-                      <Box mt={3} pt={2} borderTop="1px solid var(--color-border)">
-                        <Link
-                          to={`/ide/${template.id}`}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "6px",
-                            padding: "8px 12px",
-                            borderRadius: "6px",
-                            background: "var(--gradient-cta)",
-                            color: "white",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            textDecoration: "none",
-                            boxShadow: "var(--glow-ai-sm)",
-                          }}
-                        >
-                          <CodeIcon size={14} /> Launch in IDE
-                        </Link>
-                      </Box>
-                    </Box>
-                  ))}
+                    ))}
                 </Box>
               </Box>
             )}
@@ -1068,10 +1279,10 @@ const ExplorePage: React.FC = () => {
                     gap: "8px",
                   }}
                 >
-                  <RocketIcon size={18} /> Starter Engineering Workspaces
+                  <RocketIcon size={18} /> Engineering Workspaces
                 </Heading>
                 <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                  Launch ready-to-run polyglot models, 3D CAD assemblies, and WASM solvers with zero setup.
+                  Start clean with the recommended blank workspace, or open deprecated legacy example projects.
                 </Text>
               </Box>
               <Box display="flex" alignItems="center" gap="10px">
@@ -1145,7 +1356,7 @@ const ExplorePage: React.FC = () => {
                     gap: "4px",
                   }}
                 >
-                  <CodeIcon size={14} /> Open Blank IDE
+                  <CodeIcon size={14} /> Open Blank Workspace (Recommended)
                 </Link>
               </Box>
             </Box>
@@ -1167,7 +1378,183 @@ const ExplorePage: React.FC = () => {
                 scrollbarWidth: "none",
               }}
             >
-              {STARTER_TEMPLATES.map((tmpl) => (
+              {/* Blank Project Workspace Card */}
+              <Box
+                key="blank-project-carousel"
+                bg="var(--color-bg-card)"
+                borderRadius="10px"
+                p="14px"
+                minWidth="240px"
+                maxWidth="260px"
+                display="flex"
+                flexDirection="column"
+                justifyContent="space-between"
+                style={{
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                  background: "linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, rgba(163, 113, 247, 0.12) 100%)",
+                  border: "1px solid rgba(163, 113, 247, 0.35)",
+                  boxShadow: "0 0 16px rgba(163, 113, 247, 0.1)",
+                }}
+                sx={{
+                  flexShrink: 0,
+                  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                  "&:hover": {
+                    borderColor: "var(--color-accent-cyan)",
+                    transform: "translateY(-2px)",
+                    boxShadow: "var(--glow-card)",
+                  },
+                }}
+              >
+                <Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <span style={{ fontSize: "20px" }}>📁</span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-mono)",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        backgroundColor: "rgba(6, 182, 212, 0.15)",
+                        color: "var(--color-accent-cyan)",
+                        border: "1px solid rgba(6, 182, 212, 0.4)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Clean Slate
+                    </span>
+                  </Box>
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      color: "var(--color-text-heading)",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Blank Project
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-text-muted)",
+                      lineHeight: 1.4,
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Clean slate in-browser workspace. Start fresh with Modelica, SysML v2, or 3D CAD modeling.
+                  </div>
+                </Box>
+                <Link
+                  to="/ide"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    background: "var(--gradient-cta)",
+                    color: "white",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    boxShadow: "var(--glow-ai-sm)",
+                  }}
+                >
+                  <CodeIcon size={12} /> Launch Blank Workspace
+                </Link>
+              </Box>
+
+              {/* Bouncing Ball Workspace Card */}
+              <Box
+                key="bouncing-ball-carousel"
+                bg="var(--color-bg-card)"
+                borderRadius="10px"
+                p="14px"
+                minWidth="240px"
+                maxWidth="260px"
+                display="flex"
+                flexDirection="column"
+                justifyContent="space-between"
+                style={{
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                  background: "linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.12) 100%)",
+                  border: "1px solid rgba(236, 72, 153, 0.35)",
+                  boxShadow: "0 0 16px rgba(236, 72, 153, 0.1)",
+                }}
+                sx={{
+                  flexShrink: 0,
+                  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                  "&:hover": {
+                    borderColor: "#f43f5e",
+                    transform: "translateY(-2px)",
+                    boxShadow: "var(--glow-card)",
+                  },
+                }}
+              >
+                <Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <span style={{ fontSize: "20px" }}>⚽</span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontFamily: "var(--font-mono)",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        backgroundColor: "rgba(236, 72, 153, 0.15)",
+                        color: "#f43f5e",
+                        border: "1px solid rgba(236, 72, 153, 0.4)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Physical Simulation
+                    </span>
+                  </Box>
+                  <div
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      color: "var(--color-text-heading)",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Bouncing Ball
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-text-muted)",
+                      lineHeight: 1.4,
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Continuous & discrete hybrid events with restitution and zero-crossing detection.
+                  </div>
+                </Box>
+                <Link
+                  to="/ide/bouncing-ball"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    background: "linear-gradient(135deg, #e11d48, #9333ea)",
+                    color: "white",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    boxShadow: "0 2px 8px rgba(225, 29, 72, 0.35)",
+                  }}
+                >
+                  <CodeIcon size={12} /> Launch Bouncing Ball
+                </Link>
+              </Box>
+
+              {STARTER_TEMPLATES.filter((tmpl) => tmpl.id !== "bouncing-ball").map((tmpl) => (
                 <Box
                   key={tmpl.id}
                   bg="var(--color-bg-card)"
@@ -1187,29 +1574,45 @@ const ExplorePage: React.FC = () => {
                     flexShrink: 0,
                     transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                     "&:hover": {
-                      borderColor: "var(--color-accent-purple)",
+                      borderColor: "rgba(210, 153, 34, 0.5)",
                       transform: "translateY(-2px)",
-                      boxShadow: "var(--glow-card)",
+                      boxShadow: "0 0 16px rgba(210, 153, 34, 0.1)",
                     },
                   }}
                 >
                   <Box>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <span style={{ fontSize: "20px" }}>{tmpl.icon}</span>
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          fontFamily: "var(--font-mono)",
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          backgroundColor: "var(--color-accent-blue-bg)",
-                          color: "var(--color-accent-cyan)",
-                          border: "1px solid var(--color-accent-blue-border)",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {tmpl.badge}
-                      </span>
+                      <Box display="flex" gap="4px" alignItems="center">
+                        <span
+                          style={{
+                            fontSize: "9px",
+                            fontFamily: "var(--font-mono)",
+                            padding: "1px 5px",
+                            borderRadius: "4px",
+                            backgroundColor: "rgba(210, 153, 34, 0.15)",
+                            color: "#d29922",
+                            border: "1px solid rgba(210, 153, 34, 0.3)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Deprecated
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontFamily: "var(--font-mono)",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            backgroundColor: "var(--color-accent-blue-bg)",
+                            color: "var(--color-accent-cyan)",
+                            border: "1px solid var(--color-accent-blue-border)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {tmpl.badge}
+                        </span>
+                      </Box>
                     </Box>
                     <div
                       style={{
@@ -1241,15 +1644,15 @@ const ExplorePage: React.FC = () => {
                       gap: "6px",
                       padding: "6px 12px",
                       borderRadius: "6px",
-                      background: "var(--gradient-cta)",
-                      color: "white",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid var(--color-border-glass)",
+                      color: "var(--color-text-muted)",
                       fontSize: "12px",
-                      fontWeight: 600,
+                      fontWeight: 500,
                       textDecoration: "none",
-                      boxShadow: "var(--glow-ai-sm)",
                     }}
                   >
-                    <CodeIcon size={12} /> Launch in IDE
+                    <CodeIcon size={12} /> Launch Legacy
                   </Link>
                 </Box>
               ))}

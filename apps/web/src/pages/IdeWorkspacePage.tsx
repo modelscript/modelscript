@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, CodeIcon, GitBranchIcon, LinkExternalIcon, ShareIcon, SyncIcon } from "@primer/octicons-react";
+import {
+  AlertIcon,
+  ArrowLeftIcon,
+  CodeIcon,
+  GitBranchIcon,
+  LinkExternalIcon,
+  ShareIcon,
+  SyncIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { Button, IconButton, Spinner, Text } from "@primer/react";
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { useTheme } from "../theme";
 
@@ -81,6 +91,19 @@ const Badge = styled.span`
   background-color: rgba(6, 182, 212, 0.12);
   color: var(--color-accent-cyan);
   border: 1px solid rgba(6, 182, 212, 0.25);
+`;
+
+const DeprecationBanner = styled.div`
+  background: linear-gradient(90deg, rgba(210, 153, 34, 0.16) 0%, rgba(187, 128, 9, 0.08) 100%);
+  border-bottom: 1px solid rgba(210, 153, 34, 0.35);
+  color: var(--color-fg-default, #e6edf3);
+  padding: 6px 16px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 9;
 `;
 
 const IframeWrapper = styled.div`
@@ -162,9 +185,10 @@ export const IdeWorkspacePage: React.FC = () => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  const [showDeprecationNotice, setShowDeprecationNotice] = useState(true);
 
   // Compute folder hash and title
-  const { folderHash, displayTitle, backUrl, branchName } = useMemo(() => {
+  const { folderHash, displayTitle, backUrl, branchName, isDeprecated } = useMemo(() => {
     // 1. Repository route: /repos/:provider/:namespace/:project/ide
     if (namespace && project) {
       const ref = searchParams.get("ref") || "main";
@@ -174,18 +198,21 @@ export const IdeWorkspacePage: React.FC = () => {
         displayTitle: fullRepo,
         backUrl: `/repos/${provider || "github"}/${namespace}/${project}`,
         branchName: ref,
+        isDeprecated: false,
       };
     }
 
     // 2. Template route: /ide/:templateId or /ide?template=...
     const tId = templateId || searchParams.get("template");
     if (tId) {
+      const isDep = tId !== "empty" && tId !== "blank" && tId !== "bouncing-ball";
       const friendlyName = TEMPLATE_NAMES[tId] || tId;
       return {
         folderHash: `#memfs:${tId}`,
         displayTitle: friendlyName,
         backUrl: "/explore",
         branchName: undefined,
+        isDeprecated: isDep,
       };
     }
 
@@ -196,6 +223,7 @@ export const IdeWorkspacePage: React.FC = () => {
       displayTitle: "Blank Workspace",
       backUrl: "/home",
       branchName: undefined,
+      isDeprecated: false,
     };
   }, [namespace, project, provider, searchParams, templateId, location.hash]);
 
@@ -335,6 +363,25 @@ export const IdeWorkspacePage: React.FC = () => {
               <>
                 <Text style={{ fontWeight: 600 }}>{displayTitle}</Text>
                 <Badge>memfs</Badge>
+                {isDeprecated && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "11px",
+                      fontFamily: "var(--font-mono, monospace)",
+                      padding: "1px 6px",
+                      borderRadius: "4px",
+                      backgroundColor: "rgba(210, 153, 34, 0.15)",
+                      color: "#d29922",
+                      border: "1px solid rgba(210, 153, 34, 0.3)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Deprecated
+                  </span>
+                )}
               </>
             )}
           </BreadcrumbText>
@@ -382,6 +429,40 @@ export const IdeWorkspacePage: React.FC = () => {
           />
         </ToolbarRight>
       </Toolbar>
+
+      {isDeprecated && showDeprecationNotice && (
+        <DeprecationBanner>
+          <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0 }}>
+            <AlertIcon size={14} style={{ color: "#d29922", flexShrink: 0 }} />
+            <Text style={{ fontSize: "12px", color: "var(--color-fg-default)" }}>
+              <strong>Notice:</strong> Example workspace &ldquo;{displayTitle}&rdquo; is deprecated. For new modeling
+              projects, we recommend starting in the Blank Workspace.
+            </Text>
+          </Box>
+          <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
+            <Button
+              size="small"
+              variant="primary"
+              onClick={() => navigate("/ide")}
+              style={{
+                fontSize: "11px",
+                height: "24px",
+                padding: "0 8px",
+              }}
+            >
+              Switch to Blank Workspace
+            </Button>
+            <IconButton
+              aria-label="Dismiss banner"
+              icon={XIcon}
+              size="small"
+              variant="invisible"
+              onClick={() => setShowDeprecationNotice(false)}
+              sx={{ color: "var(--color-fg-muted)", height: "24px", width: "24px" }}
+            />
+          </Box>
+        </DeprecationBanner>
+      )}
 
       <IframeWrapper>
         {isLoading && (

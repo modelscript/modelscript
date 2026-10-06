@@ -11,6 +11,7 @@ import { Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
 import { Cst } from "../../src-gen/bindings.js";
+import { inferModelicaDomainColor } from "./data.js";
 
 function findDescendantModification(node: any, name: string): any {
   if (!node) return null;
@@ -413,12 +414,17 @@ export function computeConnectInsert(
   source: string,
   target: string,
   points?: { x: number; y: number }[],
+  color?: [number, number, number],
 ): TextEdit[] {
   const lines = docText.split("\n");
 
-  const annotation = points
-    ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color={0, 0, 255}))`
-    : " annotation(Line(color={0, 0, 255}))";
+  const effectiveColor = color ?? inferModelicaDomainColor(source, target, classInstance);
+  const colorStr = `{${effectiveColor[0]}, ${effectiveColor[1]}, ${effectiveColor[2]}}`;
+
+  const annotation =
+    points && points.length > 0
+      ? ` annotation(Line(points={${points.map((p) => `{${p.x},${p.y}}`).join(", ")}}, color=${colorStr}))`
+      : ` annotation(Line(color=${colorStr}))`;
   const connectEq = `  connect(${source}, ${target})${annotation};\n`;
 
   const astNode = (classInstance as any).cstNode ?? (classInstance as any).abstractSyntaxNode;

@@ -82,6 +82,134 @@ export function segmentIntersectsRect(p1: PointLike, p2: PointLike, rect: RectLi
   return true;
 }
 
+/**
+ * Simplifies collinear intermediate points along an orthogonal path within a specified tolerance,
+ * and removes duplicate or zero-length segments.
+ */
+export function simplifyCollinearPoints(points: PointLike[], tolerance = 1.5): PointLike[] {
+  if (points.length <= 2) return points;
+
+  // Deduplicate nearly identical adjacent points
+  const deduped: PointLike[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const prev = deduped[deduped.length - 1];
+    const curr = points[i];
+    if (Math.abs(curr.x - prev.x) > 0.5 || Math.abs(curr.y - prev.y) > 0.5) {
+      deduped.push(curr);
+    }
+  }
+
+  if (deduped.length <= 2) return deduped;
+
+  const simplified: PointLike[] = [deduped[0]];
+  for (let i = 1; i < deduped.length - 1; i++) {
+    const prev = simplified[simplified.length - 1];
+    const curr = deduped[i];
+    const next = deduped[i + 1];
+
+    const isCollinearH = Math.abs(prev.y - curr.y) <= tolerance && Math.abs(curr.y - next.y) <= tolerance;
+    const isCollinearV = Math.abs(prev.x - curr.x) <= tolerance && Math.abs(curr.x - next.x) <= tolerance;
+
+    if (!isCollinearH && !isCollinearV) {
+      simplified.push(curr);
+    }
+  }
+  simplified.push(deduped[deduped.length - 1]);
+  return simplified;
+}
+
+/**
+ * Snaps a polyline to strict orthogonal (Manhattan) steps where segments are nearly axis-aligned,
+ * and simplifies collinear vertices.
+ */
+export function regularizeOrthogonalPolyline(
+  points: PointLike[],
+  axisTolerance = 6,
+  collinearTolerance = 1.5,
+): PointLike[] {
+  if (points.length <= 2) return points;
+
+  const result: PointLike[] = [{ ...points[0] }];
+  for (let i = 1; i < points.length; i++) {
+    const prev = result[result.length - 1];
+    let curr = { ...points[i] };
+
+    // Check if segment is nearly horizontal or vertical
+    if (Math.abs(curr.y - prev.y) <= axisTolerance) {
+      curr.y = prev.y;
+    } else if (Math.abs(curr.x - prev.x) <= axisTolerance) {
+      curr.x = prev.x;
+    }
+    result.push(curr);
+  }
+
+  return simplifyCollinearPoints(result, collinearTolerance);
+}
+
+/**
+ * Translates terminal departure/entry stubs on connected edges when a node is moved,
+ * preserving orthogonal highway corridors and preventing diagonal distortion.
+ */
+export function translateConnectedEdgeStubs(g: any, node: any, dx: number, dy: number): void {
+  if (dx === 0 && dy === 0) return;
+  const connectedEdges = typeof g?.getConnectedEdges === "function" ? g.getConnectedEdges(node) : [];
+  if (!connectedEdges || connectedEdges.length === 0) return;
+
+  for (const edge of connectedEdges) {
+    const vertices = typeof edge.getVertices === "function" ? edge.getVertices() || [] : [];
+    if (vertices.length === 0) continue;
+
+    const sourceId = typeof edge.getSourceCellId === "function" ? edge.getSourceCellId() : edge.source?.cell;
+    const targetId = typeof edge.getTargetCellId === "function" ? edge.getTargetCellId() : edge.target?.cell;
+
+    const isSource = sourceId === node.id;
+    const isTarget = targetId === node.id;
+
+    if (isSource && isTarget) {
+      // Self-loop: translate all vertices
+      const newVertices = vertices.map((v: any) => ({ x: v.x + dx, y: v.y + dy }));
+      if (typeof edge.setVertices === "function") edge.setVertices(newVertices, { ignoreSnap: true });
+      continue;
+    }
+
+    let modified = false;
+    const newVertices = vertices.map((v: any) => ({ ...v }));
+
+    if (isSource) {
+      const v0 = newVertices[0];
+      const srcPt = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : null;
+      const prevSrcX = (srcPt?.x ?? v0.x) - dx;
+      const prevSrcY = (srcPt?.y ?? v0.y) - dy;
+      const isHorizontal = Math.abs(prevSrcX - v0.x) >= Math.abs(prevSrcY - v0.y);
+      if (isHorizontal) {
+        v0.y += dy;
+      } else {
+        v0.x += dx;
+      }
+      modified = true;
+    }
+
+    if (isTarget) {
+      const lastIdx = newVertices.length - 1;
+      const vLast = newVertices[lastIdx];
+      const tgtPt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : null;
+      const prevTgtX = (tgtPt?.x ?? vLast.x) - dx;
+      const prevTgtY = (tgtPt?.y ?? vLast.y) - dy;
+      const isHorizontal = Math.abs(prevTgtX - vLast.x) >= Math.abs(prevTgtY - vLast.y);
+      if (isHorizontal) {
+        vLast.y += dy;
+      } else {
+        vLast.x += dx;
+      }
+      modified = true;
+    }
+
+    if (modified && typeof edge.setVertices === "function") {
+      edge.setVertices(newVertices, { ignoreSnap: true });
+    }
+  }
+}
+
 interface GridNode {
   x: number;
   y: number;
@@ -162,22 +290,7 @@ export function findInternalChannelRoute(
       }
       path.reverse();
 
-      // Simplify collinear points
-      const simplified: PointLike[] = [path[0]];
-      for (let i = 1; i < path.length - 1; i++) {
-        const prev = simplified[simplified.length - 1];
-        const next = path[i + 1];
-        const p = path[i];
-        const isCollinearH = Math.abs(prev.y - p.y) < 0.001 && Math.abs(p.y - next.y) < 0.001;
-        const isCollinearV = Math.abs(prev.x - p.x) < 0.001 && Math.abs(p.x - next.x) < 0.001;
-        if (!isCollinearH && !isCollinearV) {
-          simplified.push(p);
-        }
-      }
-      if (path.length > 1) {
-        simplified.push(path[path.length - 1]);
-      }
-      return simplified;
+      return simplifyCollinearPoints(path, 0.001);
     }
 
     const stateKey = `${curr.x},${curr.y},${curr.dir}`;
@@ -558,7 +671,6 @@ export function computeJumpoverPath(
     const p2 = points[i + 1];
 
     const isHorizontal = Math.abs(p1.y - p2.y) < 0.001;
-    const isVertical = Math.abs(p1.x - p2.x) < 0.001;
 
     if (isHorizontal && Math.abs(p1.x - p2.x) > radius * 2) {
       const y = p1.y;

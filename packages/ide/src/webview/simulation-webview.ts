@@ -8,6 +8,8 @@
 // 1. Batch mode: static data from a completed simulation
 // 2. Live mode: streaming data from MQTT broker via WebSocket
 
+import { lttbDecimate } from "../utils/lttb.js";
+
 interface SimulationData {
   t: number[];
   y: number[][];
@@ -100,8 +102,24 @@ const btnClear = document.getElementById("btn-clear")!;
 const btn3dAnimation = document.getElementById("btn-3d-animation")!;
 const btnResetView = document.getElementById("btn-reset-view")!;
 const checkboxSmooth = document.getElementById("checkbox-smooth") as HTMLInputElement;
-const checkboxEcg = document.getElementById("checkbox-ecg") as HTMLInputElement | null;
-let isEcgMode = false;
+const selectXAxis = document.getElementById("select-xaxis") as HTMLSelectElement | null;
+const checkboxNormalize = document.getElementById("checkbox-normalize") as HTMLInputElement | null;
+const checkboxDualY = document.getElementById("checkbox-dual-y") as HTMLInputElement | null;
+const btnExportCsv = document.getElementById("btn-export-csv");
+const btnExportPng = document.getElementById("btn-export-png");
+const btnCopyCsv = document.getElementById("btn-copy-csv");
+const btnToggleCursors = document.getElementById("btn-toggle-cursors");
+const btnPinRun = document.getElementById("btn-pin-run");
+const cursorHudEl = document.getElementById("cursor-hud");
+
+let isNormalized = false;
+let isDualY = false;
+let selectedXVar = "__time__";
+let cursorsEnabled = false;
+let cursorA: number | null = null;
+let cursorB: number | null = null;
+let draggingCursor: "A" | "B" | null = null;
+let pinnedRun: SimulationData | null = null;
 
 function escapeHtmlSim(unsafe: string): string {
   if (!unsafe) return "";
@@ -128,9 +146,34 @@ const tStopInput = document.getElementById("st-stop") as HTMLInputElement;
 const intervalInput = document.getElementById("st-interval") as HTMLInputElement;
 const toleranceInput = document.getElementById("st-tolerance") as HTMLInputElement;
 
-// Surrogate Training variables removed
+// Upgraded Settings & Solver elements
+const stPreset = document.getElementById("st-preset") as HTMLSelectElement | null;
+const stSolver = document.getElementById("st-solver") as HTMLSelectElement | null;
+const stRtol = document.getElementById("st-rtol") as HTMLInputElement | null;
+const stAtol = document.getElementById("st-atol") as HTMLInputElement | null;
+const stMaxStep = document.getElementById("st-max-step") as HTMLInputElement | null;
+const stIntervals = document.getElementById("st-intervals") as HTMLInputElement | null;
+const stSteadyState = document.getElementById("st-steady-state") as HTMLInputElement | null;
+const simTelemetryEl = document.getElementById("sim-telemetry");
+
+// Variable search & bulk actions
+const varSearchInput = document.getElementById("var-search") as HTMLInputElement | null;
+const btnClearVarSearch = document.getElementById("btn-clear-var-search");
+const btnVarsAll = document.getElementById("btn-vars-all");
+const btnVarsNone = document.getElementById("btn-vars-none");
+const btnVarsInvert = document.getElementById("btn-vars-invert");
+const btnVarsStates = document.getElementById("btn-vars-states");
+const varCountBadge = document.getElementById("var-count-badge");
+
+// Parameter search & reset
+const paramSearchInput = document.getElementById("param-search") as HTMLInputElement | null;
+const btnClearParamSearch = document.getElementById("btn-clear-param-search");
+const btnResetAllParams = document.getElementById("btn-reset-all-params");
+const paramModifiedBadge = document.getElementById("param-modified-badge");
 
 let currentParameters: Record<string, HTMLInputElement> = {};
+const defaultParameters = new Map<string, number>();
+const customRightVars = new Set<string>();
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
 let currentInterpolation = "smooth";
@@ -143,18 +186,10 @@ checkboxSmooth?.addEventListener("change", (e) => {
   }
 });
 
-checkboxEcg?.addEventListener("change", () => {
-  isEcgMode = !!checkboxEcg?.checked;
-  if (isLiveMode) {
-    drawLive();
-  } else {
-    draw();
-  }
-});
-
 // Setup accordion toggles for sidebar sections
 document.querySelectorAll(".sidebar-header").forEach((header) => {
-  header.addEventListener("click", () => {
+  header.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest(".header-actions")) return;
     header.parentElement?.classList.toggle("collapsed");
   });
 });
@@ -166,6 +201,18 @@ let dragStartX = 0;
 let dragStartY = 0;
 let baseBounds: { tMin: number; tMax: number; yMin: number; yMax: number } | null = null;
 let hoverIndex: number | null = null;
+
+function getPlotMargin(): { top: number; right: number; bottom: number; left: number } {
+  const isDualActive = isDualY && !isNormalized;
+  const activeVars = currentData ? currentData.states.filter((s) => !hiddenVars.has(s)) : [];
+  const rightVarsCount = isDualActive && activeVars.length >= 2 ? activeVars.length - 1 : 0;
+  return {
+    top: 16,
+    right: rightVarsCount > 0 ? 64 : 24,
+    bottom: 40,
+    left: 64,
+  };
+}
 
 function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; yMax: number } | null {
   if (isLiveMode && liveBuffer && liveBuffer.count > 0) {
@@ -195,8 +242,37 @@ function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; y
     return { tMin, tMax, yMin: yMin - yPad, yMax: yMax + yPad };
   } else if (!isLiveMode && currentData && currentData.t.length > 0) {
     const { t, y, states, sweepResults } = currentData;
-    const tMin = t[0];
-    const tMax = t[t.length - 1];
+    let tMin = t[0];
+    let tMax = t[t.length - 1];
+
+    const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
+    if (xVarIdx >= 0) {
+      tMin = Infinity;
+      tMax = -Infinity;
+      for (let i = 0; i < t.length; i++) {
+        const xv = y[i]?.[xVarIdx];
+        if (xv !== undefined && isFinite(xv)) {
+          if (xv < tMin) tMin = xv;
+          if (xv > tMax) tMax = xv;
+        }
+      }
+      if (!isFinite(tMin) || !isFinite(tMax)) {
+        tMin = 0;
+        tMax = 1;
+      }
+      if (tMin === tMax) {
+        tMin -= 1;
+        tMax += 1;
+      }
+      const xPad = (tMax - tMin) * 0.05;
+      tMin -= xPad;
+      tMax += xPad;
+    }
+
+    if (isNormalized) {
+      return { tMin, tMax, yMin: -0.05, yMax: 1.05 };
+    }
+
     let yMin = Infinity;
     let yMax = -Infinity;
     for (let vi = 0; vi < states.length; vi++) {
@@ -287,6 +363,166 @@ btn3dAnimation?.addEventListener("click", () => {
   }
 });
 
+function exportCsv() {
+  if (!currentData || currentData.t.length === 0) return;
+  const { t, y, states } = currentData;
+  const visibleIndices: number[] = [];
+  for (let vi = 0; vi < states.length; vi++) {
+    if (!hiddenVars.has(states[vi])) visibleIndices.push(vi);
+  }
+  const headers = ["time", ...visibleIndices.map((vi) => states[vi])];
+  const rows: string[] = [headers.join(",")];
+  for (let i = 0; i < t.length; i++) {
+    const rowVals = [t[i].toString()];
+    for (const vi of visibleIndices) {
+      const val = y[i]?.[vi];
+      rowVals.push(val !== undefined && isFinite(val) ? val.toString() : "");
+    }
+    rows.push(rowVals.join(","));
+  }
+  const csvContent = rows.join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `simulation_data_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportPng() {
+  if (!currentData || currentData.t.length === 0) return;
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = canvas.width;
+  exportCanvas.height = canvas.height;
+  const expCtx = exportCanvas.getContext("2d");
+  if (!expCtx) return;
+  expCtx.fillStyle = isDark ? "#1e1e1e" : "#ffffff";
+  expCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+  expCtx.drawImage(canvas, 0, 0);
+
+  const dataUrl = exportCanvas.toDataURL("image/png");
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = `simulation_chart_${Date.now()}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function copyCsvToClipboard(btn: HTMLElement) {
+  if (!currentData || currentData.t.length === 0) return;
+  const { t, y, states } = currentData;
+  const visibleIndices: number[] = [];
+  for (let vi = 0; vi < states.length; vi++) {
+    if (!hiddenVars.has(states[vi])) visibleIndices.push(vi);
+  }
+  const headers = ["time", ...visibleIndices.map((vi) => states[vi])];
+  const rows: string[] = [headers.join("\t")];
+  for (let i = 0; i < t.length; i++) {
+    const rowVals = [t[i].toString()];
+    for (const vi of visibleIndices) {
+      const val = y[i]?.[vi];
+      rowVals.push(val !== undefined && isFinite(val) ? val.toString() : "");
+    }
+    rows.push(rowVals.join("\t"));
+  }
+  const tsvContent = rows.join("\n");
+  try {
+    await navigator.clipboard.writeText(tsvContent);
+    const orig = btn.textContent;
+    btn.textContent = "✓ Copied!";
+    setTimeout(() => {
+      btn.textContent = orig;
+    }, 1500);
+  } catch (err) {
+    console.error("Failed to copy data:", err);
+  }
+}
+
+btnExportCsv?.addEventListener("click", () => {
+  exportCsv();
+});
+
+btnExportPng?.addEventListener("click", () => {
+  exportPng();
+});
+
+btnCopyCsv?.addEventListener("click", () => {
+  if (btnCopyCsv) copyCsvToClipboard(btnCopyCsv);
+});
+
+btnToggleCursors?.addEventListener("click", () => {
+  cursorsEnabled = !cursorsEnabled;
+  if (cursorsEnabled) {
+    const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
+    const tSpan = bounds.tMax - bounds.tMin;
+    if (cursorA === null || cursorB === null) {
+      cursorA = bounds.tMin + 0.25 * tSpan;
+      cursorB = bounds.tMin + 0.75 * tSpan;
+    }
+    btnToggleCursors.classList.add("active");
+    btnToggleCursors.style.background = "var(--vscode-button-secondaryBackground, #3a3d41)";
+    btnToggleCursors.style.borderColor = "#38bdf8";
+  } else {
+    btnToggleCursors.classList.remove("active");
+    btnToggleCursors.style.background = "";
+    btnToggleCursors.style.borderColor = "";
+  }
+  if (isLiveMode) drawLive();
+  else draw();
+});
+
+btnPinRun?.addEventListener("click", () => {
+  if (!pinnedRun && currentData) {
+    pinnedRun = {
+      t: [...currentData.t],
+      y: currentData.y.map((row) => [...row]),
+      states: [...currentData.states],
+    };
+    btnPinRun.textContent = "📍 Unpin";
+    btnPinRun.classList.add("active");
+    btnPinRun.style.background = "var(--vscode-button-secondaryBackground, #3a3d41)";
+    btnPinRun.style.borderColor = "#f59e0b";
+  } else {
+    pinnedRun = null;
+    btnPinRun.textContent = "📌 Pin Run";
+    btnPinRun.classList.remove("active");
+    btnPinRun.style.background = "";
+    btnPinRun.style.borderColor = "";
+  }
+  if (isLiveMode) drawLive();
+  else draw();
+});
+
+selectXAxis?.addEventListener("change", () => {
+  if (selectXAxis) selectedXVar = selectXAxis.value;
+  customBounds = null;
+  draw();
+});
+
+checkboxNormalize?.addEventListener("change", () => {
+  isNormalized = !!checkboxNormalize?.checked;
+  if (isNormalized && checkboxDualY) {
+    checkboxDualY.checked = false;
+    isDualY = false;
+  }
+  customBounds = null;
+  draw();
+});
+
+checkboxDualY?.addEventListener("change", () => {
+  isDualY = !!checkboxDualY?.checked;
+  if (isDualY && checkboxNormalize) {
+    checkboxNormalize.checked = false;
+    isNormalized = false;
+  }
+  customBounds = null;
+  draw();
+});
+
 // Handle messages from extension
 window.addEventListener("message", (event) => {
   const msg = event.data;
@@ -320,6 +556,24 @@ window.addEventListener("message", (event) => {
     stopLiveLoop();
     buildTreeView(msg.data.states);
 
+    // Populate X-Axis selector for Phase Portrait
+    if (selectXAxis && msg.data.states) {
+      const currentVal = selectXAxis.value;
+      selectXAxis.innerHTML = '<option value="__time__">Time (s)</option>';
+      msg.data.states.forEach((s: string) => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = s;
+        selectXAxis.appendChild(opt);
+      });
+      if (msg.data.states.includes(currentVal)) {
+        selectXAxis.value = currentVal;
+      } else {
+        selectXAxis.value = "__time__";
+      }
+      selectedXVar = selectXAxis.value;
+    }
+
     // Detect Multi-Body simulation
     const isMultiBody = msg.data.states.some((s: string) => /\.frame_[ab]\.r_0\[1\]$/.test(s));
     if (isMultiBody) {
@@ -328,32 +582,176 @@ window.addEventListener("message", (event) => {
       btn3dAnimation.style.display = "none";
     }
 
-    // Fill in Parameters
+    // Fill in Parameters with rich sliders, reset, and sweep controls
     if (msg.data.parameters && msg.data.parameters.length > 0) {
       paramsSection.style.display = "flex";
       parametersView.innerHTML = "";
       currentParameters = {};
+      defaultParameters.clear();
 
       msg.data.parameters.forEach(
-        (p: { name: string; description?: string; defaultValue: number; type: string; unit?: string }) => {
-          const row = document.createElement("div");
-          row.className = "settings-row";
+        (p: {
+          name: string;
+          description?: string;
+          defaultValue: number;
+          type: string;
+          unit?: string;
+          min?: number;
+          max?: number;
+        }) => {
+          defaultParameters.set(p.name, p.defaultValue);
+          const item = document.createElement("div");
+          item.className = "param-item";
+          item.setAttribute("data-param-name", p.name);
 
-          const label = document.createElement("label");
-          label.textContent = p.name + (p.unit ? ` [${p.unit}]` : "");
-          label.title = p.description || p.name;
+          // Header
+          const header = document.createElement("div");
+          header.className = "param-item-header";
+
+          const label = document.createElement("div");
+          label.className = "param-label";
+          label.title = p.description || `${p.name} (default: ${p.defaultValue}${p.unit ? " " + p.unit : ""})`;
+
+          const dot = document.createElement("span");
+          dot.className = "param-dot";
+          dot.style.display = "none";
+
+          const nameSpan = document.createElement("span");
+          nameSpan.textContent = p.name + (p.unit ? ` [${p.unit}]` : "");
+
+          label.appendChild(dot);
+          label.appendChild(nameSpan);
+
+          const actions = document.createElement("div");
+          actions.className = "param-actions";
+
+          const resetBtn = document.createElement("button");
+          resetBtn.className = "param-action-btn";
+          resetBtn.textContent = "↺";
+          resetBtn.title = `Reset ${p.name} to default (${p.defaultValue})`;
+
+          const sweepBtn = document.createElement("button");
+          sweepBtn.className = "param-action-btn";
+          sweepBtn.textContent = "⚡";
+          sweepBtn.title = `Configure parametric sweep for ${p.name}`;
+
+          actions.appendChild(resetBtn);
+          actions.appendChild(sweepBtn);
+          header.appendChild(label);
+          header.appendChild(actions);
+
+          // Controls (Slider + Number Input)
+          const controls = document.createElement("div");
+          controls.className = "param-controls";
 
           const input = document.createElement("input");
           input.type = "number";
           input.step = "any";
+          input.className = "param-input";
           input.value = typeof p.defaultValue === "number" ? p.defaultValue.toString() : "";
 
-          row.appendChild(label);
-          row.appendChild(input);
-          parametersView.appendChild(row);
+          // Calculate slider bounds
+          let sMin = p.min !== undefined ? p.min : p.defaultValue !== 0 ? Math.min(0, p.defaultValue * 0.5) : -10;
+          let sMax =
+            p.max !== undefined
+              ? p.max
+              : p.defaultValue !== 0
+                ? Math.max(p.defaultValue * 2, Math.abs(p.defaultValue) * 2)
+                : 10;
+          if (sMin === sMax) {
+            sMin -= 1;
+            sMax += 1;
+          }
+
+          const slider = document.createElement("input");
+          slider.type = "range";
+          slider.className = "param-slider";
+          slider.min = sMin.toString();
+          slider.max = sMax.toString();
+          slider.step = ((sMax - sMin) / 100).toString();
+          slider.value = p.defaultValue.toString();
+
+          controls.appendChild(slider);
+          controls.appendChild(input);
+
+          // Sweep Drawer
+          const sweepPanel = document.createElement("div");
+          sweepPanel.className = "param-sweep-panel";
+          sweepPanel.style.display = "none";
+
+          const defVal = typeof p.defaultValue === "number" ? p.defaultValue : 1;
+          const swStart = defVal * 0.8;
+          const swEnd = defVal * 1.2;
+
+          sweepPanel.innerHTML = `
+            <div class="param-sweep-row">
+              <label>Min</label>
+              <input type="number" class="sweep-start" step="any" value="${swStart.toFixed(2)}">
+              <label>Max</label>
+              <input type="number" class="sweep-end" step="any" value="${swEnd.toFixed(2)}">
+            </div>
+            <div class="param-sweep-row">
+              <label>Steps</label>
+              <input type="number" class="sweep-steps" step="1" min="2" max="50" value="5">
+              <button class="btn-run-sweep">Run Sweep</button>
+            </div>
+          `;
+
+          const updateModifiedState = () => {
+            const currentVal = parseFloat(input.value);
+            const isMod = !isNaN(currentVal) && currentVal !== p.defaultValue;
+            dot.style.display = isMod ? "inline-block" : "none";
+            updateParamModifiedBadge();
+          };
+
+          slider.addEventListener("input", () => {
+            input.value = slider.value;
+            updateModifiedState();
+          });
+
+          input.addEventListener("input", () => {
+            const val = parseFloat(input.value);
+            if (!isNaN(val)) {
+              if (val < parseFloat(slider.min)) slider.min = (val * 0.8).toString();
+              if (val > parseFloat(slider.max)) slider.max = (val * 1.2).toString();
+              slider.value = input.value;
+            }
+            updateModifiedState();
+          });
+
+          resetBtn.addEventListener("click", () => {
+            input.value = p.defaultValue.toString();
+            slider.value = p.defaultValue.toString();
+            updateModifiedState();
+          });
+
+          sweepBtn.addEventListener("click", () => {
+            const isHidden = sweepPanel.style.display === "none";
+            sweepPanel.style.display = isHidden ? "flex" : "none";
+            sweepBtn.style.color = isHidden ? "var(--vscode-button-background, #0e639c)" : "";
+          });
+
+          sweepPanel.querySelector(".btn-run-sweep")?.addEventListener("click", () => {
+            const startVal = parseFloat((sweepPanel.querySelector(".sweep-start") as HTMLInputElement).value);
+            const endVal = parseFloat((sweepPanel.querySelector(".sweep-end") as HTMLInputElement).value);
+            const stepsVal = parseInt((sweepPanel.querySelector(".sweep-steps") as HTMLInputElement).value, 10) || 5;
+
+            triggerSimulation({
+              parameterName: p.name,
+              start: isNaN(startVal) ? defVal * 0.8 : startVal,
+              end: isNaN(endVal) ? defVal * 1.2 : endVal,
+              steps: stepsVal,
+            });
+          });
+
+          item.appendChild(header);
+          item.appendChild(controls);
+          item.appendChild(sweepPanel);
+          parametersView.appendChild(item);
           currentParameters[p.name] = input;
         },
       );
+      updateParamModifiedBadge();
     } else {
       paramsSection.style.display = "none";
     }
@@ -365,6 +763,17 @@ window.addEventListener("message", (event) => {
     tStopInput.value = (exp.stopTime ?? 10).toString();
     intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 10) - (exp.startTime ?? 0)) / 500).toString();
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
+    if (stRtol && !stRtol.value) stRtol.value = (exp.tolerance ?? 1e-4).toString();
+    if (stAtol && !stAtol.value) stAtol.value = "1e-6";
+
+    // Update telemetry display if available
+    btnSimulate?.classList.remove("loading");
+    if (msg.data.telemetry && simTelemetryEl) {
+      simTelemetryEl.style.display = "block";
+      simTelemetryEl.textContent = `✓ ${msg.data.telemetry.executionTimeMs}ms • ${msg.data.telemetry.stepCount} steps`;
+    }
+
+    updateVarCountBadge();
 
     currentMCData = null; // Clear old MC data on new simulation
     currentLimits = []; // Clear old verification limits
@@ -517,16 +926,242 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(containerEl); // Observe the chart container instead of canvas directly
 
-btnSimulate?.addEventListener("click", () => {
+function updateParamModifiedBadge() {
+  if (!paramModifiedBadge) return;
+  let modCount = 0;
+  for (const [name, input] of Object.entries(currentParameters)) {
+    const val = parseFloat(input.value);
+    const def = defaultParameters.get(name);
+    if (!isNaN(val) && def !== undefined && val !== def) {
+      modCount++;
+    }
+  }
+  if (modCount > 0) {
+    paramModifiedBadge.style.display = "inline-block";
+    paramModifiedBadge.textContent = `${modCount} modified`;
+  } else {
+    paramModifiedBadge.style.display = "none";
+  }
+}
+
+function updateVarCountBadge() {
+  if (!varCountBadge || !currentData) return;
+  const total = currentData.states.length;
+  const active = total - hiddenVars.size;
+  varCountBadge.textContent = `${active}/${total}`;
+}
+
+function filterVariables(query: string) {
+  const q = query.trim().toLowerCase();
+  if (btnClearVarSearch) {
+    btnClearVarSearch.style.display = q ? "block" : "none";
+  }
+
+  const nodes = treeViewEl.querySelectorAll("li.tree-node");
+  if (!q) {
+    nodes.forEach((n) => {
+      (n as HTMLElement).style.display = "";
+    });
+    return;
+  }
+
+  nodes.forEach((n) => {
+    const item = n.querySelector(":scope > .tree-item");
+    const label = item?.querySelector(".tree-label")?.textContent?.toLowerCase() || "";
+    const title = (item?.querySelector(".tree-label") as HTMLElement)?.title?.toLowerCase() || "";
+    const isMatch = label.includes(q) || title.includes(q);
+
+    if (!n.querySelector("ul.tree-children")) {
+      (n as HTMLElement).style.display = isMatch ? "" : "none";
+    }
+  });
+
+  nodes.forEach((n) => {
+    const childrenUl = n.querySelector(":scope > ul.tree-children");
+    if (childrenUl) {
+      const visibleChildren = childrenUl.querySelectorAll("li.tree-node:not([style*='display: none'])");
+      if (visibleChildren.length > 0) {
+        (n as HTMLElement).style.display = "";
+        childrenUl.classList.add("expanded");
+        n.querySelector(":scope > .tree-item > .tree-caret")?.classList.add("expanded");
+      } else {
+        (n as HTMLElement).style.display = "none";
+      }
+    }
+  });
+}
+
+function filterParameters(query: string) {
+  const q = query.trim().toLowerCase();
+  if (btnClearParamSearch) {
+    btnClearParamSearch.style.display = q ? "block" : "none";
+  }
+  const items = parametersView.querySelectorAll(".param-item");
+  items.forEach((item) => {
+    const name = item.getAttribute("data-param-name")?.toLowerCase() || "";
+    const label = item.querySelector(".param-label")?.textContent?.toLowerCase() || "";
+    if (!q || name.includes(q) || label.includes(q)) {
+      item.classList.remove("hidden");
+    } else {
+      item.classList.add("hidden");
+    }
+  });
+}
+
+// Preset handler
+stPreset?.addEventListener("change", () => {
+  const preset = stPreset.value;
+  const start = parseFloat(tStartInput.value) || 0;
+  const stop = parseFloat(tStopInput.value) || 10;
+  const span = Math.max(0.001, stop - start);
+
+  if (preset === "standard") {
+    if (stSolver) stSolver.value = "dopri5";
+    intervalInput.value = (span / 500).toString();
+    toleranceInput.value = "1e-4";
+    if (stRtol) stRtol.value = "1e-4";
+    if (stAtol) stAtol.value = "1e-6";
+    if (stSteadyState) stSteadyState.checked = false;
+  } else if (preset === "fast") {
+    if (stSolver) stSolver.value = "rk4";
+    intervalInput.value = (span / 250).toString();
+    toleranceInput.value = "1e-3";
+    if (stRtol) stRtol.value = "1e-3";
+    if (stAtol) stAtol.value = "1e-4";
+    if (stSteadyState) stSteadyState.checked = false;
+  } else if (preset === "high-accuracy") {
+    if (stSolver) stSolver.value = "dopri5";
+    intervalInput.value = (span / 2000).toString();
+    toleranceInput.value = "1e-7";
+    if (stRtol) stRtol.value = "1e-7";
+    if (stAtol) stAtol.value = "1e-8";
+    if (stSteadyState) stSteadyState.checked = false;
+  } else if (preset === "stiff") {
+    if (stSolver) stSolver.value = "cvode";
+    intervalInput.value = (span / 500).toString();
+    toleranceInput.value = "1e-5";
+    if (stRtol) stRtol.value = "1e-5";
+    if (stAtol) stAtol.value = "1e-7";
+    if (stSteadyState) stSteadyState.checked = false;
+  } else if (preset === "steady-state") {
+    if (stSolver) stSolver.value = "dopri5";
+    if (stSteadyState) stSteadyState.checked = true;
+  }
+});
+
+// Variable filter & search listeners
+varSearchInput?.addEventListener("input", (e) => {
+  filterVariables((e.target as HTMLInputElement).value);
+});
+btnClearVarSearch?.addEventListener("click", () => {
+  if (varSearchInput) varSearchInput.value = "";
+  filterVariables("");
+});
+
+btnVarsAll?.addEventListener("click", () => {
+  hiddenVars.clear();
+  treeViewEl.querySelectorAll("input.tree-checkbox").forEach((cb) => {
+    (cb as HTMLInputElement).checked = true;
+  });
+  updateVarCountBadge();
+  customBounds = null;
+  draw();
+});
+
+btnVarsNone?.addEventListener("click", () => {
+  currentData?.states.forEach((s) => hiddenVars.add(s));
+  treeViewEl.querySelectorAll("input.tree-checkbox").forEach((cb) => {
+    (cb as HTMLInputElement).checked = false;
+  });
+  updateVarCountBadge();
+  customBounds = null;
+  draw();
+});
+
+btnVarsInvert?.addEventListener("click", () => {
+  currentData?.states.forEach((s) => {
+    if (hiddenVars.has(s)) hiddenVars.delete(s);
+    else hiddenVars.add(s);
+  });
+  treeViewEl.querySelectorAll("input.tree-checkbox").forEach((cb) => {
+    const li = cb.closest("li");
+    const label = li?.querySelector(".tree-label") as HTMLElement | null;
+    const name = label?.title || label?.textContent || "";
+    if (name) (cb as HTMLInputElement).checked = !hiddenVars.has(name);
+  });
+  updateVarCountBadge();
+  customBounds = null;
+  draw();
+});
+
+btnVarsStates?.addEventListener("click", () => {
+  hiddenVars.clear();
+  currentData?.states.forEach((s) => {
+    const isState = s.startsWith("der(") || s.includes("der");
+    if (!isState) hiddenVars.add(s);
+  });
+  treeViewEl.querySelectorAll("input.tree-checkbox").forEach((cb) => {
+    const li = cb.closest("li");
+    const label = li?.querySelector(".tree-label") as HTMLElement | null;
+    const name = label?.title || label?.textContent || "";
+    if (name) (cb as HTMLInputElement).checked = !hiddenVars.has(name);
+  });
+  updateVarCountBadge();
+  customBounds = null;
+  draw();
+});
+
+// Parameter search & reset all listeners
+paramSearchInput?.addEventListener("input", (e) => {
+  filterParameters((e.target as HTMLInputElement).value);
+});
+btnClearParamSearch?.addEventListener("click", () => {
+  if (paramSearchInput) paramSearchInput.value = "";
+  filterParameters("");
+});
+btnResetAllParams?.addEventListener("click", () => {
+  for (const [name, input] of Object.entries(currentParameters)) {
+    const def = defaultParameters.get(name);
+    if (def !== undefined) {
+      input.value = def.toString();
+      const item = input.closest(".param-item");
+      const slider = item?.querySelector(".param-slider") as HTMLInputElement | null;
+      if (slider) slider.value = def.toString();
+      const dot = item?.querySelector(".param-dot") as HTMLElement | null;
+      if (dot) dot.style.display = "none";
+    }
+  }
+  updateParamModifiedBadge();
+});
+
+function triggerSimulation(sweepConfig?: { parameterName: string; start: number; end: number; steps: number }) {
   if (!vscodeApi) return;
   const parameterOverrides: Record<string, number> = {};
   for (const [name, input] of Object.entries(currentParameters)) {
     if (input.value !== "") {
       const val = parseFloat(input.value);
-      if (!isNaN(val)) {
+      const def = defaultParameters.get(name);
+      if (!isNaN(val) && val !== def) {
         parameterOverrides[name] = val;
       }
     }
+  }
+
+  const solverVal = stSolver?.value || "dopri5";
+  const rtolVal = stRtol?.value
+    ? parseFloat(stRtol.value)
+    : toleranceInput.value
+      ? parseFloat(toleranceInput.value)
+      : undefined;
+  const atolVal = stAtol?.value ? parseFloat(stAtol.value) : undefined;
+  const intervalsVal = stIntervals?.value ? parseInt(stIntervals.value, 10) : undefined;
+  const maxStepVal = stMaxStep?.value ? parseFloat(stMaxStep.value) : undefined;
+  const steadyStateVal = stSteadyState?.checked ?? false;
+
+  btnSimulate.classList.add("loading");
+  if (simTelemetryEl) {
+    simTelemetryEl.style.display = "block";
+    simTelemetryEl.textContent = "Simulating...";
   }
 
   vscodeApi.postMessage({
@@ -536,9 +1171,28 @@ btnSimulate?.addEventListener("click", () => {
       stopTime: tStopInput.value ? parseFloat(tStopInput.value) : undefined,
       interval: intervalInput.value ? parseFloat(intervalInput.value) : undefined,
       tolerance: toleranceInput.value ? parseFloat(toleranceInput.value) : undefined,
+      solver: solverVal,
+      rtol: rtolVal,
+      atol: atolVal,
+      numberOfIntervals: intervalsVal,
+      maxStep: maxStepVal,
+      steadyStateOnly: steadyStateVal,
       parameterOverrides,
+      sweepConfig,
     },
   });
+}
+
+btnSimulate?.addEventListener("click", () => {
+  triggerSimulation();
+});
+
+// Keyboard shortcut (Ctrl+Enter / Cmd+Enter)
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    triggerSimulation();
+  }
 });
 
 // Surrogate logic removed
@@ -550,7 +1204,7 @@ canvas.addEventListener("wheel", (e) => {
   if (!currentData && (!isLiveMode || !liveBuffer)) return;
 
   const rect = canvas.getBoundingClientRect();
-  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
+  const margin = getPlotMargin();
   const plotW = rect.width - margin.left - margin.right;
   const plotH = rect.height - margin.top - margin.bottom;
 
@@ -595,6 +1249,35 @@ canvas.addEventListener("wheel", (e) => {
 
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const margin = getPlotMargin();
+  const plotW = rect.width - margin.left - margin.right;
+  const mx = e.clientX - rect.left;
+
+  // Check if clicking near Cursor A or Cursor B
+  if (cursorsEnabled && cursorA !== null && cursorB !== null && currentData && currentData.t.length > 0 && plotW > 0) {
+    const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
+    const { tMin, tMax } = bounds;
+    const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
+    const xPosA = xScale(cursorA);
+    const xPosB = xScale(cursorB);
+
+    const distA = Math.abs(mx - xPosA);
+    const distB = Math.abs(mx - xPosB);
+    const hitThreshold = 14;
+
+    if (distA <= hitThreshold && distA <= distB) {
+      draggingCursor = "A";
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    } else if (distB <= hitThreshold) {
+      draggingCursor = "B";
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+  }
+
   isDragging = true;
   dragStartX = e.clientX;
   dragStartY = e.clientY;
@@ -604,41 +1287,95 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 
 canvas.addEventListener("pointermove", (e) => {
-  if (!isDragging || !baseBounds) return;
-
   const rect = canvas.getBoundingClientRect();
-  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
+  const margin = getPlotMargin();
   const plotW = rect.width - margin.left - margin.right;
   const plotH = rect.height - margin.top - margin.bottom;
   if (plotW <= 0 || plotH <= 0) return;
 
-  const dx = e.clientX - dragStartX;
-  const dy = e.clientY - dragStartY;
+  if (draggingCursor) {
+    const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
+    const { tMin, tMax } = bounds;
+    const mx = e.clientX - rect.left;
+    const rx = Math.max(0, Math.min(1, (mx - margin.left) / plotW));
+    const newVal = tMin + rx * (tMax - tMin);
 
-  const tRange = baseBounds.tMax - baseBounds.tMin;
-  const yRange = baseBounds.yMax - baseBounds.yMin;
+    if (draggingCursor === "A") {
+      cursorA = newVal;
+    } else if (draggingCursor === "B") {
+      cursorB = newVal;
+    }
+    if (isLiveMode) drawLive();
+    else draw();
+    return;
+  }
 
-  const dt = -(dx / plotW) * tRange;
-  const dyScaled = (dy / plotH) * yRange;
+  if (isDragging && baseBounds) {
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
 
-  customBounds = {
-    tMin: baseBounds.tMin + dt,
-    tMax: baseBounds.tMax + dt,
-    yMin: baseBounds.yMin + dyScaled,
-    yMax: baseBounds.yMax + dyScaled,
-  };
+    const tRange = baseBounds.tMax - baseBounds.tMin;
+    const yRange = baseBounds.yMax - baseBounds.yMin;
 
-  if (isLiveMode) drawLive();
-  else draw();
+    const dt = -(dx / plotW) * tRange;
+    const dyScaled = (dy / plotH) * yRange;
+
+    customBounds = {
+      tMin: baseBounds.tMin + dt,
+      tMax: baseBounds.tMax + dt,
+      yMin: baseBounds.yMin + dyScaled,
+      yMax: baseBounds.yMax + dyScaled,
+    };
+
+    if (isLiveMode) drawLive();
+    else draw();
+    return;
+  }
+
+  if (cursorsEnabled && cursorA !== null && cursorB !== null) {
+    const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
+    const { tMin, tMax } = bounds;
+    const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
+    const mx = e.clientX - rect.left;
+    const distA = Math.abs(mx - xScale(cursorA));
+    const distB = Math.abs(mx - xScale(cursorB));
+    if (distA <= 12 || distB <= 12) {
+      canvas.style.cursor = "col-resize";
+    } else {
+      canvas.style.cursor = "crosshair";
+    }
+  }
 });
 
 canvas.addEventListener("pointerup", (e) => {
+  if (draggingCursor) {
+    draggingCursor = null;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    if (isLiveMode) drawLive();
+    else draw();
+    return;
+  }
   isDragging = false;
-  canvas.releasePointerCapture(e.pointerId);
+  try {
+    canvas.releasePointerCapture(e.pointerId);
+  } catch (_) {}
 });
 canvas.addEventListener("pointercancel", (e) => {
+  if (draggingCursor) {
+    draggingCursor = null;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    if (isLiveMode) drawLive();
+    else draw();
+    return;
+  }
   isDragging = false;
-  canvas.releasePointerCapture(e.pointerId);
+  try {
+    canvas.releasePointerCapture(e.pointerId);
+  } catch (_) {}
 });
 
 // ── Live mode: MQTT over WebSocket ──
@@ -1036,6 +1773,56 @@ function buildTreeView(variables: string[]): void {
     label.title = node.fullName;
     item.appendChild(label);
 
+    if (node.isVariable && currentData) {
+      const actions = document.createElement("div");
+      actions.className = "tree-item-actions";
+
+      // Show final value pill if available
+      const vi = currentData.states.indexOf(node.fullName);
+      if (vi >= 0 && currentData.y.length > 0) {
+        const lastVal = currentData.y[currentData.y.length - 1]?.[vi];
+        if (lastVal !== undefined && isFinite(lastVal)) {
+          const stat = document.createElement("span");
+          stat.className = "var-stat-pill";
+          stat.textContent =
+            Math.abs(lastVal) >= 1000 || (Math.abs(lastVal) < 0.01 && lastVal !== 0)
+              ? lastVal.toExponential(2)
+              : lastVal.toFixed(2);
+          actions.appendChild(stat);
+        }
+      }
+
+      // Axis routing pill (L / R)
+      const axisPill = document.createElement("span");
+      axisPill.className = "axis-pill" + (customRightVars.has(node.fullName) ? " right" : "");
+      axisPill.textContent = customRightVars.has(node.fullName) ? "R" : "L";
+      axisPill.title = "Toggle Primary (Left) or Secondary (Right) Y-Axis";
+      axisPill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (customRightVars.has(node.fullName)) {
+          customRightVars.delete(node.fullName);
+          axisPill.className = "axis-pill";
+          axisPill.textContent = "L";
+        } else {
+          customRightVars.add(node.fullName);
+          axisPill.className = "axis-pill right";
+          axisPill.textContent = "R";
+          if (!isDualY && checkboxDualY) {
+            checkboxDualY.checked = true;
+            isDualY = true;
+            if (checkboxNormalize) {
+              checkboxNormalize.checked = false;
+              isNormalized = false;
+            }
+          }
+        }
+        customBounds = null;
+        draw();
+      });
+      actions.appendChild(axisPill);
+      item.appendChild(actions);
+    }
+
     li.appendChild(item);
 
     if (hasChildren) {
@@ -1266,7 +2053,7 @@ function draw() {
   const axisColor = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)";
 
   // Margins
-  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
+  const margin = getPlotMargin();
   const plotW = w - margin.left - margin.right;
   const plotH = h - margin.top - margin.bottom;
 
@@ -1274,87 +2061,158 @@ function draw() {
 
   // Data ranges
   const { t, y, states } = currentData;
+  const isDualActive = isDualY && !isNormalized;
+  const activeVars = states.filter((s) => !hiddenVars.has(s));
+  const leftVars: string[] = [];
+  const rightVars: string[] = [];
+  if (isDualActive) {
+    if (customRightVars.size > 0) {
+      for (const s of activeVars) {
+        if (customRightVars.has(s)) rightVars.push(s);
+        else leftVars.push(s);
+      }
+      if (leftVars.length === 0 && rightVars.length > 0) {
+        leftVars.push(rightVars.shift()!);
+      }
+    } else if (activeVars.length >= 2) {
+      leftVars.push(activeVars[0]);
+      for (let i = 1; i < activeVars.length; i++) {
+        rightVars.push(activeVars[i]);
+      }
+    } else {
+      leftVars.push(...activeVars);
+    }
+  } else {
+    leftVars.push(...activeVars);
+  }
+
   const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
   const { tMin, tMax, yMin, yMax } = bounds;
 
-  // Coordinate transform
+  let yMinLeft = yMin;
+  let yMaxLeft = yMax;
+  let yMinRight = yMin;
+  let yMaxRight = yMax;
+
+  if (isDualActive && rightVars.length > 0) {
+    let rMin = Infinity;
+    let rMax = -Infinity;
+    let lMin = Infinity;
+    let lMax = -Infinity;
+    for (let i = 0; i < t.length; i++) {
+      for (const rv of rightVars) {
+        const vi = states.indexOf(rv);
+        const val = y[i]?.[vi];
+        if (val !== undefined && isFinite(val)) {
+          if (val < rMin) rMin = val;
+          if (val > rMax) rMax = val;
+        }
+      }
+      for (const lv of leftVars) {
+        const vi = states.indexOf(lv);
+        const val = y[i]?.[vi];
+        if (val !== undefined && isFinite(val)) {
+          if (val < lMin) lMin = val;
+          if (val > lMax) lMax = val;
+        }
+      }
+    }
+    if (isFinite(lMin) && isFinite(lMax)) {
+      if (lMin === lMax) {
+        lMin -= 1;
+        lMax += 1;
+      }
+      const pad = (lMax - lMin) * 0.05;
+      yMinLeft = lMin - pad;
+      yMaxLeft = lMax + pad;
+    }
+    if (isFinite(rMin) && isFinite(rMax)) {
+      if (rMin === rMax) {
+        rMin -= 1;
+        rMax += 1;
+      }
+      const pad = (rMax - rMin) * 0.05;
+      yMinRight = rMin - pad;
+      yMaxRight = rMax + pad;
+    }
+  }
+
+  // Precompute normalization min/max per variable
+  const varMinMax: { min: number; max: number }[] = [];
+  if (isNormalized) {
+    for (let vi = 0; vi < states.length; vi++) {
+      let vMin = Infinity;
+      let vMax = -Infinity;
+      for (let i = 0; i < t.length; i++) {
+        const val = y[i]?.[vi];
+        if (val !== undefined && isFinite(val)) {
+          if (val < vMin) vMin = val;
+          if (val > vMax) vMax = val;
+        }
+      }
+      if (!isFinite(vMin) || !isFinite(vMax)) {
+        vMin = 0;
+        vMax = 1;
+      }
+      if (vMin === vMax) {
+        vMin -= 1;
+        vMax += 1;
+      }
+      varMinMax.push({ min: vMin, max: vMax });
+    }
+  }
+
+  // Coordinate transforms
+  const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
   const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
-  const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
+  const yScaleLeft = (v: number) => margin.top + plotH - ((v - yMinLeft) / (yMaxLeft - yMinLeft || 1)) * plotH;
+  const yScaleRight = (v: number) => margin.top + plotH - ((v - yMinRight) / (yMaxRight - yMinRight || 1)) * plotH;
+  const yScaleNorm = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
+
+  const getPtX = (i: number) => {
+    if (xVarIdx >= 0) {
+      const xv = y[i]?.[xVarIdx];
+      return xScale(xv !== undefined && isFinite(xv) ? xv : 0);
+    }
+    return xScale(t[i]);
+  };
+
+  const getPtY = (vi: number, val: number) => {
+    if (isNormalized) {
+      const mm = varMinMax[vi];
+      const norm = mm ? (val - mm.min) / (mm.max - mm.min || 1) : 0;
+      return yScaleNorm(norm);
+    }
+    if (isDualActive && rightVars.includes(states[vi])) {
+      return yScaleRight(val);
+    }
+    return yScaleLeft(val);
+  };
 
   // Clear
   ctx.clearRect(0, 0, w, h);
 
   const xTicks = niceTicksFor(tMin, tMax, 8);
-  const yTicks = niceTicksFor(yMin, yMax, 6);
+  const yTicks = isNormalized ? [0, 0.25, 0.5, 0.75, 1.0] : niceTicksFor(yMinLeft, yMaxLeft, 6);
 
-  if (isEcgMode) {
-    // Clinical ECG Pink Background
-    ctx.fillStyle = isDark ? "#241419" : "#fff0f3";
-    ctx.fillRect(margin.left, margin.top, plotW, plotH);
+  // Standard Grid lines
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
 
-    // Minor grid (1mm x 1mm -> 40ms x 0.1mV)
-    ctx.strokeStyle = isDark ? "rgba(244, 143, 177, 0.22)" : "#f8bbd0";
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    const tStartMinor = Math.floor(tMin / 0.04) * 0.04;
-    for (let curT = tStartMinor; curT <= tMax; curT += 0.04) {
-      const x = xScale(curT);
-      if (x >= margin.left && x <= margin.left + plotW) {
-        ctx.moveTo(x, margin.top);
-        ctx.lineTo(x, margin.top + plotH);
-      }
-    }
-    const yStartMinor = Math.floor(yMin / 0.1) * 0.1;
-    for (let curY = yStartMinor; curY <= yMax; curY += 0.1) {
-      const yPos = yScale(curY);
-      if (yPos >= margin.top && yPos <= margin.top + plotH) {
-        ctx.moveTo(margin.left, yPos);
-        ctx.lineTo(margin.left + plotW, yPos);
-      }
-    }
-    ctx.stroke();
-
-    // Major grid (5mm x 5mm -> 200ms x 0.5mV)
-    ctx.strokeStyle = isDark ? "rgba(244, 143, 177, 0.65)" : "#e91e63";
-    ctx.lineWidth = 1.0;
-    ctx.beginPath();
-    const tStartMajor = Math.floor(tMin / 0.2) * 0.2;
-    for (let curT = tStartMajor; curT <= tMax; curT += 0.2) {
-      const x = xScale(curT);
-      if (x >= margin.left && x <= margin.left + plotW) {
-        ctx.moveTo(x, margin.top);
-        ctx.lineTo(x, margin.top + plotH);
-      }
-    }
-    const yStartMajor = Math.floor(yMin / 0.5) * 0.5;
-    for (let curY = yStartMajor; curY <= yMax; curY += 0.5) {
-      const yPos = yScale(curY);
-      if (yPos >= margin.top && yPos <= margin.top + plotH) {
-        ctx.moveTo(margin.left, yPos);
-        ctx.lineTo(margin.left + plotW, yPos);
-      }
-    }
-    ctx.stroke();
-  } else {
-    // Standard Grid lines
-    ctx.strokeStyle = gridColor;
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    for (const xt of xTicks) {
-      const x = xScale(xt);
-      ctx.moveTo(x, margin.top);
-      ctx.lineTo(x, margin.top + plotH);
-    }
-    for (const yt of yTicks) {
-      const yy = yScale(yt);
-      ctx.moveTo(margin.left, yy);
-      ctx.lineTo(margin.left + plotW, yy);
-    }
-    ctx.stroke();
+  ctx.beginPath();
+  for (const xt of xTicks) {
+    const x = xScale(xt);
+    ctx.moveTo(x, margin.top);
+    ctx.lineTo(x, margin.top + plotH);
   }
+  for (const yt of yTicks) {
+    const yy = isNormalized ? yScaleNorm(yt) : yScaleLeft(yt);
+    ctx.moveTo(margin.left, yy);
+    ctx.lineTo(margin.left + plotW, yy);
+  }
+  ctx.stroke();
 
-  // Axes
+  // Main Axes (Left and Bottom)
   ctx.strokeStyle = axisColor;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -1363,7 +2221,7 @@ function draw() {
   ctx.lineTo(margin.left + plotW, margin.top + plotH);
   ctx.stroke();
 
-  // Tick labels
+  // Tick labels (Bottom X)
   ctx.fillStyle = fgColor;
   ctx.font = "11px var(--vscode-editor-font-family, monospace)";
   ctx.textAlign = "center";
@@ -1372,17 +2230,72 @@ function draw() {
     ctx.fillText(formatTick(xt), xScale(xt), margin.top + plotH + 6);
   }
 
+  // Tick labels (Left Y)
+  const leftColor =
+    isDualActive && leftVars.length === 1 ? COLORS[states.indexOf(leftVars[0]) % COLORS.length] : fgColor;
+  ctx.fillStyle = leftColor;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   for (const yt of yTicks) {
-    ctx.fillText(formatTick(yt), margin.left - 6, yScale(yt));
+    const yy = isNormalized ? yScaleNorm(yt) : yScaleLeft(yt);
+    const label = isNormalized ? `${Math.round(yt * 100)}%` : formatTick(yt);
+    ctx.fillText(label, margin.left - 6, yy);
   }
 
+  // Right Y Axis (Dual Mode)
+  if (isDualActive && rightVars.length > 0) {
+    const yTicksRight = niceTicksFor(yMinRight, yMaxRight, 6);
+    const rightColor = rightVars.length === 1 ? COLORS[states.indexOf(rightVars[0]) % COLORS.length] : fgColor;
+
+    ctx.strokeStyle = rightColor;
+    ctx.beginPath();
+    ctx.moveTo(margin.left + plotW, margin.top);
+    ctx.lineTo(margin.left + plotW, margin.top + plotH);
+    for (const yt of yTicksRight) {
+      const yy = yScaleRight(yt);
+      ctx.moveTo(margin.left + plotW, yy);
+      ctx.lineTo(margin.left + plotW + 4, yy);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = rightColor;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    for (const yt of yTicksRight) {
+      ctx.fillText(formatTick(yt), margin.left + plotW + 7, yScaleRight(yt));
+    }
+
+    if (rightVars.length === 1) {
+      ctx.save();
+      ctx.translate(margin.left + plotW + 50, margin.top + plotH / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.font = "11px var(--vscode-font-family, sans-serif)";
+      ctx.textAlign = "center";
+      ctx.fillText(rightVars[0], 0, 0);
+      ctx.restore();
+    }
+  }
+
+  // Left Y axis label
+  ctx.fillStyle = leftColor;
+  ctx.save();
+  ctx.translate(14, margin.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = "11px var(--vscode-font-family, sans-serif)";
+  ctx.textAlign = "center";
+  if (isNormalized) {
+    ctx.fillText("Normalized (0–100%)", 0, 0);
+  } else if (isDualActive && leftVars.length === 1) {
+    ctx.fillText(leftVars[0], 0, 0);
+  }
+  ctx.restore();
+
   // X axis label
+  ctx.fillStyle = fgColor;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.font = "12px var(--vscode-font-family, sans-serif)";
-  ctx.fillText("Time (s)", margin.left + plotW / 2, margin.top + plotH + 24);
+  ctx.fillText(xVarIdx >= 0 ? states[xVarIdx] : "Time (s)", margin.left + plotW / 2, margin.top + plotH + 24);
 
   // Clip to plot area
   ctx.save();
@@ -1425,7 +2338,7 @@ function draw() {
           const hi = band.hi[i];
           if (hi === undefined || !isFinite(hi)) continue;
           const x = xScale(mcT[i]);
-          const y = yScale(hi);
+          const y = getPtY(vi, hi);
           if (!started) {
             ctx.moveTo(x, y);
             started = true;
@@ -1437,12 +2350,55 @@ function draw() {
         for (let i = mcT.length - 1; i >= 0; i--) {
           const lo = band.lo[i];
           if (lo === undefined || !isFinite(lo)) continue;
-          ctx.lineTo(xScale(mcT[i]), yScale(lo));
+          ctx.lineTo(xScale(mcT[i]), getPtY(vi, lo));
         }
         ctx.closePath();
         ctx.fill();
       }
     }
+  }
+
+  // ── Pinned Run Baseline (Ghost Curves) ──
+  if (pinnedRun && pinnedRun.t.length > 0) {
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.45;
+
+    for (let vi = 0; vi < pinnedRun.states.length; vi++) {
+      const sName = pinnedRun.states[vi];
+      if (hiddenVars.has(sName)) continue;
+      const curIdx = states.indexOf(sName);
+      const color = COLORS[(curIdx >= 0 ? curIdx : vi) % COLORS.length];
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 0; i < pinnedRun.t.length; i++) {
+        const val = pinnedRun.y[i]?.[vi];
+        if (val === undefined || !isFinite(val)) continue;
+        const ptX = xVarIdx >= 0 ? xScale(pinnedRun.y[i]?.[xVarIdx] ?? 0) : xScale(pinnedRun.t[i]);
+        const ptY = getPtY(curIdx >= 0 ? curIdx : vi, val);
+        pts.push({ x: ptX, y: ptY });
+      }
+
+      const drawPts = pts.length > 2000 ? lttbDecimate(pts, 1500) : pts;
+      if (currentInterpolation === "smooth") {
+        drawSmoothSpline(ctx, drawPts);
+      } else {
+        let started = false;
+        for (const pt of drawPts) {
+          if (!started) {
+            ctx.moveTo(pt.x, pt.y);
+            started = true;
+          } else {
+            ctx.lineTo(pt.x, pt.y);
+          }
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Draw lines
@@ -1461,15 +2417,17 @@ function draw() {
       for (let i = 0; i < t.length; i++) {
         const val = sweepResults ? sweepResults[si].y[i]?.[vi] : y[i]?.[vi];
         if (val === undefined || !isFinite(val)) continue;
-        pts.push({ x: xScale(t[i]), y: yScale(val) });
+        pts.push({ x: getPtX(i), y: getPtY(vi, val) });
       }
 
+      const drawPts = pts.length > 2000 ? lttbDecimate(pts, 1500) : pts;
+
       if (currentInterpolation === "smooth") {
-        drawSmoothSpline(ctx, pts);
+        drawSmoothSpline(ctx, drawPts);
       } else {
         let prevPy = 0;
         let started = false;
-        for (const pt of pts) {
+        for (const pt of drawPts) {
           if (!started) {
             ctx.moveTo(pt.x, pt.y);
             started = true;
@@ -1483,6 +2441,19 @@ function draw() {
         }
       }
       ctx.stroke();
+
+      if (xVarIdx >= 0 && pts.length > 0) {
+        // Start marker (green dot)
+        ctx.fillStyle = "#3fb950";
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // End marker (red square)
+        const lastPt = pts[pts.length - 1];
+        ctx.fillStyle = "#f85149";
+        ctx.fillRect(lastPt.x - 3, lastPt.y - 3, 6, 6);
+      }
     }
   }
 
@@ -1496,7 +2467,8 @@ function draw() {
     ctx.clip();
 
     for (const limit of currentLimits) {
-      const ly = yScale(limit.value);
+      const limitVi = states.indexOf(limit.variable);
+      const ly = limitVi >= 0 ? getPtY(limitVi, limit.value) : yScaleLeft(limit.value);
       // Only draw if the line is within the visible plot area
       if (ly >= margin.top && ly <= margin.top + plotH) {
         // Dashed red line
@@ -1527,125 +2499,9 @@ function draw() {
     ctx.restore();
   }
 
-  // ── Automated Pacemaker Event Flags & Refractory Windows (Biomedical Telemetry) ──
-  if (isEcgMode) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(margin.left, margin.top, plotW, plotH);
-    ctx.clip();
-
-    for (let vi = 0; vi < states.length; vi++) {
-      const varName = states[vi].toLowerCase();
-      const isAtrialPacing =
-        varName.includes("ap") ||
-        varName.includes("atrial_pace") ||
-        varName.includes("pace_a") ||
-        varName.includes("pacing_a") ||
-        varName.includes("pacinga");
-      const isVentricularPacing =
-        varName.includes("vp") ||
-        varName.includes("vent_pace") ||
-        varName.includes("pace_v") ||
-        varName.includes("pacing_v") ||
-        varName.includes("pacingv");
-      const isAtrialSensing = varName.includes("as") || varName.includes("atrial_sense") || varName.includes("sense_a");
-      const isVentricularSensing =
-        varName.includes("vs") || varName.includes("vent_sense") || varName.includes("sense_v");
-      const isCardioSignal =
-        varName.includes("vm") ||
-        varName.includes("ecg") ||
-        varName.includes("egm") ||
-        varName.includes("voltage") ||
-        varName.includes("pacing");
-
-      if (isAtrialPacing || isVentricularPacing || isAtrialSensing || isVentricularSensing) {
-        let lastEventTime = -1;
-        for (let i = 0; i < t.length; i++) {
-          const val = y[i]?.[vi];
-          if (val !== undefined && val > 0.5 && t[i] - lastEventTime > 0.12) {
-            lastEventTime = t[i];
-            const px = xScale(t[i]);
-
-            const label = isAtrialPacing ? "AP" : isVentricularPacing ? "VP" : isAtrialSensing ? "AS" : "VS";
-            const badgeColor = isAtrialPacing
-              ? "#2196f3"
-              : isVentricularPacing
-                ? "#ff9800"
-                : isAtrialSensing
-                  ? "#4caf50"
-                  : "#00bcd4";
-
-            if (isVentricularPacing || isVentricularSensing) {
-              const blankingEnd = xScale(t[i] + 0.028);
-              ctx.fillStyle = "rgba(255, 87, 34, 0.18)";
-              ctx.fillRect(px, margin.top, Math.max(2, blankingEnd - px), plotH);
-
-              const pvarpEnd = xScale(t[i] + 0.25);
-              ctx.fillStyle = "rgba(255, 152, 0, 0.08)";
-              ctx.fillRect(px, margin.top, Math.max(4, pvarpEnd - px), plotH);
-            }
-
-            ctx.strokeStyle = badgeColor;
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([3, 2]);
-            ctx.beginPath();
-            ctx.moveTo(px, margin.top);
-            ctx.lineTo(px, margin.top + plotH);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            ctx.fillStyle = badgeColor;
-            ctx.fillRect(px - 10, margin.top + 6, 20, 14);
-
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 9px sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(label, px, margin.top + 13);
-          }
-        }
-      } else if (isCardioSignal) {
-        for (let i = 1; i < t.length - 1; i++) {
-          const vPrev = y[i - 1]?.[vi] ?? 0;
-          const vCurr = y[i]?.[vi] ?? 0;
-          const vNext = y[i + 1]?.[vi] ?? 0;
-          const dt = t[i] - t[i - 1];
-          if (dt > 0 && Math.abs(vCurr - vPrev) / dt > 40 && vCurr > vPrev && vCurr > vNext) {
-            const px = xScale(t[i]);
-            const py = yScale(vCurr);
-            ctx.fillStyle = "#ff9800";
-            ctx.beginPath();
-            ctx.arc(px, py, 3, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-    }
-    ctx.restore();
-
-    // Clinical ECG telemetry strip header banner
-    ctx.save();
-    ctx.fillStyle = isDark ? "rgba(36, 20, 25, 0.92)" : "rgba(255, 240, 243, 0.95)";
-    ctx.fillRect(margin.left, margin.top, plotW, 20);
-    ctx.strokeStyle = isDark ? "rgba(244, 143, 177, 0.5)" : "#f48fb1";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(margin.left, margin.top, plotW, 20);
-
-    ctx.fillStyle = isDark ? "#f48fb1" : "#c2185b";
-    ctx.font = "bold 10px var(--vscode-editor-font-family, monospace)";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(
-      "🩺 CLINICAL STRIP: 25 mm/s | 10 mm/mV | Major: 200ms / 0.5mV | Minor: 40ms / 0.1mV | Mode: DDD | PVARP: 250ms",
-      margin.left + 8,
-      margin.top + 10,
-    );
-    ctx.restore();
-  }
-
   // Draw hover tracer
   if (hoverIndex !== null && hoverIndex < t.length) {
-    const hx = xScale(t[hoverIndex]);
+    const hx = getPtX(hoverIndex);
 
     // Vertical line
     ctx.strokeStyle = axisColor;
@@ -1663,7 +2519,7 @@ function draw() {
       const val = y[hoverIndex]?.[vi];
       if (val === undefined || !isFinite(val)) continue;
 
-      const hy = yScale(val);
+      const hy = getPtY(vi, val);
       if (hy >= margin.top && hy <= margin.top + plotH) {
         ctx.fillStyle = isDark ? "#2d2d2d" : "#ffffff";
         ctx.strokeStyle = COLORS[vi % COLORS.length];
@@ -1675,14 +2531,167 @@ function draw() {
       }
     }
   }
+
+  // ── Measurement Cursors (A & B) and HUD Calculation ──
+  if (cursorsEnabled && cursorA !== null && cursorB !== null) {
+    const xPosA = xScale(cursorA);
+    const xPosB = xScale(cursorB);
+
+    ctx.save();
+    // 1. Shaded region between Cursor A and Cursor B
+    const leftX = Math.max(margin.left, Math.min(xPosA, xPosB));
+    const rightX = Math.min(margin.left + plotW, Math.max(xPosA, xPosB));
+    if (rightX > leftX) {
+      ctx.fillStyle = isDark ? "rgba(56, 189, 248, 0.08)" : "rgba(14, 165, 233, 0.09)";
+      ctx.fillRect(leftX, margin.top, rightX - leftX, plotH);
+    }
+
+    // 2. Cursor A (Cyan #38bdf8)
+    if (xPosA >= margin.left && xPosA <= margin.left + plotW) {
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xPosA, margin.top);
+      ctx.lineTo(xPosA, margin.top + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Badge A at top
+      ctx.fillStyle = "#38bdf8";
+      ctx.fillRect(xPosA - 10, margin.top, 20, 16);
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("A", xPosA, margin.top + 8);
+    }
+
+    // 3. Cursor B (Amber #f59e0b)
+    if (xPosB >= margin.left && xPosB <= margin.left + plotW) {
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xPosB, margin.top);
+      ctx.lineTo(xPosB, margin.top + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Badge B at top
+      ctx.fillStyle = "#f59e0b";
+      ctx.fillRect(xPosB - 10, margin.top, 20, 16);
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("B", xPosB, margin.top + 8);
+    }
+
+    // 4. Horizontal delta span arrow/line between cursors
+    if (Math.abs(xPosB - xPosA) > 28) {
+      const spanY = margin.top + plotH - 18;
+      ctx.strokeStyle = isDark ? "rgba(255, 255, 255, 0.45)" : "rgba(0, 0, 0, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xPosA, spanY);
+      ctx.lineTo(xPosB, spanY);
+      ctx.stroke();
+      // Arrow ticks
+      ctx.beginPath();
+      ctx.moveTo(xPosA, spanY - 3);
+      ctx.lineTo(xPosA, spanY + 3);
+      ctx.moveTo(xPosB, spanY - 3);
+      ctx.lineTo(xPosB, spanY + 3);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 5. Compute HUD values and update #cursor-hud
+    if (cursorHudEl) {
+      const dt = Math.abs(cursorB - cursorA);
+      const freq = dt > 1e-9 ? 1 / dt : 0;
+
+      // Find nearest indices in currentData
+      const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
+      let idxA = 0;
+      let minDA = Infinity;
+      let idxB = 0;
+      let minDB = Infinity;
+
+      for (let i = 0; i < t.length; i++) {
+        const xVal = xVarIdx >= 0 ? (y[i]?.[xVarIdx] ?? 0) : t[i];
+        const dA = Math.abs(xVal - cursorA);
+        if (dA < minDA) {
+          minDA = dA;
+          idxA = i;
+        }
+        const dB = Math.abs(xVal - cursorB);
+        if (dB < minDB) {
+          minDB = dB;
+          idxB = i;
+        }
+      }
+
+      // Primary visible variable
+      const primaryVar = activeVars.length > 0 ? activeVars[0] : states[0] || "";
+      const primaryVi = states.indexOf(primaryVar);
+      const valA = primaryVi >= 0 ? y[idxA]?.[primaryVi] : undefined;
+      const valB = primaryVi >= 0 ? y[idxB]?.[primaryVi] : undefined;
+      const dy = valA !== undefined && valB !== undefined ? valB - valA : 0;
+      const slope = dt > 1e-9 ? dy / dt : 0;
+      const xLabel = xVarIdx >= 0 ? states[xVarIdx] : "t";
+
+      cursorHudEl.innerHTML = `
+        <div class="hud-metric">
+          <span class="hud-label">Δ${escapeHtmlSim(xLabel)}</span>
+          <span class="hud-value">${formatTick(dt)}${xVarIdx < 0 ? "s" : ""}</span>
+        </div>
+        ${
+          xVarIdx < 0
+            ? `
+        <div class="hud-metric">
+          <span class="hud-label">Freq (1/Δt)</span>
+          <span class="hud-value">${formatTick(freq)} Hz</span>
+        </div>`
+            : ""
+        }
+        <div class="hud-metric">
+          <span class="hud-label">${escapeHtmlSim(primaryVar)}(A)</span>
+          <span class="hud-value" style="color:#38bdf8;">${valA !== undefined ? formatTick(valA) : "N/A"}</span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-label">${escapeHtmlSim(primaryVar)}(B)</span>
+          <span class="hud-value" style="color:#f59e0b;">${valB !== undefined ? formatTick(valB) : "N/A"}</span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-label">Δ${escapeHtmlSim(primaryVar)}</span>
+          <span class="hud-value">${formatTick(dy)}</span>
+        </div>
+        <div class="hud-metric">
+          <span class="hud-label">Slope (Δy/Δx)</span>
+          <span class="hud-value">${formatTick(slope)}</span>
+        </div>
+      `;
+      cursorHudEl.classList.add("visible");
+    }
+  } else {
+    if (cursorHudEl) {
+      cursorHudEl.classList.remove("visible");
+    }
+  }
 }
 
 // Tooltip on mousemove
 canvas.addEventListener("mousemove", (e) => {
+  if (draggingCursor !== null) {
+    tooltipEl.style.display = "none";
+    return;
+  }
   if (!currentData || currentData.t.length === 0) return;
 
   const rect = canvas.getBoundingClientRect();
-  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
+  const margin = getPlotMargin();
   const plotW = rect.width - margin.left - margin.right;
   const plotH = rect.height - margin.top - margin.bottom;
   const mx = e.clientX - rect.left;
@@ -1700,22 +2709,41 @@ canvas.addEventListener("mousemove", (e) => {
   const { t, y, states } = currentData;
   const bounds = customBounds || calculateDefaultBounds() || { tMin: t[0], tMax: t[t.length - 1], yMin: 0, yMax: 1 };
   const { tMin, tMax } = bounds;
-  const tVal = tMin + ((mx - margin.left) / plotW) * (tMax - tMin);
 
-  // Find nearest time index
+  const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
+  const xValFromMouse = tMin + ((mx - margin.left) / plotW) * (tMax - tMin);
+
+  // Find nearest index
   let closest = 0;
   let minDist = Infinity;
   for (let i = 0; i < t.length; i++) {
-    const d = Math.abs(t[i] - tVal);
+    const curX = xVarIdx >= 0 ? (y[i]?.[xVarIdx] ?? 0) : t[i];
+    const d = Math.abs(curX - xValFromMouse);
     if (d < minDist) {
       minDist = d;
       closest = i;
     }
   }
 
-  let html = `<div style="margin-bottom:4px;font-weight:600">t = ${t[closest].toFixed(4)}s</div>`;
+  let html = "";
+  if (xVarIdx >= 0) {
+    const curXVal = y[closest]?.[xVarIdx];
+    html = `<div style="margin-bottom:4px;font-weight:600">t = ${t[closest].toFixed(4)}s &nbsp;|&nbsp; ${escapeHtmlSim(states[xVarIdx])} = ${curXVal !== undefined ? curXVal.toFixed(4) : "N/A"}</div>`;
+  } else {
+    html = `<div style="margin-bottom:4px;font-weight:600">t = ${t[closest].toFixed(4)}s</div>`;
+  }
+
   const { sweepResults } = currentData;
   const sweepCount = sweepResults ? sweepResults.length : 1;
+  const isDualActive = isDualY && !isNormalized;
+  const activeVars = states.filter((s) => !hiddenVars.has(s));
+  const rightVars = isDualActive
+    ? customRightVars.size > 0
+      ? activeVars.filter((s) => customRightVars.has(s))
+      : activeVars.length >= 2
+        ? activeVars.slice(1)
+        : []
+    : [];
 
   for (let vi = 0; vi < states.length; vi++) {
     if (hiddenVars.has(states[vi])) continue;
@@ -1725,7 +2753,15 @@ canvas.addEventListener("mousemove", (e) => {
       const color = COLORS[(vi * sweepCount + si) % COLORS.length];
       const baseName = escapeHtmlSim(states[vi]);
       const safeName = sweepResults ? `${baseName} (${escapeHtmlSim(String(sweepResults[si].value))})` : baseName;
-      html += `<div><span style="color:${color}">●</span> ${safeName}: ${val !== undefined ? val.toFixed(6) : "N/A"}`;
+
+      let axisBadge = "";
+      if (isDualActive) {
+        axisBadge = rightVars.includes(states[vi])
+          ? ' <span style="opacity:0.6;font-size:10px;">[Right]</span>'
+          : ' <span style="opacity:0.6;font-size:10px;">[Left]</span>';
+      }
+
+      html += `<div><span style="color:${color}">●</span> ${safeName}${axisBadge}: ${val !== undefined ? val.toFixed(6) : "N/A"}`;
 
       // Add MC uncertainty info
       if (currentMCData && !sweepResults) {
@@ -1804,4 +2840,4 @@ if (vscodeApi) {
   vscodeApi.postMessage({ type: "ready" });
 }
 
-export {};
+export { lttbDecimate };

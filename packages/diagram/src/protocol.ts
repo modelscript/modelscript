@@ -214,7 +214,7 @@ export interface DiagramEdge {
   target: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
   vertices?: { x: number; y: number }[];
   connector?: string;
-  router?: string;
+  router?: string | { name: string; args?: Record<string, unknown> };
   zIndex: number;
   animations?: ReactiveAnimationBinding[];
   style?: any;
@@ -255,6 +255,7 @@ export type DiagramEditAction =
       source: string;
       target: string;
       points?: Point[];
+      color?: [number, number, number];
       edgeType?: string;
       sourcePort?: string;
       targetPort?: string;
@@ -274,6 +275,8 @@ export type DiagramEditAction =
       oldTarget: string;
       newSource: string;
       newTarget: string;
+      points?: Point[];
+      color?: [number, number, number];
       oldSourcePort?: string;
       oldTargetPort?: string;
       newSourcePort?: string;
@@ -344,6 +347,8 @@ export interface DiagramGetDataParams {
   className?: string;
   /** One of "All" | "BDD" | "IBD" | "StateMachine". Accepts string for LSP wire compat. */
   diagramType?: string;
+  /** Optional sidecar file content passed by the client (e.g. from IDE's virtual filesystem / workspace) */
+  sidecarContent?: string;
 }
 
 // applyEdits
@@ -362,6 +367,10 @@ export interface DiagramApplyEditsResult {
   edits: TextEdit[];
   /** Hint to the client on how to react after applying edits */
   renderHint: "none" | "immediate" | "debounced";
+  /** Optional sidecar file URI to persist layout changes (for DSLs using external layout files like SysML2/OWL2) */
+  sidecarUri?: string;
+  /** Optional sidecar file serialized content to write to sidecarUri */
+  sidecarContent?: string;
 }
 
 // getComponentProperties

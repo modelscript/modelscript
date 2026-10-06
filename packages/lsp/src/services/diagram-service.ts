@@ -55,13 +55,32 @@ export class DiagramService {
     (globalThis as any).clearDiagramCache = () => this.clearCache();
   }
 
-  async handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }): Promise<any> {
+  async handleGetDiagramData(params: {
+    uri: string;
+    className?: string;
+    diagramType?: string;
+    sidecarContent?: string;
+  }): Promise<any> {
     // Do NOT flush validation here — it blocks the event loop and starves the
     // text editor of diagnostic updates. Instead, build the diagram from the
     // most recently indexed AST (at worst ~300ms stale).
 
     // Non-Modelica (SysML2 or generic DSL) — delegate directly to dispatch
     if (!params.uri.endsWith(".mo")) {
+      if (params.sidecarContent) {
+        try {
+          const sysmlOps = getSysML2DiagramOps();
+          const parsed = sysmlOps.parseLayout
+            ? sysmlOps.parseLayout(params.sidecarContent)
+            : JSON.parse(params.sidecarContent);
+          if (parsed) {
+            this.sysml2Layouts.set(params.uri, parsed);
+            this.owl2Layouts.set(params.uri, parsed);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
       return this.getDiagramDispatch().getData(params);
     }
 
@@ -169,11 +188,20 @@ export class DiagramService {
           let layout = this.sysml2Layouts.get(uri);
           if (!layout && typeof uri === "string" && uri.startsWith("file://")) {
             try {
-              const layoutPath = fileURLToPath(`${uri}.layout`);
-              if (fs.existsSync(layoutPath)) {
-                const content = fs.readFileSync(layoutPath, "utf-8");
-                layout = sysmlOps.parseLayout ? sysmlOps.parseLayout(content) : undefined;
-                if (layout) this.sysml2Layouts.set(uri, layout);
+              const candidates = [fileURLToPath(`${uri}.layout`)];
+              const lastDot = uri.lastIndexOf(".");
+              if (lastDot !== -1) {
+                candidates.push(fileURLToPath(`${uri.substring(0, lastDot)}.layout`));
+              }
+              for (const layoutPath of candidates) {
+                if (fs.existsSync(layoutPath)) {
+                  const content = fs.readFileSync(layoutPath, "utf-8");
+                  layout = sysmlOps.parseLayout ? sysmlOps.parseLayout(content) : undefined;
+                  if (layout) {
+                    this.sysml2Layouts.set(uri, layout);
+                    break;
+                  }
+                }
               }
             } catch {
               // ignore
@@ -199,6 +227,12 @@ export class DiagramService {
         updateElementPositions: (...args: any[]) => sysmlOps.updateElementPositions?.(...args),
         updateConnectionVertices: (...args: any[]) => sysmlOps.updateConnectionVertices?.(...args),
         removeElements: (...args: any[]) => sysmlOps.removeElements?.(...args),
+        renameElement: (...args: any[]) => sysmlOps.renameElement?.(...args),
+        serializeLayout: (layout) =>
+          sysmlOps.serializeLayout ? sysmlOps.serializeLayout(layout) : JSON.stringify(layout, null, 2) + "\n",
+        parseLayout: (text) => (sysmlOps.parseLayout ? sysmlOps.parseLayout(text) : JSON.parse(text)),
+        getSidecarUri: (uri) =>
+          sysmlOps.layoutUriFromSysmlUri ? sysmlOps.layoutUriFromSysmlUri(uri) : `${uri}.layout`,
         buildDiagramData: (params) => {
           // Delegate to the existing SysML2 diagram data builder inline
           try {
@@ -236,18 +270,29 @@ export class DiagramService {
             // Merge stored layout positions
             const layout = this.sysml2Layouts.get(params.uri);
             if (layout && data) {
-              for (const node of data.nodes) {
-                const sym = [...unified.symbols.values()].find(
-                  (s) => `n_${s.id}` === node.id && s.resourceId === params.uri,
-                );
-                const name = sym?.name;
-                if (name && layout.elements[name]) {
-                  const el = layout.elements[name];
-                  node.x = el.x;
-                  node.y = el.y;
-                  if (el.width) node.width = el.width;
-                  if (el.height) node.height = el.height;
-                  node.autoLayout = false;
+              if (layout.elements && data.nodes) {
+                for (const node of data.nodes) {
+                  const sym = [...unified.symbols.values()].find(
+                    (s) => `n_${s.id}` === node.id && s.resourceId === params.uri,
+                  );
+                  const name = sym?.name;
+                  if (name && layout.elements[name]) {
+                    const el = layout.elements[name];
+                    node.x = el.x;
+                    node.y = el.y;
+                    if (el.width) node.width = el.width;
+                    if (el.height) node.height = el.height;
+                    node.autoLayout = false;
+                  }
+                }
+              }
+              if (layout.connections && data.edges) {
+                for (const edge of data.edges) {
+                  const conn =
+                    layout.connections[edge.id] || layout.connections[`${edge.source?.cell}→${edge.target?.cell}`];
+                  if (conn?.vertices) {
+                    edge.vertices = conn.vertices;
+                  }
                 }
               }
             }

@@ -159,6 +159,91 @@ function splitComponentRef(ref: string): string[] {
   return parts;
 }
 
+/** Standard Modelica physical domain connection line colors */
+export const MSL_DOMAIN_COLORS: Record<string, [number, number, number]> = {
+  electrical: [0, 0, 255], // Blue (Pins, terminals)
+  rotational: [128, 128, 128], // Gray (Flanges, rotational mechanics)
+  translational: [0, 128, 0], // Green (Translational 1D/3D mechanics)
+  thermal: [191, 0, 0], // Red (Heat ports)
+  fluid: [0, 128, 128], // Teal (Fluid ports, flow)
+  magnetic: [255, 128, 0], // Orange (Magnetic flux ports)
+  control: [255, 0, 255], // Magenta / Purple (Signals, boolean)
+  default: [0, 0, 255], // Default electrical blue
+};
+
+/**
+ * Infers the MSL physical domain color for a connection based on port identifiers
+ * and enclosing component types.
+ */
+export function inferModelicaDomainColor(
+  source: string,
+  target?: string,
+  classInstance?: ModelicaClassInstance,
+): [number, number, number] {
+  const checkStr = (s: string) => {
+    const parts = s.split(".");
+    const port = (parts[parts.length - 1] ?? "").toLowerCase();
+    const compName = parts.length > 1 ? parts[0] : "";
+    let compTypeName = "";
+    if (classInstance && compName) {
+      const comp = (classInstance.components || []).find((c: any) => c.name === compName);
+      compTypeName = (comp?.typeName || comp?.className || comp?.name || "").toLowerCase();
+    }
+    const combined = `${port} ${compTypeName}`;
+
+    if (combined.includes("heat") || combined.includes("thermal") || port === "port_a" || port === "port_b") {
+      if (
+        combined.includes("thermal") ||
+        combined.includes("heat") ||
+        compTypeName.includes("thermal") ||
+        compTypeName.includes("heat")
+      ) {
+        return MSL_DOMAIN_COLORS.thermal;
+      }
+    }
+    if (port.includes("heat") || port.includes("thermal")) {
+      return MSL_DOMAIN_COLORS.thermal;
+    }
+    if (
+      port.includes("flange_b") ||
+      port.includes("flange_a") ||
+      port.includes("flange") ||
+      port.includes("rotational") ||
+      port.includes("support") ||
+      port.includes("housing")
+    ) {
+      if (port.includes("translat") || compTypeName.includes("translat")) {
+        return MSL_DOMAIN_COLORS.translational;
+      }
+      return MSL_DOMAIN_COLORS.rotational;
+    }
+    if (port.includes("translat")) {
+      return MSL_DOMAIN_COLORS.translational;
+    }
+    if (port.includes("fluid") || port.includes("flow") || port.includes("inlet") || port.includes("outlet")) {
+      return MSL_DOMAIN_COLORS.fluid;
+    }
+    if (port.includes("mag") || port.includes("flux")) {
+      return MSL_DOMAIN_COLORS.magnetic;
+    }
+    if (port.includes("bool") || port.includes("boolean")) {
+      return MSL_DOMAIN_COLORS.control;
+    }
+    if (port.includes("pin") || port === "p" || port === "n" || port.includes("plug") || port.includes("terminal")) {
+      return MSL_DOMAIN_COLORS.electrical;
+    }
+    return null;
+  };
+
+  const c1 = checkStr(source);
+  if (c1) return c1;
+  if (target) {
+    const c2 = checkStr(target);
+    if (c2) return c2;
+  }
+  return MSL_DOMAIN_COLORS.default;
+}
+
 export async function buildDiagramData(classInstance: ModelicaClassInstance): Promise<DiagramData> {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
@@ -608,18 +693,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       typeof connectEquation.annotation === "function" ? connectEquation.annotation("Line") : null;
     let strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
     if (!line?.color) {
-      const portName = (c1?.[1] ?? "").toLowerCase();
-      if (portName.includes("pin") || portName === "p" || portName === "n") {
-        strokeColor = "#0000ff"; // Electrical
-      } else if (portName.includes("flange_b") || portName.includes("flange") || portName.includes("rotational")) {
-        strokeColor = "#808080"; // Rotational
-      } else if (portName.includes("translational")) {
-        strokeColor = "#008000"; // Translational
-      } else if (portName.includes("heat") || portName.includes("port_a") || portName.includes("port_b")) {
-        strokeColor = "#ff0000"; // Thermal
-      } else if (portName.includes("fluid") || portName.includes("flow")) {
-        strokeColor = "#008080"; // Fluid
-      }
+      const srcName = c1 ? c1.join(".") : "";
+      const tgtName = c2 ? c2.join(".") : "";
+      const [r, g, b] = inferModelicaDomainColor(srcName, tgtName, classInstance);
+      strokeColor = `rgb(${r}, ${g}, ${b})`;
     }
     const strokeWidth = (line?.thickness ?? 0.25) * 2;
     const stroke = line?.visible === false || line?.pattern === LinePattern.NONE ? "none" : strokeColor;
@@ -643,6 +720,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const sourceMarker = buildMarker(line?.arrow?.[0], strokeColor, strokeWidth);
     const targetMarker = buildMarker(line?.arrow?.[1], strokeColor, strokeWidth);
 
+    const hasExplicitBends = Boolean(line?.points && line.points.length > 2);
     edges.push({
       id: `${c1.join(".")}-${c2.join(".")}`,
       zIndex: 1,
@@ -662,6 +740,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         ?.slice(1, -1)
         ?.map((p: IPoint) => convertPoint(p))
         .map((p: [number, number]) => ({ x: p[0], y: p[1] })),
+      router: hasExplicitBends ? undefined : { name: "port-orthogonal-astar" },
       connector: line?.smooth === Smooth.BEZIER ? "smooth" : undefined,
       attrs: {
         line: {

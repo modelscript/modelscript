@@ -23,8 +23,13 @@ import { defaultInteractiveStateManager, type InteractiveBinding, type Interacti
 import {
   computeFilletedOrthogonalPath,
   computeJumpoverPath,
+  computeOrthogonalRoute,
   computeSmoothBezierPath,
   portOrthogonalRouter,
+  regularizeOrthogonalPolyline,
+  simplifyCollinearPoints,
+  translateConnectedEdgeStubs,
+  type RectLike,
 } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import { computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
@@ -143,21 +148,73 @@ let selectedNodeId: string | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const propertyCache = new Map<string, any>();
 
+export { translateConnectedEdgeStubs };
+
+/**
+ * Automatically re-routes an edge with clean, obstacle-avoiding Manhattan A* paths.
+ */
+export function rerouteEdgeOrthogonal(edge: any, g: Graph): void {
+  if (!edge || !edge.isEdge()) return;
+  const source = edge.getSource() as any;
+  const target = edge.getTarget() as any;
+  const sourcePoint = edge.getSourcePoint();
+  const targetPoint = edge.getTargetPoint();
+  if (!sourcePoint || !targetPoint) return;
+
+  const obstacles: RectLike[] = [];
+  for (const node of g.getNodes()) {
+    if (node.id === source?.cell || node.id === target?.cell) continue;
+    if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
+    const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
+    if (bbox) {
+      obstacles.push({
+        x: bbox.x,
+        y: bbox.y,
+        width: bbox.width,
+        height: bbox.height,
+      });
+    }
+  }
+
+  const rawRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles);
+  const intermediateVertices = simplifyCollinearPoints(rawRoute);
+  edge.setVertices(intermediateVertices, { ignoreSnap: true });
+
+  const points = [sourcePoint, ...intermediateVertices, targetPoint].map((p: any) => ({
+    x: Math.round(p.x),
+    y: Math.round(-p.y),
+  }));
+
+  const srcStr = source?.port ? `${source.cell}.${source.port}` : String(source?.cell ?? "");
+  const tgtStr = target?.port ? `${target.cell}.${target.port}` : String(target?.cell ?? "");
+
+  enqueueDiagramAction({
+    type: "moveEdge",
+    edges: [
+      {
+        source: srcStr,
+        target: tgtStr,
+        points,
+      },
+    ],
+  });
+}
+
 /** Get connected edge metadata for a node (for move/resize updates) */
 function getConnectedEdges(
   g: Graph,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   node: any,
 ): { source: string; target: string; points: { x: number; y: number }[] }[] {
-  return g.getConnectedEdges(node).map((edge) => {
+  return g.getConnectedEdges(node).map((edge: any) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const source = edge.getSource() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const target = edge.getTarget() as any;
-    const vertices = edge.getVertices();
+    const vertices = edge.getVertices() || [];
     const sourcePoint = edge.getSourcePoint();
     const targetPoint = edge.getTargetPoint();
-    const points = [sourcePoint, ...vertices, targetPoint].map((p) => ({
+    const points = [sourcePoint, ...vertices, targetPoint].map((p: any) => ({
       x: Math.round(p.x),
       y: Math.round(-p.y),
     }));
@@ -239,7 +296,7 @@ export function initGraph(isDark: boolean): Graph | null {
       allowMulti: () => true,
       allowLoop: false,
       allowNode: currentOptions?.allowNodeConnection ?? true,
-      allowEdge: false,
+      allowEdge: true,
       allowPort: true,
       highlight: true,
       highlighting: {
@@ -314,11 +371,13 @@ export function initGraph(isDark: boolean): Graph | null {
             name: "vertices",
             args: {
               attrs: {
-                fill: "#666",
+                fill: isDark ? "#888" : "#666",
                 stroke: "transparent",
                 strokeWidth: 6,
                 r: 4,
               },
+              snapRadius: 10,
+              removeRedundancies: true,
               stopPropagation: false,
             },
           },
@@ -326,7 +385,7 @@ export function initGraph(isDark: boolean): Graph | null {
             name: "segments",
             args: {
               attrs: {
-                fill: "#666",
+                fill: isDark ? "#888" : "#666",
                 stroke: "transparent",
                 strokeWidth: 1,
                 width: 10,
@@ -336,6 +395,8 @@ export function initGraph(isDark: boolean): Graph | null {
                 x: -5,
                 y: -1,
               },
+              snapRadius: 10,
+              removeRedundancies: true,
               stopPropagation: false,
             },
           },
@@ -464,6 +525,13 @@ export function initGraph(isDark: boolean): Graph | null {
   (window as any).__handlePlacementClick = handlePlacementClick;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__getPlacementData = () => placementData;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__rerouteEdgeOrthogonal = (edgeId: string) => {
+    const edge = g.getCellById(edgeId);
+    if (edge && edge.isEdge()) {
+      rerouteEdgeOrthogonal(edge, g);
+    }
+  };
 
   // ── Diagram-to-code event handlers (matching morsel's diagram.tsx) ──
 
@@ -607,63 +675,145 @@ export function initGraph(isDark: boolean): Graph | null {
     const source = edge.getSource() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const target = edge.getTarget() as any;
-    if (source.cell && target.cell && source.port !== undefined && target.port !== undefined) {
-      const vertices = edge.getVertices();
-      const sourcePoint = edge.getSourcePoint();
-      const targetPoint = edge.getTargetPoint();
-      const points = [sourcePoint, ...vertices, targetPoint].map((p: { x: number; y: number }) => ({
-        x: Math.round(p.x),
-        y: Math.round(-p.y),
-      }));
-      const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell);
-      const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell);
+    if (!source?.cell || !target?.cell) return;
 
-      if (isNew) {
-        enqueueDiagramAction({
-          type: "connect",
-          source: srcStr,
-          target: tgtStr,
-          points,
-        });
+    const sourceCell = g.getCellById(source.cell);
+    const targetCell = g.getCellById(target.cell);
+
+    // Resolve source identifier (port or tapped edge net)
+    let srcStr = "";
+    if (sourceCell?.isEdge()) {
+      const edgeSrc = sourceCell.getSource() as any;
+      const edgeTgt = sourceCell.getTarget() as any;
+      srcStr = edgeSrc?.port
+        ? `${edgeSrc.cell}.${edgeSrc.port}`
+        : edgeTgt?.port
+          ? `${edgeTgt.cell}.${edgeTgt.port}`
+          : String(edgeSrc?.cell ?? "");
+    } else if (source.port !== undefined) {
+      srcStr = `${source.cell}.${source.port}`;
+    } else {
+      srcStr = String(source.cell);
+    }
+
+    // Resolve target identifier (port or tapped edge net)
+    let tgtStr = "";
+    if (targetCell?.isEdge()) {
+      const edgeSrc = targetCell.getSource() as any;
+      const edgeTgt = targetCell.getTarget() as any;
+      tgtStr = edgeSrc?.port
+        ? `${edgeSrc.cell}.${edgeSrc.port}`
+        : edgeTgt?.port
+          ? `${edgeTgt.cell}.${edgeTgt.port}`
+          : String(edgeSrc?.cell ?? "");
+    } else if (target.port !== undefined) {
+      tgtStr = `${target.cell}.${target.port}`;
+    } else {
+      tgtStr = String(target.cell);
+    }
+
+    if (!srcStr || !tgtStr) return;
+
+    const vertices = edge.getVertices() || [];
+    const sourcePoint = edge.getSourcePoint();
+    const targetPoint = edge.getTargetPoint();
+
+    let intermediateVertices = vertices;
+    if (vertices.length === 0 && sourcePoint && targetPoint) {
+      const edgeView = g.findViewByCell(edge) as any;
+      if (edgeView?.routePoints && edgeView.routePoints.length > 0) {
+        intermediateVertices = edgeView.routePoints;
       } else {
-        const prev = edgePriorEndpoints.get(edge.id);
-        const oldSrcStr = prev?.source?.port
-          ? `${prev.source.cell}.${prev.source.port}`
-          : String(prev?.source?.cell ?? srcStr);
-        const oldTgtStr = prev?.target?.port
-          ? `${prev.target.cell}.${prev.target.port}`
-          : String(prev?.target?.cell ?? tgtStr);
-
-        enqueueDiagramAction({
-          type: "reconnect",
-          edgeId: edge.id,
-          oldSource: oldSrcStr,
-          oldTarget: oldTgtStr,
-          newSource: srcStr,
-          newTarget: tgtStr,
-          oldSourcePort: prev?.source?.port,
-          oldTargetPort: prev?.target?.port,
-          newSourcePort: source.port,
-          newTargetPort: target.port,
-        });
+        const obstacles: RectLike[] = [];
+        for (const node of g.getNodes()) {
+          if (node.id === source.cell || node.id === target.cell) continue;
+          if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
+          const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
+          if (bbox) {
+            obstacles.push({
+              x: bbox.x,
+              y: bbox.y,
+              width: bbox.width,
+              height: bbox.height,
+            });
+          }
+        }
+        intermediateVertices = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles);
       }
+    }
+
+    const simplifiedVertices = simplifyCollinearPoints(intermediateVertices);
+    const points = [sourcePoint, ...simplifiedVertices, targetPoint].map((p: { x: number; y: number }) => ({
+      x: Math.round(p.x),
+      y: Math.round(-p.y),
+    }));
+
+    if (isNew) {
+      enqueueDiagramAction({
+        type: "connect",
+        source: srcStr,
+        target: tgtStr,
+        points,
+      });
+    } else {
+      const prev = edgePriorEndpoints.get(edge.id);
+      const oldSrcStr = prev?.source?.port
+        ? `${prev.source.cell}.${prev.source.port}`
+        : String(prev?.source?.cell ?? srcStr);
+      const oldTgtStr = prev?.target?.port
+        ? `${prev.target.cell}.${prev.target.port}`
+        : String(prev?.target?.cell ?? tgtStr);
+
+      enqueueDiagramAction({
+        type: "reconnect",
+        edgeId: edge.id,
+        oldSource: oldSrcStr,
+        oldTarget: oldTgtStr,
+        newSource: srcStr,
+        newTarget: tgtStr,
+        oldSourcePort: prev?.source?.port,
+        oldTargetPort: prev?.target?.port,
+        newSourcePort: source.port,
+        newTargetPort: target.port,
+      });
     }
   });
 
-  // Edge vertices changed: debounced
+  // Edge vertices changed: debounced with orthogonal regularization and collinear pruning
   let edgeUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
-  g.on("edge:change:vertices", ({ edge }) => {
+  g.on("edge:change:vertices", ({ edge, options }: any) => {
+    if (options?.ignoreSnap) return;
+
+    const vertices = edge.getVertices() || [];
+    const sourcePoint = edge.getSourcePoint();
+    const targetPoint = edge.getTargetPoint();
+    if (vertices.length > 0 && sourcePoint && targetPoint) {
+      const fullPolyline = [sourcePoint, ...vertices, targetPoint];
+      const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
+      const newVertices = regularized.slice(1, -1);
+
+      const changed =
+        newVertices.length !== vertices.length ||
+        newVertices.some(
+          (nv: any, idx: number) => Math.abs(nv.x - vertices[idx].x) > 0.5 || Math.abs(nv.y - vertices[idx].y) > 0.5,
+        );
+
+      if (changed) {
+        edge.setVertices(newVertices, { ignoreSnap: true });
+      }
+    }
+
     if (edgeUpdateTimeout) clearTimeout(edgeUpdateTimeout);
     edgeUpdateTimeout = setTimeout(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const source = edge.getSource() as any;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const target = edge.getTarget() as any;
-      if (source.cell && target.cell && source.port !== undefined && target.port !== undefined) {
-        const vertices = edge.getVertices();
-        const sourcePoint = edge.getSourcePoint();
-        const targetPoint = edge.getTargetPoint();
-        const points = [sourcePoint, ...vertices, targetPoint].map((p) => ({
+      if (source?.cell && target?.cell) {
+        const curVertices = edge.getVertices() || [];
+        const srcPt = edge.getSourcePoint();
+        const tgtPt = edge.getTargetPoint();
+        const points = [srcPt, ...curVertices, tgtPt].map((p: any) => ({
           x: Math.round(p.x),
           y: Math.round(-p.y),
         }));
@@ -685,7 +835,14 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // Synchronize topological solder dots across graph lifecycle and interactive edits
-  g.on("node:change:position", () => scheduleUpdateSolderDots(g));
+  g.on("node:change:position", ({ cell, current, previous }: any) => {
+    if (cell && cell.isNode() && current && previous) {
+      const dx = current.x - previous.x;
+      const dy = current.y - previous.y;
+      translateConnectedEdgeStubs(g, cell, dx, dy);
+    }
+    scheduleUpdateSolderDots(g);
+  });
   g.on("node:moved", () => scheduleUpdateSolderDots(g));
   g.on("node:resized", () => scheduleUpdateSolderDots(g));
   g.on("edge:change:vertices", () => scheduleUpdateSolderDots(g));
@@ -693,6 +850,22 @@ export function initGraph(isDark: boolean): Graph | null {
   g.on("edge:added", () => scheduleUpdateSolderDots(g));
   g.on("edge:removed", () => scheduleUpdateSolderDots(g));
   g.on("render:done", () => scheduleUpdateSolderDots(g));
+
+  // Quick re-route orthogonal on edge double-click or context menu
+  g.on("edge:dblclick", ({ edge }: { edge: any }) => {
+    if (edge && edge.isEdge()) {
+      rerouteEdgeOrthogonal(edge, g);
+    }
+  });
+
+  g.on("edge:contextmenu", ({ edge, e }: { edge: any; e: MouseEvent }) => {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
+    if (edge && edge.isEdge()) {
+      rerouteEdgeOrthogonal(edge, g);
+    }
+  });
 
   // Delete key: delete selected edges/components
   document.addEventListener("keydown", (e) => {

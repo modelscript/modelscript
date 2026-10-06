@@ -337,6 +337,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     actions,
                   });
 
+                  if (response?.sidecarUri && typeof response.sidecarContent === "string") {
+                    try {
+                      const sidecarUri = vscode.Uri.parse(response.sidecarUri);
+                      await vscode.workspace.fs.writeFile(
+                        sidecarUri,
+                        new TextEncoder().encode(response.sidecarContent),
+                      );
+                    } catch (e) {
+                      console.error("[diagram] Error writing sidecar layout:", e);
+                    }
+                  }
+
                   if (response?.edits?.length > 0) {
                     // Mark as optimistic so onDidChangeTextDocument skips re-render
                     pendingRenderHint = "none";
@@ -367,6 +379,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   });
 
                   console.log("[diagramEditorProvider] applyEdits LSP response:", response);
+
+                  if (response?.sidecarUri && typeof response.sidecarContent === "string") {
+                    try {
+                      const sidecarUri = vscode.Uri.parse(response.sidecarUri);
+                      await vscode.workspace.fs.writeFile(
+                        sidecarUri,
+                        new TextEncoder().encode(response.sidecarContent),
+                      );
+                    } catch (e) {
+                      console.error("[diagram] Error writing sidecar layout:", e);
+                    }
+                  }
 
                   if (response && response.edits && response.edits.length > 0) {
                     pendingRenderHint = response.renderHint;
@@ -479,7 +503,28 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     cancelToken?: { isCanceled: () => boolean },
   ) {
     try {
-      const data = await this.client.sendRequest(DiagramMethods.getData, { uri, diagramType });
+      let sidecarContent: string | undefined;
+      const candidates = [`${uri}.layout`];
+      const lastDot = uri.lastIndexOf(".");
+      if (lastDot !== -1) {
+        candidates.push(`${uri.substring(0, lastDot)}.layout`);
+      }
+      for (const candidate of candidates) {
+        try {
+          const sidecarUri = vscode.Uri.parse(candidate);
+          const bytes = await vscode.workspace.fs.readFile(sidecarUri);
+          sidecarContent = new TextDecoder().decode(bytes);
+          if (sidecarContent) break;
+        } catch {
+          // ignore if file doesn't exist
+        }
+      }
+
+      const data = await this.client.sendRequest(DiagramMethods.getData, {
+        uri,
+        diagramType,
+        sidecarContent,
+      });
       if (cancelToken?.isCanceled()) return;
       if (data) {
         if ((data as any).isLoading) {

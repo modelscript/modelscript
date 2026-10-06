@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { computeJumpoverPath, computeSmoothBezierPath, type JumpoverSegment, type PointLike } from "./port-router.js";
+import {
+  computeJumpoverPath,
+  computeOrthogonalRoute,
+  computeSmoothBezierPath,
+  type JumpoverSegment,
+  type PointLike,
+} from "./port-router.js";
 import type { DiagramData, DiagramEdge, DiagramNode, SvgExportOptions } from "./protocol.js";
 
 /**
@@ -180,12 +186,22 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     }
 
     const points: PointLike[] = [pSrc];
-    if (edge.vertices) {
+    if (edge.vertices && edge.vertices.length > 0) {
       for (const v of edge.vertices) {
         points.push({ x: v.x, y: v.y });
       }
+      points.push(pTgt);
+    } else {
+      const routerName = typeof edge.router === "string" ? edge.router : edge.router?.name;
+      if (routerName === "port-orthogonal-astar" || routerName === "manhattan") {
+        const obstacles = diagram.nodes
+          .filter((n) => n.id !== srcId && n.id !== tgtId)
+          .map((n) => ({ x: n.x ?? 0, y: n.y ?? 0, width: n.width ?? 120, height: n.height ?? 60 }));
+        const waypoints = computeOrthogonalRoute(pSrc, pTgt, obstacles);
+        points.push(...waypoints);
+      }
+      points.push(pTgt);
     }
-    points.push(pTgt);
 
     // Register segments
     for (let i = 0; i < points.length - 1; i++) {

@@ -3,8 +3,9 @@
 import type { EdgeUpdate, PlacementItem } from "@modelscript/diagram/protocol";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { evaluateMacroExpression, extractCstNestedModifierValue } from "../src/diagram/data.js";
+import { buildDiagramData, evaluateMacroExpression, extractCstNestedModifierValue } from "../src/diagram/data.js";
 import {
+  computeConnectInsert,
   computeConnectRemove,
   computeDescriptionEdit,
   computeEdgePointEdits,
@@ -450,6 +451,87 @@ end Circuit;`;
       const edit = edits[0]!;
       const removedText = lines.slice(edit.range.start.line, edit.range.end.line + 1).join("\n");
       assert.ok(removedText.includes("connect(R1.n, G.p);"));
+    });
+
+    it("computeConnectInsert inserts connect equation with domain colors and Manhattan waypoints", () => {
+      const code = `model Circuit
+  Modelica.Electrical.Analog.Basic.Resistor R1;
+  Modelica.Electrical.Analog.Basic.Ground G;
+equation
+end Circuit;`;
+      const classInstance = {
+        name: "Circuit",
+        components: [
+          { name: "R1", typeName: "Modelica.Electrical.Analog.Basic.Resistor" },
+          { name: "G", typeName: "Modelica.Electrical.Analog.Basic.Ground" },
+        ],
+        connectEquations: [],
+      };
+
+      // 1. Electrical connection (pin/p/n) -> Blue [0, 0, 255] with Manhattan points
+      const edits = computeConnectInsert(code, classInstance as any, "R1.n", "G.p", [
+        { x: 10, y: 0 },
+        { x: 10, y: -20 },
+        { x: 0, y: -20 },
+      ]);
+      assert.strictEqual(edits.length, 1);
+      assert.ok(edits[0]!.newText.includes("connect(R1.n, G.p)"));
+      assert.ok(edits[0]!.newText.includes("color={0, 0, 255}"));
+      assert.ok(edits[0]!.newText.includes("points={{10,0}, {10,-20}, {0,-20}}"));
+
+      // 2. Thermal connection -> Red [191, 0, 0]
+      const thermalEdits = computeConnectInsert(code, classInstance as any, "R1.heatPort", "Amb.port_a");
+      assert.strictEqual(thermalEdits.length, 1);
+      assert.ok(thermalEdits[0]!.newText.includes("color={191, 0, 0}"));
+
+      // 3. Rotational flange connection -> Gray [128, 128, 128]
+      const flangeEdits = computeConnectInsert(code, classInstance as any, "Inertia.flange_b", "Damper.flange_a");
+      assert.strictEqual(flangeEdits.length, 1);
+      assert.ok(flangeEdits[0]!.newText.includes("color={128, 128, 128}"));
+
+      // 4. Fluid connection -> Teal [0, 128, 128]
+      const fluidEdits = computeConnectInsert(code, classInstance as any, "Pipe.fluidPort_b", "Tank.fluidPort_a");
+      assert.strictEqual(fluidEdits.length, 1);
+      assert.ok(fluidEdits[0]!.newText.includes("color={0, 128, 128}"));
+    });
+
+    it("buildDiagramData assigns port-orthogonal-astar to unannotated connect equations", async () => {
+      const fakeStub = {
+        name: "Circuit",
+        components: [
+          { name: "R1", typeName: "Resistor" },
+          { name: "C1", typeName: "Capacitor" },
+        ],
+        connectEquations: [
+          {
+            lhs: "R1.n",
+            rhs: "C1.p",
+            annotation: () => null, // No Line annotation
+          },
+          {
+            lhs: "R1.p",
+            rhs: "C1.n",
+            annotation: () => ({
+              points: [
+                [0, 0],
+                [10, 0],
+                [10, 20],
+                [20, 20],
+              ],
+            }), // Has > 2 explicit points
+          },
+        ],
+      };
+
+      const diagram = await buildDiagramData(fakeStub as any);
+      assert.strictEqual(diagram.edges.length, 2);
+
+      // Edge 1 (unannotated) must have port-orthogonal-astar router
+      assert.deepStrictEqual(diagram.edges[0]!.router, { name: "port-orthogonal-astar" });
+
+      // Edge 2 (has > 2 explicit points) preserves author's waypoints with undefined router (normal)
+      assert.strictEqual(diagram.edges[1]!.router, undefined);
+      assert.strictEqual(diagram.edges[1]!.vertices?.length, 2);
     });
   });
 });
