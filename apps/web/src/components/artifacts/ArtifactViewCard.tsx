@@ -3,9 +3,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { CodeIcon, ScreenFullIcon } from "@primer/octicons-react";
 import { Spinner, Text, useTheme } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../../config";
+import { safeJsonParse } from "../../util/json";
 import Box from "../Box";
 import AasPackageViewer from "./AasPackageViewer";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
@@ -64,6 +65,8 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
     fetchArtifact();
   }, [artifactId]);
 
+  const viewConfig: any = useMemo(() => safeJsonParse(artifact?.view_config, {}), [artifact?.view_config]);
+
   if (loading) {
     return (
       <Box p={3} display="flex" justifyContent="center" borderRadius="12px" border="1px solid var(--color-border)">
@@ -79,8 +82,6 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
       </Box>
     );
   }
-
-  const viewConfig = JSON.parse(artifact.view_config || "{}");
 
   let resolvedThumbnailUrl = viewConfig.thumbnailUrl || viewConfig.thumbnail_url;
   if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/thumbnails/")) {
@@ -238,6 +239,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
           borderRadius="12px"
           border="1px solid var(--color-border)"
           overflow="hidden"
+          style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
           onClick={(e) => {
             e.stopPropagation();
           }}
@@ -331,6 +333,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
       border="1px solid var(--color-border)"
       overflow="hidden"
       position="relative"
+      style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
       onClick={(e) => {
         e.stopPropagation();
       }}

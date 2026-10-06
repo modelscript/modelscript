@@ -75,7 +75,8 @@ export function parseSspArchive(data: Uint8Array): SspArchiveMetadata | null {
   const systemAttrs = systemBlock.attrs;
   const systemBody = systemBlock.body;
   const systemName = extractAttrStr(systemAttrs, "name") ?? "System";
-  const description = extractAttrStr(systemAttrs, "description");
+  const description =
+    extractAttrStr(systemAttrs, "description") ?? extractAttr(ssdXml, "ssd:SystemStructureDescription", "description");
 
   // Extract system-level connectors (boundary variables)
   const variables = extractSystemConnectors(systemBody);

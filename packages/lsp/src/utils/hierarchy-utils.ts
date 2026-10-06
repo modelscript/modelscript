@@ -135,6 +135,24 @@ function getLibraryName(resourceId?: string): string | null {
   return null;
 }
 
+function getRootChildIds(index: any): number[] {
+  const ids = new Set<number>();
+  for (const k of [0, null, undefined, "", "0", "null"]) {
+    const list = index?.childrenOf?.get(k);
+    if (Array.isArray(list)) {
+      for (const id of list) ids.add(id);
+    }
+  }
+  if (ids.size === 0 && index?.symbols) {
+    for (const [id, entry] of index.symbols.entries()) {
+      if (entry.parentId === null || entry.parentId === undefined || entry.parentId === 0) {
+        ids.add(id);
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
 export async function getTreeChildrenFast(index: any, parentId?: string, workspace?: any): Promise<TreeNodeInfo[]> {
   const nodes: TreeNodeInfo[] = [];
   const seen = new Set<string>();
@@ -173,7 +191,7 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
 
   if (!parentId) {
     // Root level: group by library or show workspace files directly
-    const rootChildIds = [...(index.childrenOf.get(0) ?? []), ...(index.childrenOf.get(null) ?? [])];
+    const rootChildIds = getRootChildIds(index);
     const libraryNames = new Set<string>();
 
     for (const id of rootChildIds) {
@@ -222,7 +240,7 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
   } else if (parentId.startsWith("__LIB__:")) {
     // Return root children belonging to this library
     const libName = parentId.substring("__LIB__:".length);
-    const rootChildIds = [...(index.childrenOf.get(0) ?? []), ...(index.childrenOf.get(null) ?? [])];
+    const rootChildIds = getRootChildIds(index);
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
       if (!entry || !isTreeVisible(entry)) continue;

@@ -11,6 +11,7 @@
  */
 
 import { BroadcastIcon, ChevronDownIcon, ChevronRightIcon, CircleIcon } from "@primer/octicons-react";
+import DOMPurify from "dompurify";
 import React from "react";
 
 /** Variable descriptor from participant metadata. */
@@ -253,7 +254,11 @@ function MqttParticipantNode(props: MqttParticipantNodeProps) {
           <div
             className="modelica-icon"
             style={{ width: 20, height: 20, flexShrink: 0 }}
-            dangerouslySetInnerHTML={{ __html: participant.iconSvg }}
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(participant.iconSvg, {
+                USE_PROFILES: { svg: true, svgFilters: true },
+              }),
+            }}
           />
         ) : (
           <BroadcastIcon size={16} />

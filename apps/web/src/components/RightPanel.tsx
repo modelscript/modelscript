@@ -87,84 +87,58 @@ const SearchContainer = styled.div`
   }
 `;
 
-const SearchWrapper = styled.div`
+const AiSearchBar = styled.div`
   width: 100%;
-  position: relative;
+  height: 42px;
+  background: var(--color-search-bg, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-search-border, var(--color-border-glass));
+  border-radius: 9999px;
   display: flex;
   align-items: center;
-
-  svg {
-    position: absolute;
-    left: 16px;
-    color: var(--color-fg-muted);
-  }
-
-  input {
-    width: 100%;
-    padding: 12px 16px 12px 42px;
-    border-radius: 9999px;
-    background-color: var(--color-search-bg);
-    border: 1px solid var(--color-search-border);
-    color: var(--color-text-primary);
-    font-size: 15px;
-    outline: none;
-    box-sizing: border-box;
-
-    &::placeholder {
-      color: var(--color-text-tertiary);
-    }
-
-    &:focus {
-      background-color: var(--color-search-bg);
-      border-color: var(--color-accent-cyan);
-      box-shadow:
-        0 0 0 1px var(--color-accent-cyan),
-        var(--glow-cyan-sm);
-    }
-  }
-`;
-
-const DropdownWrapper = styled.div`
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  margin-top: 4px;
-  z-index: 100;
-  max-height: 500px;
-  overflow-y: auto;
-  overflow-x: hidden;
-`;
-
-const DropdownSection = styled.div`
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border);
-
-  &:last-child {
-    border-bottom: none;
-  }
-`;
-
-const DropdownTitle = styled.div`
+  padding: 0 16px;
+  gap: 10px;
+  color: var(--color-text-muted);
   font-size: 13px;
-  font-weight: bold;
-  color: var(--color-fg-muted);
-  padding: 4px 16px;
-`;
-
-const DropdownItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  user-select: none;
 
   &:hover {
-    background-color: var(--color-bg-secondary);
+    border-color: rgba(139, 92, 246, 0.55);
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow:
+      0 0 16px rgba(139, 92, 246, 0.22),
+      0 0 0 1px rgba(139, 92, 246, 0.3);
+    color: var(--color-text-primary);
+  }
+
+  .sparkle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent-purple, #8b5cf6);
+    filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.6));
+    font-size: 14px;
+  }
+
+  .text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+  }
+
+  kbd {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12));
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
   }
 `;
 
@@ -322,24 +296,23 @@ const KebabButton = styled.button`
   }
 `;
 
-const RightPanel: React.FC = () => {
+interface RightPanelProps {
+  clusterInfo?: ClusterStatus | null;
+  onOpenCommandPalette?: () => void;
+}
+
+const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, onOpenCommandPalette }) => {
   const { token, user, creditBalance, refreshWallet } = useAuth();
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [popularRepos, setPopularRepos] = useState<any[]>([]);
   const [hpcJobs, setHpcJobs] = useState<UnifiedJob[]>([]);
   const [isHpcLoading, setIsHpcLoading] = useState(false);
-  const [clusterInfo, setClusterInfo] = useState<ClusterStatus | null>(null);
+  const [fallbackClusterInfo, setFallbackClusterInfo] = useState<ClusterStatus | null>(null);
+  const clusterInfo = propClusterInfo !== undefined ? propClusterInfo : fallbackClusterInfo;
   const [isSimModalOpen, setIsSimModalOpen] = useState(false);
   const [legalModal, setLegalModal] = useState<"terms" | "privacy" | "cookies" | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
-  const [searchCompletions, setSearchCompletions] = useState<{
-    topics: any[];
-    users: any[];
-    packages: any[];
-    repositories: any[];
-  } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -374,58 +347,35 @@ const RightPanel: React.FC = () => {
     };
   }, []);
 
-  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && searchQuery.trim()) {
-      navigate(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
-
-  useEffect(() => {
-    if (query) {
-      setSearchQuery(query);
-    }
-  }, [query]);
-
   const fetchJobsAndCluster = React.useCallback(async () => {
+    if (!token && propClusterInfo !== undefined) return;
     setIsHpcLoading(true);
     try {
-      const [jobs, cluster] = await Promise.all([getUnifiedUserJobs(), getClusterStatus()]);
-      setHpcJobs(jobs.slice(0, 4));
-      setClusterInfo(cluster);
+      if (token) {
+        const jobs = await getUnifiedUserJobs();
+        setHpcJobs(jobs.slice(0, 4));
+      }
+      if (propClusterInfo === undefined) {
+        const cluster = await getClusterStatus();
+        setFallbackClusterInfo(cluster);
+      }
     } catch {
       // ignore
     } finally {
       setIsHpcLoading(false);
     }
-  }, []);
+  }, [token, propClusterInfo]);
 
   useEffect(() => {
-    fetchJobsAndCluster();
-    const interval = setInterval(fetchJobsAndCluster, 10000);
-    return () => clearInterval(interval);
-  }, [fetchJobsAndCluster, token]);
-
-  useEffect(() => {
-    if (searchQuery.trim().length === 0) {
-      setSearchCompletions(null);
-      return;
-    }
-
-    const timeoutId = setTimeout(async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/search/completions?q=${encodeURIComponent(searchQuery)}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          setSearchCompletions(await res.json());
-        }
-      } catch (err) {
-        // ignore
+    const poll = () => {
+      if (document.visibilityState === "visible") {
+        fetchJobsAndCluster();
       }
-    }, 200);
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery, token]);
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => clearInterval(interval);
+  }, [fetchJobsAndCluster]);
 
   useEffect(() => {
     async function fetchSuggestions() {
@@ -482,6 +432,23 @@ const RightPanel: React.FC = () => {
         top: panelTop < 0 ? `calc(${panelTop}px + var(--dev-header-height, 0px))` : "var(--dev-header-height, 0px)",
       }}
     >
+      <SearchContainer>
+        <AiSearchBar
+          onClick={() => {
+            if (onOpenCommandPalette) {
+              onOpenCommandPalette();
+            } else {
+              window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"));
+            }
+          }}
+          title="Ask AI Copilot, search models, or run CVODE solver (⌘K)"
+        >
+          <span className="sparkle">⚡</span>
+          <span className="text">Ask AI Copilot, search models...</span>
+          <kbd>⌘ K</kbd>
+        </AiSearchBar>
+      </SearchContainer>
+
       {(location.pathname === "/explore" || query) && (
         <Card style={{ padding: "16px" }}>
           <Heading
@@ -787,198 +754,269 @@ const RightPanel: React.FC = () => {
         </WalletCard>
       )}
 
-      <Card>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Box display="flex" alignItems="center" gap={2}>
-            <ServerIcon size={14} style={{ color: "var(--color-text-muted)" }} />
-            <Text
+      {user && (
+        <Card>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Link
+              to="/jobs"
               style={{
-                fontSize: "12px",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: "var(--color-text-muted)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              Cloud &amp; HPC Queue
-            </Text>
-          </Box>
-          <Box display="flex" alignItems="center" gap={2}>
-            <span
-              style={{
-                fontSize: "10px",
-                color: clusterInfo?.connected ? "var(--color-status-verified)" : "var(--color-accent-cyan)",
-                fontFamily: "var(--font-mono)",
-                background: clusterInfo?.connected ? "var(--status-verified-bg)" : "var(--status-solver-bg)",
-                border: `1px solid ${clusterInfo?.connected ? "var(--status-verified-border)" : "var(--status-solver-border)"}`,
-                padding: "1px 6px",
-                borderRadius: "4px",
-                fontWeight: 600,
-              }}
-            >
-              ●{" "}
-              {clusterInfo?.connected
-                ? clusterInfo.backend === "slurm-rest" || clusterInfo.backend === "slurm"
-                  ? `${clusterInfo.nodesCount || 0} NODES`
-                  : "ONLINE"
-                : "OFFLINE"}
-            </span>
-            <button
-              onClick={() => fetchJobsAndCluster()}
-              disabled={isHpcLoading}
-              title="Refresh queue"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--color-text-muted)",
-                cursor: "pointer",
-                padding: "2px",
-                display: "flex",
+                textDecoration: "none",
+                color: "inherit",
+                display: "inline-flex",
                 alignItems: "center",
+                gap: "6px",
               }}
             >
-              <SpinSyncIcon size={12} $isSpinning={isHpcLoading} />
-            </button>
-          </Box>
-        </Box>
-
-        <Box display="flex" flexDirection="column" gap={3} style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>
-          {hpcJobs.length > 0 ? (
-            hpcJobs.map((job) => {
-              const isRunning = job.status === "running" || job.status === "processing";
-              const isDone = job.status === "completed" || job.status === "SUCCESS";
-              const isFailed = job.status === "failed" || job.status === "FAILED";
-              const progress = Math.min(100, Math.max(0, job.progress || (isDone ? 100 : isRunning ? 55 : 0)));
-
-              return (
-                <div key={job.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        color: "var(--color-text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        maxWidth: "190px",
-                      }}
-                      title={job.name}
-                    >
-                      #{String(job.id).slice(0, 6)} {job.name}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        padding: "1px 5px",
-                        borderRadius: "3px",
-                        background: isDone
-                          ? "rgba(16, 185, 129, 0.15)"
-                          : isFailed
-                            ? "rgba(239, 68, 68, 0.15)"
-                            : isRunning
-                              ? "rgba(6, 182, 212, 0.15)"
-                              : "rgba(245, 158, 11, 0.15)",
-                        color: isDone
-                          ? "var(--color-status-verified)"
-                          : isFailed
-                            ? "#ef4444"
-                            : isRunning
-                              ? "var(--color-accent-cyan)"
-                              : "#f59e0b",
-                      }}
-                    >
-                      {job.status.toUpperCase()}
-                    </span>
-                  </Box>
-
-                  <div
-                    style={{
-                      height: "4px",
-                      background: "var(--color-border)",
-                      borderRadius: "9999px",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${progress}%`,
-                        background: isFailed
-                          ? "#ef4444"
-                          : isDone
-                            ? "var(--color-status-verified)"
-                            : "var(--gradient-ai)",
-                        borderRadius: "9999px",
-                        boxShadow: isRunning ? "0 0 8px rgba(6, 182, 212, 0.5)" : "none",
-                        transition: "width 0.4s ease",
-                      }}
-                    />
-                  </div>
-
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
-                      {job.domain.toUpperCase()} · {job.profile || "standard"}
-                    </span>
-                    {job.costCredits != null && (
-                      <span style={{ fontSize: "10px", color: "var(--color-accent-purple)" }}>
-                        {job.costCredits.toFixed(2)} cr
-                      </span>
-                    )}
-                  </Box>
-                </div>
-              );
-            })
-          ) : (
-            <Box display="flex" flexDirection="column" alignItems="center" py={3} textAlign="center" gap={2}>
-              <div
+              <ServerIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
+              <Text
                 style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: "50%",
-                  background: "rgba(6, 182, 212, 0.08)",
-                  border: "1px solid rgba(6, 182, 212, 0.2)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--color-accent-cyan)",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  color: "var(--color-text-primary)",
+                  fontFamily: "var(--font-mono)",
+                  cursor: "pointer",
                 }}
               >
-                <ServerIcon size={18} />
-              </div>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-                Cluster Ready &amp; Idle
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--color-text-muted)", maxWidth: 220, lineHeight: 1.4 }}>
-                No active simulations. Run batched SUNDIALS CVODE, SU2 CFD, or CalculiX FEA.
-              </div>
-              <button
-                onClick={() => setIsSimModalOpen(true)}
+                Cloud &amp; HPC Queue
+              </Text>
+              <ArrowRightIcon size={11} style={{ color: "var(--color-text-muted)" }} />
+            </Link>
+            <Box display="flex" alignItems="center" gap={2}>
+              <span
                 style={{
-                  marginTop: "6px",
-                  background: "rgba(6, 182, 212, 0.1)",
-                  border: "1px solid rgba(6, 182, 212, 0.3)",
+                  fontSize: "10px",
+                  color: clusterInfo?.connected ? "var(--color-status-verified)" : "var(--color-accent-cyan)",
+                  fontFamily: "var(--font-mono)",
+                  background: clusterInfo?.connected ? "var(--status-verified-bg)" : "var(--status-solver-bg)",
+                  border: `1px solid ${clusterInfo?.connected ? "var(--status-verified-border)" : "var(--status-solver-border)"}`,
+                  padding: "1px 6px",
+                  borderRadius: "4px",
+                  fontWeight: 600,
+                }}
+              >
+                ●{" "}
+                {clusterInfo?.connected
+                  ? clusterInfo.backend === "slurm-rest" || clusterInfo.backend === "slurm"
+                    ? `${clusterInfo.nodesCount || 0} NODES`
+                    : "ONLINE"
+                  : "OFFLINE"}
+              </span>
+              <button
+                onClick={() => fetchJobsAndCluster()}
+                disabled={isHpcLoading}
+                title="Refresh queue"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <SpinSyncIcon size={12} $isSpinning={isHpcLoading} />
+              </button>
+            </Box>
+          </Box>
+
+          <Box
+            display="flex"
+            flexDirection="column"
+            gap={3}
+            style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}
+          >
+            {hpcJobs.length > 0 ? (
+              hpcJobs.map((job) => {
+                const isRunning = job.status === "running" || job.status === "processing";
+                const isDone = job.status === "completed" || job.status === "SUCCESS";
+                const isFailed = job.status === "failed" || job.status === "FAILED";
+                const progress = Math.min(100, Math.max(0, job.progress || (isDone ? 100 : isRunning ? 55 : 0)));
+
+                return (
+                  <div
+                    key={job.id}
+                    onClick={() => navigate(`/jobs/${job.id}`)}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                      cursor: "pointer",
+                      padding: "4px",
+                      borderRadius: "6px",
+                      transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.03)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                  >
+                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: "var(--color-text-primary)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: "190px",
+                        }}
+                        title={job.name}
+                      >
+                        #{String(job.id).slice(0, 6)} {job.name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 600,
+                          padding: "1px 5px",
+                          borderRadius: "3px",
+                          background: isDone
+                            ? "rgba(16, 185, 129, 0.15)"
+                            : isFailed
+                              ? "rgba(239, 68, 68, 0.15)"
+                              : isRunning
+                                ? "rgba(6, 182, 212, 0.15)"
+                                : "rgba(245, 158, 11, 0.15)",
+                          color: isDone
+                            ? "var(--color-status-verified)"
+                            : isFailed
+                              ? "#ef4444"
+                              : isRunning
+                                ? "var(--color-accent-cyan)"
+                                : "#f59e0b",
+                        }}
+                      >
+                        {job.status.toUpperCase()}
+                      </span>
+                    </Box>
+
+                    <div
+                      style={{
+                        height: "4px",
+                        background: "var(--color-border)",
+                        borderRadius: "9999px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${progress}%`,
+                          background: isFailed
+                            ? "#ef4444"
+                            : isDone
+                              ? "var(--color-status-verified)"
+                              : "var(--gradient-ai)",
+                          borderRadius: "9999px",
+                          boxShadow: isRunning ? "0 0 8px rgba(6, 182, 212, 0.5)" : "none",
+                          transition: "width 0.4s ease",
+                        }}
+                      />
+                    </div>
+
+                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                      <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
+                        {job.domain.toUpperCase()} · {job.profile || "standard"}
+                      </span>
+                      {job.costCredits != null && (
+                        <span style={{ fontSize: "10px", color: "var(--color-accent-purple)" }}>
+                          {job.costCredits.toFixed(2)} cr
+                        </span>
+                      )}
+                    </Box>
+                  </div>
+                );
+              })
+            ) : (
+              <Box display="flex" flexDirection="column" alignItems="center" py={3} textAlign="center" gap={2}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: "50%",
+                    background: "rgba(6, 182, 212, 0.08)",
+                    border: "1px solid rgba(6, 182, 212, 0.2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--color-accent-cyan)",
+                  }}
+                >
+                  <ServerIcon size={18} />
+                </div>
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-primary)" }}>
+                  Cluster Ready &amp; Idle
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-muted)", maxWidth: 220, lineHeight: 1.4 }}>
+                  No active simulations. Run batched SUNDIALS CVODE, SU2 CFD, or CalculiX FEA.
+                </div>
+                <button
+                  onClick={() => setIsSimModalOpen(true)}
+                  style={{
+                    marginTop: "6px",
+                    background: "rgba(6, 182, 212, 0.1)",
+                    border: "1px solid rgba(6, 182, 212, 0.3)",
+                    color: "var(--color-accent-cyan)",
+                    borderRadius: "6px",
+                    padding: "5px 12px",
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <PlayIcon size={12} />
+                  <span>Launch Cloud Run</span>
+                </button>
+              </Box>
+            )}
+
+            <Box
+              pt={2}
+              mt={1}
+              borderTop="1px solid var(--color-border-subtle)"
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+            >
+              <Link
+                to="/jobs"
+                style={{
                   color: "var(--color-accent-cyan)",
-                  borderRadius: "6px",
-                  padding: "5px 12px",
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
                   fontSize: "11px",
                   fontFamily: "var(--font-mono)",
                   fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  transition: "all 0.15s ease",
                 }}
               >
-                <PlayIcon size={12} />
-                <span>Launch Cloud Run</span>
+                <span>Open Job Queue &amp; Clusters</span>
+                <ArrowRightIcon size={10} />
+              </Link>
+              <button
+                onClick={() => setIsSimModalOpen(true)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                + New
               </button>
             </Box>
-          )}
-        </Box>
-      </Card>
+          </Box>
+        </Card>
+      )}
 
       <Card>
         <Heading

@@ -38,10 +38,13 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
+      context.connection.console.info(
+        `[LSP treeHandler] getLibraryTree parentId=${params.parentId} symbols=${unifiedIndex?.symbols?.size} childrenOfKeys=${Array.from(unifiedIndex?.childrenOf?.keys() ?? []).join(",")}`,
+      );
+
       const res = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
-      console.log(
-        `[LSP treeHandler] getLibraryTree parentId=${params.parentId} returning ${res.length} nodes:`,
-        res.map((n) => n.name),
+      context.connection.console.info(
+        `[LSP treeHandler] getLibraryTree parentId=${params.parentId} returning ${res.length} nodes: ${res.map((n) => n.name).join(", ")}`,
       );
       return res;
     },

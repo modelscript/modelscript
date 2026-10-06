@@ -353,11 +353,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       {
         id: "nav-hpc",
         category: "Navigation",
-        title: "HPC Cloud Jobs & Scripts",
-        subtitle: "Run SLURM scripts and compute pipelines",
+        title: "Cloud Jobs & HPC Queue",
+        subtitle: "Run SLURM jobs, simulation templates, and compute pipelines",
         icon: <CpuIcon size={16} />,
         action: () => {
-          navigate("/scripts");
+          navigate("/jobs");
           onClose();
         },
       },

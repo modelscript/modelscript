@@ -61,6 +61,13 @@ import { AnnotationEvaluator, clearIconCache } from "@modelscript/modelica/diagr
 import owl2LangFallback from "@modelscript/owl2/language";
 import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
 import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
+
+import { FIELD_NAMES as csvFieldNames, SYNTAX_NAMES as csvSyntaxNames } from "@modelscript/csv/parser";
+import { FIELD_NAMES as modelicaFieldNames, SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
+import { FIELD_NAMES as owl2FieldNames, SYNTAX_NAMES as owl2SyntaxNames } from "@modelscript/owl2/parser";
+import { FIELD_NAMES as scadFieldNames, SYNTAX_NAMES as scadSyntaxNames } from "@modelscript/scad/parser";
+import { FIELD_NAMES as stepFieldNames, SYNTAX_NAMES as stepSyntaxNames } from "@modelscript/step/parser";
+import { FIELD_NAMES as sysml2FieldNames, SYNTAX_NAMES as sysml2SyntaxNames } from "@modelscript/sysml2/parser";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
 import { registerDefinitionProvider } from "./providers/definitionProvider.js";
@@ -147,6 +154,19 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 (globalThis as any).mapConstraintsToOptimizer = mapConstraintsToOptimizer;
 (globalThis as any).ArenaScriptInterpreter = ArenaScriptInterpreter;
 (globalThis as any).deriveSimplification = deriveSimplification;
+
+(globalThis as any).modelicaSyntaxNames = modelicaSyntaxNames;
+(globalThis as any).modelicaFieldNames = modelicaFieldNames;
+(globalThis as any).sysml2SyntaxNames = sysml2SyntaxNames;
+(globalThis as any).sysml2FieldNames = sysml2FieldNames;
+(globalThis as any).stepSyntaxNames = stepSyntaxNames;
+(globalThis as any).stepFieldNames = stepFieldNames;
+(globalThis as any).owl2SyntaxNames = owl2SyntaxNames;
+(globalThis as any).owl2FieldNames = owl2FieldNames;
+(globalThis as any).csvSyntaxNames = csvSyntaxNames;
+(globalThis as any).csvFieldNames = csvFieldNames;
+(globalThis as any).scadSyntaxNames = scadSyntaxNames;
+(globalThis as any).scadFieldNames = scadFieldNames;
 
 /* WASM Parser state */
 

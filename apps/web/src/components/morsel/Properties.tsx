@@ -3,6 +3,7 @@
 import { evaluatePropertyPredicate, validatePropertyValue } from "@modelscript/diagram";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { Button, Spinner, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
+import DOMPurify from "dompurify";
 import { useEffect, useState } from "react";
 import { ComponentIcon } from "./ComponentList";
 import type { Translations } from "./util/i18n";
@@ -671,7 +672,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           <div
             className="markdown-body p-3"
             style={{ fontSize: "14px", backgroundColor: "transparent" }}
-            dangerouslySetInnerHTML={{ __html: processHtml(doc.info) }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processHtml(doc.info)) }}
           />
         </details>
       )}
@@ -692,7 +693,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
           <div
             className="markdown-body p-3"
             style={{ fontSize: "14px", backgroundColor: "transparent" }}
-            dangerouslySetInnerHTML={{ __html: processHtml(doc.revisions) }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processHtml(doc.revisions)) }}
           />
         </details>
       )}

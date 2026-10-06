@@ -10,6 +10,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ProfileHoverCard from "../components/ProfileHoverCard";
 import { API_BASE_URL } from "../config";
+import { safeJsonParse } from "../util/json";
 
 import { StickyHeader } from "../components/SharedStyles";
 
@@ -104,21 +105,22 @@ const getIconForType = (type: string) => {
   }
 };
 
-const getMessageForType = (type: string, actors: any[]) => {
-  const count = actors.length;
+const getMessageForType = (type: string, actors: any[] = []) => {
+  const count = actors?.length || 0;
   if (count === 0) return null;
 
-  const firstActor = actors[0];
-  const name = firstActor.display_name || firstActor.username;
+  const firstActor = actors[0] || {};
+  const name = firstActor.display_name || firstActor.username || "Someone";
 
   let actorText;
   if (count === 1) {
     actorText = <Text fontWeight="bold">{name}</Text>;
   } else if (count === 2) {
+    const secondActor = actors[1] || {};
     actorText = (
       <>
         <Text fontWeight="bold">{name}</Text> and{" "}
-        <Text fontWeight="bold">{actors[1].display_name || actors[1].username}</Text>
+        <Text fontWeight="bold">{secondActor.display_name || secondActor.username || "someone"}</Text>
       </>
     );
   } else {
@@ -334,16 +336,18 @@ const NotificationsPage: React.FC = () => {
           {filteredNotifications.map((notif) => {
             let thumbnail = null;
             if (notif.post_artifact_config && notif.post_artifact_type === "picture") {
-              try {
-                const conf = JSON.parse(notif.post_artifact_config);
-                if (conf.url) thumbnail = conf.url;
-              } catch {}
+              const conf = safeJsonParse<{ url?: string }>(notif.post_artifact_config, {});
+              if (conf.url) thumbnail = conf.url;
             } else if (notif.post_artifact_config && notif.post_artifact_type === "link-preview") {
-              try {
-                const conf = JSON.parse(notif.post_artifact_config);
-                if (conf.image) thumbnail = conf.image;
-              } catch {}
+              const conf = safeJsonParse<{ image?: string }>(notif.post_artifact_config, {});
+              if (conf.image) thumbnail = conf.image;
             }
+
+            const primaryActor = notif.actors?.[0] || {
+              username: notif.actor_username || "user",
+              display_name: notif.actor_display_name || notif.actor_username || "User",
+              avatar_url: notif.actor_avatar_url,
+            };
 
             return (
               <NotificationWrapper
@@ -352,23 +356,27 @@ const NotificationsPage: React.FC = () => {
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest("a, button, .interactive-element")) return;
                   const postAuthor =
-                    notif.post_author || notif.author_username || notif.actors?.[0]?.username || user?.username;
+                    notif.post_author || notif.author_username || primaryActor.username || user?.username;
                   const url =
-                    notif.type === "follow" ? `/${notif.actors[0].username}` : `/${postAuthor}/status/${notif.post_id}`;
+                    notif.type === "follow"
+                      ? primaryActor.username
+                        ? `/${primaryActor.username}`
+                        : "/home"
+                      : `/${postAuthor}/status/${notif.post_id}`;
                   navigate(url);
                 }}
               >
                 {notif.type === "mention" || notif.type === "reply" ? (
                   <>
                     <Box width={40} display="flex" justifyContent="flex-end" pt={1}>
-                      <Avatar $url={notif.actors[0].avatar_url} style={{ width: 40, height: 40 }} />
+                      <Avatar $url={primaryActor.avatar_url} style={{ width: 40, height: 40 }} />
                     </Box>
                     <Box flex={1} display="flex" flexDirection="row">
                       <Box flex={1}>
                         <Box display="flex" alignItems="center" gap="4px" mb="4px" fontSize="15px">
-                          <ProfileHoverCard username={notif.actors[0].username}>
+                          <ProfileHoverCard username={primaryActor.username}>
                             <Link
-                              to={`/${notif.actors[0].username}`}
+                              to={`/${primaryActor.username}`}
                               style={{
                                 fontWeight: "bold",
                                 color: "var(--color-text-heading)",
@@ -381,7 +389,7 @@ const NotificationsPage: React.FC = () => {
                               onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
                               onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
                             >
-                              {notif.actors[0].display_name || notif.actors[0].username}
+                              {primaryActor.display_name || primaryActor.username}
                             </Link>
                           </ProfileHoverCard>
                           <span
@@ -392,7 +400,7 @@ const NotificationsPage: React.FC = () => {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            @{notif.actors[0].username}
+                            @{primaryActor.username}
                           </span>
                           <span style={{ color: "var(--color-text-muted)" }}>·</span>
                           <span style={{ color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>

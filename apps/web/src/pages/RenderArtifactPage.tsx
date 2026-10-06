@@ -22,6 +22,7 @@ import VideoViewer from "../components/artifacts/VideoViewer";
 import YoutubeVideoViewer from "../components/artifacts/YoutubeVideoViewer";
 import Box from "../components/Box";
 import { API_BASE_URL } from "../config";
+import { safeJsonParse } from "../util/json";
 
 export default function RenderArtifactPage() {
   const { id } = useParams<{ id: string }>();
@@ -69,7 +70,7 @@ export default function RenderArtifactPage() {
 
   if (!artifact) return null;
 
-  const viewConfig = JSON.parse(artifact.view_config || "{}");
+  const viewConfig = safeJsonParse<Record<string, unknown>>(artifact.view_config, {});
 
   const renderViewer = () => {
     switch (artifact.view_type) {

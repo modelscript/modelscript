@@ -132,6 +132,33 @@ function findLcovFiles(dir: string, baseDir: string = dir): { filePath: string; 
  * Determine project root package name and base path.
  */
 function resolveProjectInfo(filePath: string, repoRoot: string): { packageName: string; projectRelDir: string } {
+  // If filePath was downloaded into an artifact dir (e.g. coverage-artifacts/languages/cfd/coverage/lcov.info)
+  const rel = path.relative(repoRoot, filePath);
+  const strippedRel = rel
+    .replace(/^[^/]+-artifacts\//, "")
+    .replace(/^coverage-[^/]+\//, "")
+    .replace(/^ctrf-[^/]+\//, "");
+
+  // Search upward from stripped path relative to repoRoot
+  let testDir = path.dirname(path.join(repoRoot, strippedRel));
+  while (testDir !== repoRoot && testDir !== path.dirname(testDir)) {
+    const pkgJsonPath = path.join(testDir, "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+        const relDir = path.relative(repoRoot, testDir);
+        return {
+          packageName: pkg.name || relDir,
+          projectRelDir: relDir,
+        };
+      } catch (err) {
+        void err;
+      }
+    }
+    testDir = path.dirname(testDir);
+  }
+
+  // Fallback: check filePath directly
   let curr = path.dirname(filePath);
   while (curr !== repoRoot && curr !== path.dirname(curr)) {
     const pkgJsonPath = path.join(curr, "package.json");
@@ -177,9 +204,28 @@ function parseLcovContent(content: string, projectRelDir: string, repoRoot: stri
       } else {
         if (origPath.startsWith(projectRelDir) || origPath.startsWith("./" + projectRelDir)) {
           normalizedPath = origPath.replace(/^\.\//, "");
+        } else if (fs.existsSync(path.join(repoRoot, origPath))) {
+          normalizedPath = origPath;
         } else {
           normalizedPath = path.join(projectRelDir, origPath);
         }
+      }
+
+      // Filter out non-source files (compiled dist, node_modules, tests, caches)
+      if (
+        normalizedPath.includes("/dist/") ||
+        normalizedPath.startsWith("dist/") ||
+        normalizedPath.includes("/node_modules/") ||
+        normalizedPath.startsWith("node_modules/") ||
+        normalizedPath.includes("/.cache/") ||
+        normalizedPath.includes("/tests/") ||
+        normalizedPath.startsWith("tests/") ||
+        normalizedPath.includes("/validation/") ||
+        normalizedPath.startsWith("validation/")
+      ) {
+        currentFile = null;
+        rawLines = [];
+        continue;
       }
 
       currentFile = {
@@ -223,16 +269,17 @@ function parseLcovContent(content: string, projectRelDir: string, repoRoot: stri
 }
 
 function pct(hit: number, total: number): string {
-  if (total === 0) return "100.0%";
+  if (total === 0) return "0.0%";
   return ((hit / total) * 100).toFixed(1) + "%";
 }
 
 function pctNum(hit: number, total: number): number {
-  if (total === 0) return 100.0;
+  if (total === 0) return 0.0;
   return parseFloat(((hit / total) * 100).toFixed(2));
 }
 
-function getBadge(percentage: number): string {
+function getBadge(percentage: number, total = 1): string {
+  if (total === 0) return "⚪";
   if (percentage >= 80) return "🟢";
   if (percentage >= 50) return "🟡";
   return "🔴";
@@ -276,7 +323,38 @@ export function main() {
     const parsedFiles = parseLcovContent(content, projectRelDir, repoRoot);
 
     for (const file of parsedFiles) {
-      pkgCov.files.set(file.sourceFile, file);
+      // Attribute file to its owning package
+      let targetPkg = pkgCov;
+      const filePkgInfo = resolveProjectInfo(path.join(repoRoot, file.sourceFile), repoRoot);
+      if (filePkgInfo.packageName && filePkgInfo.packageName !== "root" && filePkgInfo.packageName !== packageName) {
+        if (!packageMap.has(filePkgInfo.packageName)) {
+          packageMap.set(filePkgInfo.packageName, {
+            packageName: filePkgInfo.packageName,
+            projectPath: filePkgInfo.projectRelDir,
+            files: new Map(),
+            totalLF: 0,
+            totalLH: 0,
+            totalBF: 0,
+            totalBH: 0,
+            totalFF: 0,
+            totalFH: 0,
+          });
+        }
+        targetPkg = packageMap.get(filePkgInfo.packageName)!;
+      }
+
+      if (targetPkg.files.has(file.sourceFile)) {
+        const existing = targetPkg.files.get(file.sourceFile)!;
+        existing.linesFound = Math.max(existing.linesFound, file.linesFound);
+        existing.branchesFound = Math.max(existing.branchesFound, file.branchesFound);
+        existing.functionsFound = Math.max(existing.functionsFound, file.functionsFound);
+
+        existing.linesHit = Math.min(existing.linesFound, Math.max(existing.linesHit, file.linesHit));
+        existing.branchesHit = Math.min(existing.branchesFound, Math.max(existing.branchesHit, file.branchesHit));
+        existing.functionsHit = Math.min(existing.functionsFound, Math.max(existing.functionsHit, file.functionsHit));
+      } else {
+        targetPkg.files.set(file.sourceFile, file);
+      }
       allMergedRecords.push(...file.rawRecords);
     }
   }
@@ -313,7 +391,7 @@ export function main() {
   // Generate Markdown Summary
   let md = `## 📊 Test Code Coverage Summary\n\n`;
   md +=
-    `**Overall Coverage**: ${getBadge(overallLinePct)} **${overallLinePct.toFixed(1)}% Lines** (${grandTotalLH}/${grandTotalLF}) | ` +
+    `**Overall Coverage**: ${getBadge(overallLinePct, grandTotalLF)} **${overallLinePct.toFixed(1)}% Lines** (${grandTotalLH}/${grandTotalLF}) | ` +
     `**${overallBranchPct.toFixed(1)}% Branches** (${grandTotalBH}/${grandTotalBF}) | ` +
     `**${overallFuncPct.toFixed(1)}% Functions** (${grandTotalFH}/${grandTotalFF})\n\n`;
 
@@ -327,7 +405,7 @@ export function main() {
     const bPct = pctNum(pkg.totalBH, pkg.totalBF);
     const fPct = pctNum(pkg.totalFH, pkg.totalFF);
     md +=
-      `| \`${pkg.packageName}\` | ${pkg.totalLH}/${pkg.totalLF} | ${getBadge(lPct)} ${lPct.toFixed(1)}% | ` +
+      `| \`${pkg.packageName}\` | ${pkg.totalLH}/${pkg.totalLF} | ${getBadge(lPct, pkg.totalLF)} ${lPct.toFixed(1)}% | ` +
       `${pkg.totalBH}/${pkg.totalBF} | ${bPct.toFixed(1)}% | ` +
       `${pkg.totalFH}/${pkg.totalFF} | ${fPct.toFixed(1)}% |\n`;
   }

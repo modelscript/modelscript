@@ -225,19 +225,20 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
         setLoading(true);
         setError("");
 
-        const commitsData = await getGitlabCommits(projectId, "main", provider).catch(() => []);
+        const defaultBranch = repo.default_branch || "main";
+        const commitsData = await getGitlabCommits(projectId, defaultBranch, provider).catch(() => []);
         setCommits(commitsData);
 
         if (currentFile) {
-          const raw = await getGitlabFileRaw(projectId, currentFile, "main", provider);
+          const raw = await getGitlabFileRaw(projectId, currentFile, defaultBranch, provider);
           setFileContent(raw);
           setTree([]);
           setReadme(null);
         } else {
           const [treeData, readmeData] = await Promise.all([
-            getGitlabTree(projectId, "main", currentPath, provider),
+            getGitlabTree(projectId, defaultBranch, currentPath, provider),
             currentPath === ""
-              ? getGitlabFileRaw(projectId, "README.md", "main", provider).catch(() => null)
+              ? getGitlabFileRaw(projectId, "README.md", defaultBranch, provider).catch(() => null)
               : Promise.resolve(null),
           ]);
           setTree(
@@ -253,7 +254,7 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
       }
     }
     load();
-  }, [projectId, currentPath, currentFile, provider]);
+  }, [projectId, currentPath, currentFile, provider, repo.default_branch]);
 
   const navigateUp = () => {
     if (currentFile) {
@@ -984,7 +985,15 @@ function IssuesTab({ projectId, provider }: { projectId: string; provider: strin
   );
 }
 
-function PullRequestsTab({ projectId, provider }: { projectId: string; provider: string }) {
+function PullRequestsTab({
+  projectId,
+  provider,
+  defaultBranch = "main",
+}: {
+  projectId: string;
+  provider: string;
+  defaultBranch?: string;
+}) {
   const [mrs, setMrs] = useState<GitlabMergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMr, setSelectedMr] = useState<GitlabMergeRequest | null>(null);
@@ -1018,7 +1027,7 @@ function PullRequestsTab({ projectId, provider }: { projectId: string; provider:
       created_at: new Date().toISOString(),
       author: { id: 1, username: "current_user", name: "Current User" },
       source_branch: newMrSource || "feature-branch",
-      target_branch: "main",
+      target_branch: defaultBranch,
       web_url: "#",
     };
     setMrs([mockMr, ...mrs]);
@@ -1333,7 +1342,15 @@ function SettingsTab({ repo }: { repo: GitlabProject }) {
   );
 }
 
-function ActionsTab({ projectId, provider }: { projectId: string; provider: string }) {
+function ActionsTab({
+  projectId,
+  provider,
+  defaultBranch = "main",
+}: {
+  projectId: string;
+  provider: string;
+  defaultBranch?: string;
+}) {
   const [latestJobs, setLatestJobs] = useState<GitlabJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1342,7 +1359,7 @@ function ActionsTab({ projectId, provider }: { projectId: string; provider: stri
     async function load() {
       try {
         setLoading(true);
-        const pipelinesData = await getGitlabPipelines(projectId, "main", provider).catch(() => []);
+        const pipelinesData = await getGitlabPipelines(projectId, defaultBranch, provider).catch(() => []);
         if (pipelinesData.length > 0) {
           const jobs = await getGitlabPipelineJobs(projectId, pipelinesData[0].id, provider).catch(() => []);
           setLatestJobs(jobs);
@@ -1354,7 +1371,7 @@ function ActionsTab({ projectId, provider }: { projectId: string; provider: stri
       }
     }
     load();
-  }, [projectId, provider]);
+  }, [projectId, provider, defaultBranch]);
 
   if (loading) {
     return (
@@ -1544,8 +1561,16 @@ export default function WorkspacePage() {
           <Routes>
             <Route path="/" element={<CodeTab projectId={projectId} repo={repo} provider={provider} />} />
             <Route path="issues" element={<IssuesTab projectId={projectId} provider={provider} />} />
-            <Route path="pulls" element={<PullRequestsTab projectId={projectId} provider={provider} />} />
-            <Route path="actions" element={<ActionsTab projectId={projectId} provider={provider} />} />
+            <Route
+              path="pulls"
+              element={
+                <PullRequestsTab projectId={projectId} provider={provider} defaultBranch={repo.default_branch} />
+              }
+            />
+            <Route
+              path="actions"
+              element={<ActionsTab projectId={projectId} provider={provider} defaultBranch={repo.default_branch} />}
+            />
             <Route path="settings" element={<SettingsTab repo={repo} />} />
           </Routes>
         </Box>

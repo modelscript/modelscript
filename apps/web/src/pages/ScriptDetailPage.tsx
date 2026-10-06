@@ -86,7 +86,7 @@ const ScriptDetailPage: React.FC = () => {
         borderBottom="1px solid var(--color-border-subtle)"
         bg="var(--color-canvas-default)"
       >
-        <CircleIconButton onClick={() => navigate("/scripts")} aria-label="Back">
+        <CircleIconButton onClick={() => navigate("/jobs")} aria-label="Back">
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         <Box flex={1}>

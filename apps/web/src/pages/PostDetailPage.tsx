@@ -192,28 +192,26 @@ const PostDetailPage: React.FC = () => {
           }).catch(console.error);
         }
 
-        const res = await fetch(`${API_BASE_URL}/social/posts/${id}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const [res, repliesRes, parentsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/social/posts/${id}`, { headers }),
+          fetch(`${API_BASE_URL}/social/posts/${id}/replies`, { headers }),
+          fetch(`${API_BASE_URL}/social/posts/${id}/parents`, { headers }),
+        ]);
+
         if (res.ok) {
           const data = await res.json();
           setPost(data.post);
         }
 
-        const repliesRes = await fetch(`${API_BASE_URL}/social/posts/${id}/replies`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
         if (repliesRes.ok) {
           const repliesData = await repliesRes.json();
-          setReplies(repliesData.posts);
+          setReplies(repliesData.posts || []);
         }
 
-        const parentsRes = await fetch(`${API_BASE_URL}/social/posts/${id}/parents`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
         if (parentsRes.ok) {
           const parentsData = await parentsRes.json();
-          setParents(parentsData.posts);
+          setParents(parentsData.posts || []);
         }
       } catch (err) {
         console.error(err);

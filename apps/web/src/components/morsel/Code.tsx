@@ -38,6 +38,10 @@ if (!self.MonacoEnvironment) {
   loader.config({ monaco });
 }
 
+if (typeof window !== "undefined") {
+  (window as any).monaco = monaco;
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Props & Handle
 // ────────────────────────────────────────────────────────────────────
@@ -114,7 +118,6 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     if (!model) return;
 
     if (props.externalErrors && props.externalErrors.length > 0) {
-      const existing = monaco.editor.getModelMarkers({ resource: model.uri, owner: "lsp" });
       const extras: editor.IMarkerData[] = props.externalErrors.map((err) => ({
         message: err,
         startLineNumber: 1,

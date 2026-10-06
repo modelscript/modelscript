@@ -101,8 +101,16 @@ function App() {
                 />
                 <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
 
-                {/* Scripts */}
-                <Route path="/scripts" element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />} />
+                {/* Cloud Jobs & HPC Queue */}
+                <Route path="/jobs" element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />} />
+                <Route
+                  path="/jobs/templates/:id"
+                  element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
+                />
+                <Route path="/jobs/:id" element={hasCae ? <ScriptDetailPage /> : <Navigate to="/packages" replace />} />
+
+                {/* Legacy /scripts alias routes */}
+                <Route path="/scripts" element={<Navigate to="/jobs" replace />} />
                 <Route
                   path="/scripts/templates/:id"
                   element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}

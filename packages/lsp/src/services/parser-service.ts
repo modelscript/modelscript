@@ -592,12 +592,31 @@ export class ParserService {
       await Promise.all(
         manifest.map(async (entry) => {
           if (!entry.wasm) return;
-          const wasmUrl = `${serverDistBase}/${entry.wasm}`;
           const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
           const fieldNames = entry.fieldNames || (globalThis as any)[`${entry.id}FieldNames`];
+          const candidates = Array.from(
+            new Set([
+              `${serverDistBase}/${entry.wasm}`,
+              `${serverDistBase}/${entry.id}.wasm`,
+              `${serverDistBase}/tree-sitter-${entry.id}.wasm`,
+              `${serverDistBase}/parser.wasm`,
+            ]),
+          );
 
           try {
-            const result = await createWasmParser(wasmUrl, { syntaxNames, fieldNames });
+            let result: any = null;
+            let lastError: any = null;
+            for (const candUrl of candidates) {
+              try {
+                result = await createWasmParser(candUrl, { syntaxNames, fieldNames });
+                if (result) break;
+              } catch (err) {
+                lastError = err;
+              }
+            }
+            if (!result && lastError) {
+              throw lastError;
+            }
 
             if (result) {
               this.registerParser(entry.id, result.parser, result.facade);

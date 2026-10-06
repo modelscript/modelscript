@@ -251,6 +251,12 @@ export function setupMonacoLspAdapter(
 
   // ── Diagnostics ──
   connection.onNotification("textDocument/publishDiagnostics", (params: any) => {
+    console.log(
+      "[monaco-adapter] publishDiagnostics received:",
+      params.uri,
+      params.diagnostics?.length,
+      params.diagnostics,
+    );
     // Find matching model
     let targetModel: monacoTypes.editor.ITextModel | null = null;
     for (const model of monaco.editor.getModels()) {

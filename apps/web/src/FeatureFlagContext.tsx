@@ -6,11 +6,14 @@ import { useAuth } from "./AuthContext";
 
 export type FeatureFlags = Record<string, boolean>;
 
-interface FeatureFlagContextType {
+export interface FeatureFlagContextType {
   flags: FeatureFlags;
+  overrides: Record<string, boolean>;
   isLoading: boolean;
   refreshFlags: () => Promise<void>;
   isEnabled: (key: string) => boolean;
+  setFlagOverride: (key: string, enabled: boolean | null) => void;
+  resetAllOverrides: () => void;
 }
 
 const FeatureFlagContext = createContext<FeatureFlagContextType | null>(null);
@@ -35,9 +38,30 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   mcp_gateway_sse: false,
 };
 
+function readStorageOverrides(): Record<string, boolean> {
+  const overrides: Record<string, boolean> = {};
+  if (typeof window === "undefined" || !window.localStorage) return overrides;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("ff_")) {
+        const flagName = key.slice(3);
+        const val = localStorage.getItem(key);
+        if (val !== null) {
+          overrides[flagName] = val === "1" || val.toLowerCase() === "true";
+        }
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+  return overrides;
+}
+
 export function FeatureFlagProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags>(DEFAULT_FRONTEND_FLAGS);
+  const [overrides, setOverrides] = useState<Record<string, boolean>>(readStorageOverrides);
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshFlags = useCallback(async () => {
@@ -57,6 +81,47 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
     void refreshFlags();
   }, [token, refreshFlags]);
 
+  const setFlagOverride = useCallback((key: string, enabled: boolean | null) => {
+    if (typeof window !== "undefined") {
+      try {
+        if (enabled === null) {
+          localStorage.removeItem(`ff_${key}`);
+        } else {
+          localStorage.setItem(`ff_${key}`, enabled ? "1" : "0");
+        }
+      } catch {
+        // Ignore localStorage error
+      }
+    }
+    setOverrides((prev) => {
+      if (enabled === null) {
+        const { [key]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [key]: enabled };
+    });
+  }, []);
+
+  const resetAllOverrides = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("ff_")) {
+            keysToRemove.push(k);
+          }
+        }
+        for (const k of keysToRemove) {
+          localStorage.removeItem(k);
+        }
+      } catch {
+        // Ignore localStorage error
+      }
+    }
+    setOverrides({});
+  }, []);
+
   const isEnabled = useCallback(
     (key: string): boolean => {
       // 1. Check URL search param override (e.g., ?ff_cae_cloud_solver=1 or ?ff_cae_cloud_solver=true)
@@ -66,22 +131,31 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
         if (urlOverride !== null) {
           return urlOverride === "1" || urlOverride.toLowerCase() === "true";
         }
+      }
 
-        // 2. Check local storage developer override (e.g., ff_cae_cloud_solver)
-        const storageOverride = localStorage.getItem(`ff_${key}`);
-        if (storageOverride !== null) {
-          return storageOverride === "1" || storageOverride.toLowerCase() === "true";
-        }
+      // 2. Check local storage / in-memory developer override (e.g., ff_cae_cloud_solver)
+      if (key in overrides) {
+        return overrides[key];
       }
 
       // 3. Fall back to evaluated flags or default
       return flags[key] ?? DEFAULT_FRONTEND_FLAGS[key] ?? false;
     },
-    [flags],
+    [flags, overrides],
   );
 
   return (
-    <FeatureFlagContext.Provider value={{ flags, isLoading, refreshFlags, isEnabled }}>
+    <FeatureFlagContext.Provider
+      value={{
+        flags,
+        overrides,
+        isLoading,
+        refreshFlags,
+        isEnabled,
+        setFlagOverride,
+        resetAllOverrides,
+      }}
+    >
       {children}
     </FeatureFlagContext.Provider>
   );
@@ -100,9 +174,12 @@ export function useFeatureFlags(): FeatureFlagContextType {
   if (!ctx) {
     return {
       flags: DEFAULT_FRONTEND_FLAGS,
+      overrides: {},
       isLoading: false,
       refreshFlags: async () => {},
       isEnabled: (key: string) => DEFAULT_FRONTEND_FLAGS[key] ?? false,
+      setFlagOverride: () => {},
+      resetAllOverrides: () => {},
     };
   }
   return ctx;

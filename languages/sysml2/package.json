@@ -73,7 +73,7 @@
     "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
     "lint": "eslint src transformers --no-warn-ignored",
-    "test": "mkdir -p coverage && npx tsx --test --experimental-test-coverage --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
+    "test": "mkdir -p coverage && npx tsx --test --experimental-test-coverage --test-coverage-exclude=\"**/dist/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-coverage-exclude=\"**/tests/**\" --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

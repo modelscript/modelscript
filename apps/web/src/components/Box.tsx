@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import styled from "styled-components";
+import styled, { css } from "styled-components";
 
 export interface BoxProps {
   display?: "block" | "inline" | "inline-block" | "flex" | "inline-flex" | "grid" | "none";
@@ -52,6 +52,9 @@ export interface BoxProps {
   boxShadow?: string;
   textOverflow?: string;
   whiteSpace?: string;
+  overflow?: string;
+  overflowX?: string;
+  overflowY?: string;
   sx?: any;
   children?: React.ReactNode;
   style?: React.CSSProperties;
@@ -107,6 +110,9 @@ const styleProps = new Set([
   "boxShadow",
   "textOverflow",
   "whiteSpace",
+  "overflow",
+  "overflowX",
+  "overflowY",
   "sx",
 ]);
 
@@ -189,6 +195,10 @@ const Box = styled.div.withConfig({
   min-width: ${(props) => (typeof props.minWidth === "number" ? `${props.minWidth}px` : props.minWidth)};
   max-width: ${(props) => (typeof props.maxWidth === "number" ? `${props.maxWidth}px` : props.maxWidth)};
   max-height: ${(props) => (typeof props.maxHeight === "number" ? `${props.maxHeight}px` : props.maxHeight)};
+  overflow: ${(props) => props.overflow};
+  overflow-x: ${(props) => props.overflowX};
+  overflow-y: ${(props) => props.overflowY};
+  ${(props) => (props.sx ? css(props.sx) : "")};
 `;
 
 export default Box;

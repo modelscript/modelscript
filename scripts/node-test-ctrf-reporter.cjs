@@ -16,6 +16,8 @@ module.exports = async function* ctrfReporter(source) {
     if (pkg.name) packageName = pkg.name;
   } catch {}
 
+  const suiteErrors = new Map();
+
   for await (const event of source) {
     const { type, data } = event;
 
@@ -29,7 +31,56 @@ module.exports = async function* ctrfReporter(source) {
 
       // In node:test, suites have details.type === 'suite'
       const isSuite = data.details?.type === "suite";
-      if (!isSuite && data.name) {
+      if (isSuite) {
+        if (type === "test:fail") {
+          const suitePath = suiteStack.slice(0, data.nesting + 1).filter(Boolean).join(" > ") || data.name;
+          const err = data.details?.error;
+          let errMsg = err?.message || "Suite failed";
+          if (err?.cause) {
+            const causeMsg = err.cause?.message || String(err.cause);
+            if (causeMsg && !errMsg.includes(causeMsg)) {
+              errMsg = `${errMsg} (${causeMsg})`;
+            }
+          }
+          let errTrace = err?.stack || "";
+          if (err?.cause?.stack && !errTrace.includes(err.cause.stack)) {
+            errTrace = `${err.cause.stack}\n\n${errTrace}`;
+          }
+          const suiteErr = {
+            message: errMsg,
+            trace: errTrace,
+          };
+          suiteErrors.set(suitePath, suiteErr);
+
+          // Retroactively enrich any child tests under this suite that were cancelled
+          let matchedChildCount = 0;
+          for (const t of tests) {
+            if (t.suite === suitePath || t.suite.startsWith(suitePath + " > ")) {
+              matchedChildCount++;
+              if (t.status === "failed" && t.message.includes("test did not finish before its parent and was cancelled")) {
+                t.message = `Parent suite '${suitePath}' failed: ${suiteErr.message}`;
+                if (suiteErr.trace) t.trace = `${suiteErr.trace}\n\n${t.trace}`;
+              }
+            }
+          }
+
+          // If no child tests exist at all, record a failure for the suite setup
+          if (matchedChildCount === 0 && data.name) {
+            tests.push({
+              name: `${data.name} (suite setup)`,
+              status: "failed",
+              duration: Math.round(data.details?.duration_ms ?? 0),
+              filePath: data.file ? path.relative(process.cwd(), data.file) : "",
+              suite: suitePath,
+              type: "unit",
+              retries: 0,
+              flaky: false,
+              message: suiteErr.message,
+              trace: suiteErr.trace,
+            });
+          }
+        }
+      } else if (data.name) {
         const duration = Math.round(data.details?.duration_ms ?? 0);
         const suitePath = suiteStack.slice(0, data.nesting).filter(Boolean).join(" > ");
         const filePath = data.file ? path.relative(process.cwd(), data.file) : "";
@@ -56,8 +107,27 @@ module.exports = async function* ctrfReporter(source) {
 
         if (status === "failed") {
           const err = data.details?.error;
-          testEntry.message = err?.message || "Test failed";
-          testEntry.trace = err?.stack || "";
+          let msg = err?.message || "Test failed";
+          if (err?.cause) {
+            const causeMsg = err.cause?.message || String(err.cause);
+            if (causeMsg && !msg.includes(causeMsg)) {
+              msg = `${msg} (${causeMsg})`;
+            }
+          }
+          let trace = err?.stack || "";
+          if (err?.cause?.stack && !trace.includes(err.cause.stack)) {
+            trace = `${err.cause.stack}\n\n${trace}`;
+          }
+
+          // Check if a parent suite error was already recorded
+          const parentErr = suiteErrors.get(suitePath);
+          if (parentErr && msg.includes("test did not finish before its parent and was cancelled")) {
+            msg = `Parent suite '${suitePath}' failed: ${parentErr.message}`;
+            if (parentErr.trace) trace = `${parentErr.trace}\n\n${trace}`;
+          }
+
+          testEntry.message = msg;
+          testEntry.trace = trace;
         }
 
         tests.push(testEntry);

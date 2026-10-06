@@ -474,7 +474,7 @@ const SettingsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const { user, isAdmin, logout } = useAuth();
+  const { user, token, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
@@ -1219,7 +1219,7 @@ const SettingsPage: React.FC = () => {
                 </Box>
                 <SaveButton
                   onClick={() =>
-                    (window.location.href = `/api/v1/auth/link/twitter?token=${localStorage.getItem("token") || ""}`)
+                    (window.location.href = `/api/v1/auth/link/twitter?token=${token || localStorage.getItem("modelscript-auth-token") || ""}`)
                   }
                 >
                   Connect Account

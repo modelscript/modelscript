@@ -650,8 +650,8 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
               }
               tree = ctx.sharedContext.parse(".mo", text);
             }
-          } catch {
-            /* ignore */
+          } catch (err: any) {
+            ctx.logger.error(`[loader] Error parsing ${file.fullPath}:`, err);
           }
           if (tree) {
             setTimeout(() => {
@@ -671,16 +671,24 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     // Eagerly index root packages so "Modelica", "Complex", and "Icons" exist in byName immediately
     if (modelicaPkgUri) {
       try {
+        ctx.logger.log(`[loadMSL] Ensuring indexed: ${modelicaPkgUri}`);
         ctx.globalWorkspaceIndex.ensureIndexed(modelicaPkgUri);
-      } catch {
-        /* ignore */
+        ctx.logger.log(
+          `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex.toUnifiedPartial?.()?.symbols?.size}`,
+        );
+      } catch (err: any) {
+        ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${modelicaPkgUri}:`, err);
       }
     }
     if (complexUri) {
       try {
+        ctx.logger.log(`[loadMSL] Ensuring indexed: ${complexUri}`);
         ctx.globalWorkspaceIndex.ensureIndexed(complexUri);
-      } catch {
-        /* ignore */
+        ctx.logger.log(
+          `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex.toUnifiedPartial?.()?.symbols?.size}`,
+        );
+      } catch (err: any) {
+        ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${complexUri}:`, err);
       }
     }
     if (iconsUri) {
@@ -696,6 +704,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       state: "ready",
       message: "ModelScript",
     });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   } catch (e) {
     ctx.logger.error("Failed to load MSL zip:", e);
     ctx.connectionState.sendNotification("modelscript/status", {
@@ -800,6 +809,7 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
       state: "ready",
       message: "ModelScript",
     });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   } catch (e) {
     ctx.logger.error("Failed to load SysML2 standard library:", e);
     ctx.connectionState.sendNotification("modelscript/status", {

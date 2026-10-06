@@ -49,11 +49,11 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,15 +102,17 @@ jobs:
             languages/*/.cache
             packages/runtime/build/*.wasm
             packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
           key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
       - name: Run Sharded Tests
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            npx nx affected -t test --shard=${{ matrix.shard }}/3 --parallel=2
+            npx nx affected -t test --shard=${{ matrix.shard }}/4 --parallel=2
           else
-            npx nx run-many -t test --shard=${{ matrix.shard }}/3 --parallel=2
+            npx nx run-many -t test --shard=${{ matrix.shard }}/4 --parallel=2
           fi
       - name: Upload CTRF Artifacts
         uses: actions/upload-artifact@v4
@@ -182,7 +184,10 @@ jobs:
         run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica
       - name: Run Modelica Dual Testsuite (WASM vs JS)
         if: steps.check-affected.outputs.run_suite == 'true'
-        run: npm run test:modelica:both:allow-wasm
+        run: |
+          mkdir -p .v8-coverage languages/modelica/coverage/omc
+          NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
+          npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**" || true
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@v4
@@ -199,6 +204,13 @@ jobs:
           name: omc-testsuite-html-reports
           path: |
             languages/modelica/ctrf/*.html
+          if-no-files-found: ignore
+      - name: Upload Coverage Artifacts
+        if: always() && steps.check-affected.outputs.run_suite == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-omc-testsuite
+          path: "languages/modelica/coverage/omc/*lcov*.info"
           if-no-files-found: ignore
 
   publish_reports:
@@ -266,7 +278,8 @@ jobs:
             --dir=coverage-artifacts \
             --github-step-summary \
             --output-lcov=coverage/lcov-consolidated.info \
-            --output-json=coverage/coverage-summary.json
+            --output-json=coverage/coverage-summary.json \
+            --threshold=65
       - name: Upload Consolidated Coverage Artifacts
         if: always()
         uses: actions/upload-artifact@v4

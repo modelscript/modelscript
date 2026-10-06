@@ -3,17 +3,7 @@
 /* eslint-disable */
 import Box from "./Box";
 
-import {
-  BellIcon,
-  HomeIcon,
-  MoonIcon,
-  PersonIcon,
-  PlusIcon,
-  SearchIcon,
-  SunIcon,
-  XIcon,
-  ZapIcon,
-} from "@primer/octicons-react";
+import { BellIcon, HomeIcon, MoonIcon, PersonIcon, PlusIcon, SearchIcon, SunIcon, XIcon } from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -27,7 +17,9 @@ import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
+import { useFeatureFlags } from "../FeatureFlagContext";
 import { ComposeContext } from "./ComposeContext";
+import { DevFlagsModal } from "./DevFlagsModal";
 
 const ShellContainer = styled.div`
   display: flex;
@@ -38,151 +30,6 @@ const ShellContainer = styled.div`
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
   box-sizing: border-box;
-`;
-
-const TopGlobalHud = styled.header`
-  position: sticky;
-  top: var(--dev-header-height, 0px);
-  z-index: 1000;
-  width: 100%;
-  height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: var(--surface-hud);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--color-border);
-  box-sizing: border-box;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const HudBrand = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: -0.3px;
-  color: var(--color-text-heading);
-  cursor: pointer;
-`;
-
-const LogoOrb = styled.div`
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--gradient-ai);
-  box-shadow: var(--glow-ai-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: white;
-`;
-
-const Omnibar = styled.div`
-  flex: 0 1 520px;
-  height: 34px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--color-border-glass);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 10px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    border-color: rgba(139, 92, 246, 0.45);
-    background: rgba(255, 255, 255, 0.06);
-    box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
-    color: var(--color-text-primary);
-  }
-
-  kbd {
-    background: rgba(255, 255, 255, 0.08);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    margin-left: auto;
-    color: var(--color-text-tertiary);
-  }
-`;
-
-const HudTelemetry = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-`;
-
-const PillTelemetry = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  color: var(--color-status-verified);
-`;
-
-const WalletPill = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  background: rgba(139, 92, 246, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: var(--color-accent-purple);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: rgba(139, 92, 246, 0.22);
-    border-color: rgba(139, 92, 246, 0.5);
-    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
-    transform: translateY(-1px);
-  }
-`;
-
-const PulseDot = styled.div`
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-status-verified);
-  box-shadow: 0 0 8px var(--color-status-verified);
-  animation: pulseAnim 2s infinite;
-
-  @keyframes pulseAnim {
-    0% {
-      transform: scale(1);
-      opacity: 1;
-    }
-    50% {
-      transform: scale(1.4);
-      opacity: 0.5;
-    }
-    100% {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
 `;
 
 const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean }>`
@@ -225,10 +72,11 @@ const MainColumn = styled.main<{
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
-  min-height: calc(100vh - 54px - var(--dev-header-height, 0px));
+  min-height: calc(100vh - var(--dev-header-height, 0px));
   padding-bottom: ${(props) => (props.$isFullScreenLayout ? "0px" : "80px")};
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 
   @media (max-width: 500px) {
     padding-bottom: ${(props) =>
@@ -341,6 +189,9 @@ const AppShell: React.FC = () => {
   const [isResettingDb, setIsResettingDb] = React.useState(false);
   const [resetError, setResetError] = React.useState<string | null>(null);
   const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(true);
+  const [isDevFlagsModalOpen, setIsDevFlagsModalOpen] = React.useState(false);
+  const { overrides } = useFeatureFlags();
+  const activeOverrideCount = Object.keys(overrides).length;
   const { user, isLoading: loading, login, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
   const [clusterStatus, setClusterStatus] = React.useState<ClusterStatus | null>(null);
   const [isTopUpModalOpen, setIsTopUpModalOpen] = React.useState(false);
@@ -353,6 +204,7 @@ const AppShell: React.FC = () => {
   React.useEffect(() => {
     let mounted = true;
     const fetchCluster = () => {
+      if (document.visibilityState !== "visible") return;
       getClusterStatus()
         .then((data) => {
           if (mounted) setClusterStatus(data);
@@ -361,9 +213,14 @@ const AppShell: React.FC = () => {
     };
     fetchCluster();
     const interval = setInterval(fetchCluster, 15000);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchCluster();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       mounted = false;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -385,11 +242,16 @@ const AppShell: React.FC = () => {
     const handleOpenTopUp = () => {
       setIsTopUpModalOpen(true);
     };
+    const handleOpenCommandPalette = () => {
+      setIsCommandPaletteOpen(true);
+    };
     window.addEventListener("modelscript:open-compose", handleOpenCompose);
     window.addEventListener("modelscript:open-topup", handleOpenTopUp);
+    window.addEventListener("modelscript:open-command-palette", handleOpenCommandPalette);
     return () => {
       window.removeEventListener("modelscript:open-compose", handleOpenCompose);
       window.removeEventListener("modelscript:open-topup", handleOpenTopUp);
+      window.removeEventListener("modelscript:open-command-palette", handleOpenCommandPalette);
     };
   }, []);
 
@@ -458,6 +320,41 @@ const AppShell: React.FC = () => {
                     }}
                   >
                     Reload DB
+                  </button>
+                  <button
+                    onClick={() => setIsDevFlagsModalOpen(true)}
+                    style={{
+                      background: activeOverrideCount > 0 ? "rgba(245, 158, 11, 0.35)" : "rgba(255,255,255,0.2)",
+                      color: activeOverrideCount > 0 ? "#fef08a" : "white",
+                      border: activeOverrideCount > 0 ? "1px solid rgba(245, 158, 11, 0.7)" : "none",
+                      borderRadius: "4px",
+                      padding: "4px 10px",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      marginRight: "8px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                    }}
+                    title="Configure Feature Flags & Toggles"
+                  >
+                    <span>🚩 Flags</span>
+                    {activeOverrideCount > 0 && (
+                      <span
+                        style={{
+                          background: "#f59e0b",
+                          color: "#000",
+                          borderRadius: "9999px",
+                          padding: "0 5px",
+                          fontSize: "10px",
+                          fontWeight: 800,
+                          lineHeight: "16px",
+                        }}
+                      >
+                        {activeOverrideCount}
+                      </span>
+                    )}
                   </button>
                   <span style={{ fontSize: "12px", opacity: 0.8, marginRight: "4px" }}>
                     {!user ? "Login as:" : "Switch user:"}
@@ -555,104 +452,6 @@ const AppShell: React.FC = () => {
           </div>
         )}
         <ShellContainer>
-          <TopGlobalHud>
-            <HudBrand onClick={() => navigate(user ? "/home" : "/explore")}>
-              <LogoOrb>M</LogoOrb>
-              <span>ModelScript OS</span>
-            </HudBrand>
-            <Omnibar onClick={() => setIsCommandPaletteOpen(true)}>
-              <span>⚡ Ask AI Copilot, search models, or run CVODE solver...</span>
-              <kbd>⌘ K</kbd>
-            </Omnibar>
-            <HudTelemetry>
-              <PillTelemetry
-                title={
-                  clusterStatus
-                    ? `Backend: ${clusterStatus.backend} | Latency: ${clusterStatus.latencyMs}ms | Nodes: ${clusterStatus.nodesCount}`
-                    : "Connecting to compute cluster..."
-                }
-              >
-                <PulseDot />
-                <span>
-                  {clusterStatus
-                    ? clusterStatus.connected
-                      ? clusterStatus.backend === "slurm-rest" || clusterStatus.backend === "slurm"
-                        ? `SLURM ${clusterStatus.nodesCount > 0 ? `${clusterStatus.nodesCount} NODES ` : ""}ONLINE`
-                        : "COMPUTE CLUSTER READY"
-                      : "CLUSTER OFFLINE"
-                    : "CONNECTING..."}
-                </span>
-              </PillTelemetry>
-              <span style={{ color: "var(--color-accent-cyan)" }}>WASM v3.4</span>
-              <button
-                onClick={() => navigate("/playground")}
-                title="Open ModelScript Visual Playground (No login needed)"
-                style={{
-                  background: "rgba(6, 182, 212, 0.12)",
-                  border: "1px solid rgba(6, 182, 212, 0.3)",
-                  color: "var(--color-accent-cyan, #06b6d4)",
-                  borderRadius: "6px",
-                  padding: "4px 10px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  transition: "all 0.2s",
-                }}
-              >
-                <span>⚡ Playground</span>
-              </button>
-              {user && (
-                <WalletPill
-                  onClick={() => setIsTopUpModalOpen(true)}
-                  title="Compute Wallet Balance (Click to Top Up credits)"
-                >
-                  <ZapIcon size={12} />
-                  <span>{creditBalance.toFixed(1)} cr</span>
-                  <PlusIcon size={10} style={{ opacity: 0.8 }} />
-                </WalletPill>
-              )}
-              {!user && (
-                <div style={{ display: "flex", gap: "8px", marginLeft: "10px", alignItems: "center" }}>
-                  <button
-                    onClick={() => navigate("/login")}
-                    style={{
-                      background: "rgba(255, 255, 255, 0.05)",
-                      border: "1px solid var(--color-border-glass)",
-                      color: "var(--color-text-primary)",
-                      borderRadius: "6px",
-                      padding: "4px 12px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    Log in
-                  </button>
-                  <button
-                    onClick={() => navigate("/signup")}
-                    style={{
-                      background: "var(--gradient-cta)",
-                      border: "none",
-                      color: "white",
-                      borderRadius: "6px",
-                      padding: "4px 12px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      boxShadow: "0 0 10px rgba(139, 92, 246, 0.3)",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    Sign up
-                  </button>
-                </div>
-              )}
-            </HudTelemetry>
-          </TopGlobalHud>
           <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
             <SidebarWrapper>
               <Sidebar onPostClick={() => setIsComposeOpen(true)} />
@@ -668,7 +467,7 @@ const AppShell: React.FC = () => {
             </MainColumn>
             {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
               <RightPanelWrapper>
-                <RightPanel />
+                <RightPanel clusterInfo={clusterStatus} onOpenCommandPalette={() => setIsCommandPaletteOpen(true)} />
               </RightPanelWrapper>
             )}
             {isFullScreenLayout && <div style={{ flex: 1, maxWidth: "max(0px, calc(340px - 275px))" }} />}
@@ -960,6 +759,8 @@ const AppShell: React.FC = () => {
             </Box>
           </Dialog>
         )}
+
+        <DevFlagsModal isOpen={isDevFlagsModalOpen} onClose={() => setIsDevFlagsModalOpen(false)} />
       </div>
     </ComposeContext.Provider>
   );

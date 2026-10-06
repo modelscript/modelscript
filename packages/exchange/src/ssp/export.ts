@@ -192,8 +192,9 @@ export function generateSsdFromSystem(system: SspSystem): string {
   if (system.connectors && system.connectors.length > 0) {
     lines.push(`    <ssd:Connectors>`);
     for (const conn of system.connectors) {
+      const unitAttr = conn.unit ? ` unit="${escapeXml(conn.unit)}"` : "";
       lines.push(`      <ssd:Connector name="${escapeXml(conn.name)}" kind="${escapeXml(conn.kind)}">`);
-      lines.push(`        <ssc:${conn.type ?? "Real"} />`);
+      lines.push(`        <ssc:${conn.type ?? "Real"}${unitAttr} />`);
       lines.push(`      </ssd:Connector>`);
     }
     lines.push(`    </ssd:Connectors>`);
@@ -210,8 +211,9 @@ export function generateSsdFromSystem(system: SspSystem): string {
     if (comp.connectors && comp.connectors.length > 0) {
       lines.push(`        <ssd:Connectors>`);
       for (const conn of comp.connectors) {
+        const unitAttr = conn.unit ? ` unit="${escapeXml(conn.unit)}"` : "";
         lines.push(`          <ssd:Connector name="${escapeXml(conn.name)}" kind="${escapeXml(conn.kind)}">`);
-        lines.push(`            <ssc:${conn.type ?? "Real"} />`);
+        lines.push(`            <ssc:${conn.type ?? "Real"}${unitAttr} />`);
         lines.push(`          </ssd:Connector>`);
       }
       lines.push(`        </ssd:Connectors>`);

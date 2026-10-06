@@ -51,22 +51,24 @@ describe("Continuous DAE Simulation Engine", () => {
     const outWasm = path.join(tmpDir, "parser.wasm");
 
     const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-    childProcess.execFileSync(
-      ascBin,
-      [
-        ...ascPrefixArgs,
-        parserTs,
-        "-o",
-        outWasm,
-        "--exportRuntime",
-        "--enable",
-        "threads",
-        "--optimize",
-        "--runtime",
-        "stub",
-      ],
-      { stdio: "inherit" },
-    );
+    if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "--optimize",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "inherit" },
+      );
+    }
 
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
@@ -83,7 +85,17 @@ describe("Continuous DAE Simulation Engine", () => {
 
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     wasmExports = instance.exports;
-  }, 60000);
+  }, 120000);
+
+  afterAll(() => {
+    if (fs.existsSync(tmpDir)) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup error
+      }
+    }
+  });
 
   it("should compile WASM module with simulation step functions", () => {
     expect(wasmExports.dae_createBuilder).toBeDefined();

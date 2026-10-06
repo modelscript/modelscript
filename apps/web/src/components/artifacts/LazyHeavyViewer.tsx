@@ -69,7 +69,17 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
 
   if (isActive) {
     return (
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
+      <div
+        ref={containerRef}
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          height: "450px",
+          position: "relative",
+          overflow: "hidden",
+          boxSizing: "border-box",
+        }}
+      >
         {children}
       </div>
     );
@@ -77,7 +87,18 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
 
   // Render thumbnail / load button
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "450px", position: "relative" }}>
+    <div
+      ref={containerRef}
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        aspectRatio: "16 / 9",
+        maxHeight: "450px",
+        position: "relative",
+        overflow: "hidden",
+        boxSizing: "border-box",
+      }}
+    >
       {currentThumbnailUrl ? (
         <img
           src={currentThumbnailUrl}

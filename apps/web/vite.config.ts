@@ -28,6 +28,11 @@ export default defineConfig({
         {
           src: "../../languages/modelica/dist/parser.wasm",
           dest: "lsp/server/dist",
+          rename: "modelica.wasm",
+        },
+        {
+          src: "../../languages/modelica/dist/parser.wasm",
+          dest: "lsp/server/dist",
           rename: "tree-sitter-modelica.wasm",
         },
         {
@@ -37,7 +42,17 @@ export default defineConfig({
         {
           src: "../../languages/sysml2/dist/parser.wasm",
           dest: "lsp/server/dist",
+          rename: "sysml2.wasm",
+        },
+        {
+          src: "../../languages/sysml2/dist/parser.wasm",
+          dest: "lsp/server/dist",
           rename: "tree-sitter-sysml2.wasm",
+        },
+        {
+          src: "../../languages/step/dist/parser.wasm",
+          dest: "lsp/server/dist",
+          rename: "step.wasm",
         },
         {
           src: "../../languages/step/dist/parser.wasm",
@@ -47,12 +62,27 @@ export default defineConfig({
         {
           src: "../../languages/owl2/dist/parser.wasm",
           dest: "lsp/server/dist",
+          rename: "owl2.wasm",
+        },
+        {
+          src: "../../languages/owl2/dist/parser.wasm",
+          dest: "lsp/server/dist",
           rename: "tree-sitter-owl2.wasm",
         },
         {
           src: "../../languages/csv/dist/parser.wasm",
           dest: "lsp/server/dist",
+          rename: "csv.wasm",
+        },
+        {
+          src: "../../languages/csv/dist/parser.wasm",
+          dest: "lsp/server/dist",
           rename: "tree-sitter-csv.wasm",
+        },
+        {
+          src: "../../languages/scad/dist/parser.wasm",
+          dest: "lsp/server/dist",
+          rename: "scad.wasm",
         },
         {
           src: "../../packages/runtime/build/release.wasm",
@@ -75,7 +105,30 @@ export default defineConfig({
   ],
   build: {
     target: "esnext",
-    minify: false,
+    minify: "esbuild",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("monaco-editor") || id.includes("@monaco-editor")) {
+              return "vendor-monaco";
+            }
+            if (id.includes("three") || id.includes("@react-three")) {
+              return "vendor-three";
+            }
+            if (id.includes("@antv")) {
+              return "vendor-antv";
+            }
+            if (id.includes("recharts") || id.includes("d3-scale") || id.includes("vega")) {
+              return "vendor-charts";
+            }
+            if (id.includes("@primer")) {
+              return "vendor-primer";
+            }
+          }
+        },
+      },
+    },
   },
   define: {
     "process.env": {},

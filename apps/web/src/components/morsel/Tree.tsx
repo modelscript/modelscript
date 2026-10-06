@@ -159,6 +159,9 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         onClick={(e) => {
           e.stopPropagation();
           onHighlight?.(compositeName);
+          if (node.hasChildren && !showQualifiedName) {
+            toggleExpand();
+          }
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -279,8 +282,12 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   React.useEffect(() => {
     if (!props.uri) return;
 
+    console.log("[tree] Requesting getLibraryTree for", props.uri, "version=", props.version);
     getLibraryTree(props.uri)
-      .then((nodes) => setRootNodes(nodes))
+      .then((nodes) => {
+        console.log("[tree] Received root nodes:", nodes);
+        setRootNodes(nodes);
+      })
       .catch((e) => console.warn("[tree] Failed to load root nodes:", e));
   }, [props.uri, props.version]);
 

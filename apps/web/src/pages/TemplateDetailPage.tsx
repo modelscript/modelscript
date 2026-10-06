@@ -7,6 +7,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
+import { safeJsonParse } from "../util/json";
 
 interface ScriptTemplate {
   id: number;
@@ -16,6 +17,12 @@ interface ScriptTemplate {
   category: string;
   icon: string;
   config: string;
+}
+
+interface TemplateConfig {
+  solver?: string;
+  estimatedDuration?: string;
+  steps?: unknown[];
 }
 
 const TemplateDetailPage: React.FC = () => {
@@ -57,7 +64,7 @@ const TemplateDetailPage: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         if (data.jobId) {
-          navigate(`/scripts/${data.jobId}`);
+          navigate(`/jobs/${data.jobId}`);
         }
       } else {
         const data = await res.json();
@@ -80,7 +87,7 @@ const TemplateDetailPage: React.FC = () => {
     );
   }
 
-  const config = JSON.parse(template.config || "{}");
+  const config = safeJsonParse<TemplateConfig>(template.config, {});
 
   return (
     <Box display="flex" flexDirection="column" style={{ minHeight: "100%", height: "100%" }}>
@@ -93,7 +100,7 @@ const TemplateDetailPage: React.FC = () => {
         borderBottom="1px solid var(--color-border-subtle)"
         bg="var(--color-canvas-default)"
       >
-        <CircleIconButton onClick={() => navigate("/scripts")} aria-label="Back">
+        <CircleIconButton onClick={() => navigate("/jobs")} aria-label="Back">
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         <Box flex={1}>

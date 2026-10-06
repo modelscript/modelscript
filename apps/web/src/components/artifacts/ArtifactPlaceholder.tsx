@@ -16,9 +16,11 @@ interface ArtifactPlaceholderProps {
 const Wrapper = styled.div<{ $aspectRatio?: string; $height?: string | number }>`
   position: relative;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   height: ${(props) =>
-    props.$height ? (typeof props.$height === "number" ? `${props.$height}px` : props.$height) : "100%"};
-  aspect-ratio: ${(props) => props.$aspectRatio || "16 / 9"};
+    props.$height ? (typeof props.$height === "number" ? `${props.$height}px` : props.$height) : "auto"};
+  ${(props) => (!props.$height ? `aspect-ratio: ${props.$aspectRatio || "16 / 9"};` : "")}
   min-height: 180px;
   overflow: hidden;
   display: flex;

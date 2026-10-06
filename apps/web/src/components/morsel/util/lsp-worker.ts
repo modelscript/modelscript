@@ -35,14 +35,30 @@ export async function startLsp(): Promise<ProtocolConnection> {
       name: "modelscript-lsp",
     });
 
+    worker.onerror = (err) => {
+      console.error("[lsp-worker] Worker onerror:", err.message, err.filename, err.lineno, err);
+    };
+    worker.onmessageerror = (err) => {
+      console.error("[lsp-worker] Worker onmessageerror:", err);
+    };
+
     const reader = new BrowserMessageReader(worker);
     const writer = new BrowserMessageWriter(worker);
     const conn = createProtocolConnection(reader, writer);
     conn.listen();
 
+    conn.onNotification("window/logMessage", (params: any) => {
+      console.log(`[LSP-server] [type=${params.type}] ${params.message}`);
+    });
+    conn.onNotification("modelscript/status", (params: any) => {
+      console.log(`[LSP-status] state=${params.state} message=${params.message}`);
+    });
+
+    console.log("[lsp-worker] Connection listening. Sending initialize request...");
+
     // Send initialize — the extensionUri tells the server where to find
     // WASM files and standard library zips (relative to the server/dist path).
-    await conn.sendRequest("initialize", {
+    const initResponse = await conn.sendRequest("initialize", {
       processId: null,
       rootUri: null,
       capabilities: {
@@ -84,6 +100,7 @@ export async function startLsp(): Promise<ProtocolConnection> {
         useLocalMsl: true,
       },
     });
+    console.log("[lsp-worker] Initialize response received:", initResponse);
 
     conn.sendNotification("initialized", {});
     connection = conn;

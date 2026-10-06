@@ -60,6 +60,9 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
 
+    let cancelled = false;
+    let animationFrameId: number | null = null;
+
     if (runner) {
       // MAIN THREAD FALLBACK (VS Code Webview)
       setTimeout(() => setStatus("Running on Main Thread (VS Code Fallback)"), 0);
@@ -89,11 +92,12 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
         });
 
         const numVars = runner.buffers.varCount;
-        let animationFrameId: number;
         let currentTime = 0;
         const dt = 0.001;
 
         const render = () => {
+          if (cancelled) return;
+
           for (let i = 0; i < 10; i++) {
             runner.stepSimulation(dt, currentTime);
             currentTime += dt;
@@ -120,10 +124,8 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
           animationFrameId = requestAnimationFrame(render);
         };
         render();
-
-        return () => cancelAnimationFrame(animationFrameId);
       };
-      initMainThread();
+      void initMainThread();
     } else if (uri) {
       // OFFSCREEN CANVAS (LSP Web Worker via side-channel)
       setTimeout(() => setStatus("Running via OffscreenCanvas (LSP Worker)"), 0);
@@ -145,6 +147,13 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
         );
       }
     }
+
+    return () => {
+      cancelled = true;
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
   }, [runner, uri, className]);
 
   return (

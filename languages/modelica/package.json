@@ -144,9 +144,10 @@
     "test:omc": "npx tsx tests/testsuite-runner.ts",
     "test:omc:both": "npx tsx tests/testsuite-runner.ts --flattener=both",
     "test:omc:both:allow-wasm": "npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
+    "test:omc:coverage": "rm -rf .v8-coverage coverage/omc && mkdir -p .v8-coverage coverage/omc && NODE_V8_COVERAGE=$(pwd)/.v8-coverage npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures && npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=coverage/omc --include=\"src/**\" --include=\"../../packages/dsl/src/**\" --include=\"../../packages/runtime/src/**\"",
     "test:omc:js": "npx tsx tests/testsuite-runner.ts --flattener=ts",
     "test:omc:wasm": "npx tsx tests/testsuite-runner.ts --flattener=wasm",
-    "test:unit": "mkdir -p coverage && npx tsx --import ./tests/test-setup.ts --test --experimental-test-coverage --test-concurrency=2 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
+    "test:unit": "mkdir -p coverage && npx tsx --import ./tests/test-setup.ts --test --experimental-test-coverage --test-coverage-exclude=\"**/dist/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-coverage-exclude=\"**/tests/**\" --test-concurrency=2 --test-timeout=180000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -105,7 +105,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
-    const name = uri.pathname.replace(/^\/\/classes\//, "");
+    const name = uri.pathname.replace(/^\/\/classes\//, "").replace(/^\//, "");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const element: any = ctx.current.query(name);
 

@@ -69,6 +69,7 @@
     "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
     "test:modelica:both": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both",
     "test:modelica:both:allow-wasm": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
+    "test:modelica:coverage": "npm run test:omc:coverage --workspace=@modelscript/modelica",
     "test:modelica:js": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=ts",
     "test:modelica:update": "npx tsx languages/modelica/tests/testsuite-runner.ts --update --omc",
     "test:modelica:wasm": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=wasm",
@@ -85,9 +86,10 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "npx tsx scripts/lint-filenames.ts",
-      "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js --config eslint.config.ts --no-warn-ignored"
+      "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js --config eslint.config.ts --no-warn-ignored",
+      "prettier --write --ignore-unknown"
     ],
-    "*.{ts,tsx,js,json,md,yml,css}": "prettier --write --ignore-unknown"
+    "*.{js,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "overrides": {
     "@antv/x6-plugin-selection": {

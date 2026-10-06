@@ -29,9 +29,9 @@ import {
   getPackument,
   rewriteModelicaUris,
 } from "../api";
+import CadStepViewer from "../components/artifacts/CadStepViewer";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
-import CadStepViewer from "../components/CadStepViewer.tsx";
 import DatasetTableViewer from "../components/DatasetTableViewer.tsx";
 import FmuSimulatorViewer from "../components/FmuSimulatorViewer.tsx";
 import InvertedSvg from "../components/InvertedSvg";
@@ -1098,7 +1098,7 @@ const PackageDetailPage: React.FC = () => {
                     }
 
                     if (av.viewer?.viewer === "cad-3d-viewer") {
-                      return <CadStepViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
+                      return <CadStepViewer key={av.id} viewConfig={{ url: av.path, ...(av.viewer.config || {}) }} />;
                     }
 
                     if (av.viewer?.viewer === "sysml-architecture-viewer") {

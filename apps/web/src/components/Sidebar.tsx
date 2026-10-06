@@ -14,8 +14,8 @@ import {
   RepoIcon,
   RssIcon,
   SearchIcon,
+  ServerIcon,
   ShieldLockIcon,
-  TerminalIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
@@ -346,7 +346,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     navLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
   }
   if (hasCae) {
-    navLinks.push({ to: "/scripts", icon: TerminalIcon, label: "Scripts" });
+    navLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
   }
 
   if (user) {

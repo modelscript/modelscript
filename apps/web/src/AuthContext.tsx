@@ -77,10 +77,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   useEffect(() => {
+    if (!token) return;
     refreshUnreadCount();
-    const interval = setInterval(refreshUnreadCount, 5000);
-    return () => clearInterval(interval);
-  }, [refreshUnreadCount]);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      refreshUnreadCount();
+    }, 10000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshUnreadCount();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [token, refreshUnreadCount]);
 
   useEffect(() => {
     if (token) {

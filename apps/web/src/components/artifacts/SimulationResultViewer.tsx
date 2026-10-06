@@ -147,6 +147,19 @@ const ScalarMesh: React.FC<{
     return geo;
   }, [geometry, scalarData, displacementData, displacementScale]);
 
+  // Clean up WebGL resources when displayGeometry or material changes or unmounts
+  useEffect(() => {
+    return () => {
+      displayGeometry.dispose();
+    };
+  }, [displayGeometry]);
+
+  useEffect(() => {
+    return () => {
+      material.dispose();
+    };
+  }, [material]);
+
   // Update uniforms when they change
   useEffect(() => {
     material.uniforms.scalarMin.value = scalarMin;

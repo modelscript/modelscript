@@ -74,8 +74,14 @@ const AnimatedMesh: React.FC<{
     const geo = meshRef.current.geometry;
     const colors = colorArrays[frameIndex];
     if (!colors) return;
-    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-    (geo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+
+    const existingAttr = geo.getAttribute("color") as THREE.BufferAttribute | undefined;
+    if (existingAttr && existingAttr.array.length === colors.length) {
+      existingAttr.copyArray(colors);
+      existingAttr.needsUpdate = true;
+    } else {
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    }
   }, [frameIndex, colorArrays]);
 
   return (

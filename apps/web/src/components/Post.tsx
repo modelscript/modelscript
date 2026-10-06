@@ -72,6 +72,9 @@ const PostWrapper = styled.div<{ $isDetail?: boolean; $isThread?: boolean }>`
   cursor: ${(props) => (props.$isDetail ? "default" : "pointer")};
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
 
   &:hover {
     background: ${(props) => (props.$isDetail ? "transparent" : "var(--surface-row-hover)")};
@@ -1046,7 +1049,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           )}
 
           {displayPost.artifact_view_id && (
-            <Box>
+            <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
               <ArtifactViewCard
                 artifactId={displayPost.artifact_view_id}
                 onPinCreated={(pin) => {
@@ -1408,7 +1411,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
         </>
       ) : (
         <>
-          <Box display="flex" flexDirection="column" gap={1} flex={1}>
+          <Box
+            display="flex"
+            flexDirection="column"
+            gap={1}
+            flex={1}
+            style={{ minWidth: 0, maxWidth: "100%", width: "100%" }}
+          >
             {post.repost_post && (
               <Box
                 display="flex"
@@ -1429,7 +1438,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 </Link>
               </Box>
             )}
-            <Box display="flex" gap={3}>
+            <Box display="flex" gap={3} style={{ minWidth: 0, maxWidth: "100%", width: "100%" }}>
               <Box display="flex" flexDirection="column" alignItems="center" position="relative">
                 <ProfileHoverCard username={displayPost.username}>
                   <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
@@ -1451,7 +1460,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   />
                 )}
               </Box>
-              <Box flex={1} style={{ minWidth: 0 }}>
+              <Box flex={1} style={{ minWidth: 0, maxWidth: "100%" }}>
                 <Box display="flex" alignItems="center" gap={1} style={{ minWidth: 0, marginTop: "-3px" }}>
                   <ProfileHoverCard username={displayPost.username}>
                     <ProfileNameLink
@@ -1660,7 +1669,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 )}
 
                 {displayPost.artifact_view_id && (
-                  <Box>
+                  <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
                     <ArtifactViewCard artifactId={displayPost.artifact_view_id} />
                     <AiInsightRibbon
                       onClick={(e) => {
@@ -1737,7 +1746,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       <RenderContent text={displayPost.quote_post.content} />
                     </Box>
                     {displayPost.quote_post.artifact_view_id && (
-                      <Box>
+                      <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
                         <ArtifactViewCard artifactId={displayPost.quote_post.artifact_view_id} />
                       </Box>
                     )}
@@ -1750,6 +1759,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   justifyContent="space-between"
                   alignItems="center"
                   width="100%"
+                  maxWidth="100%"
                   onClick={(e) => e.preventDefault()}
                 >
                   {displayPost.artifact_view_id && (

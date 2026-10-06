@@ -3003,7 +3003,7 @@ export class LibraryDatabase {
   }
 
   getArtifactViewByTitle(title: string): any {
-    return this.#db.prepare(`SELECT id, view_type, title FROM artifact_views WHERE title = ? LIMIT 1`).get();
+    return this.#db.prepare(`SELECT id, view_type, title FROM artifact_views WHERE title = ? LIMIT 1`).get(title);
   }
 
   updateArtifactViewConfig(id: number, viewConfig: string): void {

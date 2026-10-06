@@ -35,15 +35,16 @@ import {
   SegmentedControl,
   Spinner,
   TextInput,
-  useTheme,
 } from "@primer/react";
 import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTheme as useSiteTheme } from "../../theme";
 import { CloudDispatchModal } from "./CloudDispatchModal";
 import type { CodeEditorHandle } from "./Code";
 import ComponentList from "./ComponentList";
 import type { DiagramEditorHandle } from "./Diagram";
+import "./morsel.css";
 import OpenFileDropzone from "./OpenFileDropzone";
 import PropertiesWidget from "./Properties";
 import {
@@ -84,39 +85,6 @@ const CadViewerPanel = React.lazy(() => import("./cad-viewer").then((m) => ({ de
 
 /** URI used for the open document — must match the URI in CodeEditor and TreeWidget. */
 const DOCUMENT_URI = "file:///document.mo";
-
-const EXAMPLE_PATHS = [
-  {
-    id: "cauer-low-pass",
-    name: "CauerLowPassAnalog",
-    path: "Electrical/Analog/Examples/CauerLowPassAnalog.mo",
-  },
-  { id: "chua-circuit", name: "ChuaCircuit", path: "Electrical/Analog/Examples/ChuaCircuit.mo" },
-  {
-    id: "mos-inverter",
-    name: "HeatingMOSInverter",
-    path: "Electrical/Analog/Examples/HeatingMOSInverter.mo",
-  },
-  {
-    id: "thyristor-test",
-    name: "ThyristorBehaviourTest",
-    path: "Electrical/Analog/Examples/ThyristorBehaviourTest.mo",
-  },
-  {
-    id: "opamp-amplifier",
-    name: "AmplifierWithOpAmpDetailed",
-    path: "Electrical/Analog/Examples/AmplifierWithOpAmpDetailed.mo",
-  },
-  { id: "pump-dropout", name: "PumpDropOut", path: "Thermal/FluidHeatFlow/Examples/PumpDropOut.mo" },
-  { id: "two-mass", name: "TwoMass", path: "Thermal/FluidHeatFlow/Examples/TwoMass.mo" },
-  { id: "open-tank", name: "TestOpenTank", path: "Thermal/FluidHeatFlow/Examples/TestOpenTank.mo" },
-  { id: "one-mass", name: "OneMass", path: "Thermal/FluidHeatFlow/Examples/OneMass.mo" },
-  {
-    id: "parallel-cooling",
-    name: "ParallelCooling",
-    path: "Thermal/FluidHeatFlow/Examples/ParallelCooling.mo",
-  },
-];
 
 const LANGUAGE_NAMES: Record<string, string> = {
   ar: "العربية (Arabic)",
@@ -160,10 +128,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [flattenedCode, setFlattenedCode] = useState("");
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
-  const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
+  const [cosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
   const mqtt = useMqttSimulation({ source: cosimDataSource });
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
-  const simulateAbortControllerRef = useRef<AbortController | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = props.initialCode ?? decodedContent ?? "model Example\n\nend Example;";
@@ -245,7 +212,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   const isDraggingTree = useRef(false);
   const [propertiesWidth, setPropertiesWidth] = useState(300);
   const isDraggingProperties = useRef(false);
-  const { colorMode, resolvedColorMode, setColorMode } = useTheme();
+  const { theme, toggleTheme } = useSiteTheme();
+  const isDark = theme === "dark";
+  const colorMode = isDark ? "dark" : "light";
+  const resolvedColorMode: "night" | "day" = isDark ? "night" : "day";
   const [libraryFilter, setLibraryFilter] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -489,7 +459,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, []);
 
-  const saveRecentModel = useCallback((name: string, content: string) => {
+  const _saveRecentModel = useCallback((name: string, content: string) => {
     if (!name || name === "NewModel" || name === "Example") return;
     setRecentModels((prev: ModelData[]) => {
       const id = name.toLowerCase().replace(/\s+/g, "-");
@@ -535,10 +505,17 @@ export default function MorselEditor(props: MorselEditorProps) {
       try {
         const conn = await startLsp();
         conn.onNotification("modelscript/projectTreeChanged", () => {
+          console.log("[Morsel] Received modelscript/projectTreeChanged");
           if (isSpatialEditPending.current) {
             isSpatialEditPending.current = false;
             setIsDiagramLoading(false);
           } else {
+            setContextVersion((v) => v + 1);
+          }
+        });
+        conn.onNotification("modelscript/status", (params: any) => {
+          console.log("[Morsel] Received modelscript/status:", params);
+          if (params?.state === "ready") {
             setContextVersion((v) => v + 1);
           }
         });
@@ -734,7 +711,6 @@ end Manufacturing;`,
   );
 
   useEffect(() => {
-    setColorMode(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       return "";
@@ -900,8 +876,30 @@ end Manufacturing;`,
   return (
     <>
       <title>{"Morsel"}</title>
-      <div className="d-flex flex-column" style={{ height: "100vh", overflow: "hidden" }}>
-        <div className="d-flex flex-1" style={{ minHeight: 0 }}>
+      <div
+        className="d-flex flex-column"
+        style={{
+          height: "100%",
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        <div
+          className="d-flex flex-1"
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "row",
+            minHeight: 0,
+            minWidth: 0,
+            width: "100%",
+            height: "100%",
+            overflow: "hidden",
+          }}
+        >
           {treeVisible && (
             <>
               <div
@@ -910,8 +908,11 @@ end Manufacturing;`,
                   display: "flex",
                   flexDirection: "column",
                   minHeight: 0,
+                  height: "100%",
                   minWidth: 200,
                   maxWidth: 600,
+                  flexShrink: 0,
+                  overflow: "hidden",
                 }}
               >
                 {!showResultsView && (
@@ -1157,15 +1158,29 @@ end Manufacturing;`,
           <div
             className={`d-flex flex-1 ${view === View.SPLIT_ROWS ? "flex-column" : ""}`}
             ref={splitContainerRef}
-            style={{ minHeight: 0, overflow: "hidden", position: "relative" }}
+            style={{
+              display: "flex",
+              flex: 1,
+              flexDirection: view === View.SPLIT_ROWS ? "column" : "row",
+              minHeight: 0,
+              minWidth: 0,
+              height: "100%",
+              overflow: "hidden",
+              position: "relative",
+            }}
           >
             {(view === View.DIAGRAM || isSplit(view)) && (
               <div
                 style={{
                   display: "flex",
                   flex: isSplit(view) ? "none" : 1,
-                  width: isSplit(view) && view === View.SPLIT_COLUMNS ? `${splitRatio * 100}%` : undefined,
-                  height: isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : undefined,
+                  width:
+                    isSplit(view) && view === View.SPLIT_COLUMNS
+                      ? `${splitRatio * 100}%`
+                      : isSplit(view)
+                        ? undefined
+                        : "100%",
+                  height: isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : "100%",
                   flexDirection: "column",
                   minWidth: 0,
                   minHeight: 0,
@@ -1370,15 +1385,9 @@ end Manufacturing;`,
                             if (!editor) return;
                             enqueueDiagramAction({ type: "moveEdge", edges });
                           }}
-                          onEdgeDelete={(source, target) => {
-                            enqueueDiagramAction({ type: "disconnect", source, target });
-                          }}
-                          onComponentDelete={(name) => {
-                            enqueueDiagramAction({ type: "deleteComponents", names: [name] });
-                          }}
-                          onComponentsDelete={(names) => {
-                            enqueueDiagramAction({ type: "deleteComponents", names });
-                          }}
+                          onEdgeDelete={handleEdgeDelete}
+                          onComponentDelete={handleComponentDelete}
+                          onComponentsDelete={handleComponentsDelete}
                           onUndo={() => {
                             isSpatialEditPending.current = false;
                             editorRef.current?.focus();
@@ -1509,15 +1518,7 @@ end Manufacturing;`,
                         components={cadComponents}
                         selectedName={selectedComponent}
                         onSelect={(name) => {
-                          if (!name) {
-                            setSelectedComponent(null);
-                          } else {
-                            const searchInstance = (diagramData ?? null) as any;
-                            const component = searchInstance?.components
-                              ? Array.from(searchInstance.components).find((c: any) => c.name === name)
-                              : null;
-                            setSelectedComponent(name || null);
-                          }
+                          setSelectedComponent(name || null);
                         }}
                         dark={colorMode === "dark"}
                         animationController={animationControllerRef.current}
@@ -1631,8 +1632,13 @@ end Manufacturing;`,
               style={{
                 display: view === View.CODE || isSplit(view) ? "flex" : "none",
                 flex: isSplit(view) ? "none" : 1,
-                width: isSplit(view) && view === View.SPLIT_COLUMNS ? `${(1 - splitRatio) * 100}%` : undefined,
-                height: isSplit(view) && view === View.SPLIT_ROWS ? `${(1 - splitRatio) * 100}%` : undefined,
+                width:
+                  isSplit(view) && view === View.SPLIT_COLUMNS
+                    ? `${(1 - splitRatio) * 100}%`
+                    : isSplit(view)
+                      ? undefined
+                      : "100%",
+                height: isSplit(view) && view === View.SPLIT_ROWS ? `${(1 - splitRatio) * 100}%` : "100%",
                 flexDirection: "column",
                 minWidth: 0,
                 minHeight: 0,
@@ -1948,11 +1954,11 @@ end Manufacturing;`,
             </>
           )}
           <IconButton
-            icon={colorMode === "dark" ? SunIcon : MoonIcon}
+            icon={isDark ? SunIcon : MoonIcon}
             size="small"
             variant="invisible"
-            aria-label={`Switch to ${colorMode === "dark" ? "light" : "dark"} mode`}
-            onClick={() => setColorMode(colorMode === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
+            onClick={toggleTheme}
           />
         </div>
         {isShareDialogOpen && (

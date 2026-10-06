@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CodeIcon, CopyIcon, DownloadIcon, FileIcon, ShareIcon, ZapIcon } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, Dialog, IconButton, useTheme } from "@primer/react";
+import { ActionList, ActionMenu, Button, Dialog, IconButton } from "@primer/react";
 import React, { useContext, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -9,6 +9,7 @@ import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import MorselEditor from "../components/morsel/Morsel";
 import { compressMorselPayload, decompressMorselPayload } from "../components/morsel/util/permalink";
+import { useTheme } from "../theme";
 
 const PlaygroundContainer = styled.div`
   display: flex;
@@ -181,7 +182,7 @@ export const PlaygroundPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { colorMode } = useTheme();
+  const { theme } = useTheme();
   const { openCompose } = useContext(ComposeContext);
 
   const [currentCode, setCurrentCode] = useState<string>(HERO_EXAMPLES[0].code);
@@ -267,7 +268,7 @@ export const PlaygroundPage: React.FC = () => {
         <NavLeft>
           <BrandLink to={user ? "/home" : "/explore"}>
             <img
-              src={colorMode === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
+              src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
               alt="ModelScript"
               width="24"
               height="24"

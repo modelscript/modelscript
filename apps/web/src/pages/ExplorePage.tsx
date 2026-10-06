@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, CodeIcon, RocketIcon, SearchIcon, XCircleFillIcon } from "@primer/octicons-react";
+import {
+  ArrowLeftIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CodeIcon,
+  RocketIcon,
+  SearchIcon,
+  XCircleFillIcon,
+} from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -106,6 +114,17 @@ const SearchHeader = styled.div`
   border-bottom: 1px solid var(--color-border);
 `;
 
+const MobileSearchWrapper = styled.div`
+  display: none;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--surface-hud);
+
+  @media (max-width: 1000px) {
+    display: block;
+  }
+`;
+
 const SearchInputWrapper = styled.div`
   flex: 1;
   position: relative;
@@ -200,6 +219,17 @@ const ExplorePage: React.FC = () => {
   const topic = searchParams.get("topic") || "";
   const navigate = useNavigate();
   const { token } = useAuth();
+  const templatesScrollRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollTemplates = (direction: "left" | "right") => {
+    if (templatesScrollRef.current) {
+      const scrollAmount = 280;
+      templatesScrollRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  };
 
   interface PostData {
     id: string;
@@ -974,30 +1004,56 @@ const ExplorePage: React.FC = () => {
   // Normal non-search mode
   return (
     <Box>
-      <SearchHeader>
-        <SearchInputWrapper>
-          <SearchIcon size={16} />
-          <input
-            type="text"
-            value={localQuery}
-            onChange={(e) => setLocalQuery(e.target.value)}
-            onKeyDown={handleSearchSubmit}
-            placeholder="Search"
-          />
-        </SearchInputWrapper>
-      </SearchHeader>
+      <MobileSearchWrapper>
+        <div
+          onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "8px 14px",
+            borderRadius: "9999px",
+            background: "var(--color-search-bg, rgba(255, 255, 255, 0.04))",
+            border: "1px solid var(--color-search-border, var(--color-border-glass))",
+            color: "var(--color-text-muted)",
+            fontSize: "13px",
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ color: "var(--color-accent-purple)", fontSize: "14px" }}>⚡</span>
+          <span style={{ flex: 1 }}>Ask AI Copilot or search...</span>
+          <kbd
+            style={{
+              background: "rgba(255, 255, 255, 0.08)",
+              border: "1px solid var(--color-border-glass)",
+              borderRadius: "4px",
+              padding: "2px 6px",
+              fontSize: "11px",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            ⌘ K
+          </kbd>
+        </div>
+      </MobileSearchWrapper>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">
           <Spinner size="large" />
         </Box>
       ) : (
-        <Box>
+        <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
           {/* Starter Engineering Workspaces */}
           <Box
             p={3}
             borderBottom="1px solid var(--color-border)"
-            style={{ background: "var(--surface-hud, rgba(14, 20, 36, 0.4))" }}
+            style={{
+              background: "var(--surface-hud, rgba(14, 20, 36, 0.4))",
+              width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
+            }}
           >
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <Box>
@@ -1018,29 +1074,96 @@ const ExplorePage: React.FC = () => {
                   Launch ready-to-run polyglot models, 3D CAD assemblies, and WASM solvers with zero setup.
                 </Text>
               </Box>
-              <Link
-                to="/ide"
-                style={{
-                  fontSize: "13px",
-                  color: "var(--color-accent-cyan)",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <CodeIcon size={14} /> Open Blank IDE
-              </Link>
+              <Box display="flex" alignItems="center" gap="10px">
+                <Box display="flex" alignItems="center" gap="4px">
+                  <button
+                    type="button"
+                    onClick={() => scrollTemplates("left")}
+                    aria-label="Scroll left"
+                    style={{
+                      background: "var(--color-bg-card, rgba(255, 255, 255, 0.05))",
+                      border: "1px solid var(--color-border-glass)",
+                      color: "var(--color-text-muted)",
+                      borderRadius: "6px",
+                      width: "26px",
+                      height: "26px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "var(--color-accent-cyan)";
+                      e.currentTarget.style.borderColor = "var(--color-accent-cyan)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "var(--color-text-muted)";
+                      e.currentTarget.style.borderColor = "var(--color-border-glass)";
+                    }}
+                  >
+                    <ChevronLeftIcon size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollTemplates("right")}
+                    aria-label="Scroll right"
+                    style={{
+                      background: "var(--color-bg-card, rgba(255, 255, 255, 0.05))",
+                      border: "1px solid var(--color-border-glass)",
+                      color: "var(--color-text-muted)",
+                      borderRadius: "6px",
+                      width: "26px",
+                      height: "26px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "var(--color-accent-cyan)";
+                      e.currentTarget.style.borderColor = "var(--color-accent-cyan)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "var(--color-text-muted)";
+                      e.currentTarget.style.borderColor = "var(--color-border-glass)";
+                    }}
+                  >
+                    <ChevronRightIcon size={16} />
+                  </button>
+                </Box>
+                <Link
+                  to="/ide"
+                  style={{
+                    fontSize: "13px",
+                    color: "var(--color-accent-cyan)",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <CodeIcon size={14} /> Open Blank IDE
+                </Link>
+              </Box>
             </Box>
 
             <Box
+              ref={templatesScrollRef}
               display="flex"
               gap="12px"
-              sx={{
+              overflowX="auto"
+              style={{
+                width: "100%",
+                maxWidth: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
                 overflowX: "auto",
                 paddingBottom: "8px",
-                "&::-webkit-scrollbar": { display: "none" },
+                scrollSnapType: "x mandatory",
+                WebkitOverflowScrolling: "touch",
                 scrollbarWidth: "none",
               }}
             >
@@ -1056,6 +1179,10 @@ const ExplorePage: React.FC = () => {
                   display="flex"
                   flexDirection="column"
                   justifyContent="space-between"
+                  style={{
+                    flexShrink: 0,
+                    scrollSnapAlign: "start",
+                  }}
                   sx={{
                     flexShrink: 0,
                     transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
