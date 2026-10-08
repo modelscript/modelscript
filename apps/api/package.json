@@ -31,7 +31,7 @@
     "clean": "rimraf dist",
     "dev": "PORT=3000 SEED_POSTS=true NODE_OPTIONS='--max-old-space-size=8192 --dns-result-order=ipv4first' tsx watch src/main.ts",
     "lint": "eslint src",
-    "test": "mkdir -p coverage && npx tsx --test --experimental-test-coverage --test-coverage-exclude=\"**/dist/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-coverage-exclude=\"**/tests/**\" --test-concurrency=2 --test-timeout=60000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
+    "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch"
   },
@@ -76,7 +76,7 @@
     "@eslint/js": "^10.0.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/express": "^5.0.2",
+    "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/maxmind": "^2.0.4",
     "@types/multer": "^1.4.12",

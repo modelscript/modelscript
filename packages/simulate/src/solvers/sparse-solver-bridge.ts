@@ -99,7 +99,7 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     for (let p = aStart; p < aEnd; p++) {
       const r = A.rowIndices[p] ?? 0;
       const val = A.values[p] ?? 0;
-      const permR = perm[r] ?? r;
+      const permR = permInv[r] ?? r;
       denseX[permR] = val;
       touched[permR] = 1;
     }
@@ -142,10 +142,12 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
       denseX[k] = denseX[pivotRow];
       denseX[pivotRow] = tmp;
 
-      const pK = perm[k];
-      const pPiv = perm[pivotRow];
-      perm[k] = pPiv;
-      perm[pivotRow] = pK;
+      const origK = perm[k]!;
+      const origPiv = perm[pivotRow]!;
+      perm[k] = origPiv;
+      perm[pivotRow] = origK;
+      permInv[origPiv] = k;
+      permInv[origK] = pivotRow;
     }
 
     const pivotVal = denseX[k];
@@ -201,7 +203,7 @@ export function sparseLuSolve(lu: SparseLU, b: Float64Array, x: Float64Array): v
 
   // 1. Permute RHS: y = P * b
   for (let i = 0; i < n; i++) {
-    y[lu.perm[i]!] = b[i] ?? 0;
+    y[i] = b[lu.perm[i]!] ?? 0;
   }
 
   // 2. Forward substitution: L * z = y (Unit diagonal)

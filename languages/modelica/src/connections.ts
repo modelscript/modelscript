@@ -1157,7 +1157,7 @@ export class ModelicaPortBalancer {
     }
 
     if (options?.omcCompatibility) {
-      if (options?.isOldFrontend) {
+      if (options?.isOldFrontend || ooGroupData.length > 0) {
         const isInnerOuterGroup =
           options?.omcCompatibility &&
           [...roots.values()].some((group) =>

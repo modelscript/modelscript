@@ -1513,7 +1513,35 @@ export function evaluateArenaFunctionCall(
     return evaluateMslCFunction(funcName, argValues);
   }
 
-  const funcArena = dae.functions.get(funcNameId);
+  const baseFn = funcName.replace(/^Modelica\.Math\./, "");
+  const BUILTIN_MATH: Record<string, (...args: number[]) => number> = {
+    sqrt: Math.sqrt,
+    sin: Math.sin,
+    cos: Math.cos,
+    tan: Math.tan,
+    asin: Math.asin,
+    acos: Math.acos,
+    atan: Math.atan,
+    atan2: Math.atan2,
+    sinh: Math.sinh,
+    cosh: Math.cosh,
+    tanh: Math.tanh,
+    exp: Math.exp,
+    log: Math.log,
+    log10: Math.log10,
+    ceil: Math.ceil,
+    floor: Math.floor,
+    abs: Math.abs,
+    sign: Math.sign,
+  };
+  if (BUILTIN_MATH[baseFn] && argValues.every((a) => typeof a === "number")) {
+    return BUILTIN_MATH[baseFn]!(...(argValues as number[]));
+  }
+
+  let funcArena = dae.functions.get(funcNameId) ?? dae.getFunction(funcNameId);
+  if (!funcArena && (dae as any).parentDae) {
+    funcArena = (dae as any).parentDae.functions.get(funcNameId) ?? (dae as any).parentDae.getFunction(funcNameId);
+  }
   if (!funcArena) return null;
 
   if (++currentCallDepth > MAX_CALL_DEPTH) {
@@ -1527,10 +1555,35 @@ export function evaluateArenaFunctionCall(
     const instancePrefix = lastDot > 0 ? funcName.slice(0, lastDot) : undefined;
 
     const functionLookup = (fid: number, args: ArenaValue[]) => {
-      const funcName = funcArena.interner.resolve(fid);
-      if (!funcName) return null;
-      const rootFid = dae.interner.intern(funcName);
-      return evaluateArenaFunctionCall(dae, rootFid, args, db, scopeId);
+      const calledName = funcArena.interner.resolve(fid);
+      if (!calledName) return null;
+      let targetDae = dae;
+      let targetFid = dae.interner.intern(calledName);
+      let found = targetDae.getFunction(targetFid) ?? (targetDae as any).parentDae?.getFunction(targetFid);
+      if (!found && instancePrefix) {
+        const qual = `${instancePrefix}.${calledName}`;
+        found = targetDae.getFunction(qual) ?? (targetDae as any).parentDae?.getFunction(qual);
+        if (found) {
+          targetFid = dae.interner.intern(qual);
+        }
+      }
+      console.log("functionLookup inside CEval:", calledName, "args:", JSON.stringify(args));
+      const res = evaluateArenaFunctionCall(
+        found ? (targetDae.getFunction(targetFid) ? targetDae : (targetDae as any).parentDae) : targetDae,
+        targetFid,
+        args,
+        db,
+        scopeId,
+      );
+      console.log(
+        "functionLookup inside CEval:",
+        calledName,
+        "targetFid name:",
+        dae.interner.resolve(targetFid),
+        "res:",
+        res,
+      );
+      return res;
     };
 
     const outputs: string[] = [];

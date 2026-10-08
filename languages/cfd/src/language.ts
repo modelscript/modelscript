@@ -33,8 +33,8 @@ export const cfdLanguage = language({
   lsp: {
     fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2"],
     icons: {
-      light: "./assets/cfd/icon-light.png",
-      dark: "./assets/cfd/icon-dark.png",
+      light: "./assets/icon-light.png",
+      dark: "./assets/icon-dark.png",
     },
   },
 
@@ -150,7 +150,12 @@ export const cfdLanguage = language({
             return db.childrenOf(self.id).map((c) => c.id);
           },
           resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
-            return db.symbol(self.id);
+            const children = db.childrenOf(self.id);
+            const byNameMap = new Map<string, SymbolEntry>();
+            for (const child of children) {
+              byNameMap.set(child.name, child);
+            }
+            return (name: string) => byNameMap.get(name) ?? null;
           },
         },
       }),

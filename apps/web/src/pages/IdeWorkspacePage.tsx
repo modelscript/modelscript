@@ -18,6 +18,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { useTheme } from "../theme";
+import { usePageTitle } from "../util/title";
 
 const PageContainer = styled.div`
   display: flex;
@@ -174,6 +175,7 @@ export const IdeWorkspacePage: React.FC = () => {
     project?: string;
     templateId?: string;
   }>();
+  usePageTitle(project ? `${project} — Web IDE` : "Web IDE");
 
   const [searchParams] = useSearchParams();
   const location = useLocation();

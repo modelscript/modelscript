@@ -1,7 +1,6 @@
 // name: TupleInvalid4
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 function f
@@ -21,7 +20,7 @@ end TupleInvalid4;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/scodeinst/TupleInvalid4.mo:15:3-15:23:writable] Error: Tuple assignment only allowed for tuple of component references in lhs (in (x + 1.0, y + 2.0)).
+// [OpenModelica/flattening/modelica/scodeinst/TupleInvalid4.mo:16:3-16:23:writable] Error: Tuple assignment only allowed for tuple of component references in lhs (in (x + 1.0, y + 2.0)).
 //
 // Execution failed!
 // endResult

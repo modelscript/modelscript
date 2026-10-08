@@ -82,14 +82,22 @@ const getDrafts = (): DraftPost[] => {
 };
 
 const saveDraft = (draft: DraftPost) => {
-  const drafts = getDrafts();
-  drafts.unshift(draft);
-  localStorage.setItem("post_drafts", JSON.stringify(drafts));
+  try {
+    const drafts = getDrafts();
+    drafts.unshift(draft);
+    localStorage.setItem("post_drafts", JSON.stringify(drafts));
+  } catch {
+    // Ignore storage quota or security errors
+  }
 };
 
 const deleteDraft = (id: string) => {
-  const drafts = getDrafts();
-  localStorage.setItem("post_drafts", JSON.stringify(drafts.filter((d) => d.id !== id)));
+  try {
+    const drafts = getDrafts();
+    localStorage.setItem("post_drafts", JSON.stringify(drafts.filter((d) => d.id !== id)));
+  } catch {
+    // Ignore storage quota or security errors
+  }
 };
 
 const ComposeModal: React.FC<ComposeModalProps> = ({

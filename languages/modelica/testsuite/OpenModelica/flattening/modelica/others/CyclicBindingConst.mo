@@ -1,7 +1,6 @@
 // name: CyclicBindingConst
 // keywords: cyclic
 // status: incorrect
-// xfail:    true
 //
 // Tests cyclic binding of constants
 //

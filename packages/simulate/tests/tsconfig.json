@@ -5,7 +5,14 @@
     "lib": ["esnext", "dom"],
     "types": ["node"],
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/simulate": ["../src/index.ts"],
+      "@modelscript/simulate/core": ["../src/core/index.ts"],
+      "@modelscript/simulate/solvers": ["../src/solvers/index.ts"],
+      "@modelscript/simulate/*": ["../src/*"]
+    }
   },
   "include": ["**/*"],
   "exclude": ["scratch*/**/*", "wasm/**/*"]

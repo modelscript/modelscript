@@ -188,19 +188,23 @@ export function lbfgsbSolve(
       }
     }
 
-    // d = -r
+    // d = -r on free variables, 0 on active variables
     for (let j = 0; j < n; j++) {
-      d[j] = active[j] ? -grad[j]! : -r[j]!;
+      d[j] = active[j] ? 0.0 : -r[j]!;
     }
 
-    // Ensure d is a descent direction: g . d < 0
+    // Ensure d is a descent direction: g . d < 0 on free variables
     let gd = 0;
-    for (let j = 0; j < n; j++) gd += grad[j]! * d[j]!;
+    for (let j = 0; j < n; j++) {
+      if (!active[j]) gd += grad[j]! * d[j]!;
+    }
     if (gd >= 0) {
       // Fallback to steepest descent on free variables
-      for (let j = 0; j < n; j++) d[j] = -grad[j]!;
+      for (let j = 0; j < n; j++) d[j] = active[j] ? 0.0 : -grad[j]!;
       gd = 0;
-      for (let j = 0; j < n; j++) gd += grad[j]! * d[j]!;
+      for (let j = 0; j < n; j++) {
+        if (!active[j]) gd += grad[j]! * d[j]!;
+      }
     }
 
     // Projected Backtracking Armijo Line Search

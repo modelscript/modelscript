@@ -3,6 +3,7 @@
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { getArtifactView } from "../api";
 import AudioViewer from "../components/artifacts/AudioViewer";
 import CadStepViewer from "../components/artifacts/CadStepViewer";
 import CfdAnimationViewer from "../components/artifacts/CfdAnimationViewer";
@@ -21,24 +22,21 @@ import VegaViewer from "../components/artifacts/VegaViewer";
 import VideoViewer from "../components/artifacts/VideoViewer";
 import YoutubeVideoViewer from "../components/artifacts/YoutubeVideoViewer";
 import Box from "../components/Box";
-import { API_BASE_URL } from "../config";
+import type { ArtifactViewDTO } from "../types/api";
 import { safeJsonParse } from "../util/json";
+import { usePageTitle } from "../util/title";
 
 export default function RenderArtifactPage() {
   const { id } = useParams<{ id: string }>();
-  const [artifact, setArtifact] = useState<unknown>(null);
+  const [artifact, setArtifact] = useState<ArtifactViewDTO | null>(null);
+  usePageTitle(artifact ? `Artifact: ${artifact.title || artifact.view_type}` : "Render Artifact");
 
   useEffect(() => {
     async function fetchArtifact() {
+      if (!id) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/social/artifact-views/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setArtifact(data.artifactView);
-        } else {
-          // If artifact failed to load, signal ready to unblock Puppeteer
-          (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
-        }
+        const data = await getArtifactView(id);
+        setArtifact(data.artifactView);
       } catch (err) {
         console.error("Failed to fetch artifact", err);
         (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;

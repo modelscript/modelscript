@@ -7,7 +7,7 @@
   "scripts": {
     "build": "npm run download-vscode && npm run build-extension && npm run build-github-fs && npm run build-server",
     "build-extension": "npx tsx scripts/build-extension.ts",
-    "build-github-fs": "cd github-fs && npm run build",
+    "build-github-fs": "npm run build --workspace=modelscript-github-fs",
     "build-server": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express --external:http-proxy-middleware",
     "build-static": "npm run download-vscode && npm run build-extension && npm run build-github-fs && npx tsx src/build-static.ts",
     "clean": "rimraf dist",
@@ -43,9 +43,9 @@
     "@types/express": "^5.0.3",
     "@vscode/test-web": "^0.0.81",
     "esbuild": "^0.28.1",
-    "eslint": "^9.13.0",
+    "eslint": "^9.39.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.39.0"
+    "typescript-eslint": "^8.46.3"
   }
 }

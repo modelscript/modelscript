@@ -4,10 +4,11 @@ import { ArrowLeftIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, Dialog, Flash, FormControl, Heading, Select, Text, TextInput } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useAuth } from "../AuthContext";
+import { getJobTemplate, runJobTemplate } from "../api";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
 import { safeJsonParse } from "../util/json";
+import { usePageTitle } from "../util/title";
 
 interface ScriptTemplate {
   id: number;
@@ -28,8 +29,8 @@ interface TemplateConfig {
 const TemplateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { token } = useAuth();
   const [template, setTemplate] = useState<ScriptTemplate | null>(null);
+  usePageTitle(template ? template.name : "Template Details");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [meshResolution, setMeshResolution] = useState<"coarse" | "medium" | "fine">("medium");
@@ -39,42 +40,32 @@ const TemplateDetailPage: React.FC = () => {
   const focusRef = useRef(null);
 
   useEffect(() => {
-    fetch(`/api/v1/jobs/templates/${id}`)
-      .then((res) => res.json())
+    if (!id) return;
+    getJobTemplate(id)
       .then((data) => setTemplate(data.template))
       .catch(console.error);
   }, [id]);
 
   const handleRun = async () => {
+    if (!id) return;
     setIsSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/jobs/templates/${id}/run`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          meshResolution,
-          maxIterations: Number(maxIterations),
-          tolerance: parseFloat(tolerance),
-        }),
+      const data = await runJobTemplate(id, {
+        meshResolution,
+        maxIterations: Number(maxIterations),
+        tolerance: parseFloat(tolerance),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.jobId) {
-          navigate(`/jobs/${data.jobId}`);
-        }
-      } else {
-        const data = await res.json();
-        setError(data.error || `Failed to run template: ${res.statusText}`);
-        setIsSubmitting(false);
+      if (data.jobId) {
+        navigate(`/jobs/${data.jobId}`);
       }
     } catch (e: unknown) {
       console.error(e);
-      const msg = e instanceof Error ? e.message : "Error starting job";
+      const msg =
+        (axios.isAxiosError(e) && (e.response?.data as { error?: string })?.error) ||
+        (e instanceof Error ? e.message : "Error starting job");
       setError(msg);
+    } finally {
       setIsSubmitting(false);
     }
   };

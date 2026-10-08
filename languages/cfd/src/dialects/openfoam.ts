@@ -73,10 +73,14 @@ export class OpenFoamDialect implements CfdDialect {
     const directives = new Map<string, string>();
     const markers = new Map<string, CfdMarker>();
     const wallMarkers: string[] = [];
+    const inletMarkers: string[] = [];
+    const outletMarkers: string[] = [];
 
     const data: CfdModelData = {
       dialect: this.id,
       wallMarkers,
+      inletMarkers,
+      outletMarkers,
       directives,
       rawDirectives,
       markers,
@@ -98,32 +102,48 @@ export class OpenFoamDialect implements CfdDialect {
     // Inspect boundaryField for markers
     const boundaryField = rootDict["boundaryField"];
     if (typeof boundaryField === "object" && boundaryField !== null) {
-      for (const [patchName, patchVal] of Object.entries(boundaryField)) {
+      for (const [rawPatchName, patchVal] of Object.entries(boundaryField)) {
         if (typeof patchVal === "object" && patchVal !== null) {
           const pDict = patchVal as FoamDict;
+          const patchName = rawPatchName.replace(/^["']|["']$/g, "").trim();
           const patchType = typeof pDict["type"] === "string" ? (pDict["type"] as string).replace(/;$/, "").trim() : "";
           const pNameLower = patchName.toLowerCase();
+          const pTypeLower = patchType.toLowerCase();
 
-          if (patchType === "fixedValue" || pNameLower.includes("inlet")) {
-            data.inletMarker = patchName;
-            markers.set(patchName, { name: patchName, type: "INLET", options: [patchType] });
-            const valStr = typeof pDict["value"] === "string" ? pDict["value"] : "";
-            const vecMatch = /\(\s*([0-9.eE+-]+)\s+([0-9.eE+-]+)\s+([0-9.eE+-]+)\s*\)/.exec(valStr);
-            if (vecMatch) {
-              data.inletVelocity = [parseFloat(vecMatch[1]!), parseFloat(vecMatch[2]!), parseFloat(vecMatch[3]!)];
-            }
-          } else if (patchType === "zeroGradient" || patchType === "inletOutlet" || pNameLower.includes("outlet")) {
-            data.outletMarker = patchName;
-            markers.set(patchName, { name: patchName, type: "OUTLET", options: [patchType] });
-          } else if (
-            patchType === "noSlip" ||
-            patchType === "slip" ||
-            patchType === "wall" ||
+          if (
+            pTypeLower === "noslip" ||
+            pTypeLower === "slip" ||
+            pTypeLower === "wall" ||
             pNameLower.includes("wall") ||
             pNameLower.includes("obstacle")
           ) {
             wallMarkers.push(patchName);
             markers.set(patchName, { name: patchName, type: "WALL", options: [patchType] });
+          } else if (pTypeLower === "fixedvalue" || pNameLower.includes("inlet")) {
+            data.inletMarker = patchName;
+            if (!inletMarkers.includes(patchName)) inletMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "INLET", options: [patchType] });
+            const valStr = typeof pDict["value"] === "string" ? pDict["value"] : "";
+            const vecMatch = /\(\s*([0-9.eE+-]+)\s+([0-9.eE+-]+)(?:\s+([0-9.eE+-]+))?\s*\)/.exec(valStr);
+            if (vecMatch) {
+              const vx = parseFloat(vecMatch[1]!);
+              const vy = parseFloat(vecMatch[2]!);
+              const vz = vecMatch[3] !== undefined ? parseFloat(vecMatch[3]!) : 0.0;
+              data.inletVelocity = [vx, vy, vz];
+              data.freestreamVelocity = Math.hypot(vx, vy, vz);
+            }
+          } else if (pTypeLower === "zerogradient" || pTypeLower === "inletoutlet" || pNameLower.includes("outlet")) {
+            data.outletMarker = patchName;
+            if (!outletMarkers.includes(patchName)) outletMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "OUTLET", options: [patchType] });
+          } else if (
+            pTypeLower === "symmetry" ||
+            pTypeLower === "symmetryplane" ||
+            pTypeLower === "empty" ||
+            pTypeLower === "wedge" ||
+            pTypeLower === "cyclic"
+          ) {
+            markers.set(patchName, { name: patchName, type: "SYMMETRY", options: [patchType] });
           } else {
             markers.set(patchName, { name: patchName, type: patchType.toUpperCase() || "GENERIC", options: [] });
           }

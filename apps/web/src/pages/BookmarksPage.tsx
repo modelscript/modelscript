@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon, SearchIcon } from "@primer/octicons-react";
 import { Heading, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { getBookmarks } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import Post from "../components/Post";
-import { API_BASE_URL } from "../config";
+import type { PostItem } from "../types/api";
+import { usePageTitle } from "../util/title";
 
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 
@@ -61,9 +62,10 @@ const SearchInputWrapper = styled.div`
 `;
 
 const BookmarksPage: React.FC = () => {
+  usePageTitle("Bookmarks");
   const navigate = useNavigate();
   const { token } = useAuth();
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -74,13 +76,8 @@ const BookmarksPage: React.FC = () => {
     }
     async function fetchBookmarks() {
       try {
-        const res = await fetch(`${API_BASE_URL}/social/bookmarks`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPosts(data.posts);
-        }
+        const data = await getBookmarks();
+        setPosts(data.posts || []);
       } catch (err) {
         console.error(err);
       } finally {

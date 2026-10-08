@@ -128,4 +128,184 @@ action def SpeedGovernor {
       assert.strictEqual(result.hierarchy.components.length, 2);
     },
   );
+
+  await t.test(
+    "should synthesize quadratic SOS barrier certificate in modelscript/checkBarrierCertificate",
+    async () => {
+      const handler = handlers.get("modelscript/checkBarrierCertificate");
+      assert.ok(handler, "modelscript/checkBarrierCertificate handler must be registered");
+
+      const result = await handler({
+        uri: docUri,
+        initialRadius: 1.0,
+        unsafeRadius: 3.0,
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.isCertifiedSafe, true);
+      assert.strictEqual(result.degree, 2);
+      assert.ok(result.summary.includes("SOS Barrier Certificate"));
+    },
+  );
+
+  await t.test("should verify assume-guarantee contract algebra in modelscript/checkSymbolicContracts", async () => {
+    const handler = handlers.get("modelscript/checkSymbolicContracts");
+    assert.ok(handler, "modelscript/checkSymbolicContracts handler must be registered");
+
+    const contractA = {
+      name: "Sensor",
+      assumptions: ["v >= 0.0"],
+      guarantees: ["out <= 100.0"],
+    };
+    const contractB = {
+      name: "Controller",
+      assumptions: ["out <= 100.0"],
+      guarantees: ["actuator >= 0.0"],
+    };
+
+    const pairResult = await handler({
+      pair: {
+        guaranteeContract: contractA,
+        assumptionContract: contractB,
+      },
+    });
+
+    assert.strictEqual(pairResult.success, true);
+    assert.ok(pairResult.summary !== undefined);
+  });
+
+  await t.test(
+    "should verify decision logic coverage and disjointness in modelscript/verifyDecisionLogic",
+    async () => {
+      const handler = handlers.get("modelscript/verifyDecisionLogic");
+      assert.ok(handler, "modelscript/verifyDecisionLogic handler must be registered");
+
+      const result = await handler({
+        branches: [
+          { id: "b1", guardText: "speed <= 50.0" },
+          { id: "b2", guardText: "speed > 50.0" },
+        ],
+        domainBounds: { speed: [0, 120] },
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.ok(result.result !== undefined);
+    },
+  );
+
+  await t.test("should decompose input space into regions in modelscript/decomposeRegions", async () => {
+    const handler = handlers.get("modelscript/decomposeRegions");
+    assert.ok(handler, "modelscript/decomposeRegions handler must be registered");
+
+    const condition = {
+      expr: { kind: "var", name: "speed" },
+      rel: "<=",
+      rhs: 50,
+    };
+
+    const result = await handler({
+      conditions: [condition],
+      domainBounds: { speed: [0, 100] },
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.ok(result.result !== undefined);
+    assert.strictEqual(result.result.totalRegions, 2);
+  });
+
+  await t.test(
+    "should synthesize boundary test suite with CTRF, JUnit, and Modelica formats in modelscript/generateBoundaryTests",
+    async () => {
+      const handler = handlers.get("modelscript/generateBoundaryTests");
+      assert.ok(handler, "modelscript/generateBoundaryTests handler must be registered");
+
+      const decompHandler = handlers.get("modelscript/decomposeRegions");
+      const decompRes = await decompHandler!({
+        conditions: [{ expr: { kind: "var", name: "speed" }, rel: "<=", rhs: 50 }],
+        domainBounds: { speed: [0, 100] },
+      });
+
+      const ctrfRes = await handler({
+        decomposition: decompRes.result,
+        suiteName: "GovernorBoundarySuite",
+        format: "ctrf",
+      });
+      assert.strictEqual(ctrfRes.success, true);
+      assert.ok(ctrfRes.formattedOutput?.includes('"report"'));
+
+      const junitRes = await handler({
+        decomposition: decompRes.result,
+        format: "junit",
+      });
+      assert.strictEqual(junitRes.success, true);
+      assert.ok(junitRes.formattedOutput?.includes("<testsuite"));
+
+      const mosRes = await handler({
+        decomposition: decompRes.result,
+        format: "modelica",
+        modelName: "GovernorModel",
+      });
+      assert.strictEqual(mosRes.success, true);
+      assert.ok(mosRes.formattedOutput?.includes("simulate(GovernorModel"));
+    },
+  );
+
+  await t.test("should verify system-level contract composition in modelscript/checkSymbolicContracts", async () => {
+    const handler = handlers.get("modelscript/checkSymbolicContracts");
+    assert.ok(handler, "modelscript/checkSymbolicContracts handler must be registered");
+
+    const systemContract = {
+      name: "VehicleSystem",
+      assumptions: ["v >= 0.0"],
+      guarantees: ["power <= 200.0"],
+    };
+    const comp1 = {
+      name: "PedalSensor",
+      assumptions: ["v >= 0.0"],
+      guarantees: ["cmd <= 100.0"],
+    };
+    const comp2 = {
+      name: "MotorController",
+      assumptions: ["cmd <= 100.0"],
+      guarantees: ["power <= 200.0"],
+    };
+
+    const result = await handler({
+      systemContract,
+      componentContracts: [comp1, comp2],
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.ok(result.summary !== undefined);
+  });
+
+  await t.test("should extract multi-FMU participants and couplings in modelscript/extractCosimGraph", async () => {
+    const handler = handlers.get("modelscript/extractCosimGraph");
+    assert.ok(handler, "modelscript/extractCosimGraph handler must be registered");
+
+    const wrapperSource = `
+model TwoBodyCoupled
+  SineGenerator gen(fileName="Sine.fmu");
+  Actuator act(fileName="Actuator.fmu");
+equation
+  connect(gen.y, act.u);
+end TwoBodyCoupled;
+`;
+
+    const result = await handler({
+      uri: "file:///workspace/TwoBodyCoupled.mo",
+      text: wrapperSource,
+    });
+
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.participants.length, 2);
+    assert.strictEqual(result.participants[0].id, "gen");
+    assert.strictEqual(result.participants[0].type, "fmu");
+    assert.strictEqual(result.participants[0].fileName, "Sine.fmu");
+    assert.strictEqual(result.couplings.length, 1);
+    assert.strictEqual(result.couplings[0].from.participantId, "gen");
+    assert.strictEqual(result.couplings[0].from.variable, "y");
+    assert.strictEqual(result.couplings[0].to.participantId, "act");
+    assert.strictEqual(result.couplings[0].to.variable, "u");
+  });
 });

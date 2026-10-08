@@ -1,16 +1,8 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": "./dist",
-    "module": "nodenext",
-    "target": "esnext",
-    "lib": ["esnext", "DOM"],
-    "declaration": true,
-    "strict": false,
-    "skipLibCheck": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "moduleResolution": "nodenext"
+    "outDir": "./dist"
   },
   "include": ["src/**/*.ts", "src-gen/**/*.ts", "transformers/**/*.ts"],
   "exclude": ["dist", "build", "node_modules", "tests", "testsuite", "assembly"]

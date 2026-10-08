@@ -33,9 +33,7 @@
   "scripts": {
     "build": "tsc && mkdir -p dist/vendor && cp -r src/vendor/* dist/vendor/ && chmod +x dist/main.js",
     "clean": "rimraf dist",
-    "test": "npm run test:jest && npm run test:node",
-    "test:jest": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:node": "mkdir -p coverage && npx tsx --test --experimental-test-coverage --test-coverage-exclude=\"**/dist/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-coverage-exclude=\"**/tests/**\" --test-concurrency=2 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/node-lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/archive-cli.test.ts tests/cosim-optimize-cli.test.ts tests/db-cli.test.ts tests/dhf-export.test.ts tests/digital-thread-complete.test.ts tests/fmu-import-cli.test.ts tests/hub-init.test.ts tests/multidomain-falsify-cli.test.ts tests/package-verify.test.ts tests/polyglot-cli.test.ts tests/pr-diff.test.ts tests/simulate-cloud.test.ts tests/surrogate-cli.test.ts tests/tgg-multi-domain.test.ts tests/unified-verify.test.ts",
+    "test": "node ../../scripts/test-runner.js --timeout=120000 --concurrency=2",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch"
   },
@@ -69,19 +67,15 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/adm-zip": "^0.5.7",
-    "@types/jest": "^30.0.0",
     "@types/node": "^25.3.2",
     "@types/npmcli__package-json": "^4.0.4",
     "@types/svgdom": "^0.1.2",
     "@types/xml-formatter": "^2.1.1",
     "@types/yargs": "^17.0.34",
     "eslint": "^9.39.1",
-    "jest": "^30.5.1",
-    "jest-ctrf-json-reporter": "^0.0.11",
     "prettier": "^3.6.2",
     "prettier-plugin-packagejson": "^3.0.0",
     "rimraf": "^6.1.0",
-    "ts-jest": "^29.4.12",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"
   },

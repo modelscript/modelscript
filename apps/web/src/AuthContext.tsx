@@ -110,7 +110,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void refreshWallet();
     };
     window.addEventListener("modelscript:wallet-update", handleWalletUpdate);
-    return () => window.removeEventListener("modelscript:wallet-update", handleWalletUpdate);
+
+    const handleAuthExpired = () => {
+      setToken(null);
+      setUser(null);
+    };
+    window.addEventListener("modelscript:auth-expired", handleAuthExpired);
+
+    return () => {
+      window.removeEventListener("modelscript:wallet-update", handleWalletUpdate);
+      window.removeEventListener("modelscript:auth-expired", handleAuthExpired);
+    };
   }, [refreshWallet]);
 
   // On mount, validate stored token

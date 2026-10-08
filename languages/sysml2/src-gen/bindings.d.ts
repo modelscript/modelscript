@@ -1268,9 +1268,9 @@ export declare function createWasmParserSync(
   parser: TreeSitterParser;
 };
 
-export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
-export enum SyntaxKind {
+export declare enum SyntaxKind {
   ERROR = 0,
   RootNamespace = 177,
   PackageBodyElement = 178,
@@ -1632,7 +1632,7 @@ export enum SyntaxKind {
   EOF = 1023,
 }
 
-export enum FieldId {
+export declare enum FieldId {
   DeclaredShortName = 1,
   declaredShortName = 1,
   DeclaredName = 2,
@@ -2738,7 +2738,7 @@ export interface SLNOTENode extends SyntaxNode {
   readonly typeId: SyntaxKind.SLNOTE;
 }
 export declare function isSLNOTE(node: SyntaxNode | null | undefined): node is SLNOTENode;
-export namespace Cst {
+export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
   export const RootNamespace: {

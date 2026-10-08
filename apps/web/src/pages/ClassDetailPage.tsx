@@ -13,6 +13,7 @@ import Breadcrumbs from "../components/Breadcrumbs";
 import { ClassTreeNode } from "../components/ClassTree";
 import { buildClassTree } from "../components/classTreeUtils";
 import InvertedSvg from "../components/InvertedSvg";
+import { usePageTitle } from "../util/title";
 
 /* ─── styled helpers ─── */
 
@@ -274,6 +275,7 @@ const ComponentIconWrap = styled.div`
 
 const ClassDetailPage: React.FC = () => {
   const { name, version, className } = useParams<{ name: string; version: string; className: string }>();
+  usePageTitle(className && name && version ? `${className} | ${name}@${version}` : "Class Details");
   const [cls, setCls] = useState<ClassDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -314,12 +316,6 @@ const ClassDetailPage: React.FC = () => {
     setLoading(true);
     fetchClassDetail();
   }, [fetchClassDetail]);
-
-  useEffect(() => {
-    if (className && name && version) {
-      document.title = `${className} | ${name}@${version} | ModelScript`;
-    }
-  }, [className, name, version]);
 
   useEffect(() => {
     if (!name || !version || jobStatus === "completed" || jobStatus === "failed") return;

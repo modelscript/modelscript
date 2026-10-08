@@ -1,7 +1,6 @@
 // name: ConnectorRestriction7
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 connector C1

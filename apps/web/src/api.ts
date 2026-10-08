@@ -5,7 +5,35 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "/api/v1",
+  timeout: 20000,
 });
+
+// Automatically inject Authorization header from localStorage if present
+api.interceptors.request.use((config) => {
+  if (typeof window !== "undefined" && window.localStorage) {
+    const token = localStorage.getItem("modelscript-auth-token");
+    if (token && !config.headers["Authorization"]) {
+      config.headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Global response interceptor to handle token expiry / 401 Unauthorized
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      if (typeof window !== "undefined" && window.localStorage) {
+        localStorage.removeItem("modelscript-auth-token");
+        window.dispatchEvent(new CustomEvent("modelscript:auth-expired"));
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
+export * from "./types/api";
 
 export interface Library {
   name: string;
@@ -1276,4 +1304,322 @@ export const patchAdminFeatureFlag = async (
   return data;
 };
 
+// ── Social, Posts, Feeds & Repos API ────────────────────────────────
+
+export const getUserProfile = async (username: string): Promise<any> => {
+  const { data } = await api.get(`/users/${encodeURIComponent(username)}`);
+  return data;
+};
+
+export const followUser = async (username: string): Promise<any> => {
+  const { data } = await api.post(`/users/${encodeURIComponent(username)}/follow`);
+  return data;
+};
+
+export const unfollowUser = async (username: string): Promise<any> => {
+  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/follow`);
+  return data;
+};
+
+export const blockUser = async (username: string): Promise<any> => {
+  const { data } = await api.post(`/users/${encodeURIComponent(username)}/block`);
+  return data;
+};
+
+export const unblockUser = async (username: string): Promise<any> => {
+  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/block`);
+  return data;
+};
+
+export const muteUser = async (username: string): Promise<any> => {
+  const { data } = await api.post(`/users/${encodeURIComponent(username)}/mute`);
+  return data;
+};
+
+export const unmuteUser = async (username: string): Promise<any> => {
+  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/mute`);
+  return data;
+};
+
+export const reportUser = async (username: string, reason?: string): Promise<any> => {
+  const { data } = await api.post(`/users/${encodeURIComponent(username)}/report`, { reason });
+  return data;
+};
+
+export const updateUserProfile = async (profileData: Record<string, any>): Promise<any> => {
+  const { data } = await api.put("/users/me", profileData);
+  return data;
+};
+
+export const getUserFollowers = async (username: string): Promise<{ followers: any[] }> => {
+  const { data } = await api.get(`/users/${encodeURIComponent(username)}/followers`);
+  return data;
+};
+
+export const getUserFollowing = async (username: string): Promise<{ following: any[] }> => {
+  const { data } = await api.get(`/users/${encodeURIComponent(username)}/following`);
+  return data;
+};
+
+export const getUserSuggestions = async (limit = 4): Promise<{ suggestions: any[] }> => {
+  const { data } = await api.get("/users/suggestions", { params: { limit } });
+  return data;
+};
+
+export const getUserPosts = async (
+  username: string,
+  type?: "posts" | "replies" | "artifacts",
+): Promise<{ posts: any[] }> => {
+  const { data } = await api.get(`/social/users/${encodeURIComponent(username)}/posts`, {
+    params: type ? { type } : undefined,
+  });
+  return data;
+};
+
+export const getTimeline = async (options?: {
+  following?: boolean;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ posts: any[] }> => {
+  const endpoint = options?.following ? "/social/timeline/following" : "/social/timeline";
+  const params: Record<string, any> = {};
+  if (options?.sort) params.sort = options.sort;
+  if (options?.limit !== undefined) params.limit = options.limit;
+  if (options?.offset !== undefined) params.offset = options.offset;
+  const { data } = await api.get(endpoint, { params: Object.keys(params).length > 0 ? params : undefined });
+  return data;
+};
+
+export const getPost = async (id: string | number): Promise<{ post: any }> => {
+  const { data } = await api.get(`/social/posts/${id}`);
+  return data;
+};
+
+export const getPostReplies = async (id: string | number): Promise<{ posts: any[] }> => {
+  const { data } = await api.get(`/social/posts/${id}/replies`);
+  return data;
+};
+
+export const getPostParents = async (id: string | number): Promise<{ posts: any[] }> => {
+  const { data } = await api.get(`/social/posts/${id}/parents`);
+  return data;
+};
+
+export const getPostQuotes = async (id: string | number): Promise<{ posts: any[] }> => {
+  const { data } = await api.get(`/social/posts/${id}/quotes`);
+  return data;
+};
+
+export const getPostReposts = async (id: string | number): Promise<{ posts: any[] }> => {
+  const { data } = await api.get(`/social/posts/${id}/reposts`);
+  return data;
+};
+
+export const recordPostView = async (id: string | number): Promise<void> => {
+  await api.post(`/social/posts/${id}/view`).catch(() => {});
+};
+
+export const getPostAnalytics = async (id: string | number): Promise<any> => {
+  const { data } = await api.get(`/social/posts/${id}/analytics`);
+  return data;
+};
+
+export const likePost = async (id: string | number): Promise<{ liked: boolean }> => {
+  const { data } = await api.post(`/social/posts/${id}/like`);
+  return data;
+};
+
+export const repostPost = async (id: string | number): Promise<{ reposted: boolean }> => {
+  const { data } = await api.post(`/social/posts/${id}/repost`);
+  return data;
+};
+
+export const bookmarkPost = async (id: string | number): Promise<{ bookmarked: boolean }> => {
+  const { data } = await api.post(`/social/posts/${id}/bookmark`);
+  return data;
+};
+
+export const createPost = async (payload: Record<string, any>): Promise<{ post: any }> => {
+  const { data } = await api.post("/social/posts", payload);
+  return data;
+};
+
+export const getBookmarks = async (): Promise<{ posts: any[] }> => {
+  const { data } = await api.get("/social/bookmarks");
+  return data;
+};
+
+export const getNotifications = async (): Promise<{ notifications: any[] }> => {
+  const { data } = await api.get("/social/notifications");
+  return data;
+};
+
+export const markNotificationsRead = async (): Promise<void> => {
+  await api.post("/social/notifications/read");
+};
+
+export const getFeeds = async (): Promise<{ feeds: any[] }> => {
+  const { data } = await api.get("/social/feeds");
+  return data;
+};
+
+export const subscribeFeed = async (url: string): Promise<any> => {
+  const { data } = await api.post("/social/feeds/subscribe", { url });
+  return data;
+};
+
+export const unsubscribeFeed = async (id: string | number): Promise<any> => {
+  const { data } = await api.delete(`/social/feeds/${id}/unsubscribe`);
+  return data;
+};
+
+export const getTrending = async (limit = 4): Promise<{ topics: any[] }> => {
+  const { data } = await api.get("/social/trending", { params: { limit } });
+  return data;
+};
+
+export const getExplore = async (): Promise<{ posts: any[] }> => {
+  const { data } = await api.get("/social/explore");
+  return data;
+};
+
+export const getTopicPosts = async (topic: string): Promise<{ posts: any[] }> => {
+  const { data } = await api.get(`/social/topics/${encodeURIComponent(topic)}/posts`);
+  return data;
+};
+
+export const getRepos = async (): Promise<{ repos: any[] }> => {
+  const { data } = await api.get("/repos");
+  return data;
+};
+
+export const getPopularRepos = async (limit?: number): Promise<{ repos: any[] }> => {
+  const { data } = await api.get("/repos/popular", { params: limit ? { limit } : undefined });
+  return data;
+};
+
+export const createRepo = async (repoData: Record<string, any>): Promise<any> => {
+  const { data } = await api.post("/repos", repoData);
+  return data;
+};
+
+export const createArtifactView = async (artifactData: Record<string, any>): Promise<any> => {
+  const { data } = await api.post("/social/artifact-views", artifactData);
+  return data;
+};
+
+export const getArtifactView = async (id: string | number): Promise<any> => {
+  const { data } = await api.get(`/social/artifact-views/${encodeURIComponent(String(id))}`);
+  return data;
+};
+
+export const uploadStorageFile = async (formData: FormData): Promise<any> => {
+  const { data } = await api.post("/storage/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+};
+
+export const getSearchCompletions = async (
+  query: string,
+  limit = 6,
+): Promise<{ suggestions?: any[]; completions?: any[] }> => {
+  const { data } = await api.get("/search/completions", { params: { q: query, limit } });
+  return data;
+};
+
+// ── Background Jobs & Script Templates API ──────────────────────────
+
+export const getDbJobs = async (): Promise<{ jobs: any[] }> => {
+  const { data } = await api.get("/jobs");
+  return data;
+};
+
+export const getJobTemplates = async (): Promise<{ templates: any[] }> => {
+  const { data } = await api.get("/jobs/templates");
+  return data;
+};
+
+export const getJobLogs = async (id: string | number): Promise<any> => {
+  const { data } = await api.get(`/jobs/${id}/logs`);
+  return data;
+};
+
+export const getJobTemplate = async (id: string | number): Promise<any> => {
+  const { data } = await api.get(`/jobs/templates/${id}`);
+  return data;
+};
+
+export const runJobTemplate = async (id: string | number, payload?: any): Promise<any> => {
+  const { data } = await api.post(`/jobs/templates/${id}/run`, payload || {});
+  return data;
+};
+
+// ── Dev & System API ────────────────────────────────────────────────
+export const resetDevDb = async (): Promise<any> => {
+  const { data } = await api.post("/dev/reset");
+  return data;
+};
+
+// ── MQTT API ────────────────────────────────────────────────────────
+export const getMqttParticipants = async (
+  apiBaseUrl?: string,
+): Promise<{ participants: any[]; connected: boolean }> => {
+  if (apiBaseUrl) {
+    const res = await axios.get(`${apiBaseUrl}/api/v1/mqtt/participants`, { timeout: 10000 });
+    return res.data;
+  }
+  const { data } = await api.get("/mqtt/participants");
+  return data;
+};
+
+// ── Cloud HPC & Simulation API ──────────────────────────────────────
+export const getCloudProfiles = async (): Promise<{ profiles: any[] }> => {
+  const { data } = await api.get("/cloud/profiles");
+  return data;
+};
+
+export const getCloudBalance = async (): Promise<{ balance: number }> => {
+  const { data } = await api.get("/cloud/balance");
+  return data;
+};
+
+export const dispatchCloudJob = async (payload: any): Promise<{ jobId: string }> => {
+  const { data } = await api.post("/cloud/dispatch", payload);
+  return data;
+};
+
+export const getCloudJobResult = async (jobId: string | number): Promise<string> => {
+  const { data } = await api.get(`/cloud/jobs/${jobId}/result`, { responseType: "text" });
+  return data;
+};
+
+export const getSimulationJobResult = async (jobId: string | number): Promise<string> => {
+  const { data } = await api.get(`/simulate/${jobId}/result`, { responseType: "text" });
+  return data;
+};
+
+// ── Physics & CAD API ───────────────────────────────────────────────
+export const flattenPhysicsStudy = async (className: string): Promise<any> => {
+  const { data } = await api.get("/physics/flattenStudy", { params: { className } });
+  return data;
+};
+
+export const uploadPhysicsGeometry = async (formData: FormData): Promise<{ hash: string }> => {
+  const { data } = await api.post("/physics/upload", formData);
+  return data;
+};
+
+export const runPhysicsJob = async (payload: { geometryHash: string; config: any }): Promise<{ jobId: string }> => {
+  const { data } = await api.post("/physics/run", payload);
+  return data;
+};
+
+export const convertCadGeometry = async (url: string): Promise<any> => {
+  const { data } = await api.get("/cad/convert", { params: { url } });
+  return data;
+};
+
+export { api };
 export default api;

@@ -61,8 +61,7 @@ if [ ! -f "$TARGET/$WASM_NAME" ]; then
     echo "  [copy] $WASM_NAME (from repo)"
     cp "$REPO_WASM" "$TARGET/$WASM_NAME"
   else
-    echo "  [ERROR] $WASM_NAME not found. Ensure the repo checkout includes it."
-    exit 1
+    echo "  [WARNING] $WASM_NAME not found in $TARGET or $REPO_WASM. WebGPU AI assistant will be disabled until wasm runtime is provided."
   fi
 else
   echo "  [cached] $WASM_NAME"

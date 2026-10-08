@@ -2,8 +2,9 @@
 
 import { CheckCircleFillIcon, CheckIcon, CpuIcon, FlameIcon, PulseIcon, XIcon } from "@primer/octicons-react";
 import { Button, Flash, Heading, Label, Spinner, Text } from "@primer/react";
+import axios from "axios";
 import React, { useEffect, useState } from "react";
-import { API_BASE_URL } from "../../config";
+import api from "../../api";
 import Box from "../Box";
 
 export interface DigitalTwinViewerConfig {
@@ -86,13 +87,10 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     async function loadTwinDetails() {
       if (!twinId) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/twins/${twinId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setTwinData(data);
-          if (data.proposals && data.proposals.length > 0) {
-            setProposalStatus(data.proposals[0].status);
-          }
+        const { data } = await api.get(`/twins/${twinId}`);
+        setTwinData(data);
+        if (data.proposals && data.proposals.length > 0) {
+          setProposalStatus(data.proposals[0].status);
         }
       } catch {
         // Fallback to embedded viewConfig
@@ -106,20 +104,17 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     setActionMessage(null);
     try {
       const proposalId = viewConfig.proposalId ?? twinData?.proposals?.[0]?.id ?? 1;
-      const res = await fetch(`${API_BASE_URL}/twins/${twinId}/proposals/${proposalId}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewerId: 1, notes: "Approved based on CUSUM telemetry verification." }),
+      await api.post(`/twins/${twinId}/proposals/${proposalId}/approve`, {
+        reviewerId: 1,
+        notes: "Approved based on CUSUM telemetry verification.",
       });
-      if (res.ok) {
-        setProposalStatus("approved");
-        setActionMessage("Physics Pull Request approved! Active model baseline updated.");
-      } else {
-        const err = await res.json();
-        setActionMessage(`Approval failed: ${err.error || "Unknown error"}`);
-      }
+      setProposalStatus("approved");
+      setActionMessage("Physics Pull Request approved! Active model baseline updated.");
     } catch (err: unknown) {
-      setActionMessage(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+      const msg =
+        (axios.isAxiosError(err) && (err.response?.data as { error?: string })?.error) ||
+        (err instanceof Error ? err.message : "Unknown error");
+      setActionMessage(`Approval failed: ${msg}`);
     } finally {
       setActionLoading(false);
     }
@@ -130,17 +125,17 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     setActionMessage(null);
     try {
       const proposalId = viewConfig.proposalId ?? twinData?.proposals?.[0]?.id ?? 1;
-      const res = await fetch(`${API_BASE_URL}/twins/${twinId}/proposals/${proposalId}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewerId: 1, notes: "Rejected by engineer." }),
+      await api.post(`/twins/${twinId}/proposals/${proposalId}/reject`, {
+        reviewerId: 1,
+        notes: "Rejected by engineer.",
       });
-      if (res.ok) {
-        setProposalStatus("rejected");
-        setActionMessage("Proposal rejected.");
-      }
+      setProposalStatus("rejected");
+      setActionMessage("Proposal rejected.");
     } catch (err: unknown) {
-      setActionMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      const msg =
+        (axios.isAxiosError(err) && (err.response?.data as { error?: string })?.error) ||
+        (err instanceof Error ? err.message : String(err));
+      setActionMessage(`Error: ${msg}`);
     } finally {
       setActionLoading(false);
     }

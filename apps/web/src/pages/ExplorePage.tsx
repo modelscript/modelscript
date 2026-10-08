@@ -14,11 +14,12 @@ import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
+import { getExplore, getLibraries, getRepos, getSearchCompletions, getTopicPosts, getTrending } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
 import Post from "../components/Post";
-import { API_BASE_URL } from "../config";
+import { usePageTitle } from "../util/title";
 
 interface StarterTemplate {
   id: string;
@@ -218,6 +219,7 @@ const ExplorePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const topic = searchParams.get("topic") || "";
+  usePageTitle(query ? `Search: ${query}` : topic ? `Topic: ${topic}` : "Explore");
   const navigate = useNavigate();
   const { token } = useAuth();
   const templatesScrollRef = React.useRef<HTMLDivElement>(null);
@@ -294,11 +296,8 @@ const ExplorePage: React.FC = () => {
       async function fetchTopicPosts() {
         setLoading(true);
         try {
-          const res = await fetch(`${API_BASE_URL}/social/topics/${encodeURIComponent(topic)}/posts`);
-          if (res.ok) {
-            const data = await res.json();
-            setTopicPosts(data.posts || []);
-          }
+          const data = await getTopicPosts(topic);
+          setTopicPosts(data.posts || []);
         } catch (err) {
           console.error(err);
         } finally {
@@ -312,20 +311,10 @@ const ExplorePage: React.FC = () => {
   useEffect(() => {
     async function fetchExplore() {
       try {
-        const [postsRes, trendingRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/social/explore`),
-          fetch(`${API_BASE_URL}/social/trending?limit=5`),
-        ]);
+        const [postsData, trendingData] = await Promise.all([getExplore(), getTrending(5)]);
 
-        if (postsRes.ok) {
-          const data = await postsRes.json();
-          setPosts(data.posts || []);
-        }
-
-        if (trendingRes.ok) {
-          const data = await trendingRes.json();
-          setTrending(data.topics || []);
-        }
+        setPosts(postsData.posts || []);
+        setTrending(trendingData.topics || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -341,11 +330,8 @@ const ExplorePage: React.FC = () => {
       async function fetchPackages() {
         setPackagesLoading(true);
         try {
-          const res = await fetch(`${API_BASE_URL}/libraries?q=${encodeURIComponent(query)}`);
-          if (res.ok) {
-            const data = await res.json();
-            setPackages(data.packages || []);
-          }
+          const pkgs = await getLibraries(query);
+          setPackages(pkgs || []);
         } catch (err) {
           console.error(err);
         } finally {
@@ -362,13 +348,8 @@ const ExplorePage: React.FC = () => {
       async function fetchRepos() {
         setReposLoading(true);
         try {
-          const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-          const res = await fetch(`${API_BASE_URL}/repos`, { headers });
-          let userRepos = [];
-          if (res.ok) {
-            const data = await res.json();
-            userRepos = data.repos || [];
-          }
+          const data = await getRepos();
+          const userRepos = data.repos || [];
 
           const curatedRepos = [
             {
@@ -442,11 +423,10 @@ const ExplorePage: React.FC = () => {
       async function fetchPeople() {
         setPeopleLoading(true);
         try {
-          const res = await fetch(`${API_BASE_URL}/search/completions?q=${encodeURIComponent(query)}&limit=30`);
-          if (res.ok) {
-            const data = await res.json();
-            setMatchedPeople(data.users || []);
-          }
+          const data = await getSearchCompletions(query, 30);
+          setMatchedPeople(
+            (data.suggestions || (data as { users?: PersonData[] }).users || []) as unknown as PersonData[],
+          );
         } catch (err) {
           console.error("Failed to fetch search users:", err);
         } finally {

@@ -1268,9 +1268,9 @@ export declare function createWasmParserSync(
   parser: TreeSitterParser;
 };
 
-export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
-export enum SyntaxKind {
+export declare enum SyntaxKind {
   ERROR = 0,
   SourceFile = 59,
   Statement = 60,
@@ -1323,7 +1323,7 @@ export enum SyntaxKind {
   EOF = 1023,
 }
 
-export enum FieldId {
+export declare enum FieldId {
   Name = 1,
   name = 1,
   Value = 2,
@@ -1559,7 +1559,7 @@ export interface UNDEFNode extends SyntaxNode {
   readonly typeId: SyntaxKind.UNDEF;
 }
 export declare function isUNDEF(node: SyntaxNode | null | undefined): node is UNDEFNode;
-export namespace Cst {
+export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
   export const SourceFile: {

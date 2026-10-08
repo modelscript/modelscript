@@ -790,7 +790,7 @@ function bisectEvent(
   gLo: number,
 ): number {
   const maxIter = 50;
-  const tol = 1e-12;
+  const tol = Math.max(1e-12, 10 * Number.EPSILON * Math.max(Math.abs(tLo), Math.abs(tHi)));
 
   let lo = tLo;
   let hi = tHi;
@@ -860,9 +860,10 @@ async function bisectEventAsync(
 ): Promise<number> {
   let lo = tLo,
     hi = tHi;
+  const tol = Math.max(1e-12, 10 * Number.EPSILON * Math.max(Math.abs(tLo), Math.abs(tHi)));
   for (let iter = 0; iter < 50; iter++) {
     const tMid = (lo + hi) / 2;
-    if (hi - lo < 1e-12) break;
+    if (hi - lo < tol) break;
     const theta = (tMid - tLo) / h;
     const yMid = hermiteInterpolation(yLo, yHi, k[0] ?? [], k[6] ?? [], h, theta, n);
     const gMid = await eventFn(tMid, yMid);

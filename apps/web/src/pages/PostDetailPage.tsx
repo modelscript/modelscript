@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
+import { getPost, getPostParents, getPostReplies, recordPostView } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
 import Post from "../components/Post";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-import { API_BASE_URL } from "../config";
+import type { PostItem } from "../types/api";
+import { usePageTitle } from "../util/title";
 
 const ReplyInputContainer = styled.div`
   display: flex;
@@ -119,9 +120,10 @@ const PostDetailPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, user } = useAuth();
-  const [post, setPost] = useState<any>(null);
-  const [parents, setParents] = useState<any[]>([]);
-  const [replies, setReplies] = useState<any[]>([]);
+  const [post, setPost] = useState<PostItem | null>(null);
+  usePageTitle(post?.username ? `Post by @${post.username}` : "Post");
+  const [parents, setParents] = useState<PostItem[]>([]);
+  const [replies, setReplies] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dampingVal, setDampingVal] = useState("0.18");
   const [tolVal, setTolVal] = useState("6");
@@ -182,37 +184,22 @@ const PostDetailPage: React.FC = () => {
 
   useEffect(() => {
     async function fetchPost() {
+      if (!id) return;
       try {
-        // Fire and forget view increment (prevent duplicate in Strict Mode)
-        if (id && !viewTrackedRef.current.has(id)) {
+        if (!viewTrackedRef.current.has(id)) {
           viewTrackedRef.current.add(id);
-          fetch(`${API_BASE_URL}/social/posts/${id}/view`, {
-            method: "POST",
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          }).catch(console.error);
+          recordPostView(id);
         }
 
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const [res, repliesRes, parentsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/social/posts/${id}`, { headers }),
-          fetch(`${API_BASE_URL}/social/posts/${id}/replies`, { headers }),
-          fetch(`${API_BASE_URL}/social/posts/${id}/parents`, { headers }),
+        const [postData, repliesData, parentsData] = await Promise.all([
+          getPost(id),
+          getPostReplies(id),
+          getPostParents(id),
         ]);
 
-        if (res.ok) {
-          const data = await res.json();
-          setPost(data.post);
-        }
-
-        if (repliesRes.ok) {
-          const repliesData = await repliesRes.json();
-          setReplies(repliesData.posts || []);
-        }
-
-        if (parentsRes.ok) {
-          const parentsData = await parentsRes.json();
-          setParents(parentsData.posts || []);
-        }
+        setPost(postData.post);
+        setReplies(repliesData.posts || []);
+        setParents(parentsData.posts || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -239,7 +226,7 @@ const PostDetailPage: React.FC = () => {
 
   const handleExportFmu = () => {
     if (!post?.artifact_view_id) return;
-    const url = `${API_BASE_URL}/social/artifact-views/${encodeURIComponent(post.artifact_view_id)}`;
+    const url = `/api/v1/social/artifact-views/${encodeURIComponent(post.artifact_view_id)}`;
     window.open(url, "_blank");
   };
 

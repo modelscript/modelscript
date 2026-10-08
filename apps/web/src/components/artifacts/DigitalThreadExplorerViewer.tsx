@@ -13,7 +13,7 @@
 import { AlertIcon, CheckCircleIcon, ClockIcon, GitBranchIcon, PlayIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL } from "../../config";
+import api from "../../api";
 import Box from "../Box";
 
 export interface ThreadNode {
@@ -90,11 +90,8 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
   const loadGraph = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/threads/graph`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
+      const { data } = await api.get("/threads/graph");
+      setData(data);
     } catch (e) {
       console.error("Failed to load thread graph", e);
     } finally {
@@ -108,16 +105,9 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
 
   const handleDiagnoseConflict = async (conflictId: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/threads/conflicts/diagnose`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conflictId }),
-      });
-      if (res.ok) {
-        const diag = await res.json();
-        setActiveConflict(diag);
-        setCustomValueInput(String(diag.simplexConsensus ?? 18.0));
-      }
+      const { data } = await api.post("/threads/conflicts/diagnose", { conflictId });
+      setActiveConflict(data);
+      setCustomValueInput(String(data.simplexConsensus ?? 18.0));
     } catch (e) {
       console.error("Failed to diagnose conflict", e);
     }
@@ -127,19 +117,13 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
     if (!activeConflict) return;
     setReconciling(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/threads/conflicts/reconcile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conflictId: activeConflict.conflictId,
-          strategy,
-          customValue: customVal,
-        }),
+      await api.post("/threads/conflicts/reconcile", {
+        conflictId: activeConflict.conflictId,
+        strategy,
+        customValue: customVal,
       });
-      if (res.ok) {
-        setActiveConflict(null);
-        await loadGraph();
-      }
+      setActiveConflict(null);
+      await loadGraph();
     } catch (e) {
       console.error("Failed to reconcile conflict", e);
     } finally {
@@ -149,18 +133,15 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
 
   const handleComputeBlastRadius = async (domain: string, nodeId: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/threads/blast-radius?domain=${domain}&nodeId=${nodeId}`);
-      if (res.ok) {
-        const result = await res.json();
-        const set = new Set<string>();
-        for (const item of result.impactedNodes || []) {
-          set.add(`${item.domain}:${item.nodeId}`);
-        }
-        setBlastRadius({
-          rootNode: `${domain}:${nodeId}`,
-          impacted: set,
-        });
+      const { data } = await api.get("/threads/blast-radius", { params: { domain, nodeId } });
+      const set = new Set<string>();
+      for (const item of data.impactedNodes || []) {
+        set.add(`${item.domain}:${item.nodeId}`);
       }
+      setBlastRadius({
+        rootNode: `${domain}:${nodeId}`,
+        impacted: set,
+      });
     } catch (e) {
       console.error("Failed to compute blast radius", e);
     }

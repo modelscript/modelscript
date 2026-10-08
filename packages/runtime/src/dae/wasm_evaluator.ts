@@ -1514,6 +1514,13 @@ export function evaluateArenaExpression(
         const applyBinOp = (a: ArenaValue, b: ArenaValue, op: BinOp): ArenaValue | null => {
           if (Array.isArray(a) && Array.isArray(b)) {
             if (a.length !== b.length) return null;
+            if (op === BinOp.Mul && a.every((v) => typeof v === "number") && b.every((v) => typeof v === "number")) {
+              let sum = 0;
+              for (let i = 0; i < a.length; i++) {
+                sum += (a[i] as number) * (b[i] as number);
+              }
+              return sum;
+            }
             const res = a.map((val, idx) => {
               const bVal = b[idx];
               if (bVal === undefined) return null;

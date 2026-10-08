@@ -236,40 +236,50 @@ export function buildSparseAdJacobian(
   const values = new Float64Array(nnz);
   const sparseJ: SparseJacobian = { n, rowPtr, colIdx, values, nnz };
 
+  const timeStringId = dae.interner.intern("time");
+  const stateStringIds = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const sName = stateNames[i];
+    stateStringIds[i] = sName ? dae.interner.intern(sName) : -1;
+  }
+
+  const defaultVars: Dual[] = new Array(dae.interner.size);
+  const zeroDual = Dual.constant(0);
+  for (let i = 0; i < dae.interner.size; i++) defaultVars[i] = zeroDual;
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const nameId = dae.getVarNameId(i);
+    if (nameId < defaultVars.length && dae.getVarExpression(i) !== undefined) {
+      defaultVars[nameId] = Dual.constant(dae.getVarStartValue(i));
+    }
+  }
+
+  const dualVarsByStringId: Dual[] = new Array(dae.interner.size);
+
   const evaluator = (time: number, y: number[]): SparseJacobian => {
     values.fill(0);
+
+    for (let i = 0; i < defaultVars.length; i++) {
+      dualVarsByStringId[i] = defaultVars[i]!;
+    }
+    dualVarsByStringId[timeStringId] = Dual.constant(time);
+
+    for (let i = 0; i < n; i++) {
+      const sid = stateStringIds[i]!;
+      if (sid >= 0) {
+        dualVarsByStringId[sid] = Dual.constant(y[i] ?? 0);
+      }
+    }
 
     for (let c = 0; c < coloring.numColors; c++) {
       const group = coloring.colorGroups[c];
       if (!group || group.length === 0) continue;
 
-      const dualVarsByStringId: Dual[] = new Array(dae.interner.size).fill(Dual.constant(0));
-
-      const timeId = dae.interner.intern("time");
-      dualVarsByStringId[timeId] = Dual.constant(time);
-
-      for (let i = 0; i < n; i++) {
-        const sName = stateNames[i];
-        if (sName) {
-          const nameId = dae.interner.intern(sName);
-          dualVarsByStringId[nameId] = Dual.constant(y[i] ?? 0);
-        }
-      }
-
-      for (let i = 0; i < dae.varCount; i++) {
-        if (dae.isVarRemoved(i)) continue;
-        const nameId = dae.getVarNameId(i);
-        if ((dualVarsByStringId[nameId]?.val ?? 0) === 0 && dae.getVarExpression(i) !== undefined) {
-          dualVarsByStringId[nameId] = Dual.constant(dae.getVarStartValue(i));
-        }
-      }
-
       for (const col of group) {
-        const sName = stateNames[col];
-        if (sName) {
-          const nameId = dae.interner.intern(sName);
-          const v = dualVarsByStringId[nameId]?.val ?? 0;
-          dualVarsByStringId[nameId] = new Dual(v, 1);
+        const sid = stateStringIds[col]!;
+        if (sid >= 0) {
+          const v = dualVarsByStringId[sid]?.val ?? 0;
+          dualVarsByStringId[sid] = new Dual(v, 1);
         }
       }
 
@@ -288,6 +298,14 @@ export function buildSparseAdJacobian(
               break;
             }
           }
+        }
+      }
+
+      // Reset perturbed states back to constant for subsequent color groups
+      for (const col of group) {
+        const sid = stateStringIds[col]!;
+        if (sid >= 0) {
+          dualVarsByStringId[sid] = Dual.constant(y[col] ?? 0);
         }
       }
     }

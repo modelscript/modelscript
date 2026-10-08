@@ -17,9 +17,10 @@ export interface FeaNode {
 
 export interface FeaElement {
   id: number;
-  type: string; // e.g. "C3D4", "C3D10", "CTETRA", "CHEXA", "S3"
+  type: string; // e.g. "C3D4", "C3D10", "CTETRA", "CHEXA", "S3", "S4", "CQUAD4", "CTRIA3"
   nodes: number[];
   elset?: string;
+  family?: "solid" | "shell" | "beam" | "truss" | "other";
 }
 
 export interface FeaMaterial {
@@ -28,6 +29,14 @@ export interface FeaMaterial {
   nu?: number;
   rho?: number;
   yieldStrength?: number;
+}
+
+export interface CaeDiagnostic {
+  severity: "error" | "warning" | "info";
+  message: string;
+  line?: number;
+  column?: number;
+  expression?: string;
 }
 
 export interface FeaModelData {
@@ -47,6 +56,7 @@ export type ParameterLookup = (name: string) => number | string | undefined;
 export interface MaterializeOptions {
   evaluator?: ParameterLookup | Record<string, number | string>;
   formatNumber?: (val: number) => string;
+  diagnostics?: CaeDiagnostic[];
 }
 
 export interface FeaDialect {

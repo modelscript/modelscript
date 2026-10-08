@@ -191,7 +191,10 @@ export function rodas4p(
   const denseOutputs = outputTimes !== undefined && outputTimes.length > 0;
   let outIdx = 0;
 
-  let h = options.initialStep ?? Math.min(Math.max(Math.abs(tEnd - t0) / 100, 1e-5), maxStep);
+  const dir = tEnd >= t0 ? 1 : -1;
+  let h = options.initialStep
+    ? dir * Math.abs(options.initialStep)
+    : dir * Math.min(Math.max(Math.abs(tEnd - t0) / 100, 1e-5), maxStep);
   let t = t0;
   let y = [...y0];
 
@@ -365,9 +368,16 @@ export function rodas4p(
           const tTarget = outputTimes[outIdx]!;
           if ((tEnd > t0 && tTarget <= t + h) || (tEnd < t0 && tTarget >= t + h)) {
             const theta = (tTarget - t) / h;
+            const theta2 = theta * theta;
+            const theta3 = theta2 * theta;
+            const h00 = 2 * theta3 - 3 * theta2 + 1;
+            const h10 = theta3 - 2 * theta2 + theta;
+            const h01 = -2 * theta3 + 3 * theta2;
+            const h11 = theta3 - theta2;
             const yTarget = new Array<number>(n);
             for (let i = 0; i < n; i++) {
-              yTarget[i] = (1.0 - theta) * (y[i] ?? 0) + theta * (yNew[i] ?? 0);
+              yTarget[i] =
+                h00 * (y[i] ?? 0) + h10 * h * (k1[i] ?? 0) + h01 * (yNew[i] ?? 0) + h11 * h * (fEmbedded[i] ?? 0);
             }
             resultTimes.push(tTarget);
             resultStates.push(yTarget);
@@ -386,12 +396,12 @@ export function rodas4p(
 
       // 4th-order step adaptation
       const factor = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-8), -0.25)));
-      h = Math.min(maxStep, Math.max(minStep, h * factor));
+      h = dir * Math.min(maxStep, Math.max(minStep, Math.abs(h) * factor));
     } else {
       // Step rejected
       stats.rejectedSteps++;
       const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.25)));
-      h = Math.max(minStep, h * factor);
+      h = dir * Math.max(minStep, Math.abs(h) * factor);
     }
   }
 

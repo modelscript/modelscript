@@ -110,9 +110,83 @@ boundaryField
     assert.strictEqual(parsed.mathProblem, "simpleFoam");
     assert.strictEqual(parsed.inletMarker, "inlet");
     assert.deepStrictEqual(parsed.inletVelocity, [15.5, 0, 0]);
+    assert.strictEqual(parsed.freestreamVelocity, 15.5);
     assert.strictEqual(parsed.outletMarker, "outlet");
     assert.ok(parsed.wallMarkers.includes("wing"));
     assert.strictEqual(parsed.directives.get("boundaryField.inlet.type"), "fixedValue");
     assert.strictEqual(parsed.directives.get("application"), "simpleFoam");
+  });
+
+  it("materializes scientific notation, powers, and safe math functions", () => {
+    const dialect = getCfdDialect("su2");
+    const template = `
+REYNOLDS= {{ 1e5 * 2.5 }}
+KINEMATIC_VISCOSITY= {{ 1.5e-5 / 1.225 }}
+SQRT_VAL= {{ sqrt(16) }}
+TRIG_VAL= {{ sind(90) }}
+POWER_VAL= {{ 2 ^ 3 }}
+NEG_POWER= {{ -(2 ^ 2) }}
+PI_VAL= {{ PI }}
+`;
+    const materialized = dialect.materialize(template);
+    assert.ok(materialized.includes("REYNOLDS= 250000"));
+    assert.ok(materialized.includes("SQRT_VAL= 4"));
+    assert.ok(materialized.includes("TRIG_VAL= 1"));
+    assert.ok(materialized.includes("POWER_VAL= 8"));
+    assert.ok(materialized.includes("NEG_POWER= -4"));
+    assert.ok(materialized.includes("3.141593") || materialized.includes("3.14159"));
+  });
+
+  it("captures structured diagnostics on evaluation errors", () => {
+    const dialect = getCfdDialect("su2");
+    const diagnostics: any[] = [];
+    const template = `BAD_EXPR= {{ unknown_var * 2 }}`;
+    const materialized = dialect.materialize(template, { diagnostics });
+    assert.strictEqual(diagnostics.length, 1);
+    assert.strictEqual(diagnostics[0].severity, "error");
+    assert.ok(diagnostics[0].message.includes("unresolved") || diagnostics[0].message.includes("Unresolved"));
+    assert.ok(materialized.includes("BAD_EXPR= unknown_var * 2"));
+  });
+
+  it("parses SU2 inline comments and multi-marker declarations", () => {
+    const dialect = getCfdDialect("su2");
+    const config = `
+% Header comment
+MESH_FILENAME= wing_mesh.su2 % Surface mesh
+MATH_PROBLEM= NAVIER_STOKES # Solver type
+FREESTREAM_VELOCITY= ( 20.0, 5.0 ) % 2D velocity
+MARKER_EULER= ( upper_surface, lower_surface, tip )
+MARKER_HEATFLUX= ( body1, 0.0, body2, 150.0 )
+`;
+    const parsed = dialect.parse(config);
+    assert.strictEqual(parsed.meshFilename, "wing_mesh.su2");
+    assert.strictEqual(parsed.mathProblem, "NAVIER_STOKES");
+    assert.deepStrictEqual(parsed.inletVelocity, [20.0, 5.0, 0.0]);
+    assert.strictEqual(parsed.wallMarkers.length, 5);
+    assert.ok(parsed.wallMarkers.includes("upper_surface"));
+    assert.ok(parsed.wallMarkers.includes("lower_surface"));
+    assert.ok(parsed.wallMarkers.includes("tip"));
+    assert.ok(parsed.wallMarkers.includes("body1"));
+    assert.ok(parsed.wallMarkers.includes("body2"));
+    assert.ok(parsed.markers.has("tip"));
+    assert.deepStrictEqual(parsed.markers.get("body2")?.options, [150]);
+  });
+
+  it("safely escapes regex characters when applying boundary actions", async () => {
+    const { applyBoundaryActionToConfig } = await import("../src/index.js");
+    const baseConfig = "MARKER_INLET= ( surf[1], 10.0 )\n";
+    const updated = applyBoundaryActionToConfig(
+      baseConfig,
+      {
+        kind: "inlet",
+        targetId: "surf[1]",
+        magnitude: 20.0,
+      },
+      "su2",
+    );
+
+    assert.ok(updated.includes("MARKER_INLET= ( surf[1], 20.00"));
+    // Ensure it replaced rather than duplicated
+    assert.strictEqual(updated.trim().split("\n").length, 1);
   });
 });

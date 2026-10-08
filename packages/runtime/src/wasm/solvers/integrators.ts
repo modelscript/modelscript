@@ -951,3 +951,282 @@ export function sim_interpolateDenseOutput(
   hermiteInterpolate(y0Ptr, y1Ptr, k1Ptr, k7Ptr, dt, theta, numVars, outPtr);
 }
 
+/**
+ * Single step Tsitouras 5(4) (Tsit5) adaptive Runge-Kutta integrator with FSAL.
+ * Returns true if step was accepted within error bounds, false if rejected.
+ */
+@inline
+export function stepTsit5(
+  dae: DaeBuilder,
+  varValuesPtr: u32,
+  kStagesPtr: u32,
+  tempValuesPtr: u32,
+  yNewPtr: u32,
+  dt: f64,
+  atol: f64,
+  rtol: f64
+): bool {
+  let numVars = dae.varCount;
+  if (numVars == 0) return true;
+
+  let k0Ptr = kStagesPtr;
+  let k1Ptr = kStagesPtr + numVars * 8;
+  let k2Ptr = kStagesPtr + numVars * 8 * 2;
+  let k3Ptr = kStagesPtr + numVars * 8 * 3;
+  let k4Ptr = kStagesPtr + numVars * 8 * 4;
+  let k5Ptr = kStagesPtr + numVars * 8 * 5;
+  let k6Ptr = kStagesPtr + numVars * 8 * 6;
+
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let tempValues = changetype<UnmanagedFloat64Array>(tempValuesPtr as usize);
+  let yNew = changetype<UnmanagedFloat64Array>(yNewPtr as usize);
+  let k0 = changetype<UnmanagedFloat64Array>(k0Ptr as usize);
+  let k1 = changetype<UnmanagedFloat64Array>(k1Ptr as usize);
+  let k2 = changetype<UnmanagedFloat64Array>(k2Ptr as usize);
+  let k3 = changetype<UnmanagedFloat64Array>(k3Ptr as usize);
+  let k4 = changetype<UnmanagedFloat64Array>(k4Ptr as usize);
+  let k5 = changetype<UnmanagedFloat64Array>(k5Ptr as usize);
+  let k6 = changetype<UnmanagedFloat64Array>(k6Ptr as usize);
+
+  // Stage 0: k0 = f(y0)
+  computeDerivatives(dae, varValuesPtr, k0Ptr);
+
+  // Stage 1: y1 = y0 + dt * (0.161 * k0)
+  for (let v: u32 = 0; v < numVars; v++) {
+    tempValues[v] = varValues[v] + dt * (0.161 * k0[v]);
+  }
+  computeDerivatives(dae, tempValuesPtr, k1Ptr);
+
+  // Stage 2: y2 = y0 + dt * (-0.008480655492356989 * k0 + 0.335480655492357 * k1)
+  for (let v: u32 = 0; v < numVars; v++) {
+    tempValues[v] = varValues[v] + dt * (-0.008480655492356989 * k0[v] + 0.335480655492357 * k1[v]);
+  }
+  computeDerivatives(dae, tempValuesPtr, k2Ptr);
+
+  // Stage 3: y3 = y0 + dt * (2.8971530571054935 * k0 - 6.359448489975075 * k1 + 4.3622954328695815 * k2)
+  for (let v: u32 = 0; v < numVars; v++) {
+    tempValues[v] = varValues[v] + dt * (2.8971530571054935 * k0[v] - 6.359448489975075 * k1[v] + 4.3622954328695815 * k2[v]);
+  }
+  computeDerivatives(dae, tempValuesPtr, k3Ptr);
+
+  // Stage 4: y4 = y0 + dt * (5.325864828439257 * k0 - 11.748883564062828 * k1 + 7.495539342889836 * k2 - 0.09249506636175525 * k3)
+  for (let v: u32 = 0; v < numVars; v++) {
+    tempValues[v] = varValues[v] + dt * (5.325864828439257 * k0[v] - 11.748883564062828 * k1[v] + 7.495539342889836 * k2[v] - 0.09249506636175525 * k3[v]);
+  }
+  computeDerivatives(dae, tempValuesPtr, k4Ptr);
+
+  // Stage 5: y5 = y0 + dt * (5.86145544294642 * k0 - 12.92096931784711 * k1 + 8.159367898576159 * k2 - 0.071584973281401 * k3 - 0.028269050394068383 * k4)
+  for (let v: u32 = 0; v < numVars; v++) {
+    tempValues[v] = varValues[v] + dt * (5.86145544294642 * k0[v] - 12.92096931784711 * k1[v] + 8.159367898576159 * k2[v] - 0.071584973281401 * k3[v] - 0.028269050394068383 * k4[v]);
+  }
+  computeDerivatives(dae, tempValuesPtr, k5Ptr);
+
+  // Stage 6 (5th order solution)
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y5th = varValues[v] + dt * (
+      0.09646076681806523 * k0[v] +
+      0.01 * k1[v] +
+      0.4798896504144996 * k2[v] +
+      1.379008574103742 * k3[v] -
+      3.290069515436081 * k4[v] +
+      2.324710524099774 * k5[v]
+    );
+    yNew[v] = y5th;
+  }
+
+  // FSAL Stage 7: f(y5th) -> k6
+  computeDerivatives(dae, yNewPtr, k6Ptr);
+
+  // Error evaluation against scaled norm
+  let maxErrNorm: f64 = 0.0;
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = varValues[v];
+    let y5th = yNew[v];
+
+    let errI = dt * (
+      0.00178001105222576 * k0[v] +
+      0.000816434459656748 * k1[v] -
+      0.007880878010262 * k2[v] +
+      0.144711007173263 * k3[v] -
+      0.5823571654525554 * k4[v] +
+      0.458082105929187 * k5[v] -
+      0.015151515151515152 * k6[v]
+    );
+    let absY0 = Math.abs(y0);
+    let absY5th = Math.abs(y5th);
+    let maxY = absY0 > absY5th ? absY0 : absY5th;
+    let sc = atol + rtol * maxY;
+    if (sc < 1e-15) sc = 1e-15;
+    let scaledErr = Math.abs(errI) / sc;
+    if (scaledErr > maxErrNorm) maxErrNorm = scaledErr;
+  }
+
+  if (maxErrNorm <= 1.0) {
+    for (let v: u32 = 0; v < numVars; v++) {
+      varValues[v] = yNew[v];
+    }
+    solveAlgebraicConstraints(dae, varValuesPtr);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Executes a TR-BDF2 composite L-stable implicit integration step for stiff ODE/DAE systems.
+ * Both stages share the same iteration matrix W = I - d * dt * J.
+ */
+@inline
+export function stepTRBDF2(
+  dae: DaeBuilder,
+  varValuesPtr: u32,
+  scratchPtr: u32,
+  dt: f64,
+  atol: f64 = 1e-6,
+  rtol: f64 = 1e-6
+): bool {
+  let numVars = dae.varCount;
+  if (numVars == 0) return true;
+
+  let gamma: f64 = 0.585786437626905;
+  let d: f64 = 0.2928932188134524;
+
+  let y0Ptr = scratchPtr;
+  let yGammaPtr = y0Ptr + numVars * 8;
+  let yNewPtr = yGammaPtr + numVars * 8;
+  let f0Ptr = yNewPtr + numVars * 8;
+  let fStagePtr = f0Ptr + numVars * 8;
+  let deltaPtr = fStagePtr + numVars * 8;
+  let wMatPtr = deltaPtr + numVars * 8;
+  let pivPtr = wMatPtr + numVars * numVars * 8;
+  let pivSize = (numVars * 4 + 7) & ~7;
+  let scalePtr = pivPtr + pivSize;
+  let luScratchPtr = scalePtr + numVars * 8;
+
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
+  let y0 = changetype<UnmanagedFloat64Array>(y0Ptr as usize);
+  let yGamma = changetype<UnmanagedFloat64Array>(yGammaPtr as usize);
+  let yNew = changetype<UnmanagedFloat64Array>(yNewPtr as usize);
+  let f0 = changetype<UnmanagedFloat64Array>(f0Ptr as usize);
+  let fStage = changetype<UnmanagedFloat64Array>(fStagePtr as usize);
+  let delta = changetype<UnmanagedFloat64Array>(deltaPtr as usize);
+  let wMat = DenseMatrixView.at(wMatPtr as usize, numVars, numVars);
+
+  for (let v: u32 = 0; v < numVars; v++) {
+    y0[v] = varValues[v];
+    yGamma[v] = varValues[v];
+    yNew[v] = varValues[v];
+  }
+
+  computeDerivatives(dae, y0Ptr, f0Ptr);
+
+  // Form W = I - d * dt * J
+  let eps: f64 = 1e-8;
+  for (let j: u32 = 0; j < numVars; j++) {
+    let yOrig = varValues[j];
+    varValues[j] = yOrig + eps;
+    computeDerivatives(dae, varValuesPtr, fStagePtr);
+    varValues[j] = yOrig;
+
+    for (let i: u32 = 0; i < numVars; i++) {
+      let J_ij = (fStage[i] - f0[i]) / eps;
+      let identity: f64 = i == j ? 1.0 : 0.0;
+      wMat.set(i, j, identity - d * dt * J_ij);
+    }
+  }
+
+  if (!luFactor(wMatPtr, pivPtr, scalePtr, numVars)) {
+    return false;
+  }
+
+  // Stage 1: Trapezoidal rule
+  let stage1Converged = false;
+  for (let iter: u32 = 0; iter < 15; iter++) {
+    computeDerivatives(dae, yGammaPtr, fStagePtr);
+
+    for (let i: u32 = 0; i < numVars; i++) {
+      delta[i] = -((yGamma[i] - y0[i]) - d * dt * (f0[i] + fStage[i]));
+    }
+
+    luSolve(wMatPtr, pivPtr, scalePtr, deltaPtr, luScratchPtr, numVars);
+
+    let maxDelta: f64 = 0.0;
+    for (let i: u32 = 0; i < numVars; i++) {
+      let di = delta[i];
+      yGamma[i] += di;
+      let tol = atol + rtol * Math.abs(yGamma[i]);
+      let rel = Math.abs(di) / (tol > 1e-15 ? tol : 1e-15);
+      if (rel > maxDelta) maxDelta = rel;
+    }
+
+    if (maxDelta < 1.0) {
+      stage1Converged = true;
+      break;
+    }
+  }
+
+  if (!stage1Converged) return false;
+
+  // Stage 2: BDF-2
+  let denom = gamma * (2.0 - gamma);
+  let cGamma = 1.0 / denom;
+  let c0 = ((1.0 - gamma) * (1.0 - gamma)) / denom;
+
+  let stage2Converged = false;
+  for (let iter: u32 = 0; iter < 15; iter++) {
+    computeDerivatives(dae, yNewPtr, fStagePtr);
+
+    for (let i: u32 = 0; i < numVars; i++) {
+      delta[i] = -(yNew[i] - cGamma * yGamma[i] + c0 * y0[i] - d * dt * fStage[i]);
+    }
+
+    luSolve(wMatPtr, pivPtr, scalePtr, deltaPtr, luScratchPtr, numVars);
+
+    let maxDelta: f64 = 0.0;
+    for (let i: u32 = 0; i < numVars; i++) {
+      let di = delta[i];
+      yNew[i] += di;
+      let tol = atol + rtol * Math.abs(yNew[i]);
+      let rel = Math.abs(di) / (tol > 1e-15 ? tol : 1e-15);
+      if (rel > maxDelta) maxDelta = rel;
+    }
+
+    if (maxDelta < 1.0) {
+      stage2Converged = true;
+      break;
+    }
+  }
+
+  if (!stage2Converged) return false;
+
+  for (let v: u32 = 0; v < numVars; v++) {
+    varValues[v] = yNew[v];
+  }
+  solveAlgebraicConstraints(dae, varValuesPtr);
+  return true;
+}
+
+export function sim_stepTsit5(
+  daePtr: u32,
+  varValuesPtr: u32,
+  kStagesPtr: u32,
+  tempValuesPtr: u32,
+  yNewPtr: u32,
+  dt: f64,
+  atol: f64,
+  rtol: f64
+): bool {
+  return stepTsit5(changetype<DaeBuilder>(daePtr), varValuesPtr, kStagesPtr, tempValuesPtr, yNewPtr, dt, atol, rtol);
+}
+
+export function sim_stepTRBDF2(
+  daePtr: u32,
+  varValuesPtr: u32,
+  scratchPtr: u32,
+  dt: f64,
+  atol: f64,
+  rtol: f64
+): bool {
+  return stepTRBDF2(changetype<DaeBuilder>(daePtr), varValuesPtr, scratchPtr, dt, atol, rtol);
+}
+

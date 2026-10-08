@@ -1541,6 +1541,186 @@ export class ArenaDAEPrinter {
       collectCalls(fn);
     }
 
+    const activeCalledFnNames = new Set<string>();
+    const visitedExprs = new Set<number>();
+    const walkExprCalls = (builder: DAEBuilder, id: number) => {
+      if (id < 0 || visitedExprs.has(id)) return;
+      visitedExprs.add(id);
+      const k = builder.getExprKind(id);
+      switch (k) {
+        case ExprKind.Call: {
+          const fnName = builder.interner.resolve(builder.getExprData1(id));
+          if (fnName) {
+            activeCalledFnNames.add(fnName);
+            calledFnNames.add(fnName);
+          }
+          const argCount = builder.getExprRight(id);
+          if (argCount > 0) walkExprCalls(builder, builder.getExprLeft(id));
+          for (let i = 1; i < argCount; i++) {
+            walkExprCalls(builder, builder.getExprLeft(id + i));
+          }
+          break;
+        }
+        case ExprKind.Binary: {
+          walkExprCalls(builder, builder.getExprLeft(id));
+          walkExprCalls(builder, builder.getExprRight(id));
+          break;
+        }
+        case ExprKind.Unary: {
+          walkExprCalls(builder, builder.getExprLeft(id));
+          break;
+        }
+        case ExprKind.Der:
+        case ExprKind.Pre: {
+          walkExprCalls(builder, builder.getExprData1(id));
+          break;
+        }
+        case ExprKind.IfElse: {
+          walkExprCalls(builder, builder.getExprData1(id));
+          walkExprCalls(builder, builder.getExprLeft(id));
+          walkExprCalls(builder, builder.getExprRight(id));
+          break;
+        }
+        case ExprKind.Range: {
+          walkExprCalls(builder, builder.getExprData1(id));
+          const step = builder.getExprLeft(id);
+          if (step >= 0) walkExprCalls(builder, step);
+          walkExprCalls(builder, builder.getExprRight(id));
+          break;
+        }
+        case ExprKind.ArrayCtor: {
+          const count = builder.getExprData1(id);
+          const redirect = builder.getExprRight(id);
+          const baseId = redirect >= 0 ? redirect : id;
+          if (count > 0) walkExprCalls(builder, builder.getExprLeft(id));
+          for (let i = 1; i < count; i++) {
+            walkExprCalls(builder, builder.getExprLeft(baseId + i));
+          }
+          break;
+        }
+        case ExprKind.Subscript: {
+          walkExprCalls(builder, builder.getExprData1(id));
+          const scount = builder.getExprRight(id);
+          if (scount > 0) walkExprCalls(builder, builder.getExprLeft(id));
+          for (let i = 1; i < scount; i++) {
+            walkExprCalls(builder, builder.getExprLeft(id + i));
+          }
+          break;
+        }
+        case ExprKind.Tuple: {
+          const tcount = builder.getExprData1(id);
+          if (tcount > 0) walkExprCalls(builder, builder.getExprLeft(id));
+          for (let i = 1; i < tcount; i++) {
+            walkExprCalls(builder, builder.getExprLeft(id + i));
+          }
+          break;
+        }
+        case ExprKind.Comprehension: {
+          walkExprCalls(builder, builder.getExprLeft(id));
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    const walkStmtCalls = (builder: DAEBuilder, idx: number): number => {
+      const k = builder.getStmtKind(idx);
+      switch (k) {
+        case StmtKind.Assignment: {
+          const lhsId = builder.getStmtData1(idx);
+          const rhsId = builder.getStmtLeft(idx);
+          walkExprCalls(builder, lhsId);
+          walkExprCalls(builder, rhsId);
+          return idx + 1;
+        }
+        case StmtKind.If: {
+          const condId = builder.getStmtData1(idx);
+          walkExprCalls(builder, condId);
+          const thenCount = builder.getStmtLeft(idx);
+          const elseCount = builder.getStmtRight(idx);
+          let next = idx + 1;
+          for (let i = 0; i < thenCount; i++) next = walkStmtCalls(builder, next);
+          for (let i = 0; i < elseCount; i++) next = walkStmtCalls(builder, next);
+          return next;
+        }
+        case StmtKind.For: {
+          const iterId = builder.getStmtData1(idx);
+          walkExprCalls(builder, iterId);
+          const bodyCount = builder.getStmtLeft(idx);
+          let next = idx + 1;
+          for (let i = 0; i < bodyCount; i++) next = walkStmtCalls(builder, next);
+          return next;
+        }
+        case StmtKind.While: {
+          const condId = builder.getStmtData1(idx);
+          walkExprCalls(builder, condId);
+          const bodyCount = builder.getStmtLeft(idx);
+          let next = idx + 1;
+          for (let i = 0; i < bodyCount; i++) next = walkStmtCalls(builder, next);
+          return next;
+        }
+        case StmtKind.When: {
+          const condId = builder.getStmtData1(idx);
+          walkExprCalls(builder, condId);
+          const bodyCount = builder.getStmtLeft(idx);
+          let next = idx + 1;
+          for (let i = 0; i < bodyCount; i++) next = walkStmtCalls(builder, next);
+          return next;
+        }
+        default:
+          return idx + 1;
+      }
+    };
+
+    for (let i = 0; i < dae.eqCount; i++) {
+      walkExprCalls(dae, dae.getEqLhs(i));
+      walkExprCalls(dae, dae.getEqRhs(i));
+    }
+    for (let i = 0; i < dae.varCount; i++) {
+      const expr = dae.getVarExpression(i);
+      if (expr >= 0) walkExprCalls(dae, expr);
+    }
+    for (const sec of dae.algorithmSections) {
+      let idx = sec.start;
+      const end = sec.start + sec.count;
+      while (idx < end) idx = walkStmtCalls(dae, idx);
+    }
+    for (const sec of (dae as any).initialAlgorithmSections ?? []) {
+      let idx = sec.start;
+      const end = sec.start + sec.count;
+      while (idx < end) idx = walkStmtCalls(dae, idx);
+    }
+
+    let activeChanged = true;
+    while (activeChanged) {
+      activeChanged = false;
+      const prevSize = activeCalledFnNames.size;
+      for (const fn of dae.functions.values()) {
+        const baseName = fn.name.split(".").pop()!;
+        const isFnActive =
+          activeCalledFnNames.has(fn.name) ||
+          activeCalledFnNames.has(baseName) ||
+          Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
+        if (isFnActive) {
+          for (let i = 0; i < fn.eqCount; i++) {
+            walkExprCalls(fn, fn.getEqLhs(i));
+            walkExprCalls(fn, fn.getEqRhs(i));
+          }
+          for (let i = 0; i < fn.varCount; i++) {
+            const expr = fn.getVarExpression(i);
+            if (expr >= 0) walkExprCalls(fn, expr);
+          }
+          for (const sec of fn.algorithmSections) {
+            let idx = sec.start;
+            const end = sec.start + sec.count;
+            while (idx < end) idx = walkStmtCalls(fn, idx);
+          }
+        }
+      }
+      if (activeCalledFnNames.size > prevSize) activeChanged = true;
+    }
+
     this.isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
     const isOldFrontend = this.isOldFrontend;
 
@@ -1601,12 +1781,14 @@ export class ArenaDAEPrinter {
           }
           const baseName = fn.name.split(".").pop()!;
           const isCalled =
-            (fn as any).wasCalled ||
-            calledFnNames.has(fn.name) ||
-            calledFnNames.has(baseName) ||
-            Array.from(calledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
+            activeCalledFnNames.has(fn.name) ||
+            activeCalledFnNames.has(baseName) ||
+            Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
           const isTypeUsed = usedTypeNames.has(fn.name) || usedTypeNames.has(baseName);
-          if (!isCalled && !isTypeUsed) {
+          const hasActiveOp =
+            Boolean((fn as any).isOperatorRecord || fn.extensionMetadata?.isOperatorRecord) &&
+            Array.from(activeCalledFnNames).some((c) => c.startsWith(`${fn.name}.'`) || c.startsWith(`${baseName}.'`));
+          if (!isCalled && !isTypeUsed && !hasActiveOp) {
             return false;
           }
         }

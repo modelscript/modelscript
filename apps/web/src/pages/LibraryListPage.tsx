@@ -9,6 +9,7 @@ import type { LibraryListItem } from "../api";
 import { getLibraries } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { usePageTitle } from "../util/title";
 
 /* ─── styled helpers ─── */
 
@@ -118,10 +119,7 @@ const LibraryListPage: React.FC = () => {
   const query = searchParams.get("q") || "";
   const [searchInput, setSearchInput] = useState(query);
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
-
-  useEffect(() => {
-    document.title = "Packages | ModelScript";
-  }, []);
+  usePageTitle("Packages");
 
   useEffect(() => {
     setSearchInput(query);

@@ -279,11 +279,14 @@ export function trbdf2(
         while (outIdx < outputTimes.length) {
           const tTarget = outputTimes[outIdx]!;
           if ((tEnd > t0 && tTarget <= tNew) || (tEnd < t0 && tTarget >= tNew)) {
-            // Linear/Quadratic interpolation between y, yGamma, and yNew
+            // 2nd-order quadratic Lagrange interpolation through (0, y), (gamma, yGamma), (1, yNew)
             const theta = (tTarget - t) / h;
+            const c0_interp = ((theta - gamma) * (theta - 1.0)) / gamma;
+            const cGamma_interp = (theta * (theta - 1.0)) / (gamma * (gamma - 1.0));
+            const c1_interp = (theta * (theta - gamma)) / (1.0 - gamma);
             const yTarget = new Array<number>(n);
             for (let i = 0; i < n; i++) {
-              yTarget[i] = (1.0 - theta) * (y[i] ?? 0) + theta * (yNew[i] ?? 0);
+              yTarget[i] = c0_interp * (y[i] ?? 0) + cGamma_interp * (yGamma[i] ?? 0) + c1_interp * (yNew[i] ?? 0);
             }
             resultTimes.push(tTarget);
             resultStates.push(yTarget);

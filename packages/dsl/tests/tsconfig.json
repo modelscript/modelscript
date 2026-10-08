@@ -5,7 +5,12 @@
     "lib": ["esnext", "dom"],
     "types": ["node"],
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/dsl": ["../src/index.ts"],
+      "@modelscript/dsl/*": ["../src/*"]
+    }
   },
   "include": ["**/*"],
   "exclude": ["scratch*/**/*", "wasm/**/*"]

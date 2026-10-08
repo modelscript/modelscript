@@ -33,8 +33,8 @@ export const feaLanguage = language({
   lsp: {
     fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
     icons: {
-      light: "./assets/fea/icon-light.png",
-      dark: "./assets/fea/icon-dark.png",
+      light: "./assets/icon-light.png",
+      dark: "./assets/icon-dark.png",
     },
   },
 
@@ -173,7 +173,12 @@ export const feaLanguage = language({
             return db.childrenOf(self.id).map((c) => c.id);
           },
           resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
-            return db.symbol(self.id);
+            const children = db.childrenOf(self.id);
+            const byNameMap = new Map<string, SymbolEntry>();
+            for (const child of children) {
+              byNameMap.set(child.name, child);
+            }
+            return (name: string) => byNameMap.get(name) ?? null;
           },
         },
       }),
@@ -187,6 +192,7 @@ export const feaLanguage = language({
         syntax: seq(
           "*",
           field("name", $.IDENTIFIER),
+          optional(seq(",", field("parameter", choice($.IDENTIFIER, $.NUMBER, $.STRING, $.EmbeddedExpression)))),
           repeat(seq(",", choice($.ParameterAssignment, $.OptionFlag))),
           choice($._newline, optional(/\r?\n/)),
         ),

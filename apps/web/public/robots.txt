@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /oauth/callback
+Disallow: /settings
+
+Sitemap: https://modelscript.org/sitemap.xml

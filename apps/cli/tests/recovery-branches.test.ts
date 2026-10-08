@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { buildParser, choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
+import assert from "node:assert/strict";
+import * as childProcess from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { before, describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,10 +80,10 @@ describe("GLR Parser Error Recovery Branches", () => {
   let tmpDir: string;
   let wasmModule: WebAssembly.Module;
 
-  beforeAll(async () => {
+  before(async () => {
     const result = buildParser(dsl as any);
 
-    tmpDir = path.join("/tmp", "modelscript-recovery-test");
+    tmpDir = path.join(os.tmpdir(), "modelscript-recovery-test");
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
@@ -140,7 +143,7 @@ describe("GLR Parser Error Recovery Branches", () => {
 
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     facade = new LspFacade(instance.exports.memory, instance.exports);
-  }, 60000);
+  });
 
   const configs = [
     { name: "Only Branch A (Deletion)", a: true, b: false, c: false, island: false },
@@ -156,26 +159,22 @@ describe("GLR Parser Error Recovery Branches", () => {
         it(`should run with config: ${config.name}`, () => {
           facade.setParserConfig(config.a, config.b, config.c, config.island);
 
-          expect(() => {
+          assert.doesNotThrow(() => {
             const astRoot = facade.parse(testCase.code);
 
             // Ensure parser didn't fail completely
-            expect(astRoot).not.toBe(0);
+            assert.notStrictEqual(astRoot, 0);
 
-            const diags = facade.getDiagnostics(astRoot);
             const sexpr = facade.getAstSExpr(astRoot);
 
             // Sexpr should be available
-            expect(sexpr).toBeTruthy();
-
-            // Depending on the configuration, it may or may not produce diagnostics
-            // We just assert it doesn't crash here.
-            // We could add more assertions based on specific expectations.
-          }).not.toThrow();
+            assert.ok(sexpr);
+          });
         });
       }
     });
   }
+
   describe("Regression Tests", () => {
     it("should anchor the missing semicolon diagnostic to the previous token instead of the next line", () => {
       facade.setParserConfig(false, true, false, false); // Only Branch B
@@ -183,7 +182,7 @@ describe("GLR Parser Error Recovery Branches", () => {
       const astRoot = facade.parse(code);
       const diags = facade.getDiagnostics(astRoot);
       // There should be a diagnostic for the missing semicolon after '1'
-      expect(diags.length).toBeGreaterThan(0);
+      assert.ok(diags.length > 0);
 
       const missingSemi = diags[0];
 
@@ -193,7 +192,7 @@ describe("GLR Parser Error Recovery Branches", () => {
       const startPos = missingSemi.range.start;
 
       // Check that it's NOT on line 4 (where the 'p' of print is)
-      expect(startPos.line).not.toBe(4);
+      assert.notStrictEqual(startPos.line, 4);
     });
   });
 });

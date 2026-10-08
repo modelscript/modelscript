@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { AlertIcon, PlusIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
+import { createRepo, getPopularRepos, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
-import { API_BASE_URL } from "../config";
+import type { RepositoryDTO } from "../types/api";
+import { usePageTitle } from "../util/title";
 
 /* ─── styled helpers ─── */
 
@@ -104,9 +105,10 @@ const SpinAnimation = styled.div`
 /* ─── main page ─── */
 
 const RepositoryListPage: React.FC = () => {
+  usePageTitle("Repositories");
   const { token } = useAuth();
   const [searchParams] = useSearchParams();
-  const [repos, setRepos] = useState<any[]>([]);
+  const [repos, setRepos] = useState<RepositoryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "my">("my");
@@ -114,10 +116,6 @@ const RepositoryListPage: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const query = searchParams.get("q") || "";
-
-  useEffect(() => {
-    document.title = "Repositories | ModelScript";
-  }, []);
 
   useEffect(() => {
     const fetchRepos = async () => {
@@ -131,17 +129,14 @@ const RepositoryListPage: React.FC = () => {
           return;
         }
 
-        const endpoint = activeTab === "all" ? `${API_BASE_URL}/repos/popular?limit=50` : `${API_BASE_URL}/repos`;
-        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-        const res = await fetch(endpoint, { headers });
-        if (!res.ok) throw new Error("Failed to load repositories");
-        const data = await res.json();
+        const data = activeTab === "all" ? await getPopularRepos(50) : await getRepos();
 
         let fetchedRepos = data.repos || [];
         if (query) {
           const lowerQuery = query.toLowerCase();
           fetchedRepos = fetchedRepos.filter(
-            (r: any) => r.project.toLowerCase().includes(lowerQuery) || r.namespace.toLowerCase().includes(lowerQuery),
+            (r: RepositoryDTO) =>
+              r.project.toLowerCase().includes(lowerQuery) || r.namespace.toLowerCase().includes(lowerQuery),
           );
         }
 
@@ -175,44 +170,33 @@ const RepositoryListPage: React.FC = () => {
       const parts = parsedUrl.pathname.split("/").filter(Boolean);
       if (parts.length < 2) throw new Error("Invalid repository URL format");
       repo_full_name = `${parts[0]}/${parts[1]}`.replace(/\.git$/, "");
-    } catch (err: any) {
-      setError(err.message || "Invalid repository URL");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid repository URL";
+      setError(msg);
       return;
     }
 
     setIsAdding(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/repos`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          provider,
-          repo_full_name,
-          external_repo_id: repo_full_name,
-        }),
+      await createRepo({
+        provider,
+        repo_full_name,
+        external_repo_id: repo_full_name,
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { error: text || `HTTP Error ${res.status}` };
-        }
-        setError(data.error || "Failed to add repository");
-      } else {
-        setRepoInput("");
-        setRefreshKey((k) => k + 1);
-        setActiveTab("my");
-      }
+      setRepoInput("");
+      setRefreshKey((k) => k + 1);
+      setActiveTab("my");
     } catch (e: unknown) {
-      const err = e as Error;
-      setError(err.message || "An error occurred");
+      if (e && typeof e === "object" && "response" in e) {
+        const axErr = e as { response?: { data?: { error?: string } } };
+        setError(axErr.response?.data?.error || "Failed to add repository");
+      } else if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError("Failed to add repository");
+      }
     } finally {
       setIsAdding(false);
     }

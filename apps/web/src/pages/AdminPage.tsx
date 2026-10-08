@@ -41,6 +41,7 @@ import {
   type AdminModerationReport,
 } from "../api";
 import Box from "../components/Box";
+import { usePageTitle } from "../util/title";
 
 type AdminTab = "moderation" | "federation" | "dmca" | "audit" | "database" | "flags";
 
@@ -325,6 +326,8 @@ export const AdminPage: React.FC = () => {
     }
     return "moderation";
   }, [subRoute]);
+
+  usePageTitle(`Admin Console — ${activeTab.toUpperCase()}`);
 
   const setActiveTab = (tab: AdminTab) => {
     navigate(`/admin/${tab}`);

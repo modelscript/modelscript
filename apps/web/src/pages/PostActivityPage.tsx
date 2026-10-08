@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
+import { getPostQuotes, getPostReposts } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import Post from "../components/Post";
-import { API_BASE_URL } from "../config";
+import type { PostItem } from "../types/api";
+import { usePageTitle } from "../util/title";
 
 const TabBar = styled.div`
   display: flex;
@@ -76,28 +77,20 @@ const PostActivityPage: React.FC = () => {
   const { token } = useAuth();
 
   const [activeTab, setActiveTab] = useState<"quotes" | "reposts">("quotes");
-  const [quotes, setQuotes] = useState<any[]>([]);
-  const [reposts, setReposts] = useState<any[]>([]);
+  usePageTitle("Post Activity");
+  const [quotes, setQuotes] = useState<PostItem[]>([]);
+  const [reposts, setReposts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchActivity() {
+      if (!id) return;
       setLoading(true);
       try {
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const [quotesRes, repostsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/social/posts/${id}/quotes`, { headers }),
-          fetch(`${API_BASE_URL}/social/posts/${id}/reposts`, { headers }),
-        ]);
+        const [quotesData, repostsData] = await Promise.all([getPostQuotes(id), getPostReposts(id)]);
 
-        if (quotesRes.ok) {
-          const data = await quotesRes.json();
-          setQuotes(data.quotes || []);
-        }
-        if (repostsRes.ok) {
-          const data = await repostsRes.json();
-          setReposts(data.reposts || []);
-        }
+        setQuotes(quotesData.quotes || []);
+        setReposts(repostsData.reposts || []);
       } catch (err) {
         console.error("Failed to fetch post activity:", err);
       } finally {

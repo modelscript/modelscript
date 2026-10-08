@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Spinner, Text } from "@primer/react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
+import { getUserPosts } from "../api";
+import type { PostItem } from "../types/api";
 import Box from "./Box";
 import Post from "./Post";
 
@@ -16,20 +16,14 @@ export default function ProfilePosts({
   type?: "posts" | "replies" | "artifacts";
 }) {
   const { token } = useAuth();
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchPosts() {
       try {
-        const queryParam = type ? `?type=${type}` : "";
-        const res = await fetch(`${API_BASE_URL}/social/users/${username}/posts${queryParam}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPosts(data.posts || []);
-        }
+        const data = await getUserPosts(username, type);
+        setPosts(data.posts || []);
       } catch (err) {
         console.error(err);
       } finally {

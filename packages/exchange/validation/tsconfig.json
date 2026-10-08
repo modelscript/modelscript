@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext", "dom"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/exchange": ["../src/index.ts"],
+      "@modelscript/exchange/cosim": ["../src/cosim/index.ts"],
+      "@modelscript/exchange/cosim/*": ["../src/cosim/*"],
+      "@modelscript/exchange/fmu": ["../src/fmu/index.ts"],
+      "@modelscript/exchange/fmu/*": ["../src/fmu/*"],
+      "@modelscript/exchange/ssp": ["../src/ssp/index.ts"],
+      "@modelscript/exchange/ssp/*": ["../src/ssp/*"],
+      "@modelscript/exchange/*": ["../src/*"]
+    }
+  },
+  "include": ["**/*"],
+  "exclude": ["scratch*/**/*", "wasm/**/*"]
+}

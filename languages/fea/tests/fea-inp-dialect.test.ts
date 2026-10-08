@@ -168,8 +168,8 @@ ENDDATA
     assert.deepStrictEqual(parsed.nodes.get(3), { id: 3, x: 10.0, y: 10.0, z: 0.0 });
 
     assert.strictEqual(parsed.elements.size, 2);
-    assert.deepStrictEqual(parsed.elements.get(101), { id: 101, type: "CQUAD4", nodes: [1, 2, 3, 4] });
-    assert.deepStrictEqual(parsed.elements.get(201), { id: 201, type: "CTETRA", nodes: [1, 2, 3, 5] });
+    assert.deepStrictEqual(parsed.elements.get(101), { id: 101, type: "CQUAD4", family: "shell", nodes: [1, 2, 3, 4] });
+    assert.deepStrictEqual(parsed.elements.get(201), { id: 201, type: "CTETRA", family: "solid", nodes: [1, 2, 3, 5] });
 
     const mat = parsed.materials.get("1");
     assert.ok(mat);
@@ -181,5 +181,118 @@ ENDDATA
     assert.ok(parsed.fixedNodes.has(4));
 
     assert.deepStrictEqual(parsed.nodalLoads.get(2), [0.0, -500.0, 0.0]);
+  });
+
+  it("materializes safe math functions, scientific notation, and captures diagnostics", () => {
+    const dialect = getFeaDialect("inp");
+    const template = `
+FORCE= {{ 1.5e4 * 2.0 }}
+TRIG_FORCE= {{ sind(30) * 1000 }}
+SQRT_VAL= {{ sqrt(144) }}
+PI_VAL= {{ PI }}
+BAD_VAL= {{ missing_symbol + 10 }}
+`;
+    const diagnostics: any[] = [];
+    const materialized = dialect.materialize(template, { diagnostics });
+
+    assert.ok(materialized.includes("FORCE= 30000"));
+    assert.ok(materialized.includes("TRIG_FORCE= 500"));
+    assert.ok(materialized.includes("SQRT_VAL= 12"));
+    assert.ok(materialized.includes("3.14159"));
+    assert.ok(materialized.includes("BAD_VAL= missing_symbol + 10"));
+    assert.strictEqual(diagnostics.length, 1);
+    assert.strictEqual(diagnostics[0].severity, "error");
+  });
+
+  it("parses fixed 8-column BDF decks with blank fields and short-format exponents", () => {
+    const dialect = getFeaDialect("bdf");
+    // Standard fixed 8-character fields without commas
+    const fixedBdf = [
+      "$ Fixed 8-column deck",
+      "GRID    " + "       1" + "        " + "     0.0" + "     0.0" + "     0.0",
+      "GRID    " + "       2" + "        " + "    10.0" + "     0.0" + "     0.0",
+      "MAT1    " + "       1" + "  2.1+11" + "        " + "     0.3" + "  7850.0",
+      "FORCE   " + "       1" + "       2" + "       0" + "   500.0" + "     0.0" + "    -1.0" + "     0.0",
+      "FORCE   " + "       1" + "       2" + "       0" + "   200.0" + "     1.0" + "     0.0" + "     0.0",
+      "SPC1    " + "       1" + "  123456" + "       1" + "    THRU" + "       2",
+      "ENDDATA",
+    ].join("\n");
+
+    const parsed = dialect.parse(fixedBdf);
+    assert.strictEqual(parsed.nodes.size, 2);
+    assert.deepStrictEqual(parsed.nodes.get(1), { id: 1, x: 0.0, y: 0.0, z: 0.0 });
+    assert.deepStrictEqual(parsed.nodes.get(2), { id: 2, x: 10.0, y: 0.0, z: 0.0 });
+
+    const mat = parsed.materials.get("1");
+    assert.ok(mat);
+    assert.strictEqual(mat.E, 2.1e11);
+
+    // Accumulated forces on node 2: [200, -500, 0]
+    assert.deepStrictEqual(parsed.nodalLoads.get(2), [200.0, -500.0, 0.0]);
+
+    // SPC1 THRU range expansion
+    assert.ok(parsed.fixedNodes.has(1));
+    assert.ok(parsed.fixedNodes.has(2));
+  });
+
+  it("parses multiline element continuation, *ELSET, and *NSET GENERATE in INP decks", () => {
+    const dialect = getFeaDialect("inp");
+    const deck = `
+*HEADING
+Multiline Element and Sets Test
+*NODE
+1, 0.0, 0.0, 0.0
+2, 1.0, 0.0, 0.0
+3, 0.0, 1.0, 0.0
+4, 0.0, 0.0, 1.0
+*ELEMENT, TYPE=C3D10, ELSET=TETRA
+1, 1, 2, 3, 4, 5, 6, 7, 8,
+9, 10
+*NSET, NSET=ROOT_NODES, GENERATE
+1, 4, 1
+*ELSET, ELSET=SOLID_PARTS
+1
+`;
+    const parsed = dialect.parse(deck);
+    assert.strictEqual(parsed.elements.size, 1);
+    const elem = parsed.elements.get(1);
+    assert.ok(elem);
+    assert.strictEqual(elem.type, "C3D10");
+    assert.strictEqual(elem.family, "solid");
+    assert.deepStrictEqual(elem.nodes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+    const nset = parsed.nodeSets.get("ROOT_NODES");
+    assert.ok(nset);
+    assert.strictEqual(nset.size, 4);
+    assert.ok(nset.has(1) && nset.has(2) && nset.has(3) && nset.has(4));
+
+    const elset = parsed.elementSets.get("SOLID_PARTS");
+    assert.ok(elset);
+    assert.ok(elset.has(1));
+  });
+
+  it("synthesizes moments and BDF boundaries and handles case-insensitive steps", () => {
+    const momentAction: BoundaryActionPayload = {
+      kind: "moment",
+      targetId: 10,
+      dofs: [5],
+      magnitude: 250.0,
+    };
+    const inpSnippet = synthesizeFeaBoundary(momentAction, "calculix");
+    assert.ok(inpSnippet.includes("*CLOAD"));
+    assert.ok(inpSnippet.includes("10, 5, 250"));
+
+    const bdfFixAction: BoundaryActionPayload = {
+      kind: "fix",
+      targetId: 101,
+      dofs: [1, 2, 3],
+    };
+    const bdfSnippet = synthesizeFeaBoundary(bdfFixAction, "bdf");
+    assert.strictEqual(bdfSnippet, "SPC1, 1, 123, 101");
+
+    const deckLower = `*HEADING\nPlate\n*step\n*static\n*end step\n`;
+    const updated = applyBoundaryActionToDeck(deckLower, momentAction, "calculix");
+    assert.ok(updated.includes("*CLOAD\n10, 5, 250"));
+    assert.ok(updated.indexOf("*CLOAD") < updated.toLowerCase().indexOf("*end step"));
   });
 });

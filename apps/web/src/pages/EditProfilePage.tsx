@@ -4,12 +4,14 @@ import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Button, Flash, Heading, Spinner, TextInput, Textarea } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getUserProfile, updateUserProfile } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-import { API_BASE_URL } from "../config";
+import { usePageTitle } from "../util/title";
 
 const EditProfilePage: React.FC = () => {
+  usePageTitle("Edit Profile");
   const { user, token } = useAuth();
   const navigate = useNavigate();
 
@@ -32,20 +34,15 @@ const EditProfilePage: React.FC = () => {
 
     async function loadCurrentProfile() {
       try {
-        const res = await fetch(`${API_BASE_URL}/users/${user?.username}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const p = data.profile;
-          if (p) {
-            setDisplayName(p.display_name || "");
-            setBio(p.bio || "");
-            setLocation(p.location || "");
-            setWebsite(p.website || "");
-            setAvatarUrl(p.avatar_url || "");
-            setBannerUrl(p.banner_url || "");
-          }
+        const data = await getUserProfile(user.username);
+        const p = data.profile;
+        if (p) {
+          setDisplayName(p.display_name || "");
+          setBio(p.bio || "");
+          setLocation(p.location || "");
+          setWebsite(p.website || "");
+          setAvatarUrl(p.avatar_url || "");
+          setBannerUrl(p.banner_url || "");
         }
       } catch (err) {
         console.error("Failed to load user profile", err);
@@ -65,26 +62,14 @@ const EditProfilePage: React.FC = () => {
     setSuccess(false);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/users/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          display_name: displayName,
-          bio,
-          location,
-          website,
-          avatar_url: avatarUrl,
-          banner_url: bannerUrl,
-        }),
+      await updateUserProfile({
+        display_name: displayName,
+        bio,
+        location,
+        website,
+        avatar_url: avatarUrl,
+        banner_url: bannerUrl,
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to update profile");
-      }
 
       setSuccess(true);
       setTimeout(() => {

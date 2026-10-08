@@ -1268,9 +1268,9 @@ export declare function createWasmParserSync(
   parser: TreeSitterParser;
 };
 
-export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
-export enum SyntaxKind {
+export declare enum SyntaxKind {
   ERROR = 0,
   SourceFile = 10,
   Row = 11,
@@ -1289,7 +1289,7 @@ export enum SyntaxKind {
   EOF = 1023,
 }
 
-export enum FieldId {
+export declare enum FieldId {
   Rows = 1,
   rows = 1,
   Cells = 2,
@@ -1317,7 +1317,7 @@ export interface CSVVirtualComponentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CSVVirtualComponent;
 }
 export declare function isCSVVirtualComponent(node: SyntaxNode | null | undefined): node is CSVVirtualComponentNode;
-export namespace Cst {
+export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
   export const SourceFile: {

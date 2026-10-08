@@ -70,7 +70,10 @@ function jacobiEigendecomposition(
         const app = A[p * n + p]!;
         const aqq = A[q * n + q]!;
         const theta = (aqq - app) / (2.0 * apq);
-        const t = Math.sign(theta) / (Math.abs(theta) + Math.sqrt(theta * theta + 1.0));
+        const t =
+          theta >= 0
+            ? 1.0 / (theta + Math.sqrt(theta * theta + 1.0))
+            : -1.0 / (-theta + Math.sqrt(theta * theta + 1.0));
         const c = 1.0 / Math.sqrt(t * t + 1.0);
         const s = t * c;
         const tau = s / (1.0 + c);

@@ -5,11 +5,12 @@ import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
+import { getUserFollowing } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
 import { CircleIconButton } from "../components/SharedStyles";
-import { API_BASE_URL } from "../config";
+import { usePageTitle } from "../util/title";
 
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
   width: 48px;
@@ -97,6 +98,7 @@ interface FollowUser {
 
 const FollowingPage: React.FC = () => {
   const { username } = useParams();
+  usePageTitle(username ? `People followed by @${username}` : "Following");
   const navigate = useNavigate();
   const { token, user: currentUser } = useAuth();
   const [users, setUsers] = useState<FollowUser[]>([]);
@@ -104,17 +106,11 @@ const FollowingPage: React.FC = () => {
 
   useEffect(() => {
     async function load() {
+      if (!username) return;
       setLoading(true);
       try {
-        const headers: Record<string, string> = {};
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-        const res = await fetch(`${API_BASE_URL}/users/${username}/following`, { headers });
-        if (res.ok) {
-          const data = await res.json();
-          setUsers(data.following);
-        }
+        const data = await getUserFollowing(username);
+        setUsers(data.following || []);
       } catch (err) {
         console.error("Failed to load following", err);
       } finally {

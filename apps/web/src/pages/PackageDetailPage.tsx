@@ -32,10 +32,11 @@ import {
 import CadStepViewer from "../components/artifacts/CadStepViewer";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
-import DatasetTableViewer from "../components/DatasetTableViewer.tsx";
-import FmuSimulatorViewer from "../components/FmuSimulatorViewer.tsx";
+import DatasetTableViewer from "../components/DatasetTableViewer";
+import FmuSimulatorViewer from "../components/FmuSimulatorViewer";
 import InvertedSvg from "../components/InvertedSvg";
-import SysmlViewer from "../components/SysmlViewer.tsx";
+import SysmlViewer from "../components/SysmlViewer";
+import { usePageTitle } from "../util/title";
 
 /* ─── animations ─── */
 
@@ -600,6 +601,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 
 const PackageDetailPage: React.FC = () => {
   const { name, version } = useParams<{ name: string; version: string }>();
+  usePageTitle(name && version ? `${name}@${version}` : "Package Details");
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as TabId) || "readme";
 
@@ -650,12 +652,6 @@ const PackageDetailPage: React.FC = () => {
     setLoading(true);
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    if (name && version) {
-      document.title = `${name}@${version} | ModelScript`;
-    }
-  }, [name, version]);
 
   // Job polling
   useEffect(() => {

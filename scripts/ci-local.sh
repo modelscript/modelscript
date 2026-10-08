@@ -124,7 +124,8 @@ run_task() {
 # 1. Lint Step
 if [ "$MODE_LINT" = true ]; then
   echo ""
-  log_info "Verifying file headers and filename conventions..."
+  log_info "Verifying project graph cycles, file headers and filename conventions..."
+  npm run lint:cycles
   npm run lint:headers
   npm run lint:filenames
   run_task "lint" "ESLint checking"

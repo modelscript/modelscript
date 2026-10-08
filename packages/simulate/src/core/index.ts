@@ -20,6 +20,7 @@ export * from "./torch-autograd-bridge.js";
 export * from "./vmap-arena.js";
 export * from "./wasm-simulation-runner.js";
 export * from "./webgpu-adjoint-runner.js";
+export * from "./webgpu-reduction.js";
 export * from "./webgpu-simulation-runner.js";
 export * from "./wgsl-cache.js";
 export * from "./wgsl-codegen.js";

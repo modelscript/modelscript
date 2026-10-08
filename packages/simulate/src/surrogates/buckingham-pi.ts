@@ -310,7 +310,7 @@ export class BuckinghamPiEngine {
   }
 
   /**
-   * Rescales float vector entries to small integers where possible.
+   * Rescales float vector entries to small coprime integers using rational fraction approximation and LCM/GCD.
    */
   private static rescaleToIntegers(vec: number[]): void {
     // Find smallest non-zero absolute value
@@ -321,10 +321,77 @@ export class BuckinghamPiEngine {
         minNonZero = absV;
       }
     }
-    if (minNonZero < Infinity) {
+    if (!Number.isFinite(minNonZero) || minNonZero === 0) return;
+
+    // First scale so smallest entry has magnitude ~1
+    const scaled = vec.map((v) => v / minNonZero);
+
+    // Helper: gcd of two integers
+    const gcd = (a: number, b: number): number => {
+      let x = Math.abs(a);
+      let y = Math.abs(b);
+      while (y !== 0) {
+        const t = y;
+        y = x % y;
+        x = t;
+      }
+      return x;
+    };
+
+    // Helper: lcm of two integers
+    const lcm = (a: number, b: number): number => {
+      if (a === 0 || b === 0) return 1;
+      return Math.abs((a * b) / gcd(a, b));
+    };
+
+    // For each element, find the smallest denominator q in [1, 24]
+    // such that scaled[i] * q is close to an integer within 1e-3
+    let commonLcm = 1;
+    let allRational = true;
+
+    for (const val of scaled) {
+      if (Math.abs(val) < 1e-4) continue;
+      let foundDenom = 0;
+      for (let q = 1; q <= 24; q++) {
+        const prod = val * q;
+        if (Math.abs(prod - Math.round(prod)) < 1e-3) {
+          foundDenom = q;
+          break;
+        }
+      }
+      if (foundDenom > 0) {
+        commonLcm = lcm(commonLcm, foundDenom);
+      } else {
+        allRational = false;
+        break;
+      }
+    }
+
+    if (allRational && commonLcm >= 1) {
+      // Multiply all by commonLcm and round
+      const intVals = scaled.map((v) => Math.round(v * commonLcm));
+
+      // Compute overall GCD of non-zero integer values to reduce to coprime
+      let overallGcd = 0;
+      for (const iv of intVals) {
+        if (iv !== 0) {
+          overallGcd = overallGcd === 0 ? Math.abs(iv) : gcd(overallGcd, Math.abs(iv));
+        }
+      }
+
+      if (overallGcd > 1) {
+        for (let i = 0; i < vec.length; i++) {
+          vec[i] = intVals[i]! / overallGcd;
+        }
+      } else {
+        for (let i = 0; i < vec.length; i++) {
+          vec[i] = intVals[i]!;
+        }
+      }
+    } else {
+      // Fallback: standard division by minNonZero with integer snapping
       for (let i = 0; i < vec.length; i++) {
         vec[i] /= minNonZero;
-        // Snap close integers
         const roundVal = Math.round(vec[i]!);
         if (Math.abs(vec[i]! - roundVal) < 1e-3) {
           vec[i] = roundVal;

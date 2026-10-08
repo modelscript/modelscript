@@ -7,9 +7,9 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { DocumentManager } from "../../../packages/lsp/src/services/document-manager.js";
-import { WorkspaceManager } from "../../../packages/lsp/src/services/workspace-manager.js";
-import { buildComponentProperties } from "../src/diagram/data.js";
+import { buildComponentProperties } from "../../../languages/modelica/dist/src/diagram/data.js";
+import { DocumentManager } from "../src/services/document-manager.js";
+import { WorkspaceManager } from "../src/services/workspace-manager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

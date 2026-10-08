@@ -54,6 +54,7 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
   height = "400px",
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hasTransferredRef = useRef(false);
   const [status, setStatus] = useState("Initializing...");
 
   useEffect(() => {
@@ -67,6 +68,11 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
       // MAIN THREAD FALLBACK (VS Code Webview)
       setTimeout(() => setStatus("Running on Main Thread (VS Code Fallback)"), 0);
       const initMainThread = async () => {
+        if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) {
+          setStatus("WebGPU is not supported on this browser or origin (requires secure context HTTPS).");
+          return;
+        }
+
         const context = canvas.getContext("webgpu");
         if (!context) {
           setStatus("WebGPU context not available.");
@@ -128,9 +134,19 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
       void initMainThread();
     } else if (uri) {
       // OFFSCREEN CANVAS (LSP Web Worker via side-channel)
+      if (hasTransferredRef.current) {
+        setStatus("Running via OffscreenCanvas (LSP Worker)");
+        return;
+      }
+
       setTimeout(() => setStatus("Running via OffscreenCanvas (LSP Worker)"), 0);
       try {
+        if (!canvas.transferControlToOffscreen) {
+          setStatus("OffscreenCanvas is not supported in this browser.");
+          return;
+        }
         const offscreen = canvas.transferControlToOffscreen();
+        hasTransferredRef.current = true;
         // Dispatch global event for lsp-worker.ts to catch and forward
         window.dispatchEvent(
           new CustomEvent("START_ZERO_COPY_LSP", {
@@ -139,10 +155,7 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
         );
       } catch (e: unknown) {
         setTimeout(
-          () =>
-            setStatus(
-              "OffscreenCanvas not supported or already transferred: " + (e instanceof Error ? e.message : String(e)),
-            ),
+          () => setStatus("OffscreenCanvas initialization error: " + (e instanceof Error ? e.message : String(e))),
           0,
         );
       }

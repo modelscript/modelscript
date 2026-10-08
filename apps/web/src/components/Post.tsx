@@ -33,13 +33,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { bookmarkPost, followUser, getPostAnalytics, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
 import AnimatedCount from "./AnimatedCount";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
 import ComposeModal from "./ComposeModal";
+import ErrorBoundary from "./ErrorBoundary";
 import ProfileHoverCard from "./ProfileHoverCard";
 import WorldMap from "./WorldMap";
 
@@ -701,24 +702,17 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   useEffect(() => {
     if (displayPost?.id && !viewedPostIds.has(displayPost.id)) {
       viewedPostIds.add(displayPost.id);
-      fetch(`${API_BASE_URL}/social/posts/${displayPost.id}/view`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        keepalive: true,
-      }).catch(() => {});
+      recordPostView(displayPost.id);
     }
   }, [displayPost?.id, token]);
 
   useEffect(() => {
-    if (showAnalyticsModal) {
-      fetch(`${API_BASE_URL}/social/posts/${displayPost.id}/analytics`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-        .then((res) => res.json())
+    if (showAnalyticsModal && displayPost?.id) {
+      getPostAnalytics(displayPost.id)
         .then((data) => setAnalyticsData(data))
         .catch(console.error);
     }
-  }, [showAnalyticsModal, displayPost.id, token]);
+  }, [showAnalyticsModal, displayPost?.id, token]);
 
   const impressions = analyticsData?.view_count ?? displayPost.view_count ?? 0;
   const detailExpands = Math.ceil(impressions * 0.05);
@@ -774,15 +768,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/social/posts/${post.id}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLiked(data.liked);
-        setLikeCount((prev: number) => prev + (data.liked ? 1 : -1));
-      }
+      const data = await likePost(post.id);
+      setLiked(data.liked);
+      setLikeCount((prev: number) => prev + (data.liked ? 1 : -1));
     } catch (err) {
       console.error(err);
     }
@@ -798,15 +786,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/social/posts/${displayPost.id}/repost`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setReposted(data.reposted);
-        setRepostCount((prev: number) => prev + (data.reposted ? 1 : -1));
-      }
+      const data = await repostPost(displayPost.id);
+      setReposted(data.reposted);
+      setRepostCount((prev: number) => prev + (data.reposted ? 1 : -1));
     } catch (err) {
       console.error(err);
     }
@@ -821,15 +803,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/social/posts/${displayPost.id}/bookmark`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBookmarked(data.bookmarked);
-        setBookmarkCount((prev: number) => prev + (data.bookmarked ? 1 : -1));
-      }
+      const data = await bookmarkPost(displayPost.id);
+      setBookmarked(data.bookmarked);
+      setBookmarkCount((prev: number) => prev + (data.bookmarked ? 1 : -1));
     } catch (err) {
       console.error(err);
     }
@@ -953,10 +929,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                         e.preventDefault();
                         if (token) {
                           try {
-                            await fetch(`${API_BASE_URL}/users/${displayPost.username}/follow`, {
-                              method: "POST",
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
+                            await followUser(displayPost.username);
                           } catch (err) {
                             console.error(err);
                           }
@@ -1578,10 +1551,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                               e.preventDefault();
                               if (token) {
                                 try {
-                                  await fetch(`${API_BASE_URL}/users/${displayPost.username}/follow`, {
-                                    method: "POST",
-                                    headers: { Authorization: `Bearer ${token}` },
-                                  });
+                                  await followUser(displayPost.username);
                                 } catch (err) {
                                   console.error(err);
                                 }
@@ -2283,4 +2253,23 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   );
 };
 
-export default Post;
+const PostWithErrorBoundary: React.FC<PostProps> = (props) => (
+  <ErrorBoundary
+    fallback={
+      <Box
+        p={3}
+        style={{
+          borderBottom: "1px solid var(--color-border-default)",
+          color: "var(--color-fg-muted)",
+          fontSize: "13px",
+        }}
+      >
+        <Text>Unable to display this post.</Text>
+      </Box>
+    }
+  >
+    <Post {...props} />
+  </ErrorBoundary>
+);
+
+export default PostWithErrorBoundary;

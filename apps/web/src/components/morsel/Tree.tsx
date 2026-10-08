@@ -9,6 +9,7 @@
 
 import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
+import DOMPurify from "dompurify";
 import React from "react";
 import { getClassIcon, getLibraryTree, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
@@ -66,7 +67,9 @@ function ClassIcon({ className }: { className: string }) {
     return <PackageIcon />;
   }
 
-  const displaySvg = invertSvgColors(svg, isDark);
+  const displaySvg = DOMPurify.sanitize(invertSvgColors(svg, isDark), {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
   return (
     <div className="modelica-icon" style={{ width: 20, height: 20 }} dangerouslySetInnerHTML={{ __html: displaySvg }} />
   );

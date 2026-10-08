@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CheckIcon, ChevronDownIcon, PlusIcon, RocketIcon, SearchIcon } from "@primer/octicons-react";
-import React, { useEffect, useState } from "react";
+import { Spinner } from "@primer/react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { getTimeline } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
 import Post from "../components/Post";
 import PostSkeleton from "../components/PostSkeleton";
-import { API_BASE_URL } from "../config";
+import { usePageTitle } from "../util/title";
 
 const TabBar = styled.div`
   display: flex;
@@ -216,6 +219,7 @@ const SecondaryActionButton = styled.button`
 `;
 
 const HomeFeedPage: React.FC = () => {
+  usePageTitle("Home");
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [posts, setPosts] = useState<any[]>([]);
@@ -223,7 +227,24 @@ const HomeFeedPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"forYou" | "following">("forYou");
   const [followingSort, setFollowingSort] = useState<"popular" | "recent">("recent");
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
   const { openCompose } = React.useContext(ComposeContext);
+
+  useEffect(() => {
+    if (listRef.current) {
+      setScrollMargin(listRef.current.offsetTop);
+    }
+  }, []);
+
+  const rowVirtualizer = useWindowVirtualizer({
+    count: posts.length,
+    estimateSize: () => 180,
+    overscan: 5,
+    scrollMargin,
+  });
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -243,15 +264,17 @@ const HomeFeedPage: React.FC = () => {
     }
     async function fetchTimeline() {
       setLoading(true);
+      setHasMore(true);
       try {
-        const endpoint =
-          activeTab === "following" ? `/social/timeline/following?sort=${followingSort}` : "/social/timeline";
-        const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const data = await getTimeline({
+          following: activeTab === "following",
+          sort: followingSort,
+          limit: 20,
         });
-        if (res.ok) {
-          const data = await res.json();
-          setPosts(data.posts || []);
+        const fetchedPosts = data.posts || [];
+        setPosts(fetchedPosts);
+        if (fetchedPosts.length < 20) {
+          setHasMore(false);
         }
       } catch (err) {
         console.error(err);
@@ -261,6 +284,32 @@ const HomeFeedPage: React.FC = () => {
     }
     fetchTimeline();
   }, [token, activeTab, followingSort]);
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await getTimeline({
+        following: activeTab === "following",
+        sort: followingSort,
+        limit: 20,
+        offset: posts.length,
+      });
+      const newPosts = data.posts || [];
+      if (newPosts.length === 0) {
+        setHasMore(false);
+      } else {
+        setPosts((prev) => [...prev, ...newPosts]);
+        if (newPosts.length < 20) {
+          setHasMore(false);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load more posts", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     const handlePostCreated = (e: any) => {
@@ -367,10 +416,43 @@ const HomeFeedPage: React.FC = () => {
             <PostSkeleton />
           </Box>
         ) : (
-          <Box>
-            {posts.map((post) => (
-              <Post key={post.id} post={post} />
-            ))}
+          <Box ref={listRef}>
+            {posts.length > 0 && (
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                  const post = posts[virtualItem.index];
+                  return (
+                    <div
+                      key={post.id || virtualItem.key}
+                      data-index={virtualItem.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualItem.start - (rowVirtualizer.options.scrollMargin ?? 0)}px)`,
+                      }}
+                    >
+                      <Post post={post} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {posts.length > 0 && hasMore && (
+              <Box p={3} display="flex" justifyContent="center">
+                <SecondaryActionButton onClick={handleLoadMore} disabled={loadingMore}>
+                  {loadingMore ? <Spinner size="small" /> : "Load more posts"}
+                </SecondaryActionButton>
+              </Box>
+            )}
             {posts.length === 0 && (
               <EmptyStateContainer>
                 <EmptyStateIconOrb>

@@ -58,6 +58,10 @@ async function runTests() {
           },
           {
             type: "Declaration",
+            children: [{ type: "DataPropertyEntity", children: [{ type: "AbbreviatedIRI", text: ":maxSpeed" }] }],
+          },
+          {
+            type: "Declaration",
             children: [{ type: "NamedIndividualEntity", children: [{ type: "AbbreviatedIRI", text: ":myCar" }] }],
           },
           {
@@ -83,6 +87,57 @@ async function runTests() {
             children: [{ type: "AbbreviatedIRI", text: ":connectedTo" }],
           },
           {
+            type: "AsymmetricObjectPropertyAxiom",
+            children: [{ type: "AbbreviatedIRI", text: ":parentOf" }],
+          },
+          {
+            type: "IrreflexiveObjectPropertyAxiom",
+            children: [{ type: "AbbreviatedIRI", text: ":ancestorOf" }],
+          },
+          {
+            type: "TransitiveObjectPropertyAxiom",
+            children: [{ type: "AbbreviatedIRI", text: ":partOf" }],
+          },
+          {
+            type: "FunctionalDataPropertyAxiom",
+            children: [{ type: "AbbreviatedIRI", text: ":maxSpeed" }],
+          },
+          {
+            type: "InverseObjectPropertiesAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":hasPart" },
+              { type: "AbbreviatedIRI", text: ":partOf" },
+            ],
+          },
+          {
+            type: "DisjointObjectPropertiesAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":hasChild" },
+              { type: "AbbreviatedIRI", text: ":hasParent" },
+            ],
+          },
+          {
+            type: "SameIndividualAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":myCar" },
+              { type: "AbbreviatedIRI", text: ":auto1" },
+            ],
+          },
+          {
+            type: "ObjectPropertyDomainAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":hasEngine" },
+              { type: "AbbreviatedIRI", text: ":Vehicle" },
+            ],
+          },
+          {
+            type: "ObjectPropertyRangeAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":hasEngine" },
+              { type: "AbbreviatedIRI", text: ":Engine" },
+            ],
+          },
+          {
             type: "ClassAssertionAxiom",
             children: [
               { type: "AbbreviatedIRI", text: ":Car" },
@@ -98,6 +153,14 @@ async function runTests() {
             ],
           },
           {
+            type: "DataPropertyAssertionAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":maxSpeed" },
+              { type: "AbbreviatedIRI", text: ":myCar" },
+              { type: "StringLiteral", text: '"220"' },
+            ],
+          },
+          {
             type: "SubClassOfAxiom",
             children: [
               { type: "AbbreviatedIRI", text: ":Car" },
@@ -106,6 +169,82 @@ async function runTests() {
                 children: [
                   { type: "AbbreviatedIRI", text: ":hasEngine" },
                   { type: "AbbreviatedIRI", text: ":Engine" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "SubClassOfAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":Car" },
+              {
+                type: "DataSomeValuesFrom",
+                children: [
+                  { type: "AbbreviatedIRI", text: ":maxSpeed" },
+                  { type: "AbbreviatedIRI", text: "xsd:integer" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "SubClassOfAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":Car" },
+              {
+                type: "ObjectAllValuesFrom",
+                children: [
+                  { type: "AbbreviatedIRI", text: ":hasPart" },
+                  { type: "AbbreviatedIRI", text: ":Component" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "SubClassOfAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":SelfAware" },
+              {
+                type: "ObjectHasSelf",
+                children: [{ type: "AbbreviatedIRI", text: ":knows" }],
+              },
+            ],
+          },
+          {
+            type: "SubClassOfAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":Car" },
+              {
+                type: "ObjectMinCardinality",
+                children: [
+                  { type: "INTEGER", text: "4" },
+                  { type: "AbbreviatedIRI", text: ":hasWheel" },
+                  { type: "AbbreviatedIRI", text: ":Wheel" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "SubClassOfAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":Bicycle" },
+              {
+                type: "ObjectMaxCardinality",
+                children: [
+                  { type: "INTEGER", text: "2" },
+                  { type: "AbbreviatedIRI", text: ":hasWheel" },
+                ],
+              },
+            ],
+          },
+          {
+            type: "SubClassOfAxiom",
+            children: [
+              { type: "AbbreviatedIRI", text: ":Monocycle" },
+              {
+                type: "ObjectExactCardinality",
+                children: [
+                  { type: "INTEGER", text: "1" },
+                  { type: "AbbreviatedIRI", text: ":hasWheel" },
                 ],
               },
             ],

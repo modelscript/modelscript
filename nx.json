@@ -15,10 +15,13 @@
       "!{projectRoot}/build/**",
       "!{projectRoot}/as-gen/**",
       "!{projectRoot}/src/src-gen/**",
-      "!{projectRoot}/src-gen/**"
+      "!{projectRoot}/src-gen/**",
+      "!{projectRoot}/vscode-web/**",
+      "!{projectRoot}/models/**"
     ],
     "production": [
       "default",
+      "!{projectRoot}/tests/**",
       "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)?(.snap)",
       "!{projectRoot}/tsconfig.spec.json",
       "!{projectRoot}/jest.config.[jt]s",
@@ -60,6 +63,7 @@
     "lint": {
       "cache": true,
       "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
       "maxParallel": 4
     },
     "typecheck": {

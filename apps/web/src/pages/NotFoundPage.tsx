@@ -5,6 +5,7 @@ import { Button, Heading, Text } from "@primer/react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../components/Box";
+import { usePageTitle } from "../util/title";
 
 const Container = styled.div`
   display: flex;
@@ -36,6 +37,7 @@ const GlitchNumber = styled.div`
 `;
 
 export default function NotFoundPage() {
+  usePageTitle("Page Not Found");
   const navigate = useNavigate();
 
   return (

@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
+import { followUser, getUserProfile } from "../api";
 import Box from "./Box";
 
 const PopoverContainer = styled.div`
@@ -145,14 +145,9 @@ export default function ProfileHoverCard({
   const fetchProfile = async () => {
     if (data) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${username}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setData(json.profile);
-        setIsFollowing(json.isFollowing);
-      }
+      const json = await getUserProfile(username);
+      setData(json.profile);
+      setIsFollowing(json.isFollowing);
     } catch (e) {}
   };
 
@@ -180,16 +175,10 @@ export default function ProfileHoverCard({
     if (!user || isBlocked) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/social/${username}/follow`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setIsFollowing(json.following);
-        if (data) {
-          setData({ ...data, follower_count: data.follower_count + (json.following ? 1 : -1) });
-        }
+      const json = await followUser(username);
+      setIsFollowing(json.following);
+      if (data) {
+        setData({ ...data, follower_count: data.follower_count + (json.following ? 1 : -1) });
       }
     } catch (err) {}
   };

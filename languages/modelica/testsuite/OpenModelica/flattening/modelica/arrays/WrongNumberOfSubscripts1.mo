@@ -1,7 +1,6 @@
 // name:     WrongNumberOfSubscripts1
 // keywords: array subscript
 // status:   incorrect
-// xfail:    true
 //
 // Tests that using too many subscripts gives an error.
 //

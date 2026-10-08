@@ -619,12 +619,55 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     }
   }
 
+  // 1c. If expression: if ... then ... else ...
+  const fcIf = db.ast.getFirstChild(unwrapped);
+  const fcType = fcIf != 0 ? db.ast.getType(fcIf) : 0;
+  if (
+    fcType == 58 ||
+    (fcIf != 0 && db.ast.textEquals(fcIf, "if")) ||
+    db.ast.startsWith(unwrapped, "if") ||
+    db.ast.textEquals(unwrapped, "if")
+  ) {
+    let curr = fcIf;
+    let checkNext = false;
+    let resultType = TYPE_UNKNOWN;
+    while (curr != 0) {
+      if (checkNext) {
+        const branchType = inferExprType(db, curr, $);
+        if (branchType == TYPE_REAL) return TYPE_REAL;
+        if (branchType != TYPE_UNKNOWN && resultType == TYPE_UNKNOWN) {
+          resultType = branchType;
+        }
+        checkNext = false;
+      }
+      const currType = db.ast.getType(curr);
+      if (currType == 65 || currType == 67 || db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
+        checkNext = true;
+      }
+      curr = db.ast.getNextSibling(curr);
+    }
+    if (resultType != TYPE_UNKNOWN) return resultType;
+  }
+
   // 2. Built-in functions & function calls (sample, sin, cos, pre, etc.)
   for (const cr of db.ast.getDescendants(exprNode, $.component_reference)) {
     if (cr != 0) {
       const sib = db.ast.getNextSibling(cr);
       if (sib != 0 && (db.ast.getType(sib) == $.function_call_args || db.ast.textEquals(sib, "("))) {
-        if (db.ast.textEquals(cr, "der")) {
+        if (
+          db.ast.textEquals(cr, "der") ||
+          db.ast.textEquals(cr, "zeros") ||
+          db.ast.textEquals(cr, "ones") ||
+          db.ast.textEquals(cr, "identity")
+        ) {
+          return TYPE_REAL;
+        }
+        if (db.ast.textEquals(cr, "fill")) {
+          const args = getCallArguments(db, sib, $);
+          if (args.length > 0) {
+            const elemType = inferExprType(db, args[0], $);
+            if (elemType !== TYPE_UNKNOWN) return elemType;
+          }
           return TYPE_REAL;
         }
         if (db.ast.textEquals(cr, "initial") || db.ast.textEquals(cr, "terminal")) {
@@ -748,36 +791,6 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         }
       }
     }
-  }
-
-  // If expression: if ... then ... else ...
-  const fcIf = db.ast.getFirstChild(unwrapped);
-  const fcType = fcIf != 0 ? db.ast.getType(fcIf) : 0;
-  if (
-    fcType == 58 ||
-    (fcIf != 0 && db.ast.textEquals(fcIf, "if")) ||
-    db.ast.startsWith(unwrapped, "if") ||
-    db.ast.textEquals(unwrapped, "if")
-  ) {
-    let curr = fcIf;
-    let checkNext = false;
-    let resultType = TYPE_UNKNOWN;
-    while (curr != 0) {
-      if (checkNext) {
-        const branchType = inferExprType(db, curr, $);
-        if (branchType == TYPE_REAL) return TYPE_REAL;
-        if (branchType != TYPE_UNKNOWN && resultType == TYPE_UNKNOWN) {
-          resultType = branchType;
-        }
-        checkNext = false;
-      }
-      const currType = db.ast.getType(curr);
-      if (currType == 65 || currType == 67 || db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
-        checkNext = true;
-      }
-      curr = db.ast.getNextSibling(curr);
-    }
-    if (resultType != TYPE_UNKNOWN) return resultType;
   }
 
   // Find enclosing class definition for component reference resolution
@@ -2789,4 +2802,36 @@ export function inferExprUnit(db: CodeGraph, exprNode: u32, $: Record<string, u1
   }
 
   return null;
+}
+
+/**
+ * Returns the class specialization kind as a string ("record", "type", "package", "connector", "function", "model", "block", "class").
+ */
+export function getClassKindString(db: CodeGraph, clsNode: u32, $: Record<string, u16>): string {
+  if (isClassKind(db, clsNode, "function")) return "function";
+  if (isClassKind(db, clsNode, "record")) return "record";
+  if (isClassKind(db, clsNode, "connector")) return "connector";
+  if (isClassKind(db, clsNode, "model")) return "model";
+  if (isClassKind(db, clsNode, "block")) return "block";
+  if (isClassKind(db, clsNode, "package")) return "package";
+  if (isClassKind(db, clsNode, "type")) return "type";
+  return "class";
+}
+
+/**
+ * Resolves the name AST node for a class_definition.
+ */
+export function getClassNameNode(db: CodeGraph, clsNode: u32, $: Record<string, u16>): u32 {
+  if (clsNode == 0) return 0;
+  for (const spec of db.ast.getDescendants(clsNode, $.long_class_specifier)) {
+    const n = db.ast.getChildByFieldId(spec, "name");
+    if (n != 0) return n;
+    for (const id of db.ast.getDescendants(spec, $.identifier)) return id;
+  }
+  for (const spec of db.ast.getDescendants(clsNode, $.short_class_specifier)) {
+    const n = db.ast.getChildByFieldId(spec, "name");
+    if (n != 0) return n;
+    for (const id of db.ast.getDescendants(spec, $.identifier)) return id;
+  }
+  return 0;
 }

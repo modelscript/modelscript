@@ -1,13 +1,50 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { BoundaryActionPayload, MaterializeOptions, ParameterLookup } from "./types.js";
+import type { BoundaryActionPayload, CaeDiagnostic, MaterializeOptions, ParameterLookup } from "./types.js";
+
+const MATH_ENV: Record<string, any> = {
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  atan2: Math.atan2,
+  sind: (deg: number) => Math.sin((deg * Math.PI) / 180),
+  cosd: (deg: number) => Math.cos((deg * Math.PI) / 180),
+  tand: (deg: number) => Math.tan((deg * Math.PI) / 180),
+  rad: (deg: number) => (deg * Math.PI) / 180,
+  deg: (rad: number) => (rad * 180) / Math.PI,
+  sqrt: Math.sqrt,
+  cbrt: Math.cbrt,
+  abs: Math.abs,
+  exp: Math.exp,
+  log: Math.log,
+  log10: Math.log10,
+  log2: Math.log2,
+  pow: Math.pow,
+  min: Math.min,
+  max: Math.max,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  round: Math.round,
+  pi: Math.PI,
+  PI: Math.PI,
+  e: Math.E,
+  E: Math.E,
+};
+
+const MATH_KEYS = Object.keys(MATH_ENV);
+const MATH_VALS = Object.values(MATH_ENV);
+const ALLOWED_IDENTIFIERS = new Set(MATH_KEYS);
 
 /**
- * Evaluates an arithmetic expression string with parameter lookup.
+ * Evaluates an arithmetic expression string with parameter lookup and safe math functions.
  */
 export function evaluateCfdExpression(
   exprStr: string,
   lookup?: ParameterLookup | Record<string, number | string>,
+  diagnostics?: CaeDiagnostic[],
 ): number | string {
   const trimmed = exprStr.trim();
   if (!trimmed) return "";
@@ -28,31 +65,60 @@ export function evaluateCfdExpression(
   };
 
   if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(trimmed)) {
+    if (trimmed in MATH_ENV) {
+      const val = MATH_ENV[trimmed];
+      if (typeof val === "number") return val;
+    }
     const val = resolveVal(trimmed);
     if (val !== undefined) return val;
   }
 
   try {
-    const sanitized = trimmed.replace(/([A-Za-z_][A-Za-z0-9_.]*)/g, (match) => {
-      const resolved = resolveVal(match);
+    const numOrIdentRegex = /(\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\.\d+(?:[eE][+-]?\d+)?\b)|([A-Za-z_][A-Za-z0-9_.]*)/g;
+
+    const sanitized = trimmed.replace(numOrIdentRegex, (_match, numMatch, identMatch) => {
+      if (numMatch) return numMatch;
+      if (identMatch in MATH_ENV) return identMatch;
+      const resolved = resolveVal(identMatch);
       if (typeof resolved === "number") return resolved.toString();
       if (typeof resolved === "string" && !isNaN(Number(resolved))) return resolved;
       if (typeof resolved === "string") return JSON.stringify(resolved);
-      throw new Error(`Unresolved parameter: '${match}'`);
+      throw new Error(`Unresolved parameter: '${identMatch}'`);
     });
 
-    const jsExpr = sanitized.replace(/\^/g, "**");
-    if (!/^[0-9+\-*/().eE\s*]+$/.test(jsExpr)) {
+    // Replace ^ with ** and wrap unary minus before ** to avoid JS syntax error
+    let jsExpr = sanitized.replace(/\^/g, "**");
+    jsExpr = jsExpr.replace(/(^|[+\-*/(,\s])\s*-\s*([0-9.]+|\([^)]+\))\s*\*\*/g, "$1(-$2)**");
+
+    // Validate that all remaining identifiers are in MATH_ENV
+    const identsOnly = jsExpr.replace(/(\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\.\d+(?:[eE][+-]?\d+)?\b)/g, "");
+    const remainingIdents = identsOnly.match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+    for (const ident of remainingIdents) {
+      if (!ALLOWED_IDENTIFIERS.has(ident)) {
+        throw new Error(`Expression contains illegal identifier: '${ident}'`);
+      }
+    }
+
+    if (!/^[A-Za-z0-9+\-*/().,\s*]+$/.test(jsExpr)) {
       throw new Error(`Expression contains illegal characters: ${jsExpr}`);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const result = Function(`"use strict"; return (${jsExpr})`)();
+    const fn = new Function(...MATH_KEYS, `"use strict"; return (${jsExpr});`);
+    const result = fn(...MATH_VALS);
     if (typeof result === "number" && !isNaN(result)) {
       return result;
     }
   } catch (err: any) {
-    console.warn(`[cfd:materializer] Failed to evaluate expression '${trimmed}':`, err.message || err);
+    if (diagnostics) {
+      diagnostics.push({
+        severity: "error",
+        message: err.message || String(err),
+        expression: trimmed,
+      });
+    } else {
+      console.warn(`[cfd:materializer] Failed to evaluate expression '${trimmed}':`, err.message || err);
+    }
   }
 
   return trimmed;
@@ -63,7 +129,7 @@ export function evaluateCfdExpression(
  * with their evaluated numeric or string values.
  */
 export function materializeCfdConfig(templateText: string, options: MaterializeOptions = {}): string {
-  const { evaluator, formatNumber } = options;
+  const { evaluator, formatNumber, diagnostics } = options;
 
   const defaultFormat = (val: number): string => {
     if (Number.isInteger(val)) return val.toString();
@@ -76,7 +142,7 @@ export function materializeCfdConfig(templateText: string, options: MaterializeO
   const formatter = formatNumber || defaultFormat;
 
   return templateText.replace(/\{\{([^{}]+)\}\}/g, (_match, expr) => {
-    const evaluated = evaluateCfdExpression(expr.trim(), evaluator);
+    const evaluated = evaluateCfdExpression(expr.trim(), evaluator, diagnostics);
     if (typeof evaluated === "number") {
       return formatter(evaluated);
     }
@@ -155,10 +221,11 @@ export function applyBoundaryActionToConfig(
   const directive = synthesizeCfdBoundary(action, dialect);
   const name = String(action.targetId);
   const normDialect = dialect.toLowerCase();
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   if (normDialect === "su2" || normDialect === ".cfg") {
     // Look for existing MARKER_* directive with this marker name
-    const markerRegex = new RegExp(`^MARKER_[A-Z0-9_]+\\s*=\\s*\\(\\s*${name}\\s*,.*$`, "m");
+    const markerRegex = new RegExp(`^\\s*MARKER_[A-Z0-9_]+\\s*=\\s*\\(\\s*${escapedName}\\s*[,\\)].*$`, "m");
     if (markerRegex.test(configText)) {
       return configText.replace(markerRegex, directive);
     }
@@ -166,9 +233,35 @@ export function applyBoundaryActionToConfig(
     const trimmed = configText.trimEnd();
     return `${trimmed}\n${directive}\n`;
   } else if (normDialect === "openfoam") {
-    const blockRegex = new RegExp(`^\\s*${name}\\s*\\{[^}]*\\}`, "m");
+    const blockRegex = new RegExp(`^\\s*${escapedName}\\s*\\{[^}]*\\}`, "m");
     if (blockRegex.test(configText)) {
       return configText.replace(blockRegex, directive);
+    }
+    // If boundaryField exists, insert before closing brace of boundaryField
+    const bfIdx = configText.indexOf("boundaryField");
+    if (bfIdx !== -1) {
+      const openBrace = configText.indexOf("{", bfIdx);
+      if (openBrace !== -1) {
+        let depth = 1;
+        let closeBrace = -1;
+        for (let i = openBrace + 1; i < configText.length; i++) {
+          if (configText[i] === "{") depth++;
+          else if (configText[i] === "}") {
+            depth--;
+            if (depth === 0) {
+              closeBrace = i;
+              break;
+            }
+          }
+        }
+        if (closeBrace !== -1) {
+          const indented = directive
+            .split("\n")
+            .map((l) => `    ${l}`)
+            .join("\n");
+          return `${configText.slice(0, closeBrace).trimEnd()}\n${indented}\n${configText.slice(closeBrace)}`;
+        }
+      }
     }
     const trimmed = configText.trimEnd();
     return `${trimmed}\n${directive}\n`;

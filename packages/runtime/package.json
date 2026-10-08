@@ -269,7 +269,7 @@
     "build": "npm run asbuild && tsc",
     "clean": "rimraf dist build",
     "lint": "eslint src --no-warn-ignored",
-    "test": "mkdir -p coverage && npx tsx --import ./tests/test-setup.ts --test --experimental-test-coverage --test-coverage-exclude=\"**/dist/**\" --test-coverage-exclude=\"**/node_modules/**\" --test-coverage-exclude=\"**/tests/**\" --test-concurrency=2 --test-timeout=120000 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=../../scripts/node-test-ctrf-reporter.cjs --test-reporter-destination=stdout tests/*.test.ts",
+    "test": "node ../../scripts/test-runner.js --timeout=120000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -277,7 +277,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "assemblyscript": "^0.27.36",
+    "assemblyscript": "^0.28.19",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   },

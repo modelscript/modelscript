@@ -8,5 +8,6 @@ build
 **/src-gen/**
 **/scratch*/**
 **/scratch_*/**
-packages/language/tests
+apps/ide/vscode-web/**
+apps/ide/models/**
 packages/dsl/src/codegen/runtime/**

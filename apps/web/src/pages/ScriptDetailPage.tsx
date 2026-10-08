@@ -4,8 +4,10 @@ import { ArrowLeftIcon, CheckCircleFillIcon, CircleIcon, ClockIcon, XCircleFillI
 import { Heading, Label, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getJobLogs } from "../api";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
+import { usePageTitle } from "../util/title";
 
 interface JobStep {
   id: number;
@@ -15,6 +17,7 @@ interface JobStep {
 
 const ScriptDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  usePageTitle(id ? `Job #${id}` : "Job Details");
   const navigate = useNavigate();
   const [job, setJob] = useState<Record<string, unknown> | null>(null);
   const [steps, setSteps] = useState<JobStep[]>([]);
@@ -45,11 +48,11 @@ const ScriptDetailPage: React.FC = () => {
 
     evtSource.addEventListener("complete", () => {
       evtSource.close();
-      // Fetch historical logs just in case the stream missed something fast
-      fetch(`/api/v1/jobs/${id}/logs`)
-        .then((res) => res.text())
-        .then((text) => setLogs(text))
-        .catch(console.error);
+      if (id) {
+        getJobLogs(id)
+          .then((text) => setLogs(typeof text === "string" ? text : JSON.stringify(text, null, 2)))
+          .catch(console.error);
+      }
     });
 
     return () => {

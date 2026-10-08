@@ -26,9 +26,10 @@ import { Heading, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import styled, { keyframes } from "styled-components";
-import { getClusterStatus, getUnifiedUserJobs, type ClusterStatus } from "../api";
+import { getClusterStatus, getDbJobs, getJobTemplates, getUnifiedUserJobs, type ClusterStatus } from "../api";
 import Box from "../components/Box";
 import { safeJsonParse } from "../util/json";
+import { usePageTitle } from "../util/title";
 
 // ── Animations ────────────────────────────────────────────────────────
 
@@ -205,6 +206,7 @@ const categoryIcon = (icon: string) => {
 // ── Main Component ──────────────────────────────────────────────────
 
 const ScriptsListPage: React.FC = () => {
+  usePageTitle("Jobs & HPC");
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") || "queue";
   const [templates, setTemplates] = useState<ScriptTemplate[]>([]);
@@ -228,8 +230,8 @@ const ScriptsListPage: React.FC = () => {
       const [cluster, unifiedJobsRes, dbJobsRes, templatesRes] = await Promise.allSettled([
         getClusterStatus(),
         getUnifiedUserJobs(),
-        fetch("/api/v1/jobs").then((r) => (r.ok ? r.json() : { jobs: [] })),
-        fetch("/api/v1/jobs/templates").then((r) => (r.ok ? r.json() : { templates: [] })),
+        getDbJobs(),
+        getJobTemplates(),
       ]);
 
       if (cluster.status === "fulfilled") {

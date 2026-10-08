@@ -1194,26 +1194,97 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 5010,
     message: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const elsewhen = db.ast.getChildByFieldId(node, "elsewhen");
-      if (elsewhen != 0) {
-        const whenVars = db.set.create();
-        const elseVars = db.set.create();
-        for (const eq of db.ast.getDescendants(node, $.simple_equation)) {
-          const lhs = db.ast.getChildByFieldId(eq, "lhs");
-          if (lhs != 0) {
-            const span = db.ast.getTextSpan(lhs);
-            db.set.add(whenVars, db.hash.span64(span));
+      let ch = db.ast.getFirstChild(node);
+      const branches: u64[][] = [[]];
+      let branchIdx = 0;
+
+      while (ch != 0) {
+        if (db.ast.textEquals(ch, "elsewhen")) {
+          branchIdx++;
+          branches.push([]);
+        } else {
+          const currentList = branches[branchIdx];
+          if ($.simple_equation != 0) {
+            if (db.ast.getType(ch) == $.simple_equation) {
+              let lhs = db.ast.getChildByFieldId(ch, "lhs");
+              if (lhs == 0 && $.lhs_expression != 0) {
+                for (const l of db.ast.getDescendants(ch, $.lhs_expression)) {
+                  lhs = l;
+                  break;
+                }
+              }
+              if (lhs != 0) {
+                const s = db.ast.getTextSpan(lhs);
+                const h = db.hash.span64(s);
+                if (!currentList.includes(h)) currentList.push(h);
+              }
+            }
+            for (const eq of db.ast.getDescendants(ch, $.simple_equation)) {
+              let lhs = db.ast.getChildByFieldId(eq, "lhs");
+              if (lhs == 0 && $.lhs_expression != 0) {
+                for (const l of db.ast.getDescendants(eq, $.lhs_expression)) {
+                  lhs = l;
+                  break;
+                }
+              }
+              if (lhs != 0) {
+                const s = db.ast.getTextSpan(lhs);
+                const h = db.hash.span64(s);
+                if (!currentList.includes(h)) currentList.push(h);
+              }
+            }
+          }
+          if ($.assignment_statement != 0) {
+            if (db.ast.getType(ch) == $.assignment_statement) {
+              let target = db.ast.getChildByFieldId(ch, "target");
+              if (target == 0 && $.component_reference != 0) {
+                for (const cr of db.ast.getDescendants(ch, $.component_reference)) {
+                  target = cr;
+                  break;
+                }
+              }
+              if (target != 0) {
+                const s = db.ast.getTextSpan(target);
+                const h = db.hash.span64(s);
+                if (!currentList.includes(h)) currentList.push(h);
+              }
+            }
+            for (const asgn of db.ast.getDescendants(ch, $.assignment_statement)) {
+              let target = db.ast.getChildByFieldId(asgn, "target");
+              if (target == 0 && $.component_reference != 0) {
+                for (const cr of db.ast.getDescendants(asgn, $.component_reference)) {
+                  target = cr;
+                  break;
+                }
+              }
+              if (target != 0) {
+                const s = db.ast.getTextSpan(target);
+                const h = db.hash.span64(s);
+                if (!currentList.includes(h)) currentList.push(h);
+              }
+            }
           }
         }
-        for (const eq of db.ast.getDescendants(elsewhen, $.simple_equation)) {
-          const lhs = db.ast.getChildByFieldId(eq, "lhs");
-          if (lhs != 0) {
-            const span = db.ast.getTextSpan(lhs);
-            db.set.add(elseVars, db.hash.span64(span));
+        ch = db.ast.getNextSibling(ch);
+      }
+
+      if (branches.length > 1) {
+        const baseSet = branches[0];
+        baseSet.sort();
+        for (let b = 1; b < branches.length; b++) {
+          const compSet = branches[b];
+          compSet.sort();
+          if (baseSet.length != compSet.length) {
+            db.diagnostic(node);
+            return;
+          }
+          for (let i = 0; i < baseSet.length; i++) {
+            if (baseSet[i] != compSet[i]) {
+              db.diagnostic(node);
+              return;
+            }
           }
         }
-        db.set.release(whenVars);
-        db.set.release(elseVars);
       }
     },
   },

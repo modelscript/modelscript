@@ -20,8 +20,8 @@ end BuiltinTimeInvalid1;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/declarations/BuiltinTimeInvalid1.mo:10:5-10:25:writable] Error: Built-in variable 'time' may only be used in a model or block.
-// [OpenModelica/flattening/modelica/declarations/BuiltinTimeInvalid1.mo:13:3-13:15:writable] Error: Class f not found in scope BuiltinTimeInvalid1 (looking for a function or record).
+// [OpenModelica/flattening/modelica/declarations/BuiltinTimeInvalid1.mo:11:5-11:25:writable] Error: Built-in variable 'time' may only be used in a model or block.
+// [OpenModelica/flattening/modelica/declarations/BuiltinTimeInvalid1.mo:14:3-14:15:writable] Error: Class f not found in scope BuiltinTimeInvalid1 (looking for a function or record).
 // Error: Error occurred while flattening model BuiltinTimeInvalid1
 //
 // Execution failed!

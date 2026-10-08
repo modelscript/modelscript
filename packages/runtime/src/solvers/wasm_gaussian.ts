@@ -85,16 +85,23 @@ export class WasmGaussian {
   solveLinearSystem(A: Float64Array[] | Float64Array, b: Float64Array): Float64Array {
     const n = b.length;
     if (this.wasmInstance?.exports?.luFactor && this.wasmInstance?.exports?.luSolve && this.wasmInstance?.memory) {
-      const memF64 = new Float64Array(this.wasmInstance.memory.buffer);
-      const memI32 = new Int32Array(this.wasmInstance.memory.buffer);
-
       const matrixBytes = n * n * 8;
       const matrixPtr = 1024;
-      const pivPtr = matrixPtr + matrixBytes;
-      const scalePtr = pivPtr + n * 4;
-      const bPtr = scalePtr + n * 8;
-      const scratchPtr = bPtr + n * 8;
+      const pivPtr = (matrixPtr + matrixBytes + 7) & ~7;
+      const scalePtr = (pivPtr + n * 4 + 7) & ~7;
+      const bPtr = (scalePtr + n * 8 + 7) & ~7;
+      const scratchPtr = (bPtr + n * 8 + 7) & ~7;
+      const totalBytes = (scratchPtr + n * 8 + 7) & ~7;
 
+      if (
+        totalBytes > this.wasmInstance.memory.buffer.byteLength &&
+        typeof this.wasmInstance.memory.grow === "function"
+      ) {
+        const pagesNeeded = Math.ceil((totalBytes - this.wasmInstance.memory.buffer.byteLength) / 65536);
+        this.wasmInstance.memory.grow(pagesNeeded);
+      }
+
+      const memF64 = new Float64Array(this.wasmInstance.memory.buffer);
       const matrixOffset = matrixPtr >> 3;
       if (Array.isArray(A)) {
         for (let i = 0; i < n; i++) {

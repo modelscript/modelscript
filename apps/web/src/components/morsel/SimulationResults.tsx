@@ -4,6 +4,7 @@ import { Spinner } from "@primer/react";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { getSimulationJobResult } from "../../api";
 
 export const SIMULATION_COLORS = [
   "#0969da",
@@ -92,12 +93,7 @@ export function SimulationResults({
           return;
         }
 
-        const response = await fetch(`/api/v1/simulate/${jobId}/result`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch results: ${response.statusText}`);
-        }
-
-        const csvText = await response.text();
+        const csvText = await getSimulationJobResult(jobId);
 
         Papa.parse(csvText, {
           header: true,

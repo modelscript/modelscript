@@ -3,6 +3,7 @@
 import { PlayIcon, ServerIcon, XIcon } from "@primer/octicons-react";
 import { Button, Dialog, IconButton, Spinner } from "@primer/react";
 import { useEffect, useState } from "react";
+import { dispatchCloudJob, getCloudBalance, getCloudJobResult, getCloudProfiles } from "../../api";
 
 export interface CloudDispatchModalProps {
   isOpen: boolean;
@@ -58,14 +59,7 @@ export function CloudDispatchModal({
     }
 
     setLoading(true);
-    Promise.all([
-      fetch("/api/v1/cloud/profiles")
-        .then((r) => r.json())
-        .catch(() => ({ profiles: [] })),
-      fetch("/api/v1/cloud/balance")
-        .then((r) => r.json())
-        .catch(() => ({ balance: 100 })),
-    ])
+    Promise.all([getCloudProfiles().catch(() => ({ profiles: [] })), getCloudBalance().catch(() => ({ balance: 100 }))])
       .then(([profilesData, balanceData]) => {
         setProfiles(profilesData.profiles || []);
         setBalance(balanceData.balance ?? 0);
@@ -83,37 +77,18 @@ export function CloudDispatchModal({
     setStatus("queued");
 
     try {
-      const res = await fetch("/api/v1/cloud/dispatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          domain: "modelica",
-          name: modelName || "Model",
-          profile: selectedProfile,
-          sourceContent: sourceCode,
-          experiment: {
-            startTime: experimentConfig?.startTime ?? 0,
-            stopTime: experimentConfig?.stopTime ?? 10,
-            numberOfIntervals: 500,
-          },
-        }),
+      const data = await dispatchCloudJob({
+        domain: "modelica",
+        name: modelName || "Model",
+        profile: selectedProfile,
+        sourceContent: sourceCode,
+        experiment: {
+          startTime: experimentConfig?.startTime ?? 0,
+          stopTime: experimentConfig?.stopTime ?? 10,
+          numberOfIntervals: 500,
+        },
       });
 
-      if (res.status === 402) {
-        const errData = await res.json().catch(() => ({}));
-        setError(`Insufficient credits (${errData.required ?? "?"} required, balance: ${errData.balance ?? balance})`);
-        setDispatching(false);
-        return;
-      }
-
-      if (!res.ok) {
-        const text = await res.text();
-        setError(`Dispatch failed: ${text}`);
-        setDispatching(false);
-        return;
-      }
-
-      const data = await res.json();
       const dispatchedJobId = data.jobId;
       setJobId(dispatchedJobId);
       setStatus("running");
@@ -132,13 +107,14 @@ export function CloudDispatchModal({
               eventSource.close();
               setDispatching(false);
               // Fetch results
-              const resultRes = await fetch(`/api/v1/cloud/jobs/${dispatchedJobId}/result`);
-              if (resultRes.ok) {
-                const csvText = await resultRes.text();
+              try {
+                const csvText = await getCloudJobResult(dispatchedJobId);
                 const parsed = parseCsvResults(csvText);
                 if (parsed) {
                   onResultLoaded(parsed);
                 }
+              } catch (resErr) {
+                console.error("Failed to load result", resErr);
               }
             } else if (st === "failed") {
               eventSource.close();

@@ -98,6 +98,10 @@ export function householderQR(A: Float64Array[], n: number): QRResult {
         R[i]![j] -= scale * v[i]!;
       }
     }
+    R[k]![k] = alpha;
+    for (let i = k + 1; i < n; i++) {
+      R[i]![k] = 0.0;
+    }
 
     // 4. Accumulate into Q: Q = Q * (I - beta * v * v^T)
     // Q[i, j] -= beta * (Q[i, :] * v) * v[j]

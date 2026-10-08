@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { HeartFillIcon, MentionIcon, PersonIcon, ReplyIcon, StarIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { getNotifications, markNotificationsRead } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ProfileHoverCard from "../components/ProfileHoverCard";
-import { API_BASE_URL } from "../config";
 import { safeJsonParse } from "../util/json";
+import { usePageTitle } from "../util/title";
 
 import { StickyHeader } from "../components/SharedStyles";
 
@@ -200,6 +201,7 @@ function groupNotifications(notifs: any[]) {
 }
 
 const NotificationsPage: React.FC = () => {
+  usePageTitle("Notifications");
   const { token, user, setUnreadCount } = useAuth();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -208,10 +210,7 @@ const NotificationsPage: React.FC = () => {
 
   const markAllRead = () => {
     if (!token) return;
-    fetch(`${API_BASE_URL}/social/notifications/read`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    markNotificationsRead()
       .then(() => {
         setUnreadCount(0);
         setNotifications((prev) => prev.map((n) => ({ ...n, read: 1 })));
@@ -226,13 +225,8 @@ const NotificationsPage: React.FC = () => {
     }
     async function fetchNotifications() {
       try {
-        const res = await fetch(`${API_BASE_URL}/social/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setNotifications(groupNotifications(data.notifications));
-        }
+        const data = await getNotifications();
+        setNotifications(groupNotifications(data.notifications || []));
       } catch (err) {
         console.error(err);
       } finally {
@@ -245,10 +239,7 @@ const NotificationsPage: React.FC = () => {
   useEffect(() => {
     if (!token) return;
     const timeout = setTimeout(() => {
-      fetch(`${API_BASE_URL}/social/notifications/read`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      markNotificationsRead()
         .then(() => {
           setUnreadCount(0);
         })

@@ -154,8 +154,11 @@ export function run(targetFilter = "", dryRun = false, checkOnly = false): Heade
       continue;
     }
 
-    stats.scanned++;
     const fullPath = path.join(REPO_ROOT, relPath);
+    if (!fs.existsSync(fullPath)) {
+      continue;
+    }
+    stats.scanned++;
     normalizeFile(fullPath, relPath, dryRun, checkOnly, stats);
   }
 

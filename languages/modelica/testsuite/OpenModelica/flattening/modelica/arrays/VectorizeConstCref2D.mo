@@ -1,7 +1,6 @@
 // name:     VectorizeConstCref2D
 // keywords: vectorization cref matrix bug3386
 // status:   correct
-// xfail:    true
 //
 // Tests vectorization of constant 2d cref.
 //

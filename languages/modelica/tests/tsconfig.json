@@ -2,7 +2,14 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "rootDir": "../",
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/modelica": ["../src/index.ts"],
+      "@modelscript/modelica/factory": ["../src/factory.ts"],
+      "@modelscript/modelica/parser": ["../src-gen/bindings.js"],
+      "@modelscript/modelica/*": ["../src/*"]
+    }
   },
   "include": ["**/*.ts"]
 }

@@ -1,7 +1,6 @@
 // name: redeclare3.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // FAILREASON: Invalid usage of time inside function not checked.
 //

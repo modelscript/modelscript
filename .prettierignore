@@ -5,9 +5,8 @@ as-gen
 **/src-gen/**
 src-gen/**
 .react-router
-packages/ide/vscode-web/
-packages/ide/models/
-packages/language/src/codegen/runtime/**
+apps/ide/vscode-web/
+apps/ide/models/
 packages/dsl/src/codegen/runtime/**
 packages/runtime/src/wasm/**
 packages/runtime/assembly/**

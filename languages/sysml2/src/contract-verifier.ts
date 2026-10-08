@@ -525,6 +525,16 @@ export class ContractAlgebra {
   }
 
   /**
+   * Evaluates Assume-Guarantee satisfaction between a guarantee contract and an assumption contract.
+   */
+  public static verifyAssumeGuaranteePair(
+    guaranteeContract: AssumeGuaranteeContract,
+    assumptionContract: AssumeGuaranteeContract,
+  ): RefinementResult {
+    return ContractAlgebra.refines(guaranteeContract, assumptionContract);
+  }
+
+  /**
    * Parallel composition C = C1 (x) C2:
    * G = G1 /\ G2
    * A = (A1 /\ A2) \/ ~(G1 /\ G2)

@@ -1,7 +1,6 @@
 // name: ParameterDer
 // keywords: der
 // status: correct
-// xfail:    true
 //
 // Tests the builtin der operator.
 //

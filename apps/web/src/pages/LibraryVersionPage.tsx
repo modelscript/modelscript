@@ -9,6 +9,7 @@ import type { Library } from "../api";
 import { getLibraryVersions } from "../api";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
+import { usePageTitle } from "../util/title";
 
 /* ─── styled helpers ─── */
 
@@ -99,6 +100,7 @@ const VersionName = styled.span`
 
 const LibraryVersionPage: React.FC = () => {
   const { name } = useParams<{ name: string }>();
+  usePageTitle(name ? `${name} — Versions` : "Versions");
   const [library, setLibrary] = useState<Library | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,12 +121,6 @@ const LibraryVersionPage: React.FC = () => {
     };
 
     fetchVersions();
-  }, [name]);
-
-  useEffect(() => {
-    if (name) {
-      document.title = `${name} — Versions | ModelScript`;
-    }
   }, [name]);
 
   if (loading) {

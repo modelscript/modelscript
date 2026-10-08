@@ -450,6 +450,100 @@ export class UnmanagedFloat64Array {
       this[i] = val;
     }
   }
+
+  @inline getPtr(index: i32): usize {
+    return changetype<usize>(this) + (((index as u32) as usize) << 3);
+  }
+
+  /**
+   * Vectorized DAXPY: this[i] += alpha * x[i] using 128-bit SIMD f64x2.
+   */
+  @inline axpy(alpha: f64, x: UnmanagedFloat64Array, count: i32): void {
+    let vAlpha = f64x2.splat(alpha);
+    let i: i32 = 0;
+    let endSimd = count & ~1;
+    for (; i < endSimd; i += 2) {
+      let pY = this.getPtr(i);
+      let pX = x.getPtr(i);
+      let vY = v128.load(pY);
+      let vX = v128.load(pX);
+      v128.store(pY, f64x2.add(vY, f64x2.mul(vAlpha, vX)));
+    }
+    for (; i < count; i++) {
+      this[i] += alpha * x[i];
+    }
+  }
+
+  /**
+   * Vectorized in-place scaling: this[i] *= alpha using 128-bit SIMD f64x2.
+   */
+  @inline scale(alpha: f64, count: i32): void {
+    let vAlpha = f64x2.splat(alpha);
+    let i: i32 = 0;
+    let endSimd = count & ~1;
+    for (; i < endSimd; i += 2) {
+      let p = this.getPtr(i);
+      v128.store(p, f64x2.mul(vAlpha, v128.load(p)));
+    }
+    for (; i < count; i++) {
+      this[i] *= alpha;
+    }
+  }
+
+  /**
+   * Vectorized copy: this[i] = src[i].
+   */
+  @inline copyFrom(src: UnmanagedFloat64Array, count: i32): void {
+    let bytes = ((count as u32) as usize) << 3;
+    memory.copy(changetype<usize>(this), changetype<usize>(src), bytes);
+  }
+
+  /**
+   * Vectorized dot product: sum(this[i] * other[i]).
+   */
+  @inline dot(other: UnmanagedFloat64Array, count: i32): f64 {
+    let vSum = f64x2.splat(0.0);
+    let i: i32 = 0;
+    let endSimd = count & ~1;
+    for (; i < endSimd; i += 2) {
+      let vA = v128.load(this.getPtr(i));
+      let vB = v128.load(other.getPtr(i));
+      vSum = f64x2.add(vSum, f64x2.mul(vA, vB));
+    }
+    let total = f64x2.extract_lane(vSum, 0) + f64x2.extract_lane(vSum, 1);
+    for (; i < count; i++) {
+      total += this[i] * other[i];
+    }
+    return total;
+  }
+
+  /**
+   * Vectorized L2 norm: sqrt(sum(this[i]^2)).
+   */
+  @inline norm2(count: i32): f64 {
+    return Math.sqrt(this.dot(this, count));
+  }
+
+  /**
+   * Vectorized L-infinity norm: max(|this[i]|).
+   */
+  @inline normInf(count: i32): f64 {
+    let vMax = f64x2.splat(0.0);
+    let i: i32 = 0;
+    let endSimd = count & ~1;
+    for (; i < endSimd; i += 2) {
+      let v = f64x2.abs(v128.load(this.getPtr(i)));
+      vMax = f64x2.pmax(vMax, v);
+    }
+    let lane0 = f64x2.extract_lane(vMax, 0);
+    let lane1 = f64x2.extract_lane(vMax, 1);
+    let maxVal = lane0 > lane1 ? lane0 : lane1;
+    for (; i < count; i++) {
+      let absVal = Math.abs(this[i]);
+      if (absVal > maxVal) maxVal = absVal;
+    }
+    return maxVal;
+  }
 }
 
 /**
@@ -511,11 +605,26 @@ export class DenseMatrixView {
     this.data[r * this.cols + c] = val;
   }
 
+  @inline getEntryPtr(r: u32, c: u32): usize {
+    return changetype<usize>(this.data) + (((r * this.cols + c) as usize) << 3);
+  }
+
   @inline swapRows(r1: u32, r2: u32): void {
     let cols = this.cols;
     let base1 = r1 * cols;
     let base2 = r2 * cols;
-    for (let c: u32 = 0; c < cols; c++) {
+    let c: u32 = 0;
+    let simdEnd: u32 = cols & ~1;
+    let dataPtr = changetype<usize>(this.data);
+    for (; c < simdEnd; c += 2) {
+      let p1 = dataPtr + (((base1 + c) as usize) << 3);
+      let p2 = dataPtr + (((base2 + c) as usize) << 3);
+      let v1 = v128.load(p1);
+      let v2 = v128.load(p2);
+      v128.store(p1, v2);
+      v128.store(p2, v1);
+    }
+    for (; c < cols; c++) {
       let tmp = this.data[base1 + c];
       this.data[base1 + c] = this.data[base2 + c];
       this.data[base2 + c] = tmp;

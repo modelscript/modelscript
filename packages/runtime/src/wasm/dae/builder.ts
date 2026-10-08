@@ -1193,6 +1193,10 @@ export function dae_getEqKind(ptr: u32, eqId: u32): i32 {
   return changetype<DaeBuilder>(ptr).getEqData().get(eqId * EQ_STRIDE + EQ_KIND);
 }
 
+export function dae_setEqKind(ptr: u32, eqId: u32, kind: i32): void {
+  changetype<DaeBuilder>(ptr).getEqData().set(eqId * EQ_STRIDE + EQ_KIND, kind);
+}
+
 export function dae_getEqLhs(ptr: u32, eqId: u32): u32 {
   return changetype<DaeBuilder>(ptr).getEqData().get(eqId * EQ_STRIDE + EQ_LHS) as u32;
 }

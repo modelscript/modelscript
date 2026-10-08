@@ -1,7 +1,6 @@
 // name: CyclicBindingConditional
 // keywords: cyclic
 // status: incorrect
-// xfail:    true
 //
 // Tests cyclic binding of parameters
 //

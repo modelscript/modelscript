@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { MarkGithubIcon } from "@primer/octicons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+import { usePageTitle } from "../util/title";
 
 const GitLabIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -279,6 +279,7 @@ const FooterText = styled.p`
 `;
 
 export default function LoginPage() {
+  usePageTitle("Sign In");
   const [email, setEmail] = useState(import.meta.env.DEV ? "dev@modelscript.org" : "");
   const [password, setPassword] = useState(import.meta.env.DEV ? "password" : "");
   const [error, setError] = useState("");
@@ -296,7 +297,7 @@ export default function LoginPage() {
       navigate("/");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as any;
+        const axiosErr = err as { response?: { data?: { error?: string } } };
         setError(axiosErr.response?.data?.error || "Login failed");
       } else {
         setError("Login failed. Please try again.");
@@ -336,8 +337,12 @@ export default function LoginPage() {
 
         <Divider>or</Divider>
 
-        <Form onSubmit={handleSubmit}>
-          {error && <ErrorBanner>{error}</ErrorBanner>}
+        <Form onSubmit={handleSubmit} aria-label="Sign in form">
+          {error && (
+            <ErrorBanner role="alert" aria-live="polite">
+              {error}
+            </ErrorBanner>
+          )}
           {forgotNotice && (
             <div
               style={{
@@ -356,18 +361,26 @@ export default function LoginPage() {
             </div>
           )}
           <Input
+            id="login-email"
+            name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email address"
+            aria-label="Email address"
+            autoComplete="email"
             required
             autoFocus
           />
           <Input
+            id="login-password"
+            name="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
+            aria-label="Password"
+            autoComplete="current-password"
             required
           />
           <Button type="submit" disabled={loading}>

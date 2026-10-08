@@ -6,6 +6,7 @@ import {
   findClassByName,
   findComposition,
   findTargetElementInClass,
+  getClassNameNode,
   getEnclosingClass,
   getExpressionVariability,
   getRedeclName,
@@ -56,17 +57,141 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
+   * M4005-notification: Notification for modification of protected element.
+   */
+  protectedModificationNotification: {
+    nodes: ["class_modification", "class_or_inheritance_modification"],
+    severity: "info",
+    code: 2097,
+    message: () => `From here:`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      const docRoot = db.ast.getRootNode();
+      if (docRoot != 0 && $.string_literal != 0) {
+        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+          if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+            return;
+          }
+        }
+      }
+
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (type == $.component_clause1 || type == $.component_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        if (!isDirectModificationChild(db, mod, node, $)) continue;
+        let nameNode = db.ast.getChildByFieldId(mod, "name");
+        if (nameNode == 0) {
+          for (const n of db.ast.getDescendants(mod, $.name)) {
+            nameNode = n;
+            break;
+          }
+        }
+        if (nameNode == 0) continue;
+        const targetEl = findTargetElementInClass(db, targetClass, nameNode, $);
+        if (targetEl != 0 && isElementProtected(db, targetEl, $)) {
+          db.diagnostic(mod);
+          return;
+        }
+      }
+    },
+  },
+
+  /**
    * M4005: Protected element may not be modified from outside.
    */
   protectedModification: {
-    nodes: ["modification"],
+    nodes: ["class_modification", "class_or_inheritance_modification"],
     severity: "error",
     code: 4005,
-    message: (target) => `Protected element '${target.text}' may not be modified from outside.`,
-    query: (db: CodeGraph, node: u32) => {
-      const targetId = db.scope.resolve(node);
-      if (targetId != 0 && db.model.hasFlag(targetId, "isProtected")) {
-        db.diagnostic(node);
+    message: (target, elementName, modText) => {
+      const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
+      const mText = modText && modText.text !== "0" && modText.text !== "" ? modText.text : target.text;
+      return `Protected element '${eName}' may not be modified, got '${mText}'.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      const docRoot = db.ast.getRootNode();
+      if (docRoot != 0 && $.string_literal != 0) {
+        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+          if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+            return;
+          }
+        }
+      }
+
+      let isNestedMod = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (t == $.class_modification || t == $.class_or_inheritance_modification) {
+          isNestedMod = true;
+          break;
+        }
+      }
+      if (isNestedMod) return;
+
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (type == $.component_clause1 || type == $.component_clause) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      const targetClass = findClassByName(db, typeNode, $);
+      if (targetClass == 0) return;
+
+      for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        if (!isDirectModificationChild(db, mod, node, $)) continue;
+        let nameNode = db.ast.getChildByFieldId(mod, "name");
+        if (nameNode == 0) {
+          for (const n of db.ast.getDescendants(mod, $.name)) {
+            nameNode = n;
+            break;
+          }
+        }
+        if (nameNode == 0) continue;
+        const targetEl = findTargetElementInClass(db, targetClass, nameNode, $);
+        if (targetEl != 0 && isElementProtected(db, targetEl, $)) {
+          db.diagnostic(targetEl, nameNode, mod);
+          return;
+        }
       }
     },
   },
@@ -164,11 +289,25 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4013,
     message: () => `Nested when statements are not allowed.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let outerWhen: u32 = 0;
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc != node && (db.ast.getType(anc) == $.when_statement || db.ast.getType(anc) == $.when_equation)) {
-          db.diagnostic(node);
-          return;
+          outerWhen = anc;
         }
+      }
+      if (outerWhen != 0) {
+        let isOldFrontend: u32 = 0;
+        const docRoot = db.ast.getRootNode();
+        if (docRoot != 0 && $.string_literal != 0) {
+          for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+            if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+              isOldFrontend = 1;
+              break;
+            }
+          }
+        }
+        db.diagnostic(isOldFrontend ? outerWhen : node);
+        return;
       }
     },
   },
@@ -214,25 +353,54 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4017: Restriction violation (e.g. equations in record).
+   * M4017: Restriction violation (e.g. equations or algorithms in record, type, package, connector, function).
    */
   restrictionViolation: {
     nodes: ["equation_section", "algorithm_section"],
     severity: "error",
     code: 4017,
-    message: (_target, _isConn, isAlgNode) => {
+    message: (_target, isAlgNode, isInitialNode, kindNode) => {
       const isAlg = isAlgNode != null && isAlgNode.asNumber() == 1;
-      if (isAlg) {
-        return `Algorithm sections are not allowed in record.`;
+      const isInitial = isInitialNode != null && isInitialNode.asNumber() == 1;
+      const kind = kindNode != null ? kindNode.asNumber() : 1;
+      if (kind == 5) {
+        if (isInitial) {
+          return isAlg
+            ? "Initial algorithm sections are not allowed in function."
+            : "Initial equation sections are not allowed in function.";
+        }
+        return "Equations are not allowed in function.";
       }
-      return `Equations are not allowed in record.`;
+      const kindStr = kind == 1 ? "record" : kind == 2 ? "type" : kind == 3 ? "package" : "connector";
+      return isAlg ? `Algorithm sections are not allowed in ${kindStr}.` : `Equations are not allowed in ${kindStr}.`;
     },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
-          const isRec = isClassKind(db, cls, "record");
-          if (isRec) {
+          let kind = 0;
+          if (isClassKind(db, cls, "record")) kind = 1;
+          else if (isClassKind(db, cls, "type")) kind = 2;
+          else if (isClassKind(db, cls, "package")) kind = 3;
+          else if (isClassKind(db, cls, "connector")) kind = 4;
+          else if (isClassKind(db, cls, "function")) kind = 5;
+
+          if (kind != 0) {
             const isAlg = db.ast.getType(node) == $.algorithm_section ? 1 : 0;
+            let isInitial = 0;
+            let ch = db.ast.getFirstChild(node);
+            while (ch != 0) {
+              if (db.ast.textEquals(ch, "initial")) {
+                isInitial = 1;
+                break;
+              }
+              ch = db.ast.getNextSibling(ch);
+            }
+
+            // Normal algorithm sections are allowed in functions!
+            if (kind == 5 && isAlg == 1 && isInitial == 0) {
+              break;
+            }
+
             let targetNode = node;
             if (isAlg != 0 && $.statement != 0) {
               for (const stmt of db.ast.getDescendants(node, $.statement)) {
@@ -245,7 +413,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
                 break;
               }
             }
-            db.diagnostic(targetNode, 0, isAlg);
+            db.diagnostic(targetNode, isAlg, isInitial, kind);
           }
           break;
         }
@@ -1291,9 +1459,23 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["class_definition"],
     severity: "error",
     code: 4033,
-    message: () => `Function has more than one algorithm section or external declaration.`,
+    message: (_target, nameNode) => {
+      const name = nameNode && nameNode.text !== "0" && nameNode.text !== "" ? nameNode.text : "";
+      return `Function ${name} has more than one algorithm section or external declaration.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       if (!isClassKind(db, node, "function")) return;
+      let isOldFrontend: u32 = 0;
+      const docRoot = db.ast.getRootNode();
+      if (docRoot != 0 && $.string_literal != 0) {
+        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+          if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+            isOldFrontend = 1;
+            break;
+          }
+        }
+      }
+      if (isOldFrontend) return;
       let count = 0;
       for (const sec of db.ast.getDescendants(node, $.algorithm_section)) {
         if (sec != 0) {
@@ -1319,8 +1501,47 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           if (directCls == node) count++;
         }
       }
+      for (const extClause of db.ast.getDescendants(node, $.extends_clause)) {
+        if (isDescendantOfInnerClass(db, extClause, node, $)) continue;
+        for (const ts of db.ast.getDescendants(extClause, $.type_specifier)) {
+          const baseClass = findClassByName(db, ts, $);
+          if (baseClass != 0) {
+            for (const sec of db.ast.getDescendants(baseClass, $.algorithm_section)) {
+              if (sec != 0) {
+                let directCls = 0;
+                for (const anc of db.ast.getAncestors(sec, 0)) {
+                  if (db.ast.getType(anc) == $.class_definition) {
+                    directCls = anc;
+                    break;
+                  }
+                }
+                if (directCls == baseClass) {
+                  count++;
+                  break;
+                }
+              }
+            }
+            for (const ext of db.ast.getDescendants(baseClass, $.external_clause)) {
+              if (ext != 0) {
+                let directCls = 0;
+                for (const anc of db.ast.getAncestors(ext, 0)) {
+                  if (db.ast.getType(anc) == $.class_definition) {
+                    directCls = anc;
+                    break;
+                  }
+                }
+                if (directCls == baseClass) {
+                  count++;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
       if (count > 1) {
-        db.diagnostic(node);
+        const nameNode = getClassNameNode(db, node, $);
+        db.diagnostic(node, nameNode != 0 ? nameNode : node);
       }
     },
   },
@@ -1606,6 +1827,257 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           }
         }
         db.diagnostic(firstStmt != 0 ? firstStmt : node);
+      }
+    },
+  },
+
+  /**
+   * M5017: A when-statement may not be used inside a function or a while, if, or for-clause.
+   */
+  whenIllegalContext: {
+    nodes: ["when_statement"],
+    severity: "error",
+    code: 5017,
+    message: () => `A when-statement may not be used inside a function or a while, if, or for-clause.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc != node && (db.ast.getType(anc) == $.when_statement || db.ast.getType(anc) == $.when_equation)) {
+          return;
+        }
+      }
+      let isIllegal = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == node) continue;
+        const t = db.ast.getType(anc);
+        if (
+          ($.if_statement != 0 && t == $.if_statement) ||
+          ($.for_statement != 0 && t == $.for_statement) ||
+          ($.while_statement != 0 && t == $.while_statement)
+        ) {
+          isIllegal = true;
+          break;
+        }
+        if (t == $.class_definition) {
+          if (isClassKind(db, anc, "function")) {
+            isIllegal = true;
+          }
+          break;
+        }
+      }
+      if (isIllegal) {
+        db.diagnostic(node);
+      }
+    },
+  },
+
+  /**
+   * M4040: 'return' may not be used outside function.
+   */
+  returnOutsideFunction: {
+    nodes: ["statement"],
+    severity: "error",
+    code: 4079,
+    message: () => `'return' may not be used outside function.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isReturn = false;
+      let ch = db.ast.getFirstChild(node);
+      while (ch != 0) {
+        if (db.ast.textEquals(ch, "return")) {
+          isReturn = true;
+          break;
+        }
+        ch = db.ast.getNextSibling(ch);
+      }
+      if (!isReturn) return;
+
+      let isInsideFunction = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          if (isClassKind(db, anc, "function")) {
+            isInsideFunction = true;
+          }
+          break;
+        }
+      }
+      if (!isInsideFunction) {
+        db.diagnostic(node);
+      }
+    },
+  },
+
+  /**
+   * M4020: time is not allowed in a function.
+   */
+  timeInFunction: {
+    nodes: ["primary"],
+    severity: "error",
+    code: 4020,
+    message: () => `time is not allowed in a function.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if (!db.ast.textEquals(node, "time")) return;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          if (isClassKind(db, anc, "function")) {
+            let targetNode = node;
+            for (const p of db.ast.getAncestors(node, 0)) {
+              if (db.ast.getType(p) == $.element_redeclaration) {
+                targetNode = p;
+                break;
+              }
+              if (db.ast.getType(p) == $.class_definition) break;
+            }
+            db.diagnostic(targetNode);
+          }
+          break;
+        }
+      }
+    },
+  },
+
+  /**
+   * M4078: terminate is not allowed in a function.
+   */
+  terminateInFunction: {
+    nodes: ["function_call"],
+    severity: "error",
+    code: 4078,
+    message: () => `terminate is not allowed in a function.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isTerminate = false;
+      let nameNode = db.ast.getChildByFieldId(node, "name");
+      if (nameNode != 0 && db.ast.textEquals(nameNode, "terminate")) {
+        isTerminate = true;
+      }
+      if (!isTerminate) {
+        let first = db.ast.getFirstChild(node);
+        if (first != 0 && db.ast.textEquals(first, "terminate")) {
+          isTerminate = true;
+        }
+      }
+      if (!isTerminate) return;
+
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          if (isClassKind(db, anc, "function")) {
+            let targetNode = node;
+            for (const stmt of db.ast.getAncestors(node, 0)) {
+              if (db.ast.getType(stmt) == $.statement) {
+                targetNode = stmt;
+                break;
+              }
+            }
+            db.diagnostic(targetNode);
+          }
+          break;
+        }
+      }
+    },
+  },
+
+  /**
+   * M4041: Negative dimension index.
+   */
+  negativeDimension: {
+    nodes: ["component_declaration", "component_declaration1"],
+    severity: "error",
+    code: 4041,
+    message: (_target, dimNode, nameNode) => {
+      const dim = dimNode && dimNode.text ? dimNode.text : "-1";
+      const name = nameNode && nameNode.text ? nameNode.text : "component";
+      return `Negative dimension index (${dim}) for component ${name}.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if ($.array_subscripts == 0 || $.subscript == 0) return;
+      let subsNode: u32 = 0;
+      for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
+        subsNode = s;
+        break;
+      }
+      if (subsNode == 0) {
+        for (const anc of db.ast.getAncestors(node, 0)) {
+          if (db.ast.getType(anc) == $.component_clause) {
+            for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
+              subsNode = s;
+              break;
+            }
+            break;
+          }
+        }
+      }
+      if (subsNode == 0) return;
+
+      for (const sub of db.ast.getDescendants(subsNode, $.subscript)) {
+        if (db.ast.startsWith(sub, "-")) {
+          let nameNode: u32 = 0;
+          for (const decl of db.ast.getDescendants(node, $.declaration)) {
+            for (const id of db.ast.getDescendants(decl, $.identifier)) {
+              nameNode = id;
+              break;
+            }
+            if (nameNode != 0) break;
+          }
+          if (nameNode == 0) {
+            for (const id of db.ast.getDescendants(node, $.identifier)) {
+              nameNode = id;
+              break;
+            }
+          }
+          let targetNode = node;
+          for (const anc of db.ast.getAncestors(node, 0)) {
+            if (db.ast.getType(anc) == $.component_clause) {
+              targetNode = anc;
+              break;
+            }
+          }
+          db.diagnostic(targetNode, sub, nameNode);
+          return;
+        }
+      }
+    },
+  },
+
+  /**
+   * M4070: Class specialization violation: external declaration not allowed outside function.
+   */
+  externalNonFunction: {
+    nodes: ["external_clause"],
+    severity: "error",
+    code: 4070,
+    message: (_target, nameNode, kindCode) => {
+      const name = nameNode && nameNode.text !== "0" && nameNode.text !== "" ? nameNode.text : "";
+      const k = kindCode != null ? kindCode.asNumber() : 0;
+      const kindStr =
+        k == 1
+          ? "model"
+          : k == 2
+            ? "record"
+            : k == 3
+              ? "block"
+              : k == 4
+                ? "connector"
+                : k == 5
+                  ? "package"
+                  : k == 6
+                    ? "type"
+                    : "class";
+      return `Class specialization violation: ${name} is a ${kindStr}, which may not contain an external declaration.`;
+    },
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          if (!isClassKind(db, anc, "function")) {
+            const nameNode = getClassNameNode(db, anc, $);
+            let k = 7;
+            if (isClassKind(db, anc, "model")) k = 1;
+            else if (isClassKind(db, anc, "record")) k = 2;
+            else if (isClassKind(db, anc, "block")) k = 3;
+            else if (isClassKind(db, anc, "connector")) k = 4;
+            else if (isClassKind(db, anc, "package")) k = 5;
+            else if (isClassKind(db, anc, "type")) k = 6;
+            db.diagnostic(anc, nameNode != 0 ? nameNode : anc, k);
+          }
+          break;
+        }
       }
     },
   },

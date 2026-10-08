@@ -340,7 +340,32 @@ export const ModelicaErrorCode = {
     code: 4020,
     rule: "builtin-time-invalid",
     severity: "error",
-    message: () => `The built-in variable 'time' is only available in models and blocks, not in functions or records.`,
+    message: () => `time is not allowed in a function.`,
+  },
+  TERMINATE_IN_FUNCTION: {
+    code: 4078,
+    rule: "terminate-in-function",
+    severity: "error",
+    message: () => `terminate is not allowed in a function.`,
+  },
+  RETURN_OUTSIDE_FUNCTION: {
+    code: 4079,
+    rule: "return-outside-function",
+    severity: "error",
+    message: () => `'return' may not be used outside function.`,
+  },
+  WHEN_ILLEGAL_CONTEXT: {
+    code: 5017,
+    rule: "when-illegal-context",
+    severity: "error",
+    message: () => `A when-statement may not be used inside a function or a while, if, or for-clause.`,
+  },
+  EXTERNAL_NON_FUNCTION: {
+    code: 4070,
+    rule: "external-non-function",
+    severity: "error",
+    message: (className: string, specialization: string) =>
+      `Class specialization violation: ${className} is a ${specialization}, which may not contain an external declaration.`,
   },
   FUNCTION_INVALID_PREFIX: {
     code: 4032,
@@ -639,6 +664,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (funcName: string) => `Internal error NFCeval.evalBuiltinCall: unimplemented case for ${funcName}`,
   },
+  ARGUMENT_NOT_DIFFERENTIABLE: {
+    code: 5012,
+    rule: "argument-not-differentiable",
+    severity: "error",
+    message: (argName: string) => `Argument '${argName}' of der is not differentiable.`,
+  },
   OUTPUT_NOT_DEFINITELY_ASSIGNED: {
     code: 5020,
     rule: "output-not-definitely-assigned",
@@ -873,6 +904,19 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (loopVar: string, condition: string) =>
       `Loop over '${loopVar}' with condition '${condition}' cannot be proven to terminate.`,
+  },
+  CYCLIC_CONSTANTS_OR_PARAMETERS: {
+    code: 4080,
+    rule: "cyclic-constants-or-parameters",
+    severity: "error",
+    message: (scopeName: string, cycleList: string) =>
+      `Cyclically dependent constants or parameters found in scope ${scopeName}: {${cycleList}} (ignore with -d=ignoreCycles).`,
+  },
+  CYCLIC_FUNCTION_COMPONENTS: {
+    code: 4081,
+    rule: "cyclic-function-components",
+    severity: "error",
+    message: (cycleList: string) => `Cyclically dependent function components found: {${cycleList}}`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

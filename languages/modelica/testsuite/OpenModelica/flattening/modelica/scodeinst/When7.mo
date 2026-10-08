@@ -1,7 +1,6 @@
 // name: When7
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

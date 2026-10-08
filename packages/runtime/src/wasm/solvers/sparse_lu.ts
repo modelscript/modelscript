@@ -105,7 +105,7 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     for (let p: u32 = aStart; p < aEnd; p++) {
       let r = A.rowIndices.get(p) as u32;
       let val = aValues[p];
-      let permR = lu.perm.get(r) as u32;
+      let permR = lu.permInv.get(r) as u32;
       denseX[permR] = val;
       touched[permR] = 1;
     }
@@ -154,6 +154,9 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
       let pPiv = lu.perm.get(pivotRow);
       lu.perm.set(k, pPiv);
       lu.perm.set(pivotRow, pK);
+
+      lu.permInv.set(pK, pivotRow as i32);
+      lu.permInv.set(pPiv, k as i32);
     }
 
     let pivotVal = denseX[k];

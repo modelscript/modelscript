@@ -8,7 +8,7 @@ import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { getClusterStatus, topUpCredits, type ClusterStatus } from "../api";
+import { getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
 import { CommandPalette } from "./CommandPalette";
@@ -622,18 +622,13 @@ const AppShell: React.FC = () => {
                     setIsResettingDb(true);
                     setResetError(null);
                     try {
-                      const res = await fetch("/api/v1/dev/reset", { method: "POST" });
-                      if (res.ok) {
-                        logout();
-                        setTimeout(() => {
-                          window.location.reload();
-                        }, 100);
-                      } else {
-                        setResetError("Failed to reset database");
-                        setIsResettingDb(false);
-                      }
+                      await resetDevDb();
+                      logout();
+                      setTimeout(() => {
+                        window.location.reload();
+                      }, 100);
                     } catch (e: any) {
-                      setResetError("Failed to connect to dev server");
+                      setResetError(e.response?.data?.error || "Failed to reset database");
                       setIsResettingDb(false);
                     }
                   }}

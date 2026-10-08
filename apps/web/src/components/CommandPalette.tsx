@@ -18,7 +18,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
+import { getSearchCompletions } from "../api";
 
 interface CommandItem {
   id: string;
@@ -274,16 +274,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/search/completions?q=${encodeURIComponent(query)}&limit=6`);
-        if (res.ok) {
-          const data = await res.json();
-          setCompletions({
-            users: data.users || [],
-            packages: data.packages || [],
-            repositories: data.repositories || [],
-          });
-          setActiveIndex(0);
-        }
+        const data = await getSearchCompletions(query, 6);
+        const res = data as unknown as {
+          users?: UserCompletion[];
+          packages?: PackageCompletion[];
+          repositories?: RepoCompletion[];
+        };
+        setCompletions({
+          users: res.users || [],
+          packages: res.packages || [],
+          repositories: res.repositories || [],
+        });
+        setActiveIndex(0);
       } catch {
         // Fallback silently on network errors
       }
@@ -521,7 +523,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     ];
 
     return [...aiItems, ...matchingNav, ...userItems, ...packageItems, ...repoItems];
-  }, [query, completions, navigate, onClose, onOpenCompose]);
+  }, [query, completions, navigate, onClose, onOpenCompose, isAdmin]);
 
   // Keyboard navigation
   useEffect(() => {

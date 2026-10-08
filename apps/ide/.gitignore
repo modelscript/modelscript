@@ -2,4 +2,3 @@ vscode-web/
 dist/
 node_modules/
 models/**
-!models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm

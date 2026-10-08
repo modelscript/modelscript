@@ -1268,9 +1268,9 @@ export declare function createWasmParserSync(
   parser: TreeSitterParser;
 };
 
-export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
-export enum SyntaxKind {
+export declare enum SyntaxKind {
   ERROR = 0,
   StepFile = 21,
   HeaderSection = 22,
@@ -1306,7 +1306,7 @@ export enum SyntaxKind {
   EOF = 1023,
 }
 
-export enum FieldId {
+export declare enum FieldId {
   HeaderEntity = 1,
   headerEntity = 1,
   Keyword = 2,
@@ -1414,7 +1414,7 @@ export interface BLOCKCOMMENTNode extends SyntaxNode {
   readonly typeId: SyntaxKind.BLOCKCOMMENT;
 }
 export declare function isBLOCKCOMMENT(node: SyntaxNode | null | undefined): node is BLOCKCOMMENTNode;
-export namespace Cst {
+export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
   export const StepFile: {

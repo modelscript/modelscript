@@ -1088,39 +1088,78 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const encClass = getEnclosingClass(db, node, $);
       if (encClass == 0) return;
 
-      let dimSize = 0;
+      let declSubs: u32 = 0;
       for (const compDecl of db.ast.getDescendants(encClass, $.component_declaration)) {
-        let matches = false;
-        for (const id of db.ast.getDescendants(compDecl, $.identifier)) {
-          if (db.ast.textEqualsNode(id, arrNameNode)) {
-            matches = true;
+        let nameNode: u32 = 0;
+        for (const decl of db.ast.getDescendants(compDecl, $.declaration)) {
+          for (const id of db.ast.getDescendants(decl, $.identifier)) {
+            nameNode = id;
             break;
           }
+          if (nameNode != 0) break;
         }
-        if (matches) {
-          for (const anc of db.ast.getAncestors(compDecl)) {
-            const ancType = db.ast.getType(anc);
-            if (ancType == $.component_clause || ancType == $.component_clause1) {
-              for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
-                dimSize = db.ast.parseInteger(s);
+        if (nameNode != 0 && db.ast.textEqualsNode(nameNode, arrNameNode)) {
+          // Look for array_subscripts on compDecl first (e.g. Real x[1, 3])
+          for (const s of db.ast.getDescendants(compDecl, $.array_subscripts)) {
+            declSubs = s;
+            break;
+          }
+          if (declSubs == 0) {
+            // Look for array_subscripts on component_clause (e.g. Real[2, 6] x)
+            for (const anc of db.ast.getAncestors(compDecl)) {
+              const ancType = db.ast.getType(anc);
+              if (ancType == $.component_clause || ancType == $.component_clause1) {
+                for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
+                  declSubs = s;
+                  break;
+                }
                 break;
               }
-              break;
             }
           }
-          if (dimSize > 0) break;
+          break;
         }
       }
-      if (dimSize <= 0) return;
+      if (declSubs == 0) return;
 
-      // Check each subscript
+      // Check each subscript in use
       let dimIdx = 1;
       for (const sub of db.ast.getDescendants(subsNode, $.subscript)) {
-        const val = db.ast.parseInteger(sub);
-        if (val > 0) {
-          if (val < 1 || val > dimSize) {
-            db.diagnostic(node, sub, dimIdx, dimSize);
-            return;
+        // Find dimension size for dimension dimIdx
+        let curDim = 1;
+        let dimSize = 0;
+        let isDimDynamic = false;
+        for (const dSub of db.ast.getDescendants(declSubs, $.subscript)) {
+          if (curDim == dimIdx) {
+            for (const _ of db.ast.getDescendants(dSub, $.identifier)) {
+              isDimDynamic = true;
+              break;
+            }
+            if (!isDimDynamic) {
+              for (const num of db.ast.getDescendants(dSub, $.unsigned_integer)) {
+                dimSize = db.ast.parseInteger(num);
+                break;
+              }
+            }
+            break;
+          }
+          curDim++;
+        }
+
+        if (!isDimDynamic && dimSize > 0) {
+          let hasIdent = false;
+          for (const _ of db.ast.getDescendants(sub, $.identifier)) {
+            hasIdent = true;
+            break;
+          }
+          if (!hasIdent) {
+            for (const num of db.ast.getDescendants(sub, $.unsigned_integer)) {
+              const val = db.ast.parseInteger(num);
+              if (val < 1 || val > dimSize) {
+                db.diagnostic(node, sub, dimIdx, dimSize);
+                return;
+              }
+            }
           }
         }
         dimIdx++;

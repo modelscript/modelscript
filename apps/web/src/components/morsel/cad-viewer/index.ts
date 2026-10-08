@@ -12,4 +12,3 @@ export { AnimationTimeline } from "./AnimationTimeline";
 export { default as CadViewer } from "./CadViewer";
 export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./CadViewer";
 export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";
-export { VrButton, default as VrMode } from "./VrMode";

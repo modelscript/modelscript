@@ -169,7 +169,8 @@ export function generateJavaScriptWrapper(
   const jsWithLegend =
     js +
     `\nexport const semanticLegend = { tokenTypes: ${JSON.stringify(legend.tokenTypes)}, tokenModifiers: ${JSON.stringify(legend.tokenModifiers)} };\n`;
-  const dtsWithLegend = dts + `\nexport const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };\n`;
+  const dtsWithLegend =
+    dts + `\nexport declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };\n`;
 
   const facade = generateCstFacade(grammarDef, normalized, fieldNamesArr);
   const finalJs = jsWithLegend + "\n" + facade.js;
@@ -243,7 +244,7 @@ export function generateCstFacade(
     }
   }
 
-  let syntaxKindDts = "export enum SyntaxKind {\n";
+  let syntaxKindDts = "export declare enum SyntaxKind {\n";
   let syntaxKindJs = "export const SyntaxKind = {\n";
   for (const entry of syntaxKindEntries) {
     const key = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(entry.name) ? entry.name : JSON.stringify(entry.name);
@@ -269,7 +270,7 @@ export function generateCstFacade(
     }
   }
 
-  let fieldIdDts = "export enum FieldId {\n";
+  let fieldIdDts = "export declare enum FieldId {\n";
   let fieldIdJs = "export const FieldId = {\n";
   for (const entry of fieldIdEntries) {
     const key = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(entry.name) ? entry.name : JSON.stringify(entry.name);
@@ -364,7 +365,7 @@ export declare function cstKind(node: SyntaxNode | null | undefined): string;
   let guardsDts = "";
   let cstNamespacesJs = "export const Cst = {\n  kind: cstKind,\n  normalize: normalizeToken,\n";
   let cstNamespacesDts =
-    "export namespace Cst {\n  export function kind(node: SyntaxNode | null | undefined): string;\n  export function normalize(token: string | null | undefined): string;\n";
+    "export declare namespace Cst {\n  export function kind(node: SyntaxNode | null | undefined): string;\n  export function normalize(token: string | null | undefined): string;\n";
 
   for (const rule of visibleRules) {
     const pascal = sanitizeTypeName(toPascal(rule));

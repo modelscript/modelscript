@@ -1,7 +1,6 @@
 // name: ExternalNonFunction1
 // keywords: external
 // status: incorrect
-// xfail:    true
 //
 // Checks that non-functions are not allowed to have external sections.
 //

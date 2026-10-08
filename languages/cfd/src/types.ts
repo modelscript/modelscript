@@ -15,6 +15,14 @@ export interface CfdMarker {
   options: (string | number)[];
 }
 
+export interface CaeDiagnostic {
+  severity: "error" | "warning" | "info";
+  message: string;
+  line?: number;
+  column?: number;
+  expression?: string;
+}
+
 export interface CfdModelData {
   dialect: string;
   mathProblem?: string;
@@ -27,6 +35,8 @@ export interface CfdModelData {
   viscosity?: number;
   inletMarker?: string;
   outletMarker?: string;
+  inletMarkers: string[];
+  outletMarkers: string[];
   wallMarkers: string[];
   meshFilename?: string;
   directives: Map<string, string>;
@@ -39,6 +49,7 @@ export type ParameterLookup = (name: string) => number | string | undefined;
 export interface MaterializeOptions {
   evaluator?: ParameterLookup | Record<string, number | string>;
   formatNumber?: (val: number) => string;
+  diagnostics?: CaeDiagnostic[];
 }
 
 export interface CfdDialect {

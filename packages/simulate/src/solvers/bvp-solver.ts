@@ -81,32 +81,40 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
     converged: false,
   };
 
+  const integrateInterval = (m: number, yNode: number[]): { traj: number[][]; endState: number[] } => {
+    const tm0 = nodes[m]!;
+    const tm1 = nodes[m + 1]!;
+    const res = tsit5((t, y) => problem.f(t, y, problem.p), tm0, yNode, tm1, [tm0, tm1], {
+      atol: tolerance * 0.1,
+      rtol: tolerance * 0.1,
+    });
+    stats.fEvals += res.stats.fEvals;
+    const endState = res.states[res.states.length - 1] ?? yNode;
+    return { traj: res.states, endState };
+  };
+
   /**
    * Residual function for shooting:
    *  - M - 1 continuity constraints: s_{m+1} - phi(t_{m+1}; t_m, s_m) = 0
    *  - 1 boundary constraint: bc(s_0, phi(t_M; t_{M-1}, s_{M-1})) = 0
    */
-  const evaluateResidual = (sVec: Float64Array): { R: Float64Array; trajectories: number[][][] } => {
+  const evaluateResidual = (
+    sVec: Float64Array,
+  ): { R: Float64Array; trajectories: number[][][]; endStates: number[][] } => {
     const R = new Float64Array(totalVars);
     const trajs: number[][][] = [];
+    const endStates: number[][] = [];
 
     // Integrate each interval m = 0..M-1
-    const endStates: number[][] = [];
     for (let m = 0; m < numIntervals; m++) {
-      const tm0 = nodes[m]!;
-      const tm1 = nodes[m + 1]!;
       const yNode = new Array<number>(n);
       for (let i = 0; i < n; i++) {
         yNode[i] = sVec[m * n + i] ?? 0;
       }
 
-      const res = tsit5((t, y) => problem.f(t, y, problem.p), tm0, yNode, tm1, [tm0, tm1], {
-        atol: tolerance * 0.1,
-        rtol: tolerance * 0.1,
-      });
-      stats.fEvals += res.stats.fEvals;
-      trajs.push(res.states);
-      endStates.push(res.states[res.states.length - 1] ?? yNode);
+      const { traj, endState } = integrateInterval(m, yNode);
+      trajs.push(traj);
+      endStates.push(endState);
     }
 
     // Continuity constraints for m = 0..M-2
@@ -128,12 +136,12 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
       R[(numIntervals - 1) * n + i] = bcRes[i] ?? 0;
     }
 
-    return { R, trajectories: trajs };
+    return { R, trajectories: trajs, endStates };
   };
 
   // Damped Newton Iteration
   for (let iter = 0; iter < maxIterations; iter++) {
-    const { R } = evaluateResidual(S);
+    const { R, endStates } = evaluateResidual(S);
 
     let maxRes = 0;
     for (let i = 0; i < totalVars; i++) {
@@ -145,21 +153,69 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
       break;
     }
 
-    // Compute finite-difference Jacobian of R with respect to S
+    // Compute finite-difference Jacobian of R with respect to S.
+    // Decouple subintervals: perturbing s_m only requires integrating subinterval m,
+    // reducing total interval integrations from O(M^2 * n) to O(M * n).
     const Jac: Float64Array[] = new Array(totalVars);
     for (let i = 0; i < totalVars; i++) {
       Jac[i] = new Float64Array(totalVars);
     }
 
-    for (let j = 0; j < totalVars; j++) {
-      const orig = S[j] ?? 0;
-      const hPert = Math.max(1e-7, 1e-7 * Math.abs(orig));
-      S[j] = orig + hPert;
-      const { R: R_pert } = evaluateResidual(S);
-      S[j] = orig;
+    for (let m = 0; m < numIntervals; m++) {
+      const yNode = new Array<number>(n);
+      for (let i = 0; i < n; i++) yNode[i] = S[m * n + i] ?? 0;
 
-      for (let i = 0; i < totalVars; i++) {
-        Jac[i]![j] = ((R_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
+      for (let k = 0; k < n; k++) {
+        const j = m * n + k;
+        const orig = yNode[k] ?? 0;
+        const hPert = Math.max(1e-7, 1e-7 * Math.abs(orig));
+        yNode[k] = orig + hPert;
+
+        // Decoupled: integrate only subinterval m
+        const { endState: phi_pert } = integrateInterval(m, yNode);
+        yNode[k] = orig;
+
+        // 1. If m < numIntervals - 1, effect on R_m = s_{m+1} - phi_m:
+        if (m < numIntervals - 1) {
+          const phi_base = endStates[m]!;
+          for (let i = 0; i < n; i++) {
+            Jac[m * n + i]![j] = -((phi_pert[i] ?? 0) - (phi_base[i] ?? 0)) / hPert;
+          }
+        }
+
+        // 2. If m > 0, effect of s_m on R_{m-1} = s_m - phi_{m-1}:
+        if (m > 0) {
+          Jac[(m - 1) * n + k]![j] = 1.0;
+        }
+
+        // 3. Boundary conditions: bc(s_0, phi_{M-1}) = 0
+        if (numIntervals === 1) {
+          const s0_pert = new Array<number>(n);
+          for (let i = 0; i < n; i++) s0_pert[i] = S[i] ?? 0;
+          s0_pert[k] += hPert;
+          const bc_pert = problem.bc(s0_pert, phi_pert, problem.p);
+          for (let i = 0; i < n; i++) {
+            Jac[i]![j] = ((bc_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
+          }
+        } else {
+          if (m === 0) {
+            const s0_pert = new Array<number>(n);
+            for (let i = 0; i < n; i++) s0_pert[i] = S[i] ?? 0;
+            s0_pert[k] += hPert;
+            const bc_pert = problem.bc(s0_pert, endStates[numIntervals - 1]!, problem.p);
+            for (let i = 0; i < n; i++) {
+              Jac[(numIntervals - 1) * n + i]![j] = ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;
+            }
+          }
+          if (m === numIntervals - 1) {
+            const s0 = new Array<number>(n);
+            for (let i = 0; i < n; i++) s0[i] = S[i] ?? 0;
+            const bc_pert = problem.bc(s0, phi_pert, problem.p);
+            for (let i = 0; i < n; i++) {
+              Jac[(numIntervals - 1) * n + i]![j] = ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;
+            }
+          }
+        }
       }
     }
 

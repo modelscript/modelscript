@@ -13,6 +13,7 @@
 import { BroadcastIcon, ChevronDownIcon, ChevronRightIcon, CircleIcon } from "@primer/octicons-react";
 import DOMPurify from "dompurify";
 import React from "react";
+import { getMqttParticipants } from "../../api";
 
 /** Variable descriptor from participant metadata. */
 interface ParticipantVariable {
@@ -68,9 +69,7 @@ export function MqttTreeWidget(props: MqttTreeWidgetProps) {
 
     async function fetchParticipants() {
       try {
-        const res = await fetch(`${apiBaseUrl}/api/v1/mqtt/participants`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as {
+        const data = (await getMqttParticipants(apiBaseUrl)) as {
           participants: MqttParticipant[];
           connected: boolean;
         };

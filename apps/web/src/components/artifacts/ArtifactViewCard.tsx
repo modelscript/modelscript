@@ -3,34 +3,37 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { CodeIcon, ScreenFullIcon } from "@primer/octicons-react";
 import { Spinner, Text, useTheme } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE_URL } from "../../config";
+import { getArtifactView } from "../../api";
 import { safeJsonParse } from "../../util/json";
 import Box from "../Box";
-import AasPackageViewer from "./AasPackageViewer";
+import ErrorBoundary from "../ErrorBoundary";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
-import AudioViewer from "./AudioViewer";
-import CadStepViewer from "./CadStepViewer";
-import CfdAnimationViewer from "./CfdAnimationViewer";
-import CsvViewer from "./CsvViewer";
-import DigitalThreadExplorerViewer from "./DigitalThreadExplorerViewer";
-import DigitalTwinDashboardViewer from "./DigitalTwinDashboardViewer";
-import GCodeViewer from "./GCodeViewer";
 import LazyHeavyViewer from "./LazyHeavyViewer";
-import LinkPreviewViewer from "./LinkPreviewViewer";
-import MermaidViewer from "./MermaidViewer";
-import ModelicaCodeViewer from "./ModelicaCodeViewer";
-import ModelicaDiagramViewer from "./ModelicaDiagramViewer";
-import PdfViewer from "./PdfViewer";
-import PictureViewer from "./PictureViewer";
-import SimulationPlotViewer from "./SimulationPlotViewer";
-import SimulationResultViewer from "./SimulationResultViewer";
-import TeiViewer from "./TeiViewer";
-import UsdViewer from "./UsdViewer";
-import VegaViewer from "./VegaViewer";
-import VideoViewer from "./VideoViewer";
-import YoutubeVideoViewer from "./YoutubeVideoViewer";
+
+// Lazy-loaded heavy viewers
+const AasPackageViewer = React.lazy(() => import("./AasPackageViewer"));
+const AudioViewer = React.lazy(() => import("./AudioViewer"));
+const CadStepViewer = React.lazy(() => import("./CadStepViewer"));
+const CfdAnimationViewer = React.lazy(() => import("./CfdAnimationViewer"));
+const CsvViewer = React.lazy(() => import("./CsvViewer"));
+const DigitalThreadExplorerViewer = React.lazy(() => import("./DigitalThreadExplorerViewer"));
+const DigitalTwinDashboardViewer = React.lazy(() => import("./DigitalTwinDashboardViewer"));
+const GCodeViewer = React.lazy(() => import("./GCodeViewer"));
+const LinkPreviewViewer = React.lazy(() => import("./LinkPreviewViewer"));
+const MermaidViewer = React.lazy(() => import("./MermaidViewer"));
+const ModelicaCodeViewer = React.lazy(() => import("./ModelicaCodeViewer"));
+const ModelicaDiagramViewer = React.lazy(() => import("./ModelicaDiagramViewer"));
+const PdfViewer = React.lazy(() => import("./PdfViewer"));
+const PictureViewer = React.lazy(() => import("./PictureViewer"));
+const SimulationPlotViewer = React.lazy(() => import("./SimulationPlotViewer"));
+const SimulationResultViewer = React.lazy(() => import("./SimulationResultViewer"));
+const TeiViewer = React.lazy(() => import("./TeiViewer"));
+const UsdViewer = React.lazy(() => import("./UsdViewer"));
+const VegaViewer = React.lazy(() => import("./VegaViewer"));
+const VideoViewer = React.lazy(() => import("./VideoViewer"));
+const YoutubeVideoViewer = React.lazy(() => import("./YoutubeVideoViewer"));
 
 import type { SpatialPin } from "./spatial-pin";
 
@@ -50,12 +53,10 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
 
   useEffect(() => {
     async function fetchArtifact() {
+      if (!artifactId) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/social/artifact-views/${artifactId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setArtifact(data.artifactView);
-        }
+        const data = await getArtifactView(artifactId);
+        setArtifact(data.artifactView);
       } catch (err) {
         console.error("Failed to fetch artifact", err);
       } finally {
@@ -229,7 +230,25 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
     }
   };
 
-  const viewerContent = renderViewer();
+  const viewerContent = (
+    <ErrorBoundary
+      fallback={
+        <Box p={3} borderRadius="8px" border="1px dashed var(--color-border)" color="var(--color-fg-muted)">
+          <Text fontSize="12px">Unable to display this artifact preview.</Text>
+        </Box>
+      }
+    >
+      <Suspense
+        fallback={
+          <Box p={3} display="flex" justifyContent="center" alignItems="center" minHeight="120px">
+            <Spinner size="small" />
+          </Box>
+        }
+      >
+        {renderViewer()}
+      </Suspense>
+    </ErrorBoundary>
+  );
 
   if (isFullScreen) {
     return (

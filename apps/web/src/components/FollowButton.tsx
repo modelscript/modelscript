@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
+import { followUser, unfollowUser } from "../api";
 
 interface FollowButtonProps {
   username: string;
@@ -26,15 +26,13 @@ const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowin
 
     setLoading(true);
     try {
-      const method = isFollowing ? "DELETE" : "POST";
-      const res = await fetch(`${API_BASE_URL}/users/${username}/follow`, {
-        method,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setIsFollowing(!isFollowing);
-        onToggle?.(!isFollowing);
+      if (isFollowing) {
+        await unfollowUser(username);
+      } else {
+        await followUser(username);
       }
+      setIsFollowing(!isFollowing);
+      onToggle?.(!isFollowing);
     } catch (err) {
       console.error(err);
     } finally {

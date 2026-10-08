@@ -10,6 +10,7 @@ import { ComposeContext } from "../components/ComposeContext";
 import MorselEditor from "../components/morsel/Morsel";
 import { compressMorselPayload, decompressMorselPayload } from "../components/morsel/util/permalink";
 import { useTheme } from "../theme";
+import { usePageTitle } from "../util/title";
 
 const PlaygroundContainer = styled.div`
   display: flex;
@@ -187,6 +188,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const [currentCode, setCurrentCode] = useState<string>(HERO_EXAMPLES[0].code);
   const [currentTitle, setCurrentTitle] = useState<string>(HERO_EXAMPLES[0].name);
+  usePageTitle(currentTitle ? `${currentTitle} — Playground` : "Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 

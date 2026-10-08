@@ -8,7 +8,14 @@ import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
-import { getComputeProfiles, type ComputeProfileInfo } from "../../api";
+import {
+  convertCadGeometry,
+  flattenPhysicsStudy,
+  getComputeProfiles,
+  runPhysicsJob,
+  uploadPhysicsGeometry,
+  type ComputeProfileInfo,
+} from "../../api";
 import Box from "../Box";
 interface CadStepViewerProps {
   viewConfig: any;
@@ -66,9 +73,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
   const loadConfig = async () => {
     setIsLoadingConfig(true);
     try {
-      const res = await fetch(`/api/v1/physics/flattenStudy?className=${encodeURIComponent(className)}`);
-      if (!res.ok) throw new Error("Failed to load study configuration");
-      const data = await res.json();
+      const data = await flattenPhysicsStudy(className);
       setConfig(data);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to load config");
@@ -106,21 +111,10 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
       // 2. Upload geometry to get hash
       const formData = new FormData();
       formData.append("file", stepBlob, config.stepFile);
-      const uploadRes = await fetch("/api/v1/physics/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error("Failed to upload geometry");
-      const { hash: geometryHash } = await uploadRes.json();
+      const { hash: geometryHash } = await uploadPhysicsGeometry(formData);
 
       // 3. Submit physics run
-      const runRes = await fetch("/api/v1/physics/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ geometryHash, config: runConfig }),
-      });
-      if (!runRes.ok) throw new Error("Failed to submit physics job");
-      const { jobId } = await runRes.json();
+      const { jobId } = await runPhysicsJob({ geometryHash, config: runConfig });
 
       setIsConfigOpen(false);
       navigate(`/scripts/${jobId}`);
@@ -141,10 +135,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
       }
       try {
         // Fetch the cached/converted CAD geometry from the backend
-        const response = await fetch(`/api/v1/cad/convert?url=${encodeURIComponent(viewConfig.url)}`);
-        if (!response.ok) throw new Error("Failed to fetch converted CAD geometry from server");
-
-        const result = await response.json();
+        const result = await convertCadGeometry(viewConfig.url);
 
         if (result && result.meshes && result.meshes.length > 0 && active) {
           const geos: THREE.BufferGeometry[] = [];

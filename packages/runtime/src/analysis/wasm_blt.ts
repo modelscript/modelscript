@@ -183,8 +183,16 @@ export function performBltTransformationArena(
   stateVars?: Set<string | number>,
   dummyDerivatives?: Set<string | number>,
 ): ArenaBltResult {
+  const stateKey = stateVars ? Array.from(stateVars).sort().join(",") : "";
+  const dummyKey = dummyDerivatives ? Array.from(dummyDerivatives).sort().join(",") : "";
   const cached = (arena as any).cachedBlt;
-  if (cached && cached.varCount === arena.varCount && cached.eqCount === arena.eqCount) {
+  if (
+    cached &&
+    cached.varCount === arena.varCount &&
+    cached.eqCount === arena.eqCount &&
+    cached.stateKey === stateKey &&
+    cached.dummyKey === dummyKey
+  ) {
     return cached;
   }
 
@@ -322,6 +330,8 @@ export function performBltTransformationArena(
     ...result,
     varCount: arena.varCount,
     eqCount: arena.eqCount,
+    stateKey,
+    dummyKey,
   };
 
   return result;

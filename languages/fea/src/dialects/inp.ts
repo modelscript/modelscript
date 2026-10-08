@@ -32,6 +32,33 @@ export class InpDialect implements FeaDialect {
     let currentSection = "";
     let currentOptions: Record<string, string> = {};
     let activeMaterial: FeaMaterial | null = null;
+    let lastElementId: number | null = null;
+    let isElementContinuation = false;
+
+    function inferElementFamily(type: string): "solid" | "shell" | "beam" | "truss" | "other" {
+      const t = type.toUpperCase();
+      if (t.startsWith("C3D") || t.includes("TET") || t.includes("HEX") || t.includes("PENT") || t.includes("WEDGE")) {
+        return "solid";
+      }
+      if (
+        t.startsWith("S") ||
+        t.startsWith("CPS") ||
+        t.startsWith("CPE") ||
+        t.startsWith("CAX") ||
+        t.includes("SHELL") ||
+        t.includes("QUAD") ||
+        t.includes("TRIA")
+      ) {
+        return "shell";
+      }
+      if (t.startsWith("B") || t.includes("BEAM")) {
+        return "beam";
+      }
+      if (t.startsWith("T") || t.includes("TRUSS") || t.includes("ROD")) {
+        return "truss";
+      }
+      return "other";
+    }
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i].trim();
@@ -40,6 +67,8 @@ export class InpDialect implements FeaDialect {
       }
 
       if (rawLine.startsWith("*")) {
+        lastElementId = null;
+        isElementContinuation = false;
         const parts = rawLine
           .substring(1)
           .split(",")
@@ -72,14 +101,16 @@ export class InpDialect implements FeaDialect {
       }
 
       // Data lines
-      const tokens = rawLine.split(",").map((s) => s.trim());
+      const endsWithComma = rawLine.endsWith(",");
+      const cleanLine = endsWithComma ? rawLine.slice(0, -1).trim() : rawLine;
+      const tokens = cleanLine.split(",").map((s) => s.trim());
 
       if (currentSection === "NODE") {
-        if (tokens.length >= 4) {
+        if (tokens.length >= 3) {
           const id = parseInt(tokens[0], 10);
           const x = parseFloat(tokens[1]);
           const y = parseFloat(tokens[2]);
-          const z = parseFloat(tokens[3]);
+          const z = tokens.length >= 4 ? parseFloat(tokens[3]) : 0.0;
           if (!isNaN(id) && !isNaN(x) && !isNaN(y) && !isNaN(z)) {
             data.nodes.set(id, { id, x, y, z });
 
@@ -91,15 +122,21 @@ export class InpDialect implements FeaDialect {
           }
         }
       } else if (currentSection === "ELEMENT") {
-        if (tokens.length >= 2) {
+        if (isElementContinuation && lastElementId !== null && data.elements.has(lastElementId)) {
+          const elem = data.elements.get(lastElementId)!;
+          const continuedNodes = tokens.map((s) => parseInt(s, 10)).filter((n) => !isNaN(n));
+          elem.nodes.push(...continuedNodes);
+        } else if (tokens.length >= 2) {
           const id = parseInt(tokens[0], 10);
           const nodeIds = tokens
             .slice(1)
             .map((s) => parseInt(s, 10))
             .filter((n) => !isNaN(n));
           const type = currentOptions["TYPE"] || "C3D4";
+          const family = inferElementFamily(type);
           if (!isNaN(id) && nodeIds.length > 0) {
-            data.elements.set(id, { id, type, nodes: nodeIds, elset: currentOptions["ELSET"] });
+            data.elements.set(id, { id, type, nodes: nodeIds, elset: currentOptions["ELSET"], family });
+            lastElementId = id;
 
             if (currentOptions["ELSET"]) {
               const setName = currentOptions["ELSET"].toUpperCase();
@@ -108,13 +145,50 @@ export class InpDialect implements FeaDialect {
             }
           }
         }
+        isElementContinuation = endsWithComma;
       } else if (currentSection === "NSET") {
         const setName = (currentOptions["NSET"] || tokens[0]).toUpperCase();
         if (!data.nodeSets.has(setName)) data.nodeSets.set(setName, new Set());
         const set = data.nodeSets.get(setName)!;
-        for (const t of tokens) {
-          const nid = parseInt(t, 10);
-          if (!isNaN(nid)) set.add(nid);
+        const isGenerate = "GENERATE" in currentOptions || currentOptions["GENERATE"] === "TRUE";
+        const valTokens = !currentOptions["NSET"] ? tokens.slice(1) : tokens;
+        if (isGenerate && valTokens.length >= 2) {
+          const start = parseInt(valTokens[0], 10);
+          const end = parseInt(valTokens[1], 10);
+          const step = valTokens.length >= 3 ? parseInt(valTokens[2], 10) : 1;
+          if (!isNaN(start) && !isNaN(end)) {
+            const actualStep = !isNaN(step) && step > 0 ? step : 1;
+            for (let nid = start; nid <= end; nid += actualStep) {
+              set.add(nid);
+            }
+          }
+        } else {
+          for (const t of valTokens) {
+            const nid = parseInt(t, 10);
+            if (!isNaN(nid)) set.add(nid);
+          }
+        }
+      } else if (currentSection === "ELSET") {
+        const setName = (currentOptions["ELSET"] || tokens[0]).toUpperCase();
+        if (!data.elementSets.has(setName)) data.elementSets.set(setName, new Set());
+        const set = data.elementSets.get(setName)!;
+        const isGenerate = "GENERATE" in currentOptions || currentOptions["GENERATE"] === "TRUE";
+        const valTokens = !currentOptions["ELSET"] ? tokens.slice(1) : tokens;
+        if (isGenerate && valTokens.length >= 2) {
+          const start = parseInt(valTokens[0], 10);
+          const end = parseInt(valTokens[1], 10);
+          const step = valTokens.length >= 3 ? parseInt(valTokens[2], 10) : 1;
+          if (!isNaN(start) && !isNaN(end)) {
+            const actualStep = !isNaN(step) && step > 0 ? step : 1;
+            for (let eid = start; eid <= end; eid += actualStep) {
+              set.add(eid);
+            }
+          }
+        } else {
+          for (const t of valTokens) {
+            const eid = parseInt(t, 10);
+            if (!isNaN(eid)) set.add(eid);
+          }
         }
       } else if (currentSection === "ELASTIC" && activeMaterial) {
         if (tokens.length >= 2) {

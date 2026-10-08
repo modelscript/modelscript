@@ -56,6 +56,8 @@ import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useTheme } from "../theme";
+import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../util/keystore";
+import { usePageTitle } from "../util/title";
 
 const SettingsContainer = styled.div`
   display: flex;
@@ -430,6 +432,7 @@ const SettingsPage: React.FC = () => {
   const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("password");
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
   const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
+  const [localKeyIds, setLocalKeyIds] = useState<Set<string>>(new Set());
   const [bots, setBots] = useState<any[]>([]);
 
   // Billing states
@@ -477,6 +480,7 @@ const SettingsPage: React.FC = () => {
   const { user, token, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  usePageTitle("Settings");
 
   const [qualityFilter, setQualityFilter] = useState(true);
 
@@ -499,6 +503,10 @@ const SettingsPage: React.FC = () => {
     if (activeTab === "security") {
       getPublicKeys()
         .then((data) => setPublicKeys(data))
+        .catch(() => {});
+      migrateLegacyKeys()
+        .then(() => getAllPrivateKeyIds())
+        .then((ids) => setLocalKeyIds(new Set(ids)))
         .catch(() => {});
     }
     if (activeTab === "bots") {
@@ -1264,11 +1272,10 @@ const SettingsPage: React.FC = () => {
 
                     await addPublicKey(keyIdString, pem, deviceName);
 
-                    // Export private key to PEM for local storage
-                    const pkcs8 = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-                    const privBase64 = btoa(String.fromCharCode(...new Uint8Array(pkcs8)));
-                    const privPem = `-----BEGIN PRIVATE KEY-----\n${privBase64.match(/.{1,64}/g)?.join("\n")}\n-----END PRIVATE KEY-----\n`;
-                    localStorage.setItem(`ap_priv_key_${keyIdString}`, privPem);
+                    // Store non-extractable private key securely in IndexedDB keystore
+                    await savePrivateKey(keyIdString, keyPair.privateKey);
+                    const currentLocalIds = await getAllPrivateKeyIds();
+                    setLocalKeyIds(new Set(currentLocalIds));
 
                     setPublicKeys(await getPublicKeys());
                   } catch (e) {
@@ -1302,7 +1309,7 @@ const SettingsPage: React.FC = () => {
                       <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
                         Created: {new Date(k.created_at).toLocaleDateString()}
                       </DetailSubtitle>
-                      {localStorage.getItem(`ap_priv_key_${k.key_id_string}`) && (
+                      {localKeyIds.has(k.key_id_string) && (
                         <DetailSubtitle style={{ display: "block", marginTop: "4px", color: "var(--color-success)" }}>
                           ✓ Private key present on this device
                         </DetailSubtitle>
@@ -1313,8 +1320,10 @@ const SettingsPage: React.FC = () => {
                       onClick={async () => {
                         if (confirm("Revoke this key? It will be permanently removed from your authorized devices.")) {
                           await revokePublicKey(k.id);
+                          await deletePrivateKey(k.key_id_string);
+                          const currentLocalIds = await getAllPrivateKeyIds();
+                          setLocalKeyIds(new Set(currentLocalIds));
                           setPublicKeys(await getPublicKeys());
-                          localStorage.removeItem(`ap_priv_key_${k.key_id_string}`);
                         }
                       }}
                     >

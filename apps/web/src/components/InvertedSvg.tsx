@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { invertSvgColors } from "@modelscript/diagram";
+import DOMPurify from "dompurify";
 import React, { useEffect, useReducer, useRef } from "react";
 import { useTheme } from "../theme";
 
@@ -15,7 +16,10 @@ interface InvertedSvgProps {
   onError?: (e: unknown) => void;
 }
 
-type State = { svgContent: string | null; error: boolean };
+interface State {
+  svgContent: string | null;
+  error: boolean;
+}
 type Action = { type: "reset" } | { type: "loaded"; content: string } | { type: "failed" };
 
 function reducer(_state: State, action: Action): State {
@@ -81,6 +85,9 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
 
   const isDark = theme === "dark";
   const processed = invertSvgColors(state.svgContent, isDark);
+  const sanitized = DOMPurify.sanitize(processed, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
 
   return (
     <div
@@ -95,7 +102,7 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
         flexShrink: 0,
         ...style,
       }}
-      dangerouslySetInnerHTML={{ __html: processed }}
+      dangerouslySetInnerHTML={{ __html: sanitized }}
     />
   );
 };

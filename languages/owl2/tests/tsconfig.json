@@ -5,7 +5,12 @@
     "lib": ["esnext", "dom"],
     "types": ["node"],
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/owl2": ["../src/index.ts"],
+      "@modelscript/owl2/*": ["../src/*"]
+    }
   },
   "include": ["**/*"]
 }

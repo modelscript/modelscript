@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { MarkGithubIcon } from "@primer/octicons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+import { usePageTitle } from "../util/title";
 
 const GitLabIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -260,6 +260,7 @@ const FooterText = styled.p`
 `;
 
 export default function SignupPage() {
+  usePageTitle("Sign Up");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -289,7 +290,7 @@ export default function SignupPage() {
       navigate("/");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as any;
+        const axiosErr = err as { response?: { data?: { error?: string } } };
         setError(axiosErr.response?.data?.error || "Registration failed");
       } else {
         setError("Registration failed. Please try again.");
@@ -329,37 +330,57 @@ export default function SignupPage() {
 
         <Divider>or</Divider>
 
-        <Form onSubmit={handleSubmit}>
-          {error && <ErrorBanner>{error}</ErrorBanner>}
+        <Form onSubmit={handleSubmit} aria-label="Sign up form">
+          {error && (
+            <ErrorBanner role="alert" aria-live="polite">
+              {error}
+            </ErrorBanner>
+          )}
           <Input
+            id="signup-username"
+            name="username"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username (e.g. johndoe)"
+            aria-label="Username"
+            autoComplete="username"
             required
             autoFocus
             minLength={3}
           />
           <Input
+            id="signup-email"
+            name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email address"
+            aria-label="Email address"
+            autoComplete="email"
             required
           />
           <Input
+            id="signup-password"
+            name="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password (minimum 8 characters)"
+            aria-label="Password (minimum 8 characters)"
+            autoComplete="new-password"
             required
             minLength={8}
           />
           <Input
+            id="signup-confirm-password"
+            name="confirm-password"
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm password"
+            aria-label="Confirm password"
+            autoComplete="new-password"
             required
           />
           <Button type="submit" disabled={loading}>

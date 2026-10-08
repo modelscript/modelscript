@@ -798,7 +798,7 @@ export const modelicaLanguage = language({
 
     constraining_clause: ($) =>
       seq(
-        "constrainedby",
+        choice("constrainedby", "extends"),
         field("type_specifier", $.type_specifier),
         optional(field("modification", $.class_modification)),
       ),

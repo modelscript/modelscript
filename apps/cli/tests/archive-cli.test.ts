@@ -58,6 +58,7 @@ describe("CLI Archive Management (msx archive)", () => {
       assert.strictEqual(requests[0]?.method, "GET");
       assert.strictEqual(requests[0]?.url, "/api/v1/users/me/export/status");
     } finally {
+      server.closeAllConnections?.();
       server.close();
     }
   });
@@ -135,6 +136,7 @@ describe("CLI Archive Management (msx archive)", () => {
       assert.ok(fs.existsSync(outputFile));
       assert.strictEqual(fs.readFileSync(outputFile, "utf-8"), "PK\x03\x04test_zip_payload");
     } finally {
+      server.closeAllConnections?.();
       server.close();
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });

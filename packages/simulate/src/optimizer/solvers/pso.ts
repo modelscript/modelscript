@@ -174,7 +174,8 @@ export async function psoSolve(problem: BlackBoxProblem, options?: PsoOptions): 
       options.onGeneration(gen, gBestFitness, gBest);
     }
 
-    if (swarmVariance / swarmSize < tol) {
+    const relativeVariance = swarmVariance / (swarmSize * Math.max(1.0, Math.abs(gBestFitness)));
+    if (relativeVariance < tol || swarmVariance / swarmSize < tol) {
       converged = true;
       exitMessage = `Swarm variance below tolerance ${tol}`;
       break;
@@ -330,7 +331,8 @@ export function psoSolveSync(problem: BlackBoxProblem, options?: PsoOptions): Si
       options.onGeneration(gen, gBestFitness, gBest);
     }
 
-    if (swarmVariance / swarmSize < tol) {
+    const relativeVariance = swarmVariance / (swarmSize * Math.max(1.0, Math.abs(gBestFitness)));
+    if (relativeVariance < tol || swarmVariance / swarmSize < tol) {
       converged = true;
       exitMessage = `Swarm variance below tolerance ${tol}`;
       break;

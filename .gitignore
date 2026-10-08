@@ -24,6 +24,8 @@ msl_report*.html
 
 # Compiled / binary artifacts
 *.wasm
+apps/ide/models/*.wasm
+apps/docs/docs/public/*.pdf
 *.tsbuildinfo
 *.a
 *.so

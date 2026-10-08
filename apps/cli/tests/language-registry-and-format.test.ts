@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { after, before, describe, it } from "node:test";
 import {
   LanguageResolver,
   listAllLanguages,
@@ -13,11 +15,11 @@ import {
 describe("Universal Language Registry & Resolver", () => {
   const tempDir = path.join(os.tmpdir(), `modelscript-test-reg-${Date.now()}`);
 
-  beforeAll(() => {
+  before(() => {
     process.env.MODELSCRIPT_LANGUAGES_DIR = tempDir;
   });
 
-  afterAll(() => {
+  after(() => {
     delete process.env.MODELSCRIPT_LANGUAGES_DIR;
     if (fs.existsSync(tempDir)) {
       try {
@@ -26,47 +28,47 @@ describe("Universal Language Registry & Resolver", () => {
     }
   });
 
-  test("should list all built-in languages with their recognized extensions", () => {
+  it("should list all built-in languages with their recognized extensions", () => {
     const { builtIn } = listAllLanguages();
     const ids = builtIn.map((b) => b.id);
-    expect(ids).toContain("modelica");
-    expect(ids).toContain("sysml2");
-    expect(ids).toContain("scad");
-    expect(ids).toContain("step");
-    expect(ids).toContain("owl2");
-    expect(ids).toContain("csv");
+    assert.ok(ids.includes("modelica"));
+    assert.ok(ids.includes("sysml2"));
+    assert.ok(ids.includes("scad"));
+    assert.ok(ids.includes("step"));
+    assert.ok(ids.includes("owl2"));
+    assert.ok(ids.includes("csv"));
 
     const exts = LanguageResolver.getAllExtensions();
-    expect(exts).toContain(".mo");
-    expect(exts).toContain(".sysml");
-    expect(exts).toContain(".scad");
-    expect(exts).toContain(".step");
+    assert.ok(exts.includes(".mo"));
+    assert.ok(exts.includes(".sysml"));
+    assert.ok(exts.includes(".scad"));
+    assert.ok(exts.includes(".step"));
   });
 
-  test("should resolve built-in languages by file extension", async () => {
+  it("should resolve built-in languages by file extension", async () => {
     const moLang = await LanguageResolver.resolve("pump.mo");
-    expect(moLang.manifest.id).toBe("modelica");
-    expect(moLang.manifest.name).toBe("Modelica");
+    assert.strictEqual(moLang.manifest.id, "modelica");
+    assert.strictEqual(moLang.manifest.name, "Modelica");
 
     const sysmlLang = await LanguageResolver.resolve("architecture.sysml");
-    expect(sysmlLang.manifest.id).toBe("sysml2");
+    assert.strictEqual(sysmlLang.manifest.id, "sysml2");
 
     const scadLang = await LanguageResolver.resolve("bracket.scad");
-    expect(scadLang.manifest.id).toBe("scad");
+    assert.strictEqual(scadLang.manifest.id, "scad");
 
     const stepLang = await LanguageResolver.resolve("assembly.step");
-    expect(stepLang.manifest.id).toBe("step");
+    assert.strictEqual(stepLang.manifest.id, "step");
   });
 
-  test("should resolve language via explicit override flag", async () => {
+  it("should resolve language via explicit override flag", async () => {
     const overrideLang = await LanguageResolver.resolve("custom_model.txt", "modelica");
-    expect(overrideLang.manifest.id).toBe("modelica");
+    assert.strictEqual(overrideLang.manifest.id, "modelica");
 
     const scadOverride = await LanguageResolver.resolve("test.any", "scad");
-    expect(scadOverride.manifest.id).toBe("scad");
+    assert.strictEqual(scadOverride.manifest.id, "scad");
   });
 
-  test("should register, resolve, and unregister user language in catalog", async () => {
+  it("should register, resolve, and unregister user language in catalog", async () => {
     const customId = "minirobot";
     registerLanguage({
       id: customId,
@@ -75,21 +77,23 @@ describe("Universal Language Registry & Resolver", () => {
     });
 
     const resolved = await LanguageResolver.resolve("rover.mbot");
-    expect(resolved.manifest.id).toBe(customId);
-    expect(resolved.manifest.name).toBe("MiniRobot");
+    assert.strictEqual(resolved.manifest.id, customId);
+    assert.strictEqual(resolved.manifest.name, "MiniRobot");
 
     const resolved2 = await LanguageResolver.resolve("rover.robot");
-    expect(resolved2.manifest.id).toBe(customId);
+    assert.strictEqual(resolved2.manifest.id, customId);
 
     const unregistered = unregisterLanguage(customId);
-    expect(unregistered).toBe(true);
+    assert.strictEqual(unregistered, true);
 
-    await expect(LanguageResolver.resolve("rover.mbot")).rejects.toThrow("Unknown file extension");
+    await assert.rejects(async () => {
+      await LanguageResolver.resolve("rover.mbot");
+    }, /Unknown file extension/);
   });
 });
 
 describe("Universal Formatting & Unparsing", () => {
-  test("should format Modelica code with proper keyword and equation indentation", async () => {
+  it("should format Modelica code with proper keyword and equation indentation", async () => {
     const lang = await LanguageResolver.resolve("test.mo");
     const unformatted = `model Oscillator
 Real x;
@@ -98,13 +102,13 @@ der(x) = -x;
 end Oscillator;`;
 
     const formatted = await lang.format(unformatted, { indentSize: 2 });
-    expect(formatted).toContain("  Real x;");
-    expect(formatted).toContain("  der(x) = -x;");
-    expect(formatted.startsWith("model Oscillator")).toBe(true);
-    expect(formatted.trim().endsWith("end Oscillator;")).toBe(true);
+    assert.ok(formatted.includes("  Real x;"));
+    assert.ok(formatted.includes("  der(x) = -x;"));
+    assert.ok(formatted.startsWith("model Oscillator"));
+    assert.ok(formatted.trim().endsWith("end Oscillator;"));
   });
 
-  test("should format STEP document with standardized spacing and records", async () => {
+  it("should format STEP document with standardized spacing and records", async () => {
     const lang = await LanguageResolver.resolve("part.step");
     const rawStep = `ISO-10303-21;
 HEADER;
@@ -116,11 +120,11 @@ ENDSEC;
 END-ISO-10303-21;`;
 
     const formatted = await lang.format(rawStep);
-    expect(formatted).toContain("#1=PRODUCT ('Cube','Test');");
-    expect(formatted).toContain("#2=APPLICATION_CONTEXT('automotive');");
+    assert.ok(formatted.includes("#1=PRODUCT ('Cube','Test');"));
+    assert.ok(formatted.includes("#2=APPLICATION_CONTEXT('automotive');"));
   });
 
-  test("should format SysML v2 with clean block indentation", async () => {
+  it("should format SysML v2 with clean block indentation", async () => {
     const lang = await LanguageResolver.resolve("model.sysml");
     const rawSysml = `package Vehicle {
 part def Chassis {
@@ -129,11 +133,11 @@ attribute mass : Real;
 }`;
 
     const formatted = await lang.format(rawSysml, { indentSize: 2 });
-    expect(formatted).toContain("  part def Chassis {");
-    expect(formatted).toContain("    attribute mass : Real;");
+    assert.ok(formatted.includes("  part def Chassis {"));
+    assert.ok(formatted.includes("    attribute mass : Real;"));
   });
 
-  test("should unparse code cleanly", async () => {
+  it("should unparse code cleanly", async () => {
     const lang = await LanguageResolver.resolve("sample.mo");
     const code = `model Spring
   Real f;
@@ -142,31 +146,31 @@ equation
 end Spring;`;
 
     const unparsed = await lang.unparse(code);
-    expect(unparsed).toContain("model Spring");
-    expect(unparsed).toContain("end Spring;");
+    assert.ok(unparsed.includes("model Spring"));
+    assert.ok(unparsed.includes("end Spring;"));
   });
 });
 
 describe("Parser Execution across Built-in Languages", () => {
-  test("should load parser and parse Modelica source into CST", async () => {
+  it("should load parser and parse Modelica source into CST", async () => {
     const lang = await LanguageResolver.resolve("test.mo");
     const { parser } = await lang.loadParser();
-    expect(parser).toBeDefined();
+    assert.ok(parser != null);
 
     const tree = parser.parse("model M equation x = 1; end M;");
-    expect(tree).toBeDefined();
-    expect(tree.rootNode).toBeDefined();
-    expect(tree.rootNode.toString()).toContain("class_definition");
+    assert.ok(tree != null);
+    assert.ok(tree.rootNode != null);
+    assert.ok(tree.rootNode.toString().includes("class_definition"));
   });
 
-  test("should load parser and parse OpenSCAD source into CST", async () => {
+  it("should load parser and parse OpenSCAD source into CST", async () => {
     const lang = await LanguageResolver.resolve("part.scad");
     const { parser } = await lang.loadParser();
-    expect(parser).toBeDefined();
+    assert.ok(parser != null);
 
     const tree = parser.parse("cube([10, 20, 30]);");
-    expect(tree).toBeDefined();
-    expect(tree.rootNode).toBeDefined();
-    expect(tree.rootNode.toString().length).toBeGreaterThan(0);
+    assert.ok(tree != null);
+    assert.ok(tree.rootNode != null);
+    assert.ok(tree.rootNode.toString().length > 0);
   });
 });

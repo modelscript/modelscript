@@ -3,16 +3,25 @@
 import { createWasmParser } from "@modelscript/dsl";
 import { createWasmParser as createModelicaParser } from "@modelscript/modelica/parser";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
+import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import { Context } from "../src/context.js";
-import { NodeFileSystem } from "./node-filesystem.js";
+import { Context } from "../languages/modelica/src/context.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const sysmlWasmPath = path.resolve(__dirname, "../../sysml2/dist/parser.wasm");
-const modelicaWasmPath = path.resolve(__dirname, "../dist/parser.wasm");
+const sysmlWasmPath = path.resolve(__dirname, "../languages/sysml2/dist/parser.wasm");
+const modelicaWasmPath = path.resolve(__dirname, "../languages/modelica/dist/parser.wasm");
+
+class SimpleNodeFileSystem {
+  existsSync(p: string) {
+    return fs.existsSync(p);
+  }
+  readFileSync(p: string, encoding: string) {
+    return fs.readFileSync(p, encoding as any);
+  }
+}
 
 function generateSysMLBattery(n: number, threshold = 65.0, overconstraint = false): string {
   return `
@@ -65,13 +74,6 @@ end BatteryPack_${n};
 `;
 }
 
-interface BenchmarkResult {
-  condition: string;
-  n10: number;
-  n100: number;
-  n1000: number;
-}
-
 async function runBenchmark() {
   console.log("================================================================================");
   console.log("ModelScript Cross-Domain Polyglot Incremental Compilation & Verification");
@@ -109,11 +111,11 @@ async function runBenchmark() {
     sysmlIndex0.register(sysmlUri, () => sysmlTree0.rootNode);
     const sysmlUnified0 = await sysmlIndex0.toUnifiedAsync();
     console.log("    Creating SysML engine...");
-    const sysmlEngine0 = createSysML2QueryEngine(sysmlUnified0, () => sysmlTree0.rootNode);
+    createSysML2QueryEngine(sysmlUnified0, () => sysmlTree0.rootNode);
 
     // Parse & flatten Modelica
     console.log("    Loading Modelica...");
-    const ctx0 = new Context(new NodeFileSystem());
+    const ctx0 = new Context(new SimpleNodeFileSystem() as any);
     ctx0.load(modelicaSrc0, modelicaUri);
     console.log("    Flattening Modelica arena...");
     const arena0 = ctx0.flattenArena(`BatteryPack_${n}`, undefined, modelicaUri);
@@ -128,7 +130,7 @@ async function runBenchmark() {
     console.log("  [Step 2] SysML Requirement Edit (Incremental)...");
     const sysmlSrc1 = generateSysMLBattery(n, 70.0, false);
     const t1 = performance.now();
-    const sysmlTree1 = sysmlParser.parse(sysmlSrc1);
+    sysmlParser.parse(sysmlSrc1);
     const reqEditDuration = performance.now() - t1;
     resultsTable["2. SysML Requirement Threshold Edit"].push(reqEditDuration);
     console.log(`    Step 2 completed in ${reqEditDuration.toFixed(2)} ms`);
@@ -137,7 +139,7 @@ async function runBenchmark() {
     console.log("  [Step 3] SysML Parameter Edit (Incremental)...");
     const sysmlSrc2 = sysmlSrc1.replace("T_ambient: Real = 25.0;", "T_ambient: Real = 30.0;");
     const t2 = performance.now();
-    const sysmlTree2 = sysmlParser.parse(sysmlSrc2);
+    sysmlParser.parse(sysmlSrc2);
     // Propagate parameter modification into Modelica binding
     const modelicaSrc2 = generateModelicaBattery(n, 0.1, 30.0);
     ctx0.load(modelicaSrc2, modelicaUri);
@@ -160,8 +162,7 @@ async function runBenchmark() {
     console.log("  [Step 5] Over-Constraint Injection (Incremental)...");
     const sysmlSrc4 = generateSysMLBattery(n, 70.0, true);
     const t4 = performance.now();
-    const sysmlTree4 = sysmlParser.parse(sysmlSrc4);
-    const hasOverconstraint = sysmlSrc4.includes("cells[1].temp == 50.0");
+    sysmlParser.parse(sysmlSrc4);
     const overconstraintDuration = performance.now() - t4;
     resultsTable["5. Structural Over-Constraint Injection"].push(overconstraintDuration);
     console.log(`    Step 5 completed in ${overconstraintDuration.toFixed(2)} ms`);

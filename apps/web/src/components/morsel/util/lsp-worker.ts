@@ -37,6 +37,9 @@ export async function startLsp(): Promise<ProtocolConnection> {
 
     worker.onerror = (err) => {
       console.error("[lsp-worker] Worker onerror:", err.message, err.filename, err.lineno, err);
+      connection = null;
+      initPromise = null;
+      worker = null;
     };
     worker.onmessageerror = (err) => {
       console.error("[lsp-worker] Worker onmessageerror:", err);
@@ -45,6 +48,12 @@ export async function startLsp(): Promise<ProtocolConnection> {
     const reader = new BrowserMessageReader(worker);
     const writer = new BrowserMessageWriter(worker);
     const conn = createProtocolConnection(reader, writer);
+    conn.onClose(() => {
+      console.warn("[lsp-worker] Connection closed. Resetting connection handle.");
+      connection = null;
+      initPromise = null;
+      worker = null;
+    });
     conn.listen();
 
     conn.onNotification("window/logMessage", (params: any) => {
@@ -149,6 +158,7 @@ export async function stopLsp(): Promise<void> {
     worker.terminate();
     worker = null;
   }
+  initPromise = null;
 }
 
 if (typeof window !== "undefined") {

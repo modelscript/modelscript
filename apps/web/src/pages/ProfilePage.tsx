@@ -19,13 +19,14 @@ import { Button, Dialog, Flash, FormControl, Heading, Select, Spinner, Text, Tex
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import styled from "styled-components";
+import { blockUser, followUser, getUserProfile, muteUser, reportUser, unblockUser, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-import { API_BASE_URL } from "../config";
+import { usePageTitle } from "../util/title";
 
 const XIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -74,6 +75,9 @@ const ProfilePage: React.FC = () => {
   const { username } = useParams();
   const { user, token } = useAuth();
   const [profile, setProfile] = useState<any>(null);
+  usePageTitle(
+    profile?.display_name ? `${profile.display_name} (@${username})` : username ? `@${username}` : "Profile",
+  );
   const [isFollowing, setIsFollowing] = useState(false);
   const [linkedAccounts, setLinkedAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,16 +94,11 @@ const ProfilePage: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const handleBlock = async () => {
-    if (!token) return;
+    if (!token || !username) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${username}/block`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setIsBlocked(true);
-        setIsFollowing(false);
-      }
+      await blockUser(username);
+      setIsBlocked(true);
+      setIsFollowing(false);
     } catch (err: any) {
       setActionError(err.message || "Failed to block user");
     } finally {
@@ -108,15 +107,10 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleUnblock = async () => {
-    if (!token) return;
+    if (!token || !username) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${username}/block`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setIsBlocked(false);
-      }
+      await unblockUser(username);
+      setIsBlocked(false);
     } catch (err: any) {
       setActionError(err.message || "Failed to unblock user");
     } finally {
@@ -125,16 +119,10 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleMuteToggle = async () => {
-    if (!token) return;
+    if (!token || !username) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${username}/mute`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setIsMuted(Boolean(data.muted));
-      }
+      const data = await muteUser(username);
+      setIsMuted(Boolean(data.muted));
     } catch (err: any) {
       setActionError(err.message || "Failed to mute user");
     } finally {
@@ -143,22 +131,13 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleReportSubmit = async () => {
-    if (!token) return;
+    if (!token || !username) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/users/${username}/report`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ reason: reportReason, details: reportDetails }),
-      });
-      if (res.ok) {
-        setShowReportModal(false);
-        setReportDetails("");
-        setReportSuccess(true);
-        setTimeout(() => setReportSuccess(false), 5000);
-      }
+      await reportUser(username, `${reportReason}: ${reportDetails}`);
+      setShowReportModal(false);
+      setReportDetails("");
+      setReportSuccess(true);
+      setTimeout(() => setReportSuccess(false), 5000);
     } catch (err: any) {
       setActionError(err.message || "Failed to submit report");
     }
@@ -168,18 +147,14 @@ const ProfilePage: React.FC = () => {
 
   useEffect(() => {
     async function fetchProfile() {
+      if (!username) return;
       try {
-        const res = await fetch(`${API_BASE_URL}/users/${username}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setProfile(data.profile);
-          setIsFollowing(Boolean(data.isFollowing));
-          setIsBlocked(Boolean(data.isBlocked));
-          setIsMuted(Boolean(data.isMuted));
-          setLinkedAccounts(data.linkedAccounts || []);
-        }
+        const data = await getUserProfile(username);
+        setProfile(data.profile);
+        setIsFollowing(Boolean(data.isFollowing));
+        setIsBlocked(Boolean(data.isBlocked));
+        setIsMuted(Boolean(data.isMuted));
+        setLinkedAccounts(data.linkedAccounts || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -190,20 +165,18 @@ const ProfilePage: React.FC = () => {
   }, [username, token]);
 
   const toggleFollow = async () => {
-    if (!token) return;
+    if (!token || !username) return;
     try {
-      const method = isFollowing ? "DELETE" : "POST";
-      const res = await fetch(`${API_BASE_URL}/users/${username}/follow`, {
-        method,
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setIsFollowing(!isFollowing);
-        setProfile((prev) => ({
-          ...prev,
-          follower_count: prev.follower_count + (isFollowing ? -1 : 1),
-        }));
+      if (isFollowing) {
+        await unfollowUser(username);
+      } else {
+        await followUser(username);
       }
+      setIsFollowing(!isFollowing);
+      setProfile((prev) => ({
+        ...prev,
+        follower_count: prev.follower_count + (isFollowing ? -1 : 1),
+      }));
     } catch (err) {
       console.error(err);
     }

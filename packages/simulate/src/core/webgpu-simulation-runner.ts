@@ -212,8 +212,9 @@ export class WebGPUSimulationRunner {
         this.buffers.stateBuffer[i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
     }
 
-    const readbackBuffer = this.device.createBuffer({
-      size: this.buffers.varCount * 8, // vec2<f32>
+    const totalTrajectoryBytes = (steps + 1) * this.buffers.varCount * 8; // vec2<f32>
+    const trajectoryReadbackBuffer = this.device.createBuffer({
+      size: totalTrajectoryBytes,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
@@ -349,30 +350,33 @@ export class WebGPUSimulationRunner {
 
       currentTime += stepSize;
 
-      // Copy state to readback buffer
+      // Copy state to current step slice of trajectoryReadbackBuffer asynchronously
       commandEncoder.copyBufferToBuffer(
         this.stateBuffer,
         0,
-        readbackBuffer,
-        0,
-        this.buffers.varCount * 8, // vec2<f32>
+        trajectoryReadbackBuffer,
+        s * this.buffers.varCount * 8, // vec2<f32>
+        this.buffers.varCount * 8,
       );
 
       this.device.queue.submit([commandEncoder.finish()]);
-
-      // Read back
-      await readbackBuffer.mapAsync(GPUMapMode.READ);
-      const mappedData = new Float32Array(readbackBuffer.getMappedRange());
-      for (let i = 0; i < this.buffers.varCount; i++) {
-        resultBuffer[s * this.buffers.varCount + i] =
-          mappedData[i * 2] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! +
-          mappedData[i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
-      }
-      readbackBuffer.unmap();
     }
 
-    // Cleanup
-    readbackBuffer.destroy();
+    // Single batched read back across entire simulation trajectory
+    await trajectoryReadbackBuffer.mapAsync(GPUMapMode.READ);
+    const mappedData = new Float32Array(trajectoryReadbackBuffer.getMappedRange());
+    const stepStride = this.buffers.varCount * 2;
+    for (let s = 1; s <= steps; s++) {
+      const srcOffset = s * stepStride;
+      const dstOffset = s * this.buffers.varCount;
+      for (let i = 0; i < this.buffers.varCount; i++) {
+        resultBuffer[dstOffset + i] =
+          mappedData[srcOffset + i * 2] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! +
+          mappedData[srcOffset + i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+      }
+    }
+    trajectoryReadbackBuffer.unmap();
+    trajectoryReadbackBuffer.destroy();
 
     return resultBuffer;
   }

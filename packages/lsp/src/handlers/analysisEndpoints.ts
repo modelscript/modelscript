@@ -2134,10 +2134,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
             summary: compResult.summary,
           };
         } else if (params.pair) {
-          const pairResult = ContractAlgebra.verifyAssumeGuaranteePair(
-            params.pair.guaranteeContract,
-            params.pair.assumptionContract,
-          );
+          const pairResult = ContractAlgebra.refines(params.pair.guaranteeContract, params.pair.assumptionContract);
           return {
             success: true,
             isRefined: pairResult.isRefined,

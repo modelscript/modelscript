@@ -5,7 +5,7 @@
       "textFile": "build/debug.wat",
       "sourceMap": true,
       "debug": true,
-      "enable": ["threads"]
+      "enable": ["threads", "simd"]
     },
     "release": {
       "outFile": "build/release.wasm",
@@ -15,7 +15,7 @@
       "shrinkLevel": 0,
       "converge": false,
       "noAssert": false,
-      "enable": ["threads"]
+      "enable": ["threads", "simd"]
     }
   },
   "options": {

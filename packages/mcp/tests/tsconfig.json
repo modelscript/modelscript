@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["esnext", "dom"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/mcp": ["../src/index.ts"],
+      "@modelscript/mcp/*": ["../src/*"]
+    }
+  },
+  "include": ["**/*"]
+}

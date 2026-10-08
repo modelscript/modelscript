@@ -34,7 +34,13 @@ function prompt(question: string, defaultValue = ""): Promise<string> {
 function checkPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
-    server.once("error", () => resolve(false));
+    server.unref();
+    server.once("error", () => {
+      try {
+        server.close();
+      } catch {}
+      resolve(false);
+    });
     server.once("listening", () => {
       server.close(() => resolve(true));
     });

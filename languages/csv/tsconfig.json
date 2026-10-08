@@ -1,17 +1,8 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "declaration": true,
-    "outDir": "dist",
-    "incremental": true,
-    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "rootDir": ".",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "outDir": "./dist"
   },
   "include": [
     "language.ts",
@@ -21,5 +12,5 @@
     "src-gen/**/*.ts",
     "src/csv-parser.ts"
   ],
-  "exclude": ["node_modules", "dist", "build"]
+  "exclude": ["node_modules", "dist", "build", "tests"]
 }

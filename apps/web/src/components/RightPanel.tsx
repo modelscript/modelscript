@@ -15,9 +15,16 @@ import { Button, Dialog, Heading, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { getClusterStatus, getUnifiedUserJobs, type ClusterStatus, type UnifiedJob } from "../api";
+import {
+  getClusterStatus,
+  getPopularRepos,
+  getTrending,
+  getUnifiedUserJobs,
+  getUserSuggestions,
+  type ClusterStatus,
+  type UnifiedJob,
+} from "../api";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
 import Box from "./Box";
 import CloudSimulationModal from "./CloudSimulationModal";
 import FollowButton from "./FollowButton";
@@ -380,14 +387,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
   useEffect(() => {
     async function fetchSuggestions() {
       try {
-        const res = await fetch(`${API_BASE_URL}/users/suggestions?limit=4`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const filtered = (data.suggestions || []).filter((s: any) => !user || s.username !== user.username);
-          setSuggestions(filtered);
-        }
+        const data = await getUserSuggestions(4);
+        const filtered = (data.suggestions || []).filter((s: any) => !user || s.username !== user.username);
+        setSuggestions(filtered);
       } catch (err) {
         console.error(err);
       }
@@ -398,11 +400,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
   useEffect(() => {
     async function fetchTrending() {
       try {
-        const res = await fetch(`${API_BASE_URL}/social/trending?limit=4`);
-        if (res.ok) {
-          const data = await res.json();
-          setTrending(data.topics);
-        }
+        const data = await getTrending(4);
+        setTrending(data.topics || []);
       } catch (err) {
         console.error(err);
       }
@@ -413,11 +412,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
   useEffect(() => {
     async function fetchPopularRepos() {
       try {
-        const res = await fetch(`${API_BASE_URL}/repos/popular`);
-        if (res.ok) {
-          const data = await res.json();
-          setPopularRepos(data.repos);
-        }
+        const data = await getPopularRepos();
+        setPopularRepos(data.repos || []);
       } catch (err) {
         console.error(err);
       }

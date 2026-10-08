@@ -717,6 +717,25 @@ export function runTestCase(
         arena?.diagnostics.some((d) => d.code === 4011 || d.message.includes("Invalid protected variable"))
       )
         return false;
+      if (cd.code === 4017 && testCase.metadata.status === "correct" && lastClassName) {
+        const targetSym = Array.from(context.queryEngine.index.symbols.values()).find(
+          (s) => s.kind === "Class" && s.name === lastClassName,
+        );
+        if (targetSym) {
+          let charOffset = cd.startCharOffset ?? cd.startOffset;
+          if (charOffset == null && cd.range) {
+            const lines = testCase.source.split("\n");
+            charOffset = 0;
+            for (let i = 0; i < cd.range.start.line && i < lines.length; i++) {
+              charOffset += (lines[i]?.length ?? 0) + 1;
+            }
+            charOffset += cd.range.start.character;
+          }
+          if (charOffset != null && (charOffset < targetSym.startByte || charOffset > targetSym.endByte)) {
+            return false;
+          }
+        }
+      }
       return true;
     });
 
@@ -878,7 +897,11 @@ export function runTestCase(
           };
         }
 
-        if (diagnostics.some((existing) => existing.message === d.message)) {
+        const normMsg = d.message.replace(/^\[M\d+\]\s*/, "");
+        if (
+          d.type !== "notification" &&
+          diagnostics.some((existing) => existing.message.replace(/^\[M\d+\]\s*/, "") === normMsg)
+        ) {
           continue;
         }
 
@@ -902,7 +925,11 @@ export function runTestCase(
               : cd.severity === 3 || cd.severity === 4
                 ? "notification"
                 : "info";
-        if (diagnostics.some((existing) => existing.message === cd.message && existing.code === cd.code)) {
+        const normCdMsg = cd.message.replace(/^\[M\d+\]\s*/, "");
+        if (
+          sevStr !== "notification" &&
+          diagnostics.some((existing) => existing.message.replace(/^\[M\d+\]\s*/, "") === normCdMsg)
+        ) {
           continue;
         }
         diagnostics.push({
@@ -980,6 +1007,7 @@ export function runTestCase(
             4053: 2092,
             4002: 2093,
             4003: 2095,
+            4005: 2097,
           };
           const pairedNotifs = new Map<number, (typeof diagnostics)[0]>();
           for (const d of diagnostics) {
@@ -993,7 +1021,7 @@ export function runTestCase(
             if (d.type === "error" && typeof d.code === "number" && errorToNotifCode[d.code]) {
               const notifCode = errorToNotifCode[d.code];
               const notif = pairedNotifs.get(notifCode);
-              if (notif && !emittedNotifs.has(notif)) {
+              if (notif) {
                 orderedDiagnostics.push(notif);
                 emittedNotifs.add(notif);
               }

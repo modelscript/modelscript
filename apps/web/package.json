@@ -9,6 +9,7 @@
     "dev": "vite --port 3001",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -25,7 +26,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/xr": "^6.6.29",
-    "@svgdotjs/svg.js": "^3.2.4",
+    "@svgdotjs/svg.js": "^3.2.5",
     "@tanstack/react-virtual": "^3.13.21",
     "@types/dompurify": "^3.0.5",
     "@types/styled-components": "^5.1.36",
@@ -65,6 +66,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/d3-scale": "^4.0.9",
+    "@types/jsdom": "^30.0.0",
     "@types/lodash": "^4.17.21",
     "@types/mdast": "^4.0.4",
     "@types/node": "^24.10.1",
@@ -80,8 +82,9 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "jsdom": "^29.1.1",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.48.0",
+    "typescript-eslint": "^8.46.3",
     "vite": "^8.0.14",
     "vite-plugin-static-copy": "^3.1.4",
     "vite-tsconfig-paths": "^5.1.4"

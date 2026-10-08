@@ -19,10 +19,11 @@ import {
 import { Heading, IconButton, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
+import { createArtifactView, createPost, getUserFollowers, uploadStorageFile } from "../api";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
+import { getAllPrivateKeyIds, getPrivateKey, migrateLegacyKeys } from "../util/keystore";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import Box from "./Box";
 import HpcArtifactPickerModal from "./HpcArtifactPickerModal";
@@ -236,10 +237,7 @@ export default function ComposeBox({
 
   useEffect(() => {
     if (user?.username && token) {
-      fetch(`${API_BASE_URL}/users/${user.username}/followers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((r) => r.json())
+      getUserFollowers(user.username)
         .then((d) => {
           if (d.followers) setFollowers(d.followers);
         })
@@ -314,27 +312,15 @@ export default function ComposeBox({
       const formData = new FormData();
       formData.append("file", file);
 
-      const uploadRes = await fetch(`${API_BASE_URL}/storage/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+      const uploadData = await uploadStorageFile(formData);
+      const view_config = JSON.stringify({ url: uploadData.url });
+
+      const artifactData = await createArtifactView({
+        artifact_type: uploadData.view_type,
+        view_config,
+        title: file.name,
       });
-
-      if (uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        const view_config = JSON.stringify({ url: uploadData.url });
-
-        const artifactRes = await fetch(`${API_BASE_URL}/social/artifact-views`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ artifact_type: uploadData.view_type, view_config, title: file.name }),
-        });
-
-        if (artifactRes.ok) {
-          const artifactData = await artifactRes.json();
-          setArtifactId(artifactData.id);
-        }
-      }
+      setArtifactId(artifactData.id);
     } catch (err) {
       console.error(err);
     } finally {
@@ -381,61 +367,39 @@ export default function ComposeBox({
         });
       }
 
-      const res = await fetch(`${API_BASE_URL}/social/artifact-views`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ artifact_type: type, view_config, title: `Example ${type}` }),
+      const data = await createArtifactView({
+        artifact_type: type,
+        view_config,
+        title: `Example ${type}`,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setArtifactId(data.id);
-      }
+      setArtifactId(data.id);
     } catch (err) {
       console.error(err);
     }
   };
 
   const signContent = async (text: string) => {
-    for (let i = 0; i < localStorage.length; i++) {
-      const keyName = localStorage.key(i);
-      if (keyName && keyName.startsWith("ap_priv_key_")) {
-        const keyIdString = keyName.replace("ap_priv_key_", "");
-        const pem = localStorage.getItem(keyName) || "";
+    try {
+      await migrateLegacyKeys();
+      const keyIds = await getAllPrivateKeyIds();
+      if (keyIds.length === 0) return null;
 
-        const base64 = pem
-          .replace(/-----BEGIN PRIVATE KEY-----/, "")
-          .replace(/-----END PRIVATE KEY-----/, "")
-          .replace(/\s+/g, "");
+      const keyIdString = keyIds[0];
+      const cryptoKey = await getPrivateKey(keyIdString);
+      if (!cryptoKey) return null;
 
-        try {
-          const binaryStr = atob(base64);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let j = 0; j < binaryStr.length; j++) {
-            bytes[j] = binaryStr.charCodeAt(j);
-          }
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, data);
 
-          const cryptoKey = await window.crypto.subtle.importKey(
-            "pkcs8",
-            bytes,
-            { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-            false,
-            ["sign"],
-          );
+      const signatureBytes = new Uint8Array(signatureBuffer);
+      const signatureBase64 = btoa(String.fromCharCode(...signatureBytes));
 
-          const encoder = new TextEncoder();
-          const data = encoder.encode(text);
-          const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, data);
-
-          const signatureBytes = new Uint8Array(signatureBuffer);
-          const signatureBase64 = btoa(String.fromCharCode(...signatureBytes));
-
-          return { signatureBase64, keyIdString };
-        } catch (e) {
-          console.error("Signing failed", e);
-        }
-      }
+      return { signatureBase64, keyIdString };
+    } catch (e) {
+      console.error("Signing failed", e);
+      return null;
     }
-    return null;
   };
 
   const handleSubmit = async () => {
@@ -459,20 +423,10 @@ export default function ComposeBox({
         payload.key_id_string = signatureObj.keyIdString;
       }
 
-      const res = await fetch(`${API_BASE_URL}/social/posts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setContent("");
-        setArtifactId(null);
-        onPostCreated?.(data.post);
-      }
+      const data = await createPost(payload);
+      setContent("");
+      setArtifactId(null);
+      onPostCreated?.(data.post);
     } catch (err) {
       console.error(err);
     } finally {
@@ -1158,19 +1112,12 @@ export default function ComposeBox({
         onAttach={async ({ code, title, dialect }) => {
           if (!token) return;
           try {
-            const res = await fetch(`${API_BASE_URL}/social/artifact-views`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                artifact_type: "morsel",
-                view_config: JSON.stringify({ code, dialect, title }),
-                title: `⚡ ${title}`,
-              }),
+            const data = await createArtifactView({
+              artifact_type: "morsel",
+              view_config: JSON.stringify({ code, dialect, title }),
+              title: `⚡ ${title}`,
             });
-            if (res.ok) {
-              const data = await res.json();
-              setArtifactId(data.id);
-            }
+            setArtifactId(data.id);
           } catch (err) {
             console.error("Failed to attach morsel artifact:", err);
           }

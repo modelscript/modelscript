@@ -556,6 +556,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   private eqSourceRanges = new Map<number, { startByte: number; endByte: number }>();
   private varSourceRanges = new Map<number, { startByte: number; endByte: number }>();
   private paramNameToEqs = new Map<string, Set<number>>();
+  private eqKinds = new Map<number, EqKind>();
   public origEqRhs = new Map<number, number>();
   public nameExprIndices: number[] = [];
   public cachedBlt?: {
@@ -1252,6 +1253,13 @@ export class WasmDaeBridge implements IDaeBuilder {
     }
   }
 
+  setEqKind(eqId: number, kind: EqKind): void {
+    this.eqKinds.set(eqId, kind);
+    if (this.exports?.dae_setEqKind) {
+      this.exports.dae_setEqKind(this.ptr, eqId, kind);
+    }
+  }
+
   setEqSourceRange(eqIdx: number, startByte: number, endByte: number): void {
     this.eqSourceRanges.set(eqIdx, { startByte, endByte });
   }
@@ -1443,6 +1451,8 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   getEqKind(eqId: number): EqKind {
+    const overridden = this.eqKinds.get(eqId);
+    if (overridden !== undefined) return overridden;
     return this.exports?.dae_getEqKind ? (this.exports.dae_getEqKind(this.ptr, eqId) as EqKind) : EqKind.Simple;
   }
 

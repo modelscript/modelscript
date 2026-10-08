@@ -12,13 +12,22 @@ const OAuthCallbackPage: React.FC = () => {
   // but for now we just read the token from the URL if returned that way.
 
   useEffect(() => {
-    const token = searchParams.get("token");
+    // Check search params or hash fragment for token
+    let token = searchParams.get("token");
+    if (!token && window.location.hash) {
+      const match = window.location.hash.match(/token=([^&]+)/);
+      if (match) token = decodeURIComponent(match[1]);
+    }
+
     if (token) {
+      // Immediately scrub token from address bar and history to prevent leakage
+      window.history.replaceState({}, document.title, window.location.pathname);
       localStorage.setItem("modelscript-auth-token", token);
       window.location.href = "/home"; // Hard reload to re-init auth context
     } else {
       // Simulate OAuth flow locally if no backend token is present
-      setTimeout(() => navigate("/login"), 2000);
+      const timer = setTimeout(() => navigate("/login"), 2000);
+      return () => clearTimeout(timer);
     }
   }, [searchParams, navigate]);
 

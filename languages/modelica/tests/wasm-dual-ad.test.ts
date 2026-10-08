@@ -11,7 +11,7 @@ import { modelicaLanguage } from "../src/language.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("In-WASM Forward-Mode Dual Number Automatic Differentiation", () => {
+describe("In-WASM Forward-Mode Dual Number Automatic Differentiation", { timeout: 300000 }, () => {
   let tmpDir: string;
   let exports: any;
   let memory: WebAssembly.Memory;

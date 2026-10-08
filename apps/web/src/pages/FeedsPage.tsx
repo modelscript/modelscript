@@ -6,10 +6,11 @@ import { Button, Dialog, Heading, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
+import { getFeeds, subscribeFeed, unsubscribeFeed } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-import { API_BASE_URL } from "../config";
+import { usePageTitle } from "../util/title";
 
 const FeedItemWrapper = styled.div`
   display: flex;
@@ -117,6 +118,7 @@ function formatRssHandle(urlStr: string) {
 }
 
 const FeedsPage: React.FC = () => {
+  usePageTitle("Feeds");
   const { token } = useAuth();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [urlInput, setUrlInput] = useState("");
@@ -128,13 +130,8 @@ const FeedsPage: React.FC = () => {
   const fetchFeeds = async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/social/feeds`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFeeds(data.feeds);
-      }
+      const data = await getFeeds();
+      setFeeds(data.feeds || []);
     } catch (err) {
       console.error(err);
     }
@@ -152,32 +149,11 @@ const FeedsPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/social/feeds/subscribe`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ url: urlInput.trim() }),
-      });
-
-      let data;
-      const text = await res.text();
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { error: text || `HTTP Error ${res.status}` };
-      }
-
-      if (!res.ok) {
-        setError(data.error || "Failed to subscribe to feed");
-      } else {
-        setUrlInput("");
-        fetchFeeds();
-      }
-    } catch (e: unknown) {
-      const err = e as Error;
-      setError(err.message || "An error occurred");
+      await subscribeFeed(urlInput.trim());
+      setUrlInput("");
+      fetchFeeds();
+    } catch (e: any) {
+      setError(e.response?.data?.error || e.message || "Failed to subscribe to feed");
     } finally {
       setIsLoading(false);
     }
@@ -187,14 +163,9 @@ const FeedsPage: React.FC = () => {
     if (!unsubscribingFeed) return;
     setIsUnsubscribing(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/social/feeds/${unsubscribingFeed.id}/unsubscribe`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setFeeds(feeds.filter((f) => f.id !== unsubscribingFeed.id));
-        setUnsubscribingFeed(null);
-      }
+      await unsubscribeFeed(unsubscribingFeed.id);
+      setFeeds(feeds.filter((f) => f.id !== unsubscribingFeed.id));
+      setUnsubscribingFeed(null);
     } catch (err) {
       console.error(err);
     } finally {

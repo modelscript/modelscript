@@ -1268,9 +1268,9 @@ export declare function createWasmParserSync(
   parser: TreeSitterParser;
 };
 
-export const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
-export enum SyntaxKind {
+export declare enum SyntaxKind {
   ERROR = 0,
   Program = 99,
   program = 99,
@@ -1448,18 +1448,18 @@ export enum SyntaxKind {
   annotation_clause = 185,
   START = 186,
   _START = 186,
-  Identifier = 341,
-  identifier = 341,
-  StringLiteral = 342,
-  string_literal = 342,
-  UnsignedInteger = 343,
-  unsigned_integer = 343,
-  UnsignedReal = 344,
-  unsigned_real = 344,
+  Identifier = 342,
+  identifier = 342,
+  StringLiteral = 343,
+  string_literal = 343,
+  UnsignedInteger = 344,
+  unsigned_integer = 344,
+  UnsignedReal = 345,
+  unsigned_real = 345,
   EOF = 1023,
 }
 
-export enum FieldId {
+export declare enum FieldId {
   ClassPrefixes = 1,
   class_prefixes = 1,
   ClassSpecifier = 2,
@@ -1937,7 +1937,7 @@ export interface UnsignedRealNode extends SyntaxNode {
   readonly typeId: SyntaxKind.UnsignedReal;
 }
 export declare function isUnsignedReal(node: SyntaxNode | null | undefined): node is UnsignedRealNode;
-export namespace Cst {
+export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
   export const Program: {

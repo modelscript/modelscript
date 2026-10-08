@@ -6,7 +6,7 @@ import { Button, Dialog, Heading, Spinner, Text, TextInput } from "@primer/react
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
+import { createRepo, getRepos } from "../api";
 import Box from "./Box";
 
 export default function ProfileRepos({ username, isOwnProfile }: { username: string; isOwnProfile: boolean }) {
@@ -27,13 +27,8 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
         return;
       }
 
-      const res = await fetch(`${API_BASE_URL}/repos`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRepos(data.repos);
-      }
+      const data = await getRepos();
+      setRepos(data.repos || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -66,25 +61,16 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/repos`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          provider,
-          external_repo_id: fullName,
-          repo_full_name: fullName,
-          default_branch: "main",
-        }),
+      await createRepo({
+        provider,
+        external_repo_id: fullName,
+        repo_full_name: fullName,
+        default_branch: "main",
       });
 
-      if (res.ok) {
-        setShowAddModal(false);
-        setRepoUrl("");
-        fetchRepos();
-      }
+      setShowAddModal(false);
+      setRepoUrl("");
+      fetchRepos();
     } catch (err) {
       console.error("Failed to link repo", err);
     } finally {

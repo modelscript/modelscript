@@ -45,10 +45,16 @@ export function loadInpToFea(deckContent: string, options: LoadInpOptions = {}):
     idx++;
   }
 
-  // Filter 4-node tetrahedral elements (C3D4)
+  // Filter 4-node tetrahedral elements (C3D4 / CTETRA)
   const tetElements: number[] = [];
   for (const [, elem] of parsed.elements) {
-    if (elem.nodes.length >= 4) {
+    if (
+      elem.nodes.length >= 4 &&
+      elem.family !== "shell" &&
+      elem.family !== "beam" &&
+      elem.family !== "truss" &&
+      elem.type !== "CQUAD4"
+    ) {
       const n0 = idToIdx.get(elem.nodes[0]);
       const n1 = idToIdx.get(elem.nodes[1]);
       const n2 = idToIdx.get(elem.nodes[2]);

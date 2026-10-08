@@ -12,6 +12,8 @@
   "browser": "./dist/extension.js",
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --format=cjs --platform=browser --external:vscode --outfile=dist/extension.js",
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit",
     "watch": "esbuild src/extension.ts --bundle --format=cjs --platform=browser --external:vscode --outfile=dist/extension.js --watch"
   },
   "contributes": {

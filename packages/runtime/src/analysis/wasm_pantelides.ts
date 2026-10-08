@@ -142,6 +142,10 @@ export function pantelidesIndexReductionArena(
     dummyDerivatives.add(constrainedState);
     stateSelectionMap.set(i, constrainedState);
 
+    // Update the kind of original constraint equation from Simple to InitialSimple
+    // so it is enforced only at initial conditions and does not overdetermine dynamic simulation.
+    arena.setEqKind(i, EqKind.InitialSimple);
+
     // Differentiate the constraint: d/dt (LHS) = d/dt (RHS)
     const dLeft = differentiateArenaExpression(arena, left, stateVarStringIds);
     const dRight = differentiateArenaExpression(arena, right, stateVarStringIds);

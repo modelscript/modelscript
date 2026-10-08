@@ -2,6 +2,7 @@
 
 import { PackageIcon } from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
+import DOMPurify from "dompurify";
 import React from "react";
 import type { Translations } from "./util/i18n";
 import type { DiagramNode } from "./util/lsp-bridge";
@@ -29,9 +30,12 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
   }
 
   const displaySvg = invertSvgColors(iconSvg, !!darkMode);
-  const sizedSvg = displaySvg
+  const rawSizedSvg = displaySvg
     .replace(/width=(["']).*?\1/, 'width="100%"')
     .replace(/height=(["']).*?\1/, 'height="100%"');
+  const sizedSvg = DOMPurify.sanitize(rawSizedSvg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  });
 
   return (
     <div

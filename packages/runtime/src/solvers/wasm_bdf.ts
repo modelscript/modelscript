@@ -475,25 +475,22 @@ export function bdf(
       fCurrent = fNew;
       history.unshift({ t, y: [...y], f: [...fCurrent] });
       if (history.length > maxOrder + 1) history.pop();
+
+      // ── Order and step-size control ──
+      const factor = err > 0 ? Math.min(2.0, Math.max(0.5, 0.9 * Math.pow(err, -1.0 / (effectiveOrder + 1)))) : 2.0;
+      h = Math.min(h * factor, maxStep);
+
+      // Increase order if enough history is available
+      if (effectiveOrder < maxOrder && history.length > effectiveOrder + 1) {
+        order = Math.min(effectiveOrder + 1, maxOrder);
+      }
+      // Decrease order on slow convergence
+      if (newtonFailCount > 0 && order > 1) {
+        order--;
+      }
     } else {
-      t = tNew;
-      y = yNewton;
-      fCurrent = fNew;
-      history.unshift({ t, y: [...y], f: [...fCurrent] });
-      if (history.length > maxOrder + 1) history.pop();
-    }
-
-    // ── Order and step-size control ──
-    const factor = err > 0 ? Math.min(2.0, Math.max(0.5, 0.9 * Math.pow(err, -1.0 / (effectiveOrder + 1)))) : 2.0;
-    h = Math.min(h * factor, maxStep);
-
-    // Increase order if enough history is available
-    if (effectiveOrder < maxOrder && history.length > effectiveOrder + 1) {
-      order = Math.min(effectiveOrder + 1, maxOrder);
-    }
-    // Decrease order on slow convergence
-    if (newtonFailCount > 0 && order > 1) {
-      order--;
+      // Event occurred: state and history were already reinitialized to tEvent and yAfter
+      h = Math.min(h * 0.5, maxStep);
     }
   }
 
@@ -694,7 +691,7 @@ function bisectEvent(
   gLo: number,
 ): number {
   const maxIter = 50;
-  const tol = 1e-12;
+  const tol = Math.max(1e-12, 10 * Number.EPSILON * Math.max(Math.abs(tLo), Math.abs(tHi)));
 
   let lo = tLo;
   let hi = tHi;

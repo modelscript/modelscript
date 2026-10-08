@@ -1,7 +1,6 @@
 // name: Time3
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 function f

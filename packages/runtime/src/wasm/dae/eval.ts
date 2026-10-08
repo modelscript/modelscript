@@ -47,7 +47,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
     if (op == BinOp.Add || op == BinOp.ElemAdd) return lVal + rVal;
     if (op == BinOp.Sub || op == BinOp.ElemSub) return lVal - rVal;
     if (op == BinOp.Mul || op == BinOp.ElemMul) return lVal * rVal;
-    if (op == BinOp.Div || op == BinOp.ElemDiv) return rVal != 0.0 ? lVal / rVal : 0.0;
+    if (op == BinOp.Div || op == BinOp.ElemDiv) return lVal / rVal;
     if (op == BinOp.Pow || op == BinOp.ElemPow) return Math.pow(lVal, rVal);
     if (op == BinOp.Eq)  return lVal == rVal ? 1.0 : 0.0;
     if (op == BinOp.Neq) return lVal != rVal ? 1.0 : 0.0;

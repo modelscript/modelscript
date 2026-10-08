@@ -19,6 +19,7 @@
   "type": "module",
   "workspaces": [
     "apps/*",
+    "apps/ide/github-fs",
     "packages/*",
     "packages/examples/*",
     "languages/*",
@@ -57,6 +58,7 @@
     "format": "prettier . --write",
     "lint": "nx affected --target=lint --parallel=4",
     "lint:all": "nx run-many --target=lint --parallel=4",
+    "lint:cycles": "npx nx graph --file=graph.json && node scripts/check-nx-cycles.js",
     "lint:filenames": "npx tsx scripts/lint-filenames.ts",
     "lint:headers": "npx tsx scripts/normalize-headers.ts --check",
     "prepare": "husky",
@@ -86,7 +88,7 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "npx tsx scripts/lint-filenames.ts",
-      "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js --config eslint.config.ts --no-warn-ignored",
+      "node --max-old-space-size=4096 ./node_modules/eslint/bin/eslint.js --config eslint.config.ts --no-warn-ignored",
       "prettier --write --ignore-unknown"
     ],
     "*.{js,json,md,yml,css}": "prettier --write --ignore-unknown"
@@ -183,6 +185,7 @@
     "prettier-plugin-packagejson": "^3.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "rimraf": "^6.1.0",
     "source-map": "^0.8.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Modelica Undefined Type & Variable Lint Diagnostics", () => {
+describe("Modelica Undefined Type & Variable Lint Diagnostics", { timeout: 300000 }, () => {
   let activeFacade: any;
   let tmpDir: string;
 

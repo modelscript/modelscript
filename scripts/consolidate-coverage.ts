@@ -221,7 +221,13 @@ function parseLcovContent(content: string, projectRelDir: string, repoRoot: stri
         normalizedPath.includes("/tests/") ||
         normalizedPath.startsWith("tests/") ||
         normalizedPath.includes("/validation/") ||
-        normalizedPath.startsWith("validation/")
+        normalizedPath.startsWith("validation/") ||
+        normalizedPath.includes("/src-gen/") ||
+        normalizedPath.startsWith("src-gen/") ||
+        normalizedPath.includes("/as-gen/") ||
+        normalizedPath.startsWith("as-gen/") ||
+        normalizedPath.includes("/build/") ||
+        normalizedPath.startsWith("build/")
       ) {
         currentFile = null;
         rawLines = [];

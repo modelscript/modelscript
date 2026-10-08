@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { WorkflowIcon } from "@primer/octicons-react";
+import DOMPurify from "dompurify";
 import React, { useEffect, useState } from "react";
 import { getClassIcon } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
@@ -27,7 +28,11 @@ export const ModelPreview: React.FC<ModelPreviewProps> = ({ model, colorMode = "
     };
   }, [model?.name]);
 
-  const displaySvg = svg ? invertSvgColors(svg, isDark) : null;
+  const displaySvg = svg
+    ? DOMPurify.sanitize(invertSvgColors(svg, isDark), {
+        USE_PROFILES: { svg: true, svgFilters: true },
+      })
+    : null;
 
   return (
     <div

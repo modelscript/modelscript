@@ -37,6 +37,14 @@ jobs:
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
+      - name: Check Project Graph Cycles
+        run: npm run lint:cycles
+      - name: Check License Headers
+        run: npm run lint:headers
+      - name: Check Filename Conventions
+        run: npm run lint:filenames
+      - name: Check Root TypeScript Config
+        run: npx tsc --noEmit
       - name: Run Lint
         run: npx nx affected -t lint --parallel=3
       - name: Run Typecheck

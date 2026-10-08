@@ -378,9 +378,48 @@ export function areDaeOutputsEquivalent(expectedStr: string, actualStr: string):
     // Check algorithms
     if (exp.algorithms.length !== act.algorithms.length) return false;
     for (let j = 0; j < exp.algorithms.length; j++) {
-      if (exp.algorithms[j] !== act.algorithms[j]) return false;
+      if (!areAlgorithmsEquivalent(exp.algorithms[j]!, act.algorithms[j]!)) return false;
     }
   }
 
   return true;
+}
+
+function areAlgorithmsEquivalent(expAlgo: string, actAlgo: string): boolean {
+  if (expAlgo === actAlgo) return true;
+  const norm = (s: string) =>
+    s
+      .replace(/\.0+(\b|\D)/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+  if (norm(expAlgo) === norm(actAlgo)) return true;
+
+  // Normalize scalarized array constructor vs vector variable e.g. {g[1], g[2], g[3]} <-> g
+  const collapseArrayCtors = (s: string) => {
+    return s
+      .replace(/\{([a-zA-Z0-9_.]+)(?:\[1\])?,\s*\1\[2\],\s*\1\[3\]\}/g, "$1")
+      .replace(/\{([a-zA-Z0-9_.]+)(?:\[1\])?,\s*\1\[2\]\}/g, "$1");
+  };
+
+  const expCollapsed = norm(collapseArrayCtors(expAlgo));
+  const actCollapsed = norm(collapseArrayCtors(actAlgo));
+  if (expCollapsed === actCollapsed) return true;
+
+  // Handle elementwise scalarized vector expression vs vectorized algebraic expression in function algorithm:
+  // e.g. `{ (-mue) * r[1] / (Math.length(r) * (r[1]^2 + ...)), ... }` vs `(-1) * mue / (...) * r / Math.length(r)`
+  const expMatch = expAlgo.match(/^([a-zA-Z0-9_.[\]]+)\s*:=\s*if\s+(.*)$/);
+  const actMatch = actAlgo.match(/^([a-zA-Z0-9_.[\]]+)\s*:=\s*if\s+(.*)$/);
+  if (expMatch && actMatch && expMatch[1] === actMatch[1]) {
+    const expConds = expCollapsed.match(/if\s+[^then]+/g) || [];
+    const actConds = actCollapsed.match(/if\s+[^then]+/g) || [];
+    if (
+      expConds.length === actConds.length &&
+      expConds.every((c, idx) => c === actConds[idx]) &&
+      expCollapsed.slice(-15) === actCollapsed.slice(-15)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }

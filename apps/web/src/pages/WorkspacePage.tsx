@@ -60,6 +60,7 @@ import {
 import Box from "../components/Box";
 import CloudSimulationModal from "../components/CloudSimulationModal";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { usePageTitle } from "../util/title";
 
 // Helper for formatting relative time
 function getRelativeTime(dateString: string) {
@@ -491,6 +492,10 @@ git push -u origin main`}
                   leadingVisual={SearchIcon}
                   size="small"
                   style={{ height: "32px", color: "var(--color-fg-muted)" }}
+                  onClick={() => {
+                    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
+                  }}
+                  title="Search repository files (Cmd+K)"
                 >
                   Go to file
                 </Button>
@@ -500,7 +505,16 @@ git push -u origin main`}
                   </ActionMenu.Button>
                   <ActionMenu.Overlay>
                     <ActionList>
-                      <ActionList.Item>Create new file</ActionList.Item>
+                      <ActionList.Item
+                        onSelect={() => {
+                          const targetRef = repo.default_branch || "main";
+                          navigate(
+                            `/repos/${provider}/${repo.path_with_namespace || repo.name}/ide?ref=${encodeURIComponent(targetRef)}`,
+                          );
+                        }}
+                      >
+                        Create new file in Web IDE
+                      </ActionList.Item>
                     </ActionList>
                   </ActionMenu.Overlay>
                 </ActionMenu>
@@ -1433,6 +1447,7 @@ export default function WorkspacePage() {
   const projectId = `${namespace}/${project}`;
 
   const [repo, setRepo] = useState<GitlabProject | null>(null);
+  usePageTitle(repo ? `${repo.name || project}` : project ? `${project}` : "Workspace");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
