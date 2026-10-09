@@ -17,12 +17,14 @@ import { getComputeProfile, listComputeProfiles } from "../services/hpc/compute-
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec, HpcUsageMetrics } from "../services/hpc/hpc-types.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 
 export interface CloudDispatchPayload {
   domain: "modelica" | "cfd" | "fea" | "monte-carlo";
   name: string;
+  engine?: "modelscript" | "omc" | undefined;
   profile?: string | undefined;
   sourceContent?: string | undefined;
   libraryName?: string | undefined;
@@ -71,6 +73,10 @@ export interface CloudJobRecord {
 }
 
 const activeJobs = new Map<string, CloudJobRecord>();
+
+export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
+  return activeJobs.get(jobId);
+}
 
 export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
@@ -137,6 +143,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
       const userId = database ? resolveRequestUserId(req, database) : null;
 
       // Pre-flight quota check
+      let estimatedCost = 0;
       if (database && userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
         if (!quota.allowed) {
@@ -149,6 +156,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           });
           return;
         }
+        estimatedCost = quota.estimatedCost;
       }
 
       const jobId = `cloud_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
@@ -182,6 +190,26 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           jobRecord.dbJobId = dbJobId;
         } catch {
           // Optional tracking
+        }
+      }
+
+      if (database && userId && dbJobId && estimatedCost > 0) {
+        const holdRes = database.holdUserCredits(
+          userId,
+          estimatedCost,
+          dbJobId,
+          `HPC Escrow Hold: Cloud [${domain.toUpperCase()}] ${name}`,
+          { jobId, profile: profile.id, domain },
+        );
+        if (!holdRes.success) {
+          database.updateJobStatus(dbJobId, "FAILED");
+          res.status(402).json({
+            error: "Payment Required: Escrow Hold Failed",
+            message: holdRes.reason,
+            balance: holdRes.newBalance,
+            required: estimatedCost,
+          });
+          return;
         }
       }
 
@@ -259,8 +287,8 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
                 database.updateJobStatus(dbJobId, "SUCCESS");
                 if (result.usage) {
                   database.updateJobAccounting(dbJobId, result.usage);
-                  if (userId && result.usage.costCredits > 0) {
-                    database.deductUserCredits(userId, result.usage.costCredits, dbJobId, `Cloud CAE: ${name}`, {
+                  if (userId) {
+                    database.settleUserEscrow(userId, dbJobId, result.usage.costCredits ?? 0, `Cloud CAE: ${name}`, {
                       profile: profile.id,
                       ...result.usage,
                     });
@@ -273,6 +301,9 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
               broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
               if (database && dbJobId) {
                 database.updateJobStatus(dbJobId, "FAILED");
+                if (userId) {
+                  database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE solver failed");
+                }
               }
             }
           } catch (err: any) {
@@ -281,6 +312,9 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
               database.updateJobStatus(dbJobId, "FAILED");
+              if (userId) {
+                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE execution error");
+              }
             }
           }
         } else {
@@ -318,24 +352,62 @@ getErrorString();
 `;
             fs.writeFileSync(mosScriptPath, mosContents, "utf8");
 
-            const hpcSpec: HpcJobSpec = {
-              jobId,
-              name: `Cloud-${fileNamePrefix}`,
-              command: "omc",
-              args: [mosScriptPath],
-              workingDir: tmpDir,
-              env: {
-                ...process.env,
-                OMP_NUM_THREADS: String(profile.cpus),
-              },
-              profileId: profile.id,
-              resources: {
-                cpusPerTask: profile.cpus,
-                memoryMb: profile.memoryMb,
-                partition: profile.partition,
-                gpus: profile.gpus,
-              },
-            };
+            // Native ModelScript simulation engine vs OMC
+            const enginePreference = payload.engine ?? "modelscript";
+            let prep: NativeSimPrepResult | null = null;
+            if (enginePreference !== "omc") {
+              prep = await prepareNativeSimulation(tmpDir, {
+                modelName: name,
+                sourceFiles: [adhocMoPath],
+                startTime,
+                stopTime,
+                numberOfIntervals,
+                tolerance,
+              });
+            }
+
+            const isNative = prep !== null;
+
+            let hpcSpec: HpcJobSpec;
+            if (isNative && prep) {
+              hpcSpec = {
+                jobId,
+                name: `Cloud-${fileNamePrefix}`,
+                command: "bash",
+                args: [prep.runScript],
+                workingDir: tmpDir,
+                env: {
+                  ...process.env,
+                  OMP_NUM_THREADS: String(profile.cpus),
+                },
+                profileId: profile.id,
+                resources: {
+                  cpusPerTask: profile.cpus,
+                  memoryMb: profile.memoryMb,
+                  partition: profile.partition,
+                  gpus: profile.gpus,
+                },
+              };
+            } else {
+              hpcSpec = {
+                jobId,
+                name: `Cloud-${fileNamePrefix}`,
+                command: "omc",
+                args: [mosScriptPath],
+                workingDir: tmpDir,
+                env: {
+                  ...process.env,
+                  OMP_NUM_THREADS: String(profile.cpus),
+                },
+                profileId: profile.id,
+                resources: {
+                  cpusPerTask: profile.cpus,
+                  memoryMb: profile.memoryMb,
+                  partition: profile.partition,
+                  gpus: profile.gpus,
+                },
+              };
+            }
 
             const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
             const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
@@ -354,8 +426,8 @@ getErrorString();
               if (database && dbJobId) {
                 database.updateJobStatus(dbJobId, "SUCCESS");
                 database.updateJobAccounting(dbJobId, usage);
-                if (userId && usage.costCredits > 0) {
-                  database.deductUserCredits(userId, usage.costCredits, dbJobId, `Cloud Sim: ${name}`, {
+                if (userId) {
+                  database.settleUserEscrow(userId, dbJobId, usage.costCredits ?? 0, `Cloud Sim: ${name}`, {
                     profile: profile.id,
                     ...usage,
                   });
@@ -372,6 +444,9 @@ getErrorString();
               broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
               if (database && dbJobId) {
                 database.updateJobStatus(dbJobId, "FAILED");
+                if (userId) {
+                  database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation failed");
+                }
               }
             }
           } catch (err: any) {
@@ -380,6 +455,9 @@ getErrorString();
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
               database.updateJobStatus(dbJobId, "FAILED");
+              if (userId) {
+                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation error");
+              }
             }
           }
         }
@@ -547,6 +625,9 @@ getErrorString();
 
     if (database && job.dbJobId) {
       database.updateJobStatus(job.dbJobId, "CANCELLED");
+      if (job.userId) {
+        database.releaseUserEscrow(job.userId, job.dbJobId, "User requested cancellation");
+      }
     }
 
     res.json({ success: true, message: `Job ${job.jobId} cancelled.` });

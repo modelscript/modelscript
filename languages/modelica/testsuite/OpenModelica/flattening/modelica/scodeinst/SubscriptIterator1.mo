@@ -1,7 +1,6 @@
 // name: SubscriptIterator1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model SubscriptIterator1

@@ -1,7 +1,6 @@
 // name: SizeInvalidArgs1
 // keywords: size
 // status: incorrect
-// xfail:    true
 //
 // Tests the builtin size operator.
 //

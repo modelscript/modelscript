@@ -89,6 +89,8 @@ export interface ArenaMonteCarloOptions extends MonteCarloOptions {
   simulateOptions?: ArenaSimulateOptions;
   collectAllVariables?: boolean;
   signal?: AbortSignal;
+  /** Maximum number of concurrent simulation worker partitions. Defaults to CPU core count or navigator.hardwareConcurrency. */
+  concurrency?: number;
 }
 
 export interface VariableStatistics {
@@ -928,6 +930,27 @@ export function runMonteCarloArena(
   return runMonteCarloSimulation(simulateFn, randomVars, options);
 }
 
+function detectHardwareConcurrency(): number {
+  if (typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number") {
+    return navigator.hardwareConcurrency;
+  }
+  try {
+    if (typeof process !== "undefined") {
+      if (typeof (process as any).availableParallelism === "function") {
+        return (process as any).availableParallelism();
+      }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const os = require("node:os");
+      if (os && typeof os.cpus === "function") {
+        return Math.max(1, os.cpus().length);
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return 4;
+}
+
 export async function runMonteCarloArenaAsync(
   arena: DAEBuilder,
   randomVars: RandomVariable[],
@@ -958,30 +981,51 @@ export async function runMonteCarloArenaAsync(
   }
 
   const baseOverrides = options?.simulateOptions?.parameterOverrides;
+  const concurrency = Math.max(1, options?.concurrency ?? detectHardwareConcurrency());
+  const numPartitions = Math.min(concurrency, Math.max(1, allSamples.length));
+  const chunkSize = Math.ceil(allSamples.length / numPartitions);
+
+  const partitionPromises: Promise<ArenaSimulationResult[]>[] = [];
+  for (let p = 0; p < numPartitions; p++) {
+    const startIdx = p * chunkSize;
+    const endIdx = Math.min(startIdx + chunkSize, allSamples.length);
+    if (startIdx >= endIdx) break;
+    const slice = allSamples.slice(startIdx, endIdx);
+
+    partitionPromises.push(
+      (async () => {
+        const partitionResults: ArenaSimulationResult[] = [];
+        const YIELD_INTERVAL = 10;
+        for (let i = 0; i < slice.length; i++) {
+          if (signal?.aborted) {
+            throw new Error("Monte Carlo simulation aborted");
+          }
+          if (i > 0 && i % YIELD_INTERVAL === 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
+          const sample = slice[i]!;
+          const merged = mergeParameterOverrides(baseOverrides, sample);
+          const simOpts: ArenaSimulateOptions = {
+            ...options?.simulateOptions,
+            parameterOverrides: merged,
+          };
+          try {
+            const res = await simulateArenaAsync(arena, simOpts);
+            partitionResults.push(res);
+          } catch {
+            continue;
+          }
+        }
+        return partitionResults;
+      })(),
+    );
+  }
+
+  const resultsNested = await Promise.all(partitionPromises);
   const allResults: ArenaSimulationResult[] = [];
-
-  const YIELD_INTERVAL = 10;
-  for (let i = 0; i < allSamples.length; i++) {
-    if (signal?.aborted) {
-      throw new Error("Monte Carlo simulation aborted");
-    }
-
-    if (i > 0 && i % YIELD_INTERVAL === 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-
-    const sample = allSamples[i]!;
-    const merged = mergeParameterOverrides(baseOverrides, sample);
-    const simOpts: ArenaSimulateOptions = {
-      ...options?.simulateOptions,
-      parameterOverrides: merged,
-    };
-
-    try {
-      const res = await simulateArenaAsync(arena, simOpts);
-      allResults.push(res);
-    } catch {
-      continue;
+  for (const partition of resultsNested) {
+    for (const r of partition) {
+      allResults.push(r);
     }
   }
 

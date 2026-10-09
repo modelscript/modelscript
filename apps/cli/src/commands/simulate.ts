@@ -39,6 +39,7 @@ export interface SimulateArgs {
   flattener?: "ts" | "wasm" | "hybrid" | "diff";
   "steady-state"?: boolean;
   steadyState?: boolean;
+  jit?: boolean;
 
   // Cloud bursting options
   cloud?: boolean;
@@ -103,10 +104,15 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       })
       .option("engine", {
         description:
-          "simulation backend: js (pure JavaScript), arena (arena-native DoD), wasm (WebAssembly via emcc), c (native compiled)",
+          "simulation backend: js (pure JavaScript), arena (arena-native DoD), wasm (WebAssembly via emcc), c (native compiled), jit (in-memory JIT)",
         type: "string",
-        choices: ["js", "arena", "wasm", "c"],
+        choices: ["js", "arena", "wasm", "c", "jit"],
         default: "js",
+      })
+      .option("jit", {
+        description: "enable in-memory JIT compilation engine (sub-15ms execution)",
+        type: "boolean",
+        default: false,
       })
       .option("timing", {
         description: "report timing information for each stage as JSON to stderr",
@@ -255,12 +261,18 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
 
     try {
+      if (args.jit) {
+        args.engine = "jit";
+      }
       switch (args.engine) {
         case "wasm":
           await simulateWasm(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
           break;
         case "c":
           await simulateC(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+        case "jit":
+          await simulateJit(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
           break;
         case "arena":
           await simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
@@ -434,8 +446,8 @@ async function simulateWasm(
 
     const rawEmcc = process.env.EMCC ?? "emcc";
     const emcc = /^[a-zA-Z0-9_./-]+$/.test(rawEmcc) ? rawEmcc : "emcc";
-    const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1" : "-O3";
-    const emccArgs: string[] = [optFlag, "-w", cFile];
+    const optFlag = process.env.EMCC_CFLAGS ?? (process.env.CFLAGS ? process.env.CFLAGS : "-O3");
+    const emccArgs: string[] = [...optFlag.split(/\s+/).filter(Boolean), "-w", cFile];
     if (isCvode) {
       const sundialsInstall = path.resolve(
         path.dirname(require.resolve("@modelscript/dsl/package.json")),
@@ -515,6 +527,59 @@ async function simulateWasm(
   }
 }
 
+// ── JIT Engine ──
+
+async function simulateJit(
+  arena: DAEBuilder,
+  args: SimulateArgs,
+  profiler: Profiler,
+  startTime: number,
+  stopTime: number,
+  step: number,
+  memProfiles: Record<string, unknown>,
+  lastSnap: MemorySnapshot | null,
+): Promise<void> {
+  const modelIdentifier = args.name.replace(/\./g, "_");
+  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" });
+
+  profiler.start("codegen");
+  const cSource = generateSimulationC(arena, fmuResult, {
+    modelIdentifier,
+    startTime,
+    stopTime,
+    stepSize: step,
+    quiet: args.format === "none",
+    solver: "rk4",
+    tolerance: args.tolerance,
+  });
+  profiler.end("codegen");
+
+  profiler.start("simulation");
+  const { simulateArenaJit } = await import("@modelscript/simulate");
+  const res = await simulateArenaJit(arena, {
+    startTime,
+    stopTime,
+    step,
+    cSource,
+    modelName: modelIdentifier,
+    mode: "auto",
+  });
+  profiler.end("simulation");
+
+  if (args.timing) {
+    console.error(
+      `JIT (${res.modeUsed}) compile: ${res.compilationTimeMs.toFixed(2)}ms, exec: ${res.executionTimeMs.toFixed(2)}ms, total: ${res.totalTimeMs.toFixed(2)}ms, cacheHit: ${res.cacheHit}`,
+    );
+  }
+
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["simulation"] = { before: lastSnap, after: snap };
+  }
+
+  outputResults(res.t, res.y, res.states, args.format);
+}
+
 // ── C Engine ──
 
 async function simulateC(
@@ -554,7 +619,7 @@ async function simulateC(
     fs.writeFileSync(cFile, cSource);
 
     const cc = process.env.CC ?? "gcc";
-    const optFlag = arena.eqCount >= 2000 ? "-O0" : arena.eqCount >= 500 ? "-O1 -fno-tree-vectorize" : "-O3";
+    const optFlag = process.env.CFLAGS ? process.env.CFLAGS : "-O3 -fno-math-errno";
     const cvodeFlags = isCvode
       ? "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial"
       : "";

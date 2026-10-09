@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import assert from "node:assert";
+import { StaticTapeBuilder, TapeOpKind } from "../src/autodiff/wasm_tape.js";
 import {
   GaussianTuple,
   WasmGaussian,
@@ -10,11 +12,11 @@ import {
   gaMul,
   gaSin,
   luFactor,
+  luFactorFlat,
   luSolve,
+  luSolveFlat,
   unscentedTransform,
-} from "@modelscript/runtime/wasm_gaussian.js";
-import { StaticTapeBuilder, TapeOpKind } from "@modelscript/runtime/wasm_tape.js";
-import assert from "node:assert";
+} from "../src/solvers/wasm_gaussian.js";
 
 console.log("Testing WASM Gaussian Uncertainty & Linear Algebra...");
 
@@ -108,6 +110,28 @@ console.log("Testing WASM Gaussian Uncertainty & Linear Algebra...");
   assert.ok(Math.abs(b[0]! - 1.0) < 1e-10, `Expected x[0] = 1, got ${b[0]}`);
   assert.ok(Math.abs(b[1]! - 1.0) < 1e-10, `Expected x[1] = 1, got ${b[1]}`);
   console.log("  ✔ Dense LU factorization and linear solver passed");
+}
+
+// Test 5b: Flat Contiguous 1D LU Factorization & Linear Solver
+{
+  const Aflat = new Float64Array([3.0, 2.0, 1.0, 4.0]);
+  const b = new Float64Array([5.0, 5.0]);
+
+  const fact = luFactorFlat(Aflat, 2);
+  luSolveFlat(fact, b);
+
+  assert.ok(Math.abs(b[0]! - 1.0) < 1e-10, `Expected x[0] = 1, got ${b[0]}`);
+  assert.ok(Math.abs(b[1]! - 1.0) < 1e-10, `Expected x[1] = 1, got ${b[1]}`);
+
+  // Test luFactor with flat 1D input
+  const Aflat2 = new Float64Array([3.0, 2.0, 1.0, 4.0]);
+  const b2 = new Float64Array([5.0, 5.0]);
+  const fact2 = luFactor(Aflat2, 2);
+  luSolve(fact2, b2);
+
+  assert.ok(Math.abs(b2[0]! - 1.0) < 1e-10, `Expected x[0] = 1, got ${b2[0]}`);
+  assert.ok(Math.abs(b2[1]! - 1.0) < 1e-10, `Expected x[1] = 1, got ${b2[1]}`);
+  console.log("  ✔ Flat contiguous 1D LU factorization and linear solver passed");
 }
 
 // Test 6: WasmGaussian bridge wrapper

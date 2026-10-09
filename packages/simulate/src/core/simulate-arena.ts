@@ -18,9 +18,14 @@ import {
 } from "@modelscript/runtime";
 import { bdf } from "@modelscript/runtime/wasm_bdf.js";
 import { dopri5 } from "@modelscript/runtime/wasm_dopri5.js";
-import { Dual, evaluateArenaDualExpression, evaluateArenaRuntime } from "@modelscript/runtime/wasm_evaluator.js";
+import {
+  Dual,
+  evaluateArenaDualExpression,
+  evaluateArenaDualFlat,
+  evaluateArenaRuntime,
+} from "@modelscript/runtime/wasm_evaluator.js";
 import { type FmuSubsystem, type FmuSubsystemRegistry } from "@modelscript/runtime/wasm_fmu_subsystem.js";
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
 import { buildAdJacobian } from "@modelscript/runtime/wasm_tape.js";
@@ -97,6 +102,29 @@ export class ArenaSimulator {
 
   /** Cached FMU prefix → subsystem mapping (built once in prepare). */
   private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
+
+  // ── Pre-allocated zero-allocation scratch buffers for Newton algebraic loops ──
+  private newtonScratchX = new Float64Array(32);
+  private newtonScratchR = new Float64Array(32);
+  private newtonScratchNegR = new Float64Array(32);
+  private newtonScratchVarIds = new Int32Array(32);
+  private newtonScratchMat = new Float64Array(32 * 32);
+  private newtonScratchPiv = new Int32Array(32);
+  private newtonScratchScale = new Float64Array(32);
+  private newtonScratchDualStack = new Float64Array(128);
+
+  private ensureNewtonCapacity(m: number): void {
+    if (this.newtonScratchX.length < m) {
+      const cap = Math.max(m, this.newtonScratchX.length * 2);
+      this.newtonScratchX = new Float64Array(cap);
+      this.newtonScratchR = new Float64Array(cap);
+      this.newtonScratchNegR = new Float64Array(cap);
+      this.newtonScratchVarIds = new Int32Array(cap);
+      this.newtonScratchMat = new Float64Array(cap * cap);
+      this.newtonScratchPiv = new Int32Array(cap);
+      this.newtonScratchScale = new Float64Array(cap);
+    }
+  }
 
   public preValuesByStringId!: Float64Array;
 
@@ -318,7 +346,7 @@ export class ArenaSimulator {
 
   // extractDerivativeEquations removed
 
-  public evaluateDerivativeEquations(valuesByStringId: Float64Array): void {
+  public evaluateDerivativeEquations(_valuesByStringId: Float64Array): void {
     // Handled by BLT
   }
 
@@ -726,22 +754,25 @@ export class ArenaSimulator {
     const m = block.vars.length;
     if (m === 0) return;
 
-    const x = new Float64Array(m);
-    const R = new Float64Array(m);
-    const negR = new Float64Array(m);
+    this.ensureNewtonCapacity(m);
+
+    const x = this.newtonScratchX;
+    const R = this.newtonScratchR;
+    const negR = this.newtonScratchNegR;
+    const varNameIds = this.newtonScratchVarIds;
+    const J = this.newtonScratchMat;
+    const piv = this.newtonScratchPiv;
+    const scale = this.newtonScratchScale;
+    const dualStack = this.newtonScratchDualStack;
 
     // Collect variable name StringIds
-    const varNameIds = new Array<number>(m);
     for (let i = 0; i < m; i++) {
       const varIdx = block.vars[i] as number;
-      varNameIds[i] = this.arena.getVarNameId(varIdx);
+      const nid = this.arena.getVarNameId(varIdx);
+      varNameIds[i] = nid;
       // Initialize from warm-start cache or current environment
-      x[i] = this.algWarmStart.get(varNameIds[i] as number) ?? valuesByStringId[varNameIds[i] as number] ?? 0;
+      x[i] = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
     }
-
-    // Pre-allocate Jacobian rows
-    const J: Float64Array[] = new Array(m);
-    for (let i = 0; i < m; i++) J[i] = new Float64Array(m);
 
     let converged = false;
 
@@ -756,8 +787,9 @@ export class ArenaSimulator {
         const rhsId = this.arena.getEqRhs(eqIdx);
         const exprVal = evaluateArenaRuntime(this.arena, rhsId, valuesByStringId);
         const val = isFinite(exprVal) ? exprVal : 0;
-        R[i] = (x[i] as number) - val;
-        maxR = Math.max(maxR, Math.abs(R[i] as number));
+        const rVal = (x[i] as number) - val;
+        R[i] = rVal;
+        maxR = Math.max(maxR, Math.abs(rVal));
       }
 
       if (maxR < NEWTON_TOL) {
@@ -765,47 +797,35 @@ export class ArenaSimulator {
         break;
       }
 
-      // Compute Jacobian via forward-mode AD (dual numbers)
-      const dualVars: Dual[] = [];
-      // Fill dualVars from current environment
-      for (let sid = 0; sid < valuesByStringId.length; sid++) {
-        dualVars[sid] = Dual.constant(valuesByStringId[sid] ?? 0);
-      }
-
+      // Compute Jacobian via zero-allocation forward-mode AD (flat dual evaluation)
       for (let j = 0; j < m; j++) {
         const nid = varNameIds[j] as number;
-        // Seed variable j: (x_j, 1)
-        dualVars[nid] = new Dual(x[j] as number, 1.0);
 
         for (let i = 0; i < m; i++) {
           const eqIdx = block.eqIdxs[i] as number;
           const rhsId = this.arena.getEqRhs(eqIdx);
-          const dualResult = evaluateArenaDualExpression(this.arena, rhsId, dualVars);
-          const Ji = J[i] as Float64Array;
-          if (dualResult) {
+          const ok = evaluateArenaDualFlat(this.arena, rhsId, valuesByStringId, nid, dualStack, 0);
+          if (ok) {
             // J[i][j] = δ_{ij} - d(expr_i)/dx_j
-            Ji[j] = (i === j ? 1 : 0) - dualResult.dot;
+            J[i * m + j] = (i === j ? 1.0 : 0.0) - (dualStack[1] as number);
           } else {
             // AD failed — fall back to finite differences
             const xj = x[j] as number;
             const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
             valuesByStringId[nid] = xj + eps;
-            const perturbedVal = evaluateArenaRuntime(this.arena, this.arena.getEqRhs(eqIdx), valuesByStringId);
+            const perturbedVal = evaluateArenaRuntime(this.arena, rhsId, valuesByStringId);
             const R_perturbed = (i === j ? xj + eps : (x[i] as number)) - (isFinite(perturbedVal) ? perturbedVal : 0);
-            Ji[j] = (R_perturbed - (R[i] as number)) / eps;
+            J[i * m + j] = (R_perturbed - (R[i] as number)) / eps;
             valuesByStringId[nid] = xj;
           }
         }
-
-        // Reset seed
-        dualVars[nid] = Dual.constant(x[j] as number);
       }
 
-      // Solve J · Δx = -R via LU factorization
+      // Solve J · Δx = -R via zero-allocation flat LU factorization
       try {
-        const fact = luFactor(J, m);
+        const fact = luFactorFlat(J, m, piv, scale);
         for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
-        luSolve(fact, negR);
+        luSolveFlat(fact, negR);
         for (let i = 0; i < m; i++) {
           const nx = (x[i] as number) + (negR[i] as number);
           x[i] = nx;
@@ -2677,9 +2697,7 @@ export async function simulateArenaAsync(
   if (options?.debuggerHook) {
     sim.debuggerHook = options.debuggerHook;
   }
-  const t_prep0 = performance.now();
   sim.prepare();
-  const t_prep = performance.now() - t_prep0;
 
   const exp = arena.experiment;
   const startTime = options?.startTime ?? exp.startTime ?? 0;
@@ -2740,10 +2758,8 @@ export async function simulateArenaAsync(
     }
   }
 
-  const t_init0 = performance.now();
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
-  const t_init = performance.now() - t_init0;
 
   const stateNameIds: number[] = [];
   const derivNameIds: number[] = [];
@@ -2867,7 +2883,6 @@ export async function simulateArenaAsync(
         ? options.solver
         : defaultSolver;
 
-  const t_sim0 = performance.now();
   const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: chosenSolver,
     ...(options?.signal !== undefined && { signal: options.signal }),
@@ -2875,11 +2890,9 @@ export async function simulateArenaAsync(
     rtol: options?.rtol ?? exp.tolerance,
     ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
   });
-  const t_sim = performance.now() - t_sim0;
 
   sim.terminateFmuSubsystems();
 
-  const t_post0 = performance.now();
   const t = rawResult.t;
   const y: number[][] = rawResult.y.map((row) => Array.from(row as ArrayLike<number>));
 

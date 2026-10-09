@@ -1,7 +1,6 @@
 // name: AssignParameter1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model AssignParameter1

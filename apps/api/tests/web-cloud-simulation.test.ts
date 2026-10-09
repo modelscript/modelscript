@@ -122,4 +122,51 @@ test("Web Cloud Simulation Lifecycle & Telemetry", async (t) => {
     assert.equal(res.status, 404);
     assert.equal(res.body.error, "Job not found");
   });
+
+  await t.test("executes end-to-end native ModelScript C simulation decoupled from OMC", async () => {
+    db.setUserCreditBalance(devUser.id, 100.0);
+
+    const res = await request(app)
+      .post("/api/v1/simulate")
+      .send({
+        modelName: "ExponentialDecay",
+        modelSource: `
+model ExponentialDecay
+  Real x(start=2.0);
+equation
+  der(x) = -2.0 * x;
+end ExponentialDecay;
+      `.trim(),
+        engine: "modelscript",
+        profile: "standard",
+        numberOfIntervals: 20,
+        startTime: 0,
+        stopTime: 1,
+      });
+
+    assert.equal(res.status, 200);
+    const jobId = res.body.jobId;
+    assert.ok(jobId);
+
+    // Wait for job queue worker to finish native compilation and run
+    let completed = false;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const poll = await request(app).get(`/api/v1/simulate/${jobId}`);
+      if (poll.body.status === "completed") {
+        completed = true;
+        break;
+      }
+      if (poll.body.status === "failed") {
+        assert.fail(`Simulation failed: ${poll.body.error}`);
+      }
+    }
+
+    assert.ok(completed, "Native simulation must complete within timeout");
+
+    const resultRes = await request(app).get(`/api/v1/simulate/${jobId}/result`);
+    assert.equal(resultRes.status, 200);
+    assert.ok(resultRes.text.includes("time,"), "Result CSV must have time column");
+    assert.ok(resultRes.text.includes("x"), "Result CSV must have state variable x");
+  });
 });

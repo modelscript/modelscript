@@ -1071,7 +1071,7 @@ export interface UnifiedJob {
   hasCsv?: boolean;
 }
 
-export const getUnifiedUserJobs = async (): Promise<UnifiedJob[]> => {
+export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
   const jobs: UnifiedJob[] = [];
 
   try {
@@ -1094,7 +1094,7 @@ export const getUnifiedUserJobs = async (): Promise<UnifiedJob[]> => {
   }
 
   try {
-    const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit: 5 } });
+    const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit } });
     if (caeRes.data?.jobs && Array.isArray(caeRes.data.jobs)) {
       for (const j of caeRes.data.jobs) {
         if (!jobs.some((existing) => String(existing.id) === String(j.id))) {
@@ -1546,6 +1546,11 @@ export const getJobLogs = async (id: string | number): Promise<any> => {
   return data;
 };
 
+export const getJobDetails = async (id: string | number): Promise<{ job: any; steps?: any[] }> => {
+  const { data } = await api.get(`/jobs/${id}`);
+  return data;
+};
+
 export const getJobTemplate = async (id: string | number): Promise<any> => {
   const { data } = await api.get(`/jobs/templates/${id}`);
   return data;
@@ -1553,6 +1558,11 @@ export const getJobTemplate = async (id: string | number): Promise<any> => {
 
 export const runJobTemplate = async (id: string | number, payload?: any): Promise<any> => {
   const { data } = await api.post(`/jobs/templates/${id}/run`, payload || {});
+  return data;
+};
+
+export const cancelDbJob = async (id: string | number): Promise<any> => {
+  const { data } = await api.post(`/jobs/${id}/cancel`);
   return data;
 };
 

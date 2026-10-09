@@ -48,6 +48,21 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const enclosingClass = getEnclosingClass(db, node, $);
       if (enclosingClass == 0) return;
 
+      if (
+        isClassKind(db, enclosingClass, "type") ||
+        isClassKind(db, enclosingClass, "record") ||
+        isClassKind(db, enclosingClass, "connector") ||
+        isClassKind(db, enclosingClass, "package")
+      ) {
+        for (const anc of db.ast.getAncestors(node, 0)) {
+          const t = db.ast.getType(anc);
+          if (t == $.equation_section || t == $.algorithm_section) {
+            return;
+          }
+          if (t == $.class_definition) break;
+        }
+      }
+
       // FAST PATH 1: Is it declared in enclosingClass?
       if (isDottedVariableDeclared(db, enclosingClass, node, $)) {
         return;

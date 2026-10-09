@@ -763,6 +763,20 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id);
       CREATE INDEX IF NOT EXISTS idx_credit_tx_job ON credit_transactions(job_id);
 
+      CREATE TABLE IF NOT EXISTS credit_escrow_holds (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        job_id          INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+        amount          REAL NOT NULL,
+        status          TEXT DEFAULT 'held',
+        description     TEXT NOT NULL,
+        metadata        TEXT DEFAULT '{}',
+        created_at      TEXT DEFAULT (datetime('now')),
+        settled_at      TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_credit_escrow_user ON credit_escrow_holds(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_credit_escrow_job ON credit_escrow_holds(job_id);
+
       CREATE TABLE IF NOT EXISTS job_steps (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -4889,6 +4903,217 @@ export class LibraryDatabase {
     return grantTx();
   }
 
+  holdUserCredits(
+    userId: number,
+    amount: number,
+    jobId: number | null = null,
+    description: string = "HPC Compute Escrow Hold",
+    metadata?: Record<string, unknown>,
+  ): { success: boolean; holdId?: number; heldAmount: number; newBalance: number; reason?: string } {
+    if (amount <= 0) {
+      const balance = this.getUserBalance(userId);
+      return { success: true, heldAmount: 0, newBalance: balance };
+    }
+
+    const holdTx = this.#db.transaction(() => {
+      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+        | { credit_balance?: number }
+        | undefined;
+
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      const currentBalance = user.credit_balance ?? 0;
+      if (currentBalance < amount) {
+        return {
+          success: false,
+          heldAmount: 0,
+          newBalance: currentBalance,
+          reason: `Insufficient balance (${currentBalance.toFixed(1)} cr) to place required escrow hold of ${amount.toFixed(1)} cr`,
+        };
+      }
+
+      const newBalance = Math.round((currentBalance - amount) * 100) / 100;
+      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
+
+      const holdRes = this.#db
+        .prepare(
+          `INSERT INTO credit_escrow_holds (user_id, job_id, amount, status, description, metadata)
+           VALUES (?, ?, ?, 'held', ?, ?)`,
+        )
+        .run(userId, jobId, amount, description, JSON.stringify(metadata ?? {}));
+
+      const holdId = holdRes.lastInsertRowid as number;
+
+      this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+           VALUES (?, ?, ?, ?, 'escrow_hold', ?, ?)`,
+        )
+        .run(userId, jobId, -amount, newBalance, description, JSON.stringify({ holdId, ...(metadata ?? {}) }));
+
+      return {
+        success: true,
+        holdId,
+        heldAmount: amount,
+        newBalance,
+      };
+    });
+
+    return holdTx();
+  }
+
+  settleUserEscrow(
+    userId: number,
+    jobId: number,
+    actualCost: number,
+    description: string = "HPC Compute Final Settlement",
+    metadata?: Record<string, unknown>,
+  ): { success: boolean; settledAmount: number; refundedAmount: number; newBalance: number } {
+    const settleTx = this.#db.transaction(() => {
+      const hold = this.#db
+        .prepare(
+          `SELECT * FROM credit_escrow_holds WHERE user_id = ? AND job_id = ? AND status = 'held' ORDER BY id DESC LIMIT 1`,
+        )
+        .get(userId, jobId) as { id: number; amount: number } | undefined;
+
+      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+        | { credit_balance?: number }
+        | undefined;
+
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      let currentBalance = user.credit_balance ?? 0;
+      let refundedAmount = 0;
+      const finalCost = actualCost;
+
+      if (hold) {
+        const heldAmount = hold.amount;
+        if (heldAmount > actualCost) {
+          refundedAmount = Math.round((heldAmount - actualCost) * 100) / 100;
+          currentBalance = Math.round((currentBalance + refundedAmount) * 100) / 100;
+          this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
+
+          this.#db
+            .prepare(
+              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+               VALUES (?, ?, ?, ?, 'escrow_refund', ?, ?)`,
+            )
+            .run(
+              userId,
+              jobId,
+              refundedAmount,
+              currentBalance,
+              `Escrow refund for job ${jobId}`,
+              JSON.stringify(metadata ?? {}),
+            );
+        } else if (actualCost > heldAmount) {
+          const overage = Math.round((actualCost - heldAmount) * 100) / 100;
+          currentBalance = Math.round(Math.max(0, currentBalance - overage) * 100) / 100;
+          this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
+
+          this.#db
+            .prepare(
+              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+               VALUES (?, ?, ?, ?, 'escrow_overage', ?, ?)`,
+            )
+            .run(
+              userId,
+              jobId,
+              -overage,
+              currentBalance,
+              `Escrow overage for job ${jobId}`,
+              JSON.stringify(metadata ?? {}),
+            );
+        }
+
+        this.#db
+          .prepare(`UPDATE credit_escrow_holds SET status = 'settled', settled_at = datetime('now') WHERE id = ?`)
+          .run(hold.id);
+      } else {
+        if (actualCost > 0) {
+          currentBalance = Math.round(Math.max(0, currentBalance - actualCost) * 100) / 100;
+          this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
+          this.#db
+            .prepare(
+              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+               VALUES (?, ?, ?, ?, 'job_charge', ?, ?)`,
+            )
+            .run(userId, jobId, -actualCost, currentBalance, description, JSON.stringify(metadata ?? {}));
+        }
+      }
+
+      return {
+        success: true,
+        settledAmount: finalCost,
+        refundedAmount,
+        newBalance: currentBalance,
+      };
+    });
+
+    return settleTx();
+  }
+
+  releaseUserEscrow(
+    userId: number,
+    jobId: number,
+    reason: string = "Job canceled / aborted",
+  ): { success: boolean; refundedAmount: number; newBalance: number } {
+    const releaseTx = this.#db.transaction(() => {
+      const hold = this.#db
+        .prepare(
+          `SELECT * FROM credit_escrow_holds WHERE user_id = ? AND job_id = ? AND status = 'held' ORDER BY id DESC LIMIT 1`,
+        )
+        .get(userId, jobId) as { id: number; amount: number } | undefined;
+
+      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+        | { credit_balance?: number }
+        | undefined;
+
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
+
+      let currentBalance = user.credit_balance ?? 0;
+      let refundedAmount = 0;
+
+      if (hold) {
+        refundedAmount = hold.amount;
+        currentBalance = Math.round((currentBalance + refundedAmount) * 100) / 100;
+        this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
+
+        this.#db
+          .prepare(
+            `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+             VALUES (?, ?, ?, ?, 'escrow_release', ?, ?)`,
+          )
+          .run(
+            userId,
+            jobId,
+            refundedAmount,
+            currentBalance,
+            `Escrow released: ${reason}`,
+            JSON.stringify({ holdId: hold.id, reason }),
+          );
+
+        this.#db
+          .prepare(`UPDATE credit_escrow_holds SET status = 'released', settled_at = datetime('now') WHERE id = ?`)
+          .run(hold.id);
+      }
+
+      return {
+        success: true,
+        refundedAmount,
+        newBalance: currentBalance,
+      };
+    });
+
+    return releaseTx();
+  }
+
   getUserTransactions(userId: number, limit: number = 50, offset: number = 0): CreditTransactionRow[] {
     return this.#db
       .prepare(
@@ -4969,8 +5194,15 @@ export class LibraryDatabase {
     };
   }
 
-  getJob(jobId: number): JobRow | undefined {
-    return this.#db.prepare(`SELECT * FROM jobs WHERE id = ?`).get(jobId) as JobRow | undefined;
+  getJob(jobId: number | string): JobRow | undefined {
+    const numericId = typeof jobId === "number" ? jobId : parseInt(jobId, 10);
+    if (!isNaN(numericId) && String(numericId) === String(jobId)) {
+      return this.#db.prepare(`SELECT * FROM jobs WHERE id = ?`).get(numericId) as JobRow | undefined;
+    }
+    const strId = String(jobId);
+    return this.#db
+      .prepare(`SELECT * FROM jobs WHERE metadata LIKE ? ORDER BY id DESC LIMIT 1`)
+      .get(`%"jobId":"${strId}"%`) as JobRow | undefined;
   }
 
   getUserCompletedHpcJobs(userId: number, limit = 20): HpcJobArtifactSummary[] {
@@ -5135,7 +5367,12 @@ export class LibraryDatabase {
     return { artifactId, suggestedCaption, viewConfig };
   }
 
-  getJobs(limit = 50, offset = 0): JobRow[] {
+  getJobs(limit = 50, offset = 0, userId?: number | null): JobRow[] {
+    if (userId !== undefined && userId !== null) {
+      return this.#db
+        .prepare(`SELECT * FROM jobs WHERE user_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?`)
+        .all(userId, limit, offset) as JobRow[];
+    }
     return this.#db
       .prepare(`SELECT * FROM jobs ORDER BY started_at DESC LIMIT ? OFFSET ?`)
       .all(limit, offset) as JobRow[];

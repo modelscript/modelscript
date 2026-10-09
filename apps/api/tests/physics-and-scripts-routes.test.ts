@@ -244,6 +244,15 @@ test("Physics, Scripts, and Instance Lifecycle REST Routes", async (t) => {
 
     const resLogsAuth = await request(app).get("/api/v1/jobs/99999/logs").set("Authorization", `Bearer ${authToken}`);
     assert.strictEqual(resLogsAuth.status, 404);
+
+    // Test job cancellation
+    const cancelRes = await request(app).post("/api/v1/jobs/1/cancel").set("Authorization", `Bearer ${authToken}`);
+    assert.strictEqual(cancelRes.status, 200);
+    assert.strictEqual(cancelRes.body.success, true);
+
+    // Test SSE authentication with ?token= query parameter
+    const resStreamAuthQuery = await request(app).get(`/api/v1/jobs/1/stream?token=${encodeURIComponent(authToken)}`);
+    assert.notStrictEqual(resStreamAuthQuery.status, 401);
   });
 
   // ── Physical Hardware Instances ────────────────────────────────────

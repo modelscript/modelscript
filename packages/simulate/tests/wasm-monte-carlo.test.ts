@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEBuilder, EqKind, UnaryOp, VarType, Variability } from "@modelscript/runtime";
+import { BinOp, DAEBuilder, EqKind, UnaryOp, VarType, Variability, initBltWasm } from "@modelscript/runtime";
 import {
   SobolSequence,
   WasmMonteCarloEngine,
@@ -10,6 +10,7 @@ import {
   lgamma,
   normalQuantile,
   runMonteCarloArena,
+  runMonteCarloArenaAsync,
   runMonteCarloTape,
   runSensitivityAnalysisArena,
   sobolSample,
@@ -17,6 +18,11 @@ import {
 } from "@modelscript/runtime/wasm_monte_carlo.js";
 import { StaticTapeBuilder, TapeOpKind } from "@modelscript/runtime/wasm_tape.js";
 import assert from "node:assert";
+import { simulateArena, simulateArenaAsync } from "../src/core/simulate-arena.js";
+import { registerArenaSimulator } from "../src/uq/monte-carlo.js";
+
+await initBltWasm();
+registerArenaSimulator(simulateArena, simulateArenaAsync);
 
 console.log("=== Testing WASM Monte Carlo & Uncertainty Quantification Engine ===");
 
@@ -143,9 +149,6 @@ console.log("=== Testing WASM Monte Carlo & Uncertainty Quantification Engine ==
   console.log("✓ Tape Monte Carlo batch evaluation passed");
 }
 
-import { initBltWasm } from "@modelscript/runtime/wasm_blt.js";
-await initBltWasm();
-
 // 6. Test Arena DAE Monte Carlo Sweep & Sensitivity Analysis
 {
   const arena = new DAEBuilder();
@@ -203,6 +206,46 @@ await initBltWasm();
   assert.strictEqual(pt.length, 4);
 
   console.log("✓ WasmMonteCarloEngine wrapper API passed");
+}
+
+// 8. Test Parallel Concurrent Monte Carlo Worker Pool
+{
+  const arena = new DAEBuilder();
+  arena.addVariable("x", VarType.Real, Variability.Continuous, 0, 1.0);
+  arena.addVariable("der(x)", VarType.Real, Variability.Continuous, 0, 0.0);
+  arena.addVariable("k", VarType.Real, Variability.Parameter, 0, 2.0);
+
+  const xExpr = arena.addNameExpr("x");
+  const derX = arena.addDerExpr(xExpr);
+  const kExpr = arena.addNameExpr("k");
+  const rhs = arena.addUnaryExpr(UnaryOp.Negate, arena.addBinaryExpr(BinOp.Mul, kExpr, xExpr));
+  arena.addEquation(EqKind.Simple, derX, rhs);
+
+  const rv: RandomVariable[] = [{ name: "k", distribution: { type: "uniform", lo: 1.0, hi: 3.0 } }];
+
+  // Test runMonteCarloArenaAsync with concurrency = 8
+  const mcParallelResult = await runMonteCarloArenaAsync(arena, rv, {
+    numSamples: 100,
+    seed: 1234,
+    concurrency: 8,
+    simulateOptions: { startTime: 0, stopTime: 1, step: 0.05 },
+  });
+
+  assert.strictEqual(mcParallelResult.numSamples, 100);
+  const xStats = mcParallelResult.statistics.get("x");
+  assert.ok(xStats, "Parallel execution must compute statistics for state 'x'");
+  assert.ok(xStats!.mean.length > 0, "Mean trajectory must be non-empty");
+  assert.ok(xStats!.variance.length > 0, "Variance trajectory must be non-empty");
+
+  // Verify numerical consistency: at t=0, x is fixed at 1.0
+  assert.ok(Math.abs(xStats!.mean[0]! - 1.0) < 1e-6, `Expected mean[0] = 1.0, got ${xStats!.mean[0]}`);
+  assert.ok(xStats!.variance[0]! < 1e-10, `Expected variance[0] ≈ 0, got ${xStats!.variance[0]}`);
+
+  // At t=1, E[e^(-k)] for k ~ U(1, 3) is (e^-1 - e^-3)/(3 - 1) ≈ (0.36788 - 0.04979)/2 ≈ 0.1590
+  const lastMean = xStats!.mean[xStats!.mean.length - 1]!;
+  assert.ok(Math.abs(lastMean - 0.159) < 0.03, `Expected mean[1] ≈ 0.159, got ${lastMean}`);
+
+  console.log("✓ Parallel concurrent Monte Carlo worker partition pool passed (100 samples across 8 partitions)");
 }
 
 console.log("=== All WASM Monte Carlo & UQ Tests Passed Cleanly ===");

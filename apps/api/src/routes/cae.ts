@@ -125,6 +125,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         // Pre-flight quota check
         const profile = options.profile || "standard";
         const userId = resolveRequestUserId(req, database);
+        let estimatedCost = 0;
         if (userId) {
           const quota = checkComputeQuota(userId, profile, database);
           if (!quota.allowed) {
@@ -136,6 +137,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
               profile: quota.profileId,
             });
           }
+          estimatedCost = quota.estimatedCost;
         }
 
         // Create DB job
@@ -150,6 +152,25 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           { resultDir },
           userId,
         );
+
+        if (userId && estimatedCost > 0) {
+          const holdRes = database.holdUserCredits(
+            userId,
+            estimatedCost,
+            dbJobId,
+            `HPC Escrow Hold: CAE ${solverType.toUpperCase()}`,
+            { profile, solver: solverType },
+          );
+          if (!holdRes.success) {
+            database.updateJobStatus(dbJobId, "FAILED");
+            return res.status(402).json({
+              error: "Payment Required: Escrow Hold Failed",
+              message: holdRes.reason,
+              balance: holdRes.newBalance,
+              required: estimatedCost,
+            });
+          }
+        }
 
         const streamer = new CaeTelemetryStreamer(solverType);
         activeStreamers.set(dbJobId.toString(), streamer);
@@ -182,11 +203,11 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
                   costCredits: result.usage.costCredits,
                 });
 
-                if (userId && result.usage.costCredits > 0) {
-                  database.deductUserCredits(
+                if (userId) {
+                  database.settleUserEscrow(
                     userId,
-                    result.usage.costCredits,
                     dbJobId,
+                    result.usage.costCredits ?? 0,
                     `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
                     { profile: result.profile || profile, ...result.usage },
                   );
@@ -195,12 +216,21 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
               const status = jobQueue.getStatus(`cae-${dbJobId}`);
               if (status && result.resultVtuPath) status.resultPath = result.resultVtuPath;
             } else if (result.status === "cancelled") {
-              database.updateJobStatus(dbJobId, "FAILED");
+              database.updateJobStatus(dbJobId, "CANCELLED");
+              if (userId) {
+                database.releaseUserEscrow(userId, dbJobId, "CAE job cancelled");
+              }
             } else {
               database.updateJobStatus(dbJobId, "FAILED");
+              if (userId) {
+                database.releaseUserEscrow(userId, dbJobId, result.error || "CAE job failed");
+              }
             }
-          } catch {
+          } catch (err: any) {
             database.updateJobStatus(dbJobId, "FAILED");
+            if (userId) {
+              database.releaseUserEscrow(userId, dbJobId, err?.message || "CAE execution exception");
+            }
           }
         });
 
@@ -355,8 +385,13 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 4. Cancel CAE Job
   router.delete("/cae/jobs/:id", (req, res) => {
+    const jobId = parseInt(req.params.id, 10);
+    const dbJob = database.getJob(jobId);
     const cancelled = runner.cancelJob(req.params.id);
-    database.updateJobStatus(parseInt(req.params.id, 10), "FAILED");
+    database.updateJobStatus(jobId, "CANCELLED");
+    if (dbJob?.user_id) {
+      database.releaseUserEscrow(dbJob.user_id, jobId, "User cancelled CAE job");
+    }
     res.json({ cancelled });
   });
 

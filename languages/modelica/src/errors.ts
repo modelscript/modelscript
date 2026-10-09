@@ -216,7 +216,7 @@ export const ModelicaErrorCode = {
   FUNCTION_PUBLIC_VARIABLE: {
     code: 4007,
     rule: "function-public-variable",
-    severity: "warning",
+    severity: "error",
     message: (varName: string) =>
       `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
   },
@@ -250,8 +250,14 @@ export const ModelicaErrorCode = {
     code: 4012,
     rule: "function-arg-variability",
     severity: "error",
-    message: (paramName: string, argExpr: string, funcName: string, requiredVariability: string) =>
-      `Function argument ${paramName}=${argExpr} in call to ${funcName} has variability continuous which is not a ${requiredVariability} expression.`,
+    message: (
+      paramName: string,
+      argExpr: string,
+      funcName: string,
+      requiredVariability: string,
+      actualVariability = "continuous",
+    ) =>
+      `Function argument ${paramName}=${argExpr} in call to ${funcName} has variability ${actualVariability} which is not a ${requiredVariability} expression.`,
   },
   RESTRICTION_VIOLATION: {
     code: 4017,
@@ -323,6 +329,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (elementName: string) =>
       `Invalid redeclaration of ${elementName}, a redeclare may not have a condition attribute.`,
+  },
+  VARIABLE_IN_PACKAGE_NOT_CONSTANT: {
+    code: 4073,
+    rule: "variable-in-package-not-constant",
+    severity: "error",
+    message: (varName: string, pkgName: string) => `Variable ${varName} in package ${pkgName} is not constant.`,
   },
   RANGE_STEP_TOO_SMALL: {
     code: 4021,
@@ -510,6 +522,61 @@ export const ModelicaErrorCode = {
     rule: "assignment-to-input",
     severity: "error",
     message: (componentName: string) => `Trying to assign to input component '${componentName}'.`,
+  },
+  ASSIGNMENT_TO_PARAMETER: {
+    code: 5011,
+    rule: "assignment-to-parameter",
+    severity: "error",
+    message: (componentName: string, exprText?: string) =>
+      exprText
+        ? `Trying to assign to parameter component in ${componentName} := ${exprText}`
+        : `Trying to assign to parameter component ${componentName}`,
+  },
+  ASSIGNMENT_TO_ITERATOR: {
+    code: 5012,
+    rule: "assignment-to-iterator",
+    severity: "error",
+    message: (iteratorName: string) => `Assignment to iterator '${iteratorName}'.`,
+  },
+  ASSIGNMENT_TO_NON_VARIABLE: {
+    code: 5014,
+    rule: "assignment-to-non-variable",
+    severity: "error",
+    message: (componentName: string, specialization: string) =>
+      `Component '${componentName}' may not be assigned to due to class specialization '${specialization}'.`,
+  },
+  INVALID_SIZE_INDEX: {
+    code: 5015,
+    rule: "invalid-size-index",
+    severity: "error",
+    message: (dim: number | string, arrName: string, maxDim: number | string) =>
+      `Invalid index ${dim} in call to size of ${arrName}, valid index interval is [1,${maxDim}].`,
+  },
+  REINIT_OUTSIDE_WHEN: {
+    code: 5018,
+    rule: "reinit-outside-when",
+    severity: "error",
+    message: () => "Operator reinit may only be used in the body of a when equation.",
+  },
+  REINIT_IN_ALGORITHM: {
+    code: 5019,
+    rule: "reinit-in-algorithm",
+    severity: "error",
+    message: () =>
+      "Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore).",
+  },
+  REINIT_ARG1_NOT_VARIABLE: {
+    code: 5020,
+    rule: "reinit-arg1-not-variable",
+    severity: "error",
+    message: () => "The first argument to reinit must be a variable of type Real or an array of such variables.",
+  },
+  REINIT_ARG2_TYPE_MISMATCH: {
+    code: 5021,
+    rule: "reinit-arg2-type-mismatch",
+    severity: "error",
+    message: (argText: string, actualType: string, expectedType: string) =>
+      `Type mismatch for positional argument 2 in reinit(=${argText}). The argument has type:\n  ${actualType}\nexpected type:\n  ${expectedType}`,
   },
   HOMOTOPY_RECOMMENDED: {
     code: 5010,
@@ -936,6 +1003,25 @@ export const ModelicaErrorCode = {
     rule: "cyclic-function-components",
     severity: "error",
     message: (cycleList: string) => `Cyclically dependent function components found: {${cycleList}}`,
+  },
+  FUNCTION_NO_NAMED_PARAMETER: {
+    code: 5016,
+    rule: "function-no-named-parameter",
+    severity: "error",
+    message: (funcName: string, paramName: string) => `Function ${funcName} has no input parameter named ${paramName}.`,
+  },
+  SIZE_FIRST_ARG_NOT_ARRAY: {
+    code: 5017,
+    rule: "size-first-arg-not-array",
+    severity: "error",
+    message: () => `The first argument of size must be an array expression.`,
+  },
+  REDUCTION_INVALID_EXPR_TYPE: {
+    code: 5018,
+    rule: "reduction-invalid-expr-type",
+    severity: "error",
+    message: (exprText: string, actualType: string, op: string, expectedText: string) =>
+      `Invalid expression '${exprText}' of type ${actualType} in ${op} reduction, expected ${expectedText}.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

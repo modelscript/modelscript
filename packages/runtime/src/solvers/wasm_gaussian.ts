@@ -557,21 +557,163 @@ function formatNum(v: number): string {
 
 /** Factorization result for dense LU solver. */
 export interface LUFactorization {
-  /** LU factorization matrix. */
-  lu: Float64Array[];
+  /** LU factorization matrix (array of rows or flat contiguous array). */
+  lu: Float64Array[] | Float64Array;
   /** Pivot permutation vector. */
   piv: Int32Array;
   /** Row scaling factors for equilibration. */
   rowScale: Float64Array;
   /** Matrix dimension. */
   n: number;
+  /** Whether the underlying matrix is flat 1D contiguous. */
+  isFlat?: boolean;
+}
+
+export interface LUFactorizationFlat {
+  mat: Float64Array;
+  piv: Int32Array;
+  rowScale: Float64Array;
+  n: number;
 }
 
 /**
- * Factor a dense n×n matrix (given as array of Float64Array rows) into PA = LU
- * with row equilibration for numerical stability.
+ * Factor a dense n×n matrix stored as a contiguous 1D row-major Float64Array into PA = LU
+ * with row equilibration, partial pivoting, and unrolled vector operations.
+ * Optionally accepts pre-allocated outPiv and outScale to eliminate allocations.
  */
-export function luFactor(A: Float64Array[], n: number): LUFactorization {
+export function luFactorFlat(
+  mat: Float64Array,
+  n: number,
+  outPiv?: Int32Array,
+  outScale?: Float64Array,
+): LUFactorizationFlat {
+  const piv = outPiv && outPiv.length >= n ? outPiv : new Int32Array(n);
+  const rowScale = outScale && outScale.length >= n ? outScale : new Float64Array(n);
+
+  for (let i = 0; i < n; i++) piv[i] = i;
+
+  // Row equilibration: scale each row by 1 / max|entry|
+  for (let i = 0; i < n; i++) {
+    const rowOffset = i * n;
+    let maxVal = 0;
+    for (let j = 0; j < n; j++) {
+      const v = Math.abs(mat[rowOffset + j] ?? 0);
+      if (v > maxVal) maxVal = v;
+    }
+    const s = maxVal > 1e-30 ? 1.0 / maxVal : 1.0;
+    rowScale[i] = s;
+    for (let j = 0; j < n; j++) {
+      mat[rowOffset + j] = (mat[rowOffset + j] ?? 0) * s;
+    }
+  }
+
+  // Gaussian elimination with partial pivoting and unrolled vector elimination
+  for (let k = 0; k < n; k++) {
+    const rowKOffset = k * n;
+    let maxVal = Math.abs(mat[rowKOffset + k] ?? 0);
+    let maxIdx = k;
+
+    for (let i = k + 1; i < n; i++) {
+      const v = Math.abs(mat[i * n + k] ?? 0);
+      if (v > maxVal) {
+        maxVal = v;
+        maxIdx = i;
+      }
+    }
+
+    if (maxIdx !== k) {
+      const rowMaxOffset = maxIdx * n;
+      for (let j = 0; j < n; j++) {
+        const tmp = mat[rowKOffset + j] ?? 0;
+        mat[rowKOffset + j] = mat[rowMaxOffset + j] ?? 0;
+        mat[rowMaxOffset + j] = tmp;
+      }
+      const tmpP = piv[k] ?? k;
+      piv[k] = piv[maxIdx] ?? maxIdx;
+      piv[maxIdx] = tmpP;
+
+      const tmpS = rowScale[k] ?? 1;
+      rowScale[k] = rowScale[maxIdx] ?? 1;
+      rowScale[maxIdx] = tmpS;
+    }
+
+    const diagVal = mat[rowKOffset + k] ?? 0;
+    if (Math.abs(diagVal) < 1e-30) continue;
+
+    for (let i = k + 1; i < n; i++) {
+      const rowIOffset = i * n;
+      const factor = (mat[rowIOffset + k] ?? 0) / diagVal;
+      mat[rowIOffset + k] = factor;
+
+      // 4-way unrolled vector subtraction
+      let j = k + 1;
+      for (; j + 3 < n; j += 4) {
+        mat[rowIOffset + j] = (mat[rowIOffset + j] ?? 0) - factor * (mat[rowKOffset + j] ?? 0);
+        mat[rowIOffset + j + 1] = (mat[rowIOffset + j + 1] ?? 0) - factor * (mat[rowKOffset + j + 1] ?? 0);
+        mat[rowIOffset + j + 2] = (mat[rowIOffset + j + 2] ?? 0) - factor * (mat[rowKOffset + j + 2] ?? 0);
+        mat[rowIOffset + j + 3] = (mat[rowIOffset + j + 3] ?? 0) - factor * (mat[rowKOffset + j + 3] ?? 0);
+      }
+      for (; j < n; j++) {
+        mat[rowIOffset + j] = (mat[rowIOffset + j] ?? 0) - factor * (mat[rowKOffset + j] ?? 0);
+      }
+    }
+  }
+
+  return { mat, piv, rowScale, n };
+}
+
+/**
+ * Solve LU·x = b (in-place, overwrites b with x) using a contiguous row-major matrix.
+ * Accounts for row equilibration applied during factorization.
+ */
+export function luSolveFlat(fact: LUFactorizationFlat, b: Float64Array, scratchPb?: Float64Array): void {
+  const { mat, piv, rowScale, n } = fact;
+  const pb = scratchPb && scratchPb.length >= n ? scratchPb : new Float64Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const pi = piv[i] ?? i;
+    pb[i] = (b[pi] ?? 0) * (rowScale[i] ?? 1);
+  }
+
+  for (let i = 1; i < n; i++) {
+    const rowOffset = i * n;
+    let sum = pb[i] ?? 0;
+    for (let j = 0; j < i; j++) {
+      sum -= (mat[rowOffset + j] ?? 0) * (pb[j] ?? 0);
+    }
+    pb[i] = sum;
+  }
+
+  for (let i = n - 1; i >= 0; i--) {
+    const rowOffset = i * n;
+    let sum = pb[i] ?? 0;
+    for (let j = i + 1; j < n; j++) {
+      sum -= (mat[rowOffset + j] ?? 0) * (pb[j] ?? 0);
+    }
+    const diag = mat[rowOffset + i] ?? 0;
+    pb[i] = Math.abs(diag) > 1e-30 ? sum / diag : 0;
+  }
+
+  for (let i = 0; i < n; i++) b[i] = pb[i] ?? 0;
+}
+
+/**
+ * Factor a dense n×n matrix into PA = LU with row equilibration for numerical stability.
+ * Supports both contiguous 1D Float64Array(n*n) and array of Float64Array rows.
+ */
+export function luFactor(A: Float64Array[] | Float64Array, n: number): LUFactorization {
+  if (A instanceof Float64Array) {
+    const copy = new Float64Array(A);
+    const flatRes = luFactorFlat(copy, n);
+    return {
+      lu: flatRes.mat,
+      piv: flatRes.piv,
+      rowScale: flatRes.rowScale,
+      n: flatRes.n,
+      isFlat: true,
+    };
+  }
+
   const lu = A.map((row) => new Float64Array(row));
   const piv = new Int32Array(n);
   for (let i = 0; i < n; i++) piv[i] = i;
@@ -634,7 +776,7 @@ export function luFactor(A: Float64Array[], n: number): LUFactorization {
       }
     }
   }
-  return { lu, piv, rowScale, n };
+  return { lu, piv, rowScale, n, isFlat: false };
 }
 
 /**
@@ -642,21 +784,35 @@ export function luFactor(A: Float64Array[], n: number): LUFactorization {
  * Accounts for row equilibration applied during factorization.
  */
 export function luSolve(fact: LUFactorization, b: Float64Array): void {
+  if (fact.isFlat && fact.lu instanceof Float64Array) {
+    luSolveFlat(
+      {
+        mat: fact.lu,
+        piv: fact.piv,
+        rowScale: fact.rowScale,
+        n: fact.n,
+      },
+      b,
+    );
+    return;
+  }
+
   const { lu, piv, rowScale, n } = fact;
+  const rows = lu as Float64Array[];
   const pb = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const pi = piv[i] ?? i;
     pb[i] = (b[pi] ?? 0) * (rowScale[i] ?? 1);
   }
   for (let i = 1; i < n; i++) {
-    const luI = lu[i];
+    const luI = rows[i];
     if (!luI) continue;
     for (let j = 0; j < i; j++) {
       pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
     }
   }
   for (let i = n - 1; i >= 0; i--) {
-    const luI = lu[i];
+    const luI = rows[i];
     if (!luI) continue;
     for (let j = i + 1; j < n; j++) {
       pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);

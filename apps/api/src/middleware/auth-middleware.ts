@@ -37,12 +37,18 @@ export { JWT_SECRET };
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers["authorization"];
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  let token: string | undefined;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  } else if (typeof req.query.token === "string" && req.query.token.length > 0) {
+    token = req.query.token;
+  }
+
+  if (!token) {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
-
-  const token = authHeader.substring(7);
 
   // Check if it's a bot token
   if (token.startsWith("ms_bot_") && sharedAuthDatabase) {
@@ -105,12 +111,18 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
   const authHeader = req.headers["authorization"];
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  let token: string | undefined;
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  } else if (typeof req.query.token === "string" && req.query.token.length > 0) {
+    token = req.query.token;
+  }
+
+  if (!token) {
     next();
     return;
   }
-
-  const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
     if (sharedAuthDatabase) {

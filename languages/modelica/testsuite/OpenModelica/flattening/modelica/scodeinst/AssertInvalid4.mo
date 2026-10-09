@@ -1,7 +1,6 @@
 // name: AssertInvalid4
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model AssertInvalid4

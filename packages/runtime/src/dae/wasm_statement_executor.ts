@@ -1334,28 +1334,27 @@ export function executeArenaCEvalStatements(
           const funcNameId = arena.getExprData1(callExprId);
           const firstArg = arena.getExprLeft(callExprId);
           const numArgs = arena.getExprRight(callExprId);
+          const funcName = arena.interner.resolve(funcNameId);
 
+          const argIds = getSequenceElementsLocal(arena, callExprId, numArgs, firstArg);
           const argValues: ArenaValue[] = [];
-          if (numArgs > 0) {
-            const firstArgVal = evaluateArenaExpression(
-              arena,
-              firstArg,
-              env,
-              db,
-              scopeId,
-              undefined,
-              false,
-              functionLookup,
-            );
-            if (firstArgVal !== null) argValues.push(firstArgVal);
-            for (let a = 1; a < numArgs; a++) {
-              const tupleExprId = firstArg + a;
-              const argExprId = arena.getExprLeft(tupleExprId);
-              const val = evaluateArenaExpression(arena, argExprId, env, db, scopeId, undefined, false, functionLookup);
-              if (val !== null) argValues.push(val);
-            }
+          for (const aid of argIds) {
+            const val = evaluateArenaExpression(arena, aid, env, db, scopeId, undefined, false, functionLookup);
+            argValues.push(val);
           }
-          if (functionLookup) {
+
+          if (funcName === "assert") {
+            const cond = argValues[0];
+            const isFalsy = cond === 0 || cond === false;
+            const level = argValues[2];
+            if (isFalsy && level !== 1) {
+              const msg = typeof argValues[1] === "string" ? argValues[1] : argValues[1] ? String(argValues[1]) : "";
+              const range = (arena as any).stmtRanges?.get(i);
+              const err: any = new Error(`assert triggered: ${msg}`);
+              err.range = range;
+              throw err;
+            }
+          } else if (functionLookup) {
             functionLookup(funcNameId, argValues);
           }
         }
@@ -1898,11 +1897,47 @@ export function evaluateArenaFunctionCall(
       }
     }
 
+    // Evaluate record output field expressions if present on funcArena
+    if ((funcArena as any).recordVarFieldExprs) {
+      for (const [varName, fieldMap] of (funcArena as any).recordVarFieldExprs.entries()) {
+        for (const [fieldName, fieldExprId] of (fieldMap as Map<string, number>).entries()) {
+          const fieldVal = evaluateArenaExpression(
+            funcArena,
+            fieldExprId,
+            env,
+            db,
+            scopeId,
+            undefined,
+            false,
+            functionLookup,
+            dae,
+            instancePrefix,
+          );
+          if (fieldVal !== null && fieldVal !== undefined) {
+            env.set(`${varName}.${fieldName}`, fieldVal);
+          }
+        }
+      }
+    }
+
+    const resolveOutput = (outName: string): ArenaValue | null => {
+      const fieldPrefix = `${outName}.`;
+      const recordFields: [string, ArenaValue][] = [];
+      for (const [key, val] of env.entries()) {
+        if (key.startsWith(fieldPrefix)) {
+          recordFields.push([key, val]);
+        }
+      }
+      if (recordFields.length > 0) {
+        return recordFields.map(([_, v]) => v) as ArenaValue;
+      }
+      return env.get(outName) ?? null;
+    };
+
     if (outputs.length === 1) {
-      const outName = outputs[0];
-      return outName ? (env.get(outName) ?? null) : null;
+      return resolveOutput(outputs[0]!);
     } else if (outputs.length > 1) {
-      return outputs.map((outName) => env.get(outName) ?? null) as ArenaValue;
+      return outputs.map(resolveOutput) as ArenaValue;
     }
 
     return null;

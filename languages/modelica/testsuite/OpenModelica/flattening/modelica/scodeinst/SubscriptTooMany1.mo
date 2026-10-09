@@ -1,8 +1,6 @@
 // name: SubscriptTooMany1
 // status: incorrect
-// xfail:    true
 //
-
 model SubscriptTooMany1
   Real x[3] = {1, 2, 3};
   Real y = x[2, 2];

@@ -1,7 +1,6 @@
 // name: ReinitInvalid1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model ReinitInvalid1

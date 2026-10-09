@@ -137,14 +137,11 @@ export const MC: CommandModule<{}, McArgs> = {
       }
     }
 
-    if (args.threads > 1) {
-      console.warn("Worker pool not yet implemented. Running synchronously on a single thread.");
-    }
-
     const mcOpts: Parameters<typeof runMonteCarloArena>[2] = {
       numSamples: args.runs,
       latinHypercube: args.lhs,
       storeTrajectories: false, // Too much memory for CLI
+      concurrency: args.threads,
       simulateOptions: {
         startTime,
         stopTime,
@@ -156,12 +153,15 @@ export const MC: CommandModule<{}, McArgs> = {
       mcOpts.seed = args.seed;
     }
 
-    console.error(`Running Monte Carlo with ${args.runs} runs using ${args.engine} engine...`);
+    console.error(
+      `Running Monte Carlo with ${args.runs} runs using ${args.engine} engine (${args.threads} threads)...`,
+    );
 
     let mcResult;
 
     if (args.engine === "js") {
-      mcResult = runMonteCarloArena(arena, randomVars, mcOpts);
+      const { runMonteCarloArenaAsync } = await import("@modelscript/simulate");
+      mcResult = await runMonteCarloArenaAsync(arena, randomVars, mcOpts);
     } else {
       // WASM execution path
       const { latinHypercubeSample, sampleDistribution, Xoshiro256pp, normalQuantile } =

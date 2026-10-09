@@ -1,7 +1,6 @@
 // name: TerminateInvalid1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model TerminateInvalid1

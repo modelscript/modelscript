@@ -1,7 +1,6 @@
 // name: ReductionInvalidTypeSum
 // keywords: reduction
 // status: incorrect
-// xfail:    true
 //
 // Tests the builtin reduction operators.
 //

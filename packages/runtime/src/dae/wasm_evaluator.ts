@@ -361,6 +361,353 @@ export function evaluateArenaDualExpression(
 }
 
 /**
+ * Zero-allocation forward-mode automatic differentiation evaluator.
+ * Evaluates an arena expression and its exact derivative with respect to a single seeded variable (seedStringId).
+ * Base variable values are read directly from `valuesByStringId: Float64Array`.
+ * Writes (val, dot) directly into `stack[sp]` and `stack[sp + 1]` without any heap allocations.
+ *
+ * @param arena DAEBuilder arena containing expression AST nodes
+ * @param exprId Expression node ID
+ * @param valuesByStringId Dense array mapping variable name StringId -> current real value
+ * @param seedStringId StringId of the variable with derivative 1.0 (all other variables have dot=0.0)
+ * @param stack Reusable scratch Float64Array stack for evaluation
+ * @param sp Current stack pointer offset (must have at least 16 slots available from sp)
+ * @returns true on successful evaluation, false on division by zero or invalid expression
+ */
+export function evaluateArenaDualFlat(
+  arena: DAEBuilder,
+  exprId: number,
+  valuesByStringId: Float64Array,
+  seedStringId: number,
+  stack: Float64Array,
+  sp: number = 0,
+): boolean {
+  if (exprId < 0) return false;
+
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.RealLiteral:
+      stack[sp] = arena.getExprRealValue(exprId);
+      stack[sp + 1] = 0.0;
+      return true;
+
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+      stack[sp] = arena.getExprData1(exprId);
+      stack[sp + 1] = 0.0;
+      return true;
+
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      stack[sp] = valuesByStringId[nameId] ?? 0.0;
+      stack[sp + 1] = nameId === seedStringId ? 1.0 : 0.0;
+      return true;
+    }
+
+    case ExprKind.Unary: {
+      const op = arena.getExprData1(exprId) as UnaryOp;
+      if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
+        return false;
+      }
+      switch (op) {
+        case UnaryOp.Negate:
+          stack[sp] = -stack[sp];
+          stack[sp + 1] = -stack[sp + 1];
+          return true;
+        case UnaryOp.Not:
+          stack[sp] = stack[sp] === 0 ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        default:
+          return false;
+      }
+    }
+
+    case ExprKind.Negate: {
+      if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
+        return false;
+      }
+      stack[sp] = -stack[sp];
+      stack[sp + 1] = -stack[sp + 1];
+      return true;
+    }
+
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId) as BinOp;
+      if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
+        return false;
+      }
+      if (!evaluateArenaDualFlat(arena, arena.getExprRight(exprId), valuesByStringId, seedStringId, stack, sp + 2)) {
+        return false;
+      }
+
+      const lVal = stack[sp]!;
+      const lDot = stack[sp + 1]!;
+      const rVal = stack[sp + 2]!;
+      const rDot = stack[sp + 3]!;
+
+      if ((op === BinOp.Mul || op === BinOp.ElemMul) && ((lVal === 0 && lDot === 0) || (rVal === 0 && rDot === 0))) {
+        stack[sp] = 0.0;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+
+      switch (op) {
+        case BinOp.Add:
+        case BinOp.ElemAdd:
+          stack[sp] = lVal + rVal;
+          stack[sp + 1] = lDot + rDot;
+          return true;
+        case BinOp.Sub:
+        case BinOp.ElemSub:
+          stack[sp] = lVal - rVal;
+          stack[sp + 1] = lDot - rDot;
+          return true;
+        case BinOp.Mul:
+        case BinOp.ElemMul:
+          stack[sp] = lVal * rVal;
+          stack[sp + 1] = lVal * rDot + lDot * rVal;
+          return true;
+        case BinOp.Div:
+        case BinOp.ElemDiv:
+          if (rVal === 0) return false;
+          stack[sp] = lVal / rVal;
+          stack[sp + 1] = (lDot * rVal - lVal * rDot) / (rVal * rVal);
+          return true;
+        case BinOp.Pow:
+        case BinOp.ElemPow: {
+          if (rDot === 0) {
+            const v = lVal ** rVal;
+            stack[sp] = v;
+            stack[sp + 1] = rVal * lVal ** (rVal - 1) * lDot;
+          } else {
+            const v = lVal ** rVal;
+            stack[sp] = v;
+            stack[sp + 1] = v * (rDot * Math.log(lVal) + (rVal * lDot) / lVal);
+          }
+          return true;
+        }
+        case BinOp.Lt:
+          stack[sp] = lVal < rVal ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.Lte:
+          stack[sp] = lVal <= rVal ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.Gt:
+          stack[sp] = lVal > rVal ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.Gte:
+          stack[sp] = lVal >= rVal ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.Eq:
+          stack[sp] = lVal === rVal ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.Neq:
+          stack[sp] = lVal !== rVal ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.And:
+          stack[sp] = lVal !== 0 && rVal !== 0 ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+        case BinOp.Or:
+          stack[sp] = lVal !== 0 || rVal !== 0 ? 1 : 0;
+          stack[sp + 1] = 0.0;
+          return true;
+      }
+      return false;
+    }
+
+    case ExprKind.IfElse: {
+      if (!evaluateArenaDualFlat(arena, arena.getExprData1(exprId), valuesByStringId, seedStringId, stack, sp)) {
+        return false;
+      }
+      const targetExprId = stack[sp] !== 0 ? arena.getExprLeft(exprId) : arena.getExprRight(exprId);
+      return evaluateArenaDualFlat(arena, targetExprId, valuesByStringId, seedStringId, stack, sp);
+    }
+
+    case ExprKind.Call: {
+      const funcNameId = arena.getExprData1(exprId);
+      const funcName = arena.interner.resolve(funcNameId);
+      const argCount = arena.getExprRight(exprId);
+      const firstArgId = arena.getExprLeft(exprId);
+
+      if (
+        funcName === "noEvent" ||
+        funcName === "/*Real*/" ||
+        funcName === "/*Integer*/" ||
+        funcName === "/*Boolean*/"
+      ) {
+        if (argCount > 0) {
+          return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
+        }
+        stack[sp] = 0.0;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+      if (funcName === "smooth") {
+        if (argCount > 1) {
+          const secondArgId = arena.getExprLeft(exprId + 1);
+          return evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp);
+        }
+        if (argCount > 0) {
+          return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
+        }
+        stack[sp] = 0.0;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+
+      if (argCount === 1) {
+        if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp)) {
+          return false;
+        }
+        const v = stack[sp]!;
+        const d = stack[sp + 1]!;
+        switch (funcName) {
+          case "sin":
+            stack[sp] = Math.sin(v);
+            stack[sp + 1] = Math.cos(v) * d;
+            return true;
+          case "cos":
+            stack[sp] = Math.cos(v);
+            stack[sp + 1] = -Math.sin(v) * d;
+            return true;
+          case "tan": {
+            const cos = Math.cos(v);
+            stack[sp] = Math.tan(v);
+            stack[sp + 1] = d / (cos * cos);
+            return true;
+          }
+          case "exp": {
+            const expV = Math.exp(v);
+            stack[sp] = expV;
+            stack[sp + 1] = expV * d;
+            return true;
+          }
+          case "log":
+            stack[sp] = Math.log(v);
+            stack[sp + 1] = d / v;
+            return true;
+          case "log10":
+            stack[sp] = Math.log10(v);
+            stack[sp + 1] = d / (v * Math.LN10);
+            return true;
+          case "sqrt": {
+            const sqrtV = Math.sqrt(v);
+            stack[sp] = sqrtV;
+            stack[sp + 1] = d / (2 * sqrtV);
+            return true;
+          }
+          case "abs":
+            stack[sp] = Math.abs(v);
+            stack[sp + 1] = v >= 0 ? d : -d;
+            return true;
+          case "asin":
+            stack[sp] = Math.asin(v);
+            stack[sp + 1] = d / Math.sqrt(1 - v * v);
+            return true;
+          case "acos":
+            stack[sp] = Math.acos(v);
+            stack[sp + 1] = -d / Math.sqrt(1 - v * v);
+            return true;
+          case "atan":
+            stack[sp] = Math.atan(v);
+            stack[sp + 1] = d / (1 + v * v);
+            return true;
+          case "sinh":
+            stack[sp] = Math.sinh(v);
+            stack[sp + 1] = Math.cosh(v) * d;
+            return true;
+          case "cosh":
+            stack[sp] = Math.cosh(v);
+            stack[sp + 1] = Math.sinh(v) * d;
+            return true;
+          case "tanh": {
+            const cosh = Math.cosh(v);
+            stack[sp] = Math.tanh(v);
+            stack[sp + 1] = d / (cosh * cosh);
+            return true;
+          }
+          case "sign":
+            stack[sp] = Math.sign(v);
+            stack[sp + 1] = 0.0;
+            return true;
+          case "ceil":
+            stack[sp] = Math.ceil(v);
+            stack[sp + 1] = 0.0;
+            return true;
+          case "floor":
+            stack[sp] = Math.floor(v);
+            stack[sp + 1] = 0.0;
+            return true;
+          case "Real":
+          case "Integer":
+          case "Boolean":
+          case "max":
+          case "min":
+            return true;
+        }
+      }
+
+      if (argCount === 2) {
+        if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp)) {
+          return false;
+        }
+        const secondArgId = arena.getExprLeft(exprId + 1);
+        if (!evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp + 2)) {
+          return false;
+        }
+        const aVal = stack[sp]!;
+        const aDot = stack[sp + 1]!;
+        const bVal = stack[sp + 2]!;
+        const bDot = stack[sp + 3]!;
+
+        switch (funcName) {
+          case "atan2": {
+            const denom = aVal * aVal + bVal * bVal;
+            stack[sp] = Math.atan2(aVal, bVal);
+            stack[sp + 1] = (aDot * bVal - aVal * bDot) / denom;
+            return true;
+          }
+          case "max":
+            stack[sp] = Math.max(aVal, bVal);
+            stack[sp + 1] = aVal >= bVal ? aDot : bDot;
+            return true;
+          case "min":
+            stack[sp] = Math.min(aVal, bVal);
+            stack[sp + 1] = aVal <= bVal ? aDot : bDot;
+            return true;
+          case "pow": {
+            if (bDot === 0) {
+              const v = aVal ** bVal;
+              stack[sp] = v;
+              stack[sp + 1] = bVal * aVal ** (bVal - 1) * aDot;
+            } else {
+              const v = aVal ** bVal;
+              stack[sp] = v;
+              stack[sp + 1] = v * (bDot * Math.log(aVal) + (bVal * aDot) / aVal);
+            }
+            return true;
+          }
+        }
+      }
+
+      stack[sp] = 0.0;
+      stack[sp + 1] = 0.0;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Highly optimized, zero-garbage runtime evaluator.
  * Evaluates an arena expression using a dense, flat Float64Array for variable lookups.
  */

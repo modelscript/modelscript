@@ -10,6 +10,7 @@ import { getComputeProfile } from "../services/hpc/compute-profiles.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 
@@ -132,6 +133,27 @@ getErrorString();
           fs.writeFileSync(mosScriptPath, mosContents, "utf8");
 
           const profile = getComputeProfile(req.body.profile as string | undefined);
+
+          // Native ModelScript simulation engine vs OMC
+          const enginePreference = req.body.engine ?? "modelscript";
+          let prep: NativeSimPrepResult | null = null;
+          if (enginePreference !== "omc") {
+            prep = await prepareNativeSimulation(tmpDir, {
+              modelName: qualifiedModelName,
+              sourceFiles: [...loadFiles, ...(adhocMoPath ? [adhocMoPath] : [])],
+              libraryPaths,
+              startTime: req.body.startTime,
+              stopTime: req.body.stopTime,
+              stepSize: req.body.stepSize,
+              numberOfIntervals: req.body.numberOfIntervals,
+              solver: req.body.solver === "cvode" ? "cvode" : "rk4",
+              tolerance: req.body.tolerance,
+            });
+          }
+
+          const isNative = prep !== null;
+          const engineName = isNative ? "modelscript" : "omc";
+
           let dbJobId: number | null = null;
           if (database) {
             try {
@@ -139,7 +161,7 @@ getErrorString();
                 `Simulation: ${modelName}`,
                 "RUNNING",
                 "ADHOC",
-                "omc",
+                engineName,
                 null,
                 {
                   jobId,
@@ -152,25 +174,47 @@ getErrorString();
             }
           }
 
-          const hpcSpec: HpcJobSpec = {
-            jobId,
-            name: `OMC-${fileNamePrefix}`,
-            command: "omc",
-            args: [mosScriptPath],
-            workingDir: tmpDir,
-            env: {
-              ...process.env,
-              MODELICAPATH: modelicaPath,
-              OMP_NUM_THREADS: String(profile.cpus),
-            },
-            profileId: profile.id,
-            resources: {
-              cpusPerTask: profile.cpus,
-              memoryMb: profile.memoryMb,
-              partition: profile.partition,
-              gpus: profile.gpus,
-            },
-          };
+          let hpcSpec: HpcJobSpec;
+          if (isNative && prep) {
+            hpcSpec = {
+              jobId,
+              name: `MSX-${fileNamePrefix}`,
+              command: "bash",
+              args: [prep.runScript],
+              workingDir: tmpDir,
+              env: {
+                ...process.env,
+                OMP_NUM_THREADS: String(profile.cpus),
+              },
+              profileId: profile.id,
+              resources: {
+                cpusPerTask: profile.cpus,
+                memoryMb: profile.memoryMb,
+                partition: profile.partition,
+                gpus: profile.gpus,
+              },
+            };
+          } else {
+            hpcSpec = {
+              jobId,
+              name: `OMC-${fileNamePrefix}`,
+              command: "omc",
+              args: [mosScriptPath],
+              workingDir: tmpDir,
+              env: {
+                ...process.env,
+                MODELICAPATH: modelicaPath,
+                OMP_NUM_THREADS: String(profile.cpus),
+              },
+              profileId: profile.id,
+              resources: {
+                cpusPerTask: profile.cpus,
+                memoryMb: profile.memoryMb,
+                partition: profile.partition,
+                gpus: profile.gpus,
+              },
+            };
+          }
 
           const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
           const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);

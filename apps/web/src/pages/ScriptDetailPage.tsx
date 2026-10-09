@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, CheckCircleFillIcon, CircleIcon, ClockIcon, XCircleFillIcon } from "@primer/octicons-react";
-import { Heading, Label, Text } from "@primer/react";
+import {
+  ArrowLeftIcon,
+  CheckCircleFillIcon,
+  CircleIcon,
+  ClockIcon,
+  DownloadIcon,
+  XCircleFillIcon,
+} from "@primer/octicons-react";
+import { Button, Heading, Label, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getJobLogs } from "../api";
+import { cancelDbJob, getJobDetails, getJobLogs } from "../api";
+import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
 import { usePageTitle } from "../util/title";
@@ -19,19 +27,40 @@ const ScriptDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   usePageTitle(id ? `Job #${id}` : "Job Details");
   const navigate = useNavigate();
+  const { token } = useAuth();
   const [job, setJob] = useState<Record<string, unknown> | null>(null);
   const [steps, setSteps] = useState<JobStep[]>([]);
   const [logs, setLogs] = useState<string>("");
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const evtSource = new EventSource(`/api/v1/jobs/${id}/stream`);
+    if (!id) return;
+
+    // Fetch initial details immediately
+    getJobDetails(id)
+      .then((res) => {
+        if (res?.job) {
+          setJob(res.job);
+          if (res.steps) setSteps(res.steps);
+          if (res.job.status === "SUCCESS" || res.job.status === "FAILED" || res.job.status === "CANCELLED") {
+            getJobLogs(id)
+              .then((text) => setLogs(typeof text === "string" ? text : JSON.stringify(text, null, 2)))
+              .catch(console.error);
+          }
+        }
+      })
+      .catch(console.error);
+
+    const streamUrl = token
+      ? `/api/v1/jobs/${id}/stream?token=${encodeURIComponent(token)}`
+      : `/api/v1/jobs/${id}/stream`;
+    const evtSource = new EventSource(streamUrl);
 
     evtSource.addEventListener("status", (e) => {
       try {
         const data = JSON.parse(e.data);
-        setJob(data.job);
-        setSteps(data.steps || []);
+        if (data.job) setJob(data.job);
+        if (data.steps) setSteps(data.steps);
       } catch {
         /* ignore */
       }
@@ -48,17 +77,15 @@ const ScriptDetailPage: React.FC = () => {
 
     evtSource.addEventListener("complete", () => {
       evtSource.close();
-      if (id) {
-        getJobLogs(id)
-          .then((text) => setLogs(typeof text === "string" ? text : JSON.stringify(text, null, 2)))
-          .catch(console.error);
-      }
+      getJobLogs(id)
+        .then((text) => setLogs(typeof text === "string" ? text : JSON.stringify(text, null, 2)))
+        .catch(console.error);
     });
 
     return () => {
       evtSource.close();
     };
-  }, [id]);
+  }, [id, token]);
 
   useEffect(() => {
     if (terminalEndRef.current) {
@@ -79,6 +106,12 @@ const ScriptDetailPage: React.FC = () => {
     }
   };
 
+  const handleDownloadResult = () => {
+    if (!id) return;
+    const url = `/api/v1/jobs/${id}/result${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    window.open(url, "_blank");
+  };
+
   return (
     <Box display="flex" flexDirection="column" style={{ minHeight: "100%", height: "100%" }}>
       <Box
@@ -94,13 +127,51 @@ const ScriptDetailPage: React.FC = () => {
         </CircleIconButton>
         <Box flex={1}>
           <Heading as="h2" style={{ fontSize: "20px", fontWeight: 800, margin: 0, color: "var(--color-fg-default)" }}>
-            {job ? job.name : `Job #${id}`}
+            {job ? (job.name as string) : `Job #${id}`}
           </Heading>
+          {job && (job.started_at || job.type) && (
+            <Text fontSize="12px" color="var(--color-fg-muted)">
+              {job.type ? `${job.type} • ` : ""}
+              Started: {job.started_at ? new Date(job.started_at as string).toLocaleString() : "N/A"}
+            </Text>
+          )}
         </Box>
         {job && (
-          <Label variant={job.status === "SUCCESS" ? "success" : job.status === "FAILED" ? "danger" : "attention"}>
-            {job.status}
-          </Label>
+          <Box display="flex" alignItems="center" gap={2}>
+            <Label
+              variant={
+                job.status === "SUCCESS"
+                  ? "success"
+                  : job.status === "FAILED" || job.status === "CANCELLED"
+                    ? "danger"
+                    : "attention"
+              }
+            >
+              {job.status as string}
+            </Label>
+            {job.status === "SUCCESS" && (
+              <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadResult}>
+                Download Result
+              </Button>
+            )}
+            {(job.status === "RUNNING" || job.status === "QUEUED") && (
+              <Button
+                variant="danger"
+                size="small"
+                onClick={async () => {
+                  if (!id) return;
+                  try {
+                    await cancelDbJob(id);
+                    setJob((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
+                  } catch (err) {
+                    console.error("Failed to cancel job:", err);
+                  }
+                }}
+              >
+                Cancel Run
+              </Button>
+            )}
+          </Box>
         )}
       </Box>
 
@@ -135,7 +206,7 @@ const ScriptDetailPage: React.FC = () => {
           ))}
           {steps.length === 0 && (
             <Text color="var(--color-fg-muted)" fontSize="14px">
-              Waiting for steps...
+              No discrete pipeline steps recorded.
             </Text>
           )}
         </Box>

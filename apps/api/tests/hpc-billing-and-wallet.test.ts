@@ -318,4 +318,74 @@ test("User Credit Wallet, Quotas & Billing Ledger", async (t) => {
     assert.strictEqual(latestTx.amount, 50.0);
     assert.strictEqual(latestTx.balance_after, 50.0);
   });
+
+  await t.test("Credit Escrow System: hold, settlement with refund, overage, and cancellation release", () => {
+    const escrowUser = db.createUser("escrow_engineer", "escrow@test.com", "pwd", "Escrow Engineer");
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 100.0);
+
+    // 1. Place a hold of 20 credits for Job A
+    const jobA = db.createJob("Escrow Test Job A", "RUNNING", "ADHOC", "ide", null, {}, escrowUser.id);
+    const holdA = db.holdUserCredits(escrowUser.id, 20.0, jobA, "Escrow Hold Job A", { test: true });
+    assert.strictEqual(holdA.success, true);
+    assert.strictEqual(holdA.heldAmount, 20.0);
+    assert.strictEqual(holdA.newBalance, 80.0);
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 80.0);
+
+    const txHoldA = db.getUserTransactions(escrowUser.id)[0]!;
+    assert.strictEqual(txHoldA.type, "escrow_hold");
+    assert.strictEqual(txHoldA.amount, -20.0);
+    assert.strictEqual(txHoldA.balance_after, 80.0);
+
+    // 2. Reject hold if user does not have sufficient balance
+    const rejectHold = db.holdUserCredits(escrowUser.id, 999.0, jobA, "Greedy Hold");
+    assert.strictEqual(rejectHold.success, false);
+    assert.ok(rejectHold.reason?.includes("Insufficient balance"));
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 80.0);
+
+    // 3. Settle Job A with actual cost = 12.5 (refund 7.5 back to wallet)
+    const settleA = db.settleUserEscrow(escrowUser.id, jobA, 12.5, "Job A Final Settlement");
+    assert.strictEqual(settleA.success, true);
+    assert.strictEqual(settleA.settledAmount, 12.5);
+    assert.strictEqual(settleA.refundedAmount, 7.5);
+    assert.strictEqual(settleA.newBalance, 87.5);
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 87.5);
+
+    const txSettleA = db.getUserTransactions(escrowUser.id)[0]!;
+    assert.strictEqual(txSettleA.type, "escrow_refund");
+    assert.strictEqual(txSettleA.amount, 7.5);
+    assert.strictEqual(txSettleA.balance_after, 87.5);
+
+    // 4. Place a hold of 10 credits for Job B, then settle with OVERAGE (actual = 14.0 -> extra charge 4.0)
+    const jobB = db.createJob("Escrow Test Job B", "RUNNING", "ADHOC", "ide", null, {}, escrowUser.id);
+    db.holdUserCredits(escrowUser.id, 10.0, jobB, "Escrow Hold Job B");
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 77.5);
+
+    const settleB = db.settleUserEscrow(escrowUser.id, jobB, 14.0, "Job B Overage Settlement");
+    assert.strictEqual(settleB.success, true);
+    assert.strictEqual(settleB.settledAmount, 14.0);
+    assert.strictEqual(settleB.refundedAmount, 0);
+    assert.strictEqual(settleB.newBalance, 73.5);
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 73.5);
+
+    const txSettleB = db.getUserTransactions(escrowUser.id)[0]!;
+    assert.strictEqual(txSettleB.type, "escrow_overage");
+    assert.strictEqual(txSettleB.amount, -4.0);
+    assert.strictEqual(txSettleB.balance_after, 73.5);
+
+    // 5. Place a hold of 30 credits for Job C, then CANCEL/RELEASE (100% refund of 30.0)
+    const jobC = db.createJob("Escrow Test Job C", "RUNNING", "ADHOC", "ide", null, {}, escrowUser.id);
+    db.holdUserCredits(escrowUser.id, 30.0, jobC, "Escrow Hold Job C");
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 43.5);
+
+    const releaseC = db.releaseUserEscrow(escrowUser.id, jobC, "User cancelled execution");
+    assert.strictEqual(releaseC.success, true);
+    assert.strictEqual(releaseC.refundedAmount, 30.0);
+    assert.strictEqual(releaseC.newBalance, 73.5);
+    assert.strictEqual(db.getUserBalance(escrowUser.id), 73.5);
+
+    const txReleaseC = db.getUserTransactions(escrowUser.id)[0]!;
+    assert.strictEqual(txReleaseC.type, "escrow_release");
+    assert.strictEqual(txReleaseC.amount, 30.0);
+    assert.strictEqual(txReleaseC.balance_after, 73.5);
+  });
 });

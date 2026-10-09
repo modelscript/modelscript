@@ -2,6 +2,7 @@
 
 import { ArrowLeftIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, Dialog, Flash, FormControl, Heading, Select, Text, TextInput } from "@primer/react";
+import axios from "axios";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getJobTemplate, runJobTemplate } from "../api";

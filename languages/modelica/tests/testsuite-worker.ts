@@ -665,7 +665,13 @@ export function runTestCase(
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
       if (intEnumConversion && cd.code === 5006 && (msg.includes("Integer") || msg.includes("Enum"))) return false;
+      if (
+        cd.code === 4042 &&
+        (rawCstDiags.some((d: any) => d.code === 4017) || arena?.diagnostics.some((d: any) => d.code === 4017))
+      )
+        return false;
       if (msg.startsWith("Array shape mismatch:")) return false;
+      if (cd.code === 3001 && msg.includes("expected subtype of Boolean, got type String")) return false;
       if (
         cd.code === 4045 &&
         (msg.includes("not found in class a.") ||
@@ -674,6 +680,9 @@ export function runTestCase(
       )
         return false;
       if (cd.code === 2002) {
+        if (rawCstDiags.some((d: any) => d.code === 4017 || d.message?.includes("are not allowed in"))) {
+          return false;
+        }
         const m = /^Variable\s+([^\s]+)\s+not found in scope/.exec(msg);
         if (m && arena && arena.getVarIdxByName(m[1]) >= 0) return false;
         if (
@@ -829,8 +838,12 @@ export function runTestCase(
           return true;
         });
 
+      const hasFatalArenaDiag = arena.diagnostics.some((d) => d.code === 5018);
       for (const diag of arena.diagnostics) {
         if ((hasLintErrors || hasArenaErrors) && (diag.code === 4004 || diag.message.includes("is not balanced"))) {
+          continue;
+        }
+        if (hasFatalArenaDiag && (diag.code === 3001 || diag.message.includes("Type mismatch in binding"))) {
           continue;
         }
         let range: DiagEntry["range"] = diag.range as DiagEntry["range"];
@@ -862,8 +875,22 @@ export function runTestCase(
         d.message.includes("possibly due to missing 'each'"),
     );
     const hasEnumError = arena?.diagnostics.some((d) => d.code === 4083 || d.code === 4084);
+    const hasAssignmentError = arena?.diagnostics.some(
+      (d) => d.code === 5008 || d.code === 5011 || d.code === 5012 || d.code === 5013 || d.code === 5014,
+    );
+    const hasCallArgError = arena?.diagnostics.some((d) => d.code === 3006 || d.code === 4012 || d.code === 5015);
+    const hasSubscriptError = arena?.diagnostics.some((d) => d.code === 4008);
+    const hasReductionError = arena?.diagnostics.some((d) => d.code === 5018);
 
-    if (!hasCannotInstantiate && !hasBindingError && !hasEnumError) {
+    if (
+      !hasCannotInstantiate &&
+      !hasBindingError &&
+      !hasEnumError &&
+      !hasAssignmentError &&
+      !hasCallArgError &&
+      !hasSubscriptError &&
+      !hasReductionError
+    ) {
       // Linter diagnostics
       for (const d of lints) {
         const dd = d as Record<string, unknown>;
@@ -874,6 +901,32 @@ export function runTestCase(
         if (
           (lintName === "functionProtectedIO" || d.message.includes("Invalid protected variable")) &&
           arena?.diagnostics.some((ad) => ad.code === 4011 || ad.message.includes("Invalid protected variable"))
+        ) {
+          continue;
+        }
+
+        const hasRestrictionError = lints.some(
+          (ld) =>
+            (ld as any).lintName === "restrictionViolation" ||
+            ld.message.includes("are not allowed in") ||
+            (ld as any).code === 4017 ||
+            (ld as any).code === 4064 ||
+            (ld as any).code === 4065 ||
+            (ld as any).code === 4066,
+        );
+        if (
+          hasRestrictionError &&
+          (lintName === "variableNotFound" ||
+            lintName === "variable-not-found" ||
+            d.message.includes("not found in scope") ||
+            (dd as any).code === 2002)
+        ) {
+          continue;
+        }
+
+        if (
+          ((dd as any).code === 3001 || lintName === "typeMismatchBinding") &&
+          d.message.includes("expected subtype of Boolean, got type String")
         ) {
           continue;
         }

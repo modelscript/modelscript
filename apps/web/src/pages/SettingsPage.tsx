@@ -25,7 +25,7 @@ import {
   TrashIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import {
   addPublicKey,
@@ -425,7 +425,15 @@ type TabType =
   | "notificationFilters";
 
 const SettingsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>("account");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab") as TabType | null;
+  const [activeTab, setActiveTab] = useState<TabType>(tabParam || "account");
+
+  React.useEffect(() => {
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam, activeTab]);
   const [searchQuery, setSearchQuery] = useState("");
   const hasBilling = useFeatureFlag("billing_stripe_live");
   const hasBots = useFeatureFlag("bot_accounts");
@@ -555,6 +563,7 @@ const SettingsPage: React.FC = () => {
   // Reset states when changing tabs
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
+    setSearchParams({ tab });
     setError(null);
     setSuccess(null);
     if (tab === "accountInfo") {

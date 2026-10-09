@@ -1005,7 +1005,6 @@ export class ArenaDAEPrinter {
         "nominal",
         "stateSelect",
       ];
-      const isParamOrConst = variability === Variability.Parameter || variability === Variability.Constant;
       const isStartSameAsBinding = (startId: number | undefined, bindId: number): boolean => {
         if (startId === undefined) return false;
         if (startId === bindId) return true;
@@ -1735,6 +1734,14 @@ export class ArenaDAEPrinter {
       }
     }
     for (const fn of dae.functions.values()) {
+      if (this.omcCompatibility && !isOldFrontend && dae.classKind !== "function") {
+        const baseName = fn.name.split(".").pop()!;
+        const isFnActive =
+          activeCalledFnNames.has(fn.name) ||
+          activeCalledFnNames.has(baseName) ||
+          Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
+        if (!isFnActive) continue;
+      }
       const isRecordCtor = fn.description?.startsWith("Automatically generated record constructor");
       if (
         !isRecordCtor ||
@@ -1774,11 +1781,10 @@ export class ArenaDAEPrinter {
         return false;
       }
       if (this.omcCompatibility && !isOldFrontend) {
-        const isRecordCtor = Boolean(fn.description?.startsWith("Automatically generated record constructor"));
-        if (isRecordCtor) {
-          if (fn.name.includes("$")) {
-            return false;
-          }
+        if (fn.name.includes("$")) {
+          return false;
+        }
+        if (dae.classKind !== "function") {
           const baseName = fn.name.split(".").pop()!;
           const isCalled =
             activeCalledFnNames.has(fn.name) ||
@@ -1951,10 +1957,6 @@ export class ArenaDAEPrinter {
 
     // Equations
     let hasEq = false;
-    const isConnEq = (eqIdx: number): boolean => {
-      const aux = dae.getEqAux(eqIdx);
-      return aux === 9999;
-    };
     const eqIndices: number[] = [];
     for (let i = 0; i < dae.eqCount; i++) eqIndices.push(i);
 
@@ -2029,6 +2031,7 @@ export class ArenaDAEPrinter {
 
   printFunction(fn: DAEBuilder): void {
     if (this.visitedFunctions.has(fn)) return;
+    if (fn.externalDecl && fn.externalDecl.includes('"builtin"')) return;
     this.visitedFunctions.add(fn);
 
     const oldArena = this.arena;

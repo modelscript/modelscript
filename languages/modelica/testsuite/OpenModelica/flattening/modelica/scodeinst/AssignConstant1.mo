@@ -1,7 +1,6 @@
 // name: AssignConstant1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model AssignConstant1

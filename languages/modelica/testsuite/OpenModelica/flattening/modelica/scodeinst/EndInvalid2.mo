@@ -1,7 +1,6 @@
 // name: EndInvalid2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

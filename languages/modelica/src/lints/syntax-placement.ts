@@ -1770,14 +1770,24 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["composition"],
     severity: "error",
     code: 4064,
-    message: () => `Protected sections are not allowed in connector.`,
+    message: (_target, kindNode) => {
+      const k = kindNode != null ? kindNode.asNumber() : 0;
+      const kindStr = k == 1 ? "record" : k == 2 ? "type" : "connector";
+      return `Protected sections are not allowed in ${kindStr}.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const encClass = getEnclosingClass(db, node, $);
-      if (encClass != 0 && isClassKind(db, encClass, "connector")) {
+      if (encClass != 0) {
+        let kindNum = 0;
+        if (isClassKind(db, encClass, "connector")) kindNum = 0;
+        else if (isClassKind(db, encClass, "record")) kindNum = 1;
+        else if (isClassKind(db, encClass, "type")) kindNum = 2;
+        else return;
+
         let ch = db.ast.getFirstChild(node);
         while (ch != 0) {
           if (db.ast.textEquals(ch, "protected") || db.ast.startsWith(ch, "protected")) {
-            db.diagnostic(ch);
+            db.diagnostic(ch, kindNum);
           }
           ch = db.ast.getNextSibling(ch);
         }

@@ -21,12 +21,14 @@ import {
   TerminalIcon,
   XCircleFillIcon,
   XIcon,
+  ZapIcon,
 } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import styled, { keyframes } from "styled-components";
 import { getClusterStatus, getDbJobs, getJobTemplates, getUnifiedUserJobs, type ClusterStatus } from "../api";
+import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
@@ -207,6 +209,7 @@ const categoryIcon = (icon: string) => {
 
 const ScriptsListPage: React.FC = () => {
   usePageTitle("Jobs & HPC");
+  const { creditBalance } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") || "queue";
   const [templates, setTemplates] = useState<ScriptTemplate[]>([]);
@@ -647,6 +650,78 @@ const ScriptsListPage: React.FC = () => {
             </div>
             <div style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
               Backend: {clusterInfo?.backend || "local-process"} · {clusterInfo?.latencyMs || 8}ms ping
+            </div>
+          </MetricCard>
+
+          {/* Compute Wallet & Quota */}
+          <MetricCard>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  color: "var(--color-text-muted)",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                Compute Wallet
+              </span>
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  borderRadius: "4px",
+                  background: creditBalance > 5 ? "rgba(168, 85, 247, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                  color: creditBalance > 5 ? "#c084fc" : "#f87171",
+                  border: `1px solid ${creditBalance > 5 ? "rgba(168, 85, 247, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+                }}
+              >
+                {creditBalance > 5 ? "ACTIVE" : "LOW CREDITS"}
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: "28px",
+                fontWeight: 800,
+                color: "var(--color-accent-purple, #c084fc)",
+                fontFamily: "var(--font-mono)",
+                display: "flex",
+                alignItems: "baseline",
+                gap: "4px",
+              }}
+            >
+              <span>{typeof creditBalance === "number" ? creditBalance.toFixed(1) : "0.0"}</span>
+              <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-text-muted)" }}>cr</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
+              <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                {runningJobsCount > 0
+                  ? `Est. burn: ~${(runningJobsCount * 0.5).toFixed(1)} cr/hr`
+                  : "Metered per core-hour"}
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate("/settings?tab=billing")}
+                style={{
+                  background: "rgba(168, 85, 247, 0.15)",
+                  border: "1px solid rgba(168, 85, 247, 0.35)",
+                  color: "#d8b4fe",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "3px",
+                }}
+                title="Manage credits & billing ledger"
+              >
+                <ZapIcon size={10} />
+                <span>Top Up</span>
+              </button>
             </div>
           </MetricCard>
         </Box>

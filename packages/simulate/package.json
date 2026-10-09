@@ -42,6 +42,10 @@
       "types": "./dist/utils/index.d.ts",
       "default": "./dist/utils/index.js"
     },
+    "./jit": {
+      "types": "./dist/jit/index.d.ts",
+      "default": "./dist/jit/index.js"
+    },
     "./*.js": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"
