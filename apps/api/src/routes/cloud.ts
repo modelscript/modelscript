@@ -431,6 +431,7 @@ getErrorString();
                     profile: profile.id,
                     ...usage,
                   });
+                  database.createNotification(userId, userId, "simulation_completed");
                 }
               }
             } else {

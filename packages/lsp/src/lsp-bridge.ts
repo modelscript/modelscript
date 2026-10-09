@@ -281,6 +281,18 @@ export class LSPBridge {
     }
   }
 
+  public getQueryEngine(): QueryEngine {
+    return this.engine;
+  }
+
+  public getIndex(): SymbolIndex {
+    return this.index;
+  }
+
+  public getDocumentUri(): string {
+    return this.documentUri;
+  }
+
   private isDecl(entry: SymbolEntry): boolean {
     return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
   }

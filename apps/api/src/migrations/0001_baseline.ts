@@ -88,7 +88,8 @@ export const baselineMigration: Migration = {
         terms_accepted_at TEXT,
         registration_ip TEXT,
         ed25519_public_key TEXT,
-        ed25519_private_key TEXT
+        ed25519_private_key TEXT,
+        token_version INTEGER DEFAULT 1
       );
 
       CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -194,8 +195,10 @@ export const baselineMigration: Migration = {
         version         TEXT NOT NULL,
         tarball_path    TEXT NOT NULL,
         tarball_shasum  TEXT NOT NULL,
+        tarball_integrity TEXT,
         tarball_size    INTEGER NOT NULL,
         manifest        TEXT NOT NULL,
+        modelscript_meta TEXT,
         published_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
         published_at    TEXT DEFAULT (datetime('now')),
         UNIQUE(package_id, version)

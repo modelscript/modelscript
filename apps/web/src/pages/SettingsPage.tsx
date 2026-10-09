@@ -28,7 +28,7 @@ import {
   UnmuteIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import {
   addPublicKey,
@@ -46,6 +46,7 @@ import {
   getUserDataArchiveStatus,
   getUserTopics,
   requestUserDataArchiveJob,
+  revokeAllSessions,
   revokePublicKey,
   topUpCredits,
   unlinkConnectedAccount,
@@ -60,9 +61,10 @@ import {
   type UserBillingSummary,
 } from "../api";
 import { useAuth } from "../AuthContext";
+import TwoFactorModal from "../components/auth/TwoFactorModal";
 import Box from "../components/Box";
-import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
 import { CircleIconButton } from "../components/SharedStyles";
+import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useModelingPreferences } from "../ModelingPreferencesContext";
 import { useTheme } from "../theme";
@@ -436,15 +438,17 @@ type TabType =
   | "modelingPreferences";
 
 const SettingsPage: React.FC = () => {
+  const toast = useToast();
+  const { tab: pathTab } = useParams<{ tab?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get("tab") as TabType | null;
-  const [activeTab, setActiveTab] = useState<TabType>(tabParam || "account");
+  const effectiveTab = (pathTab || searchParams.get("tab")) as TabType | null;
+  const [activeTab, setActiveTab] = useState<TabType>(effectiveTab || "account");
 
   React.useEffect(() => {
-    if (tabParam && tabParam !== activeTab) {
-      setActiveTab(tabParam);
+    if (effectiveTab && effectiveTab !== activeTab) {
+      setActiveTab(effectiveTab);
     }
-  }, [tabParam, activeTab]);
+  }, [effectiveTab, activeTab]);
   const [searchQuery, setSearchQuery] = useState("");
   const hasBilling = useFeatureFlag("billing_stripe_live");
   const hasBots = useFeatureFlag("bot_accounts");
@@ -472,8 +476,8 @@ const SettingsPage: React.FC = () => {
   const [connectedSuccess, setConnectedSuccess] = useState<string | null>(null);
   const [connectedError, setConnectedError] = useState<string | null>(null);
 
-  // Keyboard Shortcuts modal state
-  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  // Active session revocation state
+  const [isRevokingSessions, setIsRevokingSessions] = useState(false);
 
   // Billing states
   const [billingSummary, setBillingSummary] = useState<UserBillingSummary | null>(null);
@@ -523,27 +527,16 @@ const SettingsPage: React.FC = () => {
   usePageTitle("Settings");
 
   const [qualityFilter, setQualityFilter] = useState(true);
+  const [is2FAModalOpen, setIs2FAModalOpen] = useState(false);
+  const [is2FAEnabled, setIs2FAEnabled] = useState(Boolean(user?.totp_enabled));
+  const [sessionRevokeSuccess, setSessionRevokeSuccess] = useState(false);
+  const [sessionRevoking, setSessionRevoking] = useState(false);
 
-  // Global '?' key listener for Keyboard Shortcuts cheatsheet
   React.useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        e.key === "?" &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        target.tagName !== "INPUT" &&
-        target.tagName !== "TEXTAREA" &&
-        !target.isContentEditable
-      ) {
-        e.preventDefault();
-        setIsShortcutsModalOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, []);
+    if (user) {
+      setIs2FAEnabled(Boolean(user.totp_enabled));
+    }
+  }, [user]);
 
   // Fetch notification settings when opening that tab
   React.useEffect(() => {
@@ -643,7 +636,7 @@ const SettingsPage: React.FC = () => {
     setError(null);
     setSuccess(null);
     if (tab === "accountInfo") {
-      setAccountInfoMode("password");
+      setAccountInfoMode(user?.has_password === false ? "form" : "password");
       setPasswordConfirm("");
       setUsername(user?.username || "");
       setEmail(user?.email || "");
@@ -761,9 +754,7 @@ const SettingsPage: React.FC = () => {
     setDeleteError(null);
     try {
       await deleteAccount();
-      alert(
-        "Your account and associated personal data have been permanently erased. You will now be redirected to the home page.",
-      );
+      toast.info("Your account and associated personal data have been permanently erased.");
       logout();
       window.location.href = "/";
     } catch (err: any) {
@@ -824,6 +815,10 @@ const SettingsPage: React.FC = () => {
   };
 
   const handleChangePassword = async () => {
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters");
+      return;
+    }
     if (newPassword !== newPasswordConfirm) {
       setError("New passwords do not match");
       return;
@@ -832,15 +827,40 @@ const SettingsPage: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      await updatePassword({ oldPassword, newPassword });
-      setSuccess("Password changed successfully!");
+      const res = await updatePassword({
+        oldPassword: user?.has_password === false ? undefined : oldPassword,
+        newPassword,
+      });
+      if (res?.token) {
+        localStorage.setItem("modelscript-auth-token", res.token);
+      }
+      setSuccess(
+        user?.has_password === false
+          ? "Password established successfully! You can now sign in with your email directly."
+          : "Password changed successfully! All other active sessions have been invalidated.",
+      );
       setOldPassword("");
       setNewPassword("");
       setNewPasswordConfirm("");
     } catch (err: any) {
-      setError(err.response?.data?.error || "Password change failed");
+      setError(err.response?.data?.error || "Password update failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRevokeAllSessions = async () => {
+    setIsRevokingSessions(true);
+    try {
+      const res = await revokeAllSessions();
+      if (res?.token) {
+        localStorage.setItem("modelscript-auth-token", res.token);
+      }
+      toast.success("All other active sessions have been revoked.");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Failed to revoke sessions.");
+    } finally {
+      setIsRevokingSessions(false);
     }
   };
 
@@ -1256,19 +1276,41 @@ const SettingsPage: React.FC = () => {
                 onClick={() => handleTabChange("account")}
               >
                 <ArrowLeftIcon size={20} />
-                <span>Change your password</span>
+                <span>{user?.has_password === false ? "Set account password" : "Change your password"}</span>
               </Box>
             </Header>
             <Box p={4}>
+              {user?.has_password === false && (
+                <div
+                  style={{
+                    background: "rgba(6, 182, 212, 0.12)",
+                    border: "1px solid rgba(6, 182, 212, 0.35)",
+                    color: "var(--color-accent-cyan)",
+                    padding: "12px 16px",
+                    borderRadius: "var(--radius-md, 8px)",
+                    fontSize: "13px",
+                    marginBottom: "20px",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  You signed in with an external identity provider (OAuth / Single Sign-On). Creating a password allows
+                  you to log in directly with your email address as well as your social provider.
+                </div>
+              )}
+
               {success && (
                 <p style={{ color: "var(--color-success)", marginBottom: "16px", fontWeight: "bold" }}>{success}</p>
               )}
               {error && <p style={{ color: "var(--color-error)", marginBottom: "16px" }}>{error}</p>}
 
-              <FormLabel>Current Password</FormLabel>
-              <FormInput type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />
+              {user?.has_password !== false && (
+                <>
+                  <FormLabel>Current Password</FormLabel>
+                  <FormInput type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />
+                </>
+              )}
 
-              <FormLabel>New Password</FormLabel>
+              <FormLabel>New Password (min. 8 characters)</FormLabel>
               <FormInput type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
 
               <FormLabel>Confirm New Password</FormLabel>
@@ -1279,9 +1321,50 @@ const SettingsPage: React.FC = () => {
               />
 
               <Box display="flex" justifyContent="flex-end" mt={2}>
-                <SaveButton onClick={handleChangePassword} disabled={loading || !oldPassword || !newPassword}>
-                  {loading ? "Saving..." : "Save"}
+                <SaveButton
+                  onClick={handleChangePassword}
+                  disabled={
+                    loading || (user?.has_password !== false && !oldPassword) || !newPassword || !newPasswordConfirm
+                  }
+                >
+                  {loading ? "Saving..." : user?.has_password === false ? "Set Password" : "Change Password"}
                 </SaveButton>
+              </Box>
+
+              <Box
+                mt={5}
+                pt={4}
+                style={{ borderTop: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))" }}
+              >
+                <h3 style={{ fontSize: "16px", margin: "0 0 6px 0", color: "var(--color-text-heading)" }}>
+                  Active Sessions & Devices
+                </h3>
+                <p
+                  style={{
+                    color: "var(--color-text-muted)",
+                    fontSize: "13px",
+                    marginBottom: "16px",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  Revoking all sessions immediately invalidates all JWT tokens across other browsers and mobile devices.
+                  Your current session will remain active.
+                </p>
+                <DangerButton
+                  type="button"
+                  onClick={handleRevokeAllSessions}
+                  disabled={isRevokingSessions}
+                  style={{
+                    background: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.35)",
+                    color: "#ef4444",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {isRevokingSessions ? "Revoking sessions…" : "Revoke All Other Sessions"}
+                </DangerButton>
               </Box>
             </Box>
           </>
@@ -1453,7 +1536,133 @@ const SettingsPage: React.FC = () => {
           <>
             <Header>Security and account access</Header>
             <Box px={3} pb={3}>
-              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4", display: "block", marginBottom: "24px" }}>
+              {/* Two-Factor Authentication Section */}
+              <Box
+                p={3}
+                mb={4}
+                style={{
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: "12px",
+                  background: "var(--color-canvas-subtle, rgba(255, 255, 255, 0.02))",
+                }}
+              >
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={3}>
+                  <Box>
+                    <Box display="flex" alignItems="center" gap={2} mb={1}>
+                      <ShieldCheckIcon
+                        size={20}
+                        fill={is2FAEnabled ? "var(--color-success, #3fb950)" : "var(--color-text-muted)"}
+                      />
+                      <FormLabel style={{ fontSize: "16px", fontWeight: 700 }}>
+                        Two-Factor Authentication (2FA)
+                      </FormLabel>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: "12px",
+                          backgroundColor: is2FAEnabled ? "rgba(63, 185, 80, 0.15)" : "rgba(255, 255, 255, 0.08)",
+                          color: is2FAEnabled ? "var(--color-success, #3fb950)" : "var(--color-text-muted)",
+                          border: `1px solid ${is2FAEnabled ? "rgba(63, 185, 80, 0.4)" : "var(--color-border-default)"}`,
+                        }}
+                      >
+                        {is2FAEnabled ? "Active & Protected" : "Not Configured"}
+                      </span>
+                    </Box>
+                    <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5", display: "block" }}>
+                      Protect your ModelScript account with time-based one-time passwords (TOTP). Compatible with Google
+                      Authenticator, 1Password, Authy, Apple Keychain, and hardware tokens.
+                    </DetailSubtitle>
+                  </Box>
+
+                  <SaveButton
+                    style={{
+                      whiteSpace: "nowrap",
+                      backgroundColor: is2FAEnabled
+                        ? "var(--color-danger-emphasis, #cf222e)"
+                        : "var(--color-accent-cyan, #06b6d4)",
+                    }}
+                    onClick={() => setIs2FAModalOpen(true)}
+                  >
+                    {is2FAEnabled ? "Disable 2FA" : "Enable 2FA"}
+                  </SaveButton>
+                </Box>
+              </Box>
+
+              {/* Active Sessions & Revocation Section */}
+              <Box
+                p={3}
+                mb={4}
+                style={{
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: "12px",
+                  background: "var(--color-canvas-subtle, rgba(255, 255, 255, 0.02))",
+                }}
+              >
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={3}>
+                  <Box>
+                    <FormLabel style={{ fontSize: "16px", fontWeight: 700, display: "block", marginBottom: "4px" }}>
+                      Session Revocation & Device Invalidation
+                    </FormLabel>
+                    <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5", display: "block" }}>
+                      If you suspect unauthorized access or lost a signed-in device, invalidate all existing
+                      authentication tokens across all browsers and devices immediately.
+                    </DetailSubtitle>
+                    {sessionRevokeSuccess && (
+                      <DetailSubtitle
+                        style={{
+                          color: "var(--color-success, #3fb950)",
+                          marginTop: "8px",
+                          fontWeight: 600,
+                          display: "block",
+                        }}
+                      >
+                        ✓ All other active sessions have been successfully revoked.
+                      </DetailSubtitle>
+                    )}
+                  </Box>
+
+                  <SaveButton
+                    style={{ whiteSpace: "nowrap", backgroundColor: "var(--color-danger-emphasis, #cf222e)" }}
+                    disabled={sessionRevoking}
+                    onClick={async () => {
+                      if (
+                        confirm(
+                          "Are you sure you want to sign out of all other sessions? Other devices will be immediately logged out.",
+                        )
+                      ) {
+                        setSessionRevoking(true);
+                        try {
+                          await revokeAllSessions();
+                          setSessionRevokeSuccess(true);
+                          toast.notify({
+                            title: "Sessions Revoked",
+                            message: "All other active sessions have been signed out.",
+                            type: "success",
+                          });
+                          setTimeout(() => setSessionRevokeSuccess(false), 5000);
+                        } catch (e) {
+                          toast.notify({
+                            title: "Revocation Failed",
+                            message: (e as Error).message || "Failed to revoke sessions",
+                            type: "error",
+                          });
+                        } finally {
+                          setSessionRevoking(false);
+                        }
+                      }
+                    }}
+                  >
+                    {sessionRevoking ? "Revoking…" : "Revoke All Other Sessions"}
+                  </SaveButton>
+                </Box>
+              </Box>
+
+              <FormLabel style={{ fontSize: "16px", fontWeight: 700, display: "block", marginBottom: "8px" }}>
+                Authorized ActivityPub Federation Keys
+              </FormLabel>
+              <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.4", display: "block", marginBottom: "20px" }}>
                 Manage your authorized devices and keys for ActivityPub federation. Private keys are securely generated
                 and stored locally in this browser.
               </DetailSubtitle>
@@ -1905,7 +2114,7 @@ const SettingsPage: React.FC = () => {
                 </Box>
                 <button
                   type="button"
-                  onClick={() => setIsShortcutsModalOpen(true)}
+                  onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-shortcuts-modal"))}
                   style={{
                     background: "white",
                     color: "#6b21a8",
@@ -3435,7 +3644,13 @@ const SettingsPage: React.FC = () => {
         )}
       </DetailColumn>
 
-      <KeyboardShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
+      <TwoFactorModal
+        isOpen={is2FAModalOpen}
+        onClose={() => setIs2FAModalOpen(false)}
+        isEnabled={is2FAEnabled}
+        onStatusChange={(enabled) => setIs2FAEnabled(enabled)}
+        hasPassword={user?.has_password ?? true}
+      />
     </SettingsContainer>
   );
 };

@@ -11,7 +11,6 @@ import styled from "styled-components";
 import { getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
-import { CommandPalette } from "./CommandPalette";
 import ComposeModal from "./ComposeModal";
 import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
@@ -185,7 +184,6 @@ const BannerContent = styled.div`
 
 const AppShell: React.FC = () => {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState(false);
   const [isResetDbDialogOpen, setIsResetDbDialogOpen] = React.useState(false);
   const [isResettingDb, setIsResettingDb] = React.useState(false);
   const [resetError, setResetError] = React.useState<string | null>(null);
@@ -227,13 +225,24 @@ const AppShell: React.FC = () => {
 
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl?.tagName === "INPUT" ||
+        activeEl?.tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement)?.isContentEditable;
+
+      if (isInput) return;
+
+      if ((e.key === "c" || e.key === "C") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setIsCommandPaletteOpen((prev) => !prev);
+        setIsComposeOpen(true);
+        return;
       }
     };
     window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
   }, []);
 
   const [composeInitialState, setComposeInitialState] = React.useState<ComposeInitialState | undefined>(undefined);
@@ -260,16 +269,11 @@ const AppShell: React.FC = () => {
     const handleOpenTopUp = () => {
       setIsTopUpModalOpen(true);
     };
-    const handleOpenCommandPalette = () => {
-      setIsCommandPaletteOpen(true);
-    };
     window.addEventListener("modelscript:open-compose", handleOpenCompose);
     window.addEventListener("modelscript:open-topup", handleOpenTopUp);
-    window.addEventListener("modelscript:open-command-palette", handleOpenCommandPalette);
     return () => {
       window.removeEventListener("modelscript:open-compose", handleOpenCompose);
       window.removeEventListener("modelscript:open-topup", handleOpenTopUp);
-      window.removeEventListener("modelscript:open-command-palette", handleOpenCommandPalette);
     };
   }, []);
 
@@ -486,7 +490,10 @@ const AppShell: React.FC = () => {
             </MainColumn>
             {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
               <RightPanelWrapper>
-                <RightPanel clusterInfo={clusterStatus} onOpenCommandPalette={() => setIsCommandPaletteOpen(true)} />
+                <RightPanel
+                  clusterInfo={clusterStatus}
+                  onOpenCommandPalette={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
+                />
               </RightPanelWrapper>
             )}
             {isFullScreenLayout && <div style={{ flex: 1, maxWidth: "max(0px, calc(340px - 275px))" }} />}
@@ -589,7 +596,7 @@ const AppShell: React.FC = () => {
             )}
           </BottomBarButton>
           <BottomBarButton
-            $active={user && location.pathname === `/${user.username}`}
+            $active={Boolean(user && location.pathname === `/${user.username}`)}
             onClick={() => navigate(user ? `/${user.username}` : "/login")}
           >
             <PersonIcon size={24} />
@@ -608,12 +615,6 @@ const AppShell: React.FC = () => {
             }}
           />
         )}
-
-        <CommandPalette
-          isOpen={isCommandPaletteOpen}
-          onClose={() => setIsCommandPaletteOpen(false)}
-          onOpenCompose={() => setIsComposeOpen(true)}
-        />
 
         {isResetDbDialogOpen && (
           <Dialog

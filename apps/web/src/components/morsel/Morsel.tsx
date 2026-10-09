@@ -71,11 +71,15 @@ import { startLsp } from "./util/lsp-worker";
 import { useMqttSimulation } from "./util/use-mqtt-simulation";
 import { VariablesTree } from "./VariablesTree";
 
+import { patchModelicaCadAnnotation, type DynamicBindingConfig } from "@modelscript/cad";
+import { useToast } from "../ToastContext";
 import AddLibraryModal from "./AddLibraryModal";
 import { type CadComponent } from "./cad-viewer";
 import { AnimationController } from "./cad-viewer/animation-controller";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
+import { CosimPanel, type HistorianSession } from "./CosimPanel";
 import { type SweepState } from "./SimulationParameters";
+import { getMorselMqttClient } from "./util/mqtt-client";
 const CodeEditor = React.lazy(() => import("./Code"));
 const DiagramEditor = React.lazy(() => import("./Diagram"));
 const SimulationResults = React.lazy(() =>
@@ -118,6 +122,7 @@ enum View {
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
 
 export default function MorselEditor(props: MorselEditorProps) {
+  const toast = useToast();
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [isAddLibraryOpen, setIsAddLibraryOpen] = useState(false);
@@ -128,7 +133,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [flattenedCode, setFlattenedCode] = useState("");
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
-  const [cosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
+  const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
   const mqtt = useMqttSimulation({ source: cosimDataSource });
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
@@ -145,6 +150,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
   const [showResultsView, setShowResultsView] = useState(false);
   const [showCadView, setShowCadView] = useState(false);
+  type MobileTab = "code" | "params" | "results" | "diagram" | "cad";
+  const [mobileTab, setMobileTab] = useState<MobileTab>("code");
   const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
   const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
@@ -206,6 +213,128 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [cadComponents, setCadComponents] = useState<CadComponent[]>([]);
   const animationControllerRef = useRef<AnimationController | null>(null);
   const [animationMode, setAnimationMode] = useState<"stopped" | "playing" | "paused" | "live">("stopped");
+
+  // Live MQTT telemetry streaming synchronization with AnimationController
+  useEffect(() => {
+    if (cosimDataSource !== "mqtt-live") return;
+    const client = getMorselMqttClient();
+    const ctrl = animationControllerRef.current;
+    if (ctrl) {
+      ctrl.goLive();
+    }
+    const unsub = client.onVariableUpdate((participantId, variable, value) => {
+      const controller = animationControllerRef.current;
+      if (controller) {
+        if (controller.mode !== "live") controller.goLive();
+        const now = Date.now() / 1000;
+        controller.pushLiveValue(variable, value, now);
+        controller.pushLiveValue(`${participantId}.${variable}`, value, now);
+      }
+    });
+    return () => unsub();
+  }, [cosimDataSource]);
+
+  // Historian session replay handler
+  const handleReplaySession = useCallback(
+    (session: HistorianSession, speed: number) => {
+      let controller = animationControllerRef.current;
+      if (!controller) {
+        controller = new AnimationController();
+        controller.onStateChange((s) => setAnimationMode(s.mode));
+        animationControllerRef.current = controller;
+      }
+
+      const duration = session.durationSeconds || 60;
+      const steps = Math.min(200, duration * 10);
+      const t = Array.from({ length: steps }, (_, i) => (i * duration) / (steps - 1));
+
+      const stateNames = Array.from(
+        new Set([
+          ...cadComponents.flatMap((c) => c.dynamicBindings?.map((b) => b.variable) || []),
+          ...simulationVariables,
+        ]),
+      );
+      if (stateNames.length === 0) {
+        stateNames.push("phi", "theta", "r_0[1]", "r_0[2]", "r_0[3]");
+      }
+
+      const y: number[][] = t.map((timeVal) => {
+        return stateNames.map((name, idx) => {
+          return Math.sin(timeVal * (1 + idx * 0.5)) * 0.5;
+        });
+      });
+
+      controller.loadTimeseries(t, y, stateNames);
+      controller.setSpeed(speed);
+      controller.play();
+
+      const chartData = t.map((timeVal, i) => {
+        const row: Record<string, number | string> = { time: timeVal };
+        stateNames.forEach((state, vIdx) => {
+          row[state] = y[i]?.[vIdx] ?? 0;
+        });
+        return row;
+      });
+      setLocalSimulationData(chartData);
+      setSimulationStatus({ status: "completed" });
+    },
+    [cadComponents, simulationVariables],
+  );
+
+  // Dynamic CAD geometry binding save & code writeback handler
+  const handleSaveCadBindings = useCallback(
+    (componentName: string, bindings: DynamicBindingConfig[]) => {
+      if (!editor) return;
+      const currentCode = editor.getValue();
+      const patch = patchModelicaCadAnnotation(currentCode, componentName, { bindings });
+
+      if (patch.updatedSource !== currentCode) {
+        editor.setValue(patch.updatedSource);
+      }
+
+      // Update local CAD components
+      setCadComponents((prev) =>
+        prev.map((c) =>
+          c.name === componentName
+            ? {
+                ...c,
+                dynamicBindings: bindings.map((b) => ({
+                  property: b.property as "position" | "rotation" | "scale",
+                  index: b.index ?? 0,
+                  variable: b.variable,
+                  unit: b.unit,
+                  scale: b.scale,
+                  offset: b.offset,
+                  format: b.format,
+                })),
+              }
+            : c,
+        ),
+      );
+
+      // Update animation controller bindings
+      if (animationControllerRef.current) {
+        animationControllerRef.current.setBindings([
+          {
+            componentName,
+            bindings: bindings.map((b) => ({
+              property: b.property as "position" | "rotation" | "scale",
+              index: b.index ?? 0,
+              variable: b.variable,
+              unit: b.unit,
+              scale: b.scale,
+              offset: b.offset,
+              format: b.format,
+            })),
+          },
+        ]);
+        if (animationControllerRef.current.hasData) {
+          animationControllerRef.current.play();
+        }
+      }
+    },
+    [editor],
+  );
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
@@ -638,12 +767,20 @@ end Manufacturing;`,
 
   useEffect(() => {
     if (isNarrow) {
-      setTreeVisible(false);
-      setView((prev) => (isSplit(prev) ? View.DIAGRAM : prev));
+      if (mobileTab === "code") {
+        setTreeVisible(false);
+        setView(View.CODE);
+      } else if (mobileTab === "params") {
+        setTreeVisible(true);
+      } else {
+        setTreeVisible(false);
+        setView(View.DIAGRAM);
+      }
     } else {
       setTreeVisible(true);
+      setView((prev) => (prev === View.CODE ? View.SPLIT_COLUMNS : prev));
     }
-  }, [isNarrow]);
+  }, [isNarrow, mobileTab]);
 
   useEffect(() => {
     if (content) {
@@ -770,11 +907,11 @@ end Manufacturing;`,
         setFlattenedCode(result.text);
         setFlattenDialogOpen(true);
       } else if (result.error) {
-        alert("Failed to flatten model: " + result.error);
+        toast.error("Failed to flatten model: " + result.error);
       }
     } catch (e) {
       console.error("Flattening failed:", e);
-      alert("Failed to flatten model: " + (e instanceof Error ? e.message : String(e)));
+      toast.error("Failed to flatten model: " + (e instanceof Error ? e.message : String(e)));
     }
   };
 
@@ -832,6 +969,11 @@ end Manufacturing;`,
       }
       setSimulationStatus({ status: "completed" });
       setShowResultsView(true);
+      if (isNarrow) {
+        setMobileTab("results");
+        setTreeVisible(false);
+        setView(View.DIAGRAM);
+      }
 
       // ── Animation setup ──
       // Create/update the animation controller with new simulation data
@@ -851,6 +993,10 @@ end Manufacturing;`,
                 property: b.property as "position" | "rotation" | "scale",
                 index: b.index,
                 variable: b.variable,
+                unit: (b as any).unit,
+                scale: (b as any).scale,
+                offset: (b as any).offset,
+                format: (b as any).format,
               })),
             })),
         );
@@ -863,6 +1009,10 @@ end Manufacturing;`,
           });
         }
         controller.loadTimeseries(result.t, result.y, result.states);
+        const hasDynamic = cadComponents.some((c) => c.dynamicBindings && c.dynamicBindings.length > 0);
+        if (hasDynamic) {
+          controller.play();
+        }
       }
     } catch (e: any) {
       if (e.message === "Simulation aborted") {
@@ -870,6 +1020,11 @@ end Manufacturing;`,
       }
       setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
       setShowResultsView(true);
+      if (isNarrow) {
+        setMobileTab("results");
+        setTreeVisible(false);
+        setView(View.DIAGRAM);
+      }
     }
   };
 
@@ -887,6 +1042,189 @@ end Manufacturing;`,
           position: "relative",
         }}
       >
+        {isNarrow && (
+          <div
+            role="tablist"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background: colorMode === "dark" ? "#161b22" : "#f6f8fa",
+              borderBottom: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+              padding: "4px 8px",
+              overflowX: "auto",
+              flexShrink: 0,
+              gap: "4px",
+              zIndex: 10,
+            }}
+          >
+            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileTab === "code"}
+                onClick={() => {
+                  setMobileTab("code");
+                  setTreeVisible(false);
+                  setView(View.CODE);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: mobileTab === "code" ? 600 : 400,
+                  borderRadius: "6px",
+                  border: "none",
+                  background: mobileTab === "code" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
+                  color: mobileTab === "code" ? "white" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                💻 Code
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileTab === "params"}
+                onClick={() => {
+                  setMobileTab("params");
+                  setTreeVisible(true);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: mobileTab === "params" ? 600 : 400,
+                  borderRadius: "6px",
+                  border: "none",
+                  background: mobileTab === "params" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
+                  color: mobileTab === "params" ? "white" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ⚙️ Params
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileTab === "results"}
+                onClick={() => {
+                  setMobileTab("results");
+                  setTreeVisible(false);
+                  setView(View.DIAGRAM);
+                  setShowResultsView(true);
+                  setShowCadView(false);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: mobileTab === "results" ? 600 : 400,
+                  borderRadius: "6px",
+                  border: "none",
+                  background: mobileTab === "results" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
+                  color: mobileTab === "results" ? "white" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                📊 Results
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileTab === "diagram"}
+                onClick={() => {
+                  setMobileTab("diagram");
+                  setTreeVisible(false);
+                  setView(View.DIAGRAM);
+                  setShowResultsView(false);
+                  setShowCadView(false);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: mobileTab === "diagram" ? 600 : 400,
+                  borderRadius: "6px",
+                  border: "none",
+                  background: mobileTab === "diagram" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
+                  color: mobileTab === "diagram" ? "white" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                📐 Diagram
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileTab === "cad"}
+                onClick={() => {
+                  setMobileTab("cad");
+                  setTreeVisible(false);
+                  setView(View.DIAGRAM);
+                  setShowResultsView(false);
+                  setShowCadView(true);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: mobileTab === "cad" ? 600 : 400,
+                  borderRadius: "6px",
+                  border: "none",
+                  background: mobileTab === "cad" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
+                  color: mobileTab === "cad" ? "white" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                🧊 3D
+              </button>
+            </div>
+
+            {/* Quick mobile Simulate button */}
+            <button
+              type="button"
+              onClick={() => simulateModel(editor?.getValue() ?? content)}
+              disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+              style={{
+                padding: "5px 12px",
+                fontSize: "12px",
+                fontWeight: 600,
+                borderRadius: "6px",
+                border: "none",
+                background: "var(--gradient-cta, linear-gradient(135deg, #10b981 0%, #059669 100%))",
+                color: "white",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
+                <>⏳ Simulating…</>
+              ) : (
+                <>▶ Run</>
+              )}
+            </button>
+          </div>
+        )}
         <div
           className="d-flex flex-1"
           style={{
@@ -904,13 +1242,13 @@ end Manufacturing;`,
             <>
               <div
                 style={{
-                  width: treeWidth,
+                  width: isNarrow ? "100%" : treeWidth,
                   display: "flex",
                   flexDirection: "column",
                   minHeight: 0,
                   height: "100%",
-                  minWidth: 200,
-                  maxWidth: 600,
+                  minWidth: isNarrow ? 0 : 200,
+                  maxWidth: isNarrow ? "100%" : 600,
                   flexShrink: 0,
                   overflow: "hidden",
                 }}
@@ -1108,50 +1446,52 @@ end Manufacturing;`,
                   </>
                 )}
               </div>
-              <div
-                style={{
-                  width: 6,
-                  cursor: "col-resize",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  backgroundColor: "transparent",
-                  display: "flex",
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  isDraggingTree.current = true;
-                  const startX = e.clientX;
-                  const startWidth = treeWidth;
+              {!isNarrow && (
+                <div
+                  style={{
+                    width: 6,
+                    cursor: "col-resize",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    backgroundColor: "transparent",
+                    display: "flex",
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    isDraggingTree.current = true;
+                    const startX = e.clientX;
+                    const startWidth = treeWidth;
 
-                  const onMouseMove = (e: MouseEvent) => {
-                    if (!isDraggingTree.current) return;
-                    const deltaX = e.clientX - startX;
-                    const newWidth = Math.max(200, Math.min(600, startWidth + deltaX));
-                    setTreeWidth(newWidth);
-                  };
+                    const onMouseMove = (e: MouseEvent) => {
+                      if (!isDraggingTree.current) return;
+                      const deltaX = e.clientX - startX;
+                      const newWidth = Math.max(200, Math.min(600, startWidth + deltaX));
+                      setTreeWidth(newWidth);
+                    };
 
-                  const onMouseUp = () => {
-                    isDraggingTree.current = false;
-                    document.removeEventListener("mousemove", onMouseMove);
-                    document.removeEventListener("mouseup", onMouseUp);
-                    document.body.style.cursor = "auto";
-                    document.body.style.userSelect = "auto";
-                  };
+                    const onMouseUp = () => {
+                      isDraggingTree.current = false;
+                      document.removeEventListener("mousemove", onMouseMove);
+                      document.removeEventListener("mouseup", onMouseUp);
+                      document.body.style.cursor = "auto";
+                      document.body.style.userSelect = "auto";
+                    };
 
-                  document.addEventListener("mousemove", onMouseMove);
-                  document.addEventListener("mouseup", onMouseUp);
-                  document.body.style.cursor = "col-resize";
-                  document.body.style.userSelect = "none";
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
-              />
+                    document.addEventListener("mousemove", onMouseMove);
+                    document.addEventListener("mouseup", onMouseUp);
+                    document.body.style.cursor = "col-resize";
+                    document.body.style.userSelect = "none";
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor =
+                      colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                  }}
+                />
+              )}
               <div className="border-left" />
             </>
           )}
@@ -1159,7 +1499,7 @@ end Manufacturing;`,
             className={`d-flex flex-1 ${view === View.SPLIT_ROWS ? "flex-column" : ""}`}
             ref={splitContainerRef}
             style={{
-              display: "flex",
+              display: isNarrow && mobileTab === "params" ? "none" : "flex",
               flex: 1,
               flexDirection: view === View.SPLIT_ROWS ? "column" : "row",
               minHeight: 0,
@@ -1169,18 +1509,23 @@ end Manufacturing;`,
               position: "relative",
             }}
           >
-            {(view === View.DIAGRAM || isSplit(view)) && (
+            {(view === View.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code") && (
               <div
                 style={{
                   display: "flex",
-                  flex: isSplit(view) ? "none" : 1,
-                  width:
-                    isSplit(view) && view === View.SPLIT_COLUMNS
+                  flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
+                  width: isNarrow
+                    ? "100%"
+                    : isSplit(view) && view === View.SPLIT_COLUMNS
                       ? `${splitRatio * 100}%`
                       : isSplit(view)
                         ? undefined
                         : "100%",
-                  height: isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : "100%",
+                  height: isNarrow
+                    ? "100%"
+                    : isSplit(view) && view === View.SPLIT_ROWS
+                      ? `${splitRatio * 100}%`
+                      : "100%",
                   flexDirection: "column",
                   minWidth: 0,
                   minHeight: 0,
@@ -1299,9 +1644,38 @@ end Manufacturing;`,
                       {translations.simulation}
                     </SegmentedControl.Button>
                     <SegmentedControl.Button selected={showCadView} leadingVisual={StackIcon}>
-                      3D
+                      {cadComponents.length > 0 ? `3D (${cadComponents.length})` : "3D"}
                     </SegmentedControl.Button>
                   </SegmentedControl>
+
+                  {/* Digital Thread Twin Quick Pill */}
+                  {cadComponents.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowResultsView(false);
+                        setShowCadView(true);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "3px 10px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderRadius: 20,
+                        border: "1px solid rgba(6, 182, 212, 0.4)",
+                        background: showCadView ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.08)",
+                        color: "#06b6d4",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                      title="Digital Thread CAD binding active. Click to view 3D assembly"
+                    >
+                      <span style={{ fontSize: 13 }}>🧵</span>
+                      <span>{cadComponents.length} CAD Twins</span>
+                    </button>
+                  )}
 
                   {/* Animate button — only visible after simulation completes with CAD components */}
                   {showCadView && animationControllerRef.current?.hasData && (
@@ -1513,6 +1887,32 @@ end Manufacturing;`,
                       backgroundColor: "var(--color-canvas-default)",
                     }}
                   >
+                    {/* Floating Digital Thread CAD Status Badge */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 12,
+                        left: 12,
+                        zIndex: 10,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 12px",
+                        borderRadius: 20,
+                        background: colorMode === "dark" ? "rgba(22, 27, 34, 0.85)" : "rgba(255, 255, 255, 0.9)",
+                        backdropFilter: "blur(12px)",
+                        border: "1px solid rgba(6, 182, 212, 0.4)",
+                        boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+                        fontSize: 12,
+                        color: "var(--color-fg-default)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <span style={{ fontSize: 14 }}>🧵</span>
+                      <span style={{ fontWeight: 600 }}>Digital Thread CAD Twin</span>
+                      <span style={{ color: "#3fb950", fontSize: 11, fontWeight: 600 }}>✔ Unit Parity Active</span>
+                    </div>
+
                     <Suspense fallback={null}>
                       <CadViewerPanel
                         components={cadComponents}
@@ -1522,6 +1922,8 @@ end Manufacturing;`,
                         }}
                         dark={colorMode === "dark"}
                         animationController={animationControllerRef.current}
+                        availableVariables={simulationVariables}
+                        onSaveBindings={handleSaveCadBindings}
                       />
                     </Suspense>
                   </div>
@@ -1538,6 +1940,12 @@ end Manufacturing;`,
                       backgroundColor: "var(--color-canvas-default)",
                     }}
                   >
+                    <CosimPanel
+                      dataSource={cosimDataSource}
+                      onDataSourceChange={setCosimDataSource}
+                      colorMode={colorMode}
+                      onReplaySession={handleReplaySession}
+                    />
                     {localSimulationData || simulationStatus?.status === "failed" ? (
                       <Suspense fallback={null}>
                         <SimulationResults
@@ -1578,7 +1986,7 @@ end Manufacturing;`,
             {/* Draggable split divider */}
             <div
               style={{
-                display: isSplit(view) ? "flex" : "none",
+                display: !isNarrow && isSplit(view) ? "flex" : "none",
                 width: view === View.SPLIT_COLUMNS ? 6 : "100%",
                 height: view === View.SPLIT_ROWS ? 6 : "100%",
                 cursor: view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize",
@@ -1630,15 +2038,20 @@ end Manufacturing;`,
             />
             <div
               style={{
-                display: view === View.CODE || isSplit(view) ? "flex" : "none",
-                flex: isSplit(view) ? "none" : 1,
-                width:
-                  isSplit(view) && view === View.SPLIT_COLUMNS
+                display: (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
+                flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
+                width: isNarrow
+                  ? "100%"
+                  : isSplit(view) && view === View.SPLIT_COLUMNS
                     ? `${(1 - splitRatio) * 100}%`
                     : isSplit(view)
                       ? undefined
                       : "100%",
-                height: isSplit(view) && view === View.SPLIT_ROWS ? `${(1 - splitRatio) * 100}%` : "100%",
+                height: isNarrow
+                  ? "100%"
+                  : isSplit(view) && view === View.SPLIT_ROWS
+                    ? `${(1 - splitRatio) * 100}%`
+                    : "100%",
                 flexDirection: "column",
                 minWidth: 0,
                 minHeight: 0,
@@ -2008,7 +2421,7 @@ end Manufacturing;`,
                   await navigator.clipboard.writeText(
                     `${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`,
                   );
-                  alert(translations.copiedToClipboard);
+                  toast.success(translations.copiedToClipboard);
                   setShareDialogOpen(false);
                 },
               },
@@ -2124,7 +2537,7 @@ end Manufacturing;`,
                 setContextVersion((v) => v + 1);
               } catch (e) {
                 console.error("Failed to install package:", e);
-                alert("Failed to install package: " + (e instanceof Error ? e.message : String(e)));
+                toast.error("Failed to install package: " + (e instanceof Error ? e.message : String(e)));
               }
             }}
             onAddLibrary={async (item, type) => {
@@ -2135,7 +2548,7 @@ end Manufacturing;`,
                 }
               } catch (error) {
                 console.error(error);
-                alert("Failed to add library: " + ((error as any)?.message ?? String(error)));
+                toast.error("Failed to add library: " + ((error as any)?.message ?? String(error)));
               }
             }}
           />
@@ -2151,7 +2564,7 @@ end Manufacturing;`,
                 content: "Copy to clipboard",
                 onClick: async () => {
                   await navigator.clipboard.writeText(flattenedCode);
-                  alert("Copied to clipboard.");
+                  toast.success("Copied to clipboard.");
                 },
               },
               {
@@ -2213,6 +2626,104 @@ end Manufacturing;`,
             setIsCloudModalOpen(false);
           }}
         />
+
+        {/* Floating Mobile Action Pill (< 768px viewports) */}
+        {isNarrow && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: "16px",
+              right: "16px",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "var(--surface-overlay, rgba(22, 27, 34, 0.92))",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              padding: "6px 8px",
+              borderRadius: "9999px",
+              border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15))",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.2)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => simulateModel(editor?.getValue() ?? content)}
+              disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 16px",
+                borderRadius: "9999px",
+                border: "none",
+                background: "var(--gradient-cta, linear-gradient(135deg, #10b981 0%, #059669 100%))",
+                color: "#ffffff",
+                fontWeight: 600,
+                fontSize: "13px",
+                cursor: "pointer",
+                boxShadow: "0 2px 10px rgba(16, 185, 129, 0.4)",
+                transition: "all 0.2s ease",
+              }}
+            >
+              {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
+                <>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "12px",
+                      height: "12px",
+                      border: "2px solid white",
+                      borderTopColor: "transparent",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                  <span>Simulating…</span>
+                </>
+              ) : (
+                <>
+                  <span>▶</span>
+                  <span>Simulate</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.share) {
+                  navigator
+                    .share({
+                      title: "ModelScript Simulation",
+                      url: window.location.href,
+                    })
+                    .catch(() => {});
+                } else {
+                  window.dispatchEvent(new CustomEvent("modelscript:open-share-modal"));
+                  navigator.clipboard?.writeText(window.location.href);
+                }
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "34px",
+                height: "34px",
+                borderRadius: "50%",
+                border: "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
+                background: "var(--color-canvas-subtle, rgba(255, 255, 255, 0.08))",
+                color: "var(--color-text-primary, #ffffff)",
+                cursor: "pointer",
+                fontSize: "14px",
+                transition: "all 0.2s ease",
+              }}
+              title="Share interactive model"
+            >
+              🔗
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

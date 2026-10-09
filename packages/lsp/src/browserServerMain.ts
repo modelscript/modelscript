@@ -936,7 +936,13 @@ registerHoverProvider(connection, documents, validationService);
 
 /* Go to Definition — reuses hover's resolution logic to locate declarations */
 
-registerDefinitionProvider(connection, documents, validationService.documentLSPBridges, documentManager.documentTrees);
+registerDefinitionProvider(
+  connection,
+  documents,
+  validationService.documentLSPBridges,
+  documentManager.documentTrees,
+  validationService,
+);
 /* Document formatting — uses tree-sitter parse + format() */
 
 registerFormattingProvider(connection, documents, parserService.getDocumentTree.bind(parserService), () =>

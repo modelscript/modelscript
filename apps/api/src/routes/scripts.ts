@@ -100,6 +100,7 @@ export function scriptsRouter(db: LibraryDatabase) {
             fs.appendFileSync(logPath, "Script execution completed.\n");
             db.updateJobStatus(jobId, "SUCCESS");
             db.settleUserEscrow(userId, jobId, 0.05, `Template Run: ${template.name}`);
+            db.createNotification(userId, userId, "simulation_completed");
             fs.appendFileSync(logPath, "Job finished successfully.\n");
           }, 2000);
         }, 2000);

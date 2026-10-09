@@ -1803,31 +1803,40 @@ export class ArenaDAEPrinter {
         if (base) usedTypeNames.add(base);
       }
     }
-    for (const fn of dae.functions.values()) {
-      if (this.omcCompatibility && !isOldFrontend && dae.classKind !== "function") {
+    let typesChanged = true;
+    while (typesChanged) {
+      typesChanged = false;
+      const prevCount = usedTypeNames.size;
+      for (const fn of dae.functions.values()) {
         const baseName = fn.name.split(".").pop()!;
-        const isFnActive =
-          activeCalledFnNames.has(fn.name) ||
-          activeCalledFnNames.has(baseName) ||
-          Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
-        if (!isFnActive) continue;
-      }
-      const isRecordCtor = fn.description?.startsWith("Automatically generated record constructor");
-      if (
-        !isRecordCtor ||
-        isOldFrontend ||
-        calledFnNames.has(fn.name) ||
-        calledFnNames.has(fn.name.split(".").pop()!)
-      ) {
-        for (let i = 0; i < fn.varCount; i++) {
-          const ct = fn.getVarCustomType(i);
-          if (ct) {
-            usedTypeNames.add(ct);
-            const base = ct.split(".").pop();
-            if (base) usedTypeNames.add(base);
+        if (this.omcCompatibility && !isOldFrontend && dae.classKind !== "function") {
+          const isFnActive =
+            activeCalledFnNames.has(fn.name) ||
+            activeCalledFnNames.has(baseName) ||
+            Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
+          const isTypeActive = usedTypeNames.has(fn.name) || usedTypeNames.has(baseName);
+          if (!isFnActive && !isTypeActive) continue;
+        }
+        const isRecordCtor = fn.description?.startsWith("Automatically generated record constructor");
+        if (
+          !isRecordCtor ||
+          isOldFrontend ||
+          calledFnNames.has(fn.name) ||
+          calledFnNames.has(baseName) ||
+          usedTypeNames.has(fn.name) ||
+          usedTypeNames.has(baseName)
+        ) {
+          for (let i = 0; i < fn.varCount; i++) {
+            const ct = fn.getVarCustomType(i);
+            if (ct) {
+              usedTypeNames.add(ct);
+              const base = ct.split(".").pop();
+              if (base) usedTypeNames.add(base);
+            }
           }
         }
       }
+      if (usedTypeNames.size > prevCount) typesChanged = true;
     }
 
     const uniqueFns = Array.from(new Set(dae.functions.values())).filter((fn) => {
@@ -2116,7 +2125,7 @@ export class ArenaDAEPrinter {
     const oldArena = this.arena;
     this.arena = fn;
 
-    if (fn.isImpure) this.out.write("impure ");
+    if (fn.isImpure && !this.isOldFrontend) this.out.write("impure ");
     this.out.write(fn.classKind + " " + fn.name);
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");

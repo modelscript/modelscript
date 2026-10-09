@@ -39,10 +39,15 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       repost_of_id,
       client_signature,
       key_id_string,
-      metadata,
+      metadata: rawMetadata,
       reply_visibility,
+      content_warning,
     } = req.body;
     const artifact_view_id = raw_artifact_view_id ?? artifactId;
+    const metadata = {
+      ...(typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {}),
+      ...(content_warning ? { contentWarning: content_warning } : {}),
+    };
 
     if (!content && !repost_of_id && !artifact_view_id) {
       res.status(400).json({ error: "Content, artifact, or repost target is required" });
@@ -183,6 +188,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     to: ["https://www.w3.org/ns/activitystreams#Public"],
                     cc: ccList,
                   };
+
+                  if (content_warning || (metadata as any)?.contentWarning) {
+                    noteObject.summary = content_warning || (metadata as any)?.contentWarning;
+                  }
 
                   if (mentionTags.length > 0) {
                     noteObject.tag = mentionTags;
@@ -544,6 +553,23 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       res.json({ posts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get following timeline" });
+    }
+  });
+
+  /**
+   * GET /api/v1/social/timeline/federated
+   */
+  router.get("/timeline/federated", optionalAuth, (req: Request, res: Response) => {
+    const currentUserId = req.user?.id;
+    const limit = Number(req.query.limit) || 20;
+    const offset = Number(req.query.offset) || 0;
+    const artifactType = (req.query.artifactType as string) || undefined;
+    const tag = (req.query.tag as string) || undefined;
+    try {
+      const posts = database.getFederatedTimeline(currentUserId, limit, offset, artifactType, tag);
+      res.json({ posts });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to get federated timeline" });
     }
   });
 

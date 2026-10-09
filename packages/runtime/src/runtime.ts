@@ -10,6 +10,54 @@ export type SymbolKind = string;
 /** A unique, stable identifier for a symbol in the index. */
 export type SymbolId = number;
 
+/**
+ * Well-known 8-bit domain identifiers for polyglot language partitioning.
+ * Partitions the 32-bit SymbolId space into disjoint language domains:
+ * Bits [31..24]: DomainId
+ * Bits [23..0]: Local Sequence ID (up to 16.7M symbols per domain)
+ */
+export enum LanguageDomainId {
+  Default = 0x00,
+  Modelica = 0x01,
+  SysML2 = 0x02,
+  STEP_CAD = 0x03,
+  OWL2 = 0x04,
+  SSP = 0x05,
+  CFD = 0x06,
+  FEA = 0x07,
+  ModelScript = 0x08,
+  SCAD = 0x09,
+  CSV = 0x0a,
+}
+
+export function makePolyglotSymbolId(domain: LanguageDomainId | number, localSeq: number): SymbolId {
+  return (((domain & 0xff) << 24) | (localSeq & 0x00ffffff)) >>> 0;
+}
+
+export function getSymbolDomain(id: SymbolId): number {
+  return (id >>> 24) & 0xff;
+}
+
+export function getLocalSymbolSeq(id: SymbolId): number {
+  return id & 0x00ffffff;
+}
+
+export function getLanguageDomainId(language: string): LanguageDomainId {
+  const norm = language.toLowerCase();
+  if (norm.includes("modelica")) return LanguageDomainId.Modelica;
+  if (norm.includes("sysml")) return LanguageDomainId.SysML2;
+  if (norm.includes("scad")) return LanguageDomainId.SCAD;
+  if (norm.includes("step") || norm === "cad" || norm.startsWith("cad-") || norm.endsWith("-cad"))
+    return LanguageDomainId.STEP_CAD;
+  if (norm.includes("owl")) return LanguageDomainId.OWL2;
+  if (norm.includes("ssp")) return LanguageDomainId.SSP;
+  if (norm.includes("cfd")) return LanguageDomainId.CFD;
+  if (norm.includes("fea")) return LanguageDomainId.FEA;
+  if (norm.includes("modelscript") || norm.includes("msx")) return LanguageDomainId.ModelScript;
+  if (norm.includes("csv")) return LanguageDomainId.CSV;
+  return LanguageDomainId.Default;
+}
+
 /** A single entry in the symbol index. */
 export interface SymbolEntry {
   id: SymbolId;
@@ -133,6 +181,29 @@ export interface RefHook {
 }
 
 // ---------------------------------------------------------------------------
+// Polyglot Cross-Domain Types
+// ---------------------------------------------------------------------------
+
+export interface ParityReport {
+  compatible: boolean;
+  modelicaType?: string;
+  modelicaUnit?: string;
+  sysmlType?: string;
+  sysmlUnit?: string;
+  reason?: string;
+}
+
+export interface ShapeBinding {
+  bound: boolean;
+  cadSymbolId: SymbolId;
+  feaMeshId: SymbolId;
+  shapeName?: string;
+  surfaceArea?: number;
+  volume?: number;
+  meshElementCount?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Query Engine Types
 // ---------------------------------------------------------------------------
 
@@ -159,6 +230,36 @@ export interface QueryDB {
 
   /** Access all underlying entries in the database. Useful for cross-language searches. */
   allEntries(): SymbolEntry[];
+
+  /**
+   * Resolve a fully qualified symbol name across polyglot domains (e.g. 'SysML2::DroneArchitecture::Chassis', 'Modelica::Modelica.Electrical.Analog.Basic.Resistor', 'DroneFrame').
+   */
+  resolvePolyglotSymbol(fqn: string, targetDomain?: LanguageDomainId): SymbolId | null;
+
+  /**
+   * Resolves twin/counterpart symbols across domains linked via TGG, correspondence index, metadata, or name parity.
+   */
+  crossDomainBinding(symbolId: SymbolId): SymbolId[];
+
+  /**
+   * Verifies unit/dimension parity between a Modelica variable and a SysML v2 attribute.
+   */
+  physicalQuantityParity(modelicaVarId: SymbolId, sysmlAttrId: SymbolId): ParityReport;
+
+  /**
+   * Connects a STEP CAD solid / B-Rep symbol to an FEA mesh symbol.
+   */
+  geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding;
+
+  /**
+   * Get current revision for a specific language domain.
+   */
+  getDomainRevision?(domain: LanguageDomainId): Revision;
+
+  /**
+   * Check whether a language domain has changed since a specified revision.
+   */
+  hasDomainChanged?(domain: LanguageDomainId, sinceRevision: Revision): boolean;
 
   /**
    * Execute a query with arguments and an optional custom hash for cache keying.
@@ -317,7 +418,8 @@ export type Revision = number;
 export type DependencyKey =
   | { kind: "input"; symbolId: SymbolId }
   | { kind: "query"; queryName: string; symbolId: SymbolId; argsHash?: string }
-  | { kind: "byName"; name: string };
+  | { kind: "byName"; name: string }
+  | { kind: "domain"; domain: LanguageDomainId };
 
 /**
  * A memoized query result with Salsa-style revision metadata.

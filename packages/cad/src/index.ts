@@ -123,3 +123,39 @@ export {
   type ToleranceStackOptions,
   type ToleranceStackResult,
 } from "./tolerance-stack.js";
+
+// Kinematics & Spatial Orientation Solvers
+export {
+  QUAT_IDENTITY,
+  composeTransformMatrix,
+  getUnitScaleFactor,
+  hermiteInterpolate,
+  quaternionFromAxisAngle,
+  quaternionFromEuler,
+  quaternionFromMatrix3x3,
+  quaternionMultiply,
+  quaternionSlerp,
+  quaternionToEuler,
+  type Quat,
+} from "./kinematics.js";
+
+// Unified 3D CAD Animation Controller
+export {
+  AnimationController,
+  type AnimationBinding,
+  type AnimationMode,
+  type AnimationState,
+  type CadDynamicBinding,
+  type ComponentTransform,
+  type StateListener,
+} from "./animation-controller.js";
+
+// CAD Annotation Serialization, Parsing & Modelica Patching
+export {
+  parseCadBindings,
+  patchModelicaCadAnnotation,
+  serializeCadAnnotation,
+  serializeCadBinding,
+  type CadAnnotationConfig,
+  type DynamicBindingConfig,
+} from "./binding-writer.js";

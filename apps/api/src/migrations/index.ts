@@ -6,6 +6,8 @@ import { packageLifecycleMigration } from "./0003_package_lifecycle.js";
 import { packageAnalyticsMigration } from "./0004_package_analytics.js";
 import { migration0005 } from "./0005_organizations_and_rbac.js";
 import { migration0006 } from "./0006_repo_webhooks.js";
+import { migration0007 } from "./0007_auth_security_hardening.js";
+import { migration0008 } from "./0008_auth_totp_and_audit.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -18,4 +20,6 @@ export const allMigrations: Migration[] = [
   packageAnalyticsMigration,
   migration0005,
   migration0006,
+  migration0007,
+  migration0008,
 ];

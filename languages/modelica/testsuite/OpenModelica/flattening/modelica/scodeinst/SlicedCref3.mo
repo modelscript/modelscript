@@ -1,7 +1,6 @@
 // name: SlicedCref3
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 record R

@@ -399,6 +399,24 @@ graph TD
     }),
   );
 
+  // Cookie parser middleware (HttpOnly session cookies)
+  app.use((req, _res, next) => {
+    const cookieHeader = req.headers["cookie"];
+    const cookies: Record<string, string> = {};
+    if (cookieHeader) {
+      for (const pair of cookieHeader.split(";")) {
+        const idx = pair.indexOf("=");
+        if (idx !== -1) {
+          const key = pair.slice(0, idx).trim();
+          const val = pair.slice(idx + 1).trim();
+          cookies[key] = decodeURIComponent(val);
+        }
+      }
+    }
+    (req as any).cookies = cookies;
+    next();
+  });
+
   // Rate Limiting
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes

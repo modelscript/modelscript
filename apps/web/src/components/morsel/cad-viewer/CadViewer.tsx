@@ -8,6 +8,7 @@
  * interactions via CADPort annotations.
  */
 
+import type { DynamicBindingConfig } from "@modelscript/cad";
 import {
   ContactShadows,
   Environment,
@@ -23,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./AnimationTimeline";
+import { CadBindingPickerModal } from "./CadBindingPickerModal";
 import { VtkRenderer } from "./VtkRenderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -69,6 +71,10 @@ interface CadViewerProps {
   animationController?: AnimationController | null;
   /** Extracted VTK Buffer from the CFD Orchestrator for Real-time VR rendering */
   vtkBuffer?: Uint8Array | null;
+  /** Available simulation variables for dynamic binding picker */
+  availableVariables?: string[];
+  /** Callback when user saves new bindings from the picker */
+  onSaveBindings?: (componentName: string, bindings: DynamicBindingConfig[]) => void;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -188,11 +194,15 @@ function CadModel({
 
     const tf = animationController.getTransform(component.name);
     groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
-    groupRef.current.rotation.set(
-      (tf.rotation[0] * Math.PI) / 180,
-      (tf.rotation[1] * Math.PI) / 180,
-      (tf.rotation[2] * Math.PI) / 180,
-    );
+    if (tf.quaternion) {
+      groupRef.current.quaternion.set(tf.quaternion[0], tf.quaternion[1], tf.quaternion[2], tf.quaternion[3]);
+    } else {
+      groupRef.current.rotation.set(
+        (tf.rotation[0] * Math.PI) / 180,
+        (tf.rotation[1] * Math.PI) / 180,
+        (tf.rotation[2] * Math.PI) / 180,
+      );
+    }
     groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
 
     // Update ghost trail if selected and animating
@@ -434,8 +444,16 @@ export default function CadViewer({
   dark = false,
   animationController = null,
   vtkBuffer = null,
+  availableVariables = [],
+  onSaveBindings,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
+  const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
+
+  const selectedComponent = useMemo(
+    () => components.find((c) => c.name === selectedName) || null,
+    [components, selectedName],
+  );
 
   if (error) {
     return (
@@ -472,6 +490,83 @@ export default function CadViewer({
 
   return (
     <div style={{ height: "100%", position: "relative" }}>
+      {/* Floating Selected Component HUD */}
+      {selectedComponent && (
+        <div
+          style={{
+            position: "absolute",
+            top: 14,
+            left: 14,
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 14px",
+            background: dark ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: "10px",
+            border: `1px solid ${dark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)"}`,
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
+            color: dark ? "#f0f6fc" : "#1f2328",
+            fontSize: "13px",
+          }}
+        >
+          <span style={{ fontSize: 16 }}>🧊</span>
+          <div>
+            <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <span>{selectedComponent.name}</span>
+              <span
+                style={{
+                  fontSize: "11px",
+                  padding: "1px 6px",
+                  borderRadius: "10px",
+                  background:
+                    selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
+                      ? "rgba(63, 185, 80, 0.2)"
+                      : "rgba(139, 148, 158, 0.2)",
+                  color:
+                    selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
+                      ? "#3fb950"
+                      : "#8b949e",
+                  fontWeight: 600,
+                }}
+              >
+                {selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
+                  ? `${selectedComponent.dynamicBindings.length} bound`
+                  : "unbound"}
+              </span>
+            </div>
+            <div style={{ fontSize: "11px", color: dark ? "#8b949e" : "#656d76" }}>
+              {selectedComponent.cad.uri ? selectedComponent.cad.uri.split("/").pop() : "3D Mesh"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsBindingPickerOpen(true)}
+            style={{
+              marginLeft: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "4px 10px",
+              background: "#0969da",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "6px",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "background 0.15s ease",
+            }}
+            title="Link 3D geometry to simulation states"
+          >
+            <span>🧵</span>
+            <span>Link Variables</span>
+          </button>
+        </div>
+      )}
+
       <Canvas
         shadows
         camera={{ position: [3, 2.5, 3], fov: 50 }}
@@ -492,6 +587,21 @@ export default function CadViewer({
 
       {/* Animation timeline overlay */}
       {animationController && <AnimationTimeline controller={animationController} />}
+
+      {/* Interactive Geometry-to-Variable Binding Picker Modal */}
+      {selectedComponent && (
+        <CadBindingPickerModal
+          isOpen={isBindingPickerOpen}
+          onClose={() => setIsBindingPickerOpen(false)}
+          component={selectedComponent}
+          availableVariables={availableVariables}
+          animationController={animationController}
+          onSave={(compName, newBindings) => {
+            onSaveBindings?.(compName, newBindings);
+          }}
+          dark={dark}
+        />
+      )}
     </div>
   );
 }

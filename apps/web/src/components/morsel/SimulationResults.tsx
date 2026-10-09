@@ -5,6 +5,8 @@ import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { getSimulationJobResult } from "../../api";
+import { useTheme } from "../../theme";
+import { downloadParquetFile } from "../../util/binary-export";
 
 export const SIMULATION_COLORS = [
   "#0969da",
@@ -42,15 +44,31 @@ export function SimulationResults({
   error: externalError,
   selectedVariables,
   onVariablesLoaded,
-  colorMode = "light",
+  colorMode: propColorMode,
 }: SimulationResultsProps) {
+  const { theme } = useTheme();
+  const colorMode = propColorMode || (theme === "dark" ? "dark" : "light");
   const [data, setData] = useState<Record<string, number | string>[]>(localData || []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(externalError || null);
   const [isNormalized, setIsNormalized] = useState(false);
+  const [isLogScale, setIsLogScale] = useState(false);
   const [xAxisVar, setXAxisVar] = useState<string>("time");
   const [hiddenVars, setHiddenVars] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
+
+  // Baseline comparison state (Run A vs Run B)
+  const [baselineData, setBaselineData] = useState<Record<string, number | string>[] | null>(() => {
+    try {
+      const stored = sessionStorage.getItem("modelscript:simulation-baseline");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isComparingBaseline, setIsComparingBaseline] = useState<boolean>(() => {
+    return !!sessionStorage.getItem("modelscript:simulation-baseline");
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -198,6 +216,51 @@ export function SimulationResults({
     return { chartData: data, minMaxMap: minMax };
   }, [data, isNormalized, selectedVariables]);
 
+  // Merge baseline trajectory into chartData if comparison is active
+  const mergedChartData = useMemo(() => {
+    if (!baselineData || !isComparingBaseline || !chartData.length) {
+      return chartData;
+    }
+    const baselineMap = new Map<string, Record<string, number | string>>();
+    for (const bRow of baselineData) {
+      const t = Number(bRow.time);
+      if (!isNaN(t)) {
+        baselineMap.set(t.toFixed(4), bRow);
+      }
+    }
+
+    return chartData.map((row, idx) => {
+      const t = Number(row.time);
+      const bRow = !isNaN(t) ? baselineMap.get(t.toFixed(4)) : baselineData[idx];
+      const merged: Record<string, number | string> = { ...row };
+      if (bRow) {
+        for (const v of selectedVariables) {
+          if (bRow[v] !== undefined) {
+            merged[`${v} [Baseline]`] = bRow[v];
+          }
+        }
+      }
+      return merged;
+    });
+  }, [chartData, baselineData, isComparingBaseline, selectedVariables]);
+
+  const handlePinBaseline = () => {
+    if (!data.length) return;
+    try {
+      sessionStorage.setItem("modelscript:simulation-baseline", JSON.stringify(data));
+    } catch {}
+    setBaselineData([...data]);
+    setIsComparingBaseline(true);
+  };
+
+  const handleClearBaseline = () => {
+    try {
+      sessionStorage.removeItem("modelscript:simulation-baseline");
+    } catch {}
+    setBaselineData(null);
+    setIsComparingBaseline(false);
+  };
+
   const handleExportCsv = () => {
     if (!data.length) return;
     const csv = Papa.unparse(data);
@@ -210,6 +273,25 @@ export function SimulationResults({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportJson = () => {
+    if (!data.length) return;
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `simulation_data_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportParquet = () => {
+    if (!data.length) return;
+    downloadParquetFile(data, `simulation_data_${Date.now()}.parquet`);
   };
 
   const handleCopyClipboard = async () => {
@@ -345,8 +427,77 @@ export function SimulationResults({
             <span>Normalize (0-100%)</span>
           </label>
 
+          {/* Logarithmic Scale Checkbox */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isLogScale}
+              onChange={(e) => setIsLogScale(e.target.checked)}
+              style={{ accentColor: "var(--color-accent-fg, #0969da)" }}
+            />
+            <span>Log Scale</span>
+          </label>
+
           {/* Action Buttons */}
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            {/* Baseline Comparison (Run A vs Run B) */}
+            {!isComparingBaseline ? (
+              <button
+                onClick={handlePinBaseline}
+                style={{
+                  fontSize: "11px",
+                  padding: "3px 8px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-btn-bg, #f6f8fa)",
+                  color: "inherit",
+                  cursor: "pointer",
+                }}
+                title="Pin current simulation trajectory as Run A baseline"
+              >
+                📌 Pin Baseline
+              </button>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    background: "rgba(6, 182, 212, 0.15)",
+                    border: "1px solid var(--color-accent-cyan, #06b6d4)",
+                    color: "var(--color-accent-cyan, #06b6d4)",
+                    fontWeight: 600,
+                  }}
+                  title="Comparing against pinned baseline (dashed lines)"
+                >
+                  Comparing Run A
+                </span>
+                <button
+                  onClick={handleClearBaseline}
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 5px",
+                    borderRadius: "4px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "transparent",
+                    color: "var(--color-fg-muted)",
+                    cursor: "pointer",
+                  }}
+                  title="Clear pinned baseline comparison"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <button
               onClick={handleExportCsv}
               style={{
@@ -361,6 +512,36 @@ export function SimulationResults({
               title="Download simulated data as CSV"
             >
               📥 CSV
+            </button>
+            <button
+              onClick={handleExportJson}
+              style={{
+                fontSize: "11px",
+                padding: "3px 8px",
+                borderRadius: "4px",
+                border: "1px solid var(--color-border-default)",
+                background: "var(--color-btn-bg, #f6f8fa)",
+                color: "inherit",
+                cursor: "pointer",
+              }}
+              title="Download simulated data as JSON"
+            >
+              📥 JSON
+            </button>
+            <button
+              onClick={handleExportParquet}
+              style={{
+                fontSize: "11px",
+                padding: "3px 8px",
+                borderRadius: "4px",
+                border: "1px solid var(--color-border-default)",
+                background: "var(--color-btn-bg, #f6f8fa)",
+                color: "inherit",
+                cursor: "pointer",
+              }}
+              title="Download simulated data as Apache Parquet (binary columnar format)"
+            >
+              ⚡ Parquet
             </button>
             <button
               onClick={handleCopyClipboard}
@@ -436,7 +617,7 @@ export function SimulationResults({
         <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
-              data={chartData}
+              data={mergedChartData}
               margin={{
                 top: 10,
                 right: 30,
@@ -444,35 +625,77 @@ export function SimulationResults({
                 bottom: 35,
               }}
             >
-              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke={colorMode === "dark" ? "#30363d" : "#e1e4e8"}
+                opacity={0.6}
+              />
               <XAxis
                 dataKey={xAxisVar}
                 type="number"
                 domain={["dataMin", "dataMax"]}
+                stroke={colorMode === "dark" ? "#8b949e" : "#57606a"}
+                tick={{ fill: colorMode === "dark" ? "#8b949e" : "#57606a", fontSize: 11 }}
                 tickFormatter={(val) => (typeof val === "number" ? val.toFixed(2) : String(val))}
                 label={{
                   value: xAxisVar === "time" ? "time (s)" : xAxisVar,
                   position: "insideBottom",
                   offset: -20,
+                  fill: colorMode === "dark" ? "#8b949e" : "#57606a",
                 }}
               />
               <YAxis
-                domain={isNormalized ? [0, 100] : ["auto", "auto"]}
+                scale={isLogScale ? "log" : "auto"}
+                domain={isNormalized ? [0, 100] : isLogScale ? ["auto", "auto"] : ["auto", "auto"]}
+                stroke={colorMode === "dark" ? "#8b949e" : "#57606a"}
+                tick={{ fill: colorMode === "dark" ? "#8b949e" : "#57606a", fontSize: 11 }}
                 tickFormatter={(val) => (isNormalized ? `${val}%` : Number(val).toFixed(2))}
                 label={
                   isNormalized
-                    ? { value: "Normalized (0–100%)", angle: -90, position: "insideLeft", offset: -5 }
-                    : undefined
+                    ? {
+                        value: "Normalized (0–100%)",
+                        angle: -90,
+                        position: "insideLeft",
+                        offset: -5,
+                        fill: colorMode === "dark" ? "#8b949e" : "#57606a",
+                      }
+                    : isLogScale
+                      ? {
+                          value: "Logarithmic Scale",
+                          angle: -90,
+                          position: "insideLeft",
+                          offset: -5,
+                          fill: colorMode === "dark" ? "#8b949e" : "#57606a",
+                        }
+                      : undefined
                 }
               />
               <Tooltip
+                cursor={{
+                  stroke: colorMode === "dark" ? "#58a6ff" : "#0969da",
+                  strokeWidth: 1.5,
+                  strokeDasharray: "3 3",
+                }}
+                contentStyle={{
+                  backgroundColor: colorMode === "dark" ? "#161b22" : "#ffffff",
+                  borderColor: colorMode === "dark" ? "#30363d" : "#d0d7de",
+                  color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
+                }}
+                itemStyle={{
+                  color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                }}
                 formatter={(val, name) => {
                   const varName = String(name);
+                  const isBaseline = varName.endsWith(" [Baseline]");
+                  const baseVar = isBaseline ? varName.replace(" [Baseline]", "") : varName;
                   if (isNormalized) {
-                    const rawVal = minMaxMap[varName]
+                    const rawVal = minMaxMap[baseVar]
                       ? (
-                          (Number(val) / 100) * (minMaxMap[varName].max - minMaxMap[varName].min) +
-                          minMaxMap[varName].min
+                          (Number(val) / 100) * (minMaxMap[baseVar].max - minMaxMap[baseVar].min) +
+                          minMaxMap[baseVar].min
                         ).toFixed(4)
                       : val;
                     return [`${rawVal} (${Number(val).toFixed(1)}%)`, varName];
@@ -484,11 +707,12 @@ export function SimulationResults({
                   return `${xAxisVar}: ${isNaN(num) ? val : num.toFixed(4)}${xAxisVar === "time" ? "s" : ""}`;
                 }}
               />
-              {activeVariables.flatMap((v, i) => {
+              {activeVariables.flatMap((v) => {
                 if (sweepResults && sweepResults.length > 0) {
                   return sweepResults.map((sweep, j) => {
                     const key = `${v} (${sweep.value})`;
-                    const colorIdx = (i * sweepResults.length + j) % SIMULATION_COLORS.length;
+                    const colorIdx =
+                      (selectedVariables.indexOf(v) * sweepResults.length + j) % SIMULATION_COLORS.length;
                     return (
                       <Line
                         key={key}
@@ -504,18 +728,38 @@ export function SimulationResults({
                     );
                   });
                 }
-                return (
+                const lines = [
                   <Line
                     key={v}
                     type="linear"
                     dataKey={v}
+                    name={v}
                     stroke={SIMULATION_COLORS[selectedVariables.indexOf(v) % SIMULATION_COLORS.length]}
                     strokeWidth={1.5}
                     dot={false}
                     activeDot={{ r: 4 }}
                     isAnimationActive={false}
-                  />
-                );
+                  />,
+                ];
+                if (baselineData && isComparingBaseline) {
+                  const bKey = `${v} [Baseline]`;
+                  lines.push(
+                    <Line
+                      key={bKey}
+                      type="linear"
+                      dataKey={bKey}
+                      name={bKey}
+                      stroke={SIMULATION_COLORS[selectedVariables.indexOf(v) % SIMULATION_COLORS.length]}
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.55}
+                      dot={false}
+                      activeDot={{ r: 3 }}
+                      isAnimationActive={false}
+                    />,
+                  );
+                }
+                return lines;
               })}
             </LineChart>
           </ResponsiveContainer>

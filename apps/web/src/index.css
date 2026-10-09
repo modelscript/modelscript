@@ -85,7 +85,7 @@
   /* Toggle icon */
   --color-toggle-icon: #94a3b8;
 
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Semantic surfaces */
   --surface-hud: rgba(6, 8, 15, 0.85);
@@ -205,7 +205,7 @@
   /* Toggle icon */
   --color-toggle-icon: #64748b;
 
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Semantic surfaces */
   --surface-hud: rgba(248, 250, 252, 0.88);

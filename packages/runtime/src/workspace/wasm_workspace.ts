@@ -2,7 +2,16 @@
 
 import { PolyglotTransformer, type PolyglotNode } from "../interop/polyglot-transformer.js";
 import { WasmOntologyStore } from "../ontology/wasm_ontology.js";
-import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
+import {
+  getLanguageDomainId,
+  getSymbolDomain,
+  LanguageDomainId,
+  makePolyglotSymbolId,
+  type IndexerHook,
+  type SymbolEntry,
+  type SymbolId,
+  type SymbolIndex,
+} from "../runtime.js";
 import { computeEditRanges, type EditRange } from "../util/diff.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
 
@@ -1731,6 +1740,72 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return this.queryEngines.get(language);
   }
 
+  public domainPartitioning = false;
+
+  private mergeIndices(merged: SymbolIndex, entries: [string, SymbolIndex | null][]): SymbolIndex {
+    for (const [lang, idx] of entries) {
+      if (!idx) continue;
+
+      const domain = getLanguageDomainId(lang);
+      const mustRemap = this.domainPartitioning && domain !== LanguageDomainId.Default;
+
+      // Check if there is an ID collision with any symbol already in merged
+      let hasCollision = false;
+      if (!mustRemap) {
+        for (const id of idx.symbols.keys()) {
+          if (merged.symbols.has(id)) {
+            hasCollision = true;
+            break;
+          }
+        }
+      }
+
+      const shouldRemap = mustRemap || hasCollision;
+      const idMap = new Map<SymbolId, SymbolId>();
+      const remap = (id: SymbolId): SymbolId => {
+        if (!shouldRemap) return id;
+        if (getSymbolDomain(id) !== 0) return id;
+        let mapped = idMap.get(id);
+        if (mapped === undefined) {
+          mapped = makePolyglotSymbolId(domain, id);
+          idMap.set(id, mapped);
+        }
+        return mapped;
+      };
+
+      for (const [id, entry] of idx.symbols.entries()) {
+        const newId = remap(id);
+        const newParentId =
+          entry.parentId !== null && entry.parentId !== undefined
+            ? entry.parentId === 0
+              ? 0
+              : remap(entry.parentId)
+            : null;
+        merged.symbols.set(newId, {
+          ...entry,
+          id: newId,
+          parentId: newParentId,
+          language: entry.language ?? lang,
+        });
+      }
+
+      for (const [name, ids] of idx.byName.entries()) {
+        const existing = merged.byName.get(name) || [];
+        const newIds = shouldRemap ? ids.map(remap) : ids;
+        merged.byName.set(name, existing.concat(newIds));
+      }
+
+      for (const [parentId, childIds] of idx.childrenOf.entries()) {
+        const targetParent =
+          parentId !== null && parentId !== undefined ? (parentId === 0 ? 0 : remap(parentId)) : null;
+        const existing = merged.childrenOf.get(targetParent) || [];
+        const newChildIds = shouldRemap ? childIds.map(remap) : childIds;
+        merged.childrenOf.set(targetParent, existing.concat(newChildIds));
+      }
+    }
+    return merged;
+  }
+
   toSymbolIndex(): SymbolIndex {
     if (this.workspaces.size === 0) {
       return {
@@ -1739,7 +1814,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         childrenOf: new Map<SymbolId | null, SymbolId[]>(),
       };
     }
-    if (this.workspaces.size === 1) {
+    if (this.workspaces.size === 1 && !this.domainPartitioning) {
       for (const ws of this.workspaces.values()) {
         if (ws && typeof ws.toSymbolIndex === "function") {
           return ws.toSymbolIndex();
@@ -1754,6 +1829,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       byName: new Map<string, SymbolId[]>(),
       childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
+    const entries: [string, SymbolIndex | null][] = [];
     for (const [lang, ws] of this.workspaces.entries()) {
       if (!ws) continue;
       const idx =
@@ -1762,20 +1838,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
           : typeof ws.toUnified === "function"
             ? ws.toUnified()
             : null;
-      if (!idx) continue;
-      for (const [id, entry] of idx.symbols.entries()) {
-        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
-      }
-      for (const [name, ids] of idx.byName.entries()) {
-        const existing = merged.byName.get(name) || [];
-        merged.byName.set(name, existing.concat(ids));
-      }
-      for (const [parentId, childIds] of idx.childrenOf.entries()) {
-        const existing = merged.childrenOf.get(parentId) || [];
-        merged.childrenOf.set(parentId, existing.concat(childIds));
-      }
+      entries.push([lang, idx]);
     }
-    return merged;
+    return this.mergeIndices(merged, entries);
   }
 
   ensureChildrenIndexed(parentFQN?: string): void {
@@ -1811,7 +1876,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         childrenOf: new Map<SymbolId | null, SymbolId[]>(),
       };
     }
-    if (this.workspaces.size === 1) {
+    if (this.workspaces.size === 1 && !this.domainPartitioning) {
       for (const ws of this.workspaces.values()) {
         if (ws && typeof ws.toUnified === "function") {
           return ws.toUnified();
@@ -1826,6 +1891,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       byName: new Map<string, SymbolId[]>(),
       childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
+    const entries: [string, SymbolIndex | null][] = [];
     for (const [lang, ws] of this.workspaces.entries()) {
       if (!ws) continue;
       let idx: SymbolIndex | null = null;
@@ -1834,19 +1900,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       } else if (typeof ws.toSymbolIndex === "function") {
         idx = ws.toSymbolIndex();
       }
-      if (!idx) continue;
-      for (const [id, entry] of idx.symbols.entries()) {
-        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
-      }
-      for (const [name, ids] of idx.byName.entries()) {
-        const existing = merged.byName.get(name) || [];
-        merged.byName.set(name, existing.concat(ids));
-      }
-      for (const [parentId, childIds] of idx.childrenOf.entries()) {
-        const existing = merged.childrenOf.get(parentId) || [];
-        merged.childrenOf.set(parentId, existing.concat(childIds));
-      }
+      entries.push([lang, idx]);
     }
+    this.mergeIndices(merged, entries);
     (merged as any).workspace = this;
     return merged;
   }
@@ -1863,7 +1919,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         childrenOf: new Map<SymbolId | null, SymbolId[]>(),
       };
     }
-    if (this.workspaces.size === 1) {
+    if (this.workspaces.size === 1 && !this.domainPartitioning) {
       for (const ws of this.workspaces.values()) {
         if (ws && typeof ws.toSymbolIndexAsync === "function") {
           return await ws.toSymbolIndexAsync();
@@ -1884,6 +1940,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       byName: new Map<string, SymbolId[]>(),
       childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
+    const entries: [string, SymbolIndex | null][] = [];
     for (const [lang, ws] of this.workspaces.entries()) {
       if (!ws) continue;
       let idx: SymbolIndex | null = null;
@@ -1896,20 +1953,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       } else if (typeof ws.toUnified === "function") {
         idx = ws.toUnified();
       }
-      if (!idx) continue;
-      for (const [id, entry] of idx.symbols.entries()) {
-        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
-      }
-      for (const [name, ids] of idx.byName.entries()) {
-        const existing = merged.byName.get(name) || [];
-        merged.byName.set(name, existing.concat(ids));
-      }
-      for (const [parentId, childIds] of idx.childrenOf.entries()) {
-        const existing = merged.childrenOf.get(parentId) || [];
-        merged.childrenOf.set(parentId, existing.concat(childIds));
-      }
+      entries.push([lang, idx]);
     }
-    return merged;
+    return this.mergeIndices(merged, entries);
   }
 
   async toUnifiedAsync(): Promise<SymbolIndex> {

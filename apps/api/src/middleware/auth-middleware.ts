@@ -25,6 +25,7 @@ export interface AuthUser {
   role?: string | undefined;
   accountType?: string | undefined;
   account_type?: string | undefined;
+  tokenVersion?: number | undefined;
 }
 
 declare module "express" {
@@ -35,15 +36,30 @@ declare module "express" {
 
 export { JWT_SECRET };
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+function extractTokenFromRequest(req: Request): string | undefined {
   const authHeader = req.headers["authorization"];
-  let token: string | undefined;
-
   if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.substring(7);
-  } else if (typeof req.query.token === "string" && req.query.token.length > 0) {
-    token = req.query.token;
+    return authHeader.substring(7);
   }
+  const cookies = (req as any).cookies;
+  if (cookies && typeof cookies["modelscript_token"] === "string" && cookies["modelscript_token"].length > 0) {
+    return cookies["modelscript_token"];
+  }
+  const rawCookieHeader = req.headers["cookie"];
+  if (rawCookieHeader) {
+    const match = rawCookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
+    if (match && match[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  }
+  if (typeof req.query.token === "string" && req.query.token.length > 0) {
+    return req.query.token;
+  }
+  return undefined;
+}
+
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const token = extractTokenFromRequest(req);
 
   if (!token) {
     res.status(401).json({ error: "Authentication required" });
@@ -70,16 +86,35 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   // Otherwise, handle as a JWT
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string };
 
-    // Fast path check to ensure the user hasn't been deleted (e.g. during a DB reset)
+    // Intermediate 2FA challenge token cannot access authenticated endpoints
+    if (decoded.scope === "2fa_challenge") {
+      res.status(401).json({ error: "Two-factor authentication required" });
+      return;
+    }
+
+    // Fast path check to ensure the user exists, isn't suspended, and session is not revoked
     if (sharedAuthDatabase) {
-      const userExists = sharedAuthDatabase.getUserById(decoded.id);
-      if (!userExists) {
+      const user = sharedAuthDatabase.getUserById(decoded.id);
+      if (!user) {
         res.status(401).json({ error: "User no longer exists" });
         return;
       }
-      decoded.accountType = userExists.account_type || decoded.accountType || decoded.role || "user";
+
+      if (user.status === "suspended" || user.status === "frozen") {
+        res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
+        return;
+      }
+
+      const currentTokenVersion = user.token_version ?? 1;
+      const tokenVersion = decoded.tokenVersion ?? 1;
+      if (tokenVersion !== currentTokenVersion) {
+        res.status(401).json({ error: "Session has expired or was revoked. Please log in again." });
+        return;
+      }
+
+      decoded.accountType = user.account_type || decoded.accountType || decoded.role || "user";
       decoded.account_type = decoded.accountType;
     }
 
@@ -110,24 +145,28 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers["authorization"];
-  let token: string | undefined;
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.substring(7);
-  } else if (typeof req.query.token === "string" && req.query.token.length > 0) {
-    token = req.query.token;
-  }
+  const token = extractTokenFromRequest(req);
 
   if (!token) {
     next();
     return;
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string };
+    if (decoded.scope === "2fa_challenge") {
+      next();
+      return;
+    }
     if (sharedAuthDatabase) {
-      const userExists = sharedAuthDatabase.getUserById(decoded.id);
-      if (userExists) {
+      const user = sharedAuthDatabase.getUserById(decoded.id);
+      if (
+        user &&
+        user.status !== "suspended" &&
+        user.status !== "frozen" &&
+        (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)
+      ) {
+        decoded.accountType = user.account_type || decoded.accountType || decoded.role || "user";
+        decoded.account_type = decoded.accountType;
         req.user = decoded;
       }
     } else {

@@ -66,11 +66,15 @@ const SHORTCUTS: ShortcutCategory[] = [
   {
     title: "Global Navigation",
     items: [
+      { keys: ["Cmd / Ctrl", "K"], description: "Open Command Palette & quick switcher" },
       { keys: ["/"], description: "Focus search bar" },
       { keys: ["?"], description: "Open keyboard shortcuts help" },
       { keys: ["g", "h"], description: "Navigate to Home Feed" },
       { keys: ["g", "e"], description: "Navigate to Explore & Trending" },
+      { keys: ["g", "n"], description: "Navigate to Notifications" },
       { keys: ["g", "p"], description: "Navigate to Playground" },
+      { keys: ["g", "k"], description: "Navigate to Packages" },
+      { keys: ["g", "r"], description: "Navigate to Repositories" },
       { keys: ["g", "i"], description: "Navigate to Web IDE" },
       { keys: ["g", "s"], description: "Navigate to Settings" },
     ],

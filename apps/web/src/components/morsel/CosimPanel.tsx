@@ -124,9 +124,9 @@ export function CosimPanel({
   }, [mqtt]);
 
   const isDark = colorMode === "dark";
-  const borderColor = isDark ? "#30363d" : "#d0d7de";
-  const bgColor = isDark ? "#161b22" : "#f6f8fa";
-  const textMuted = isDark ? "#8b949e" : "#57606a";
+  const borderColor = "var(--color-border-default, #30363d)";
+  const bgColor = "var(--color-canvas-subtle, #161b22)";
+  const textMuted = "var(--color-fg-muted, #8b949e)";
 
   return (
     <div
@@ -243,7 +243,7 @@ export function CosimPanel({
                   padding: 10,
                   borderRadius: 6,
                   border: `1px solid ${borderColor}`,
-                  background: isDark ? "#0d1117" : "#ffffff",
+                  background: "var(--color-canvas-default, #0d1117)",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -357,7 +357,7 @@ function ParticipantRow({
   onVariableSelected,
   textMuted,
   borderColor,
-  isDark,
+  isDark: _isDark,
 }: {
   meta: MqttParticipantMeta;
   expanded: boolean;
@@ -376,7 +376,7 @@ function ParticipantRow({
         border: `1px solid ${borderColor}`,
         borderRadius: 6,
         overflow: "hidden",
-        background: isDark ? "#0d1117" : "#ffffff",
+        background: "var(--color-canvas-default, #0d1117)",
       }}
     >
       {/* Participant header */}
@@ -392,7 +392,7 @@ function ParticipantRow({
           background: "transparent",
           cursor: "pointer",
           fontSize: 12,
-          color: isDark ? "#c9d1d9" : "#24292f",
+          color: "var(--color-fg-default, #c9d1d9)",
           textAlign: "left",
         }}
       >
@@ -401,7 +401,7 @@ function ParticipantRow({
             width: 6,
             height: 6,
             borderRadius: "50%",
-            backgroundColor: "#2da44e",
+            backgroundColor: "var(--color-success-fg, #2da44e)",
             flexShrink: 0,
           }}
         />
@@ -431,7 +431,7 @@ function ParticipantRow({
                     padding: "3px 10px 3px 24px",
                     cursor: onVariableSelected ? "pointer" : "default",
                     fontSize: 11,
-                    color: isDark ? "#c9d1d9" : "#24292f",
+                    color: "var(--color-fg-default, #c9d1d9)",
                   }}
                   title={`${v.causality}: ${v.name}`}
                 >
@@ -439,7 +439,10 @@ function ParticipantRow({
                     style={{
                       fontSize: 9,
                       fontWeight: 700,
-                      color: v.causality === "output" ? "#2da44e" : "#0969da",
+                      color:
+                        v.causality === "output"
+                          ? "var(--color-success-fg, #2da44e)"
+                          : "var(--color-accent-fg, #0969da)",
                       width: 14,
                       textAlign: "center",
                     }}

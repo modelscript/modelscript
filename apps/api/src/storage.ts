@@ -22,6 +22,10 @@ export class LibraryStorage {
     this.#dataDir = path.resolve(dataDir ?? DEFAULT_DATA_DIR);
   }
 
+  get dataDir(): string {
+    return this.#dataDir;
+  }
+
   /**
    * Check if a library version already exists.
    */
@@ -40,7 +44,12 @@ export class LibraryStorage {
     let names = fs
       .readdirSync(this.#dataDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .map((d) => d.name);
+      .map((d) => {
+        if (d.name.startsWith("@") && d.name.includes("__")) {
+          return "@" + d.name.slice(1).replace(/__/g, "/");
+        }
+        return d.name;
+      });
 
     if (query) {
       const lower = query.toLowerCase();
@@ -289,7 +298,7 @@ export class LibraryStorage {
       throw new Error("Invalid path component: expected string");
     }
     const normalized = val.startsWith("@") ? "@" + val.slice(1).replace(/[/\\]/g, "__") : val;
-    const clean = path.basename(normalized).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const clean = path.basename(normalized).replace(/[^@a-zA-Z0-9_.-]/g, "_");
     if (!clean || clean === "." || clean === "..") {
       throw new Error(`Invalid path component: ${val}`);
     }

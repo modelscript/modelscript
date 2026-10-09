@@ -1,7 +1,6 @@
 // name:     ArrayFieldSlice
 // keywords: array
 // status:   correct
-// xfail:    true
 //
 // Drmodelica: 7.4  Array Indexing operator (p. 216)
 //

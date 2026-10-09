@@ -6,13 +6,28 @@ import { extractStepAssembly } from "./assembly-extractor.js";
 import type { StepAssemblyModel } from "./physical-data.js";
 
 let occtPromise: Promise<any> | null = null;
+let nodeRequire: any = null;
+
+async function getNodeRequire(): Promise<any> {
+  if (!nodeRequire) {
+    try {
+      const nm = await import("node:module");
+      if (nm?.createRequire) {
+        nodeRequire = nm.createRequire(import.meta.url);
+      }
+    } catch {}
+  }
+  return nodeRequire;
+}
 
 function getOcct(serverDistBase: string | null = null): Promise<any> {
   if (!occtPromise) {
-    occtPromise = import("occt-import-js")
-      .then((mod) => {
+    occtPromise = (async () => {
+      try {
+        const mod = await import("occt-import-js");
         const init = mod.default || mod;
-        return (init as any)({
+        const req = await getNodeRequire();
+        return await (init as any)({
           locateFile: (path: string) => {
             if (path.endsWith(".wasm")) {
               if (serverDistBase) {
@@ -26,16 +41,21 @@ function getOcct(serverDistBase: string | null = null): Promise<any> {
               ) {
                 return new URL(path, self.location.href).href;
               }
+              if (req?.resolve) {
+                try {
+                  return req.resolve("occt-import-js/dist/" + path);
+                } catch {}
+              }
             }
             return path;
           },
         });
-      })
-      .catch((e) => {
+      } catch (e) {
         console.error("[StepWorkspaceIndex] Failed to load occt-import-js:", e);
         occtPromise = null;
         return null;
-      });
+      }
+    })();
   }
   return occtPromise;
 }
@@ -195,7 +215,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, _loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+  public reindexDocument(_uri: string, _loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
     this._version++;
   }
 

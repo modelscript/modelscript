@@ -20,6 +20,7 @@ describe("Polyglot CLI Command Suite (`msx polyglot`)", () => {
   const sampleMoPath = path.join(scratchDir, "DroneMotor.mo");
   const sampleSysmlPath = path.join(scratchDir, "FlightController.sysml");
   const sampleScadPath = path.join(scratchDir, "PropellerGuard.scad");
+  const sampleStepPath = path.join(scratchDir, "MotorChassis.step");
 
   fs.writeFileSync(
     sampleMoPath,
@@ -28,6 +29,9 @@ describe("Polyglot CLI Command Suite (`msx polyglot`)", () => {
   parameter Real maxRpm = 12000.0;
   Real voltage;
   Real current;
+  part motor: FlightControl::FlightController;
+  Real speed annotation(twin="FlightControl::FlightController::sampleRate");
+  part rotor annotation(CAD(uri="cad://MotorChassis.step", part="rotor_assembly"));
 equation
   torque = 0.05 * current;
 end DroneMotor;`,
@@ -41,8 +45,23 @@ end DroneMotor;`,
     attribute sampleRate: Real = 500.0;
     attribute isFailsafeActive: Boolean = false;
     port telemetryPort: Real;
+    attribute cadPart = "cad://MotorChassis.step#100";
   }
 }`,
+    "utf-8",
+  );
+
+  fs.writeFileSync(
+    sampleStepPath,
+    `ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#100 = PRODUCT('motor_chassis', 'Motor CAD Model', '', (#101));
+#200 = PRODUCT('rotor_assembly', 'Rotor CAD Part', '', (#201));
+ENDSEC;
+END-ISO-10303-21;
+`,
     "utf-8",
   );
 
@@ -175,6 +194,56 @@ PropellerGuard();`,
     assert.ok(stdout.includes("CAD (STEP):"));
     assert.ok(stdout.includes("Requirements:"));
     assert.ok(stdout.includes("SYNCHRONIZED"));
+  });
+
+  it("should query cross-domain symbol resolution and digital thread twins via `msx polyglot query`", () => {
+    const stdout = execFileSync(
+      tsxBin,
+      [cliPath, "polyglot", "query", "FlightControl::FlightController", `--workspace=${scratchDir}`],
+      { encoding: "utf-8", timeout: 60000 },
+    );
+    assert.ok(stdout.includes("Polyglot Cross-Language Symbol Query"));
+    assert.ok(stdout.includes("Resolved Symbol: FlightController (Definition)"));
+    assert.ok(stdout.includes("Language Domain: SysML v2"));
+    assert.ok(stdout.includes("Digital Thread Twins & Counterparts"));
+  });
+
+  it("should query cross-domain symbol and return JSON via `msx polyglot query --json`", () => {
+    const stdout = execFileSync(
+      tsxBin,
+      [cliPath, "polyglot", "query", "FlightControl::FlightController", `--workspace=${scratchDir}`, "--json"],
+      { encoding: "utf-8", timeout: 60000 },
+    );
+    const parsed = JSON.parse(stdout);
+    assert.strictEqual(parsed.target, "FlightControl::FlightController");
+    assert.strictEqual(parsed.resolved.name, "FlightController");
+    assert.strictEqual(parsed.resolved.domain, "SysML v2");
+    assert.ok(Array.isArray(parsed.twins));
+  });
+
+  it("should verify digital thread twin consistency and parity via `msx polyglot check-twins`", () => {
+    const stdout = execFileSync(tsxBin, [cliPath, "polyglot", "check-twins", `--workspace=${scratchDir}`], {
+      encoding: "utf-8",
+      timeout: 60000,
+    });
+    assert.ok(stdout.includes("Polyglot Digital Thread Twin & Parity Verification"));
+    assert.ok(stdout.includes("DroneMotor"));
+    assert.ok(stdout.includes("FlightController"));
+    assert.ok(stdout.includes("Summary:"));
+    assert.ok(stdout.includes("verified"));
+  });
+
+  it("should export unified polyglot symbol index into SQLite via `msx polyglot index`", () => {
+    const dbPath = path.join(scratchDir, "polyglot-salsa.db");
+    const stdout = execFileSync(
+      tsxBin,
+      [cliPath, "polyglot", "index", `--workspace=${scratchDir}`, `--out=${dbPath}`],
+      { encoding: "utf-8", timeout: 60000 },
+    );
+    assert.ok(stdout.includes("Polyglot Salsa Index Generation"));
+    assert.ok(stdout.includes("Exported SQLite database"));
+    assert.ok(fs.existsSync(dbPath));
+    assert.ok(fs.statSync(dbPath).size > 0);
   });
 
   // Clean up scratch dir

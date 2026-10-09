@@ -124,20 +124,91 @@ export async function extractZipToDir(buffer: Buffer, targetDir: string): Promis
 }
 
 /**
+ * Extract either package.json or package.mo from a zip buffer.
+ * Prefers package.json at root if available, otherwise package.mo.
+ */
+export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "json" | "mo"; content: string }> {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
+      if (err || !zipfile) {
+        reject(err ?? new Error("Failed to open zip file"));
+        return;
+      }
+
+      let bestJson: { depth: number; entry: yauzl.Entry } | null = null;
+      let bestMo: { depth: number; entry: yauzl.Entry } | null = null;
+
+      zipfile.readEntry();
+
+      zipfile.on("entry", (entry: yauzl.Entry) => {
+        const fileName = entry.fileName;
+        if (fileName.endsWith("/")) {
+          zipfile.readEntry();
+          return;
+        }
+
+        const segments = fileName.split("/").filter((s) => s.length > 0);
+        const baseName = segments[segments.length - 1];
+        const depth = segments.length;
+
+        if (baseName === "package.json") {
+          if (!bestJson || depth < bestJson.depth) {
+            bestJson = { depth, entry };
+          }
+        } else if (baseName === "package.mo") {
+          if (!bestMo || depth < bestMo.depth) {
+            bestMo = { depth, entry };
+          }
+        }
+
+        zipfile.readEntry();
+      });
+
+      zipfile.on("end", () => {
+        const target = bestJson ?? bestMo;
+        if (!target) {
+          reject(new Error("No package.json or package.mo file found in the zip archive"));
+          return;
+        }
+
+        const manifestType: "json" | "mo" = bestJson ? "json" : "mo";
+
+        zipfile.openReadStream(target.entry, (err, readStream) => {
+          if (err || !readStream) {
+            reject(err ?? new Error("Failed to read manifest from zip"));
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          readStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          readStream.on("end", () => {
+            resolve({ type: manifestType, content: Buffer.concat(chunks).toString("utf-8") });
+          });
+          readStream.on("error", reject);
+        });
+      });
+
+      zipfile.on("error", reject);
+    });
+  });
+}
+
+/**
  * Find the library root directory inside an extracted zip.
- * Looks for the shallowest `package.mo` file.
+ * Looks for the shallowest `package.json` or `package.mo` file.
  */
 export function findLibraryRoot(dir: string): string | null {
-  // Check if package.mo is directly in the directory
-  if (fs.existsSync(path.join(dir, "package.mo"))) {
+  // Check if package.json or package.mo is directly in the directory
+  if (fs.existsSync(path.join(dir, "package.json")) || fs.existsSync(path.join(dir, "package.mo"))) {
     return dir;
   }
 
   // Check one level deeper (common: zip contains a single top-level folder)
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      const candidate = path.join(dir, entry.name, "package.mo");
-      if (fs.existsSync(candidate)) {
+      const candidateJson = path.join(dir, entry.name, "package.json");
+      const candidateMo = path.join(dir, entry.name, "package.mo");
+      if (fs.existsSync(candidateJson) || fs.existsSync(candidateMo)) {
         return path.join(dir, entry.name);
       }
     }

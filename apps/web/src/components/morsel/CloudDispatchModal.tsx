@@ -193,8 +193,8 @@ export function CloudDispatchModal({
                 fontSize: "0.8rem",
                 padding: "2px 8px",
                 borderRadius: 12,
-                backgroundColor: "rgba(63, 185, 80, 0.15)",
-                color: "#3fb950",
+                backgroundColor: "var(--color-success-subtle, rgba(63, 185, 80, 0.15))",
+                color: "var(--color-success-fg, #3fb950)",
                 fontWeight: 600,
               }}
             >
@@ -212,7 +212,7 @@ export function CloudDispatchModal({
           </div>
         ) : (
           <>
-            <p style={{ margin: "0 0 12px 0", fontSize: "0.875rem", color: "#8b949e" }}>
+            <p style={{ margin: "0 0 12px 0", fontSize: "0.875rem", color: "var(--color-fg-muted, #8b949e)" }}>
               Offload <strong>{modelName || "active model"}</strong> to high-performance ephemeral cloud nodes with
               dedicated compute resources.
             </p>
@@ -239,8 +239,10 @@ export function CloudDispatchModal({
                     style={{
                       padding: 12,
                       borderRadius: 6,
-                      border: `1px solid ${isSelected ? "#388bfd" : "#30363d"}`,
-                      backgroundColor: isSelected ? "rgba(56, 139, 253, 0.1)" : "#161b22",
+                      border: `1px solid ${isSelected ? "var(--color-accent-emphasis, #388bfd)" : "var(--color-border-default, #30363d)"}`,
+                      backgroundColor: isSelected
+                        ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.1))"
+                        : "var(--color-canvas-subtle, #161b22)",
                       cursor: dispatching ? "not-allowed" : "pointer",
                       display: "flex",
                       flexDirection: "column",
@@ -248,10 +250,16 @@ export function CloudDispatchModal({
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: "0.9rem", color: isSelected ? "#58a6ff" : "inherit" }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "0.9rem",
+                          color: isSelected ? "var(--color-accent-fg, #58a6ff)" : "inherit",
+                        }}
+                      >
                         {p.name}
                       </div>
-                      <div style={{ fontSize: "0.75rem", color: "#8b949e", marginTop: 4 }}>
+                      <div style={{ fontSize: "0.75rem", color: "var(--color-fg-muted, #8b949e)", marginTop: 4 }}>
                         {p.cpus} vCPUs • {(p.memoryMb / 1024).toFixed(0)}GB RAM {p.gpus ? `• ${p.gpus}x GPU` : ""}
                       </div>
                     </div>
@@ -260,7 +268,7 @@ export function CloudDispatchModal({
                         alignSelf: "flex-end",
                         fontSize: "0.8rem",
                         fontWeight: 600,
-                        color: "#388bfd",
+                        color: "var(--color-accent-fg, #388bfd)",
                         marginTop: 8,
                       }}
                     >
@@ -276,8 +284,8 @@ export function CloudDispatchModal({
                 style={{
                   padding: 10,
                   borderRadius: 6,
-                  backgroundColor: "rgba(248, 81, 73, 0.15)",
-                  color: "#f85149",
+                  backgroundColor: "var(--color-danger-subtle, rgba(248, 81, 73, 0.15))",
+                  color: "var(--color-danger-fg, #f85149)",
                   fontSize: "0.85rem",
                   marginBottom: 12,
                 }}
@@ -299,8 +307,12 @@ export function CloudDispatchModal({
                       textTransform: "uppercase",
                       padding: "2px 6px",
                       borderRadius: 4,
-                      backgroundColor: status === "completed" ? "rgba(63, 185, 80, 0.2)" : "rgba(56, 139, 253, 0.2)",
-                      color: status === "completed" ? "#3fb950" : "#58a6ff",
+                      backgroundColor:
+                        status === "completed"
+                          ? "var(--color-success-subtle, rgba(63, 185, 80, 0.2))"
+                          : "var(--color-accent-subtle, rgba(56, 139, 253, 0.2))",
+                      color:
+                        status === "completed" ? "var(--color-success-fg, #3fb950)" : "var(--color-accent-fg, #58a6ff)",
                     }}
                   >
                     {status}
@@ -308,15 +320,15 @@ export function CloudDispatchModal({
                 </div>
                 <div
                   style={{
-                    backgroundColor: "#0d1117",
-                    border: "1px solid #30363d",
+                    backgroundColor: "var(--color-canvas-subtle, #161b22)",
+                    border: "1px solid var(--color-border-default, #30363d)",
                     borderRadius: 6,
                     padding: 8,
                     height: 140,
                     overflowY: "auto",
-                    fontFamily: "monospace",
+                    fontFamily: "var(--font-mono, monospace)",
                     fontSize: "0.75rem",
-                    color: "#c9d1d9",
+                    color: "var(--color-fg-default, #c9d1d9)",
                     whiteSpace: "pre-wrap",
                   }}
                 >

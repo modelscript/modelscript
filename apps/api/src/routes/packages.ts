@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Request, Response, Router } from "express";
+import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,7 +14,7 @@ import {
   VariantResolver,
 } from "@modelscript/exchange";
 import type { LibraryDatabase } from "../database.js";
-import type { JobQueue } from "../jobs.js";
+import type { JobQueue, JobStatus } from "../jobs.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
 import type { LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
@@ -160,6 +160,22 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     return { name: decodeURIComponent(rawName ?? ""), version: rawVersion ?? "" };
   }
 
+  function isScopeInvalid(req: Request): boolean {
+    if (req.params["scope"] && !String(req.params["scope"]).startsWith("@")) {
+      return true;
+    }
+    const versionStr = req.params["version"] ? String(req.params["version"]) : "";
+    if (
+      versionStr === "download" ||
+      versionStr === "salsa-index.db" ||
+      versionStr === "memos" ||
+      versionStr === "lsp-bundle"
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   /**
    * GET /api/v1/libraries
    *
@@ -193,40 +209,6 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       };
     });
     res.json({ packages });
-  });
-
-  /**
-   * GET /api/v1/libraries/:name
-   *
-   * List all versions for a given package, sorted descending by semver.
-   */
-  router.get("/:name", async (req: Request, res: Response): Promise<void> => {
-    const name = req.params["name"];
-    if (typeof name !== "string" || !isValidPackageName(name)) {
-      res.status(400).json({ error: "Package name is required" });
-      return;
-    }
-
-    const versions = storage.versions(name);
-    if (versions.length === 0) {
-      // FEDERATION: Proxy list from upstream
-      try {
-        const upstreamUrl = safeUpstreamUrl(`/api/v1/libraries/${encodeURIComponent(name)}`);
-        const upstreamRes = await fetch(upstreamUrl.toString());
-        if (upstreamRes.ok) {
-          const data = await upstreamRes.json();
-          res.json(data);
-          return;
-        }
-      } catch {
-        // Fall through
-      }
-
-      res.status(404).json({ error: `Package "${name}" not found` });
-      return;
-    }
-
-    res.json({ name, versions });
   });
 
   /**
@@ -282,12 +264,49 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   });
 
   /**
+   * GET /api/v1/libraries/:name
+   * GET /api/v1/libraries/:scope/:name
+   *
+   * List all versions for a given package, sorted descending by semver.
+   */
+  router.get(["/:name", "/:scope/:name"], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (isScopeInvalid(req)) return next();
+    const { name } = extractPkgAndVersion(req);
+    if (typeof name !== "string" || !isValidPackageName(name)) {
+      res.status(400).json({ error: "Package name is required" });
+      return;
+    }
+
+    const versions = storage.versions(name);
+    if (versions.length === 0) {
+      // FEDERATION: Proxy list from upstream
+      try {
+        const upstreamUrl = safeUpstreamUrl(`/api/v1/libraries/${encodeURIComponent(name)}`);
+        const upstreamRes = await fetch(upstreamUrl.toString());
+        if (upstreamRes.ok) {
+          const data = await upstreamRes.json();
+          res.json(data);
+          return;
+        }
+      } catch {
+        // Fall through
+      }
+
+      res.status(404).json({ error: `Package "${name}" not found` });
+      return;
+    }
+
+    res.json({ name, versions });
+  });
+
+  /**
    * GET /api/v1/libraries/:name/stats
    * GET /api/v1/libraries/:scope/:name/stats
    *
    * Retrieve aggregated download stats and daily trajectory for a package.
    */
-  router.get(["/:name/stats", "/:scope/:name/stats"], (req: Request, res: Response): void => {
+  router.get(["/:name/stats", "/:scope/:name/stats"], (req: Request, res: Response, next: NextFunction): void => {
+    if (isScopeInvalid(req)) return next();
     const { name } = extractPkgAndVersion(req);
     const days = Number(req.query["days"]) || 30;
 
@@ -301,21 +320,46 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   });
 
   /**
+   * GET /api/v1/libraries/:name/dependents
+   * GET /api/v1/libraries/:scope/:name/dependents
+   *
+   * Retrieve packages that depend on this library.
+   */
+  router.get(
+    ["/:name/dependents", "/:scope/:name/dependents"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name } = extractPkgAndVersion(req);
+      if (!name || !isValidPackageName(name)) {
+        res.status(400).json({ error: "Valid package name is required" });
+        return;
+      }
+
+      const dependents = database.getReverseDependencies(name);
+      res.json({ name, count: dependents.length, dependents });
+    },
+  );
+
+  /**
    * GET /api/v1/libraries/:name/collaborators
    * GET /api/v1/libraries/:scope/:name/collaborators
    *
    * List all registered collaborators for a package.
    */
-  router.get(["/:name/collaborators", "/:scope/:name/collaborators"], (req: Request, res: Response): void => {
-    const { name } = extractPkgAndVersion(req);
-    if (!name || !isValidPackageName(name)) {
-      res.status(400).json({ error: "Valid package name is required" });
-      return;
-    }
+  router.get(
+    ["/:name/collaborators", "/:scope/:name/collaborators"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name } = extractPkgAndVersion(req);
+      if (!name || !isValidPackageName(name)) {
+        res.status(400).json({ error: "Valid package name is required" });
+        return;
+      }
 
-    const collaborators = database.getPackageCollaborators(name);
-    res.json({ package: name, collaborators });
-  });
+      const collaborators = database.getPackageCollaborators(name);
+      res.json({ package: name, collaborators });
+    },
+  );
 
   /**
    * POST /api/v1/libraries/:name/collaborators
@@ -327,7 +371,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.post(
     ["/:name/collaborators", "/:scope/:name/collaborators"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name } = extractPkgAndVersion(req);
       if (!name || !isValidPackageName(name)) {
         res.status(400).json({ error: "Valid package name is required" });
@@ -370,7 +415,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.delete(
     ["/:name/collaborators/:userId", "/:scope/:name/collaborators/:userId"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name } = extractPkgAndVersion(req);
       const targetUserId = Number(req.params["userId"]);
 
@@ -396,237 +442,255 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
   /**
    * GET /api/v1/libraries/:name/:version
+   * GET /api/v1/libraries/:scope/:name/:version
    *
    * Get details for a specific package version, including metadata parsed
    * from the zip's package.mo file.
    */
-  router.get("/:name/:version", async (req: Request, res: Response): Promise<void> => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version", "/:scope/:name/:version"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string" || !isValidPackageName(name)) {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
-
-    if (!semver.valid(version)) {
-      res.status(400).json({ error: `Invalid semantic version: "${version}"` });
-      return;
-    }
-
-    const file = storage.read(name, version);
-    if (!file) {
-      // FEDERATION: Proxy metadata from upstream
-      try {
-        const upstreamUrl = safeUpstreamUrl(
-          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
-        );
-        const upstreamRes = await fetch(upstreamUrl.toString());
-        if (upstreamRes.ok) {
-          const data = await upstreamRes.json();
-          res.json(data);
-          return;
-        }
-      } catch {
-        // Fall through
+      if (typeof name !== "string" || typeof version !== "string" || !isValidPackageName(name)) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
       }
 
-      res.status(404).json({ error: `Package "${name}@${version}" not found` });
-      return;
-    }
+      if (!semver.valid(version)) {
+        res.status(400).json({ error: `Invalid semantic version: "${version}"` });
+        return;
+      }
 
-    const release = database.getLibraryRelease(name, version);
-    const contentHash = release?.content_hash || storage.getContentHash(name, version);
-
-    try {
-      const packageMoContent = await extractPackageMoFromZip(file.buffer);
-      const parsed = parsePackageMo(packageMoContent);
-
-      res.json({
-        name,
-        version,
-        description: parsed.description,
-        modelicaVersion: parsed.version,
-        size: file.size,
-        contentHash: contentHash || undefined,
-        signature: release?.signature ?? undefined,
-        publishedAt: release?.published_at ?? undefined,
-        isDeprecated: Boolean(release?.is_deprecated),
-        deprecationReason: release?.deprecation_reason ?? null,
-        isYanked: Boolean(release?.is_yanked),
-        yankReason: release?.yank_reason ?? null,
-        yankedAt: release?.yanked_at ?? null,
-      });
-    } catch {
-      // If we cannot parse the zip, still return basic info
-      res.json({
-        name,
-        version,
-        description: null,
-        modelicaVersion: null,
-        size: file.size,
-        contentHash: contentHash || undefined,
-        signature: release?.signature ?? undefined,
-        publishedAt: release?.published_at ?? undefined,
-        isDeprecated: Boolean(release?.is_deprecated),
-        deprecationReason: release?.deprecation_reason ?? null,
-        isYanked: Boolean(release?.is_yanked),
-        yankReason: release?.yank_reason ?? null,
-        yankedAt: release?.yanked_at ?? null,
-      });
-    }
-  });
-
-  /**
-   * GET /api/v1/libraries/:name/:version/files
-   *
-   * Get all .mo files extracted for a specific package version.
-   * This allows the LSP to download all source files without a zip.
-   */
-  router.get("/:name/:version/files", async (req: Request, res: Response): Promise<void> => {
-    const name = req.params["name"];
-    const version = req.params["version"];
-    const isStream = req.query["stream"] === "true";
-
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
-
-    const extractedDir = storage.getExtractedPath(name, version);
-    if (!fs.existsSync(extractedDir)) {
-      // FEDERATION: Proxy from upstream
-      try {
-        const upstreamUrl = safeUpstreamUrl(
-          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/files${isStream ? "?stream=true" : ""}`,
-        );
-
-        const upstreamRes = await fetch(upstreamUrl.toString());
-        if (upstreamRes.ok) {
-          if (isStream && upstreamRes.body) {
-            res.setHeader("Content-Type", "application/x-ndjson");
-            const { Readable } = await import("node:stream");
-            Readable.fromWeb(upstreamRes.body as import("stream/web").ReadableStream).pipe(res);
-            return;
-          } else {
+      const file = storage.read(name, version);
+      if (!file) {
+        // FEDERATION: Proxy metadata from upstream
+        try {
+          const upstreamUrl = safeUpstreamUrl(
+            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`,
+          );
+          const upstreamRes = await fetch(upstreamUrl.toString());
+          if (upstreamRes.ok) {
             const data = await upstreamRes.json();
             res.json(data);
             return;
           }
+        } catch {
+          // Fall through
         }
-      } catch {
-        // Fall through
+
+        res.status(404).json({ error: `Package "${name}@${version}" not found` });
+        return;
       }
 
-      res.status(404).json({ error: "Library not extracted" });
-      return;
-    }
+      const release = database.getLibraryRelease(name, version);
+      const contentHash = release?.content_hash || storage.getContentHash(name, version);
 
-    if (isStream) {
-      res.setHeader("Content-Type", "application/x-ndjson");
-      walkDir(extractedDir, (relPath, content) => {
-        if (relPath.endsWith(".mo")) {
-          res.write(JSON.stringify({ [relPath]: content }) + "\n");
+      try {
+        const packageMoContent = await extractPackageMoFromZip(file.buffer);
+        const parsed = parsePackageMo(packageMoContent);
+
+        res.json({
+          name,
+          version,
+          description: parsed.description,
+          modelicaVersion: parsed.version,
+          size: file.size,
+          contentHash: contentHash || undefined,
+          signature: release?.signature ?? undefined,
+          publishedAt: release?.published_at ?? undefined,
+          isDeprecated: Boolean(release?.is_deprecated),
+          deprecationReason: release?.deprecation_reason ?? null,
+          isYanked: Boolean(release?.is_yanked),
+          yankReason: release?.yank_reason ?? null,
+          yankedAt: release?.yanked_at ?? null,
+        });
+      } catch {
+        // If we cannot parse the zip, still return basic info
+        res.json({
+          name,
+          version,
+          description: null,
+          modelicaVersion: null,
+          size: file.size,
+          contentHash: contentHash || undefined,
+          signature: release?.signature ?? undefined,
+          publishedAt: release?.published_at ?? undefined,
+          isDeprecated: Boolean(release?.is_deprecated),
+          deprecationReason: release?.deprecation_reason ?? null,
+          isYanked: Boolean(release?.is_yanked),
+          yankReason: release?.yank_reason ?? null,
+          yankedAt: release?.yanked_at ?? null,
+        });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/files
+   * GET /api/v1/libraries/:scope/:name/:version/files
+   *
+   * Get all .mo files extracted for a specific package version.
+   * This allows the LSP to download all source files without a zip.
+   */
+  router.get(
+    ["/:name/:version/files", "/:scope/:name/:version/files"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const isStream = req.query["stream"] === "true";
+
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      const extractedDir = storage.getExtractedPath(name, version);
+      if (!fs.existsSync(extractedDir)) {
+        // FEDERATION: Proxy from upstream
+        try {
+          const upstreamUrl = safeUpstreamUrl(
+            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/files${isStream ? "?stream=true" : ""}`,
+          );
+
+          const upstreamRes = await fetch(upstreamUrl.toString());
+          if (upstreamRes.ok) {
+            if (isStream && upstreamRes.body) {
+              res.setHeader("Content-Type", "application/x-ndjson");
+              const { Readable } = await import("node:stream");
+              Readable.fromWeb(upstreamRes.body as import("stream/web").ReadableStream).pipe(res);
+              return;
+            } else {
+              const data = await upstreamRes.json();
+              res.json(data);
+              return;
+            }
+          }
+        } catch {
+          // Fall through
         }
-      });
-      res.end();
-    } else {
-      const files: Record<string, string> = {};
-      walkDir(extractedDir, (relPath, content) => {
-        if (relPath.endsWith(".mo")) {
-          files[relPath] = content;
-        }
-      });
-      res.json({ name, version, files });
-    }
-  });
+
+        res.status(404).json({ error: "Library not extracted" });
+        return;
+      }
+
+      if (isStream) {
+        res.setHeader("Content-Type", "application/x-ndjson");
+        walkDir(extractedDir, (relPath, content) => {
+          if (relPath.endsWith(".mo")) {
+            res.write(JSON.stringify({ [relPath]: content }) + "\n");
+          }
+        });
+        res.end();
+      } else {
+        const files: Record<string, string> = {};
+        walkDir(extractedDir, (relPath, content) => {
+          if (relPath.endsWith(".mo")) {
+            files[relPath] = content;
+          }
+        });
+        res.json({ name, version, files });
+      }
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/download
+   * GET /api/v1/libraries/:scope/:name/:version/download
    *
    * Download the zip file for a specific package version.
    */
-  router.get("/:name/:version/download", async (req: Request, res: Response): Promise<void> => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version/download", "/:scope/:name/:version/download"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
 
-    if (!semver.valid(version)) {
-      res.status(400).json({ error: `Invalid semantic version: "${version}"` });
-      return;
-    }
+      if (!semver.valid(version)) {
+        res.status(400).json({ error: `Invalid semantic version: "${version}"` });
+        return;
+      }
 
-    const file = storage.read(name, version);
-    if (!file) {
-      // FEDERATION: Proxy download from upstream and cache it
-      try {
-        const upstreamUrl = safeUpstreamUrl(
-          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`,
-        );
-        const upstreamRes = await fetch(upstreamUrl.toString());
-        if (upstreamRes.ok) {
-          const buffer = await upstreamRes.arrayBuffer();
-          const nodeBuffer = Buffer.from(buffer);
+      const file = storage.read(name, version);
+      if (!file) {
+        // FEDERATION: Proxy download from upstream and cache it
+        try {
+          const upstreamUrl = safeUpstreamUrl(
+            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`,
+          );
+          const upstreamRes = await fetch(upstreamUrl.toString());
+          if (upstreamRes.ok) {
+            const buffer = await upstreamRes.arrayBuffer();
+            const nodeBuffer = Buffer.from(buffer);
 
-          // Cache locally
-          try {
-            await storage.store(name, version, nodeBuffer);
-            // Also extract and compile locally for index parity
-            const libraryPath = await storage.extractLibrary(name, version);
-            const { fileURLToPath } = await import("node:url");
-            const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-            const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
-            jobQueue.enqueueProcess(`${name}@${version}`, workerScript, { name, version, libraryPath });
-          } catch {
-            // Ignore if it already exists or fails
+            // Cache locally
+            try {
+              await storage.store(name, version, nodeBuffer);
+              // Also extract and compile locally for index parity
+              const libraryPath = await storage.extractLibrary(name, version);
+              const { fileURLToPath } = await import("node:url");
+              const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+              const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+              jobQueue.enqueueProcess(`${name}@${version}`, workerScript, {
+                name,
+                version,
+                libraryPath,
+                storageDir: storage.dataDir,
+                dbDir: database.dbDir,
+              });
+            } catch {
+              // Ignore if it already exists or fails
+            }
+
+            res.setHeader("Content-Type", "application/zip");
+            res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
+            res.setHeader("Content-Length", nodeBuffer.length);
+            res.send(nodeBuffer);
+            return;
           }
-
-          res.setHeader("Content-Type", "application/zip");
-          res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
-          res.setHeader("Content-Length", nodeBuffer.length);
-          res.send(nodeBuffer);
-          return;
+        } catch {
+          // Fall through
         }
-      } catch {
-        // Fall through
+
+        res.status(404).json({ error: `Package "${name}@${version}" not found` });
+        return;
       }
 
-      res.status(404).json({ error: `Package "${name}@${version}" not found` });
-      return;
-    }
-
-    const release = database.getLibraryRelease(name, version);
-    if (release?.is_yanked && req.query["allowYanked"] !== "true") {
-      res.status(410).json({
-        error: `Package release "${name}@${version}" has been yanked: ${release.yank_reason || "No reason provided"}`,
-        isYanked: true,
-        yankReason: release.yank_reason ?? null,
-        yankedAt: release.yanked_at ?? null,
-      });
-      return;
-    }
-
-    // Record download event for analytics
-    database.recordPackageDownload(name, version);
-
-    const contentHash = release?.content_hash || storage.getContentHash(name, version);
-    if (contentHash) {
-      res.setHeader("ETag", `"${contentHash}"`);
-      res.setHeader("X-Content-SHA256", contentHash);
-      if (release?.signature) {
-        res.setHeader("X-Package-Signature", release.signature);
+      const release = database.getLibraryRelease(name, version);
+      if (release?.is_yanked && req.query["allowYanked"] !== "true") {
+        res.status(410).json({
+          error: `Package release "${name}@${version}" has been yanked: ${release.yank_reason || "No reason provided"}`,
+          isYanked: true,
+          yankReason: release.yank_reason ?? null,
+          yankedAt: release.yanked_at ?? null,
+        });
+        return;
       }
-    }
 
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
-    res.setHeader("Content-Length", file.size);
-    res.send(file.buffer);
-  });
+      // Record download event for analytics
+      database.recordPackageDownload(name, version);
+
+      const contentHash = release?.content_hash || storage.getContentHash(name, version);
+      if (contentHash) {
+        res.setHeader("ETag", `"${contentHash}"`);
+        res.setHeader("X-Content-SHA256", contentHash);
+        if (release?.signature) {
+          res.setHeader("X-Package-Signature", release.signature);
+        }
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
+      res.setHeader("Content-Length", file.size);
+      res.send(file.buffer);
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/manifest
@@ -636,7 +700,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    */
   router.get(
     ["/:name/:version/manifest", "/:scope/:name/:version/manifest"],
-    async (req: Request, res: Response): Promise<void> => {
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
       const lens = (req.query["lens"] as string) || "npm";
       const variant = req.query["variant"] as string | undefined;
@@ -673,7 +738,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    */
   router.get(
     ["/:name/:version/export/aasx", "/:scope/:name/:version/export/aasx"],
-    async (req: Request, res: Response): Promise<void> => {
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
       const variant = req.query["variant"] as string | undefined;
 
@@ -731,7 +797,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    */
   router.get(
     ["/:name/:version/export/okh", "/:scope/:name/:version/export/okh"],
-    async (req: Request, res: Response): Promise<void> => {
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
       const variant = req.query["variant"] as string | undefined;
 
@@ -753,338 +820,457 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
   /**
    * GET /api/v1/libraries/:name/:version/lsp-bundle
+   * GET /api/v1/libraries/:scope/:name/:version/lsp-bundle
    *
    * Download the optimized pre-computed bundle for the LSP client.
    * Includes index.json, icons.json, and all .mo source files.
    */
-  router.get("/:name/:version/lsp-bundle", async (req: Request, res: Response): Promise<void> => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version/lsp-bundle", "/:scope/:name/:version/lsp-bundle"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
-
-    const indexPath = storage.getIndexPath(name, version);
-    const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
-
-    if (!fs.existsSync(bundlePath)) {
-      // FEDERATION: Proxy download from upstream and cache it
-      try {
-        const upstreamUrl = safeUpstreamUrl(
-          `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/lsp-bundle`,
-        );
-        const upstreamRes = await fetch(upstreamUrl.toString());
-        if (upstreamRes.ok) {
-          const buffer = await upstreamRes.arrayBuffer();
-          const nodeBuffer = Buffer.from(buffer);
-
-          // We can optionally cache this bundle locally to serve subsequent requests faster
-          fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
-          fs.writeFileSync(bundlePath, nodeBuffer);
-
-          res.setHeader("Content-Type", "application/zip");
-          res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
-          res.setHeader("Content-Length", nodeBuffer.length);
-          res.send(nodeBuffer);
-          return;
-        }
-      } catch {
-        // Fall through
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
       }
 
-      res.status(404).json({ error: `LSP bundle not found for "${name}@${version}"` });
-      return;
-    }
+      const indexPath = storage.getIndexPath(name, version);
+      const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
 
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
-    res.sendFile(path.resolve(bundlePath));
-  });
+      if (!fs.existsSync(bundlePath)) {
+        // FEDERATION: Proxy download from upstream and cache it
+        try {
+          const upstreamUrl = safeUpstreamUrl(
+            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/lsp-bundle`,
+          );
+          const upstreamRes = await fetch(upstreamUrl.toString());
+          if (upstreamRes.ok) {
+            const buffer = await upstreamRes.arrayBuffer();
+            const nodeBuffer = Buffer.from(buffer);
+
+            // We can optionally cache this bundle locally to serve subsequent requests faster
+            fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
+            fs.writeFileSync(bundlePath, nodeBuffer);
+
+            res.setHeader("Content-Type", "application/zip");
+            res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
+            res.setHeader("Content-Length", nodeBuffer.length);
+            res.send(nodeBuffer);
+            return;
+          }
+        } catch {
+          // Fall through
+        }
+
+        res.status(404).json({ error: `LSP bundle not found for "${name}@${version}"` });
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
+      res.sendFile(path.resolve(bundlePath));
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/salsa-index.db
+   * GET /api/v1/libraries/:scope/:name/:version/salsa-index.db
    *
    * Download the pre-computed Salsa query engine SQLite index for the package.
    */
-  router.get("/:name/:version/salsa-index.db", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version/salsa-index.db", "/:scope/:name/:version/salsa-index.db"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
 
-    const indexPath = storage.getIndexPath(name, version);
-    if (!fs.existsSync(indexPath)) {
-      res.status(404).json({ error: `Salsa index not found for "${name}@${version}"` });
-      return;
-    }
+      const indexPath = storage.getIndexPath(name, version);
+      if (!fs.existsSync(indexPath)) {
+        res.status(404).json({ error: `Salsa index not found for "${name}@${version}"` });
+        return;
+      }
 
-    res.setHeader("Content-Type", "application/vnd.sqlite3");
-    res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-salsa-index.db"`);
-    res.sendFile(path.resolve(indexPath));
-  });
+      res.setHeader("Content-Type", "application/vnd.sqlite3");
+      res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-salsa-index.db"`);
+      res.sendFile(path.resolve(indexPath));
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/memos
+   * GET /api/v1/libraries/:scope/:name/:version/memos
    *
    * Federated API: Query specific memoized keys from the pre-computed salsa-index.db.
    * Query params: `keys` (comma-separated string of memo keys).
    */
-  router.get("/:name/:version/memos", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
-    const keysParam = req.query["keys"];
+  router.get(
+    ["/:name/:version/memos", "/:scope/:name/:version/memos"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const keysParam = req.query["keys"];
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
-
-    if (typeof keysParam !== "string" || !keysParam) {
-      res.status(400).json({ error: "Missing 'keys' query parameter" });
-      return;
-    }
-
-    const indexPath = storage.getIndexPath(name, version);
-    if (!fs.existsSync(indexPath)) {
-      res.status(404).json({ error: `Salsa index not found for "${name}@${version}"` });
-      return;
-    }
-
-    const keys = keysParam.split(",");
-    const result: Record<string, unknown> = {};
-
-    try {
-      // Import dynamically to avoid top-level better-sqlite3 requirement if not needed
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Database = require("better-sqlite3");
-      const db = new Database(indexPath, { readonly: true });
-      try {
-        if (keys.length > 0) {
-          const placeholders = keys.map(() => "?").join(",");
-          const stmt = db.prepare(`SELECT key, data FROM memos WHERE key IN (${placeholders})`);
-          const rows = stmt.all(...keys) as { key: string; data: string }[];
-
-          for (const row of rows) {
-            result[row.key] = JSON.parse(row.data);
-          }
-        }
-      } finally {
-        db.close();
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
       }
-      res.json({ memos: result });
-    } catch {
-      res.status(500).json({ error: "Failed to read salsa index" });
-    }
-  });
+
+      if (typeof keysParam !== "string" || !keysParam) {
+        res.status(400).json({ error: "Missing 'keys' query parameter" });
+        return;
+      }
+
+      const indexPath = storage.getIndexPath(name, version);
+      if (!fs.existsSync(indexPath)) {
+        res.status(404).json({ error: `Salsa index not found for "${name}@${version}"` });
+        return;
+      }
+
+      const keys = String(keysParam).split(",");
+      const result: Record<string, unknown> = {};
+
+      try {
+        // Import dynamically to avoid top-level better-sqlite3 requirement if not needed
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Database = require("better-sqlite3");
+        const db = new Database(indexPath, { readonly: true });
+        try {
+          if (keys.length > 0) {
+            const placeholders = keys.map(() => "?").join(",");
+            const stmt = db.prepare(`SELECT key, data FROM memos WHERE key IN (${placeholders})`);
+            const rows = stmt.all(...keys) as { key: string; data: string }[];
+
+            for (const row of rows) {
+              result[row.key] = JSON.parse(row.data);
+            }
+          }
+        } finally {
+          db.close();
+        }
+        res.json({ memos: result });
+      } catch {
+        res.status(500).json({ error: "Failed to read salsa index" });
+      }
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/status
+   * GET /api/v1/libraries/:scope/:name/:version/status
    *
    * Check the SVG generation job status for a library version.
    */
-  router.get("/:name/:version/status", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version/status", "/:scope/:name/:version/status"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
 
-    const jobKey = `${name}@${version}`;
-    const status = jobQueue.getStatus(jobKey);
+      const jobKey = `${name}@${version}`;
+      const status = jobQueue.getStatus(jobKey);
 
-    if (!status) {
-      res.status(404).json({ error: `No job found for "${jobKey}"` });
-      return;
-    }
+      if (!status) {
+        res.status(404).json({ error: `No job found for "${jobKey}"` });
+        return;
+      }
 
-    res.json({ name, version, ...status });
-  });
+      res.json({ name, version, ...status });
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/logs/stream
+   * GET /api/v1/libraries/:scope/:name/:version/logs/stream
+   *
+   * Real-time Server-Sent Events (SSE) stream for job processing logs and status updates.
+   */
+  router.get(
+    ["/:name/:version/logs/stream", "/:scope/:name/:version/logs/stream"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      const jobKey = `${name}@${version}`;
+      const initial = jobQueue.getStatus(jobKey);
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      if (typeof (res as any).flushHeaders === "function") {
+        (res as any).flushHeaders();
+      }
+
+      // Send initial snapshot
+      const payload = {
+        status: initial?.status ?? "pending",
+        logs: initial?.logs ?? [],
+        classesProcessed: initial?.classesProcessed ?? 0,
+        error: initial?.error,
+      };
+      res.write(`event: init\ndata: ${JSON.stringify(payload)}\n\n`);
+
+      // If job is already complete or failed, close after sending initial state
+      if (initial?.status === "completed" || initial?.status === "failed") {
+        setTimeout(() => {
+          if (!res.writableEnded) res.end();
+        }, 100);
+        return;
+      }
+
+      const onLog = (line: string) => {
+        if (!res.writableEnded) {
+          res.write(`event: log\ndata: ${JSON.stringify({ line })}\n\n`);
+        }
+      };
+
+      const onProgress = (classesProcessed: number) => {
+        if (!res.writableEnded) {
+          res.write(`event: progress\ndata: ${JSON.stringify({ classesProcessed })}\n\n`);
+        }
+      };
+
+      const onStatus = (statusData: { status: JobStatus; error?: string }) => {
+        if (!res.writableEnded) {
+          res.write(`event: status\ndata: ${JSON.stringify(statusData)}\n\n`);
+          if (statusData.status === "completed" || statusData.status === "failed") {
+            setTimeout(() => {
+              if (!res.writableEnded) res.end();
+            }, 200);
+          }
+        }
+      };
+
+      jobQueue.on(`log:${jobKey}`, onLog);
+      jobQueue.on(`progress:${jobKey}`, onProgress);
+      jobQueue.on(`status:${jobKey}`, onStatus);
+
+      req.on("close", () => {
+        jobQueue.off(`log:${jobKey}`, onLog);
+        jobQueue.off(`progress:${jobKey}`, onProgress);
+        jobQueue.off(`status:${jobKey}`, onStatus);
+      });
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/classes
+   * GET /api/v1/libraries/:scope/:name/:version/classes
    *
    * List all classes for a library version. Supports optional
    * `?kind=` and `?q=` query parameters for filtering.
    */
-  router.get("/:name/:version/classes", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version/classes", "/:scope/:name/:version/classes"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
 
-    const kind = typeof req.query["kind"] === "string" ? req.query["kind"] : undefined;
-    const q = typeof req.query["q"] === "string" ? req.query["q"] : undefined;
+      const kind = typeof req.query["kind"] === "string" ? req.query["kind"] : undefined;
+      const q = typeof req.query["q"] === "string" ? req.query["q"] : undefined;
 
-    const classes = database.getClasses(name, version, { kind, q });
-    res.json({ name, version, classes });
-  });
+      const classes = database.getClasses(name, version, { kind, q });
+      res.json({ name, version, classes });
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/classes/:className
+   * GET /api/v1/libraries/:scope/:name/:version/classes/:className
    *
    * Get details for a specific class, including extends and components.
    */
-  router.get("/:name/:version/classes/:className", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
-    const className = req.params["className"];
+  router.get(
+    ["/:name/:version/classes/:className", "/:scope/:name/:version/classes/:className"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const className = req.params["className"];
 
-    if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
-      res.status(400).json({ error: "Package name, version, and class name are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
+        res.status(400).json({ error: "Package name, version, and class name are required" });
+        return;
+      }
 
-    const cls = database.getClass(name, version, className);
-    if (!cls) {
-      res.status(404).json({ error: `Class "${className}" not found in ${name}@${version}` });
-      return;
-    }
+      const cls = database.getClass(name, version, className);
+      if (!cls) {
+        res.status(404).json({ error: `Class "${className}" not found in ${name}@${version}` });
+        return;
+      }
 
-    res.json({ name, version, className, ...cls });
-  });
+      res.json({ name, version, className, ...cls });
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/classes/:className/icon.svg
+   * GET /api/v1/libraries/:scope/:name/:version/classes/:className/icon.svg
    *
    * Serve the icon SVG for a specific class.
    */
-  router.get("/:name/:version/classes/:className/icon.svg", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
-    const className = req.params["className"];
+  router.get(
+    ["/:name/:version/classes/:className/icon.svg", "/:scope/:name/:version/classes/:className/icon.svg"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const className = req.params["className"];
 
-    if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
-      res.status(400).json({ error: "Package name, version, and class name are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
+        res.status(400).json({ error: "Package name, version, and class name are required" });
+        return;
+      }
 
-    const svg = storage.readSvg(name, version, className, "icon");
-    if (!svg) {
-      res.status(204).end();
-      return;
-    }
+      const svg = storage.readSvg(name, version, className, "icon");
+      if (!svg) {
+        res.status(204).end();
+        return;
+      }
 
-    // Return 404 if the icon has no meaningful visual content
-    const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
-    if (!hasVisual) {
-      res.status(204).end();
-      return;
-    }
+      // Return 404 if the icon has no meaningful visual content
+      const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
+      if (!hasVisual) {
+        res.status(204).end();
+        return;
+      }
 
-    res.setHeader("Content-Type", "image/svg+xml");
-    res.send(svg);
-  });
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.send(svg);
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/icons
+   * GET /api/v1/libraries/:scope/:name/:version/icons
    *
    * Serve all icon SVGs as a JSON map { className: svgString }.
    * Used by the LSP to bulk-populate the icon cache when lsp-bundle is unavailable.
    */
-  router.get("/:name/:version/icons", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
+  router.get(
+    ["/:name/:version/icons", "/:scope/:name/:version/icons"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
 
-    if (typeof name !== "string" || typeof version !== "string") {
-      res.status(400).json({ error: "Package name and version are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string") {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
 
-    const classNames = storage.listClasses(name, version);
-    const icons: Record<string, string> = {};
+      const classNames = storage.listClasses(name, version);
+      const icons: Record<string, string> = {};
 
-    for (const className of classNames) {
-      const svg = storage.readSvg(name, version, className, "icon");
-      if (svg) {
-        const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
-        if (hasVisual) {
-          icons[className] = svg;
+      for (const className of classNames) {
+        const svg = storage.readSvg(name, version, className, "icon");
+        if (svg) {
+          const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
+          if (hasVisual) {
+            icons[className] = svg;
+          }
         }
       }
-    }
 
-    res.json({ icons });
-  });
+      res.json({ icons });
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/classes/:className/diagram.svg
+   * GET /api/v1/libraries/:scope/:name/:version/classes/:className/diagram.svg
    *
    * Serve the diagram SVG for a specific class.
    */
-  router.get("/:name/:version/classes/:className/diagram.svg", (req: Request, res: Response): void => {
-    const name = req.params["name"];
-    const version = req.params["version"];
-    const className = req.params["className"];
+  router.get(
+    ["/:name/:version/classes/:className/diagram.svg", "/:scope/:name/:version/classes/:className/diagram.svg"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const className = req.params["className"];
 
-    if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
-      res.status(400).json({ error: "Package name, version, and class name are required" });
-      return;
-    }
+      if (typeof name !== "string" || typeof version !== "string" || typeof className !== "string") {
+        res.status(400).json({ error: "Package name, version, and class name are required" });
+        return;
+      }
 
-    const svg = storage.readSvg(name, version, className, "diagram");
-    if (!svg) {
-      res.status(204).end();
-      return;
-    }
+      const svg = storage.readSvg(name, version, className, "diagram");
+      if (!svg) {
+        res.status(204).end();
+        return;
+      }
 
-    // Return 404 if the diagram has no meaningful visual content
-    const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
-    if (!hasVisual) {
-      res.status(204).end();
-      return;
-    }
+      // Return 404 if the diagram has no meaningful visual content
+      const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
+      if (!hasVisual) {
+        res.status(204).end();
+        return;
+      }
 
-    res.setHeader("Content-Type", "image/svg+xml");
-    res.send(svg);
-  });
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.send(svg);
+    },
+  );
 
   /**
    * GET /api/v1/libraries/:name/:version/resources/*
+   * GET /api/v1/libraries/:scope/:name/:version/resources/*
    *
    * Serve files from an extracted library's directory.
    * Used to resolve `modelica://` URIs in documentation HTML.
    * e.g. modelica://Modelica/Resources/Images/foo.png
    *   → GET /api/v1/libraries/Modelica/4.1.0/resources/Resources/Images/foo.png
    */
-  router.get("/:name/:version/resources/{*path}", (req: Request, res: Response): void => {
-    const name = String(req.params["name"] ?? "");
-    const version = String(req.params["version"] ?? "");
-    // path-to-regexp v8 returns wildcard captures as arrays
-    const rawPath = req.params["path"];
-    const resourcePath = Array.isArray(rawPath) ? rawPath.join("/") : String(rawPath || "");
+  router.get(
+    ["/:name/:version/resources/{*path}", "/:scope/:name/:version/resources/{*path}"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      // path-to-regexp v8 returns wildcard captures as arrays
+      const rawPath = req.params["path"];
+      const resourcePath = Array.isArray(rawPath) ? rawPath.join("/") : String(rawPath || "");
 
-    if (!name || !version || !resourcePath) {
-      res.status(400).json({ error: "Missing required parameters" });
-      return;
-    }
+      if (!name || !version || !resourcePath) {
+        res.status(400).json({ error: "Missing required parameters" });
+        return;
+      }
 
-    const extractedDir = storage.getExtractedPath(name, version);
-    const filePath = path.join(extractedDir, resourcePath);
+      const extractedDir = storage.getExtractedPath(name, version);
+      const filePath = path.join(extractedDir, resourcePath);
 
-    // Security: ensure the resolved path is within the extracted directory
-    const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(path.resolve(extractedDir))) {
-      res.status(403).json({ error: "Access denied" });
-      return;
-    }
+      // Security: ensure the resolved path is within the extracted directory
+      const resolved = path.resolve(filePath);
+      if (!resolved.startsWith(path.resolve(extractedDir))) {
+        res.status(403).json({ error: "Access denied" });
+        return;
+      }
 
-    if (!fs.existsSync(resolved)) {
-      res.status(404).json({ error: "Resource not found" });
-      return;
-    }
+      if (!fs.existsSync(resolved)) {
+        res.status(404).json({ error: "Resource not found" });
+        return;
+      }
 
-    res.sendFile(resolved);
-  });
+      res.sendFile(resolved);
+    },
+  );
 
   /**
    * POST /api/v1/libraries/:name/:version/deprecate
@@ -1096,7 +1282,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.post(
     ["/:name/:version/deprecate", "/:scope/:name/:version/deprecate"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
       const reason = String(
         req.body?.reason || req.query["reason"] || "This version has been deprecated by the author.",
@@ -1137,7 +1324,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.delete(
     ["/:name/:version/deprecate", "/:scope/:name/:version/deprecate"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
 
       if (!name || !version || !isValidPackageName(name)) {
@@ -1174,7 +1362,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.post(
     ["/:name/:version/yank", "/:scope/:name/:version/yank"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
       const reason = String(req.body?.reason || req.query["reason"] || "This release has been yanked.");
 
@@ -1192,6 +1381,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       if (!updated) {
         res.status(404).json({ error: `Release "${name}@${version}" not found` });
         return;
+      }
+
+      if (reason.toLowerCase().match(/vulnerab|security|cve|exploit|compromise/)) {
+        database.createNotification(req.user!.id, req.user!.id, "security_alert");
       }
 
       res.json({
@@ -1213,7 +1406,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.post(
     ["/:name/:version/unyank", "/:scope/:name/:version/unyank"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
 
       if (!name || !version || !isValidPackageName(name)) {
@@ -1250,7 +1444,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.post(
     ["/:name/transfer-ownership", "/:scope/:name/transfer-ownership"],
     requireAuth,
-    (req: Request, res: Response): void => {
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
       const { name } = extractPkgAndVersion(req);
       const targetUsername = String(req.body?.targetUsername || req.body?.toUsername || "");
 

@@ -279,6 +279,14 @@ export class LibraryDatabase {
     return this.#db;
   }
 
+  get dbPath(): string {
+    return this.#dbPath;
+  }
+
+  get dbDir(): string {
+    return path.dirname(this.#dbPath);
+  }
+
   get migrationRunner(): SqliteMigrationRunner {
     return this.#runner;
   }
@@ -414,6 +422,10 @@ export class LibraryDatabase {
         status          TEXT DEFAULT 'pending_verification',
         terms_accepted_at TEXT,
         registration_ip TEXT,
+        token_version   INTEGER DEFAULT 1,
+        totp_secret     TEXT,
+        totp_enabled    INTEGER DEFAULT 0,
+        backup_codes    TEXT DEFAULT '[]',
         created_at      TEXT DEFAULT (datetime('now'))
       );
 
@@ -946,6 +958,10 @@ export class LibraryDatabase {
       "ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'pending_verification'",
       "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
       "ALTER TABLE users ADD COLUMN registration_ip TEXT",
+      "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1",
+      "ALTER TABLE users ADD COLUMN totp_secret TEXT",
+      "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN backup_codes TEXT DEFAULT '[]'",
       "ALTER TABLE follows ADD COLUMN state TEXT DEFAULT 'accepted'",
     ];
     for (const sql of userColumns) {
@@ -965,6 +981,18 @@ export class LibraryDatabase {
       "ALTER TABLE jobs ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
     ];
     for (const sql of jobColumns) {
+      try {
+        this.#db.exec(sql);
+      } catch (e) {
+        // Column already exists
+      }
+    }
+
+    const packageVersionColumns = [
+      "ALTER TABLE package_versions ADD COLUMN tarball_integrity TEXT",
+      "ALTER TABLE package_versions ADD COLUMN modelscript_meta TEXT",
+    ];
+    for (const sql of packageVersionColumns) {
       try {
         this.#db.exec(sql);
       } catch (e) {
@@ -1219,11 +1247,18 @@ export class LibraryDatabase {
       status?: string;
       accountType?: string;
     },
-  ): { id: number; username: string; email: string; account_type?: string; email_verified?: number; status?: string } {
+  ): {
+    id: number;
+    username: string;
+    email: string;
+    account_type?: string;
+    email_verified?: number;
+    status?: string;
+    token_version?: number;
+  } {
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
-    const keys = this.#generateRSAKeys();
     const edKeys = this.#generateEd25519Keys();
     const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
     const actorUrl = `${publicUrl}/users/${username}`;
@@ -1239,8 +1274,8 @@ export class LibraryDatabase {
 
     const result = this.#db
       .prepare(
-        `INSERT INTO users (username, email, password_hash, account_type, avatar_url, banner_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, credit_balance, email_verified, status, terms_accepted_at, registration_ip)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (username, email, password_hash, account_type, avatar_url, banner_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, credit_balance, email_verified, status, terms_accepted_at, registration_ip, token_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       )
       .run(
         username,
@@ -1249,8 +1284,8 @@ export class LibraryDatabase {
         accountType,
         avatarUrl,
         bannerUrl,
-        keys.privateKey,
-        keys.publicKey,
+        null,
+        null,
         edKeys.privateKey,
         edKeys.publicKey,
         actorUrl,
@@ -1275,7 +1310,15 @@ export class LibraryDatabase {
         // Non-fatal if table not yet initialized
       }
     }
-    return { id: userId, username, email, account_type: accountType, email_verified: emailVerified, status };
+    return {
+      id: userId,
+      username,
+      email,
+      account_type: accountType,
+      email_verified: emailVerified,
+      status,
+      token_version: 1,
+    };
   }
 
   verifyUserEmail(userId: number, bonusCredits = 50.0): { success: boolean; creditsGranted: number; user?: any } {
@@ -1532,7 +1575,6 @@ export class LibraryDatabase {
       const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
       const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
-      const keys = this.#generateRSAKeys();
       const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
       const actorUrl = `${publicUrl}/users/${username}`;
       const inboxUrl = `${actorUrl}/inbox`;
@@ -1542,7 +1584,7 @@ export class LibraryDatabase {
         .prepare(
           `INSERT INTO users (username, email, avatar_url, banner_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(username, email, avatarUrl, bannerUrl, keys.privateKey, keys.publicKey, actorUrl, inboxUrl, outboxUrl);
+        .run(username, email, avatarUrl, bannerUrl, null, null, actorUrl, inboxUrl, outboxUrl);
       const userId = Number(userResult.lastInsertRowid);
 
       this.#db
@@ -1628,11 +1670,15 @@ export class LibraryDatabase {
         email_verified?: number;
         status?: string;
         credit_balance?: number;
+        token_version?: number;
+        totp_enabled?: number;
+        totp_secret?: string | null;
+        backup_codes?: string;
       }
     | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance FROM users WHERE email = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE email = ?`,
       )
       .get(email) as any;
   }
@@ -1646,11 +1692,15 @@ export class LibraryDatabase {
         email_verified?: number;
         status?: string;
         credit_balance?: number;
+        token_version?: number;
+        totp_enabled?: number;
+        totp_secret?: string | null;
+        backup_codes?: string;
       }
     | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, account_type, email_verified, status, credit_balance FROM users WHERE username = ?`,
+        `SELECT id, username, email, account_type, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE username = ?`,
       )
       .get(username) as any;
   }
@@ -1660,6 +1710,7 @@ export class LibraryDatabase {
         id: number;
         username: string;
         email: string;
+        password_hash?: string;
         account_type?: string;
         avatar_url: string;
         display_name: string;
@@ -1667,11 +1718,15 @@ export class LibraryDatabase {
         email_verified?: number;
         status?: string;
         credit_balance?: number;
+        token_version?: number;
+        totp_enabled?: number;
+        totp_secret?: string | null;
+        backup_codes?: string;
       }
     | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance FROM users WHERE id = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`,
       )
       .get(id) as any;
   }
@@ -1691,6 +1746,18 @@ export class LibraryDatabase {
     return this.#db.open;
   }
 
+  ensureUserRSAKeys(userId: number): { publicKey: string; privateKey: string } {
+    const user = this.#db.prepare(`SELECT rsa_private_key, rsa_public_key FROM users WHERE id = ?`).get(userId) as any;
+    if (user?.rsa_private_key && user?.rsa_public_key) {
+      return { privateKey: user.rsa_private_key, publicKey: user.rsa_public_key };
+    }
+    const keys = this.#generateRSAKeys();
+    this.#db
+      .prepare(`UPDATE users SET rsa_private_key = ?, rsa_public_key = ? WHERE id = ?`)
+      .run(keys.privateKey, keys.publicKey, userId);
+    return keys;
+  }
+
   getUserFederationInfo(userId: number):
     | {
         id: number;
@@ -1702,11 +1769,18 @@ export class LibraryDatabase {
         rsa_private_key?: string | null;
       }
     | undefined {
-    return this.#db
+    const row = this.#db
       .prepare(
         `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key FROM users WHERE id = ?`,
       )
       .get(userId) as any;
+    if (!row) return undefined;
+    if (!row.rsa_private_key || !row.rsa_public_key) {
+      const keys = this.ensureUserRSAKeys(userId);
+      row.rsa_private_key = keys.privateKey;
+      row.rsa_public_key = keys.publicKey;
+    }
+    return row;
   }
 
   getRemoteFollowersInboxes(authorId: number): Array<{ inbox_url: string }> {
@@ -1785,7 +1859,17 @@ export class LibraryDatabase {
   }
 
   updatePassword(userId: number, passwordHash: string) {
-    this.#db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(passwordHash, userId);
+    this.#db
+      .prepare(`UPDATE users SET password_hash = ?, token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`)
+      .run(passwordHash, userId);
+  }
+
+  incrementTokenVersion(userId: number): number {
+    this.#db.prepare(`UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`).run(userId);
+    const res = this.#db.prepare(`SELECT token_version FROM users WHERE id = ?`).get(userId) as
+      | { token_version: number }
+      | undefined;
+    return res?.token_version ?? 1;
   }
 
   getPasswordHash(userId: number): string | undefined {
@@ -1793,6 +1877,54 @@ export class LibraryDatabase {
       | { password_hash: string }
       | undefined;
     return res?.password_hash;
+  }
+
+  enableUser2FA(userId: number, secret: string, hashedBackupCodes: string[]): void {
+    this.#db
+      .prepare(`UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?`)
+      .run(secret, JSON.stringify(hashedBackupCodes), userId);
+  }
+
+  disableUser2FA(userId: number): void {
+    this.#db
+      .prepare(`UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = '[]' WHERE id = ?`)
+      .run(userId);
+  }
+
+  getUser2FAState(userId: number):
+    | {
+        totp_enabled: number;
+        totp_secret: string | null;
+        backup_codes: string[];
+      }
+    | undefined {
+    const row = this.#db
+      .prepare(`SELECT totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`)
+      .get(userId) as { totp_enabled?: number; totp_secret?: string | null; backup_codes?: string } | undefined;
+    if (!row) return undefined;
+    let backupCodes: string[] = [];
+    try {
+      if (row.backup_codes) {
+        backupCodes = JSON.parse(row.backup_codes);
+      }
+    } catch {
+      backupCodes = [];
+    }
+    return {
+      totp_enabled: row.totp_enabled ?? 0,
+      totp_secret: row.totp_secret ?? null,
+      backup_codes: Array.isArray(backupCodes) ? backupCodes : [],
+    };
+  }
+
+  consumeBackupCode(userId: number, codeHash: string): boolean {
+    const state = this.getUser2FAState(userId);
+    if (!state || !state.backup_codes.includes(codeHash)) {
+      return false;
+    }
+    const remaining = state.backup_codes.filter((h) => h !== codeHash);
+    this.#db.prepare(`UPDATE users SET backup_codes = ? WHERE id = ?`).run(JSON.stringify(remaining), userId);
+    return true;
   }
 
   getNotificationSettings(userId: number): string | undefined {
@@ -1959,7 +2091,7 @@ export class LibraryDatabase {
         repostOfId ?? null,
         apId ?? null,
         url ?? null,
-        metadata ? JSON.stringify(metadata) : null,
+        metadata ? (typeof metadata === "string" ? metadata : JSON.stringify(metadata)) : null,
         replyVisibility ?? "everyone",
         isSilenced ? 1 : 0,
         createdAt ?? null,
@@ -2021,6 +2153,9 @@ export class LibraryDatabase {
     if (p.metadata && typeof p.metadata === "string") {
       try {
         p.metadata = JSON.parse(p.metadata);
+        if (typeof p.metadata === "string") {
+          p.metadata = JSON.parse(p.metadata);
+        }
       } catch (e) {}
     }
     if (p.repost_of_id) {
@@ -2352,6 +2487,44 @@ export class LibraryDatabase {
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 
+  getFederatedTimeline(
+    currentUserId?: number,
+    limit: number = 20,
+    offset: number = 0,
+    artifactType?: string,
+    tag?: string,
+  ): any[] {
+    const uid = currentUserId || -1;
+    const artFilter = this.buildArtifactFilter(artifactType);
+    const tagFilter = this.buildTagFilter(tag);
+    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, limit, offset];
+
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
+      FROM posts p
+      JOIN users u ON p.author_id = u.id
+      LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
+      WHERE (u.account_type = 'remote' OR p.ap_id IS NOT NULL OR u.username LIKE '%@%')
+        AND p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
+        ${artFilter.sql}
+        ${tagFilter.sql}
+      ORDER BY p.created_at DESC
+      LIMIT ? OFFSET ?
+    `,
+      )
+      .all(...allParams) as any[];
+
+    return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
   getUserTimeline(username: string, currentUserId?: number, limit: number = 20, type?: string): any[] {
     let typeFilter = "";
     if (type === "replies") {
@@ -2499,7 +2672,15 @@ export class LibraryDatabase {
   }
 
   createNotification(userId: number, actorId: number, type: string, postId?: number): void {
-    if (userId === actorId) return;
+    const isSystemNotification = [
+      "simulation",
+      "simulation_completed",
+      "package",
+      "package_published",
+      "security_alert",
+      "credit_warning",
+    ].includes(type);
+    if (userId === actorId && !isSystemNotification) return;
     this.#db
       .prepare(
         `
@@ -2680,14 +2861,15 @@ export class LibraryDatabase {
   }
 
   getUserOutboxPosts(userId: number, limit: number = 20, offset: number = 0): any[] {
-    return this.#db
+    const posts = this.#db
       .prepare(
-        `SELECT id, author_id, content, artifact_view_id, ap_id, url, created_at, updated_at
+        `SELECT id, author_id, content, artifact_view_id, ap_id, url, metadata, created_at, updated_at
          FROM posts 
          WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0
          ORDER BY id DESC LIMIT ? OFFSET ?`,
       )
       .all(userId, limit, offset) as any[];
+    return posts.map((p) => this.hydratePost(p));
   }
 
   getUserFollowerActors(userId: number, limit: number = 50, offset: number = 0): string[] {
@@ -3997,6 +4179,7 @@ export class LibraryDatabase {
    * Delete all data for a library version.
    */
   deleteLibrary(libraryName: string, libraryVersion: string): void {
+    this.deletePackageVersion(libraryName, libraryVersion);
     // Cascade deletes handle extends, components, modifiers
     this.#db
       .prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`)
@@ -4004,6 +4187,18 @@ export class LibraryDatabase {
     this.#db
       .prepare(`DELETE FROM library_releases WHERE library_name = ? AND library_version = ?`)
       .run(libraryName, libraryVersion);
+
+    // If no releases and no package_versions remain, clean up parent packages row
+    const pkg = this.getPackage(libraryName);
+    if (pkg) {
+      const remainingReleases = this.getLibraryReleases(libraryName);
+      const remainingVersions = this.getPackageVersions(pkg.id);
+      if (remainingReleases.length === 0 && remainingVersions.length === 0) {
+        this.#db.prepare(`DELETE FROM dist_tags WHERE package_id = ?`).run(pkg.id);
+        this.#db.prepare(`DELETE FROM package_collaborators WHERE library_name = ?`).run(libraryName);
+        this.#db.prepare(`DELETE FROM packages WHERE id = ?`).run(pkg.id);
+      }
+    }
   }
 
   /**
@@ -4286,6 +4481,39 @@ export class LibraryDatabase {
       daily: dailyRows,
       versionBreakdown,
     };
+  }
+
+  /**
+   * Get packages that declare this package as a dependency.
+   */
+  getReverseDependencies(targetPackageName: string): { name: string; version: string; description: string | null }[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT p.name, p.description, pv.version, pv.manifest
+         FROM packages p
+         JOIN dist_tags dt ON dt.package_id = p.id AND dt.tag = 'latest'
+         JOIN package_versions pv ON pv.package_id = p.id AND pv.version = dt.version
+         WHERE p.name != ?`,
+      )
+      .all(targetPackageName) as { name: string; description: string | null; version: string; manifest: string }[];
+
+    const result: { name: string; version: string; description: string | null }[] = [];
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.manifest);
+        const deps = { ...parsed.dependencies, ...parsed.modelscript?.dependencies };
+        if (
+          deps &&
+          (deps[targetPackageName] !== undefined ||
+            Object.keys(deps).some((k) => k.toLowerCase() === targetPackageName.toLowerCase()))
+        ) {
+          result.push({ name: row.name, version: row.version, description: row.description ?? null });
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+    return result;
   }
 
   /**
@@ -4741,6 +4969,11 @@ export class LibraryDatabase {
       if (libRelease?.is_deprecated && libRelease.deprecation_reason) {
         manifest["deprecated"] = libRelease.deprecation_reason;
       }
+      if (libRelease?.is_yanked) {
+        manifest["yanked"] = libRelease.yank_reason || true;
+        manifest["is_yanked"] = true;
+        manifest["yank_reason"] = libRelease.yank_reason;
+      }
       versionsObj[v.version] = manifest;
     }
 
@@ -4851,21 +5084,28 @@ export class LibraryDatabase {
     const v = this.getPackageVersion(pkg.id, version);
     if (!v) return false;
 
-    this.#db.prepare(`DELETE FROM package_versions WHERE id = ?`).run(v.id);
+    this.#db.transaction(() => {
+      this.#db.prepare(`DELETE FROM artifacts WHERE version_id = ?`).run(v.id);
+      this.#db.prepare(`DELETE FROM package_versions WHERE id = ?`).run(v.id);
+      this.#db.prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`).run(name, version);
+      this.#db
+        .prepare(`DELETE FROM library_releases WHERE library_name = ? AND library_version = ?`)
+        .run(name, version);
 
-    // Clean up dist-tags pointing to this version
-    this.#db.prepare(`DELETE FROM dist_tags WHERE package_id = ? AND version = ?`).run(pkg.id, version);
+      // Clean up dist-tags pointing to this version
+      this.#db.prepare(`DELETE FROM dist_tags WHERE package_id = ? AND version = ?`).run(pkg.id, version);
 
-    // If no versions remain, delete the package
-    const remaining = this.getPackageVersions(pkg.id);
-    if (remaining.length === 0) {
-      this.#db.prepare(`DELETE FROM packages WHERE id = ?`).run(pkg.id);
-    } else {
-      // Re-point "latest" to the newest remaining version
-      if (remaining[0]) {
-        this.setDistTag(pkg.id, "latest", remaining[0].version);
+      // If no versions remain, delete the package
+      const remaining = this.getPackageVersions(pkg.id);
+      if (remaining.length === 0) {
+        this.#db.prepare(`DELETE FROM packages WHERE id = ?`).run(pkg.id);
+      } else {
+        // Re-point "latest" to the newest remaining version
+        if (remaining[0]) {
+          this.setDistTag(pkg.id, "latest", remaining[0].version);
+        }
       }
-    }
+    })();
 
     return true;
   }
@@ -4967,6 +5207,9 @@ export class LibraryDatabase {
       if (userId && usage.costCredits && usage.costCredits > 0) {
         this.deductUserCredits(userId, usage.costCredits, jobId, description || `Job ${jobId} execution`, metadata);
       }
+      if (userId) {
+        this.createNotification(userId, userId, "simulation_completed");
+      }
     })();
   }
 
@@ -5037,6 +5280,16 @@ export class LibraryDatabase {
         .run(userId, jobId, -amount, newBalance, description, JSON.stringify(metadata ?? {}));
 
       const txId = txResult.lastInsertRowid as number;
+
+      if (newBalance <= 10) {
+        const existingUnread = this.#db
+          .prepare(`SELECT id FROM notifications WHERE user_id = ? AND type = 'credit_warning' AND read = 0`)
+          .get(userId);
+        if (!existingUnread) {
+          this.createNotification(userId, userId, "credit_warning");
+        }
+      }
+
       return {
         id: txId,
         user_id: userId,
@@ -5229,6 +5482,15 @@ export class LibraryDatabase {
                VALUES (?, ?, ?, ?, 'job_charge', ?, ?)`,
             )
             .run(userId, jobId, -actualCost, currentBalance, description, JSON.stringify(metadata ?? {}));
+        }
+      }
+
+      if (currentBalance <= 10) {
+        const existingUnread = this.#db
+          .prepare(`SELECT id FROM notifications WHERE user_id = ? AND type = 'credit_warning' AND read = 0`)
+          .get(userId);
+        if (!existingUnread) {
+          this.createNotification(userId, userId, "credit_warning");
         }
       }
 

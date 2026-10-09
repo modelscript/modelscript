@@ -9,6 +9,7 @@ export type {
   ComponentTransform,
 } from "./animation-controller";
 export { AnimationTimeline } from "./AnimationTimeline";
+export { CadBindingPickerModal } from "./CadBindingPickerModal";
 export { default as CadViewer } from "./CadViewer";
 export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./CadViewer";
 export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";

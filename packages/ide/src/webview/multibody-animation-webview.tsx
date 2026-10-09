@@ -405,7 +405,9 @@ function App() {
         });
 
         ctrl.setBindings(bindings);
-
+        if (ctrl.hasData) {
+          ctrl.play();
+        }
         forceUpdate((n) => n + 1);
       } else if (message.type === "liveValues") {
         const ctrl = animationControllerRef.current;

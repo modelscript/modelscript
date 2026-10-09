@@ -215,6 +215,8 @@ export default function ComposeBox({
   const [submitting, setSubmitting] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showContentWarning, setShowContentWarning] = useState(false);
+  const [contentWarning, setContentWarning] = useState("");
   const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [showMorselModal, setShowMorselModal] = useState(false);
   const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
@@ -485,11 +487,15 @@ export default function ComposeBox({
 
       const payload: any = {
         content: text,
+        content_warning: contentWarning.trim() || undefined,
         artifact_view_id: artifactId,
         quote_post_id: quotePost?.id,
         reply_to_id: replyToPost?.id,
         reply_visibility: replyVisibility,
-        metadata: pendingPin ? { spatialPin: pendingPin } : undefined,
+        metadata: {
+          ...(pendingPin ? { spatialPin: pendingPin } : {}),
+          ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
+        },
       };
 
       if (signatureObj) {
@@ -499,6 +505,8 @@ export default function ComposeBox({
 
       const data = await createPost(payload);
       setContent("");
+      setContentWarning("");
+      setShowContentWarning(false);
       setArtifactId(null);
       onPostCreated?.(data.post);
     } catch (err) {
@@ -684,6 +692,27 @@ export default function ComposeBox({
             }}
           />
           <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
+            {showContentWarning && (
+              <Box mb={2}>
+                <input
+                  type="text"
+                  placeholder="Content warning / sensitive summary..."
+                  value={contentWarning}
+                  onChange={(e) => setContentWarning(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: "rgba(210, 153, 34, 0.08)",
+                    border: "1px solid rgba(210, 153, 34, 0.3)",
+                    borderRadius: "8px",
+                    color: "var(--color-fg-default)",
+                    fontSize: "14px",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </Box>
+            )}
             <OverlayWrapper>
               <Backdrop>
                 {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
@@ -1176,6 +1205,21 @@ export default function ComposeBox({
                     title="Upload Media (Images, Videos, USDZ 3D, CAD, PDFs, CSV, TEI)"
                   >
                     <ImageIcon size={20} />
+                  </ActionIconButton>
+                  <ActionIconButton
+                    type="button"
+                    onClick={() => setShowContentWarning((prev) => !prev)}
+                    aria-label="Content Warning"
+                    title="Add Content Warning (ActivityPub Note summary)"
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: "12px",
+                      fontFamily: "var(--font-mono, monospace)",
+                      color: showContentWarning ? "var(--color-warning-fg, #d29922)" : "var(--color-text-muted)",
+                      background: showContentWarning ? "rgba(210, 153, 34, 0.12)" : "transparent",
+                    }}
+                  >
+                    CW
                   </ActionIconButton>
                   <div style={{ position: "relative" }}>
                     <ActionIconButton

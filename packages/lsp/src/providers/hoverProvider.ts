@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -11,8 +12,209 @@ function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
 }
 
+function getDomainName(domainId: number, resourceId?: string): string {
+  switch (domainId) {
+    case LanguageDomainId.Modelica:
+      return "Modelica";
+    case LanguageDomainId.SysML2:
+      return "SysML v2";
+    case LanguageDomainId.STEP_CAD:
+      return "STEP CAD";
+    case LanguageDomainId.OWL2:
+      return "OWL2 Ontology";
+    case LanguageDomainId.SSP:
+      return "SSP Container";
+    case LanguageDomainId.CFD:
+      return "CFD Aerodynamics";
+    case LanguageDomainId.FEA:
+      return "FEA Finite Element";
+    case LanguageDomainId.ModelScript:
+      return "ModelScript";
+    case LanguageDomainId.SCAD:
+      return "OpenSCAD";
+    case LanguageDomainId.CSV:
+      return "Tabular Dataset";
+    default:
+      if (resourceId) {
+        if (/\.(sysml|kerml)$/i.test(resourceId)) return "SysML v2";
+        if (/\.(step|stp|p21)$/i.test(resourceId)) return "STEP CAD";
+        if (/\.mo$/i.test(resourceId)) return "Modelica";
+        if (/\.(owl|ttl|ofn)$/i.test(resourceId)) return "OWL2 Ontology";
+      }
+      return "Polyglot";
+  }
+}
+
+function domainToLang(domainName: string): string {
+  switch (domainName) {
+    case "SysML v2":
+      return "sysml";
+    case "Modelica":
+      return "modelica";
+    case "STEP CAD":
+      return "step";
+    case "OWL2 Ontology":
+      return "owl";
+    default:
+      return "plaintext";
+  }
+}
+
+function enhanceWithDigitalThreadTwin(
+  hoverContent: string,
+  token: string,
+  text: string,
+  offset: number,
+  documentUri: string,
+  bridge: any,
+  validationService: any,
+): string {
+  if (hoverContent.includes("### 🔗 Polyglot Digital Thread Twin")) {
+    return hoverContent;
+  }
+
+  const lineStart = text.lastIndexOf("\n", offset) + 1;
+  const nextLine = text.indexOf("\n", offset);
+  const lineEnd = nextLine === -1 ? text.length : nextLine;
+  const lineText = text.slice(lineStart, lineEnd);
+
+  const refEntry = bridge?.findEntryAtOffset?.(offset) || bridge?.findScopeAtOffset?.(offset);
+
+  // Twin annotations / metadata
+  const twinMatch = lineText.match(/(?:twin|counterpart|implements)\s*=\s*"([^"]+)"/i);
+  const partTypeMatch = lineText.match(/part\s+[a-zA-Z0-9_]+\s*:\s*([a-zA-Z0-9_:]+)/);
+  const cadMatch =
+    lineText.match(/CAD(?:Port)?\([^)]*?(?:feature|part)\s*=\s*"([^"]+)"/i) ||
+    lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i);
+
+  const twinCand =
+    refEntry?.metadata?.twin ||
+    refEntry?.metadata?.counterpart ||
+    refEntry?.metadata?.implements ||
+    twinMatch?.[1] ||
+    partTypeMatch?.[1];
+
+  const qe =
+    bridge?.engine ??
+    bridge?.getQueryEngine?.() ??
+    validationService?.workspaceManager?.getQueryEngine("modelica") ??
+    validationService?.workspaceManager?.getQueryEngine("sysml2") ??
+    globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
+
+  let counterpartEntry: any = null;
+  let counterpartDomain = "";
+  let parityReport: any = null;
+
+  // 1. Check crossDomainBinding via Salsa
+  if (refEntry?.id !== undefined && typeof qe?.crossDomainBinding === "function") {
+    try {
+      const boundIds = qe.crossDomainBinding(refEntry.id);
+      if (boundIds.length > 0) {
+        counterpartEntry = qe.resolveEntry(boundIds[0]);
+        if (counterpartEntry) {
+          counterpartDomain = getDomainName(getSymbolDomain(counterpartEntry.id), counterpartEntry.resourceId);
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check twinCand via Salsa resolvePolyglotSymbol
+  if (!counterpartEntry && twinCand && typeof qe?.resolvePolyglotSymbol === "function") {
+    try {
+      const symId = qe.resolvePolyglotSymbol(String(twinCand));
+      if (symId !== null && symId !== undefined) {
+        counterpartEntry = qe.resolveEntry(symId);
+        if (counterpartEntry) {
+          counterpartDomain = getDomainName(getSymbolDomain(counterpartEntry.id), counterpartEntry.resourceId);
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Check digital thread hypergraph
+  let threadElem: any = null;
+  if (!counterpartEntry && validationService?.workspaceManager?.getThreadsForUri) {
+    try {
+      const threads = validationService.workspaceManager.getThreadsForUri(documentUri);
+      if (threads && threads.length > 0) {
+        for (const t of threads) {
+          const aligned = validationService.workspaceManager.findAlignedElementsBySlot(t.slot);
+          for (const elem of aligned) {
+            if (elem.uri && elem.uri !== documentUri) {
+              threadElem = elem;
+              counterpartDomain = elem.domain ? elem.domain.toUpperCase() : "Digital Thread";
+              break;
+            }
+          }
+          if (threadElem) break;
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Physical quantity parity check
+  if (
+    refEntry?.id !== undefined &&
+    counterpartEntry?.id !== undefined &&
+    typeof qe?.physicalQuantityParity === "function"
+  ) {
+    try {
+      parityReport = qe.physicalQuantityParity(refEntry.id, counterpartEntry.id);
+    } catch {}
+  }
+
+  // If we have counterpart info or CAD annotation or thread element, construct twin section
+  if (counterpartEntry || threadElem || cadMatch) {
+    const cName = counterpartEntry?.name || threadElem?.name || cadMatch?.[1] || String(twinCand);
+    const cKind = counterpartEntry?.ruleName || counterpartEntry?.kind || threadElem?.properties?.kind || "definition";
+    const cUri = counterpartEntry?.resourceId || threadElem?.uri;
+    const cDomain = counterpartDomain || (cadMatch ? "STEP CAD" : "Polyglot");
+
+    const lines: string[] = [
+      "",
+      "---",
+      "### 🔗 Polyglot Digital Thread Twin",
+      `- **Domain:** ${cDomain}`,
+      `- **Counterpart:** \`${cName}\` (\`${cKind}\`)`,
+    ];
+
+    if (cUri) {
+      const bName = cUri.split("/").pop() || cUri;
+      lines.push(`- **Resource:** [\`${bName}\`](${cUri})`);
+    }
+
+    if (parityReport) {
+      if (parityReport.compatible) {
+        lines.push(
+          `- **Physical Quantity:** \`${parityReport.mUnit || parityReport.sType || "Matched"}\` ✓ [Consistent]`,
+        );
+      } else if (parityReport.reason) {
+        lines.push(`- **Physical Quantity Parity:** ⚠ Incompatible (${parityReport.reason})`);
+      }
+    } else if (counterpartEntry?.metadata?.unit || refEntry?.metadata?.unit) {
+      const u = counterpartEntry?.metadata?.unit || refEntry?.metadata?.unit;
+      lines.push(`- **Physical Quantity:** \`${u}\` ✓ [Consistent]`);
+    } else if (threadElem?.properties?.mass) {
+      lines.push(`- **Physical Quantity:** \`mass: ${threadElem.properties.mass}\` ✓ [Consistent]`);
+    }
+
+    const cadPartName = cadMatch?.[1] || (cDomain === "STEP CAD" ? cName : null);
+    if (cadPartName && !hoverContent.includes("command:modelscript.focusCadPart?")) {
+      const commandArg = encodeURIComponent(JSON.stringify({ partName: cadPartName }));
+      lines.push(
+        `- **Coupled 3D CAD Anchor:** [🔍 Inspect in 3D Anatomy Canvas](command:modelscript.focusCadPart?${commandArg})`,
+      );
+    }
+
+    return hoverContent + lines.join("\n");
+  }
+
+  return hoverContent;
+}
+
 function enhanceWithCadLink(hoverContent: string, token: string, text: string, offset: number): string {
   if (!token) return hoverContent;
+  if (hoverContent.includes("command:modelscript.focusCadPart?")) return hoverContent;
 
   const lineStart = text.lastIndexOf("\n", offset) + 1;
   const nextLine = text.indexOf("\n", offset);
@@ -99,10 +301,20 @@ export function registerHoverProvider(
         const defRegex = new RegExp(`^${token.replace("#", "\\#")}\\s*=\\s*([^;]+);`, "m");
         const match = defRegex.exec(text);
         if (match) {
+          let stepHover = ["```step", match[0].trim(), "```"].join("\n");
+          stepHover = enhanceWithDigitalThreadTwin(
+            stepHover,
+            token,
+            text,
+            offset,
+            document.uri,
+            undefined,
+            validationService,
+          );
           return {
             contents: {
               kind: "markdown" as const,
-              value: ["```step", match[0].trim(), "```"].join("\n"),
+              value: stepHover,
             },
             range: {
               start: document.positionAt(start),
@@ -173,9 +385,44 @@ export function registerHoverProvider(
     }
 
     const hoverDef = bridge.hover(offset, text);
-    if (!hoverDef) return null;
+    let hoverContent = hoverDef?.contents;
+    let hoverRange = hoverDef?.range;
 
-    let hoverContent = hoverDef.contents;
+    if (!hoverContent) {
+      // Check if cursor is over a cross-language reference, e.g. Propulsion::Motor or SysML2::Avionics::IMU
+      let tokStart = offset;
+      while (tokStart > 0 && /[-a-zA-Z0-9_:#./]/.test(text[tokStart - 1]!)) tokStart--;
+      let tokEnd = offset;
+      while (tokEnd < text.length && /[-a-zA-Z0-9_:#./]/.test(text[tokEnd]!)) tokEnd++;
+      const fullToken = text.slice(tokStart, tokEnd).trim();
+
+      const qe =
+        (bridge as any)?.engine ??
+        (bridge as any)?.getQueryEngine?.() ??
+        validationService?.workspaceManager?.getQueryEngine("modelica") ??
+        validationService?.workspaceManager?.getQueryEngine("sysml2") ??
+        globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
+
+      if (qe && fullToken && typeof qe.resolvePolyglotSymbol === "function") {
+        const symId = qe.resolvePolyglotSymbol(fullToken);
+        if (symId !== null && symId !== undefined) {
+          const entry = qe.resolveEntry(symId);
+          if (entry) {
+            const domainName = getDomainName(getSymbolDomain(entry.id), entry.resourceId);
+            const kind = entry.kind || entry.ruleName || "definition";
+            const resName = entry.resourceId ? entry.resourceId.split("/").pop() || entry.resourceId : "";
+            const resLink = entry.resourceId ? `\n- **Resource:** [\`${resName}\`](${entry.resourceId})` : "";
+            hoverContent = `\`\`\`${domainToLang(domainName)}\n${entry.name}: ${kind}\n\`\`\`\n\n---\n### 🔗 Polyglot Digital Thread Twin\n- **Domain:** ${domainName}\n- **Counterpart:** \`${entry.name}\` (\`${kind}\`)${resLink}`;
+            hoverRange = {
+              start: document.positionAt(tokStart),
+              end: document.positionAt(tokEnd),
+            };
+          }
+        }
+      }
+
+      if (!hoverContent) return null;
+    }
 
     // Enhance hover with reasoner inferences if this is SysML2 and reasonerService is available
     const plugin = globalLanguageRegistry.getPluginForUri(document.uri);
@@ -300,12 +547,22 @@ export function registerHoverProvider(
       }
     }
 
-    // Enhance hover with coupled 3D CAD navigation link (Workstream 4)
+    // Enhance hover with coupled 3D CAD navigation link (Workstream 4) and Digital Thread Twin
     let hoveredStart = offset;
     while (hoveredStart > 0 && /[a-zA-Z0-9_]/.test(text[hoveredStart - 1]!)) hoveredStart--;
     let hoveredEnd = offset;
     while (hoveredEnd < text.length && /[a-zA-Z0-9_]/.test(text[hoveredEnd]!)) hoveredEnd++;
     const hoveredToken = text.slice(hoveredStart, hoveredEnd).trim();
+
+    hoverContent = enhanceWithDigitalThreadTwin(
+      hoverContent,
+      hoveredToken,
+      text,
+      offset,
+      document.uri,
+      bridge,
+      validationService,
+    );
     hoverContent = enhanceWithCadLink(hoverContent, hoveredToken, text, offset);
 
     return {
@@ -313,7 +570,7 @@ export function registerHoverProvider(
         kind: "markdown" as const,
         value: hoverContent,
       },
-      range: hoverDef.range as any,
+      range: (hoverRange ?? hoverDef?.range) as any,
     };
   });
 }

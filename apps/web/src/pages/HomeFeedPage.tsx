@@ -5,6 +5,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FilterIcon,
+  GlobeIcon,
   PlusIcon,
   RocketIcon,
   SearchIcon,
@@ -16,7 +17,7 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { getTimeline, getTrending } from "../api";
+import { followUser, getTimeline, getTrending, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
@@ -484,13 +485,269 @@ const SecondaryActionButton = styled.button`
   }
 `;
 
+const QuickstartContainer = styled.div`
+  margin: 16px 0 24px;
+  padding: 20px;
+  background: var(--surface-overlay, rgba(22, 27, 34, 0.5));
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: var(--radius-lg, 12px);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+`;
+
+const HeroGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+`;
+
+const HeroCard = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border-muted, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--surface-row-hover, rgba(255, 255, 255, 0.06));
+    border-color: var(--color-accent-emphasis, #8b5cf6);
+    transform: translateY(-1px);
+  }
+`;
+
+const DisciplineFollowsSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.08));
+  padding-top: 16px;
+`;
+
+const DisciplineTabsRow = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const DisciplineTabButton = styled.button<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill, 20px);
+  font-size: 12.5px;
+  font-weight: ${(props) => (props.$active ? "600" : "500")};
+  cursor: pointer;
+  border: 1px solid
+    ${(props) =>
+      props.$active
+        ? "var(--color-accent-emphasis, #8b5cf6)"
+        : "var(--color-border-default, rgba(255, 255, 255, 0.12))"};
+  background: ${(props) =>
+    props.$active ? "rgba(139, 92, 246, 0.15)" : "var(--color-canvas-subtle, rgba(255, 255, 255, 0.03))"};
+  color: ${(props) =>
+    props.$active ? "var(--color-accent-emphasis, #8b5cf6)" : "var(--color-text-secondary, #8b949e)"};
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--color-accent-emphasis, #8b5cf6);
+    background: rgba(139, 92, 246, 0.1);
+  }
+`;
+
+const SuggestedFollowsGrid = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const SuggestedFollowCard = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border-muted, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md, 8px);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: var(--surface-row-hover, rgba(255, 255, 255, 0.06));
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+`;
+
+interface DisciplineItem {
+  id: string;
+  name: string;
+  handle: string;
+  avatar: string;
+  isPackage: boolean;
+  description: string;
+  exploreUrl: string;
+}
+
+interface DisciplineCategory {
+  id: string;
+  name: string;
+  emoji: string;
+  items: DisciplineItem[];
+}
+
+const DISCIPLINES: DisciplineCategory[] = [
+  {
+    id: "aerospace",
+    name: "Aerospace",
+    emoji: "🚀",
+    items: [
+      {
+        id: "aero-1",
+        name: "Modelica Fluid Dynamics",
+        handle: "modelica_fluids",
+        avatar: "🌊",
+        isPackage: true,
+        description: "Compressible multi-phase flow & propulsion",
+        exploreUrl: "/explore?tag=fluids",
+      },
+      {
+        id: "aero-2",
+        name: "Orbital Mechanics Lab",
+        handle: "aerospace_orbital",
+        avatar: "🛰️",
+        isPackage: false,
+        description: "Keplerian orbits & satellite attitude control",
+        exploreUrl: "/explore?tag=aerospace",
+      },
+      {
+        id: "aero-3",
+        name: "Propulsion Engineering",
+        handle: "propulsion_sys",
+        avatar: "🔥",
+        isPackage: false,
+        description: "Rocket nozzle acoustics & staging simulations",
+        exploreUrl: "/explore?tag=propulsion",
+      },
+    ],
+  },
+  {
+    id: "automotive",
+    name: "Automotive",
+    emoji: "🏎️",
+    items: [
+      {
+        id: "auto-1",
+        name: "Modelica Multibody Mechanics",
+        handle: "modelica_mechanics",
+        avatar: "⚙️",
+        isPackage: true,
+        description: "Suspension linkages, drivelines & tires",
+        exploreUrl: "/explore?tag=mechanics",
+      },
+      {
+        id: "auto-2",
+        name: "EV Battery Dynamics",
+        handle: "ev_powertrain",
+        avatar: "🔋",
+        isPackage: false,
+        description: "Electro-thermal battery cells & BMS state estimation",
+        exploreUrl: "/explore?tag=automotive",
+      },
+      {
+        id: "auto-3",
+        name: "Formula Race Dynamics",
+        handle: "formula_dynamics",
+        avatar: "🏁",
+        isPackage: false,
+        description: "Aero downforce balance & transient yaw analysis",
+        exploreUrl: "/explore?tag=vehicle-dynamics",
+      },
+    ],
+  },
+  {
+    id: "robotics",
+    name: "Robotics",
+    emoji: "🤖",
+    items: [
+      {
+        id: "rob-1",
+        name: "Spatial Kinematics",
+        handle: "robotics_kinematics",
+        avatar: "🦾",
+        isPackage: false,
+        description: "Serial 6-DOF manipulators & Denavit-Hartenberg",
+        exploreUrl: "/explore?tag=robotics",
+      },
+      {
+        id: "rob-2",
+        name: "Bipedal Control Systems",
+        handle: "dynamic_balance",
+        avatar: "🦿",
+        isPackage: false,
+        description: "Zero-moment point & linear inverted pendulum",
+        exploreUrl: "/explore?tag=control",
+      },
+      {
+        id: "rob-3",
+        name: "Modelica Magnetic",
+        handle: "modelica_magnetic",
+        avatar: "🧲",
+        isPackage: true,
+        description: "Flux tubes, solenoids & BLDC servo motors",
+        exploreUrl: "/explore?tag=robotics",
+      },
+    ],
+  },
+  {
+    id: "electrical",
+    name: "Electrical",
+    emoji: "⚡",
+    items: [
+      {
+        id: "elec-1",
+        name: "Modelica Electrical Analog",
+        handle: "modelica_electrical",
+        avatar: "🔌",
+        isPackage: true,
+        description: "SPICE analog circuits, semiconductor models & filters",
+        exploreUrl: "/explore?tag=electrical",
+      },
+      {
+        id: "elec-2",
+        name: "Power Grid Stability",
+        handle: "grid_systems",
+        avatar: "🏭",
+        isPackage: false,
+        description: "HVDC transmission, microgrids & phasor DAEs",
+        exploreUrl: "/explore?tag=power",
+      },
+      {
+        id: "elec-3",
+        name: "RF Signal Integrity",
+        handle: "rf_microwave",
+        avatar: "📡",
+        isPackage: false,
+        description: "S-parameters, impedance matching & microstrips",
+        exploreUrl: "/explore?tag=rf",
+      },
+    ],
+  },
+];
+
 const HomeFeedPage: React.FC = () => {
   usePageTitle("Home");
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"forYou" | "following">("forYou");
+  const [activeTab, setActiveTab] = useState<"forYou" | "following" | "federated">("forYou");
   const [followingSort, setFollowingSort] = useState<"popular" | "recent">("recent");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -501,6 +758,24 @@ const HomeFeedPage: React.FC = () => {
   const [scrollMargin, setScrollMargin] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const { openCompose } = React.useContext(ComposeContext);
+  const [selectedDiscipline, setSelectedDiscipline] = useState<string>("aerospace");
+  const [followedHandles, setFollowedHandles] = useState<Record<string, boolean>>({});
+
+  const handleToggleFollow = async (handle: string) => {
+    const isNowFollowing = !followedHandles[handle];
+    setFollowedHandles((prev) => ({ ...prev, [handle]: isNowFollowing }));
+    if (token) {
+      try {
+        if (isNowFollowing) {
+          await followUser(handle);
+        } else {
+          await unfollowUser(handle);
+        }
+      } catch {
+        // Fallback gracefully
+      }
+    }
+  };
 
   useEffect(() => {
     if (listRef.current) {
@@ -556,6 +831,7 @@ const HomeFeedPage: React.FC = () => {
       try {
         const data = await getTimeline({
           following: activeTab === "following",
+          federated: activeTab === "federated",
           sort: followingSort,
           limit: 20,
           artifactType: activeFilter !== "all" ? activeFilter : undefined,
@@ -587,6 +863,7 @@ const HomeFeedPage: React.FC = () => {
     try {
       const data = await getTimeline({
         following: activeTab === "following",
+        federated: activeTab === "federated",
         sort: followingSort,
         limit: 20,
         offset: posts.length,
@@ -620,13 +897,19 @@ const HomeFeedPage: React.FC = () => {
     return () => window.removeEventListener("modelscript:post-created", handlePostCreated);
   }, []);
 
-  const handleKeyDownTab = (e: React.KeyboardEvent, currentTab: "forYou" | "following") => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+  const handleKeyDownTab = (e: React.KeyboardEvent, currentTab: "forYou" | "following" | "federated") => {
+    const tabs: ("forYou" | "following" | "federated")[] = ["forYou", "following", "federated"];
+    const idx = tabs.indexOf(currentTab);
+    if (e.key === "ArrowRight") {
       e.preventDefault();
-      const nextTab = currentTab === "forYou" ? "following" : "forYou";
+      const nextTab = tabs[(idx + 1) % tabs.length];
       setActiveTab(nextTab);
-      const nextElement = document.getElementById(`feed-tab-${nextTab}`);
-      nextElement?.focus();
+      document.getElementById(`feed-tab-${nextTab}`)?.focus();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      const prevTab = tabs[(idx - 1 + tabs.length) % tabs.length];
+      setActiveTab(prevTab);
+      document.getElementById(`feed-tab-${prevTab}`)?.focus();
     }
   };
 
@@ -698,6 +981,21 @@ const HomeFeedPage: React.FC = () => {
                 )}
               </div>
             )}
+          </TabText>
+        </Tab>
+        <Tab
+          id="feed-tab-federated"
+          role="tab"
+          aria-selected={activeTab === "federated"}
+          aria-controls="feed-tabpanel"
+          tabIndex={activeTab === "federated" ? 0 : -1}
+          $active={activeTab === "federated"}
+          onClick={() => setActiveTab("federated")}
+          onKeyDown={(e) => handleKeyDownTab(e, "federated")}
+        >
+          <TabText $active={activeTab === "federated"} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <GlobeIcon size={16} />
+            <span>Federated</span>
           </TabText>
         </Tab>
       </TabBar>
@@ -885,6 +1183,259 @@ const HomeFeedPage: React.FC = () => {
                     "Follow physical modeling engineers, explore Modelica & SysML packages, or publish your first simulation artifact."
                   )}
                 </EmptyStateSubtitle>
+                {!isFiltering && (
+                  <QuickstartContainer>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <RocketIcon size={20} fill="var(--color-accent-emphasis, #8b5cf6)" />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--color-text-heading)" }}>
+                          Quickstart Cyber-Physical Studio
+                        </div>
+                        <div style={{ fontSize: "12.5px", color: "var(--color-text-muted)" }}>
+                          Instant 1-click in-browser simulations to test Modelica DAE execution.
+                        </div>
+                      </div>
+                    </div>
+                    <HeroGrid>
+                      <HeroCard onClick={() => navigate("/playground?model=bouncing-ball")}>
+                        <div style={{ fontSize: "24px" }}>⚽</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
+                            Bouncing Ball
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--color-text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Hybrid physics & impact events
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
+                          Run ↗
+                        </div>
+                      </HeroCard>
+                      <HeroCard onClick={() => navigate("/playground?model=rlc-filter")}>
+                        <div style={{ fontSize: "24px" }}>⚡</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
+                            RLC Filter
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--color-text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Resonant analog electronics
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
+                          Run ↗
+                        </div>
+                      </HeroCard>
+                      <HeroCard onClick={() => navigate("/playground?model=chua-circuit")}>
+                        <div style={{ fontSize: "24px" }}>🌀</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
+                            Chua Circuit
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--color-text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Nonlinear chaotic attractor
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
+                          Run ↗
+                        </div>
+                      </HeroCard>
+                      <HeroCard onClick={() => navigate("/playground?model=sysml2-powertrain")}>
+                        <div style={{ fontSize: "24px" }}>🔋</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
+                            EV Powertrain
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--color-text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            SysML v2 multi-domain architecture
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
+                          Run ↗
+                        </div>
+                      </HeroCard>
+                    </HeroGrid>
+
+                    <DisciplineFollowsSection>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-text-heading)" }}>
+                            Engineering Disciplines & Suggested Follows
+                          </div>
+                          <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                            Follow domain specialists and packages across key cyber-physical engineering sectors.
+                          </div>
+                        </div>
+                      </div>
+
+                      <DisciplineTabsRow>
+                        {DISCIPLINES.map((d) => (
+                          <DisciplineTabButton
+                            key={d.id}
+                            $active={selectedDiscipline === d.id}
+                            onClick={() => setSelectedDiscipline(d.id)}
+                          >
+                            <span>{d.emoji}</span>
+                            <span>{d.name}</span>
+                          </DisciplineTabButton>
+                        ))}
+                      </DisciplineTabsRow>
+
+                      <SuggestedFollowsGrid>
+                        {(DISCIPLINES.find((d) => d.id === selectedDiscipline)?.items || []).map((item) => (
+                          <SuggestedFollowCard key={item.id}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  width: "36px",
+                                  height: "36px",
+                                  borderRadius: "8px",
+                                  background: "var(--color-canvas-subtle, rgba(255, 255, 255, 0.05))",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: "18px",
+                                  border: "1px solid var(--color-border-muted)",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {item.avatar}
+                              </div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span
+                                    style={{
+                                      fontWeight: 600,
+                                      fontSize: "13px",
+                                      color: "var(--color-text-heading)",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {item.name}
+                                  </span>
+                                  {item.isPackage && (
+                                    <span
+                                      style={{
+                                        fontSize: "10px",
+                                        padding: "1px 5px",
+                                        borderRadius: "4px",
+                                        background: "rgba(139, 92, 246, 0.15)",
+                                        color: "var(--color-accent-emphasis, #8b5cf6)",
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      PKG
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "var(--color-text-muted)",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  @{item.handle} • {item.description}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                              <button
+                                onClick={() => handleToggleFollow(item.handle)}
+                                style={{
+                                  padding: "5px 12px",
+                                  borderRadius: "16px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  transition: "all 0.2s ease",
+                                  background: followedHandles[item.handle]
+                                    ? "var(--color-canvas-subtle, rgba(255, 255, 255, 0.08))"
+                                    : "var(--color-accent-emphasis, #8b5cf6)",
+                                  color: followedHandles[item.handle]
+                                    ? "var(--color-text-primary, #ffffff)"
+                                    : "#ffffff",
+                                  border: followedHandles[item.handle]
+                                    ? "1px solid var(--color-border-default, rgba(255, 255, 255, 0.2))"
+                                    : "none",
+                                }}
+                              >
+                                {followedHandles[item.handle] ? (
+                                  <>
+                                    <CheckIcon size={12} />
+                                    <span>Following</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <PlusIcon size={12} />
+                                    <span>Follow</span>
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => navigate(item.exploreUrl)}
+                                style={{
+                                  padding: "5px 8px",
+                                  borderRadius: "8px",
+                                  fontSize: "12px",
+                                  background: "none",
+                                  border: "1px solid var(--color-border-muted, rgba(255, 255, 255, 0.12))",
+                                  color: "var(--color-text-muted)",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                                title="Explore library"
+                              >
+                                ↗
+                              </button>
+                            </div>
+                          </SuggestedFollowCard>
+                        ))}
+                      </SuggestedFollowsGrid>
+                    </DisciplineFollowsSection>
+                  </QuickstartContainer>
+                )}
                 <EmptyStateActions>
                   {isFiltering ? (
                     <>

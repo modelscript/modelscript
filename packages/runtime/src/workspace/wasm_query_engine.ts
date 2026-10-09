@@ -34,20 +34,25 @@
  */
 
 import { TaxonomyIndex } from "@modelscript/dsl";
-import type {
-  CSTTree,
-  DependencyKey,
-  ExpressionEvaluator,
-  Memo,
-  QueryCacheStore,
-  QueryDB,
-  QueryFn,
-  QueryHooks,
-  Revision,
-  SpecializationArgs,
-  SymbolEntry,
-  SymbolId,
-  SymbolIndex,
+import {
+  type CSTTree,
+  type DependencyKey,
+  type ExpressionEvaluator,
+  getLanguageDomainId,
+  getSymbolDomain,
+  LanguageDomainId,
+  type Memo,
+  type ParityReport,
+  type QueryCacheStore,
+  type QueryDB,
+  type QueryFn,
+  type QueryHooks,
+  type Revision,
+  type ShapeBinding,
+  type SpecializationArgs,
+  type SymbolEntry,
+  type SymbolId,
+  type SymbolIndex,
 } from "../runtime.js";
 
 // -- Public Types --
@@ -99,6 +104,10 @@ class DependencyTracker {
   recordByName(name: string): void {
     this.byNameLookups.add(name);
     this.dependencies.push({ kind: "byName", name });
+  }
+
+  recordDomain(domain: LanguageDomainId): void {
+    this.dependencies.push({ kind: "domain", domain });
   }
 }
 
@@ -227,6 +236,31 @@ export class WasmQueryEngine {
   }
 
   private inputRevisions = new Map<SymbolId, Revision>();
+  private domainRevisions = new Map<LanguageDomainId, Revision>();
+
+  public getDomainRevision(domain: LanguageDomainId): Revision {
+    return this.domainRevisions.get(domain) ?? 0;
+  }
+
+  public incrementDomainRevision(domain: LanguageDomainId): Revision {
+    const next = (this.domainRevisions.get(domain) ?? 0) + 1;
+    this.domainRevisions.set(domain, next);
+    return next;
+  }
+
+  public hasDomainChanged(domain: LanguageDomainId, sinceRevision: Revision): boolean {
+    return (this.domainRevisions.get(domain) ?? 0) > sinceRevision;
+  }
+
+  public invalidateDomain(domain: LanguageDomainId): void {
+    this.currentRevision++;
+    this.incrementDomainRevision(domain);
+    for (const id of this.index.symbols.keys()) {
+      if (getSymbolDomain(id) === domain) {
+        this.inputRevisions.set(id, this.currentRevision);
+      }
+    }
+  }
 
   private lintCache = new Map<string, Map<SymbolId, LintDiagnostic[]>>();
   private dirtyLintSymbols = new Map<string, Set<SymbolId>>();
@@ -292,6 +326,11 @@ export class WasmQueryEngine {
     for (const [key, memo] of memos) {
       this.memos.set(key, memo);
     }
+  }
+
+  public getMemoFor(queryName: string, symbolId: SymbolId, argsHash?: string): Memo | undefined {
+    const key = this.memoKey(queryName, symbolId, argsHash);
+    return this.memos.get(key);
   }
 
   public memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
@@ -469,6 +508,10 @@ export class WasmQueryEngine {
 
     for (const id of ids) {
       this.inputRevisions.set(id, this.currentRevision);
+      const domain = getSymbolDomain(id);
+      if (domain !== LanguageDomainId.Default) {
+        this.incrementDomainRevision(domain);
+      }
     }
 
     if (structuralChangedIds) {
@@ -751,7 +794,7 @@ export class WasmQueryEngine {
   /**
    * Computes strongly connected components (algebraic loops) for equations in a symbol.
    */
-  public checkAlgebraicLoops(symbolId: SymbolId): {
+  public checkAlgebraicLoops(_symbolId: SymbolId): {
     hasLoops: boolean;
     loopCount: number;
     loops: { size: number; vars: string[] }[];
@@ -795,6 +838,9 @@ export class WasmQueryEngine {
       for (const dep of memo.dependencies) {
         if (dep.kind === "input") {
           const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
+          if (rev > memo.verified_at) return false;
+        } else if (dep.kind === "domain") {
+          const rev = this.domainRevisions.get(dep.domain) ?? 0;
           if (rev > memo.verified_at) return false;
         } else if (dep.kind === "query") {
           try {
@@ -966,6 +1012,48 @@ export class WasmQueryEngine {
         return Array.from(engine.allEntries());
       },
 
+      resolvePolyglotSymbol(fqn: string, targetDomain?: LanguageDomainId): SymbolId | null {
+        if (tracker) tracker.recordByName(fqn);
+        return engine.resolvePolyglotSymbol(fqn, targetDomain);
+      },
+
+      crossDomainBinding(symbolId: SymbolId): SymbolId[] {
+        if (tracker) tracker.recordInput(symbolId);
+        const results = engine.crossDomainBinding(symbolId);
+        if (tracker) {
+          for (const rid of results) {
+            tracker.recordInput(rid);
+          }
+        }
+        return results;
+      },
+
+      physicalQuantityParity(modelicaVarId: SymbolId, sysmlAttrId: SymbolId): ParityReport {
+        if (tracker) {
+          tracker.recordInput(modelicaVarId);
+          tracker.recordInput(sysmlAttrId);
+        }
+        return engine.physicalQuantityParity(modelicaVarId, sysmlAttrId);
+      },
+
+      geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding {
+        if (tracker) {
+          tracker.recordInput(cadSymbolId);
+          tracker.recordInput(feaMeshId);
+        }
+        return engine.geometricShapeBinding(cadSymbolId, feaMeshId);
+      },
+
+      getDomainRevision(domain: LanguageDomainId): Revision {
+        if (tracker) tracker.recordDomain(domain);
+        return engine.getDomainRevision(domain);
+      },
+
+      hasDomainChanged(domain: LanguageDomainId, sinceRevision: Revision): boolean {
+        if (tracker) tracker.recordDomain(domain);
+        return engine.hasDomainChanged(domain, sinceRevision);
+      },
+
       queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
         const argsHash = JSON.stringify(args, Object.keys(args).sort());
         return engine.fetch(queryName, id, argsHash, args) as T;
@@ -1041,6 +1129,245 @@ export class WasmQueryEngine {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Polyglot Cross-Domain Query Implementations
+  // -------------------------------------------------------------------------
+
+  public resolvePolyglotSymbol(fqn: string, targetDomain?: LanguageDomainId): SymbolId | null {
+    if (!fqn || typeof fqn !== "string") return null;
+    const trimmed = fqn.trim();
+    if (!trimmed) return null;
+
+    let searchDomain = targetDomain;
+    let pathStr = trimmed;
+
+    // Check for domain prefix like SysML2::..., Modelica::..., STEP::..., CAD::..., sysml2://...
+    const prefixMatch = pathStr.match(/^([-a-zA-Z0-9_]+)(?:::|\/\/)(.*)$/);
+    if (prefixMatch && prefixMatch[1] && prefixMatch[2]) {
+      const detectedDomain = getLanguageDomainId(prefixMatch[1]);
+      if (detectedDomain !== LanguageDomainId.Default) {
+        searchDomain = detectedDomain;
+        pathStr = prefixMatch[2];
+      }
+    }
+
+    // Direct match by qualifiedName / fqn metadata or exact name
+    for (const entry of this.allEntries()) {
+      if (searchDomain !== undefined && getSymbolDomain(entry.id) !== searchDomain) {
+        continue;
+      }
+      if (entry.metadata?.qualifiedName === pathStr || entry.metadata?.fqn === pathStr || entry.name === pathStr) {
+        return entry.id;
+      }
+    }
+
+    // Split path by :: or .
+    const segments = pathStr.split(/::|\./).filter((s) => s.length > 0);
+    if (segments.length === 0) return null;
+
+    // Look for root candidates matching segments[0]
+    const rootCandidates = this.index.byName.get(segments[0]!) || [];
+    for (const candId of rootCandidates) {
+      const cand = this.resolveEntry(candId);
+      if (!cand) continue;
+      if (searchDomain !== undefined && getSymbolDomain(cand.id) !== searchDomain) {
+        continue;
+      }
+
+      if (segments.length === 1) {
+        return cand.id;
+      }
+
+      // Traverse children down the path
+      let currentId: SymbolId | null = cand.id;
+      for (let i = 1; i < segments.length; i++) {
+        const seg = segments[i]!;
+        const childIds = this.index.childrenOf.get(currentId) || [];
+        let nextChild: SymbolEntry | null = null;
+        for (const cid of childIds) {
+          const centry = this.resolveEntry(cid);
+          if (centry && centry.name === seg) {
+            nextChild = centry;
+            break;
+          }
+        }
+        if (!nextChild) {
+          currentId = null;
+          break;
+        }
+        currentId = nextChild.id;
+      }
+
+      if (currentId !== null) {
+        return currentId;
+      }
+    }
+
+    // If still not found, search by the leaf name if targetDomain matches
+    const leafName = segments[segments.length - 1]!;
+    const leafCandidates = this.index.byName.get(leafName) || [];
+    for (const lid of leafCandidates) {
+      const entry = this.resolveEntry(lid);
+      if (!entry) continue;
+      if (searchDomain !== undefined && getSymbolDomain(entry.id) !== searchDomain) {
+        continue;
+      }
+      return entry.id;
+    }
+
+    return null;
+  }
+
+  public crossDomainBinding(symbolId: SymbolId): SymbolId[] {
+    const entry = this.resolveEntry(symbolId);
+    if (!entry) return [];
+
+    const domain = getSymbolDomain(symbolId);
+    const results = new Set<SymbolId>();
+
+    // 1. Check correspondence slot map if configured
+    if (this.correspondenceSlotMap && this.correspondenceSlotMap.has(symbolId)) {
+      const slot = this.correspondenceSlotMap.get(symbolId)!;
+      for (const [otherId, otherSlot] of this.correspondenceSlotMap.entries()) {
+        if (otherSlot === slot && otherId !== symbolId) {
+          results.add(otherId);
+        }
+      }
+    }
+
+    // 2. Check metadata links (twin, counterpart, implements, cadBinding)
+    const meta = entry.metadata;
+    if (meta) {
+      const candidates = [
+        meta.twin,
+        meta.counterpart,
+        meta.implements,
+        meta.cadBinding,
+        meta.crossDomainBinding,
+      ].filter(Boolean);
+
+      for (const cand of candidates) {
+        if (typeof cand === "number") {
+          results.add(cand);
+        } else if (typeof cand === "string") {
+          const resolved = this.resolvePolyglotSymbol(cand);
+          if (resolved !== null && resolved !== symbolId) {
+            results.add(resolved);
+          }
+        }
+      }
+    }
+
+    // 3. Fall back to name matching across other language domains
+    if (entry.name) {
+      const nameMatches = this.index.byName.get(entry.name) || [];
+      for (const otherId of nameMatches) {
+        if (otherId === symbolId) continue;
+        const otherDomain = getSymbolDomain(otherId);
+        if (otherDomain !== domain) {
+          results.add(otherId);
+        }
+      }
+    }
+
+    return Array.from(results);
+  }
+
+  public physicalQuantityParity(modelicaVarId: SymbolId, sysmlAttrId: SymbolId): ParityReport {
+    const mEntry = this.resolveEntry(modelicaVarId);
+    const sEntry = this.resolveEntry(sysmlAttrId);
+
+    if (!mEntry || !sEntry) {
+      return {
+        compatible: false,
+        reason: `Symbol not found: modelica=${Boolean(mEntry)}, sysml=${Boolean(sEntry)}`,
+      };
+    }
+
+    const mType = (mEntry.metadata?.type || mEntry.ruleName || "").toString();
+    const mUnit = (mEntry.metadata?.unit || "").toString();
+    const sType = (sEntry.metadata?.type || sEntry.ruleName || "").toString();
+    const sUnit = (sEntry.metadata?.unit || "").toString();
+
+    // Normalization helper for physical dimensions
+    const normalizeUnit = (u: string) => u.replace(/\*/g, ".").replace(/\s+/g, "").toLowerCase();
+
+    const normMUnit = normalizeUnit(mUnit);
+    const normSUnit = normalizeUnit(sUnit);
+
+    const isTorque = (t: string, u: string) =>
+      /torque/i.test(t) || u === "n.m" || u === "nm" || u === "n*m" || u === "kg.m2/s2";
+    const isMass = (t: string, u: string) => /mass/i.test(t) || u === "kg" || u === "g";
+    const isVoltage = (t: string, u: string) => /voltage|potential/i.test(t) || u === "v";
+    const isLength = (t: string, u: string) => /length|distance|radius|diameter/i.test(t) || u === "m" || u === "mm";
+
+    let compatible = false;
+    let reason: string | undefined;
+
+    if (normMUnit && normSUnit && normMUnit === normSUnit) {
+      compatible = true;
+    } else if (isTorque(mType, normMUnit) && isTorque(sType, normSUnit)) {
+      compatible = true;
+    } else if (isMass(mType, normMUnit) && isMass(sType, normSUnit)) {
+      compatible = true;
+    } else if (isVoltage(mType, normMUnit) && isVoltage(sType, normSUnit)) {
+      compatible = true;
+    } else if (isLength(mType, normMUnit) && isLength(sType, normSUnit)) {
+      compatible = true;
+    } else if (!mUnit && !sUnit) {
+      const isReal = (t: string) => /real|float|double/i.test(t);
+      const isInt = (t: string) => /int/i.test(t);
+      const isBool = (t: string) => /bool/i.test(t);
+      const isStr = (t: string) => /string/i.test(t);
+
+      if (
+        (isReal(mType) && isReal(sType)) ||
+        (isInt(mType) && isInt(sType)) ||
+        (isBool(mType) && isBool(sType)) ||
+        (isStr(mType) && isStr(sType))
+      ) {
+        compatible = true;
+      } else {
+        compatible = false;
+        reason = `Type mismatch between Modelica '${mType}' and SysML '${sType}'`;
+      }
+    } else {
+      compatible = false;
+      reason = `Unit mismatch: Modelica '${mUnit || mType}' vs SysML '${sUnit || sType}'`;
+    }
+
+    return {
+      compatible,
+      modelicaType: mType,
+      modelicaUnit: mUnit,
+      sysmlType: sType,
+      sysmlUnit: sUnit,
+      reason,
+    };
+  }
+
+  public geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding {
+    const cadEntry = this.resolveEntry(cadSymbolId);
+    const feaEntry = this.resolveEntry(feaMeshId);
+
+    const bound = Boolean(cadEntry && feaEntry);
+    const cadMeta = cadEntry?.metadata || {};
+    const feaMeta = feaEntry?.metadata || {};
+
+    const asNum = (v: unknown): number | undefined =>
+      typeof v === "number" ? v : typeof v === "string" && !isNaN(Number(v)) ? Number(v) : undefined;
+
+    return {
+      bound,
+      cadSymbolId,
+      feaMeshId,
+      shapeName: cadEntry?.name ?? undefined,
+      surfaceArea: asNum(cadMeta.surfaceArea ?? cadMeta.area),
+      volume: asNum(cadMeta.volume),
+      meshElementCount: asNum(feaMeta.elementCount ?? feaMeta.meshElementCount ?? feaMeta.nodeCount),
+    };
+  }
+
   // -- Standalone QueryDB Facade --
 
   private _queryDBCache: QueryDB | null = null;
@@ -1113,6 +1440,30 @@ export class WasmQueryEngine {
 
       allEntries(): SymbolEntry[] {
         return Array.from(engine.allEntries());
+      },
+
+      resolvePolyglotSymbol(fqn: string, targetDomain?: LanguageDomainId): SymbolId | null {
+        return engine.resolvePolyglotSymbol(fqn, targetDomain);
+      },
+
+      crossDomainBinding(symbolId: SymbolId): SymbolId[] {
+        return engine.crossDomainBinding(symbolId);
+      },
+
+      physicalQuantityParity(modelicaVarId: SymbolId, sysmlAttrId: SymbolId): ParityReport {
+        return engine.physicalQuantityParity(modelicaVarId, sysmlAttrId);
+      },
+
+      geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding {
+        return engine.geometricShapeBinding(cadSymbolId, feaMeshId);
+      },
+
+      getDomainRevision(domain: LanguageDomainId): Revision {
+        return engine.getDomainRevision(domain);
+      },
+
+      hasDomainChanged(domain: LanguageDomainId, sinceRevision: Revision): boolean {
+        return engine.hasDomainChanged(domain, sinceRevision);
       },
 
       queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {

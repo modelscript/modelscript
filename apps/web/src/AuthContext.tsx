@@ -11,6 +11,9 @@ export interface User {
   avatar_url?: string;
   account_type?: string;
   role?: string;
+  has_password?: boolean;
+  token_version?: number;
+  totp_enabled?: boolean;
 }
 
 interface AuthContextType {
@@ -19,8 +22,15 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requires2FA?: boolean; tempToken?: string; user?: User }>;
+  complete2FALogin: (tempToken: string, code: string) => Promise<void>;
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    acceptTerms?: boolean,
+    captchaToken?: string,
+  ) => Promise<{ verificationRequired?: boolean; message?: string }>;
   logout: () => void;
   unreadCount: number;
   setUnreadCount: (c: number) => void;
@@ -143,6 +153,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post("/auth/login", { email, password });
+    if (data.requires2FA) {
+      return { requires2FA: true, tempToken: data.tempToken };
+    }
+    setToken(data.token);
+    setUser(data.user);
+    if (typeof data.user?.credit_balance === "number") {
+      setCreditBalance(data.user.credit_balance);
+    }
+    return { requires2FA: false, user: data.user };
+  }, []);
+
+  const complete2FALogin = useCallback(async (tempToken: string, code: string) => {
+    const { data } = await api.post("/auth/2fa/challenge", { tempToken, code });
     setToken(data.token);
     setUser(data.user);
     if (typeof data.user?.credit_balance === "number") {
@@ -150,16 +173,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (username: string, email: string, password: string) => {
-    const { data } = await api.post("/auth/register", { username, email, password });
-    setToken(data.token);
-    setUser(data.user);
-    if (typeof data.user?.credit_balance === "number") {
-      setCreditBalance(data.user.credit_balance);
-    }
-  }, []);
+  const register = useCallback(
+    async (
+      username: string,
+      email: string,
+      password: string,
+      acceptTerms: boolean = true,
+      captchaToken: string = "mock-token",
+    ) => {
+      const { data } = await api.post("/auth/register", {
+        username,
+        email,
+        password,
+        acceptTerms,
+        captchaToken,
+      });
+      setToken(data.token);
+      setUser(data.user);
+      if (typeof data.user?.credit_balance === "number") {
+        setCreditBalance(data.user.credit_balance);
+      }
+      return data;
+    },
+    [],
+  );
 
   const logout = useCallback(() => {
+    api.post("/auth/logout").catch(() => {});
     setToken(null);
     setUser(null);
   }, []);
@@ -175,6 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAdmin,
         isLoading,
         login,
+        complete2FALogin,
         register,
         logout,
         unreadCount,

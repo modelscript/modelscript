@@ -14,7 +14,11 @@ interface OpenFileDropzoneProps {
   translations: Translations;
 }
 
-export default function OpenFileDropzone({ onFileContent, colorMode, translations }: OpenFileDropzoneProps) {
+export default function OpenFileDropzone({
+  onFileContent,
+  colorMode: _colorMode,
+  translations,
+}: OpenFileDropzoneProps) {
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
@@ -69,18 +73,14 @@ export default function OpenFileDropzone({ onFileContent, colorMode, translation
       {...getRootProps()}
       style={{
         border: "2px dashed",
-        borderColor: isDragActive ? "#0969da" : colorMode === "dark" ? "#30363d" : "#d0d7de",
+        borderColor: isDragActive ? "var(--color-accent-emphasis, #0969da)" : "var(--color-border-default, #30363d)",
         borderRadius: 6,
         padding: 32,
         textAlign: "center",
         cursor: "pointer",
         backgroundColor: isDragActive
-          ? colorMode === "dark"
-            ? "rgba(56,139,253,0.1)"
-            : "#ddf4ff"
-          : colorMode === "dark"
-            ? "#0d1117"
-            : "#f6f8fa",
+          ? "var(--color-accent-subtle, rgba(56,139,253,0.1))"
+          : "var(--color-canvas-subtle, #161b22)",
         transition: "all 0.2s",
       }}
     >

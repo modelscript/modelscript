@@ -398,10 +398,34 @@ await yargs(rawArgs)
   .command(lazy("logout", "Log out from the ModelScript Registry", () => import("./commands/logout.js"), "Logout"))
   .command(
     lazy(
+      "whoami",
+      "Display information about the currently authenticated user",
+      () => import("./commands/whoami.js"),
+      "WhoAmI",
+    ),
+  )
+  .command(
+    lazy(
+      "install [package]",
+      "Install a package from the ModelScript Registry into the local workspace",
+      () => import("./commands/install.js"),
+      "Install",
+    ),
+  )
+  .command(
+    lazy(
       "publish <path>",
-      "Publish a library director or single Modelica file to the ModelScript Registry",
+      "Publish a library directory or single Modelica file to the ModelScript Registry",
       () => import("./commands/publish.js"),
       "Publish",
+    ),
+  )
+  .command(
+    lazy(
+      "pack [path]",
+      "Create an offline distribution zip archive from a package",
+      () => import("./commands/pack.js"),
+      "Pack",
     ),
   )
   .command(

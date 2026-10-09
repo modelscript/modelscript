@@ -48,6 +48,9 @@ export class CadViewerPanel {
           case "commitGizmoDelta":
             this.handleCommitGizmoDelta(message.payload);
             break;
+          case "commitCadBinding":
+            this.handleCommitCadBinding(message.payload);
+            break;
         }
       },
       null,
@@ -250,6 +253,39 @@ export class CadViewerPanel {
         const startPos = doc.positionAt(startIdx);
         const endPos = doc.positionAt(endIdx);
         edit.replace(doc.uri, new vscode.Range(startPos, endPos), newCoords);
+        await vscode.workspace.applyEdit(edit);
+      }
+    }
+  }
+
+  /**
+   * Applies dynamic CAD simulation bindings writeback atomically to the active editor document.
+   */
+  public async handleCommitCadBinding(payload: {
+    componentName: string;
+    bindings: any[];
+    uri?: string;
+  }): Promise<void> {
+    if (!payload) return;
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+
+    const doc = editor.document;
+    const source = doc.getText();
+    const { componentName, bindings, uri } = payload;
+
+    if (doc.languageId === "modelica" || doc.fileName.endsWith(".mo")) {
+      const { patchModelicaCadAnnotation } = await import("@modelscript/cad");
+      const patch = patchModelicaCadAnnotation(source, componentName, {
+        bindings,
+        uri,
+      });
+
+      if (patch.updatedSource !== source && patch.replacedRange) {
+        const edit = new vscode.WorkspaceEdit();
+        const startPos = doc.positionAt(patch.replacedRange.start);
+        const endPos = doc.positionAt(patch.replacedRange.end);
+        edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
         await vscode.workspace.applyEdit(edit);
       }
     }

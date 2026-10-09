@@ -8,8 +8,10 @@ import styled from "styled-components";
 import { getUserFollowers } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import FederatedDomainPill from "../components/FederatedDomainPill";
 import FollowButton from "../components/FollowButton";
 import { CircleIconButton } from "../components/SharedStyles";
+import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
 
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
@@ -174,7 +176,17 @@ const FollowersPage: React.FC = () => {
                         <Text style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
                           {u.display_name || u.username}
                         </Text>
-                        <Text className="handle-text">@{u.username}</Text>
+                        {(() => {
+                          const parsed = parseFederatedHandle(u.username);
+                          return (
+                            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                              <Text className="handle-text">@{parsed.localUsername}</Text>
+                              {parsed.isFederated && parsed.remoteDomain && (
+                                <FederatedDomainPill domain={parsed.remoteDomain} />
+                              )}
+                            </Box>
+                          );
+                        })()}
                       </Box>
                       {currentUser?.username !== u.username && (
                         <Box onClick={(e) => e.preventDefault()}>

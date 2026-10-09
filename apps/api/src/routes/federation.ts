@@ -115,7 +115,7 @@ export async function resolveActorHandle(
   };
 }
 
-export function federationRouter(db: LibraryDatabase, worker?: FederationWorker): Router {
+export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker): Router {
   const router = Router();
   const verifier = createActivityPubVerifier(db);
   const inboxLimiter = defaultInboxLimiter.middleware();
@@ -324,12 +324,13 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
       publicKeyPem: k.public_key_pem,
     }));
 
-    if (publicKeys.length === 0 && fullUser.rsa_public_key) {
+    if (publicKeys.length === 0) {
+      const rsaKey = (fullUser.rsa_public_key as string) || db.ensureUserRSAKeys(fullUser.id as number).publicKey;
       publicKeys = [
         {
           id: `${fullUser.actor_url}#main-key`,
           owner: fullUser.actor_url as string,
-          publicKeyPem: fullUser.rsa_public_key as string,
+          publicKeyPem: rsaKey,
         },
       ];
     }
@@ -423,6 +424,10 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
         to: ["https://www.w3.org/ns/activitystreams#Public"],
         cc: [`${fullUser.actor_url}/followers`],
       };
+
+      if (post.metadata?.contentWarning) {
+        noteObject["summary"] = post.metadata.contentWarning;
+      }
 
       if (post.artifact_view_id) {
         const artifact = db.getArtifactView(post.artifact_view_id);
@@ -858,6 +863,9 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
               }
             }
 
+            const contentWarning = typeof note.summary === "string" ? note.summary.trim() : undefined;
+            const postMetadata = contentWarning ? { contentWarning } : undefined;
+
             const newPost = db.createPost(
               remoteUser.id,
               content,
@@ -869,7 +877,7 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
               note.url || note.id,
               undefined,
               undefined,
-              undefined,
+              postMetadata,
               undefined,
               isSilenced,
             );

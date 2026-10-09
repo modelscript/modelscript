@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, CopyIcon, DownloadIcon, FileIcon, ShareIcon, ZapIcon } from "@primer/octicons-react";
+import { CodeIcon, CopyIcon, DownloadIcon, FileIcon, SearchIcon, ShareIcon, ZapIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Dialog, IconButton } from "@primer/react";
 import React, { useContext, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import MorselEditor from "../components/morsel/Morsel";
 import { compressMorselPayload, decompressMorselPayload } from "../components/morsel/util/permalink";
+import { useToast } from "../components/ToastContext";
 import { useTheme } from "../theme";
 import { usePageTitle } from "../util/title";
 
@@ -186,6 +187,7 @@ export const PlaygroundPage: React.FC = () => {
   const { user } = useAuth();
   const { theme } = useTheme();
   const { openCompose } = useContext(ComposeContext);
+  const toast = useToast();
 
   const modelParam = searchParams.get("model");
   const sourceParam = searchParams.get("source");
@@ -248,6 +250,12 @@ export const PlaygroundPage: React.FC = () => {
     }
   }, [location.hash, modelParam, sourceParam, searchParams]);
 
+  useEffect(() => {
+    const handleOpenShare = () => setShareModalOpen(true);
+    window.addEventListener("modelscript:open-share-modal", handleOpenShare);
+    return () => window.removeEventListener("modelscript:open-share-modal", handleOpenShare);
+  }, []);
+
   const handleSelectExample = (ex: (typeof HERO_EXAMPLES)[number]) => {
     setCurrentCode(ex.code);
     setCurrentTitle(ex.name);
@@ -286,9 +294,14 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handleCopy = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopyStatus(label);
-    setTimeout(() => setCopyStatus(null), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus(label);
+      toast.success(`${label} copied to clipboard!`);
+      setTimeout(() => setCopyStatus(null), 2000);
+    } catch {
+      toast.error(`Failed to copy ${label}`);
+    }
   };
 
   const handlePublishToFeed = () => {
@@ -379,6 +392,19 @@ export const PlaygroundPage: React.FC = () => {
         </NavLeft>
 
         <NavRight>
+          {/* Global Search / Command Palette */}
+          <Button
+            size="small"
+            variant="invisible"
+            leadingVisual={SearchIcon}
+            onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
+            title="Search models, packages & commands (Cmd+K)"
+          >
+            <span style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+              ⌘K
+            </span>
+          </Button>
+
           {/* Export Menu */}
           <ActionMenu>
             <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
@@ -395,7 +421,6 @@ export const PlaygroundPage: React.FC = () => {
                 <ActionList.Item
                   onSelect={() => {
                     handleCopy(getEmbedCode(), "Embed Code");
-                    alert("Embed HTML snippet copied to clipboard!");
                   }}
                 >
                   <ActionList.LeadingVisual>

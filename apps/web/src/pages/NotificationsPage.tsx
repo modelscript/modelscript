@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { HeartFillIcon, MentionIcon, PersonIcon, ReplyIcon, StarIcon } from "@primer/octicons-react";
+import {
+  AlertIcon,
+  CreditCardIcon,
+  HeartFillIcon,
+  MentionIcon,
+  PackageIcon,
+  PersonIcon,
+  ReplyIcon,
+  RocketIcon,
+  StarIcon,
+} from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -9,7 +19,9 @@ import styled from "styled-components";
 import { getNotifications, markNotificationsRead } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import FederatedDomainPill from "../components/FederatedDomainPill";
 import ProfileHoverCard from "../components/ProfileHoverCard";
+import { parseFederatedHandle } from "../util/federation";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 
@@ -33,25 +45,29 @@ function formatRelativeTime(dateString: string): string {
 
 function formatPostContent(content: string) {
   if (!content) return null;
-  const parts = content.split(/((?:^|\s)@[a-zA-Z0-9_]+)/g);
+  const parts = content.split(/((?:^|\s)@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
   return parts.map((part, idx) => {
-    const match = part.match(/^(\s*)(@[a-zA-Z0-9_]+)$/);
+    const match = part.match(/^(\s*)(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)$/);
     if (match) {
-      const username = match[2].substring(1);
+      const rawHandle = match[2].substring(1);
+      const parsed = parseFederatedHandle(rawHandle);
       return (
         <React.Fragment key={idx}>
           {match[1]}
-          <ProfileHoverCard username={username}>
+          <ProfileHoverCard username={rawHandle}>
             <Link
-              to={`/${username}`}
+              to={`/${rawHandle}`}
               style={{ color: "var(--color-link)", textDecoration: "none" }}
               onClick={(e) => e.stopPropagation()}
               onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
               onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
             >
-              {match[2]}
+              @{parsed.localUsername}
             </Link>
           </ProfileHoverCard>
+          {parsed.isFederated && parsed.remoteDomain && (
+            <FederatedDomainPill domain={parsed.remoteDomain} style={{ marginLeft: "4px" }} />
+          )}
         </React.Fragment>
       );
     }
@@ -101,20 +117,33 @@ const getIconForType = (type: string) => {
       return <StarIcon color="var(--color-status-verified)" size={24} />;
     case "mention":
       return <MentionIcon color="var(--color-accent-purple)" size={24} />;
+    case "simulation":
+    case "simulation_completed":
+      return <RocketIcon color="var(--color-accent-emphasis, #8b5cf6)" size={24} />;
+    case "package":
+    case "package_published":
+      return <PackageIcon color="var(--color-accent-cyan, #06b6d4)" size={24} />;
+    case "security_alert":
+      return <AlertIcon color="var(--color-danger-fg, #f85149)" size={24} />;
+    case "credit_warning":
+      return <CreditCardIcon color="var(--color-attention-fg, #d29922)" size={24} />;
     default:
       return null;
   }
 };
 
-const getMessageForType = (type: string, actors: any[] = []) => {
+const getMessageForType = (type: string, actors: any[] = [], currentUsername?: string) => {
   const count = actors?.length || 0;
-  if (count === 0) return null;
+  if (count === 0 && type !== "security_alert" && type !== "credit_warning") return null;
 
   const firstActor = actors[0] || {};
-  const name = firstActor.display_name || firstActor.username || "Someone";
+  const isSelf = Boolean(currentUsername && firstActor.username === currentUsername);
+  const name = isSelf ? "You" : firstActor.display_name || firstActor.username || "Someone";
 
   let actorText;
-  if (count === 1) {
+  if (isSelf) {
+    actorText = <Text fontWeight="bold">You</Text>;
+  } else if (count === 1) {
     actorText = <Text fontWeight="bold">{name}</Text>;
   } else if (count === 2) {
     const secondActor = actors[1] || {};
@@ -143,6 +172,16 @@ const getMessageForType = (type: string, actors: any[] = []) => {
       return <>{actorText} reposted your post</>;
     case "mention":
       return <>{actorText} mentioned you</>;
+    case "simulation":
+    case "simulation_completed":
+      return isSelf ? <>Your simulation job completed successfully</> : <>{actorText} completed a simulation run</>;
+    case "package":
+    case "package_published":
+      return isSelf ? <>Your package was published successfully</> : <>{actorText} published a package</>;
+    case "security_alert":
+      return <>Security alert: Vulnerability or license warning detected in package dependencies</>;
+    case "credit_warning":
+      return <>Compute wallet notice: Account compute balance threshold warning</>;
     default:
       return null;
   }
@@ -346,6 +385,22 @@ const NotificationsPage: React.FC = () => {
                 $unread={!notif.read}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).closest("a, button, .interactive-element")) return;
+                  if (notif.type === "simulation" || notif.type === "simulation_completed") {
+                    navigate(notif.job_id ? `/jobs/${notif.job_id}` : "/jobs");
+                    return;
+                  }
+                  if (notif.type === "package" || notif.type === "package_published") {
+                    navigate(notif.package_name ? `/packages/${notif.package_name}` : "/packages");
+                    return;
+                  }
+                  if (notif.type === "credit_warning") {
+                    navigate("/settings/billing");
+                    return;
+                  }
+                  if (notif.type === "security_alert") {
+                    navigate("/settings");
+                    return;
+                  }
                   const postAuthor =
                     notif.post_author || notif.author_username || primaryActor.username || user?.username;
                   const url =
@@ -470,7 +525,7 @@ const NotificationsPage: React.FC = () => {
                           ))}
                         </AvatarsRow>
                         <Box mt={1} fontSize="15px">
-                          {getMessageForType(notif.type, notif.actors)}
+                          {getMessageForType(notif.type, notif.actors, user?.username)}
                         </Box>
                         {notif.post_content && (
                           <Box

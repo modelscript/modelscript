@@ -7,7 +7,9 @@ import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { followUser, getUserProfile } from "../api";
+import { parseFederatedHandle } from "../util/federation";
 import Box from "./Box";
+import FederatedDomainPill from "./FederatedDomainPill";
 
 const PopoverContainer = styled.div`
   position: absolute;
@@ -268,9 +270,17 @@ export default function ProfileHoverCard({
                   <div style={{ fontWeight: "bold", fontSize: "17px", color: "var(--color-fg-default)" }}>
                     {data.display_name || data.username}
                   </div>
-                  <div className="handle-text" style={{ marginTop: "2px" }}>
-                    @{data.username}
-                  </div>
+                  {(() => {
+                    const parsed = parseFederatedHandle(data.username);
+                    return (
+                      <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt="2px">
+                        <div className="handle-text">@{parsed.localUsername}</div>
+                        {parsed.isFederated && parsed.remoteDomain && (
+                          <FederatedDomainPill domain={parsed.remoteDomain} />
+                        )}
+                      </Box>
+                    );
+                  })()}
                 </Box>
 
                 {data.bio && <BioText>{data.bio}</BioText>}

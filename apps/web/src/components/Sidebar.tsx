@@ -8,7 +8,6 @@ import {
   HomeIcon,
   KebabHorizontalIcon,
   PackageIcon,
-  PersonIcon,
   PlayIcon,
   PlusIcon,
   RepoIcon,
@@ -54,6 +53,12 @@ const SidebarContainer = styled.header`
   }
 
   .sidebar-separator {
+    @media (max-width: 1280px) {
+      display: none;
+    }
+  }
+
+  .sidebar-section-header {
     @media (max-width: 1280px) {
       display: none;
     }
@@ -144,6 +149,51 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   }
 `;
 
+const SectionHeader = styled.div`
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 14px 2px;
+  user-select: none;
+
+  @media (max-width: 1280px) {
+    display: none;
+  }
+`;
+
+const SectionDivider = styled.div`
+  height: 1px;
+  background-color: var(--color-border);
+  margin: 6px 8px;
+
+  @media (max-width: 1280px) {
+    margin: 4px 2px;
+  }
+`;
+
+const ShortcutBadge = styled.span`
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--color-border);
+  padding: 1px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  pointer-events: none;
+
+  @media (max-width: 1280px) {
+    display: none;
+  }
+`;
+
 const NavPill = styled.div<{ $active?: boolean }>`
   display: inline-flex;
   align-items: center;
@@ -154,6 +204,11 @@ const NavPill = styled.div<{ $active?: boolean }>`
   border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
   background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover .shortcut-badge {
+    opacity: 1;
+    transform: translateX(0);
+  }
 
   @media (max-width: 1280px) {
     width: 44px;
@@ -331,31 +386,78 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
 
-  const navLinks = [];
-  if (user) navLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
-  navLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore" });
+  const communityLinks = [];
+  if (user) communityLinks.push({ to: "/home", icon: HomeIcon, label: "Home", shortcut: "g h" });
+  communityLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore", shortcut: "g e" });
   if (user) {
-    navLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications" });
-    navLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
-    navLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
-  }
-  navLinks.push({ to: "/playground", icon: PlayIcon, label: "Playground" });
-  navLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
-  navLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
-  if (hasIde) {
-    navLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
-  }
-  if (hasCae) {
-    navLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
+    communityLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications", shortcut: "g n" });
+    communityLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
+    communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
   }
 
+  const studioLinks = [
+    { to: "/playground", icon: PlayIcon, label: "Playground", shortcut: "g p" },
+    { to: "/packages", icon: PackageIcon, label: "Packages", shortcut: "g k" },
+    { to: "/repos", icon: RepoIcon, label: "Repositories", shortcut: "g r" },
+  ];
+  if (hasIde) {
+    studioLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE", shortcut: "g i" });
+  }
+  if (hasCae) {
+    studioLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
+  }
+
+  const systemLinks = [];
   if (user) {
-    navLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
-    navLinks.push({ to: "/settings", icon: GearIcon, label: "Settings" });
+    systemLinks.push({ to: "/settings", icon: GearIcon, label: "Settings", shortcut: "g s" });
     if (isAdmin) {
-      navLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
+      systemLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
     }
   }
+
+  const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string }) => (
+    <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
+      <NavPill $active={location.pathname.startsWith(link.to)}>
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+          }}
+        >
+          <link.icon size={24} />
+          {link.to === "/notifications" && unreadCount > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                top: -4,
+                right: -6,
+                backgroundColor: "var(--color-accent-cyan)",
+                color: "white",
+                borderRadius: "50%",
+                minWidth: "20px",
+                height: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "11px",
+                fontWeight: "bold",
+                padding: "0 4px",
+                boxShadow: "0 0 0 2px var(--color-bg-primary)",
+              }}
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </div>
+          )}
+        </div>
+        <Text className="nav-label">{link.label}</Text>
+        {link.shortcut && <ShortcutBadge className="shortcut-badge">{link.shortcut}</ShortcutBadge>}
+      </NavPill>
+    </NavItem>
+  );
 
   return (
     <SidebarContainer>
@@ -386,48 +488,19 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
         flex={1}
         style={{ position: "relative", zIndex: 1, marginTop: "4px" }}
       >
-        {navLinks.map((link) => (
-          <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
-            <NavPill $active={location.pathname.startsWith(link.to)}>
-              <div
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 28,
-                  height: 28,
-                }}
-              >
-                <link.icon size={24} />
-                {link.to === "/notifications" && unreadCount > 0 && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: -4,
-                      right: -6,
-                      backgroundColor: "var(--color-accent-cyan)",
-                      color: "white",
-                      borderRadius: "50%",
-                      minWidth: "20px",
-                      height: "20px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      padding: "0 4px",
-                      boxShadow: "0 0 0 2px var(--color-bg-primary)",
-                    }}
-                  >
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </div>
-                )}
-              </div>
-              <Text className="nav-label">{link.label}</Text>
-            </NavPill>
-          </NavItem>
-        ))}
+        {communityLinks.map(renderLinkItem)}
+
+        <SectionDivider />
+        <SectionHeader>Modeling Studio</SectionHeader>
+        {studioLinks.map(renderLinkItem)}
+
+        {systemLinks.length > 0 && (
+          <>
+            <SectionDivider />
+            <SectionHeader>System</SectionHeader>
+            {systemLinks.map(renderLinkItem)}
+          </>
+        )}
 
         {user && (
           <>

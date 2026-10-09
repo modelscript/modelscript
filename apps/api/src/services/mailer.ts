@@ -49,6 +49,9 @@ export class MailerService {
     };
 
     this.sentMails.push(record);
+    if (this.sentMails.length > 100) {
+      this.sentMails.shift();
+    }
 
     if (this.driver === "console") {
       if (process.env["NODE_ENV"] !== "test") {
@@ -139,6 +142,52 @@ The ModelScript Team`;
     </div>
     <p style="font-size: 14px; color: #64748b;">Or paste this link into your browser:<br><a href="${verifyUrl}" style="color: #2563eb; word-break: break-all;">${verifyUrl}</a></p>
     <p style="font-size: 13px; color: #94a3b8; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px;">This verification link will expire in 24 hours. If you did not create this account, please disregard this email.</p>
+  </div>
+</body>
+</html>
+`;
+
+    return this.sendMail({ to, subject, text, html });
+  }
+
+  public async sendPasswordResetEmail(
+    to: string,
+    username: string,
+    resetToken: string,
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const resetUrl = `${this.publicUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+    const subject = "Reset your ModelScript password";
+    const text = `Hello ${username},
+
+A password reset was requested for your ModelScript account. Click the link below to set a new password:
+
+${resetUrl}
+
+This link is valid for 15 minutes and can only be used once.
+
+If you did not request a password reset, you can safely ignore this email. Your account remains secure.
+
+Best regards,
+The ModelScript Team`;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: #0f172a; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+    <h1 style="color: #38bdf8; margin: 0; font-size: 24px;">ModelScript</h1>
+  </div>
+  <div style="border: 1px solid #e2e8f0; border-top: none; padding: 30px; border-radius: 0 0 8px 8px; background: #ffffff;">
+    <h2 style="margin-top: 0; color: #0f172a;">Reset your password</h2>
+    <p>Hello <strong>${username}</strong>,</p>
+    <p>We received a request to reset the password for your ModelScript account. Click the button below to choose a new password:</p>
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${resetUrl}" style="background: #2563eb; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">Reset Password</a>
+    </div>
+    <p style="font-size: 14px; color: #64748b;">Or paste this link into your browser:<br><a href="${resetUrl}" style="color: #2563eb; word-break: break-all;">${resetUrl}</a></p>
+    <p style="font-size: 13px; color: #94a3b8; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px;">This password reset link will expire in 15 minutes. If you did not make this request, you can safely ignore this email.</p>
   </div>
 </body>
 </html>

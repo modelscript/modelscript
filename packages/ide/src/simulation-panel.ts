@@ -209,6 +209,9 @@ export class SimulationPanel {
     if (CadViewerPanel.currentPanel) {
       CadViewerPanel.currentPanel.sendLiveValues({ [variable]: value }, time);
     }
+    if (MultiBodyAnimationPanel.currentPanel) {
+      MultiBodyAnimationPanel.currentPanel.sendLiveValues({ [variable]: value }, time);
+    }
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, liveMode: boolean) {
@@ -363,6 +366,9 @@ export class SimulationPanel {
     // Also forward simulation data to the 3D CAD viewer for animation
     if (CadViewerPanel.currentPanel && result.t && result.y && result.states) {
       CadViewerPanel.currentPanel.sendSimulationData(result.t, result.y, result.states);
+    }
+    if (MultiBodyAnimationPanel.currentPanel && result.t && result.y && result.states) {
+      MultiBodyAnimationPanel.currentPanel.loadData({ t: result.t, y: result.y, states: result.states });
     }
   }
 

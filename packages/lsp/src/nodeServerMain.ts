@@ -754,6 +754,7 @@ export function startNodeServer(input?: any, output?: any) {
     documents,
     validationService.documentLSPBridges,
     documentManager.documentTrees,
+    validationService,
   );
 
   registerFormattingProvider(connection, documents, parserService.getDocumentTree.bind(parserService), () =>

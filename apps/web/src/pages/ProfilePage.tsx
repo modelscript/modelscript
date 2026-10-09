@@ -4,9 +4,11 @@
 import {
   ArrowLeftIcon,
   CalendarIcon,
+  GlobeIcon,
   HubotIcon,
   InfoIcon,
   KebabHorizontalIcon,
+  LinkExternalIcon,
   LinkIcon,
   ListUnorderedIcon,
   LocationIcon,
@@ -22,10 +24,12 @@ import styled from "styled-components";
 import { blockUser, followUser, getUserProfile, muteUser, reportUser, unblockUser, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import FederatedDomainPill from "../components/FederatedDomainPill";
 import FollowButton from "../components/FollowButton";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
+import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
 
 const XIcon = () => (
@@ -212,6 +216,7 @@ const ProfilePage: React.FC = () => {
             {profile.display_name || profile.username}
             {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
             {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
+            {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
           </Heading>
           <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
             {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
@@ -488,6 +493,7 @@ const ProfilePage: React.FC = () => {
           {profile.display_name || profile.username}
           {profile.account_type === "rss" && <RssIcon size={24} color="var(--color-fg-muted)" />}
           {profile.account_type === "bot" && <HubotIcon size={24} color="var(--color-fg-muted)" />}
+          {profile.account_type === "remote" && <GlobeIcon size={24} color="var(--color-accent-cyan)" />}
           {linkedAccounts.some((acc: any) => acc.provider === "twitter") && (
             <span
               style={{
@@ -506,7 +512,55 @@ const ProfilePage: React.FC = () => {
             </span>
           )}
         </Heading>
-        <Text color="var(--color-fg-muted)">@{profile.username}</Text>
+        {(() => {
+          const parsed = parseFederatedHandle(profile.username);
+          return (
+            <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+              <Text color="var(--color-fg-muted)">@{parsed.localUsername}</Text>
+              {parsed.isFederated && parsed.remoteDomain && <FederatedDomainPill domain={parsed.remoteDomain} />}
+            </Box>
+          );
+        })()}
+
+        {profile.account_type === "remote" && (
+          <Box mt={2} mb={1} display="flex" alignItems="center" gap={2} flexWrap="wrap">
+            <span
+              style={{
+                fontSize: "12px",
+                padding: "2px 8px",
+                backgroundColor: "rgba(6, 182, 212, 0.1)",
+                color: "var(--color-accent-cyan)",
+                border: "1px solid rgba(6, 182, 212, 0.3)",
+                borderRadius: "12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontWeight: 600,
+              }}
+            >
+              <GlobeIcon size={13} /> ActivityPub Federated Actor
+            </span>
+            {profile.actor_url && (
+              <a
+                href={profile.actor_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  fontSize: "12px",
+                  color: "var(--color-text-muted)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  textDecoration: "none",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+              >
+                <LinkExternalIcon size={12} /> Canonical Actor URL
+              </a>
+            )}
+          </Box>
+        )}
 
         {profile.account_type === "bot" && profile.owner_username && (
           <Box mt={1} mb={2}>

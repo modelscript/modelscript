@@ -5,12 +5,22 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 import { requireToken } from "../util/auth.js";
+import {
+  buildPackageZip,
+  collectPackageFiles,
+  formatBytes,
+  validatePackageManifest,
+  type PackageFileEntry,
+} from "../util/package-files.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { computePackageContentHash } from "../util/package-verify.js";
 
 interface PublishArgs {
   path: string;
   signature?: string;
+  dryRun?: boolean;
+  tag?: string;
+  noVerify?: boolean;
 }
 
 export const Publish: CommandModule<{}, PublishArgs> = {
@@ -26,6 +36,23 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       .option("signature", {
         description: "Cryptographic detached signature for supply chain verification",
         type: "string",
+      })
+      .option("dry-run", {
+        alias: "d",
+        description: "Report files and archive metadata without publishing to the registry",
+        type: "boolean",
+        default: false,
+      })
+      .option("tag", {
+        alias: "t",
+        description: "Registers the published package with the given dist-tag",
+        type: "string",
+        default: "latest",
+      })
+      .option("no-verify", {
+        description: "Skip pre-flight syntax and manifest verification",
+        type: "boolean",
+        default: false,
       });
   }) as CommandModule<{}, PublishArgs>["builder"],
   handler: async (args) => {
@@ -39,28 +66,44 @@ export const Publish: CommandModule<{}, PublishArgs> = {
     const stat = statSync(targetPath);
     let name: string | null = null;
     let version: string | null = null;
-    const zip = new AdmZip();
+    let zip: AdmZip;
+    let files: PackageFileEntry[] = [];
 
     if (stat.isDirectory()) {
+      const packageJsonPath = path.join(targetPath, "package.json");
       const packageMoPath = path.join(targetPath, "package.mo");
-      if (!existsSync(packageMoPath)) {
-        console.error(`Error: Directory must contain a 'package.mo' file: ${packageMoPath}`);
+
+      if (existsSync(packageJsonPath)) {
+        try {
+          const parsed = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+          if (!parsed.name) {
+            console.error(`Error: 'name' field is missing in ${packageJsonPath}`);
+            process.exit(1);
+          }
+          name = parsed.name;
+          version = parsed.version || "0.0.0";
+        } catch (err) {
+          console.error(`Error: Failed to parse ${packageJsonPath}: ${err instanceof Error ? err.message : err}`);
+          process.exit(1);
+        }
+      } else if (existsSync(packageMoPath)) {
+        const content = readFileSync(packageMoPath, "utf-8");
+        const parsed = parsePackageMo(content);
+
+        if (!parsed.name) {
+          console.error(`Error: Could not determine package name from ${packageMoPath}`);
+          process.exit(1);
+        }
+
+        name = parsed.name;
+        version = parsed.version || "0.0.0";
+      } else {
+        console.error(`Error: Directory must contain either a 'package.json' or 'package.mo' file: ${targetPath}`);
         process.exit(1);
       }
 
-      const content = readFileSync(packageMoPath, "utf-8");
-      const parsed = parsePackageMo(content);
-
-      if (!parsed.name) {
-        console.error(`Error: Could not determine package name from ${packageMoPath}`);
-        process.exit(1);
-      }
-
-      name = parsed.name;
-      version = parsed.version || "0.0.0";
-
-      // Zip the entire directory, retaining structure
-      zip.addLocalFolder(targetPath);
+      files = collectPackageFiles(targetPath);
+      zip = buildPackageZip(files);
     } else if (stat.isFile() && targetPath.endsWith(".mo")) {
       const content = readFileSync(targetPath, "utf-8");
       const parsed = parsePackageMo(content);
@@ -73,19 +116,45 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       name = parsed.name;
       version = parsed.version || "0.0.0";
 
-      // The API strictly checks for a root "package.mo".
-      // We rename this single file to `package.mo` inside the zip archive payload.
+      zip = new AdmZip();
       zip.addFile("package.mo", Buffer.from(content, "utf-8"));
+      files = [{ relPath: "package.mo", fullPath: targetPath, size: stat.size }];
     } else {
       console.error(`Error: Path must be a directory or a single .mo file`);
       process.exit(1);
     }
 
-    console.log(`Publishing ${name}@${version}...`);
+    if (!args.noVerify) {
+      const validation = validatePackageManifest(name!, version!, stat.isDirectory() ? targetPath : undefined);
+      if (!validation.valid) {
+        console.error(`Pre-publish verification failed:\n  - ${validation.errors.join("\n  - ")}`);
+        process.exit(1);
+      }
+    }
 
-    const token = requireToken();
     const zipBuffer = zip.toBuffer();
     const contentHash = computePackageContentHash(zipBuffer);
+    const totalUncompressedBytes = files.reduce((acc, f) => acc + f.size, 0);
+
+    if (args.dryRun) {
+      console.log(`📦 Packaging ${name}@${version}`);
+      for (let i = 0; i < files.length; i++) {
+        const prefix = i === files.length - 1 ? "└── " : "├── ";
+        console.log(`${prefix}${files[i]!.relPath} (${formatBytes(files[i]!.size)})`);
+      }
+      console.log(`\nTarball Details:`);
+      console.log(`- Total Files: ${files.length}`);
+      console.log(`- Uncompressed Size: ${formatBytes(totalUncompressedBytes)}`);
+      console.log(`- Archive Size: ${formatBytes(zipBuffer.length)}`);
+      console.log(`- Content Hash (SHA-256): ${contentHash}`);
+      console.log(`- Dist-Tag: ${args.tag || "latest"}`);
+      console.log(`\nNotice: Dry run complete. No network requests made.`);
+      return;
+    }
+
+    console.log(`Publishing ${name}@${version} (tag: ${args.tag || "latest"})...`);
+
+    const token = requireToken();
     console.log(`Content Hash (SHA-256): ${contentHash}`);
 
     // Create FormData manually since Node 18+ has a global Request/Response/FormData
@@ -96,6 +165,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
     // 'file' is the field name multer expects on the API side
     formData.append("file", blob, "library.zip");
     formData.append("contentHash", contentHash);
+    formData.append("tag", args.tag || "latest");
     if (args.signature) {
       formData.append("signature", args.signature);
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { fork, type ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 
 import type { HpcUsageMetrics } from "./services/hpc/hpc-types.js";
 
@@ -25,11 +26,16 @@ type JobFn = () => Promise<void>;
  * - `enqueue(key, fn)` — runs an async function in the main thread (for I/O-bound tasks).
  * - `enqueueProcess(key, scriptPath, data)` — forks a child process (for CPU-bound tasks).
  */
-export class JobQueue {
+export class JobQueue extends EventEmitter {
   readonly #queue: { key: string; fn: JobFn }[] = [];
   readonly #status = new Map<string, JobInfo>();
   #running = false;
   #runningChildProcess: ChildProcess | null = null;
+
+  constructor() {
+    super();
+    this.setMaxListeners(100);
+  }
 
   /** Enqueue an in-process async job. */
   enqueue(key: string, fn: JobFn): void {
@@ -63,6 +69,7 @@ export class JobQueue {
   clear(): void {
     this.#queue.length = 0;
     this.#status.clear();
+    this.removeAllListeners();
 
     if (this.#runningChildProcess) {
       console.log("[JobQueue] Killing currently running child process...");
@@ -76,6 +83,7 @@ export class JobQueue {
     const current = this.#status.get(key);
     if (current) {
       this.#status.set(key, { ...current, classesProcessed });
+      this.emit(`progress:${key}`, classesProcessed);
     }
   }
 
@@ -88,6 +96,7 @@ export class JobQueue {
       for (const line of lines) {
         if (line.trim()) {
           logs.push(line);
+          this.emit(`log:${key}`, line);
         }
       }
       // keep last 500 lines
@@ -162,15 +171,18 @@ export class JobQueue {
 
       const currentStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
       this.#status.set(job.key, { ...currentStatus, status: "processing" });
+      this.emit(`status:${job.key}`, { status: "processing" });
       try {
         await job.fn();
         const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
         this.#status.set(job.key, { ...updatedStatus, status: "completed" });
+        this.emit(`status:${job.key}`, { status: "completed" });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
         console.error(`Job "${job.key}" failed: ${message}`);
         const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
         this.#status.set(job.key, { ...updatedStatus, status: "failed", error: message });
+        this.emit(`status:${job.key}`, { status: "failed", error: message });
       } finally {
         this.#prune();
       }

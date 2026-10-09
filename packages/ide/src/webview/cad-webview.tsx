@@ -79,6 +79,7 @@ function App() {
           animationControllerRef.current = ctrl;
         }
         ctrl.loadTimeseries(t, y, states);
+        ctrl.play();
         forceUpdate((n) => n + 1); // trigger re-render to show timeline
       } else if (message.type === "liveValues") {
         // Push live cosimulation values

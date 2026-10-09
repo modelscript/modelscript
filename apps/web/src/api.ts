@@ -227,7 +227,37 @@ export const getPendingPackageTransfers = async () => {
  * 2. Class references: `modelica://Modelica.Electrical.Analog`
  *    → `/packages/Modelica/4.1.0/classes/Modelica.Electrical.Analog`
  */
-export function rewriteModelicaUris(html: string, version: string): string {
+export interface PackageDependent {
+  name: string;
+  version: string;
+  description: string | null;
+}
+
+export const getPackageDependents = async (
+  name: string,
+): Promise<{ name: string; count: number; dependents: PackageDependent[] }> => {
+  const { data } = await api.get<{ name: string; count: number; dependents: PackageDependent[] }>(
+    `/libraries/${encodeURIComponent(name)}/dependents`,
+  );
+  return data;
+};
+
+/**
+ * Rewrite `modelica://` URIs and relative asset links in documentation HTML / markdown:
+ *
+ * 1. Resource paths: `modelica://Modelica/Resources/Images/foo.png`
+ *    → `/api/v1/libraries/Modelica/4.1.0/resources/Resources/Images/foo.png`
+ *
+ * 2. Class references: `modelica://Modelica.Electrical.Analog`
+ *    → `/packages/Modelica/4.1.0/classes/Modelica.Electrical.Analog`
+ *
+ * 3. Relative image paths (when packageName provided):
+ *    `<img src="./doc/arch.png">` or `![alt](./doc/arch.png)`
+ *    → `/api/v1/libraries/Modelica/4.1.0/resources/doc/arch.png`
+ */
+export function rewriteModelicaUris(html: string, version: string, packageName?: string): string {
+  if (!html) return "";
+
   // First pass: resource paths (modelica://LibName/path — contains a slash after lib name)
   let result = html.replace(/modelica:\/\/([^/\s"']+)\/([^"'\s>]+)/g, (_match, libName, resourcePath) => {
     return `/api/v1/libraries/${libName}/${version}/resources/${resourcePath}`;
@@ -238,6 +268,28 @@ export function rewriteModelicaUris(html: string, version: string): string {
     const libName = className.split(".")[0];
     return `/packages/${libName}/${version}/classes/${className}`;
   });
+
+  // Third pass: relative image/asset paths
+  if (packageName && version) {
+    const encodedPkg = encodeURIComponent(packageName);
+    const encodedVer = encodeURIComponent(version);
+
+    // Markdown images: ![alt](./path.png) or ![alt](path.png)
+    result = result.replace(
+      /(!\[[^\]]*\]\()(?!https?:\/\/|\/|data:|modelica:)(?:\.\/)?([^)\s]+)(\))/gi,
+      (_match, prefix, relPath, suffix) => {
+        return `${prefix}/api/v1/libraries/${encodedPkg}/${encodedVer}/resources/${relPath}${suffix}`;
+      },
+    );
+
+    // HTML img tags: <img ... src="./path.png"> or src="path.png"
+    result = result.replace(
+      /(<img\b[^>]*?\bsrc=["'])(?!https?:\/\/|\/|data:|modelica:)(?:\.\/)?([^"'>\s]+)(["'])/gi,
+      (_match, prefix, relPath, suffix) => {
+        return `${prefix}/api/v1/libraries/${encodedPkg}/${encodedVer}/resources/${relPath}${suffix}`;
+      },
+    );
+  }
 
   return result;
 }
@@ -1455,13 +1507,18 @@ export const getUserPosts = async (
 
 export const getTimeline = async (options?: {
   following?: boolean;
+  federated?: boolean;
   sort?: string;
   limit?: number;
   offset?: number;
   artifactType?: string;
   tag?: string;
 }): Promise<{ posts: any[] }> => {
-  const endpoint = options?.following ? "/social/timeline/following" : "/social/timeline";
+  const endpoint = options?.federated
+    ? "/social/timeline/federated"
+    : options?.following
+      ? "/social/timeline/following"
+      : "/social/timeline";
   const params: Record<string, any> = {};
   if (options?.sort) params.sort = options.sort;
   if (options?.limit !== undefined) params.limit = options.limit;
@@ -1742,6 +1799,85 @@ export const convertCadGeometry = async (url: string): Promise<any> => {
 export const resolveFederatedActor = async (handle: string): Promise<any> => {
   const { data } = await api.post("/federation/resolve", { handle });
   return data;
+};
+
+export const verifyEmail = async (
+  token: string,
+): Promise<{ success: boolean; message: string; creditsGranted: number; user: any }> => {
+  const { data } = await api.post("/auth/verify-email", { token });
+  return data;
+};
+
+export const resendVerificationEmail = async (email: string): Promise<{ success?: boolean; message: string }> => {
+  const { data } = await api.post("/auth/resend-verification", { email });
+  return data;
+};
+
+export const requestPasswordReset = async (
+  email: string,
+): Promise<{ success: boolean; message: string; resetToken?: string }> => {
+  const { data } = await api.post("/auth/forgot-password", { email });
+  return data;
+};
+
+export const resetPassword = async (
+  token: string,
+  newPassword: string,
+): Promise<{ success: boolean; message: string }> => {
+  const { data } = await api.post("/auth/reset-password", { token, newPassword });
+  return data;
+};
+
+export const revokeAllSessions = async (): Promise<{ success: boolean; message: string; token: string }> => {
+  const { data } = await api.post("/auth/revoke-sessions");
+  return data;
+};
+
+export interface Setup2FAResponse {
+  secret: string;
+  otpauthUri: string;
+  message: string;
+}
+
+export interface Verify2FAResponse {
+  success: boolean;
+  message: string;
+  backupCodes: string[];
+}
+
+export interface Challenge2FAResponse {
+  token: string;
+  user: any;
+  message: string;
+}
+
+export const setup2FA = async (): Promise<Setup2FAResponse> => {
+  const { data } = await api.post("/auth/2fa/setup");
+  return data;
+};
+
+export const verify2FA = async (code: string): Promise<Verify2FAResponse> => {
+  const { data } = await api.post("/auth/2fa/verify", { code });
+  return data;
+};
+
+export const challenge2FA = async (tempToken: string, code: string): Promise<Challenge2FAResponse> => {
+  const { data } = await api.post("/auth/2fa/challenge", { tempToken, code });
+  return data;
+};
+
+export const disable2FA = async (password?: string, code?: string): Promise<{ success: boolean; message: string }> => {
+  const { data } = await api.post("/auth/2fa/disable", { password, code });
+  return data;
+};
+
+export const logoutApi = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const { data } = await api.post("/auth/logout");
+    return data;
+  } catch {
+    return { success: true, message: "Logged out" };
+  }
 };
 
 export { api };

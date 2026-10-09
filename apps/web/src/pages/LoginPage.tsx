@@ -4,6 +4,7 @@ import { MarkGithubIcon } from "@primer/octicons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { requestPasswordReset } from "../api";
 import { useAuth } from "../AuthContext";
 import { usePageTitle } from "../util/title";
 
@@ -280,12 +281,19 @@ const FooterText = styled.p`
 
 export default function LoginPage() {
   usePageTitle("Sign In");
+  const [mode, setMode] = useState<"login" | "forgot" | "2fa">("login");
   const [email, setEmail] = useState(import.meta.env.DEV ? "dev@modelscript.org" : "");
   const [password, setPassword] = useState(import.meta.env.DEV ? "password" : "");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [forgotNotice, setForgotNotice] = useState(false);
-  const { login } = useAuth();
+  const [tempToken, setTempToken] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const { login, complete2FALogin } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -293,8 +301,14 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
-      navigate("/");
+      const res = await login(email, password);
+      if (res?.requires2FA && res.tempToken) {
+        setTempToken(res.tempToken);
+        setMode("2fa");
+        setTwoFactorCode("");
+      } else {
+        navigate("/");
+      }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } };
@@ -307,93 +321,250 @@ export default function LoginPage() {
     }
   };
 
+  const handle2FASubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await complete2FALogin(tempToken, twoFactorCode.trim());
+      navigate("/");
+    } catch (err: unknown) {
+      if (err && typeof err === "object" && "response" in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } };
+        setError(axiosErr.response?.data?.error || "Invalid verification code. Please try again.");
+      } else {
+        setError("Verification failed. Please check your code and try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+    setForgotLoading(true);
+    try {
+      await requestPasswordReset(forgotEmail);
+      setForgotSent(true);
+    } catch (err: any) {
+      setForgotError(err.response?.data?.error || "Failed to send password reset link. Please try again.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <PageWrapper>
       <Card>
         <LogoBadge>
           <img src="/ms-logo.png" alt="ModelScript" width="34" height="34" />
         </LogoBadge>
-        <Title>Sign in to ModelScript</Title>
-        <Subtitle>Physical Modeling, Systems & Simulation Hub</Subtitle>
+        <Title>
+          {mode === "login"
+            ? "Sign in to ModelScript"
+            : mode === "2fa"
+              ? "Two-Factor Verification"
+              : "Reset your password"}
+        </Title>
+        <Subtitle>
+          {mode === "login"
+            ? "Physical Modeling, Systems & Simulation Hub"
+            : mode === "2fa"
+              ? useBackupCode
+                ? "Enter one of your 8-character single-use recovery backup codes."
+                : "Enter the 6-digit verification code from your authenticator app."
+              : "Enter your registered email and we'll send you a password reset link."}
+        </Subtitle>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
-            <MarkGithubIcon size={16} />
-            Continue with GitHub
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
-            <GitLabIcon />
-            Continue with GitLab
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
-            <XIcon />
-            Continue with X
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
-            <GoogleIcon />
-            Continue with Google
-          </ProviderButton>
-        </div>
+        {mode === "login" ? (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
+                <MarkGithubIcon size={16} />
+                Continue with GitHub
+              </ProviderButton>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
+                <GitLabIcon />
+                Continue with GitLab
+              </ProviderButton>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
+                <XIcon />
+                Continue with X
+              </ProviderButton>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
+                <GoogleIcon />
+                Continue with Google
+              </ProviderButton>
+            </div>
 
-        <Divider>or</Divider>
+            <Divider>or</Divider>
 
-        <Form onSubmit={handleSubmit} aria-label="Sign in form">
-          {error && (
-            <ErrorBanner role="alert" aria-live="polite">
-              {error}
-            </ErrorBanner>
-          )}
-          {forgotNotice && (
-            <div
+            <Form onSubmit={handleSubmit} aria-label="Sign in form">
+              {error && (
+                <ErrorBanner role="alert" aria-live="polite">
+                  {error}
+                </ErrorBanner>
+              )}
+              <Input
+                id="login-email"
+                name="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                aria-label="Email address"
+                autoComplete="email"
+                required
+                autoFocus
+              />
+              <Input
+                id="login-password"
+                name="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                aria-label="Password"
+                autoComplete="current-password"
+                required
+              />
+              <Button type="submit" disabled={loading}>
+                {loading ? "Signing in…" : "Sign In"}
+              </Button>
+              <GhostButton
+                type="button"
+                onClick={() => {
+                  setForgotEmail(email);
+                  setMode("forgot");
+                  setForgotSent(false);
+                  setForgotError("");
+                }}
+              >
+                Forgot password?
+              </GhostButton>
+            </Form>
+
+            <FooterText>
+              Don't have an account? <Link to="/signup">Sign up</Link>
+            </FooterText>
+          </>
+        ) : mode === "2fa" ? (
+          <Form onSubmit={handle2FASubmit} aria-label="Two-factor challenge form">
+            {error && (
+              <ErrorBanner role="alert" aria-live="polite">
+                {error}
+              </ErrorBanner>
+            )}
+
+            <Input
+              id="two-factor-code"
+              name="twoFactorCode"
+              type="text"
+              inputMode={useBackupCode ? "text" : "numeric"}
+              autoComplete="one-time-code"
+              value={twoFactorCode}
+              onChange={(e) => setTwoFactorCode(e.target.value)}
+              placeholder={useBackupCode ? "e.g. A1B2C3D4" : "123456"}
+              aria-label={useBackupCode ? "8-character backup recovery code" : "6-digit verification code"}
+              required
+              autoFocus
               style={{
-                background: "rgba(6, 182, 212, 0.12)",
-                border: "1px solid rgba(6, 182, 212, 0.35)",
-                color: "var(--color-accent-cyan)",
-                padding: "10px 14px",
-                borderRadius: "var(--radius-md, 8px)",
-                fontSize: "13px",
-                textAlign: "left",
-                lineHeight: "1.4",
+                textAlign: "center",
+                fontSize: "20px",
+                letterSpacing: useBackupCode ? "0.15em" : "0.3em",
+                fontWeight: 700,
+                fontFamily: "monospace",
+              }}
+            />
+
+            <Button type="submit" disabled={loading || !twoFactorCode.trim()}>
+              {loading ? "Verifying…" : "Verify and Continue"}
+            </Button>
+
+            <GhostButton
+              type="button"
+              onClick={() => {
+                setUseBackupCode(!useBackupCode);
+                setTwoFactorCode("");
+                setError("");
               }}
             >
-              For self-hosted instances, default dev credentials are <strong>dev@modelscript.org / password</strong>.
-              For managed accounts, please contact your workspace administrator to reset your password.
-            </div>
-          )}
-          <Input
-            id="login-email"
-            name="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email address"
-            aria-label="Email address"
-            autoComplete="email"
-            required
-            autoFocus
-          />
-          <Input
-            id="login-password"
-            name="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            aria-label="Password"
-            autoComplete="current-password"
-            required
-          />
-          <Button type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign In"}
-          </Button>
-          <GhostButton type="button" onClick={() => setForgotNotice(true)}>
-            Forgot password?
-          </GhostButton>
-        </Form>
+              {useBackupCode ? "Use 6-digit authenticator code instead" : "Use a backup recovery code"}
+            </GhostButton>
 
-        <FooterText>
-          Don't have an account? <Link to="/signup">Sign up</Link>
-        </FooterText>
+            <GhostButton
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setTempToken("");
+                setTwoFactorCode("");
+                setError("");
+              }}
+            >
+              Back to Sign In
+            </GhostButton>
+          </Form>
+        ) : (
+          <Form onSubmit={handleForgotSubmit} aria-label="Forgot password form">
+            {forgotError && (
+              <ErrorBanner role="alert" aria-live="polite">
+                {forgotError}
+              </ErrorBanner>
+            )}
+
+            {forgotSent ? (
+              <div
+                style={{
+                  background: "rgba(6, 182, 212, 0.12)",
+                  border: "1px solid rgba(6, 182, 212, 0.35)",
+                  color: "var(--color-accent-cyan)",
+                  padding: "16px",
+                  borderRadius: "var(--radius-md, 8px)",
+                  fontSize: "13px",
+                  lineHeight: "1.5",
+                  textAlign: "center",
+                }}
+              >
+                If an account exists with <strong>{forgotEmail}</strong>, a password reset link has been sent. Please
+                check your inbox and follow the instructions.
+                <div style={{ marginTop: "12px" }}>
+                  <Link to="/reset-password" style={{ color: "var(--color-accent-cyan)", fontWeight: 700 }}>
+                    Already have a reset token? Enter it here →
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="forgot-email"
+                  name="forgotEmail"
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="Enter your account email"
+                  aria-label="Email address for password reset"
+                  autoComplete="email"
+                  required
+                  autoFocus
+                />
+                <Button type="submit" disabled={forgotLoading || !forgotEmail}>
+                  {forgotLoading ? "Sending reset link…" : "Send Reset Link"}
+                </Button>
+              </>
+            )}
+
+            <GhostButton
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
+            >
+              Back to Sign In
+            </GhostButton>
+          </Form>
+        )}
       </Card>
     </PageWrapper>
   );

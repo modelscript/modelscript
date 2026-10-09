@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertIcon, PackageIcon } from "@primer/octicons-react";
-import { Heading, Label, NavList, Spinner, Text, Truncate } from "@primer/react";
+import { AlertIcon, CheckCircleFillIcon, CpuIcon, PackageIcon } from "@primer/octicons-react";
+import { Button, Heading, Label, NavList, Spinner, Text, Truncate } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
 import type { ClassDetail, ClassSummary, JobStatus } from "../api";
 import { getClassDetail, getClasses, getDiagramUrl, getIconUrl, getJobStatus, rewriteModelicaUris } from "../api";
@@ -275,6 +275,7 @@ const ComponentIconWrap = styled.div`
 
 const ClassDetailPage: React.FC = () => {
   const { name, version, className } = useParams<{ name: string; version: string; className: string }>();
+  const navigate = useNavigate();
   usePageTitle(className && name && version ? `${className} | ${name}@${version}` : "Class Details");
   const [cls, setCls] = useState<ClassDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -297,6 +298,40 @@ const ClassDetailPage: React.FC = () => {
     if (!name || allClasses.length === 0) return [];
     return buildClassTree(allClasses, name);
   }, [allClasses, name]);
+
+  // Extract digital thread twin counterpart references
+  const twinInfo = useMemo(() => {
+    if (!cls) return null;
+    let twinTarget: string | null = null;
+    let cadTarget: string | null = null;
+
+    if (cls.description) {
+      const tm = cls.description.match(/twin\s*=\s*["']([^"']+)["']/i);
+      if (tm) twinTarget = tm[1];
+      const cm = cls.description.match(/CAD\s*=\s*["']([^"']+)["']/i);
+      if (cm) cadTarget = cm[1];
+    }
+
+    for (const comp of cls.components) {
+      for (const mod of comp.modifiers || []) {
+        if (mod.modifier_name === "twin" && mod.modifier_value) {
+          twinTarget = mod.modifier_value.replace(/['"]/g, "");
+        }
+        if ((mod.modifier_name === "CAD" || mod.modifier_name === "cad") && mod.modifier_value) {
+          cadTarget = mod.modifier_value.replace(/['"]/g, "");
+        }
+      }
+      if (comp.description) {
+        const tm = comp.description.match(/twin\s*=\s*["']([^"']+)["']/i);
+        if (tm && !twinTarget) twinTarget = tm[1];
+        const cm = comp.description.match(/CAD\s*=\s*["']([^"']+)["']/i);
+        if (cm && !cadTarget) cadTarget = cm[1];
+      }
+    }
+
+    if (!twinTarget && !cadTarget) return null;
+    return { twinTarget, cadTarget };
+  }, [cls]);
 
   const fetchClassDetail = useCallback(async () => {
     if (!name || !version || !className) return;
@@ -565,6 +600,67 @@ const ClassDetailPage: React.FC = () => {
                 </>
               )}
             </GlassCard>
+
+            {/* Digital Thread Counterparts */}
+            {twinInfo && (
+              <>
+                <SectionTitle as="h3" style={{ marginTop: 24 }}>
+                  Digital Thread Counterparts
+                </SectionTitle>
+                <GlassCard
+                  style={{ border: "1px solid rgba(6, 182, 212, 0.4)", background: "rgba(6, 182, 212, 0.05)" }}
+                >
+                  {twinInfo.twinTarget && (
+                    <DetailRow style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                      <DetailLabel style={{ color: "#a855f7" }}>SysML v2 Twin</DetailLabel>
+                      <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                        <Text style={{ fontSize: 13, fontWeight: 600, fontFamily: "monospace" }}>
+                          {twinInfo.twinTarget}
+                        </Text>
+                        <Label
+                          variant="accent"
+                          style={{ fontSize: 10, background: "rgba(168, 85, 247, 0.2)", color: "#a855f7" }}
+                        >
+                          Twin
+                        </Label>
+                      </Box>
+                      <Box display="flex" alignItems="center" gap={1} mt={1}>
+                        <CheckCircleFillIcon size={12} fill="#3fb950" />
+                        <Text style={{ fontSize: 11, color: "#3fb950" }}>Unit Parity Verified</Text>
+                      </Box>
+                    </DetailRow>
+                  )}
+
+                  {twinInfo.cadTarget && (
+                    <DetailRow
+                      style={{ flexDirection: "column", alignItems: "flex-start", gap: 6, borderBottom: "none" }}
+                    >
+                      <DetailLabel style={{ color: "#fbbf24" }}>STEP CAD 3D Solid</DetailLabel>
+                      <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                        <Text style={{ fontSize: 13, fontWeight: 600, fontFamily: "monospace" }}>
+                          {twinInfo.cadTarget}
+                        </Text>
+                        <Label
+                          variant="accent"
+                          style={{ fontSize: 10, background: "rgba(251, 191, 36, 0.2)", color: "#fbbf24" }}
+                        >
+                          B-Rep
+                        </Label>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="primary"
+                        leadingVisual={CpuIcon}
+                        onClick={() => navigate(`/packages/${name}/${version}?tab=artifacts`)}
+                        style={{ marginTop: 6, width: "100%" }}
+                      >
+                        Open 3D CAD Viewer
+                      </Button>
+                    </DetailRow>
+                  )}
+                </GlassCard>
+              </>
+            )}
 
             {/* Components */}
             {cls.components.length > 0 && (

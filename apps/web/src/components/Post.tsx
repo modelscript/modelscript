@@ -14,6 +14,7 @@ import {
   HubotIcon,
   InfoIcon,
   KebabHorizontalIcon,
+  LinkExternalIcon,
   LinkIcon,
   MarkGithubIcon,
   MuteIcon,
@@ -23,10 +24,11 @@ import {
   ReportIcon,
   RssIcon,
   ShareIcon,
+  ShieldCheckIcon,
   SyncIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Heading, IconButton, Text, Tooltip } from "@primer/react";
+import { Button, Dialog, Heading, IconButton, Text, Tooltip } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useRef, useState } from "react";
@@ -35,12 +37,14 @@ import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { bookmarkPost, followUser, getPostAnalytics, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
+import { parseFederatedHandle } from "../util/federation";
 import AnimatedCount from "./AnimatedCount";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
 import ComposeModal from "./ComposeModal";
 import ErrorBoundary from "./ErrorBoundary";
+import FederatedDomainPill from "./FederatedDomainPill";
 import ProfileHoverCard from "./ProfileHoverCard";
 import WorldMap from "./WorldMap";
 
@@ -217,6 +221,34 @@ const HoverAvatar = styled(Avatar)`
   &:hover {
     filter: brightness(0.85);
   }
+`;
+
+const ContentWarningBox = styled.div`
+  margin: 6px 0 10px 0;
+  padding: 8px 12px;
+  background: rgba(210, 153, 34, 0.08);
+  border: 1px solid rgba(210, 153, 34, 0.25);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+`;
+
+const SignatureBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-status-verified, #3fb950);
+  background: rgba(63, 185, 80, 0.1);
+  border: 1px solid rgba(63, 185, 80, 0.25);
+  vertical-align: middle;
+  cursor: pointer;
 `;
 
 const ProfileNameLink = styled(Link)`
@@ -697,6 +729,56 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [pendingPin, setPendingPin] = useState<SpatialPin | undefined>(undefined);
   const [showAiDetails, setShowAiDetails] = useState(false);
+  const [showCwContent, setShowCwContent] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [copiedDigest, setCopiedDigest] = useState(false);
+
+  const parsedAuthor = parseFederatedHandle(displayPost.username);
+  const parsedQuoteAuthor = displayPost.quote_post ? parseFederatedHandle(displayPost.quote_post.username) : null;
+  const contentWarning =
+    displayPost.metadata?.contentWarning ||
+    displayPost.metadata?.content_warning ||
+    displayPost.content_warning ||
+    null;
+
+  const remoteOriginUrl = (() => {
+    const target = displayPost.url || displayPost.ap_id;
+    if (!target || typeof target !== "string") return null;
+    if (!target.startsWith("http://") && !target.startsWith("https://")) return null;
+    try {
+      const urlObj = new URL(target);
+      if (urlObj.hostname !== window.location.hostname && !urlObj.hostname.includes("localhost")) {
+        return target;
+      }
+    } catch {}
+    return null;
+  })();
+
+  const hasSignature = Boolean(
+    displayPost.client_signature ||
+    displayPost.metadata?.client_signature ||
+    displayPost.metadata?.proof ||
+    displayPost.key_id_string,
+  );
+
+  const signatureDigest =
+    displayPost.client_signature ||
+    displayPost.metadata?.client_signature ||
+    displayPost.metadata?.proof?.proofValue ||
+    displayPost.metadata?.proof?.signature ||
+    displayPost.metadata?.signature ||
+    "";
+
+  const signatureScheme = displayPost.metadata?.proof?.cryptosuite
+    ? `Data Integrity (${displayPost.metadata.proof.cryptosuite})`
+    : displayPost.client_signature || displayPost.metadata?.client_signature
+      ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
+      : "ActivityPub RFC 9421 / Cavage HTTP Signatures";
+
+  const keyIdentifier =
+    displayPost.key_id_string ||
+    displayPost.metadata?.proof?.verificationMethod ||
+    (displayPost.ap_id ? `${displayPost.ap_id}#main-key` : `@${displayPost.username} device-key`);
 
   // Automatically record view once per post per session
   useEffect(() => {
@@ -859,18 +941,35 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   </ProfileNameLink>
                 </ProfileHoverCard>
               </div>
-              <Text
-                className="handle-text"
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  display: "block",
-                  width: "100%",
-                }}
-              >
-                @{displayPost.username}
-              </Text>
+              <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap" mt={0.5}>
+                <Text
+                  className="handle-text"
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  @{parsedAuthor.localUsername}
+                </Text>
+                {parsedAuthor.isFederated && parsedAuthor.remoteDomain && (
+                  <FederatedDomainPill domain={parsedAuthor.remoteDomain} />
+                )}
+                {hasSignature && (
+                  <Tooltip text="Cryptographically signed by author device key (Click to verify proof)" direction="s">
+                    <SignatureBadge
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setShowSignatureModal(true);
+                      }}
+                    >
+                      <ShieldCheckIcon size={12} />
+                      <span>Signed</span>
+                    </SignatureBadge>
+                  </Tooltip>
+                )}
+              </Box>
               <Box display="flex" gap={1} flexWrap="wrap" mt={1}>
                 {displayPost.artifact_view_id && (
                   <ModelSpecTag>
@@ -976,6 +1075,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     >
                       <GraphIcon size={16} /> View post activity
                     </MenuButton>
+                    {remoteOriginUrl && (
+                      <MenuButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setShowPostMenu(false);
+                          window.open(remoteOriginUrl, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        <LinkExternalIcon size={16} /> Open original on remote node
+                      </MenuButton>
+                    )}
                     <MenuButton
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1093,7 +1204,12 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     <HubotIcon size={14} color="var(--color-fg-muted)" />
                   )}
                 </Text>
-                <Text className="handle-text">@{displayPost.quote_post.username}</Text>
+                <Text className="handle-text">
+                  @{parsedQuoteAuthor?.localUsername || displayPost.quote_post.username}
+                </Text>
+                {parsedQuoteAuthor?.isFederated && parsedQuoteAuthor.remoteDomain && (
+                  <FederatedDomainPill domain={parsedQuoteAuthor.remoteDomain} />
+                )}
               </Box>
               <Box style={{ fontSize: "15px", wordBreak: "break-word" }}>
                 <RenderContent text={displayPost.quote_post.content} />
@@ -1479,8 +1595,25 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    @{displayPost.username}
+                    @{parsedAuthor.localUsername}
                   </Link>
+                  {parsedAuthor.isFederated && parsedAuthor.remoteDomain && (
+                    <FederatedDomainPill domain={parsedAuthor.remoteDomain} />
+                  )}
+                  {hasSignature && (
+                    <Tooltip text="Cryptographically signed by author device key (Click to verify proof)" direction="s">
+                      <SignatureBadge
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setShowSignatureModal(true);
+                        }}
+                      >
+                        <ShieldCheckIcon size={12} />
+                        <span>Signed</span>
+                      </SignatureBadge>
+                    </Tooltip>
+                  )}
                   <Text className="handle-text" style={{ flexShrink: 0 }}>
                     ·
                   </Text>
@@ -1598,6 +1731,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           >
                             <GraphIcon size={16} /> View post activity
                           </MenuButton>
+                          {remoteOriginUrl && (
+                            <MenuButton
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setShowPostMenu(false);
+                                window.open(remoteOriginUrl, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              <LinkExternalIcon size={16} /> Open original on remote node
+                            </MenuButton>
+                          )}
                           <MenuButton
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1612,85 +1757,138 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     )}
                   </Box>
                 </Box>
-                <Box mt={0} style={{ fontSize: "15px", wordBreak: "break-word" }}>
-                  <RenderContent text={displayPost.content} />
-                </Box>
-
-                {displayPost.metadata?.spatialPin && (
-                  <Box
-                    mt={2}
-                    p={2}
-                    border="1px solid var(--color-border)"
-                    borderRadius="8px"
-                    backgroundColor="rgba(255, 255, 255, 0.03)"
-                    style={{ cursor: "pointer", display: "inline-block" }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      window.dispatchEvent(
-                        new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }),
-                      );
-                    }}
-                  >
-                    <span style={{ fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                      📍 View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
-                      {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
-                    </span>
-                  </Box>
-                )}
-
-                {displayPost.artifact_view_id && (
-                  <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-                    <ArtifactViewCard
-                      artifactId={displayPost.artifact_view_id}
-                      onPinCreated={(pin) => {
-                        setPendingPin(pin);
-                        setShowReplyModal(true);
-                      }}
-                    />
-                    <AiInsightRibbon
+                {contentWarning && (
+                  <ContentWarningBox>
+                    <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
+                      <span
+                        style={{
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          color: "var(--color-warning-fg, #d29922)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        ⚠️ Warning
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "13.5px",
+                          fontWeight: 500,
+                          color: "var(--color-text-primary)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {contentWarning}
+                      </span>
+                    </Box>
+                    <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowAiDetails(!showAiDetails);
+                        setShowCwContent(!showCwContent);
                       }}
-                      style={{ cursor: "pointer", marginTop: "8px" }}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.08)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "9999px",
+                        color: "var(--color-text-primary)",
+                        padding: "2px 10px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
                     >
-                      <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
-                        <Box display="flex" alignItems="center" gap={2}>
-                          <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
-                          <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
-                            AI Verified · Linear DAE Arena
-                          </span>
-                        </Box>
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            color: "var(--color-status-verified)",
-                            fontFamily: "var(--font-mono)",
-                            background: "var(--status-verified-bg)",
-                            border: "1px solid var(--status-verified-border)",
-                            padding: "1px 6px",
-                            borderRadius: "4px",
-                          }}
-                        >
-                          ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
+                      {showCwContent ? "Show Less" : "Show More"}
+                    </button>
+                  </ContentWarningBox>
+                )}
+
+                {(!contentWarning || showCwContent) && (
+                  <>
+                    <Box mt={0} style={{ fontSize: "15px", wordBreak: "break-word" }}>
+                      <RenderContent text={displayPost.content} />
+                    </Box>
+
+                    {displayPost.metadata?.spatialPin && (
+                      <Box
+                        mt={2}
+                        p={2}
+                        border="1px solid var(--color-border)"
+                        borderRadius="8px"
+                        backgroundColor="rgba(255, 255, 255, 0.03)"
+                        style={{ cursor: "pointer", display: "inline-block" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(
+                            new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }),
+                          );
+                        }}
+                      >
+                        <span style={{ fontSize: "13px", color: "var(--color-fg-muted)" }}>
+                          📍 View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
+                          {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
                         </span>
                       </Box>
-                      {showAiDetails && (
-                        <div
-                          style={{
-                            fontSize: "11.5px",
-                            color: "var(--color-text-muted)",
-                            borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                            paddingTop: "6px",
-                            marginTop: "4px",
+                    )}
+
+                    {displayPost.artifact_view_id && (
+                      <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+                        <ArtifactViewCard
+                          artifactId={displayPost.artifact_view_id}
+                          onPinCreated={(pin) => {
+                            setPendingPin(pin);
+                            setShowReplyModal(true);
                           }}
+                        />
+                        <AiInsightRibbon
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowAiDetails(!showAiDetails);
+                          }}
+                          style={{ cursor: "pointer", marginTop: "8px" }}
                         >
-                          Index-1 DAE lowered directly to linear WASM memory. Zero algebraic loops detected. Numerical
-                          convergence guaranteed with SUNDIALS CVODE integrator.
-                        </div>
-                      )}
-                    </AiInsightRibbon>
-                  </Box>
+                          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                            <Box display="flex" alignItems="center" gap={2}>
+                              <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
+                              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
+                                AI Verified · Linear DAE Arena
+                              </span>
+                            </Box>
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                color: "var(--color-status-verified)",
+                                fontFamily: "var(--font-mono)",
+                                background: "var(--status-verified-bg)",
+                                border: "1px solid var(--status-verified-border)",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                              }}
+                            >
+                              ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
+                            </span>
+                          </Box>
+                          {showAiDetails && (
+                            <div
+                              style={{
+                                fontSize: "11.5px",
+                                color: "var(--color-text-muted)",
+                                borderTop: "1px solid rgba(139, 92, 246, 0.15)",
+                                paddingTop: "6px",
+                                marginTop: "4px",
+                              }}
+                            >
+                              Index-1 DAE lowered directly to linear WASM memory. Zero algebraic loops detected.
+                              Numerical convergence guaranteed with SUNDIALS CVODE integrator.
+                            </div>
+                          )}
+                        </AiInsightRibbon>
+                      </Box>
+                    )}
+                  </>
                 )}
 
                 {displayPost.quote_post && (
@@ -1716,7 +1914,12 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           <RssIcon size={14} color="var(--color-fg-muted)" />
                         )}
                       </Text>
-                      <Text className="handle-text">@{displayPost.quote_post.username}</Text>
+                      <Text className="handle-text">
+                        @{parsedQuoteAuthor?.localUsername || displayPost.quote_post.username}
+                      </Text>
+                      {parsedQuoteAuthor?.isFederated && parsedQuoteAuthor.remoteDomain && (
+                        <FederatedDomainPill domain={parsedQuoteAuthor.remoteDomain} />
+                      )}
                     </Box>
                     <Box style={{ fontSize: "15px", wordBreak: "break-word" }}>
                       <RenderContent text={displayPost.quote_post.content} />
@@ -2107,13 +2310,19 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               </Box>
               <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
                 <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-                  <HeartIcon size={20} style={{ color: liked ? "#f91880" : "var(--color-fg-muted)" }} />
+                  <HeartIcon
+                    size={20}
+                    style={{ color: liked ? "var(--color-danger-fg, #f91880)" : "var(--color-fg-muted)" }}
+                  />
                   <Text fontWeight="bold" fontSize="16px">
                     {likeCount || 0}
                   </Text>
                 </Box>
                 <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-                  <SyncIcon size={20} style={{ color: reposted ? "#00ba7c" : "var(--color-fg-muted)" }} />
+                  <SyncIcon
+                    size={20}
+                    style={{ color: reposted ? "var(--color-success-fg, #00ba7c)" : "var(--color-fg-muted)" }}
+                  />
                   <Text fontWeight="bold" fontSize="16px">
                     {repostCount || 0}
                   </Text>
@@ -2230,6 +2439,111 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             </Box>
           </AnalyticsModalContainer>
         </AnalyticsModalOverlay>
+      )}
+      {showSignatureModal && (
+        <Dialog title="Cryptographic Signature Verification" onClose={() => setShowSignatureModal(false)} width="large">
+          <Box p={3} display="flex" flexDirection="column" gap={3}>
+            <Box
+              display="flex"
+              alignItems="center"
+              gap={3}
+              p={3}
+              style={{
+                backgroundColor: "rgba(63, 185, 80, 0.1)",
+                border: "1px solid rgba(63, 185, 80, 0.3)",
+                borderRadius: "8px",
+              }}
+            >
+              <ShieldCheckIcon size={24} fill="var(--color-status-verified, #3fb950)" />
+              <Box>
+                <Text style={{ fontWeight: 600, color: "var(--color-status-verified, #3fb950)", display: "block" }}>
+                  Verified Authenticity & Integrity
+                </Text>
+                <Text as="p" style={{ fontSize: "12px", color: "var(--color-fg-muted)", margin: 0 }}>
+                  This post was cryptographically signed at the author's client terminal and verified against their
+                  published ActivityPub actor public key.
+                </Text>
+              </Box>
+            </Box>
+
+            <Box
+              display="grid"
+              style={{
+                gridTemplateColumns: "110px 1fr",
+                rowGap: "8px",
+                columnGap: "12px",
+                fontSize: "13px",
+              }}
+            >
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Author:</Text>
+              <Text>
+                @{displayPost.username} {displayPost.display_name && `(${displayPost.display_name})`}
+              </Text>
+
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Algorithm:</Text>
+              <Text style={{ fontFamily: "monospace", fontSize: "12px" }}>{signatureScheme}</Text>
+
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Key ID:</Text>
+              <Text style={{ fontFamily: "monospace", fontSize: "12px", wordBreak: "break-all" }}>{keyIdentifier}</Text>
+
+              <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Protocol:</Text>
+              <Text>W3C ActivityPub / ActivityStreams 2.0</Text>
+
+              {displayPost.ap_id && (
+                <>
+                  <Text style={{ fontWeight: 600, color: "var(--color-fg-muted)" }}>Activity ID:</Text>
+                  <Text style={{ fontFamily: "monospace", fontSize: "12px", wordBreak: "break-all" }}>
+                    {displayPost.ap_id}
+                  </Text>
+                </>
+              )}
+            </Box>
+
+            {signatureDigest && (
+              <Box>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Text style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                    Cryptographic Proof Value (Base64)
+                  </Text>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      navigator.clipboard.writeText(signatureDigest);
+                      setCopiedDigest(true);
+                      setTimeout(() => setCopiedDigest(false), 2000);
+                    }}
+                  >
+                    {copiedDigest ? "Copied!" : "Copy Proof"}
+                  </Button>
+                </Box>
+                <Box
+                  as="pre"
+                  p={2}
+                  style={{
+                    backgroundColor: "var(--color-canvas-subtle, #161b22)",
+                    border: "1px solid var(--color-border-default, #30363d)",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontFamily: "monospace",
+                    overflowX: "auto",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-all",
+                    maxHeight: "120px",
+                    margin: 0,
+                  }}
+                >
+                  {signatureDigest}
+                </Box>
+              </Box>
+            )}
+
+            <Box display="flex" justifyContent="flex-end" pt={2}>
+              <Button variant="primary" onClick={() => setShowSignatureModal(false)}>
+                Close
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
       )}
     </>
   );

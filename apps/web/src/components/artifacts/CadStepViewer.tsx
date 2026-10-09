@@ -17,6 +17,7 @@ import {
   type ComputeProfileInfo,
 } from "../../api";
 import Box from "../Box";
+import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
 import ViewportCameraControls, { type CameraPreset, type RenderMode } from "./ViewportCameraControls";
@@ -96,6 +97,7 @@ function CameraController({
 }
 
 const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, isFullScreen, onPinCreated }) => {
+  const toast = useToast();
   const [geometries, setGeometries] = useState<THREE.BufferGeometry[] | null>(null);
   const [assemblyCenter, setAssemblyCenter] = useState<THREE.Vector3 | null>(null);
   const [assemblyScale, setAssemblyScale] = useState<number>(1);
@@ -133,7 +135,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
       const data = await flattenPhysicsStudy(className);
       setConfig(data);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to load config");
+      toast.error(err instanceof Error ? err.message : "Failed to load config");
     } finally {
       setIsLoadingConfig(false);
     }
@@ -176,7 +178,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
       setIsConfigOpen(false);
       navigate(`/scripts/${jobId}`);
     } catch (err: any) {
-      alert(err.message || "Failed to run simulation");
+      toast.error(err.message || "Failed to run simulation");
     } finally {
       setIsSubmitting(false);
     }

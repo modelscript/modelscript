@@ -259,20 +259,57 @@ const FooterText = styled.p`
   }
 `;
 
+const CheckboxWrapper = styled.label`
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #94a3b8);
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.4;
+  margin-top: 4px;
+
+  input[type="checkbox"] {
+    margin-top: 2px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-accent-cyan, #06b6d4);
+    cursor: pointer;
+  }
+
+  a {
+    color: var(--color-accent-cyan, #06b6d4);
+    text-decoration: none;
+    font-weight: 600;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`;
+
 export default function SignupPage() {
   usePageTitle("Sign Up");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!acceptTerms) {
+      setError("You must accept the Terms of Service and Privacy Policy to register");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
@@ -286,8 +323,12 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await register(username, email, password);
-      navigate("/");
+      const res = await register(username, email, password, acceptTerms, "mock-token");
+      if (res?.verificationRequired) {
+        setVerificationSent(true);
+      } else {
+        navigate("/");
+      }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } };
@@ -309,87 +350,134 @@ export default function SignupPage() {
         <Title>Join ModelScript</Title>
         <Subtitle>The Collaborative Simulation & Modeling Platform</Subtitle>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
-            <MarkGithubIcon size={16} />
-            Sign up with GitHub
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
-            <GitLabIcon />
-            Sign up with GitLab
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
-            <XIcon />
-            Sign up with X
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
-            <GoogleIcon />
-            Continue with Google
-          </ProviderButton>
-        </div>
+        {verificationSent ? (
+          <div style={{ textAlign: "center", padding: "16px 0", width: "100%" }}>
+            <div style={{ fontSize: "44px", marginBottom: "12px" }}>📬</div>
+            <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--color-text-heading)", margin: "0 0 8px 0" }}>
+              Verify your email address
+            </h2>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-text-muted)",
+                lineHeight: "1.5",
+                margin: "0 0 24px 0",
+              }}
+            >
+              We sent a verification link to <strong>{email}</strong>. Please check your inbox and verify your address
+              to activate full features and unlock your <strong>50 free compute credits</strong>!
+            </p>
+            <Button type="button" onClick={() => navigate("/home")}>
+              Continue to ModelScript
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
+                <MarkGithubIcon size={16} />
+                Sign up with GitHub
+              </ProviderButton>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
+                <GitLabIcon />
+                Sign up with GitLab
+              </ProviderButton>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
+                <XIcon />
+                Sign up with X
+              </ProviderButton>
+              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
+                <GoogleIcon />
+                Continue with Google
+              </ProviderButton>
+            </div>
 
-        <Divider>or</Divider>
+            <Divider>or</Divider>
 
-        <Form onSubmit={handleSubmit} aria-label="Sign up form">
-          {error && (
-            <ErrorBanner role="alert" aria-live="polite">
-              {error}
-            </ErrorBanner>
-          )}
-          <Input
-            id="signup-username"
-            name="username"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username (e.g. johndoe)"
-            aria-label="Username"
-            autoComplete="username"
-            required
-            autoFocus
-            minLength={3}
-          />
-          <Input
-            id="signup-email"
-            name="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email address"
-            aria-label="Email address"
-            autoComplete="email"
-            required
-          />
-          <Input
-            id="signup-password"
-            name="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password (minimum 8 characters)"
-            aria-label="Password (minimum 8 characters)"
-            autoComplete="new-password"
-            required
-            minLength={8}
-          />
-          <Input
-            id="signup-confirm-password"
-            name="confirm-password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm password"
-            aria-label="Confirm password"
-            autoComplete="new-password"
-            required
-          />
-          <Button type="submit" disabled={loading}>
-            {loading ? "Creating account…" : "Create Account"}
-          </Button>
-        </Form>
-        <FooterText>
-          Already have an account? <Link to="/login">Sign in</Link>
-        </FooterText>
+            <Form onSubmit={handleSubmit} aria-label="Sign up form">
+              {error && (
+                <ErrorBanner role="alert" aria-live="polite">
+                  {error}
+                </ErrorBanner>
+              )}
+              <Input
+                id="signup-username"
+                name="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username (e.g. johndoe)"
+                aria-label="Username"
+                autoComplete="username"
+                required
+                autoFocus
+                minLength={3}
+              />
+              <Input
+                id="signup-email"
+                name="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                aria-label="Email address"
+                autoComplete="email"
+                required
+              />
+              <Input
+                id="signup-password"
+                name="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password (minimum 8 characters)"
+                aria-label="Password (minimum 8 characters)"
+                autoComplete="new-password"
+                required
+                minLength={8}
+              />
+              <Input
+                id="signup-confirm-password"
+                name="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm password"
+                aria-label="Confirm password"
+                autoComplete="new-password"
+                required
+              />
+
+              <CheckboxWrapper>
+                <input
+                  type="checkbox"
+                  id="signup-accept-terms"
+                  name="acceptTerms"
+                  checked={acceptTerms}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                  required
+                />
+                <span>
+                  I agree to the{" "}
+                  <Link to="/terms" target="_blank">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link to="/privacy" target="_blank">
+                    Acceptable Use Policy
+                  </Link>
+                </span>
+              </CheckboxWrapper>
+
+              <Button type="submit" disabled={loading || !acceptTerms}>
+                {loading ? "Creating account…" : "Create Account"}
+              </Button>
+            </Form>
+            <FooterText>
+              Already have an account? <Link to="/login">Sign in</Link>
+            </FooterText>
+          </>
+        )}
       </Card>
     </PageWrapper>
   );

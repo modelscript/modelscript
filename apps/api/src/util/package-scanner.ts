@@ -38,19 +38,29 @@ export const PROHIBITED_MODELICA_CALLS = [
   { pattern: /\b(system|popen|exec|fork|dlopen)\s*\(/i, name: "Dangerous native process/library invocation" },
 ];
 
+export const SENSITIVE_CREDENTIAL_PATTERNS = [
+  { pattern: /^\.env(\..+)?$/i, name: "Environment secret configuration file (.env)" },
+  { pattern: /\.(pem|key|pkcs12|pfx|p12)$/i, name: "Cryptographic private key or certificate" },
+  { pattern: /^id_(rsa|dsa|ecdsa|ed25519)$/i, name: "SSH private key" },
+  { pattern: /^(credentials|service-account|service_account)\.json$/i, name: "Cloud credentials file" },
+  { pattern: /^\.git(\/|$)/i, name: "Internal Git repository metadata (.git)" },
+];
+
 /**
  * Performs automated security scanning on an incoming Modelica package zip archive:
  * 1. Zip Slip path traversal detection
  * 2. Zip bomb / resource exhaustion defense
  * 3. Binary / executable screening
  * 4. Modelica AST / source code static screening for malicious external C system calls
+ * 5. Sensitive credentials / private keys / environment leak screening
+ * 6. Symlink traversal defense
  */
 export async function scanPackageArchive(buffer: Buffer): Promise<PackageScanResult> {
   const violations: string[] = [];
   let totalFiles = 0;
   let totalUncompressedBytes = 0;
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
       if (err || !zipfile) {
         resolve({
@@ -96,6 +106,20 @@ export async function scanPackageArchive(buffer: Buffer): Promise<PackageScanRes
         const ext = path.extname(normalizedName).toLowerCase();
         if (PROHIBITED_FILE_EXTENSIONS.has(ext)) {
           violations.push(`Prohibited executable or binary file found: "${entry.fileName}" (${ext})`);
+        }
+
+        // 4. Sensitive credentials & secret leak screening
+        const basename = path.basename(normalizedName);
+        for (const { pattern, name: patternName } of SENSITIVE_CREDENTIAL_PATTERNS) {
+          if (pattern.test(normalizedName) || pattern.test(basename)) {
+            violations.push(`Sensitive or secret credential file detected: "${entry.fileName}" (${patternName})`);
+          }
+        }
+
+        // 5. Symlink traversal defense
+        const unixMode = (entry.externalFileAttributes >> 16) & 0xffff;
+        if ((unixMode & 0o170000) === 0o120000) {
+          violations.push(`Illegal symbolic link detected in archive entry: "${entry.fileName}"`);
         }
 
         // 4. Modelica static scanning for external process execution

@@ -1,43 +1,71 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertFillIcon,
   AlertIcon,
   BookIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CodeIcon,
   CopyIcon,
+  CpuIcon,
+  DatabaseIcon,
   DependabotIcon,
   FileIcon,
+  GearIcon,
   HistoryIcon,
   LinkIcon,
+  PackageIcon,
+  SearchIcon,
   ShareIcon,
+  SyncIcon,
   VerifiedIcon,
+  XIcon,
 } from "@primer/octicons-react";
-import { Button, Heading, Label, Spinner, Text } from "@primer/react";
+import { ActionList, ActionMenu, Button, Dialog, Flash, Heading, Label, Spinner, Text, TextInput } from "@primer/react";
 import DOMPurify from "dompurify";
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import { marked } from "marked";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
-import type { ArtifactViewerInfo, ClassDetail, JobInfo, NpmPackument, NpmVersionManifest } from "../api";
+import type {
+  ArtifactViewerInfo,
+  ClassDetail,
+  ClassSummary,
+  JobInfo,
+  NpmPackument,
+  NpmVersionManifest,
+  PackageDependent,
+  PackageStats,
+} from "../api";
 import {
+  deprecatePackage,
   getArtifactViewers,
   getClassDetail,
   getClasses,
   getDiagramUrl,
   getIconUrl,
   getJobStatus,
+  getPackageDependents,
+  getPackageStats,
   getPackument,
   rewriteModelicaUris,
+  transferPackageOwnership,
+  undeprecatePackage,
+  unyankPackage,
+  yankPackage,
 } from "../api";
+import { useAuth } from "../AuthContext";
 import CadStepViewer from "../components/artifacts/CadStepViewer";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
 import { ComposeContext } from "../components/ComposeContext";
 import DatasetTableViewer from "../components/DatasetTableViewer";
+import DigitalThreadExplorer from "../components/DigitalThreadExplorer";
 import FmuSimulatorViewer from "../components/FmuSimulatorViewer";
 import InvertedSvg from "../components/InvertedSvg";
 import SysmlViewer from "../components/SysmlViewer";
+import { TerminalLogViewer } from "../components/TerminalLogViewer";
 import { usePageTitle } from "../util/title";
 
 /* ─── animations ─── */
@@ -59,9 +87,37 @@ const PageWrap = styled.div`
     background-color 0.3s ease,
     color 0.3s ease;
   flex: 1;
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+  }
 `;
 
-const TreeSidebar = styled.div`
+const MobileTreeToggle = styled.button`
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 20px;
+  background: var(--surface-overlay);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--surface-row-hover);
+  }
+
+  @media (max-width: 900px) {
+    display: flex;
+  }
+`;
+
+const TreeSidebar = styled.div<{ $mobileOpen?: boolean }>`
   width: 260px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
@@ -71,6 +127,18 @@ const TreeSidebar = styled.div`
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+
+  @media (max-width: 900px) {
+    width: 100%;
+    position: relative;
+    top: 0;
+    height: auto;
+    max-height: ${(props) => (props.$mobileOpen ? "420px" : "0px")};
+    overflow: hidden;
+    border-right: none;
+    border-bottom: ${(props) => (props.$mobileOpen ? "1px solid var(--color-border)" : "none")};
+    transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
 `;
 
 const TreeScrollArea = styled.div`
@@ -110,6 +178,8 @@ const ContentGrid = styled.div`
 
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
+    padding: 0 16px 40px;
+    gap: 24px;
   }
 `;
 
@@ -119,6 +189,10 @@ const HeaderBar = styled.div`
   margin: 0 auto;
   padding: 32px 40px 0;
   box-sizing: border-box;
+
+  @media (max-width: 900px) {
+    padding: 20px 16px 0;
+  }
 `;
 
 const glassCard = css`
@@ -408,6 +482,53 @@ const ArtifactCard = styled.div`
   }
 `;
 
+type PolyglotDomain = "all" | "modelica" | "sysml2" | "cad" | "dataset" | "fmu" | "other";
+
+function classifyArtifactDomain(av: ArtifactViewerInfo): PolyglotDomain {
+  const t = av.type.toLowerCase();
+  const p = av.path.toLowerCase();
+  const v = av.viewer?.viewer?.toLowerCase() || "";
+
+  if (
+    t === "cad" ||
+    t === "step" ||
+    p.endsWith(".step") ||
+    p.endsWith(".stp") ||
+    p.endsWith(".p21") ||
+    p.endsWith(".scad") ||
+    v === "cad-3d-viewer"
+  ) {
+    return "cad";
+  }
+  if (
+    t === "sysml" ||
+    t === "sysml2" ||
+    t === "kerml" ||
+    p.endsWith(".sysml") ||
+    p.endsWith(".kerml") ||
+    v === "sysml-architecture-viewer"
+  ) {
+    return "sysml2";
+  }
+  if (
+    t === "dataset" ||
+    t === "csv" ||
+    p.endsWith(".csv") ||
+    p.endsWith(".tsv") ||
+    p.endsWith(".parquet") ||
+    v === "dataset-table"
+  ) {
+    return "dataset";
+  }
+  if (t === "fmu" || p.endsWith(".fmu") || v === "fmu-simulator") {
+    return "fmu";
+  }
+  if (t === "modelica" || t === "mo" || p.endsWith(".mo")) {
+    return "modelica";
+  }
+  return "other";
+}
+
 const ArtifactBadge = styled.span<{ $type: string }>`
   display: inline-flex;
   align-items: center;
@@ -420,11 +541,18 @@ const ArtifactBadge = styled.span<{ $type: string }>`
   background: ${(p) => {
     switch (p.$type) {
       case "fmu":
-        return "rgba(255, 107, 107, 0.15)";
+        return "rgba(244, 63, 94, 0.15)";
+      case "cad":
+      case "step":
+        return "rgba(6, 182, 212, 0.15)";
+      case "sysml":
+      case "sysml2":
+        return "rgba(168, 85, 247, 0.15)";
+      case "dataset":
+      case "csv":
+        return "rgba(59, 130, 246, 0.15)";
       case "wasm":
         return "rgba(139, 92, 246, 0.15)";
-      case "dataset":
-        return "rgba(59, 130, 246, 0.15)";
       default:
         return "rgba(107, 114, 128, 0.15)";
     }
@@ -432,16 +560,137 @@ const ArtifactBadge = styled.span<{ $type: string }>`
   color: ${(p) => {
     switch (p.$type) {
       case "fmu":
-        return "#ff6b6b";
+        return "#f43f5e";
+      case "cad":
+      case "step":
+        return "var(--color-accent-cyan, #06b6d4)";
+      case "sysml":
+      case "sysml2":
+        return "#c084fc";
+      case "dataset":
+      case "csv":
+        return "#3b82f6";
       case "wasm":
         return "#8b5cf6";
-      case "dataset":
-        return "#3b82f6";
       default:
         return "#6b7280";
     }
   }};
 `;
+
+const DomainNavWrap = styled.div`
+  display: flex;
+  gap: 5px;
+  padding: 0 12px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+const DomainPill = styled.button<{ $active: boolean; $color?: string }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid
+    ${(p) =>
+      p.$active
+        ? p.$color || "var(--color-accent-cyan, #06b6d4)"
+        : "var(--color-border-glass, rgba(255, 255, 255, 0.1))"};
+  background: ${(p) => (p.$active ? "rgba(255, 255, 255, 0.08)" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  box-shadow: ${(p) => (p.$active ? `0 0 10px ${p.$color ? p.$color + "33" : "rgba(6, 182, 212, 0.2)"}` : "none")};
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--color-text-primary);
+    border-color: ${(p) => p.$color || "var(--color-accent-cyan, #06b6d4)"};
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .domain-count {
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    background: ${(p) => (p.$active ? "rgba(255, 255, 255, 0.15)" : "var(--color-border, rgba(255, 255, 255, 0.08))")};
+    color: ${(p) => (p.$active ? p.$color || "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)")};
+  }
+`;
+
+const DomainSectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-top: 10px;
+  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.05));
+
+  &:first-of-type {
+    margin-top: 0;
+    border-top: none;
+  }
+`;
+
+const ArtifactSidebarItem = styled.div<{ $active?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: ${(p) => (p.$active ? "var(--color-glass-bg-hover)" : "transparent")};
+
+  &:hover {
+    background: var(--color-glass-bg-hover);
+    color: var(--color-accent-cyan);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.15);
+  }
+`;
+
+function getArtifactIcon(type: string, path?: string) {
+  const t = type.toLowerCase();
+  const p = path?.toLowerCase() || "";
+  if (
+    t === "cad" ||
+    t === "step" ||
+    p.endsWith(".step") ||
+    p.endsWith(".stp") ||
+    p.endsWith(".p21") ||
+    p.endsWith(".scad")
+  ) {
+    return <PackageIcon size={14} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />;
+  }
+  if (t === "sysml" || t === "sysml2" || t === "kerml" || p.endsWith(".sysml") || p.endsWith(".kerml")) {
+    return <GearIcon size={14} style={{ color: "#a855f7", flexShrink: 0 }} />;
+  }
+  if (t === "fmu" || p.endsWith(".fmu")) {
+    return <CpuIcon size={14} style={{ color: "#f43f5e", flexShrink: 0 }} />;
+  }
+  if (t === "dataset" || t === "csv" || p.endsWith(".csv") || p.endsWith(".tsv") || p.endsWith(".parquet")) {
+    return <DatabaseIcon size={14} style={{ color: "#3b82f6", flexShrink: 0 }} />;
+  }
+  if (t === "modelica" || t === "mo" || p.endsWith(".mo")) {
+    return <CodeIcon size={14} style={{ color: "#eab308", flexShrink: 0 }} />;
+  }
+  return <FileIcon size={14} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />;
+}
 
 /* ─── dependency row ─── */
 
@@ -456,6 +705,56 @@ const DepRow = styled.div`
   }
 `;
 
+const SparklineContainer = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 38px;
+  padding-top: 8px;
+  margin-top: 6px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 4px;
+`;
+
+const SparklineBar = styled.div<{ $heightPct: number; $active?: boolean }>`
+  flex: 1;
+  min-width: 3px;
+  max-width: 8px;
+  height: ${(p) => Math.max(p.$heightPct, 8)}%;
+  background: ${(p) =>
+    p.$active
+      ? "linear-gradient(180deg, var(--color-accent-cyan, #06b6d4) 0%, rgba(6, 182, 212, 0.4) 100%)"
+      : "var(--color-border, rgba(255, 255, 255, 0.1))"};
+  border-radius: 2px 2px 0 0;
+  transition: all 0.2s ease;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-accent-cyan, #06b6d4);
+    box-shadow: 0 0 6px rgba(6, 182, 212, 0.6);
+  }
+`;
+
+const DependentBadge = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--color-glass-bg);
+  border: 1px solid var(--color-glass-border);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-accent-cyan);
+    color: var(--color-accent-cyan);
+    background: var(--color-glass-bg-hover);
+  }
+`;
+
 /* ─── tree helpers ─── */
 
 interface TreeNode {
@@ -467,37 +766,58 @@ interface TreeNode {
 
 function buildClassTree(classes: ClassSummary[], rootName: string): TreeNode[] {
   const root: TreeNode = { name: rootName, fullName: rootName, classKind: "package", children: [] };
-  const nodeMap = new Map<string, TreeNode>();
-  nodeMap.set(rootName, root);
-
   const sorted = [...classes].sort((a, b) => a.class_name.localeCompare(b.class_name));
 
   for (const cls of sorted) {
     const fullName = cls.class_name;
-    if (!fullName.startsWith(rootName + ".")) continue;
+    const cleanName = fullName.startsWith(rootName + ".") ? fullName.slice(rootName.length + 1) : fullName;
+    const parts = cleanName.split(".");
+    let currentPath = "";
+    let parentNode = root;
 
-    const parts = fullName.split(".");
-    for (let i = 1; i < parts.length; i++) {
-      const partialName = parts.slice(0, i + 1).join(".");
-      if (!nodeMap.has(partialName)) {
-        const node: TreeNode = {
-          name: parts[i],
-          fullName: partialName,
-          classKind: cls.class_name === partialName ? cls.class_kind : "package",
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      currentPath = currentPath ? `${currentPath}.${part}` : part;
+      let node = parentNode.children.find((c) => c.name === part);
+      if (!node) {
+        node = {
+          name: part,
+          fullName: i === parts.length - 1 ? fullName : currentPath,
+          classKind: i === parts.length - 1 ? cls.class_kind : "package",
           children: [],
         };
-        nodeMap.set(partialName, node);
-        const parentName = parts.slice(0, i).join(".");
-        const parent = nodeMap.get(parentName);
-        if (parent) parent.children.push(node);
-      } else if (cls.class_name === partialName) {
-        const existing = nodeMap.get(partialName)!;
-        existing.classKind = cls.class_kind;
+        parentNode.children.push(node);
+      } else if (i === parts.length - 1) {
+        node.classKind = cls.class_kind;
+        node.fullName = fullName;
       }
+      parentNode = node;
     }
   }
 
   return root.children;
+}
+
+function filterClassTree(nodes: TreeNode[], query: string): TreeNode[] {
+  if (!query.trim()) return nodes;
+  const q = query.trim().toLowerCase();
+
+  const filterNode = (node: TreeNode): TreeNode | null => {
+    const nameMatches = node.name.toLowerCase().includes(q) || node.fullName.toLowerCase().includes(q);
+    const filteredChildren = node.children
+      .map((child) => filterNode(child))
+      .filter((child): child is TreeNode => child !== null);
+
+    if (nameMatches || filteredChildren.length > 0) {
+      return {
+        ...node,
+        children: filteredChildren,
+      };
+    }
+    return null;
+  };
+
+  return nodes.map((node) => filterNode(node)).filter((node): node is TreeNode => node !== null);
 }
 
 /* ─── tree node component ─── */
@@ -507,8 +827,16 @@ const ClassTreeNode: React.FC<{
   depth: number;
   libraryName: string;
   version: string;
-}> = ({ node, depth, libraryName, version }) => {
-  const [expanded, setExpanded] = useState(depth < 1);
+  isFiltered?: boolean;
+}> = ({ node, depth, libraryName, version, isFiltered }) => {
+  const [expanded, setExpanded] = useState(depth < 1 || Boolean(isFiltered));
+
+  useEffect(() => {
+    if (isFiltered) {
+      setExpanded(true);
+    }
+  }, [isFiltered]);
+
   const hasChildren = node.children.length > 0;
   const iconUrl = getIconUrl(libraryName, version, node.fullName);
 
@@ -537,7 +865,23 @@ const ClassTreeNode: React.FC<{
         ) : (
           <span style={{ width: 14, flexShrink: 0 }} />
         )}
-        <InvertedSvg src={iconUrl} alt="" width={16} height={16} />
+        <InvertedSvg
+          src={iconUrl}
+          alt=""
+          width={16}
+          height={16}
+          fallback={
+            node.classKind.includes("sysml") ? (
+              <CodeIcon size={16} fill="var(--color-primary)" />
+            ) : node.classKind.includes("cad") ||
+              node.classKind.includes("product") ||
+              node.classKind.includes("shape") ? (
+              <CpuIcon size={16} fill="var(--color-warning)" />
+            ) : (
+              <PackageIcon size={16} fill="var(--color-text-muted)" />
+            )
+          }
+        />
         <span>{node.name}</span>
         <Label
           variant="secondary"
@@ -555,6 +899,7 @@ const ClassTreeNode: React.FC<{
             depth={depth + 1}
             libraryName={libraryName}
             version={version}
+            isFiltered={isFiltered}
           />
         ))}
     </>
@@ -590,14 +935,58 @@ function timeAgo(dateStr: string): string {
 
 /* ─── tab types ─── */
 
-type TabId = "readme" | "versions" | "artifacts" | "dependencies";
+type TabId = "readme" | "digital-thread" | "versions" | "artifacts" | "dependencies";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "readme", label: "Readme", icon: <BookIcon size={16} /> },
-  { id: "versions", label: "Versions", icon: <HistoryIcon size={16} /> },
+  { id: "digital-thread", label: "Digital Thread", icon: <CpuIcon size={16} /> },
   { id: "artifacts", label: "Artifacts", icon: <FileIcon size={16} /> },
+  { id: "versions", label: "Versions", icon: <HistoryIcon size={16} /> },
   { id: "dependencies", label: "Dependencies", icon: <DependabotIcon size={16} /> },
 ];
+
+/* ─── skeleton ─── */
+
+const PackageDetailSkeleton: React.FC = () => (
+  <PageWrap>
+    <TreeSidebar style={{ padding: "16px 12px" }}>
+      <div className="skeleton" style={{ width: "120px", height: "14px", marginBottom: "16px" }} />
+      <div className="skeleton" style={{ width: "100%", height: "24px", marginBottom: "8px" }} />
+      <div className="skeleton" style={{ width: "85%", height: "24px", marginBottom: "8px" }} />
+      <div className="skeleton" style={{ width: "90%", height: "24px", marginBottom: "8px" }} />
+      <div className="skeleton" style={{ width: "70%", height: "24px", marginBottom: "8px" }} />
+      <div className="skeleton" style={{ width: "80%", height: "24px", marginBottom: "8px" }} />
+    </TreeSidebar>
+    <MainContentWrap>
+      <HeaderBar>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "16px" }}>
+          <div className="skeleton" style={{ width: "52px", height: "52px", borderRadius: "10px" }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div className="skeleton" style={{ width: "240px", height: "28px" }} />
+            <div className="skeleton" style={{ width: "160px", height: "14px" }} />
+          </div>
+        </div>
+        <div
+          style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--color-border)", paddingBottom: "12px" }}
+        >
+          <div className="skeleton" style={{ width: "80px", height: "20px" }} />
+          <div className="skeleton" style={{ width: "80px", height: "20px" }} />
+          <div className="skeleton" style={{ width: "80px", height: "20px" }} />
+        </div>
+      </HeaderBar>
+      <ContentGrid style={{ marginTop: "24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div className="skeleton" style={{ width: "100%", height: "160px", borderRadius: "12px" }} />
+          <div className="skeleton" style={{ width: "100%", height: "280px", borderRadius: "12px" }} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div className="skeleton" style={{ width: "100%", height: "180px", borderRadius: "12px" }} />
+          <div className="skeleton" style={{ width: "100%", height: "140px", borderRadius: "12px" }} />
+        </div>
+      </ContentGrid>
+    </MainContentWrap>
+  </PageWrap>
+);
 
 /* ─── main page ─── */
 
@@ -607,6 +996,7 @@ const PackageDetailPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as TabId) || "readme";
   const { openCompose } = useContext(ComposeContext);
+  const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
 
   // Legacy API data
   const [rootClass, setRootClass] = useState<ClassDetail | null>(null);
@@ -626,6 +1016,25 @@ const PackageDetailPage: React.FC = () => {
   // Enriched artifact data from artifact viewer API
   const [artifactViewers, setArtifactViewers] = useState<ArtifactViewerInfo[]>([]);
 
+  // Polyglot domain navigation state
+  const [selectedDomain, setSelectedDomain] = useState<PolyglotDomain>("all");
+  const [treeSearchFilter, setTreeSearchFilter] = useState("");
+  const [artifactTabDomainFilter, setArtifactTabDomainFilter] = useState<PolyglotDomain>("all");
+
+  // Analytics & reverse dependencies
+  const [packageStats, setPackageStats] = useState<PackageStats | null>(null);
+  const [dependents, setDependents] = useState<PackageDependent[]>([]);
+
+  // Auth & governance states
+  const { user } = useAuth();
+  const [manageModal, setManageModal] = useState<"yank" | "deprecate" | "transfer" | null>(null);
+  const [yankReasonInput, setYankReasonInput] = useState("");
+  const [deprecateReasonInput, setDeprecateReasonInput] = useState("");
+  const [transferTargetInput, setTransferTargetInput] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
   const setTab = (tab: TabId) => {
     setSearchParams({ tab });
   };
@@ -633,16 +1042,20 @@ const PackageDetailPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     if (!name || !version) return;
     try {
-      const [rootCls, classList, npmData, viewers] = await Promise.all([
+      const [rootCls, classList, npmData, viewers, stats, depData] = await Promise.all([
         getClassDetail(name, version, name).catch(() => null),
         getClasses(name, version),
         getPackument(name).catch(() => null),
         getArtifactViewers(name, version).catch(() => []),
+        getPackageStats(name, 30).catch(() => null),
+        getPackageDependents(name).catch(() => null),
       ]);
       setRootClass(rootCls);
       setClasses(classList);
       setPackument(npmData);
       setArtifactViewers(viewers);
+      setPackageStats(stats);
+      setDependents(depData?.dependents || []);
     } catch (err) {
       setError("Failed to load artifact details");
       console.error(err);
@@ -706,11 +1119,7 @@ const PackageDetailPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <PageWrap style={{ justifyContent: "center", alignItems: "center" }}>
-        <Spinner size="large" />
-      </PageWrap>
-    );
+    return <PackageDetailSkeleton />;
   }
 
   if (error) {
@@ -741,18 +1150,209 @@ const PackageDetailPage: React.FC = () => {
     );
   }
 
-  const tree = name ? buildClassTree(classes, name) : [];
+  const tree = useMemo(() => (name ? buildClassTree(classes, name) : []), [classes, name]);
+  const filteredTree = useMemo(() => filterClassTree(tree, treeSearchFilter), [tree, treeSearchFilter]);
+
+  const sysmlArtifacts = useMemo(
+    () => artifactViewers.filter((av) => classifyArtifactDomain(av) === "sysml2"),
+    [artifactViewers],
+  );
+  const cadArtifacts = useMemo(
+    () => artifactViewers.filter((av) => classifyArtifactDomain(av) === "cad"),
+    [artifactViewers],
+  );
+  const datasetArtifacts = useMemo(
+    () => artifactViewers.filter((av) => classifyArtifactDomain(av) === "dataset"),
+    [artifactViewers],
+  );
+  const fmuArtifacts = useMemo(
+    () => artifactViewers.filter((av) => classifyArtifactDomain(av) === "fmu"),
+    [artifactViewers],
+  );
+  const otherArtifacts = useMemo(
+    () =>
+      artifactViewers.filter(
+        (av) =>
+          !sysmlArtifacts.includes(av) &&
+          !cadArtifacts.includes(av) &&
+          !datasetArtifacts.includes(av) &&
+          !fmuArtifacts.includes(av),
+      ),
+    [artifactViewers, sysmlArtifacts, cadArtifacts, datasetArtifacts, fmuArtifacts],
+  );
+
+  const filterArtifactList = useCallback(
+    (list: ArtifactViewerInfo[]) => {
+      if (!treeSearchFilter.trim()) return list;
+      const q = treeSearchFilter.trim().toLowerCase();
+      return list.filter(
+        (av) =>
+          av.path.toLowerCase().includes(q) ||
+          av.displayName.toLowerCase().includes(q) ||
+          av.type.toLowerCase().includes(q),
+      );
+    },
+    [treeSearchFilter],
+  );
+
+  const filteredSysml = useMemo(() => filterArtifactList(sysmlArtifacts), [filterArtifactList, sysmlArtifacts]);
+  const filteredCad = useMemo(() => filterArtifactList(cadArtifacts), [filterArtifactList, cadArtifacts]);
+  const filteredDatasets = useMemo(() => filterArtifactList(datasetArtifacts), [filterArtifactList, datasetArtifacts]);
+  const filteredFmu = useMemo(() => filterArtifactList(fmuArtifacts), [filterArtifactList, fmuArtifacts]);
+  const filteredOther = useMemo(() => filterArtifactList(otherArtifacts), [filterArtifactList, otherArtifacts]);
+
+  const availableDomains = useMemo(() => {
+    const list: { id: PolyglotDomain; label: string; icon: string; count: number; color: string }[] = [];
+    const mCount = classes.length;
+    const sCount = sysmlArtifacts.length;
+    const cCount = cadArtifacts.length;
+    const dCount = datasetArtifacts.length;
+    const fCount = fmuArtifacts.length;
+    const oCount = otherArtifacts.length;
+    const totalCount = mCount + artifactViewers.length;
+
+    const domainTypesPresent =
+      (mCount > 0 ? 1 : 0) + (sCount > 0 ? 1 : 0) + (cCount > 0 ? 1 : 0) + (dCount > 0 ? 1 : 0) + (fCount > 0 ? 1 : 0);
+
+    if (domainTypesPresent > 1 || totalCount > 0) {
+      list.push({ id: "all", label: "All", icon: "🌐", count: totalCount, color: "var(--color-accent-cyan, #06b6d4)" });
+    }
+    if (mCount > 0) {
+      list.push({ id: "modelica", label: "Modelica", icon: "⚡", count: mCount, color: "#eab308" });
+    }
+    if (sCount > 0) {
+      list.push({ id: "sysml2", label: "SysML v2", icon: "📐", count: sCount, color: "#a855f7" });
+    }
+    if (cCount > 0) {
+      list.push({ id: "cad", label: "3D CAD", icon: "🧊", count: cCount, color: "#06b6d4" });
+    }
+    if (dCount > 0) {
+      list.push({ id: "dataset", label: "Datasets", icon: "📊", count: dCount, color: "#3b82f6" });
+    }
+    if (fCount > 0) {
+      list.push({ id: "fmu", label: "FMUs", icon: "⚙️", count: fCount, color: "#f43f5e" });
+    }
+    if (oCount > 0 && domainTypesPresent > 1) {
+      list.push({ id: "other", label: "Files", icon: "📁", count: oCount, color: "#9ca3af" });
+    }
+    return list;
+  }, [
+    classes.length,
+    sysmlArtifacts.length,
+    cadArtifacts.length,
+    datasetArtifacts.length,
+    fmuArtifacts.length,
+    otherArtifacts.length,
+    artifactViewers.length,
+  ]);
+
+  const displayedArtifactViewers = useMemo(() => {
+    if (artifactTabDomainFilter === "all") return artifactViewers;
+    return artifactViewers.filter((av) => classifyArtifactDomain(av) === artifactTabDomainFilter);
+  }, [artifactViewers, artifactTabDomainFilter]);
+
+  const handleOpenArtifact = (av: ArtifactViewerInfo) => {
+    setTab("artifacts");
+    setTimeout(() => {
+      const el = document.getElementById(`artifact-${av.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.style.transition = "box-shadow 0.3s ease, border-color 0.3s ease";
+        el.style.boxShadow = "0 0 20px rgba(6, 182, 212, 0.4)";
+        setTimeout(() => {
+          el.style.boxShadow = "";
+        }, 1500);
+      }
+    }, 100);
+  };
+
+  const isCurrentYanked = Boolean(currentManifest?.yanked || currentManifest?.is_yanked);
+  const currentYankReason =
+    typeof currentManifest?.yanked === "string"
+      ? currentManifest.yanked
+      : (currentManifest?.yank_reason as string | undefined);
+  const isCurrentDeprecated = Boolean(currentManifest?.deprecated);
+  const currentDeprecateReason = typeof currentManifest?.deprecated === "string" ? currentManifest.deprecated : null;
+
+  const handleToggleYank = async () => {
+    if (!name || !version) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      if (isCurrentYanked) {
+        await unyankPackage(name, version);
+        setActionSuccess(`Release v${version} has been restored (unyanked).`);
+      } else {
+        await yankPackage(name, version, yankReasonInput.trim() || "Yanked by maintainer");
+        setActionSuccess(`Release v${version} has been yanked.`);
+      }
+      setManageModal(null);
+      setYankReasonInput("");
+      await fetchData();
+    } catch (err: any) {
+      setActionError(err.response?.data?.error || err.message || "Failed to update yank status");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleDeprecate = async () => {
+    if (!name || !version) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      if (isCurrentDeprecated) {
+        await undeprecatePackage(name, version);
+        setActionSuccess(`Deprecation removed from release v${version}.`);
+      } else {
+        await deprecatePackage(name, version, deprecateReasonInput.trim() || "Deprecated by maintainer");
+        setActionSuccess(`Release v${version} has been marked as deprecated.`);
+      }
+      setManageModal(null);
+      setDeprecateReasonInput("");
+      await fetchData();
+    } catch (err: any) {
+      setActionError(err.response?.data?.error || err.message || "Failed to update deprecation status");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!name || !transferTargetInput.trim()) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await transferPackageOwnership(name, transferTargetInput.trim());
+      setActionSuccess(`Ownership transfer request sent to @${transferTargetInput.trim()}.`);
+      setManageModal(null);
+      setTransferTargetInput("");
+    } catch (err: any) {
+      setActionError(err.response?.data?.error || err.message || "Failed to transfer ownership");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const description = packument?.description ?? rootClass?.description ?? null;
 
   return (
     <PageWrap>
-      {/* ── Left Sidebar (Classes) ── */}
-      {tree.length > 0 && (
-        <TreeSidebar>
+      {/* Mobile Toggle for Class / Artifact Tree */}
+      {(tree.length > 0 || artifactViewers.length > 0) && (
+        <MobileTreeToggle type="button" onClick={() => setMobileTreeOpen((prev) => !prev)}>
+          <span>Browse Components &amp; Artifacts ({tree.length + artifactViewers.length})</span>
+          {mobileTreeOpen ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
+        </MobileTreeToggle>
+      )}
+
+      {/* ── Left Sidebar (Classes or Polyglot Artifacts) ── */}
+      {(tree.length > 0 || artifactViewers.length > 0) && (
+        <TreeSidebar $mobileOpen={mobileTreeOpen}>
           <Box
             style={{
-              height: "84px",
-              minHeight: "84px",
+              height: "72px",
+              minHeight: "72px",
               display: "flex",
               alignItems: "center",
               gap: "12px",
@@ -767,19 +1367,296 @@ const PackageDetailPage: React.FC = () => {
               height={32}
               style={{ flexShrink: 0 }}
             />
-            <Box display="flex" flexDirection="column">
-              <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-primary)", lineHeight: 1.2 }}>
-                {name}
-              </Text>
+            <Box display="flex" flexDirection="column" style={{ minWidth: 0 }}>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Text
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 14,
+                    color: "var(--color-text-primary)",
+                    lineHeight: 1.2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {name}
+                </Text>
+                {availableDomains.length > 2 && (
+                  <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", lineHeight: "14px" }}>
+                    Polyglot
+                  </Label>
+                )}
+              </Box>
               <Text style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: "2px" }}>v{version}</Text>
             </Box>
           </Box>
 
+          {/* Polyglot Domain Navigation Pills */}
+          {availableDomains.length > 2 && (
+            <DomainNavWrap>
+              {availableDomains.map((d) => (
+                <DomainPill
+                  key={d.id}
+                  $active={selectedDomain === d.id}
+                  $color={d.color}
+                  onClick={() => setSelectedDomain(d.id)}
+                  title={`${d.label} (${d.count})`}
+                >
+                  <span>{d.icon}</span>
+                  <span>{d.label}</span>
+                  <span className="domain-count">{d.count}</span>
+                </DomainPill>
+              ))}
+            </DomainNavWrap>
+          )}
+
+          {/* Search Input */}
+          <Box style={{ padding: "0 12px 10px 12px" }}>
+            <TextInput
+              leadingVisual={SearchIcon}
+              placeholder={
+                selectedDomain === "modelica"
+                  ? "Filter classes..."
+                  : selectedDomain === "cad"
+                    ? "Filter CAD parts..."
+                    : selectedDomain === "sysml2"
+                      ? "Filter SysML definitions..."
+                      : selectedDomain === "dataset"
+                        ? "Filter datasets..."
+                        : "Filter polyglot symbols..."
+              }
+              value={treeSearchFilter}
+              onChange={(e) => setTreeSearchFilter(e.target.value)}
+              size="small"
+              block
+              trailingAction={
+                treeSearchFilter ? (
+                  <TextInput.Action onClick={() => setTreeSearchFilter("")} icon={XIcon} aria-label="Clear filter" />
+                ) : undefined
+              }
+            />
+          </Box>
+
           <TreeScrollArea>
-            <Divider style={{ marginTop: 0, marginBottom: 12 }} />
-            {tree.map((node) => (
-              <ClassTreeNode key={node.fullName} node={node} depth={0} libraryName={name!} version={version!} />
-            ))}
+            {/* Modelica Section */}
+            {(selectedDomain === "all" || selectedDomain === "modelica") && filteredTree.length > 0 && (
+              <>
+                {selectedDomain === "all" && availableDomains.length > 2 && (
+                  <DomainSectionHeader>
+                    <span>⚡ Modelica Classes</span>
+                    <span>{filteredTree.length}</span>
+                  </DomainSectionHeader>
+                )}
+                {filteredTree.map((node) => (
+                  <ClassTreeNode
+                    key={node.fullName}
+                    node={node}
+                    depth={0}
+                    libraryName={name!}
+                    version={version!}
+                    isFiltered={Boolean(treeSearchFilter.trim())}
+                  />
+                ))}
+              </>
+            )}
+
+            {/* SysML v2 Section */}
+            {(selectedDomain === "all" || selectedDomain === "sysml2") && filteredSysml.length > 0 && (
+              <>
+                {selectedDomain === "all" && availableDomains.length > 2 && (
+                  <DomainSectionHeader>
+                    <span>📐 SysML v2 Architecture</span>
+                    <span>{filteredSysml.length}</span>
+                  </DomainSectionHeader>
+                )}
+                {filteredSysml.map((av) => (
+                  <ArtifactSidebarItem key={av.id} onClick={() => handleOpenArtifact(av)}>
+                    {getArtifactIcon(av.type, av.path)}
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                      }}
+                      title={av.path}
+                    >
+                      {av.displayName || av.path}
+                    </span>
+                    <Label variant="secondary" style={{ fontSize: "10px", padding: "0 4px", lineHeight: "14px" }}>
+                      SysML
+                    </Label>
+                  </ArtifactSidebarItem>
+                ))}
+              </>
+            )}
+
+            {/* 3D CAD Section */}
+            {(selectedDomain === "all" || selectedDomain === "cad") && filteredCad.length > 0 && (
+              <>
+                {selectedDomain === "all" && availableDomains.length > 2 && (
+                  <DomainSectionHeader>
+                    <span>🧊 3D CAD Models</span>
+                    <span>{filteredCad.length}</span>
+                  </DomainSectionHeader>
+                )}
+                {filteredCad.map((av) => (
+                  <ArtifactSidebarItem key={av.id} onClick={() => handleOpenArtifact(av)}>
+                    {getArtifactIcon(av.type, av.path)}
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                      }}
+                      title={av.path}
+                    >
+                      {av.displayName || av.path}
+                    </span>
+                    <Label
+                      variant="secondary"
+                      style={{
+                        fontSize: "10px",
+                        padding: "0 4px",
+                        lineHeight: "14px",
+                        color: "var(--color-accent-cyan, #06b6d4)",
+                      }}
+                    >
+                      STEP
+                    </Label>
+                  </ArtifactSidebarItem>
+                ))}
+              </>
+            )}
+
+            {/* Datasets Section */}
+            {(selectedDomain === "all" || selectedDomain === "dataset") && filteredDatasets.length > 0 && (
+              <>
+                {selectedDomain === "all" && availableDomains.length > 2 && (
+                  <DomainSectionHeader>
+                    <span>📊 Datasets &amp; Tables</span>
+                    <span>{filteredDatasets.length}</span>
+                  </DomainSectionHeader>
+                )}
+                {filteredDatasets.map((av) => (
+                  <ArtifactSidebarItem key={av.id} onClick={() => handleOpenArtifact(av)}>
+                    {getArtifactIcon(av.type, av.path)}
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                      }}
+                      title={av.path}
+                    >
+                      {av.displayName || av.path}
+                    </span>
+                    <Label variant="secondary" style={{ fontSize: "10px", padding: "0 4px", lineHeight: "14px" }}>
+                      CSV
+                    </Label>
+                  </ArtifactSidebarItem>
+                ))}
+              </>
+            )}
+
+            {/* FMUs Section */}
+            {(selectedDomain === "all" || selectedDomain === "fmu") && filteredFmu.length > 0 && (
+              <>
+                {selectedDomain === "all" && availableDomains.length > 2 && (
+                  <DomainSectionHeader>
+                    <span>⚙️ FMU Simulators</span>
+                    <span>{filteredFmu.length}</span>
+                  </DomainSectionHeader>
+                )}
+                {filteredFmu.map((av) => (
+                  <ArtifactSidebarItem key={av.id} onClick={() => handleOpenArtifact(av)}>
+                    {getArtifactIcon(av.type, av.path)}
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                      }}
+                      title={av.path}
+                    >
+                      {av.displayName || av.path}
+                    </span>
+                    <Label
+                      variant="secondary"
+                      style={{ fontSize: "10px", padding: "0 4px", lineHeight: "14px", color: "#f43f5e" }}
+                    >
+                      FMU
+                    </Label>
+                  </ArtifactSidebarItem>
+                ))}
+              </>
+            )}
+
+            {/* Other Files Section */}
+            {(selectedDomain === "all" || selectedDomain === "other") && filteredOther.length > 0 && (
+              <>
+                {selectedDomain === "all" && availableDomains.length > 2 && (
+                  <DomainSectionHeader>
+                    <span>📁 Other Files</span>
+                    <span>{filteredOther.length}</span>
+                  </DomainSectionHeader>
+                )}
+                {filteredOther.map((av) => (
+                  <ArtifactSidebarItem key={av.id} onClick={() => handleOpenArtifact(av)}>
+                    {getArtifactIcon(av.type, av.path)}
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 12,
+                      }}
+                      title={av.path}
+                    >
+                      {av.displayName || av.path}
+                    </span>
+                    <Label variant="secondary" style={{ fontSize: "10px", padding: "0 4px", lineHeight: "14px" }}>
+                      {av.type}
+                    </Label>
+                  </ArtifactSidebarItem>
+                ))}
+              </>
+            )}
+
+            {/* Empty State */}
+            {filteredTree.length === 0 &&
+              filteredSysml.length === 0 &&
+              filteredCad.length === 0 &&
+              filteredDatasets.length === 0 &&
+              filteredFmu.length === 0 &&
+              filteredOther.length === 0 && (
+                <Box
+                  style={{ padding: "24px 12px", textAlign: "center", color: "var(--color-text-muted)", fontSize: 12 }}
+                >
+                  <Text as="p" style={{ margin: "0 0 8px 0" }}>
+                    No matching items in {selectedDomain === "all" ? "package" : selectedDomain}
+                  </Text>
+                  {treeSearchFilter && (
+                    <Button size="small" variant="invisible" onClick={() => setTreeSearchFilter("")}>
+                      Clear filter
+                    </Button>
+                  )}
+                </Box>
+              )}
           </TreeScrollArea>
         </TreeSidebar>
       )}
@@ -863,6 +1740,63 @@ const PackageDetailPage: React.FC = () => {
                     Share to Feed
                   </Button>
                 )}
+                {user && (
+                  <Box style={{ marginLeft: openCompose ? 8 : "auto" }}>
+                    <ActionMenu>
+                      <ActionMenu.Button size="small" leadingVisual={GearIcon}>
+                        Manage Release
+                      </ActionMenu.Button>
+                      <ActionMenu.Overlay>
+                        <ActionList>
+                          <ActionList.Item
+                            onSelect={() => {
+                              setActionError(null);
+                              setManageModal("yank");
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <AlertFillIcon
+                                size={14}
+                                fill={
+                                  isCurrentYanked
+                                    ? "var(--color-success-fg, #2da44e)"
+                                    : "var(--color-danger-fg, #cf222e)"
+                                }
+                              />
+                            </ActionList.LeadingVisual>
+                            {isCurrentYanked ? "Restore (Unyank) Release" : "Yank Release"}
+                          </ActionList.Item>
+
+                          <ActionList.Item
+                            onSelect={() => {
+                              setActionError(null);
+                              setManageModal("deprecate");
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <AlertIcon size={14} fill="#d97706" />
+                            </ActionList.LeadingVisual>
+                            {isCurrentDeprecated ? "Remove Deprecation" : "Deprecate Release"}
+                          </ActionList.Item>
+
+                          <ActionList.Divider />
+
+                          <ActionList.Item
+                            onSelect={() => {
+                              setActionError(null);
+                              setManageModal("transfer");
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <SyncIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Transfer Ownership
+                          </ActionList.Item>
+                        </ActionList>
+                      </ActionMenu.Overlay>
+                    </ActionMenu>
+                  </Box>
+                )}
               </Box>
               {description && (
                 <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
@@ -878,40 +1812,191 @@ const PackageDetailPage: React.FC = () => {
           </Box>
         </HeaderBar>
 
-        {/* ── Job Logs ── */}
-        {(jobStatus === "processing" || jobStatus === "failed") && jobInfo?.logs && jobInfo.logs.length > 0 && (
-          <Box
-            mb={4}
-            p={3}
-            style={{
-              background: "var(--color-canvas-subtle)",
-              borderRadius: 6,
-              border: "1px solid var(--color-border-default)",
-            }}
-          >
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Text style={{ fontWeight: 600, fontSize: 13, color: "var(--color-text-primary)" }}>Processing Logs</Text>
-              {jobStatus === "processing" && <Spinner size="small" />}
+        {/* Alerts & Notifications */}
+        <Box px={5} pt={2}>
+          {actionSuccess && (
+            <Box mb={3}>
+              <Flash variant="success" onDismiss={() => setActionSuccess(null)}>
+                {actionSuccess}
+              </Flash>
             </Box>
+          )}
+
+          {isCurrentYanked && (
             <Box
-              as="pre"
+              mb={3}
+              p={3}
               style={{
-                margin: 0,
-                padding: "12px",
-                background: "#0d1117",
-                color: "#e6edf3",
-                borderRadius: 6,
-                fontSize: 12,
-                fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace",
-                maxHeight: "300px",
-                overflowY: "auto",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all",
+                borderRadius: 8,
+                background: "rgba(207, 34, 46, 0.12)",
+                border: "1px solid rgba(207, 34, 46, 0.4)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
               }}
             >
-              {jobInfo.logs.join("\n")}
+              <AlertFillIcon size={20} fill="var(--color-danger-fg, #cf222e)" style={{ flexShrink: 0, marginTop: 2 }} />
+              <Box>
+                <Text style={{ fontWeight: 600, color: "var(--color-danger-fg, #cf222e)", display: "block" }}>
+                  This version (v{version}) has been yanked
+                </Text>
+                <Text style={{ fontSize: 13, color: "var(--color-text-primary)", display: "block", marginTop: 2 }}>
+                  {currentYankReason ||
+                    "The maintainer has yanked this release. It should not be used in new projects."}
+                </Text>
+              </Box>
             </Box>
-          </Box>
+          )}
+
+          {isCurrentDeprecated && (
+            <Box
+              mb={3}
+              p={3}
+              style={{
+                borderRadius: 8,
+                background: "rgba(217, 119, 6, 0.12)",
+                border: "1px solid rgba(217, 119, 6, 0.4)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <AlertIcon size={20} fill="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
+              <Box>
+                <Text style={{ fontWeight: 600, color: "#d97706", display: "block" }}>
+                  This version (v{version}) is deprecated
+                </Text>
+                <Text style={{ fontSize: 13, color: "var(--color-text-primary)", display: "block", marginTop: 2 }}>
+                  {currentDeprecateReason ||
+                    "The package author has deprecated this version. Please consider upgrading."}
+                </Text>
+              </Box>
+            </Box>
+          )}
+        </Box>
+
+        {manageModal === "yank" && (
+          <Dialog
+            title={isCurrentYanked ? `Restore Release v${version}` : `Yank Release v${version}`}
+            onClose={() => setManageModal(null)}
+          >
+            <Box p={3} display="flex" flexDirection="column" gap={3}>
+              <Text style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
+                {isCurrentYanked
+                  ? `Restoring this release will remove the yank warning and make v${version} visible in normal index listings.`
+                  : `Yanking marks v${version} as discouraged and hides it from search. Existing projects depending on this version will still be able to resolve it.`}
+              </Text>
+              {!isCurrentYanked && (
+                <Box>
+                  <Text style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 6 }}>
+                    Reason for yanking
+                  </Text>
+                  <TextInput
+                    block
+                    placeholder="e.g. Critical security bug or broken dependency"
+                    value={yankReasonInput}
+                    onChange={(e) => setYankReasonInput(e.target.value)}
+                  />
+                </Box>
+              )}
+              {actionError && <Flash variant="danger">{actionError}</Flash>}
+              <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+                <Button onClick={() => setManageModal(null)}>Cancel</Button>
+                <Button
+                  variant={isCurrentYanked ? "primary" : "danger"}
+                  onClick={handleToggleYank}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? <Spinner size="small" /> : isCurrentYanked ? "Restore Release" : "Yank Release"}
+                </Button>
+              </Box>
+            </Box>
+          </Dialog>
+        )}
+
+        {manageModal === "deprecate" && (
+          <Dialog
+            title={isCurrentDeprecated ? `Remove Deprecation from v${version}` : `Deprecate Release v${version}`}
+            onClose={() => setManageModal(null)}
+          >
+            <Box p={3} display="flex" flexDirection="column" gap={3}>
+              <Text style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
+                {isCurrentDeprecated
+                  ? `Removing deprecation will clear the warning banner on v${version}.`
+                  : `Deprecating v${version} displays a warning banner informing users to migrate to a newer version.`}
+              </Text>
+              {!isCurrentDeprecated && (
+                <Box>
+                  <Text style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 6 }}>
+                    Deprecation message
+                  </Text>
+                  <TextInput
+                    block
+                    placeholder="e.g. Please upgrade to v2.0.0; this version is no longer maintained."
+                    value={deprecateReasonInput}
+                    onChange={(e) => setDeprecateReasonInput(e.target.value)}
+                  />
+                </Box>
+              )}
+              {actionError && <Flash variant="danger">{actionError}</Flash>}
+              <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+                <Button onClick={() => setManageModal(null)}>Cancel</Button>
+                <Button variant="primary" onClick={handleToggleDeprecate} disabled={actionLoading}>
+                  {actionLoading ? (
+                    <Spinner size="small" />
+                  ) : isCurrentDeprecated ? (
+                    "Remove Deprecation"
+                  ) : (
+                    "Deprecate Release"
+                  )}
+                </Button>
+              </Box>
+            </Box>
+          </Dialog>
+        )}
+
+        {manageModal === "transfer" && (
+          <Dialog title={`Transfer Package Ownership`} onClose={() => setManageModal(null)}>
+            <Box p={3} display="flex" flexDirection="column" gap={3}>
+              <Text style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
+                Initiate an ownership transfer of <strong>{name}</strong> to another registered user. The transfer will
+                remain pending until the recipient accepts it.
+              </Text>
+              <Box>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 6 }}>
+                  Recipient username
+                </Text>
+                <TextInput
+                  block
+                  placeholder="e.g. alice"
+                  value={transferTargetInput}
+                  onChange={(e) => setTransferTargetInput(e.target.value)}
+                />
+              </Box>
+              {actionError && <Flash variant="danger">{actionError}</Flash>}
+              <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+                <Button onClick={() => setManageModal(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  onClick={handleTransfer}
+                  disabled={actionLoading || !transferTargetInput.trim()}
+                >
+                  {actionLoading ? <Spinner size="small" /> : "Send Transfer Request"}
+                </Button>
+              </Box>
+            </Box>
+          </Dialog>
+        )}
+
+        {/* ── Background Ingestion & Indexer Logs ── */}
+        {name && version && (
+          <TerminalLogViewer
+            packageName={name}
+            packageVersion={version}
+            initialJobInfo={jobInfo}
+            onJobCompleted={fetchData}
+            defaultCollapsed={jobStatus === "completed"}
+          />
         )}
 
         {/* ── Tabs ── */}
@@ -920,6 +2005,11 @@ const PackageDetailPage: React.FC = () => {
             <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
               {tab.icon}
               {tab.label}
+              {tab.id === "digital-thread" && availableDomains.length > 2 && (
+                <Label variant="accent" style={{ fontSize: 10, padding: "0 4px", marginLeft: 4 }}>
+                  Polyglot
+                </Label>
+              )}
               {tab.id === "artifacts" && (artifactViewers.length > 0 || artifacts.length > 0) && (
                 <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", marginLeft: 4 }}>
                   {artifactViewers.length || artifacts.length}
@@ -941,6 +2031,36 @@ const PackageDetailPage: React.FC = () => {
             {/* README tab */}
             {activeTab === "readme" && (
               <>
+                {/* Cyber-Physical Digital Thread Banner */}
+                {availableDomains.length > 2 && (
+                  <GlassCard
+                    style={{
+                      padding: "14px 18px",
+                      marginBottom: 20,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: "linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(168, 85, 247, 0.08))",
+                      border: "1px solid rgba(6, 182, 212, 0.3)",
+                      borderRadius: 12,
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={3}>
+                      <SyncIcon size={20} fill="#06b6d4" />
+                      <div>
+                        <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-heading)" }}>
+                          Cross-Domain Digital Thread Active
+                        </Text>
+                        <Text as="p" style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "2px 0 0" }}>
+                          Multi-language twins bound across Modelica, SysML v2, and STEP CAD with verified unit parity.
+                        </Text>
+                      </div>
+                    </Box>
+                    <Button size="small" variant="primary" onClick={() => setTab("digital-thread")}>
+                      Explore Twins
+                    </Button>
+                  </GlassCard>
+                )}
                 {/* Root class diagram */}
                 {!diagramError && (
                   <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
@@ -965,13 +2085,19 @@ const PackageDetailPage: React.FC = () => {
                   {rootClass?.documentation ? (
                     <div
                       dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(rewriteModelicaUris(rootClass.documentation, version!)),
+                        __html: DOMPurify.sanitize(rewriteModelicaUris(rootClass.documentation, version!, name)),
                       }}
                     />
                   ) : packument?.readme && !packument.readme.includes("ERROR: No README data found!") ? (
                     <div
                       dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(packument.readme),
+                        __html: DOMPurify.sanitize(
+                          rewriteModelicaUris(
+                            marked.parse(packument.readme, { breaks: true, gfm: true }) as string,
+                            version!,
+                            name,
+                          ),
+                        ),
                       }}
                     />
                   ) : rootClass?.description ? (
@@ -993,42 +2119,147 @@ const PackageDetailPage: React.FC = () => {
                 <SectionTitle as="h3">Version History</SectionTitle>
                 <GlassCard>
                   {versionList.length > 0 ? (
-                    versionList.map((v) => (
-                      <VersionRow key={v}>
-                        <Box display="flex" alignItems="center" gap="8px">
-                          <Link
-                            to={`/packages/${name}/${v}`}
-                            style={{
-                              color: "var(--color-link)",
-                              textDecoration: "none",
-                              fontWeight: v === version ? 600 : 400,
-                              fontSize: 14,
-                            }}
-                          >
-                            {v}
-                          </Link>
-                          {packument?.["dist-tags"]?.["latest"] === v && (
-                            <Label variant="accent" style={{ fontSize: 10, padding: "0 6px" }}>
-                              latest
-                            </Label>
+                    versionList.map((v) => {
+                      const vManifest = packument?.versions?.[v];
+                      const isVManifestYanked = Boolean(vManifest?.yanked || vManifest?.is_yanked);
+                      const vYankReason =
+                        typeof vManifest?.yanked === "string"
+                          ? vManifest.yanked
+                          : (vManifest?.yank_reason as string | undefined);
+                      const isVManifestDeprecated = Boolean(vManifest?.deprecated);
+                      const vDepReason = typeof vManifest?.deprecated === "string" ? vManifest.deprecated : null;
+
+                      return (
+                        <VersionRow
+                          key={v}
+                          style={{
+                            flexDirection: "column",
+                            alignItems: "stretch",
+                            gap: 6,
+                            padding: "14px 0",
+                          }}
+                        >
+                          <Box display="flex" justifyContent="space-between" alignItems="center">
+                            <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+                              <Link
+                                to={`/packages/${name}/${v}`}
+                                style={{
+                                  color: "var(--color-link)",
+                                  textDecoration: "none",
+                                  fontWeight: v === version ? 600 : 400,
+                                  fontSize: 14,
+                                }}
+                              >
+                                {v}
+                              </Link>
+                              {packument?.["dist-tags"]?.["latest"] === v && (
+                                <Label variant="accent" style={{ fontSize: 10, padding: "0 6px" }}>
+                                  latest
+                                </Label>
+                              )}
+                              {v === version && (
+                                <Label variant="success" style={{ fontSize: 10, padding: "0 6px" }}>
+                                  current
+                                </Label>
+                              )}
+                              {isVManifestYanked && (
+                                <Label
+                                  variant="danger"
+                                  style={{
+                                    fontSize: 10,
+                                    padding: "0 6px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <AlertFillIcon size={11} /> yanked
+                                </Label>
+                              )}
+                              {isVManifestDeprecated && (
+                                <Label
+                                  variant="attention"
+                                  style={{
+                                    fontSize: 10,
+                                    padding: "0 6px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <AlertIcon size={11} /> deprecated
+                                </Label>
+                              )}
+                            </Box>
+                            <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
+                              {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
+                            </Text>
+                          </Box>
+
+                          {isVManifestYanked && (
+                            <Box
+                              style={{
+                                fontSize: 12,
+                                color: "var(--color-danger-fg, #cf222e)",
+                                background: "rgba(207, 34, 46, 0.08)",
+                                padding: "4px 8px",
+                                borderRadius: 4,
+                                marginTop: 2,
+                              }}
+                            >
+                              <strong>Yank reason:</strong> {vYankReason || "Yanked by author"}
+                            </Box>
                           )}
-                          {v === version && (
-                            <Label variant="success" style={{ fontSize: 10, padding: "0 6px" }}>
-                              current
-                            </Label>
+
+                          {isVManifestDeprecated && vDepReason && (
+                            <Box
+                              style={{
+                                fontSize: 12,
+                                color: "#b45309",
+                                background: "rgba(217, 119, 6, 0.08)",
+                                padding: "4px 8px",
+                                borderRadius: 4,
+                                marginTop: 2,
+                              }}
+                            >
+                              <strong>Deprecated:</strong> {vDepReason}
+                            </Box>
                           )}
-                        </Box>
-                        <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-                          {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
-                        </Text>
-                      </VersionRow>
-                    ))
+                        </VersionRow>
+                      );
+                    })
                   ) : (
                     <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
                       No version history available.
                     </Text>
                   )}
                 </GlassCard>
+              </>
+            )}
+
+            {/* Digital Thread tab */}
+            {activeTab === "digital-thread" && (
+              <>
+                <SectionTitle as="h3">Digital Thread Twins &amp; Parity Matrix</SectionTitle>
+                <Text as="p" style={{ color: "var(--color-text-muted)", marginBottom: 24, fontSize: 14 }}>
+                  Inspect interconnected cyber-physical twins spanning continuous Modelica differential equations, SysML
+                  v2 requirements &amp; block definitions, and STEP CAD 3D solids with real-time physical quantity
+                  parity.
+                </Text>
+                <DigitalThreadExplorer
+                  packageName={name!}
+                  packageVersion={version!}
+                  classes={classes}
+                  rootClass={rootClass}
+                  artifactViewers={artifactViewers}
+                  onNavigateToArtifact={(p) => {
+                    const av = artifactViewers.find((a) => a.path === p);
+                    if (av) handleOpenArtifact(av);
+                  }}
+                  onNavigateToClass={(c) => {
+                    navigate(`/packages/${name}/${version}/classes/${c}`);
+                  }}
+                />
               </>
             )}
 
@@ -1042,93 +2273,122 @@ const PackageDetailPage: React.FC = () => {
                   viewed directly in the browser.
                 </Text>
 
+                {/* Domain filter buttons in artifacts tab */}
+                {availableDomains.filter((d) => d.id !== "modelica").length > 2 && (
+                  <Box display="flex" gap={2} mb={3} flexWrap="wrap">
+                    {availableDomains
+                      .filter((d) => d.id !== "modelica")
+                      .map((d) => (
+                        <Button
+                          key={d.id}
+                          size="small"
+                          variant={artifactTabDomainFilter === d.id ? "primary" : "invisible"}
+                          onClick={() => setArtifactTabDomainFilter(d.id)}
+                          style={{ fontSize: 12 }}
+                        >
+                          {d.icon} {d.label} ({d.count})
+                        </Button>
+                      ))}
+                  </Box>
+                )}
+
                 {/* Render enriched artifact viewers from the API */}
-                {artifactViewers.length > 0 ? (
-                  artifactViewers.map((av) => {
+                {displayedArtifactViewers.length > 0 ? (
+                  displayedArtifactViewers.map((av) => {
                     // Render interactive viewers based on handler-provided descriptors
                     if (av.viewer?.viewer === "fmu-simulator") {
                       return (
-                        <FmuSimulatorViewer
-                          key={av.id}
-                          config={
-                            av.viewer.config as Record<string, unknown> & {
-                              fmiVersion?: string;
-                              modelName?: string;
-                              hasWasm?: boolean;
-                              inputs?: {
-                                name: string;
-                                valueReference: number;
-                                causality: string;
-                                variability: string;
-                                type: string;
-                                start?: string;
-                                unit?: string;
-                                description?: string;
-                              }[];
-                              outputs?: {
-                                name: string;
-                                valueReference: number;
-                                causality: string;
-                                variability: string;
-                                type: string;
-                                start?: string;
-                                unit?: string;
-                                description?: string;
-                              }[];
-                              parameters?: {
-                                name: string;
-                                valueReference: number;
-                                causality: string;
-                                variability: string;
-                                type: string;
-                                start?: string;
-                                unit?: string;
-                                description?: string;
-                              }[];
-                              platforms?: string[];
+                        <div id={`artifact-${av.id}`} key={av.id}>
+                          <FmuSimulatorViewer
+                            config={
+                              av.viewer.config as Record<string, unknown> & {
+                                fmiVersion?: string;
+                                modelName?: string;
+                                hasWasm?: boolean;
+                                inputs?: {
+                                  name: string;
+                                  valueReference: number;
+                                  causality: string;
+                                  variability: string;
+                                  type: string;
+                                  start?: string;
+                                  unit?: string;
+                                  description?: string;
+                                }[];
+                                outputs?: {
+                                  name: string;
+                                  valueReference: number;
+                                  causality: string;
+                                  variability: string;
+                                  type: string;
+                                  start?: string;
+                                  unit?: string;
+                                  description?: string;
+                                }[];
+                                parameters?: {
+                                  name: string;
+                                  valueReference: number;
+                                  causality: string;
+                                  variability: string;
+                                  type: string;
+                                  start?: string;
+                                  unit?: string;
+                                  description?: string;
+                                }[];
+                                platforms?: string[];
+                              }
                             }
-                          }
-                          artifactPath={av.path}
-                        />
+                            artifactPath={av.path}
+                          />
+                        </div>
                       );
                     }
 
                     if (av.viewer?.viewer === "dataset-table") {
                       return (
-                        <DatasetTableViewer
-                          key={av.id}
-                          config={
-                            av.viewer.config as Record<string, unknown> & {
-                              columns?: {
-                                name: string;
-                                type: "number" | "string" | "boolean";
-                                min?: number;
-                                max?: number;
-                                mean?: number;
-                                unique?: number;
-                              }[];
-                              rowCount?: number;
-                              format?: string;
-                              previewRows?: string[][];
-                              hasHeader?: boolean;
+                        <div id={`artifact-${av.id}`} key={av.id}>
+                          <DatasetTableViewer
+                            config={
+                              av.viewer.config as Record<string, unknown> & {
+                                columns?: {
+                                  name: string;
+                                  type: "number" | "string" | "boolean";
+                                  min?: number;
+                                  max?: number;
+                                  mean?: number;
+                                  unique?: number;
+                                }[];
+                                rowCount?: number;
+                                format?: string;
+                                previewRows?: string[][];
+                                hasHeader?: boolean;
+                              }
                             }
-                          }
-                          artifactPath={av.path}
-                        />
+                            artifactPath={av.path}
+                          />
+                        </div>
                       );
                     }
 
                     if (av.viewer?.viewer === "cad-3d-viewer") {
-                      return <CadStepViewer key={av.id} viewConfig={{ url: av.path, ...(av.viewer.config || {}) }} />;
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id}>
+                          <CadStepViewer viewConfig={{ url: av.path, ...(av.viewer.config || {}) }} />
+                        </div>
+                      );
                     }
 
                     if (av.viewer?.viewer === "sysml-architecture-viewer") {
-                      return <SysmlViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id}>
+                          <SysmlViewer config={av.viewer.config} artifactPath={av.path} />
+                        </div>
+                      );
                     }
 
                     // Fallback: render a generic artifact card for unrecognized types
                     return (
-                      <ArtifactCard key={av.id}>
+                      <ArtifactCard id={`artifact-${av.id}`} key={av.id}>
                         <ArtifactBadge $type={av.type}>{av.type}</ArtifactBadge>
                         <Box flex={1}>
                           <Text style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-heading)" }}>
@@ -1321,6 +2581,107 @@ const PackageDetailPage: React.FC = () => {
                 <MetaValue>{currentManifest.modelscript.modelicaVersion}</MetaValue>
               </MetaBlock>
             )}
+
+            {/* Polyglot Engineering Domains */}
+            {availableDomains.filter((d) => d.id !== "all").length > 1 && (
+              <MetaBlock>
+                <MetaLabel style={{ marginBottom: 8 }}>
+                  Polyglot Domains ({availableDomains.filter((d) => d.id !== "all").length})
+                </MetaLabel>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {availableDomains
+                    .filter((d) => d.id !== "all")
+                    .map((d) => (
+                      <span
+                        key={d.id}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                          border: `1px solid ${d.color}44`,
+                          color: d.color,
+                        }}
+                      >
+                        <span>{d.icon}</span>
+                        <span>{d.label}</span>
+                        <span style={{ opacity: 0.7, fontSize: 11 }}>({d.count})</span>
+                      </span>
+                    ))}
+                </div>
+              </MetaBlock>
+            )}
+
+            <Divider />
+
+            {/* 30-Day Download Trends */}
+            <MetaBlock>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <MetaLabel>Downloads</MetaLabel>
+                <Text style={{ fontSize: 13, fontWeight: 600, color: "var(--color-heading)" }}>
+                  {(packageStats?.daily?.reduce((acc, d) => acc + d.downloads, 0) ?? 0).toLocaleString()}
+                </Text>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 11,
+                  color: "var(--color-text-muted)",
+                  marginTop: 2,
+                }}
+              >
+                <span>Total: {(packageStats?.totalDownloads ?? 0).toLocaleString()}</span>
+                <span>Last 30 days</span>
+              </div>
+              {packageStats?.daily &&
+                packageStats.daily.length > 0 &&
+                (() => {
+                  const maxVal = Math.max(...packageStats.daily.map((d) => d.downloads), 1);
+                  return (
+                    <SparklineContainer>
+                      {packageStats.daily.map((d) => (
+                        <SparklineBar
+                          key={d.date}
+                          $heightPct={(d.downloads / maxVal) * 100}
+                          $active={d.downloads > 0}
+                          title={`${d.date}: ${d.downloads} download${d.downloads === 1 ? "" : "s"}`}
+                        />
+                      ))}
+                    </SparklineContainer>
+                  );
+                })()}
+            </MetaBlock>
+
+            <Divider />
+
+            {/* Dependents ("Used by") */}
+            <MetaBlock>
+              <MetaLabel style={{ marginBottom: 8 }}>Used by ({dependents.length})</MetaLabel>
+              {dependents.length > 0 ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {dependents.slice(0, 8).map((dep) => (
+                    <DependentBadge key={dep.name} to={`/packages/${dep.name}/${dep.version}`}>
+                      <PackageIcon size={12} />
+                      {dep.name}
+                    </DependentBadge>
+                  ))}
+                  {dependents.length > 8 && (
+                    <Text style={{ fontSize: 11, color: "var(--color-text-muted)", alignSelf: "center" }}>
+                      +{dependents.length - 8} more
+                    </Text>
+                  )}
+                </div>
+              ) : (
+                <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                  0 packages depend on this library
+                </Text>
+              )}
+            </MetaBlock>
 
             <Divider />
           </aside>

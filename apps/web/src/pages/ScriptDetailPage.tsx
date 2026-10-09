@@ -214,8 +214,8 @@ const ScriptDetailPage: React.FC = () => {
         {/* Right Main Content (Logs) */}
         <Box
           flex={1}
-          bg="#0d1117"
-          color="#c9d1d9"
+          bg="var(--color-canvas-inset, var(--color-canvas-default, #0d1117))"
+          color="var(--color-text-primary, #c9d1d9)"
           p={3}
           style={{ overflowY: "auto", fontFamily: "monospace", fontSize: "13px" }}
         >

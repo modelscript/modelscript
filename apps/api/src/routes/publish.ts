@@ -15,7 +15,7 @@ import { ConflictError, type LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { scanPackageArchive } from "../util/package-scanner.js";
-import { extractPackageMoFromZip } from "../util/zip.js";
+import { extractManifestFromZip } from "../util/zip.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -144,33 +144,45 @@ export function publishRouter(
       const signature = (req.body?.signature || req.headers["x-package-signature"]) as string | undefined;
 
       try {
-        // 3. Extract package.mo from the zip
-        const packageMoContent = await extractPackageMoFromZip(req.file.buffer);
+        // 3. Extract manifest (package.json or package.mo) from the zip
+        const manifestResult = await extractManifestFromZip(req.file.buffer);
+        let parsedName: string | null = null;
+        let parsedVersion: string | null = null;
 
-        // 4. Parse package.mo
-        const parsed = parsePackageMo(packageMoContent);
+        if (manifestResult.type === "json") {
+          try {
+            const pkgJson = JSON.parse(manifestResult.content);
+            parsedName = typeof pkgJson.name === "string" ? pkgJson.name : null;
+            parsedVersion = typeof pkgJson.version === "string" ? pkgJson.version : "0.0.0";
+          } catch {
+            res.status(400).json({ error: "Invalid JSON syntax in package.json manifest" });
+            return;
+          }
+        } else {
+          const parsed = parsePackageMo(manifestResult.content);
+          parsedName = parsed.name ?? null;
+          parsedVersion = parsed.version || "0.0.0";
+        }
 
-        if (!parsed.name) {
+        if (!parsedName) {
           res.status(400).json({
-            error: "Could not determine the package name from package.mo",
+            error: `Could not determine the package name from ${manifestResult.type === "json" ? "package.json" : "package.mo"}`,
           });
           return;
         }
 
         // 5. Validate package name matches
-        if (parsed.name !== name && parsed.name !== baseName) {
+        if (parsedName !== name && parsedName !== baseName) {
           res.status(400).json({
-            error: `Package name mismatch: URL specifies "${name}" but package.mo declares "${parsed.name}"`,
+            error: `Package name mismatch: URL specifies "${name}" but manifest declares "${parsedName}"`,
           });
           return;
         }
 
         // 6. Validate version matches
-        const parsedVersion = parsed.version || "0.0.0";
-
         if (parsedVersion !== version) {
           res.status(400).json({
-            error: `Version mismatch: URL specifies "${version}" but package.mo declares "${parsedVersion}"`,
+            error: `Version mismatch: URL specifies "${version}" but manifest declares "${parsedVersion}"`,
           });
           return;
         }
@@ -187,6 +199,11 @@ export function publishRouter(
           publishedBy: req.user?.id ?? null,
         });
 
+        // Assign dist-tag (default "latest", or custom tag such as "beta")
+        const { id: packageId } = database.getOrCreatePackage(name);
+        const tag = String(req.body?.tag || req.query?.["tag"] || "latest");
+        database.setDistTag(packageId, tag, version);
+
         // 8. Extract the zip to disk (I/O-bound, fine in main thread)
         const libraryPath = await storage.extractLibrary(name, version);
 
@@ -196,7 +213,13 @@ export function publishRouter(
         const jobKey = `${name}@${version}`;
         const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
         const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
-        jobQueue.enqueueProcess(jobKey, workerScript, { name, version, libraryPath });
+        jobQueue.enqueueProcess(jobKey, workerScript, {
+          name,
+          version,
+          libraryPath,
+          storageDir: storage.dataDir,
+          dbDir: database.dbDir,
+        });
 
         database.logAudit({
           actorId: req.user?.id ?? null,
@@ -206,6 +229,10 @@ export function publishRouter(
           ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
           details: { contentHash: actualContentHash, totalFiles: scanResult.totalFiles },
         });
+
+        if (req.user?.id) {
+          database.createNotification(req.user.id, req.user.id, "package_published");
+        }
 
         // Broadcast ActivityPub Package Release Activity
         if (req.user?.id) {
@@ -248,6 +275,9 @@ export function publishRouter(
         }
 
         res.status(201).json({
+          name,
+          version,
+          tag,
           message: `Library ${name}@${version} published successfully`,
           path: filePath,
           contentHash: actualContentHash,
@@ -281,6 +311,12 @@ export function publishRouter(
 
     if (!semver.valid(version)) {
       res.status(400).json({ error: `Invalid semantic version: "${version}"` });
+      return;
+    }
+
+    // Check if user has permission to manage this package
+    if (!database.canUserManagePackage(name, req.user!.id)) {
+      res.status(403).json({ error: "You do not have permission to unpublish this package" });
       return;
     }
 

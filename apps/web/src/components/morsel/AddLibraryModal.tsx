@@ -15,6 +15,7 @@ import {
 } from "@primer/react";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { useToast } from "../ToastContext";
 import type { Translations } from "./util/i18n";
 
 /** A search result from the npm registry API. */
@@ -48,7 +49,7 @@ interface AddLibraryModalProps {
 }
 
 export default function AddLibraryModal({
-  isOpen,
+  isOpen: _isOpen,
   onDismiss,
   onAddLibrary,
   onInstallPackage,
@@ -63,6 +64,7 @@ export default function AddLibraryModal({
   const [searching, setSearching] = useState(false);
   const [installingPkg, setInstallingPkg] = useState<string | null>(null);
   const { colorMode } = useTheme();
+  const toast = useToast();
 
   // Search the registry when the user types
   useEffect(() => {
@@ -114,7 +116,7 @@ export default function AddLibraryModal({
       onDismiss();
     } catch (error) {
       console.error("Failed to add library:", error);
-      alert("Failed to add library. Please check the console for details.");
+      toast.error("Failed to add library. Please check the console for details.");
     } finally {
       setIsAdding(false);
     }
@@ -128,7 +130,7 @@ export default function AddLibraryModal({
       onDismiss();
     } catch (error) {
       console.error("Failed to install package:", error);
-      alert("Failed to install package. Please check the console for details.");
+      toast.error("Failed to install package. Please check the console for details.");
     } finally {
       setInstallingPkg(null);
     }
@@ -271,18 +273,16 @@ export default function AddLibraryModal({
               {...getRootProps()}
               style={{
                 border: "2px dashed",
-                borderColor: isDragActive ? "#0969da" : colorMode === "dark" ? "#30363d" : "#d0d7de",
+                borderColor: isDragActive
+                  ? "var(--color-accent-emphasis, #0969da)"
+                  : "var(--color-border-default, #30363d)",
                 borderRadius: 6,
                 padding: 32,
                 textAlign: "center",
                 cursor: "pointer",
                 backgroundColor: isDragActive
-                  ? colorMode === "dark"
-                    ? "rgba(56,139,253,0.1)"
-                    : "#ddf4ff"
-                  : colorMode === "dark"
-                    ? "#0d1117"
-                    : "#f6f8fa",
+                  ? "var(--color-accent-subtle, rgba(56,139,253,0.1))"
+                  : "var(--color-canvas-subtle, #161b22)",
                 transition: "all 0.2s",
               }}
             >
