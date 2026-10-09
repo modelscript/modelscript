@@ -641,12 +641,14 @@ export function runTestCase(
     const arrayMode =
       testCase.metadata.arrayMode ?? (/\+a\b|-nfScalarize\b/.test(testCase.source) ? "preserve" : undefined);
     const intEnumConversion = /\+intEnumConversion\b/.test(testCase.source);
+    const scalarizeMinMax = /\+scalarizeMinMax\b/.test(testCase.source);
     const arena = context.flattenArena(lastClassName, undefined, undefined, {
       omcCompatibility: true,
       isOldFrontend: testCase.source.includes("-d=-newInst"),
       backend: flattenerBackend,
       ...(arrayMode ? { arrayMode } : {}),
       ...(intEnumConversion ? { intEnumConversion } : {}),
+      ...(scalarizeMinMax ? { scalarizeMinMax } : {}),
     });
 
     const lints = Array.from(context.queryEngine.runAllLints());
@@ -849,7 +851,7 @@ export function runTestCase(
       }
     }
 
-    // If the arena has a fatal error (Cannot instantiate, binding mismatch), skip downstream linter and CST diagnostics
+    // If the arena has a fatal error (Cannot instantiate, binding mismatch, enum error), skip downstream linter and CST diagnostics
     const hasCannotInstantiate = arena?.diagnostics.some((d) => d.message.includes("Cannot instantiate"));
     const hasBindingError = arena?.diagnostics.some(
       (d) =>
@@ -859,8 +861,9 @@ export function runTestCase(
         d.message.startsWith("Type mismatch in binding") ||
         d.message.includes("possibly due to missing 'each'"),
     );
+    const hasEnumError = arena?.diagnostics.some((d) => d.code === 4083 || d.code === 4084);
 
-    if (!hasCannotInstantiate && !hasBindingError) {
+    if (!hasCannotInstantiate && !hasBindingError && !hasEnumError) {
       // Linter diagnostics
       for (const d of lints) {
         const dd = d as Record<string, unknown>;

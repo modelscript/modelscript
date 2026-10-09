@@ -597,6 +597,25 @@ export const ModelicaErrorCode = {
     message: (connectExpr: string) =>
       `connect may not be used inside if-equations with non-parametric conditions (found ${connectExpr}).`,
   },
+  CONNECTOR_NON_PARAMETER_SUBSCRIPT: {
+    code: 4082,
+    rule: "connector-non-parameter-subscript",
+    severity: "error",
+    message: (connRef: string, subscriptText: string) =>
+      `Connector '${connRef}' has non-parameter subscript '${subscriptText}'.`,
+  },
+  ENUM_DUPLICATE_LITERAL: {
+    code: 4083,
+    rule: "enum-duplicate-literal",
+    severity: "error",
+    message: (dup: string, list: string) => `Enumeration has duplicate names: ${dup} in list of names ${list}.`,
+  },
+  ENUM_RESERVED_ATTRIBUTE_LITERAL: {
+    code: 4084,
+    rule: "enum-reserved-attribute-literal",
+    severity: "error",
+    message: (name: string) => `Invalid use of reserved attribute name ${name} as enumeration literal.`,
+  },
 
   // ── Final override ───────────────────────────────────────────────────
   FINAL_OVERRIDE: {

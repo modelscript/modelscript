@@ -1,7 +1,6 @@
 // name: ActualStreamVariability2
 // keywords: stream actualStream connector
 // status: correct
-// xfail:    true
 //
 
 connector C

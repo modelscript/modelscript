@@ -4,6 +4,7 @@ import { StringWriter } from "@modelscript/dsl/utils";
 import { ArenaDAEPrinter } from "@modelscript/runtime";
 import assert from "node:assert";
 import path from "node:path";
+import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
@@ -31,12 +32,8 @@ function printArena(arena: any): string {
   return out.toString().trim();
 }
 
-async function runTests() {
-  console.log("Testing Flattener Phase 2 & 3 Remediation...");
-
-  // 1. Lifecycle state isolation: Sequential flattening on the same Context
-  console.log("1. Testing flattener lifecycle isolation between sequential models...");
-  {
+describe("Flattener Phase 2 & 3 Remediation", () => {
+  it("should isolate flattener lifecycle state across sequential calls", async () => {
     const model1 = `
 model ModelWithInner
   inner parameter Real sharedParam = 42.0;
@@ -69,12 +66,9 @@ end IndependentModel;
     assert(!text2.includes("sharedParam"), "IndependentModel must NOT retain any inner parameters from ModelWithInner");
     assert(!arena2.extensionMetadata.expandableBuses?.length, "IndependentModel must have empty expandable buses");
     assert.strictEqual(arena2.getVarCount(), 1, "IndependentModel must have exactly 1 variable");
-    console.log("   ✔ Flattener lifecycle state is completely isolated across sequential calls");
-  }
+  });
 
-  // 2. Consolidated preliminary passes in instantiateElements with hierarchical lookup
-  console.log("2. Testing hierarchical instantiation & name resolution prefix set...");
-  {
+  it("should instantiate hierarchical components and resolve names correctly", async () => {
     const hierModel = `
 model Sub
   Real u;
@@ -99,12 +93,9 @@ end Hierarchical;
     assert(text.includes("s1.v"), "Hierarchical model must have s1.v");
     assert(text.includes("s2.u"), "Hierarchical model must have s2.u");
     assert(text.includes("s2.v"), "Hierarchical model must have s2.v");
-    console.log("   ✔ Hierarchical components instantiated and resolved correctly");
-  }
+  });
 
-  // 3. Robust nested delimiter splitting for matrix literals
-  console.log("3. Testing robust matrix literal delimiter splitting with nested arguments...");
-  {
+  it("should parse and flatten matrix with nested comma arguments accurately", async () => {
     const matrixModel = `
 model MatrixWithNestedArgs
   Real M[2, 2] = [max(1.0, 2.0), 3.0; 4.0, min(5.0, 6.0)];
@@ -119,12 +110,9 @@ end MatrixWithNestedArgs;
     const text = printArena(arena);
     assert(text.includes("M[1,1]"), "Matrix elements must be flattened properly");
     assert(text.includes("M[2,2]"), "Matrix elements must be flattened properly");
-    console.log("   ✔ Matrix with nested comma arguments parsed and flattened accurately");
-  }
+  });
 
-  // 4. Scalarization and constant folding without redundant pass
-  console.log("4. Testing scalarization and single-pass constant folding...");
-  {
+  it("should work correctly with scalarization and constant folding in single pass", async () => {
     const simpleFoldModel = `
 model SimpleFold
   constant Real a = 10.0;
@@ -139,13 +127,5 @@ end SimpleFold;
     assert(arena !== null);
     const text = printArena(arena);
     assert(text.includes("30.0"), `Constants must be folded into 30.0. Got: ${text}`);
-    console.log("   ✔ Scalarization and constant folding work correctly in single pass");
-  }
-
-  console.log("\nAll Phase 2 & 3 remediation tests passed successfully!");
-}
-
-runTests().catch((err) => {
-  console.error("Test failed:", err);
-  process.exit(1);
+  });
 });

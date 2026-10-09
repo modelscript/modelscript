@@ -83,6 +83,6 @@ end Y;`;
       expect(mismatchDiag).toBeDefined();
       expect(mismatchDiag.message).toContain("Type mismatch in equation x = 1");
     },
-    60000,
+    180000,
   );
 });

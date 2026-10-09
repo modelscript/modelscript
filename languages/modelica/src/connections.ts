@@ -413,6 +413,9 @@ export class ModelicaPortBalancer {
                   break;
                 }
               }
+              if (partnerIdx === vIdx || flowVarIdx === -1) {
+                return dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+              }
               if (flowVarIdx !== -1 && partnerIdx !== vIdx) {
                 const attrs = dae.getVarAttrExprIds(flowVarIdx);
                 const minExpr = attrs?.get("min");
@@ -420,19 +423,37 @@ export class ModelicaPortBalancer {
                 const minVal = minExpr !== undefined ? getNumericConst(minExpr) : undefined;
                 const maxVal = maxExpr !== undefined ? getNumericConst(maxExpr) : undefined;
 
-                if (minVal !== undefined && minVal >= 0) {
+                let partnerMinVal: number | undefined;
+                const pName = dae.getVarName(partnerIdx);
+                const pDot = pName.lastIndexOf(".");
+                const pPrefix = pDot !== -1 ? pName.substring(0, pDot + 1) : "";
+                for (let i = 0; i < dae.varCount; i++) {
+                  if (dae.isVarRemoved(i)) continue;
+                  if (dae.isVarFlow(i) && dae.getVarName(i).startsWith(pPrefix)) {
+                    const pAttrs = dae.getVarAttrExprIds(i);
+                    const pMinExpr = pAttrs?.get("min");
+                    partnerMinVal = pMinExpr !== undefined ? getNumericConst(pMinExpr) : undefined;
+                    break;
+                  }
+                }
+
+                const wrapSmooth = Boolean(dae.extensionMetadata?.isOldFrontend);
+                if (minVal !== undefined && minVal >= 0 && partnerMinVal !== undefined && partnerMinVal >= 0) {
+                  const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
+                } else if (minVal !== undefined && minVal >= 0) {
                   const inStreamExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
-                  return dae.addCallExpr("smooth", [dae.addIntLiteral(0), inStreamExpr]);
+                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), inStreamExpr]) : inStreamExpr;
                 } else if (maxVal !== undefined && maxVal <= 0) {
                   const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                  return dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]);
+                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
                 } else {
                   const fExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIdx));
                   const cond = dae.addBinaryExpr(BinOp.Gt, fExpr, zeroExpr);
                   const thenExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
                   const elseExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
                   const ifExpr = dae.addIfElseExpr(cond, thenExpr, elseExpr);
-                  return dae.addCallExpr("smooth", [dae.addIntLiteral(0), ifExpr]);
+                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), ifExpr]) : ifExpr;
                 }
               }
             }
@@ -490,6 +511,16 @@ export class ModelicaPortBalancer {
       const newRhs = rewriteStreamExpr(rhs);
       if (newLhs !== lhs) dae.setEqLhs(i, newLhs);
       if (newRhs !== rhs) dae.setEqRhs(i, newRhs);
+    }
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.isVarRemoved(i)) continue;
+      const expr = dae.getVarExpression(i);
+      if (expr !== undefined && expr >= 0) {
+        const newExpr = rewriteStreamExpr(expr);
+        if (newExpr !== expr) {
+          dae.setVarExpression(i, newExpr);
+        }
+      }
     }
 
     // 4. Build equivalence classes
@@ -733,15 +764,32 @@ export class ModelicaPortBalancer {
       }
 
       if (isStream) {
-        const hasOutside = options?.isOldFrontend && group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
-        if (options?.omcCompatibility && options?.isOldFrontend && hasOutside) {
-          const insideVars = group.filter((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)));
-          const outsideVars = group.filter((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
-          for (const inIdx of insideVars) {
-            for (const outIdx of outsideVars) {
+        const hasOutside = group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
+        if (hasOutside) {
+          const streamPairs = resolvedPairs.filter(
+            ([src, tgt]) =>
+              group.includes(src) &&
+              group.includes(tgt) &&
+              ((isOutsideOrOuter(dae.getVarName(src)) && !isOutsideOrOuter(dae.getVarName(tgt))) ||
+                (!isOutsideOrOuter(dae.getVarName(src)) && isOutsideOrOuter(dae.getVarName(tgt)))),
+          );
+          if (streamPairs.length > 0) {
+            for (const [src, tgt] of streamPairs) {
+              const inIdx = isOutsideOrOuter(dae.getVarName(src)) ? tgt : src;
+              const outIdx = isOutsideOrOuter(dae.getVarName(src)) ? src : tgt;
               const inExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(inIdx));
               const outExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(outIdx));
               potentialEqs.push({ kind: EqKind.Simple, lhs: inExpr, rhs: outExpr, str: dae.getVarName(inIdx) });
+            }
+          } else {
+            const insideVars = group.filter((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)));
+            const outsideVars = group.filter((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
+            for (const inIdx of insideVars) {
+              for (const outIdx of outsideVars) {
+                const inExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(inIdx));
+                const outExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(outIdx));
+                potentialEqs.push({ kind: EqKind.Simple, lhs: inExpr, rhs: outExpr, str: dae.getVarName(inIdx) });
+              }
             }
           }
         }

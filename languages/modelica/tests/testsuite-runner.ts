@@ -594,6 +594,7 @@ async function main(): Promise<void> {
       a !== "--allow-wasm-failures" &&
       a !== "--fresh-process" &&
       a !== "--mark-xfail" &&
+      a !== "--unmark-xpass" &&
       a !== "--dual" &&
       a !== "--both" &&
       !a.startsWith("--concurrency=") &&
@@ -714,15 +715,15 @@ async function main(): Promise<void> {
         continue;
       }
 
-      // Skip Bug3817.mo — large library package loaded and tested via Bug3817.mos
-      if (moFile === "Bug3817.mo") {
+      // Skip library packages loaded and tested via .mos scripts
+      if (filePath.includes("mosfiles/TestLibrary") || filePath.includes("ffi/FFITest") || moFile === "Bug3817.mo") {
         skippedResults.push({
           name: moFile,
           file: filePath,
           status: "skipped",
           duration: 0,
           cpuTime: 0,
-          message: "Skipped: Bug3817.mo is a large library package tested via Bug3817.mos",
+          message: `Skipped: ${moFile} is a library package tested via .mos script`,
         });
         continue;
       }
@@ -949,13 +950,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // Handle --mark-xfail: update .mo files based on current test run results
-  if (rawArgs.includes("--mark-xfail")) {
+  // Handle --mark-xfail / --unmark-xpass: update .mo files based on current test run results
+  const markXfail = rawArgs.includes("--mark-xfail");
+  const unmarkXpass = rawArgs.includes("--unmark-xpass");
+  if (markXfail || unmarkXpass) {
     let markedCount = 0;
     let unmarkedCount = 0;
 
     for (const res of allResults) {
-      if (res.status === "failed" && !res.xfail) {
+      if (markXfail && res.status === "failed" && !res.xfail) {
         try {
           const content = fs.readFileSync(res.file, "utf-8");
           if (content.match(/^\/\/\s*status:\s*.+/m)) {
@@ -981,8 +984,9 @@ async function main(): Promise<void> {
       }
     }
 
+    const flagName = markXfail ? "--mark-xfail" : "--unmark-xpass";
     console.log(
-      `\n${BOLD}[--mark-xfail]${RESET} Updated test metadata: marked ${markedCount} new xfail(s), unmarked ${unmarkedCount} resolved test(s).`,
+      `\n${BOLD}[${flagName}]${RESET} Updated test metadata: marked ${markedCount} new xfail(s), unmarked ${unmarkedCount} resolved test(s).`,
     );
     process.exit(0);
   }

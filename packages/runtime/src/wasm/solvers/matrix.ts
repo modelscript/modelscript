@@ -76,26 +76,12 @@ export function luFactor(matrixPtr: u32, pivPtr: u32, scalePtr: u32, n: u32): bo
       return false; // Matrix is singular or near-singular
     }
 
-    // Eliminate entries below pivot with SIMD f64x2
+    // Eliminate entries below pivot
     for (let i: u32 = k + 1; i < n; i++) {
       let factor = mat.get(i, k) / diagVal;
       mat.set(i, k, factor); // Store L multiplier
 
-      let vFactor = f64x2.splat(factor);
-      let j: u32 = k + 1;
-      let len: u32 = n - j;
-      let simdCount: u32 = len & ~1;
-      let endSimd: u32 = j + simdCount;
-
-      for (; j < endSimd; j += 2) {
-        let pI = mat.getEntryPtr(i, j);
-        let pK = mat.getEntryPtr(k, j);
-        let vI = v128.load(pI);
-        let vK = v128.load(pK);
-        let vRes = f64x2.sub(vI, f64x2.mul(vFactor, vK));
-        v128.store(pI, vRes);
-      }
-      for (; j < n; j++) {
+      for (let j: u32 = k + 1; j < n; j++) {
         mat.set(i, j, mat.get(i, j) - factor * mat.get(k, j));
       }
     }
@@ -159,22 +145,12 @@ export function luSolve(
 }
 
 /**
- * Computes Euclidean norm ||v||_2 of an n-element vector using v128 SIMD.
+ * Computes Euclidean norm ||v||_2 of an n-element vector.
  */
 export function vectorNorm2(vPtr: u32, n: u32): f64 {
   let v = changetype<UnmanagedFloat64Array>(vPtr as usize);
-  let vAddr = vPtr as usize;
-  let sumV = f64x2.splat(0.0);
-  let i: u32 = 0;
-  let simdEnd: u32 = n & ~1;
-
-  for (; i < simdEnd; i += 2) {
-    let vec = v128.load(vAddr + (((i as usize)) << 3));
-    sumV = f64x2.add(sumV, f64x2.mul(vec, vec));
-  }
-
-  let sum: f64 = f64x2.extract_lane(sumV, 0) + f64x2.extract_lane(sumV, 1);
-  for (; i < n; i++) {
+  let sum: f64 = 0.0;
+  for (let i: u32 = 0; i < n; i++) {
     let val = v[i];
     sum += val * val;
   }
@@ -182,23 +158,12 @@ export function vectorNorm2(vPtr: u32, n: u32): f64 {
 }
 
 /**
- * Computes Infinity norm ||v||_inf of an n-element vector using v128 SIMD.
+ * Computes Infinity norm ||v||_inf of an n-element vector.
  */
 export function vectorNormInf(vPtr: u32, n: u32): f64 {
   let v = changetype<UnmanagedFloat64Array>(vPtr as usize);
-  let vAddr = vPtr as usize;
-  let maxV = f64x2.splat(0.0);
-  let i: u32 = 0;
-  let simdEnd: u32 = n & ~1;
-
-  for (; i < simdEnd; i += 2) {
-    let vec = v128.load(vAddr + (((i as usize)) << 3));
-    let absVec = f64x2.abs(vec);
-    maxV = f64x2.pmax(maxV, absVec);
-  }
-
-  let maxVal: f64 = Math.max(f64x2.extract_lane(maxV, 0), f64x2.extract_lane(maxV, 1));
-  for (; i < n; i++) {
+  let maxVal: f64 = 0.0;
+  for (let i: u32 = 0; i < n; i++) {
     let val = Math.abs(v[i]);
     if (val > maxVal) maxVal = val;
   }
@@ -206,25 +171,13 @@ export function vectorNormInf(vPtr: u32, n: u32): f64 {
 }
 
 /**
- * Computes dot product a^T * b of two n-element vectors using v128 SIMD.
+ * Computes dot product a^T * b of two n-element vectors.
  */
 export function vectorDot(aPtr: u32, bPtr: u32, n: u32): f64 {
   let a = changetype<UnmanagedFloat64Array>(aPtr as usize);
   let b = changetype<UnmanagedFloat64Array>(bPtr as usize);
-  let aAddr = aPtr as usize;
-  let bAddr = bPtr as usize;
-  let sumV = f64x2.splat(0.0);
-  let i: u32 = 0;
-  let simdEnd: u32 = n & ~1;
-
-  for (; i < simdEnd; i += 2) {
-    let vecA = v128.load(aAddr + (((i as usize)) << 3));
-    let vecB = v128.load(bAddr + (((i as usize)) << 3));
-    sumV = f64x2.add(sumV, f64x2.mul(vecA, vecB));
-  }
-
-  let sum: f64 = f64x2.extract_lane(sumV, 0) + f64x2.extract_lane(sumV, 1);
-  for (; i < n; i++) {
+  let sum: f64 = 0.0;
+  for (let i: u32 = 0; i < n; i++) {
     sum += a[i] * b[i];
   }
   return sum;

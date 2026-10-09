@@ -49,6 +49,20 @@ function areArenaExprsEqual(arena: DAEBuilder, a: number, b: number): boolean {
   }
 }
 
+function buildZeroArenaArray(arena: DAEBuilder, ctorId: number, isFloat: boolean): number {
+  const elemCount = arena.getExprRight(ctorId);
+  const newElems: number[] = [];
+  for (let i = 0; i < elemCount; i++) {
+    const e = i === 0 ? arena.getExprLeft(ctorId) : arena.getExprLeft(ctorId + i);
+    if (arena.getExprKind(e) === ExprKind.ArrayCtor) {
+      newElems.push(buildZeroArenaArray(arena, e, isFloat));
+    } else {
+      newElems.push(isFloat ? arena.addRealLiteral(0.0) : arena.addIntLiteral(0));
+    }
+  }
+  return arena.addArrayCtorExpr(newElems);
+}
+
 /**
  * Recursively simplifies an arena expression using equality saturation rules.
  */
@@ -226,6 +240,10 @@ export function simplifyArenaExpr(arena: DAEBuilder, exprId: number, stats?: Sim
 
         if (didCancel && activeTerms.length === 0) {
           if (stats) stats.identitiesFolded++;
+          const cancelledExpr = terms[0]?.exprId ?? left;
+          if (arena.getExprKind(cancelledExpr) === ExprKind.ArrayCtor) {
+            return buildZeroArenaArray(arena, cancelledExpr, isFloat);
+          }
           if (!hasConst) return arena.addRealLiteral(0.0);
           return isFloat ? arena.addRealLiteral(constVal) : arena.addIntLiteral(Math.trunc(constVal));
         }
@@ -260,6 +278,9 @@ export function simplifyArenaExpr(arena: DAEBuilder, exprId: number, stats?: Sim
         // x - x => 0
         if (left === right) {
           if (stats) stats.identitiesFolded++;
+          if (arena.getExprKind(left) === ExprKind.ArrayCtor) {
+            return buildZeroArenaArray(arena, left, true);
+          }
           return arena.addRealLiteral(0.0);
         }
       }

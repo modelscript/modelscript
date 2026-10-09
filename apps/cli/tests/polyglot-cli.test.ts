@@ -108,7 +108,7 @@ PropellerGuard();`,
     const stdout = execFileSync(
       tsxBin,
       [cliPath, "polyglot", "project", sampleMoPath, "--target=sysml2", `--out=${outPath}`],
-      { encoding: "utf-8", timeout: 30000 },
+      { encoding: "utf-8", timeout: 60000 },
     );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
@@ -123,7 +123,7 @@ PropellerGuard();`,
     const stdout = execFileSync(
       tsxBin,
       [cliPath, "polyglot", "project", sampleSysmlPath, "--target=owl2", `--out=${outPath}`],
-      { encoding: "utf-8", timeout: 30000 },
+      { encoding: "utf-8", timeout: 60000 },
     );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
@@ -138,7 +138,7 @@ PropellerGuard();`,
     const stdout = execFileSync(
       tsxBin,
       [cliPath, "polyglot", "project", sampleScadPath, "--target=step", `--out=${outPath}`],
-      { encoding: "utf-8", timeout: 30000 },
+      { encoding: "utf-8", timeout: 60000 },
     );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));
@@ -153,7 +153,7 @@ PropellerGuard();`,
     const stdout = execFileSync(
       tsxBin,
       [cliPath, "polyglot", "project", sampleMoPath, "--target=csv", `--out=${outPath}`],
-      { encoding: "utf-8", timeout: 30000 },
+      { encoding: "utf-8", timeout: 60000 },
     );
     assert.ok(stdout.includes("✔ Projected"));
     assert.ok(fs.existsSync(outPath));

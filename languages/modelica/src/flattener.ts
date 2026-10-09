@@ -44,7 +44,7 @@ import { ModelicaPortBalancer } from "./connections.js";
 import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "./errors.js";
 import { isPredefinedType } from "./predefined-types.js";
-import { getShortClassSpecifierNode } from "./queries.js";
+import { getShortClassSpecifierNode, validateEnumeration } from "./queries.js";
 
 export type FlattenerBackend = "ts" | "wasm" | "hybrid" | "diff";
 
@@ -56,6 +56,7 @@ export interface FlattenOptions {
   eliminateAliases?: boolean | undefined;
   useWasmKernel?: boolean | undefined;
   scalarizeBindings?: boolean | undefined;
+  scalarizeMinMax?: boolean | undefined;
   flowThreshold?: number | undefined;
   intEnumConversion?: boolean | undefined;
   isOldFrontend?: boolean | undefined;
@@ -1607,6 +1608,137 @@ function getArrayLiteralItems(node: any): any[] {
   return items;
 }
 
+function resolveEnumType(
+  typeName: string,
+  scopeId: SymbolId | undefined,
+  db: QueryDB | undefined,
+): { sym: SymbolEntry; literals: string[]; qual: string } | null {
+  if (!db) return null;
+  const cleanName = typeName.replace(/^\.+/, "").trim();
+  if (!cleanName) return null;
+
+  let resolvedSym: SymbolEntry | null = null;
+  if (scopeId) {
+    const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
+    const res = resolver?.(cleanName);
+    if (res && (res.kind === "Class" || res.kind === "Type")) {
+      resolvedSym = res;
+    }
+  }
+
+  const leaf = cleanName.includes(".") ? cleanName.split(".").pop()! : cleanName;
+  const candidates: SymbolEntry[] = [];
+  if (resolvedSym) {
+    candidates.push(resolvedSym);
+  } else {
+    for (const cand of db.byName(leaf)) candidates.push(cand);
+  }
+
+  for (const cand of candidates) {
+    const cst = db.cstNode(cand.id) as any;
+    const lits = extractEnumLiteralsFromCst(cst, cand.metadata);
+    if (lits && lits.length > 0) {
+      const qual = getSymbolQualifiedName(db, cand.id);
+      if (cleanName.includes(".")) {
+        if (!qual.endsWith(cleanName) && !cleanName.endsWith(qual)) continue;
+      }
+      return { sym: cand, literals: lits, qual };
+    }
+  }
+  return null;
+}
+
+function evaluateEnumRange(
+  rangeNode: any,
+  substitutions: Map<string, number | string> | undefined,
+  scopeId: SymbolId | undefined,
+  db: QueryDB | undefined,
+  dae?: DAEBuilder,
+  prefix?: string,
+): string[] | null {
+  if (!rangeNode || !db) return null;
+
+  const rangeText = rangeNode.text?.trim() ?? "";
+  if (rangeText.startsWith("{") && rangeText.endsWith("}")) {
+    const items = getArrayLiteralItems(rangeNode);
+    if (items.length > 0) {
+      const lits: string[] = [];
+      for (const item of items) {
+        let t = (item.text?.trim() ?? "").replace(/^\.+/, "");
+        if (substitutions && substitutions.has(t)) {
+          const s = substitutions.get(t);
+          if (typeof s === "string") t = s;
+        }
+        const lastDot = t.lastIndexOf(".");
+        if (lastDot > 0) {
+          const lit = t.slice(lastDot + 1).trim();
+          const pfx = t.slice(0, lastDot).trim();
+          const info = resolveEnumType(pfx, scopeId, db);
+          if (info && info.literals.includes(lit)) {
+            lits.push(`${info.qual}.${lit}`);
+            continue;
+          }
+        }
+        return null;
+      }
+      if (lits.length > 0) return lits;
+    }
+  }
+
+  const colonNodes = flattenColonNodes(rangeNode);
+  if (colonNodes.length >= 2) {
+    let startText = (colonNodes[0].text?.trim() ?? "").replace(/^\.+/, "");
+    let stopText = (colonNodes[colonNodes.length - 1].text?.trim() ?? "").replace(/^\.+/, "");
+    if (substitutions && substitutions.has(startText)) {
+      const s = substitutions.get(startText);
+      if (typeof s === "string") startText = s;
+    }
+    if (substitutions && substitutions.has(stopText)) {
+      const s = substitutions.get(stopText);
+      if (typeof s === "string") stopText = s;
+    }
+    const lastDotStart = startText.lastIndexOf(".");
+    const lastDotStop = stopText.lastIndexOf(".");
+    if (lastDotStart > 0 && lastDotStop > 0) {
+      const startLit = startText.slice(lastDotStart + 1).trim();
+      const stopLit = stopText.slice(lastDotStop + 1).trim();
+      const startPrefix = startText.slice(0, lastDotStart).trim();
+      const stopPrefix = stopText.slice(0, lastDotStop).trim();
+      const enumInfo = resolveEnumType(startPrefix, scopeId, db) ?? resolveEnumType(stopPrefix, scopeId, db);
+      if (enumInfo) {
+        const { literals, qual } = enumInfo;
+        const startIdx = literals.indexOf(startLit);
+        const stopIdx = literals.indexOf(stopLit);
+        if (startIdx >= 0 && stopIdx >= 0) {
+          let step = 1;
+          if (colonNodes.length >= 3) {
+            const stepVal = evaluateCSTNumber(colonNodes[1], substitutions as any, scopeId, db, dae, prefix);
+            if (typeof stepVal === "number" && stepVal !== 0) step = stepVal;
+          }
+          const result: string[] = [];
+          for (let i = startIdx; step > 0 ? i <= stopIdx : i >= stopIdx; i += step) {
+            result.push(`${qual}.${literals[i]}`);
+          }
+          return result;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Single node (e.g. `for i in E`)
+  let typeText = (rangeNode.text?.trim() ?? "").replace(/^\.+/, "");
+  if (substitutions && substitutions.has(typeText)) {
+    const s = substitutions.get(typeText);
+    if (typeof s === "string") typeText = s;
+  }
+  const enumInfo = resolveEnumType(typeText, scopeId, db);
+  if (enumInfo) {
+    return enumInfo.literals.map((l) => `${enumInfo.qual}.${l}`);
+  }
+  return null;
+}
+
 function findImplicitArrayDim(bodyNodes: any[], iterName: string, dae: DAEBuilder): number | null {
   let foundDim: number | null = null;
   const search = (n: any) => {
@@ -2615,6 +2747,24 @@ function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener?: any)
         }
       }
       return dims;
+    }
+    if (fnName === "identity" && argCount >= 1) {
+      const dimExpr = dae.getExprLeft(exprId);
+      const n = evalDaeExpr(dimExpr, dae);
+      if (typeof n === "number" && Number.isInteger(n) && n > 0) {
+        return [Math.trunc(n), Math.trunc(n)];
+      }
+      if (dae.getExprKind(dimExpr) === ExprKind.IntLiteral) {
+        const v = dae.getExprData1(dimExpr);
+        return [v, v];
+      }
+      return [-1, -1];
+    }
+    if (fnName === "diagonal" && argCount >= 1) {
+      const innerDims = getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
+      if (innerDims && innerDims.length === 1 && innerDims[0]! > 0) {
+        return [innerDims[0]!, innerDims[0]!];
+      }
     }
     if (fnName === "transpose" && argCount === 1) {
       const innerDims = getExprDims(dae.getExprLeft(exprId), dae, db);
@@ -4397,7 +4547,9 @@ function vectorizeFunctionCall(
       if (!state.tmpVarMap) state.tmpVarMap = new Map<string, string>();
       let tmpVarName = state.tmpVarMap.get(targetName);
       if (!tmpVarName) {
-        const tmpVarNum = (state.tmpVarCounter = (state.tmpVarCounter ?? 4) + 1);
+        const initialCounter = (state.linspaceCounter ?? 0) > 0 ? 5 : 0;
+        const tmpVarNum =
+          state.tmpVarCounter !== undefined ? ++state.tmpVarCounter : (state.tmpVarCounter = initialCounter);
         tmpVarName = `$tmpVar${tmpVarNum}`;
         state.tmpVarMap.set(targetName, tmpVarName);
       }
@@ -4911,36 +5063,48 @@ function lowerCSTExpression(
           let values: (number | string)[] = [];
           const isImplicit = !rangeNode;
           if (rangeNode) {
-            const colonNodes = flattenColonNodes(rangeNode);
-            if (colonNodes.length >= 2) {
-              const s = evaluateCSTNumber(colonNodes[0], substitutions as any, undefined, db, dae, prefix);
-              let e: number | null = null;
-              let step = 1;
-              if (colonNodes.length === 2) {
-                e = evaluateCSTNumber(colonNodes[1], substitutions as any, undefined, db, dae, prefix);
-              } else if (colonNodes.length >= 3) {
-                step = evaluateCSTNumber(colonNodes[1], substitutions as any, undefined, db, dae, prefix) ?? 1;
-                e = evaluateCSTNumber(colonNodes[2], substitutions as any, undefined, db, dae, prefix);
-              }
-              if (s !== null && e !== null) {
-                if (step === 0 || Math.abs(step) < 1e-12) {
-                  dae.diagnostics.push({
-                    severity: "error",
-                    code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
-                    message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(step)),
-                    range: { startByte: 0, endByte: 0 },
-                  });
-                } else {
-                  for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
-                }
-              }
+            const enumRange = evaluateEnumRange(
+              rangeNode,
+              substitutions,
+              flattener?.currentClassId ?? flattener?.currentRootClassId ?? (dae as any).currentClassId,
+              db,
+              dae,
+              prefix,
+            );
+            if (enumRange !== null && enumRange.length > 0) {
+              values = enumRange;
             } else {
-              const rangeText = rangeNode.text?.trim() ?? "";
-              if (rangeText.startsWith("{") && rangeText.endsWith("}")) {
-                const items = getArrayLiteralItems(rangeNode);
-                for (const item of items) {
-                  const v = evaluateCSTNumber(item, substitutions as any, undefined, db, dae, prefix);
-                  if (v !== null) values.push(v);
+              const colonNodes = flattenColonNodes(rangeNode);
+              if (colonNodes.length >= 2) {
+                const s = evaluateCSTNumber(colonNodes[0], substitutions as any, undefined, db, dae, prefix);
+                let e: number | null = null;
+                let step = 1;
+                if (colonNodes.length === 2) {
+                  e = evaluateCSTNumber(colonNodes[1], substitutions as any, undefined, db, dae, prefix);
+                } else if (colonNodes.length >= 3) {
+                  step = evaluateCSTNumber(colonNodes[1], substitutions as any, undefined, db, dae, prefix) ?? 1;
+                  e = evaluateCSTNumber(colonNodes[2], substitutions as any, undefined, db, dae, prefix);
+                }
+                if (s !== null && e !== null) {
+                  if (step === 0 || Math.abs(step) < 1e-12) {
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
+                      message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(step)),
+                      range: { startByte: 0, endByte: 0 },
+                    });
+                  } else {
+                    for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
+                  }
+                }
+              } else {
+                const rangeText = rangeNode.text?.trim() ?? "";
+                if (rangeText.startsWith("{") && rangeText.endsWith("}")) {
+                  const items = getArrayLiteralItems(rangeNode);
+                  for (const item of items) {
+                    const v = evaluateCSTNumber(item, substitutions as any, undefined, db, dae, prefix);
+                    if (v !== null) values.push(v);
+                  }
                 }
               }
             }
@@ -5552,6 +5716,48 @@ function lowerCSTExpression(
       }
     }
 
+    if ((fnName === "identity" || cleanFnName === "identity") && argExprIds.length === 1) {
+      const nVal = evalDaeExpr(argExprIds[0]!, dae);
+      if (typeof nVal === "number" && Number.isInteger(nVal) && nVal >= 0) {
+        const n = Math.trunc(nVal);
+        const rows: number[] = [];
+        for (let r = 0; r < n; r++) {
+          const cols: number[] = [];
+          for (let c = 0; c < n; c++) {
+            cols.push(dae.addIntLiteral(r === c ? 1 : 0));
+          }
+          rows.push(dae.addArrayCtorExpr(cols));
+        }
+        return dae.addArrayCtorExpr(rows);
+      }
+    }
+
+    if ((fnName === "diagonal" || cleanFnName === "diagonal") && argExprIds.length === 1) {
+      let vArg = argExprIds[0]!;
+      if (dae.getExprKind(vArg) === ExprKind.Name) {
+        const vName = dae.interner.resolve(dae.getExprData1(vArg));
+        if (vName && dae.hasArrayElements(vName)) {
+          const ctor = expandVarToArrayCtor(vName, dae);
+          if (ctor !== null) vArg = ctor;
+        }
+      }
+      if (dae.getExprKind(vArg) === ExprKind.ArrayCtor) {
+        const elems = getArrayCtorElements(vArg, dae);
+        const n = elems.length;
+        const isReal = elems.some((e) => isRealExpr(e, dae));
+        const zeroLit = isReal ? dae.addRealLiteral(0.0) : dae.addIntLiteral(0);
+        const rows: number[] = [];
+        for (let r = 0; r < n; r++) {
+          const cols: number[] = [];
+          for (let c = 0; c < n; c++) {
+            cols.push(r === c ? elems[r]! : zeroLit);
+          }
+          rows.push(dae.addArrayCtorExpr(cols));
+        }
+        return dae.addArrayCtorExpr(rows);
+      }
+    }
+
     if ((fnName === "linspace" || cleanFnName === "linspace") && argExprIds.length === 3) {
       const [startId, stopId, numId] = argExprIds;
       const numVal = evalDaeExpr(numId!, dae);
@@ -5586,7 +5792,7 @@ function lowerCSTExpression(
       } else {
         const state = getFlatteningState(dae);
         state.linspaceCounter = (state.linspaceCounter ?? 0) + 1;
-        const iterVar = `$i_linspace_${state.linspaceCounter}`;
+        const iterVar = dae.extensionMetadata?.isOldFrontend ? "i" : `$i_linspace_${state.linspaceCounter}`;
         const iMinus1 = dae.addBinaryExpr(BinOp.Add, dae.addIntLiteral(-1), dae.addNameExpr(iterVar));
         const iCast = dae.addCallExpr("/*Real*/", [iMinus1]);
         const nMinus1 = dae.addBinaryExpr(BinOp.Add, dae.addIntLiteral(-1), numId!);
@@ -8312,6 +8518,23 @@ function lowerCSTExpression(
           const totalCoeff = binOp === BinOp.Add ? term1.coeff + term2.coeff : term1.coeff - term2.coeff;
           const isReal = term1.isReal || term2.isReal || isRealExpr(term1.baseId, dae) || !Number.isInteger(totalCoeff);
           if (Math.abs(totalCoeff) < 1e-12) {
+            const dims = getExprDims(term1.baseId, dae, flattener?.db);
+            if (dims && dims.length > 0) {
+              if (dims.every((d) => d > 0)) {
+                const buildZeros = (dimIdx: number): number => {
+                  if (dimIdx === dims.length) {
+                    return isReal ? dae.addRealLiteral(0.0) : dae.addIntLiteral(0);
+                  }
+                  const children: number[] = [];
+                  for (let j = 0; j < dims[dimIdx]!; j++) {
+                    children.push(buildZeros(dimIdx + 1));
+                  }
+                  return dae.addArrayCtorExpr(children);
+                };
+                return buildZeros(0);
+              }
+              return dae.addBinaryExpr(binOp, leftId, rightId);
+            }
             return isReal ? dae.addRealLiteral(0.0) : dae.addIntLiteral(0);
           }
           if (totalCoeff === 1) {
@@ -8620,6 +8843,119 @@ function lowerCSTExpression(
             if (sub.type === "subscript") {
               const expr = sub.children?.find((k: any) => k.type === "expression") ?? sub;
               const subText = expr.text?.trim() ?? "";
+
+              let isConnRef = false;
+              let currP = node.parent;
+              while (currP) {
+                const pType = currP.type;
+                if (pType === "connect_equation" || pType === "connect_clause" || pType === "ConnectEquation") {
+                  isConnRef = true;
+                  break;
+                }
+                if (
+                  (pType === "primary" || pType === "function_call" || pType === "FunctionCall") &&
+                  (currP.child(0)?.text?.trim() === "inStream" || currP.child(0)?.text?.trim() === "actualStream")
+                ) {
+                  isConnRef = true;
+                  break;
+                }
+                if (pType === "function_call_args" || pType === "FunctionCallArgs") {
+                  const c0 = currP.parent?.child(0)?.text?.trim();
+                  if (c0 === "inStream" || c0 === "actualStream") {
+                    isConnRef = true;
+                    break;
+                  }
+                }
+                if (pType === "simple_equation" || pType?.endsWith("_equation") || pType === "component_clause") {
+                  break;
+                }
+                currP = currP.parent;
+              }
+
+              if (isConnRef) {
+                const idMatches = subText.match(/\b[a-zA-Z_]\w*\b/g);
+                if (idMatches) {
+                  for (const idm of idMatches) {
+                    if (
+                      idm === "true" ||
+                      idm === "false" ||
+                      idm === "end" ||
+                      idm === "if" ||
+                      idm === "then" ||
+                      idm === "else" ||
+                      idm === "elseif" ||
+                      substitutions?.has(idm) ||
+                      flattener?.activeLoopVars?.has(idm)
+                    )
+                      continue;
+                    let isLoop = false;
+                    let p = node?.parent;
+                    while (p) {
+                      if (p.type === "for_equation" || p.type === "for_statement") {
+                        const indicesNode = (p.children || []).find((c: any) => c.type === "for_indices");
+                        const forIndices = (indicesNode?.children || []).filter((c: any) => c.type === "for_index");
+                        for (const fi of forIndices) {
+                          const vName = Cst.ForIndex.variable(fi)?.text?.trim() || fi.child(0)?.text?.trim();
+                          if (vName === idm) {
+                            isLoop = true;
+                            break;
+                          }
+                        }
+                        if (isLoop) break;
+                      }
+                      p = p.parent;
+                    }
+                    if (isLoop) continue;
+                    const candidates = [
+                      prefix ? `${prefix}.${idm}` : idm,
+                      prefix.includes(".") ? `${prefix.split(".").slice(0, -1).join(".")}.${idm}` : idm,
+                      idm,
+                    ];
+                    let foundVarIdx = -1;
+                    for (const c of candidates) {
+                      const vi = dae.lookupVariable(c);
+                      if (vi >= 0) {
+                        foundVarIdx = vi;
+                        break;
+                      }
+                    }
+                    let isParam = false;
+                    if (foundVarIdx >= 0) {
+                      const vari = dae.getVarVariability(foundVarIdx);
+                      if (vari === Variability.Parameter || vari === Variability.Constant) {
+                        isParam = true;
+                      }
+                    } else if (db) {
+                      const classId = flattener?.currentRootClassId;
+                      if (classId) {
+                        const resolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", classId);
+                        const sym = resolver ? resolver(idm) : null;
+                        if (sym) {
+                          const symVari = db.query<string | null>("variability", sym.id);
+                          if (symVari === "parameter" || symVari === "constant") {
+                            isParam = true;
+                          }
+                        }
+                      }
+                    }
+                    if (!isParam) {
+                      const r = {
+                        startByte: node.startIndex ?? node.startByte ?? 0,
+                        endByte: node.endIndex ?? node.endByte ?? 0,
+                        startPosition: node.startPosition,
+                        endPosition: node.endPosition,
+                      };
+                      dae.diagnostics.push({
+                        severity: "error",
+                        code: 4082,
+                        message: `Connector '${node.text?.trim() ?? ""}' has non-parameter subscript '${subText}'.`,
+                        range: r,
+                      });
+                      return -1;
+                    }
+                  }
+                }
+              }
               const dimIdx = lastPart.subscripts.length;
               const fullIdent = rawParts.map((p) => p.ident).join(".");
               const dimSize =
@@ -10381,7 +10717,7 @@ export class ModelicaFlattener {
     node: any,
     dae: DAEBuilder,
     prefix = "",
-    substitutions?: Map<string, number>,
+    substitutions?: Map<string, number | string>,
     tupleContext?: boolean,
     isAssignmentLhs?: boolean,
   ): number {
@@ -10412,7 +10748,7 @@ export class ModelicaFlattener {
     node: any,
     dae: DAEBuilder,
     prefix: string,
-    substitutions?: Map<string, number>,
+    substitutions?: Map<string, number | string>,
     isInitial = false,
     whenIdx = -1,
   ): void {
@@ -11063,6 +11399,7 @@ export class ModelicaFlattener {
       useWasmKernel:
         backend === "wasm" || backend === "hybrid" || backend === "diff" || Boolean(options?.useWasmKernel),
       scalarizeBindings: options?.scalarizeBindings ?? false,
+      scalarizeMinMax: options?.scalarizeMinMax ?? false,
       flowThreshold: options?.flowThreshold,
       intEnumConversion: Boolean(options?.intEnumConversion),
       isOldFrontend: options?.isOldFrontend ?? false,
@@ -11327,6 +11664,12 @@ export class ModelicaFlattener {
       classCst?.text?.includes("+scalarizeBindings") || this.options.scalarizeBindings,
     );
     dae.extensionMetadata.scalarizeBindings = hasScalarizeBindings;
+    const hasScalarizeMinMax = Boolean(
+      classCst?.text?.includes("+scalarizeMinMax") ||
+      (classCst?.tree?.rootNode?.text && classCst.tree.rootNode.text.includes("+scalarizeMinMax")) ||
+      (this.options as any)?.scalarizeMinMax,
+    );
+    dae.extensionMetadata.scalarizeMinMax = hasScalarizeMinMax;
     this.validateOperatorRecords(dae, rootClassId);
     this.extractClassAnnotations(dae, rootClassId);
 
@@ -11950,6 +12293,39 @@ export class ModelicaFlattener {
     }
 
     if (!flattenedInWasm) {
+      // Validate rootClassId itself if it is an enumeration
+      const rootSym = this.db.symbol(rootClassId);
+      const rootEnumErr = validateEnumeration(this.db.cstNode(rootClassId) as any, rootSym);
+      if (rootEnumErr) {
+        dae.diagnostics.push({
+          severity: "error",
+          code: rootEnumErr.code,
+          message: rootEnumErr.message,
+          range: {
+            startByte: rootEnumErr.startByte,
+            endByte: rootEnumErr.endByte,
+          },
+        });
+        return dae;
+      }
+      // Validate inner classes of rootClassId in declaration order
+      const childClasses = this.db.childrenOf(rootClassId).filter((c) => c.kind === "Class");
+      for (const cc of childClasses) {
+        const ccEnumErr = validateEnumeration(this.db.cstNode(cc.id) as any, cc);
+        if (ccEnumErr) {
+          dae.diagnostics.push({
+            severity: "error",
+            code: ccEnumErr.code,
+            message: ccEnumErr.message,
+            range: {
+              startByte: ccEnumErr.startByte,
+              endByte: ccEnumErr.endByte,
+            },
+          });
+          return dae;
+        }
+      }
+
       // 1. Layer 1: Component instantiation
       const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
 
@@ -14362,6 +14738,51 @@ export class ModelicaFlattener {
               causality = Causality.Local;
             }
 
+            const hasEqInClass = (): boolean => {
+              if (!this.currentClassId) return false;
+              const cst = this.db.cstNode(this.currentClassId) as any;
+              if (!cst) return false;
+              const cstText = (cst.text as string) ?? "";
+              const eqIdx = cstText.indexOf("equation");
+              if (eqIdx < 0) return false;
+              const eqSection = cstText.slice(eqIdx);
+              const regex = new RegExp(`\\b${compInst.name}\\b\\s*=`);
+              return regex.test(eqSection);
+            };
+
+            if (
+              !dae.extensionMetadata?.isOldFrontend &&
+              !hasEqInClass() &&
+              variability === Variability.Constant &&
+              !bText &&
+              !parentMods?.bindingExpression &&
+              !_isEnclosingFunction &&
+              causality === Causality.Local
+            ) {
+              if (!dae.diagnostics.some((d) => d.code === ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.code)) {
+                let clauseNode: any = elemCst;
+                while (clauseNode && clauseNode.type !== "component_clause") {
+                  clauseNode = clauseNode.parent;
+                }
+                const rangeNode = clauseNode ?? elemCst;
+                const rangeObj = rangeNode
+                  ? {
+                      startByte: rangeNode.startIndex ?? rangeNode.startByte,
+                      endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                      startPosition: rangeNode.startPosition,
+                      endPosition: rangeNode.endPosition,
+                    }
+                  : undefined;
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.code,
+                  message: ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.message(name),
+                  range: rangeObj,
+                });
+              }
+              return;
+            }
+
             const varIdx = dae.addVariable(dae.interner.intern(name), varType, variability, causality, 0.0);
             if (this.isComponentHidden(elemId)) {
               dae.hiddenVarIndices.add(varIdx);
@@ -15046,6 +15467,47 @@ export class ModelicaFlattener {
             arrayDims = resolvedDims;
           }
           if (arrayDims && arrayDims.length > 0) {
+            const rawDimsComp = this.db.query<any[] | null>("arrayDimensions", elemId);
+            if (rawDimsComp) {
+              for (const rd of rawDimsComp) {
+                let rdText = rd?.text?.trim() ?? "";
+                if (!rdText && rd?.cstBytes) {
+                  const node = this.db.cstNodeRange(rd.cstBytes[0], rd.cstBytes[1]) as any;
+                  if (node) rdText = node.text?.trim() ?? "";
+                }
+                const idMatches = rdText.match(/\b[a-zA-Z_]\w*\b/g);
+                if (idMatches) {
+                  for (const idm of idMatches) {
+                    if (
+                      idm === "if" ||
+                      idm === "then" ||
+                      idm === "else" ||
+                      idm === "elseif" ||
+                      idm === "true" ||
+                      idm === "false" ||
+                      idm === "size" ||
+                      idm === "ndims" ||
+                      idm === "Integer" ||
+                      idm === "Real" ||
+                      idm === "Boolean"
+                    )
+                      continue;
+                    const candidates = [
+                      prefix ? `${prefix}.${idm}` : idm,
+                      prefix.includes(".") ? `${prefix.split(".").slice(0, -1).join(".")}.${idm}` : idm,
+                      idm,
+                    ];
+                    for (const c of candidates) {
+                      const vi = dae.lookupVariable(c);
+                      if (vi >= 0 && dae.getVarVariability(vi) === Variability.Parameter) {
+                        dae.setVarFinal(vi, true);
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
             (dae as any).setNamedArrayShape?.(compInst.name, arrayDims);
             if (arrayDims.some((d) => d === 0)) {
               continue;
@@ -15348,6 +15810,19 @@ export class ModelicaFlattener {
               targetMeta?.isEnumeration ||
               Boolean((this.db.cstNode(enumSym.id) as any)?.text?.includes("enumeration("));
             if (isEnum) {
+              const enumErr = validateEnumeration(this.db.cstNode(enumSym.id) as any, enumSym);
+              if (enumErr) {
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: enumErr.code,
+                  message: enumErr.message,
+                  range: {
+                    startByte: enumErr.startByte,
+                    endByte: enumErr.endByte,
+                  },
+                });
+                return;
+              }
               varType = VarType.Enumeration;
               if (!customType && enumSym) {
                 customType = getSymbolQualifiedName(this.db, enumSym.id);
@@ -15564,6 +16039,52 @@ export class ModelicaFlattener {
           }
         }
 
+        const hasEqInClass = (): boolean => {
+          if (!this.currentClassId) return false;
+          const cst = this.db.cstNode(this.currentClassId) as any;
+          if (!cst) return false;
+          const cstText = (cst.text as string) ?? "";
+          const eqIdx = cstText.indexOf("equation");
+          if (eqIdx < 0) return false;
+          const eqSection = cstText.slice(eqIdx);
+          const regex = new RegExp(`\\b${compInst.name}\\b\\s*=`);
+          return regex.test(eqSection);
+        };
+
+        if (
+          !dae.extensionMetadata?.isOldFrontend &&
+          !hasEqInClass() &&
+          variability === Variability.Constant &&
+          !effectiveBinding?.text &&
+          !parentMods?.bindingExpression &&
+          !_isEnclosingFunction &&
+          !isExtObj &&
+          causality === Causality.Local
+        ) {
+          if (!dae.diagnostics.some((d) => d.code === ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.code)) {
+            let clauseNode: any = elemCst;
+            while (clauseNode && clauseNode.type !== "component_clause") {
+              clauseNode = clauseNode.parent;
+            }
+            const rangeNode = clauseNode ?? elemCst;
+            const rangeObj = rangeNode
+              ? {
+                  startByte: rangeNode.startIndex ?? rangeNode.startByte,
+                  endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                  startPosition: rangeNode.startPosition,
+                  endPosition: rangeNode.endPosition,
+                }
+              : undefined;
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.code,
+              message: ModelicaErrorCode.CONSTANT_HAS_NO_VALUE.message(name),
+              range: rangeObj,
+            });
+          }
+          return;
+        }
+
         const applyModifiers = (varIdx: number, idxTuple: number[] = [], currentDimLabels?: (string[] | null)[]) => {
           const prevBindingCompName = this.currentBindingCompName;
           this.currentBindingCompName = compInst.name;
@@ -15624,6 +16145,46 @@ export class ModelicaFlattener {
                 } else if (bText.startsWith("ones(")) {
                   bText = varType === VarType.Integer ? "1" : "1.0";
                   exprId = varType === VarType.Integer ? dae.addIntLiteral(1) : dae.addRealLiteral(1.0);
+                } else if (bText.startsWith("identity(") && idxTuple.length >= 2) {
+                  const isDiag = idxTuple[0] === idxTuple[1];
+                  bText = isDiag
+                    ? varType === VarType.Integer
+                      ? "1"
+                      : "1.0"
+                    : varType === VarType.Integer
+                      ? "0"
+                      : "0.0";
+                  exprId = isDiag
+                    ? varType === VarType.Integer
+                      ? dae.addIntLiteral(1)
+                      : dae.addRealLiteral(1.0)
+                    : varType === VarType.Integer
+                      ? dae.addIntLiteral(0)
+                      : dae.addRealLiteral(0.0);
+                } else if (bText.startsWith("diagonal(") && idxTuple.length >= 2) {
+                  const isDiag = idxTuple[0] === idxTuple[1];
+                  if (!isDiag) {
+                    bText = varType === VarType.Integer ? "0" : "0.0";
+                    exprId = varType === VarType.Integer ? dae.addIntLiteral(0) : dae.addRealLiteral(0.0);
+                  } else {
+                    const innerMatch = bText
+                      .replace(/^\s*diagonal\s*\(\s*/, "")
+                      .replace(/\s*\)\s*$/, "")
+                      .trim();
+                    const elemText = getIndexedElementText(innerMatch, [idxTuple[0]!]);
+                    const numVal = Number(elemText);
+                    if (!Number.isNaN(numVal)) {
+                      bText =
+                        varType === VarType.Real
+                          ? Number.isInteger(numVal)
+                            ? `${numVal}.0`
+                            : String(numVal)
+                          : elemText;
+                      exprId = varType === VarType.Real ? dae.addRealLiteral(numVal) : dae.addIntLiteral(numVal);
+                    } else {
+                      bText = elemText;
+                    }
+                  }
                 } else if (/^[a-zA-Z_]\w*$/.test(bText) && isArrayTarget(bText)) {
                   const resolvedTarget = resolveScopedName(bText, bindingPrefix, dae);
                   let indexedTarget = `${resolvedTarget}[${idxTuple.join(",")}]`;
@@ -16273,7 +16834,9 @@ export class ModelicaFlattener {
                         ? dae.addIntLiteral(parseInt(t, 10))
                         : dae.addRealLiteral(parseFloat(t));
                   } else {
-                    let resolvedT = resolveScopedName(t, bindingPrefix, dae);
+                    let resolvedT = /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(t)
+                      ? resolveScopedName(t, bindingPrefix, dae)
+                      : t;
                     if (varType === VarType.Enumeration && customType && enumLiterals) {
                       const enumShort = customType.split(".").pop()!;
                       if (t.startsWith(`${enumShort}.`)) {
@@ -16404,8 +16967,60 @@ export class ModelicaFlattener {
                           varType === VarType.Integer
                             ? dae.addIntLiteral(Math.trunc(evalVal))
                             : dae.addRealLiteral(evalVal);
+                        const idMatches = t.match(/\b[a-zA-Z_]\w*\b/g);
+                        if (idMatches) {
+                          for (const idm of idMatches) {
+                            if (
+                              idm === "if" ||
+                              idm === "then" ||
+                              idm === "else" ||
+                              idm === "elseif" ||
+                              idm === "true" ||
+                              idm === "false"
+                            )
+                              continue;
+                            const candidates = [
+                              prefix ? `${prefix}.${idm}` : idm,
+                              prefix.includes(".") ? `${prefix.split(".").slice(0, -1).join(".")}.${idm}` : idm,
+                              idm,
+                            ];
+                            for (const c of candidates) {
+                              const vi = dae.lookupVariable(c);
+                              if (vi >= 0 && dae.getVarVariability(vi) === Variability.Parameter) {
+                                dae.setVarFinal(vi, true);
+                                break;
+                              }
+                            }
+                          }
+                        }
                       } else if (typeof evalVal === "boolean") {
                         attrExprId = dae.addExpression(ExprKind.BoolLiteral, evalVal ? 1 : 0);
+                        const idMatches = t.match(/\b[a-zA-Z_]\w*\b/g);
+                        if (idMatches) {
+                          for (const idm of idMatches) {
+                            if (
+                              idm === "if" ||
+                              idm === "then" ||
+                              idm === "else" ||
+                              idm === "elseif" ||
+                              idm === "true" ||
+                              idm === "false"
+                            )
+                              continue;
+                            const candidates = [
+                              prefix ? `${prefix}.${idm}` : idm,
+                              prefix.includes(".") ? `${prefix.split(".").slice(0, -1).join(".")}.${idm}` : idm,
+                              idm,
+                            ];
+                            for (const c of candidates) {
+                              const vi = dae.lookupVariable(c);
+                              if (vi >= 0 && dae.getVarVariability(vi) === Variability.Parameter) {
+                                dae.setVarFinal(vi, true);
+                                break;
+                              }
+                            }
+                          }
+                        }
                       } else if (t.startsWith('"') && t.endsWith('"')) {
                         attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(t));
                       } else {
@@ -16462,6 +17077,46 @@ export class ModelicaFlattener {
                 },
               });
               return;
+            }
+          }
+        }
+        if (rawDimsInitial) {
+          for (const rd of rawDimsInitial) {
+            let rdText = rd?.text?.trim() ?? "";
+            if (!rdText && rd?.cstBytes) {
+              const node = this.db.cstNodeRange(rd.cstBytes[0], rd.cstBytes[1]) as any;
+              if (node) rdText = node.text?.trim() ?? "";
+            }
+            const idMatches = rdText.match(/\b[a-zA-Z_]\w*\b/g);
+            if (idMatches) {
+              for (const idm of idMatches) {
+                if (
+                  idm === "if" ||
+                  idm === "then" ||
+                  idm === "else" ||
+                  idm === "elseif" ||
+                  idm === "true" ||
+                  idm === "false" ||
+                  idm === "size" ||
+                  idm === "ndims" ||
+                  idm === "Integer" ||
+                  idm === "Real" ||
+                  idm === "Boolean"
+                )
+                  continue;
+                const candidates = [
+                  prefix ? `${prefix}.${idm}` : idm,
+                  prefix.includes(".") ? `${prefix.split(".").slice(0, -1).join(".")}.${idm}` : idm,
+                  idm,
+                ];
+                for (const c of candidates) {
+                  const vi = dae.lookupVariable(c);
+                  if (vi >= 0 && dae.getVarVariability(vi) === Variability.Parameter) {
+                    dae.setVarFinal(vi, true);
+                    break;
+                  }
+                }
+              }
             }
           }
         }
@@ -17789,7 +18444,7 @@ export class ModelicaFlattener {
       const prevParentMods = this.currentParentMods;
       this.currentParentMods = parentMods;
       try {
-        const walk = (node: any, substitutions?: Map<string, number>, isInitial?: boolean): void => {
+        const walk = (node: any, substitutions?: Map<string, number | string>, isInitial?: boolean): void => {
           if (!node) return;
           if (process.env.DEBUG_TUPLE && node.type) {
             console.log("WALK NODE:", node.type, node.text?.slice(0, 30));
@@ -17856,12 +18511,14 @@ export class ModelicaFlattener {
               }
             }
 
-            const getForIndexValues = (fIndex: any, currentSubs: Map<string, number>): number[] => {
+            const getForIndexValues = (fIndex: any, currentSubs: Map<string, number | string>): (number | string)[] => {
               const rangeNode =
                 Cst.ForIndex.range(fIndex) || fIndex.children?.find?.((c: any) => c.type === "expression");
               if (!rangeNode) {
                 const varName = Cst.ForIndex.variable(fIndex)?.text?.trim() || fIndex.child(0)?.text?.trim();
                 if (varName) {
+                  const subs = findArraySubscriptsForIter(bodyNodes, varName, dae, this.db, prefix, true, fIndex);
+                  if (subs.length > 0) return subs;
                   const implicitDim = findImplicitArrayDim(bodyNodes, varName, dae);
                   if (implicitDim && implicitDim > 0) {
                     return Array.from({ length: implicitDim }, (_, i) => i + 1);
@@ -17872,10 +18529,12 @@ export class ModelicaFlattener {
 
               const rangeText = rangeNode.text?.trim() ?? "";
               if (rangeText.startsWith("{") && rangeText.endsWith("}")) {
+                const enumVals = evaluateEnumRange(rangeNode, currentSubs, classId, this.db, dae, prefix);
+                if (enumVals !== null && enumVals.length > 0) return enumVals;
                 const items = getArrayLiteralItems(rangeNode);
                 const vals: number[] = [];
                 for (const item of items) {
-                  const v = evaluateCSTNumber(item, currentSubs, classId, this.db, dae, prefix);
+                  const v = evaluateCSTNumber(item, currentSubs as any, classId, this.db, dae, prefix);
                   if (v !== null) vals.push(v);
                 }
                 if (vals.length > 0) return vals;
@@ -17883,14 +18542,17 @@ export class ModelicaFlattener {
 
               const colonNodes = flattenColonNodes(rangeNode);
               if (colonNodes.length >= 2) {
-                const sVal = evaluateCSTNumber(colonNodes[0], currentSubs, classId, this.db, dae, prefix);
+                const enumVals = evaluateEnumRange(rangeNode, currentSubs, classId, this.db, dae, prefix);
+                if (enumVals !== null) return enumVals;
+
+                const sVal = evaluateCSTNumber(colonNodes[0], currentSubs as any, classId, this.db, dae, prefix);
                 let stVal: number | null = 1;
                 let eVal: number | null = null;
                 if (colonNodes.length === 2) {
-                  eVal = evaluateCSTNumber(colonNodes[1], currentSubs, classId, this.db, dae, prefix);
+                  eVal = evaluateCSTNumber(colonNodes[1], currentSubs as any, classId, this.db, dae, prefix);
                 } else if (colonNodes.length >= 3) {
-                  stVal = evaluateCSTNumber(colonNodes[1], currentSubs, classId, this.db, dae, prefix);
-                  eVal = evaluateCSTNumber(colonNodes[2], currentSubs, classId, this.db, dae, prefix);
+                  stVal = evaluateCSTNumber(colonNodes[1], currentSubs as any, classId, this.db, dae, prefix);
+                  eVal = evaluateCSTNumber(colonNodes[2], currentSubs as any, classId, this.db, dae, prefix);
                 }
 
                 if (sVal === null || eVal === null || stVal === null) {
@@ -17924,11 +18586,16 @@ export class ModelicaFlattener {
                 return result;
               }
 
-              const singleVal = evaluateCSTNumber(rangeNode, currentSubs, classId, this.db, dae, prefix);
-              return singleVal !== null ? [singleVal] : [1];
+              const singleVal = evaluateCSTNumber(rangeNode, currentSubs as any, classId, this.db, dae, prefix);
+              if (singleVal !== null) return [singleVal];
+
+              const enumVals = evaluateEnumRange(rangeNode, currentSubs, classId, this.db, dae, prefix);
+              if (enumVals !== null) return enumVals;
+
+              return [1];
             };
 
-            const unroll = (indexIdx: number, currentSubs: Map<string, number>) => {
+            const unroll = (indexIdx: number, currentSubs: Map<string, number | string>) => {
               if (indexIdx >= forIndexNodes.length) {
                 for (const bodyChild of bodyNodes) {
                   walk(bodyChild, currentSubs, isInitial);
@@ -17939,7 +18606,7 @@ export class ModelicaFlattener {
               const varName = Cst.ForIndex.variable(fIndex)?.text?.trim() || fIndex.child(0)?.text?.trim();
               const iterVals = getForIndexValues(fIndex, currentSubs);
               for (const v of iterVals) {
-                const nextSubs = new Map<string, number>(currentSubs);
+                const nextSubs = new Map<string, number | string>(currentSubs);
                 if (varName) nextSubs.set(varName, v);
                 unroll(indexIdx + 1, nextSubs);
               }
@@ -17951,7 +18618,7 @@ export class ModelicaFlattener {
             if (totalEstimated > 5000 && this.options.arrayMode === "preserve") {
               return;
             }
-            unroll(0, new Map<string, number>(substitutions || []));
+            unroll(0, new Map<string, number | string>(substitutions || []));
             return;
           }
 
@@ -18292,7 +18959,8 @@ export class ModelicaFlattener {
                         }
                       }
                     } else {
-                      lhsElems.push(lhsExprId);
+                      const unexpandedLhs = this.lowerExpr(expressions[0], dae, prefix, substitutions, false, true);
+                      lhsElems.push(unexpandedLhs >= 0 ? unexpandedLhs : lhsExprId);
                     }
                     if (lhsElems.length < outCount) {
                       const wildId = dae.addExpression(ExprKind.Name, dae.interner.intern("_"));
@@ -18389,10 +19057,101 @@ export class ModelicaFlattener {
                   }
                 } else if (k === ExprKind.Call) {
                   const fnName = dae.interner.resolve(dae.getExprData1(id));
-                  if (fnName === "/*Real*/" || fnName === "Real") {
+                  if (fnName && (fnName.startsWith("/*Real") || fnName === "Real")) {
                     const inner = resolveToArrayCtor(dae.getExprLeft(id));
                     if (dae.getExprKind(inner) === ExprKind.ArrayCtor) {
                       return castToRealExpr(inner, dae);
+                    }
+                  } else if (fnName === "identity") {
+                    const argCount = dae.getExprRight(id);
+                    if (argCount >= 1) {
+                      const firstArgId = dae.getExprLeft(id);
+                      const nVal = evalDaeExpr(firstArgId, dae);
+                      if (typeof nVal === "number" && Number.isInteger(nVal) && nVal > 0) {
+                        const n = Math.trunc(nVal);
+                        const rows: number[] = [];
+                        for (let r = 0; r < n; r++) {
+                          const cols: number[] = [];
+                          for (let c = 0; c < n; c++) {
+                            cols.push(dae.addIntLiteral(r === c ? 1 : 0));
+                          }
+                          rows.push(dae.addArrayCtorExpr(cols));
+                        }
+                        return dae.addArrayCtorExpr(rows);
+                      }
+                    }
+                  } else if (fnName === "diagonal") {
+                    const argCount = dae.getExprRight(id);
+                    if (argCount >= 1) {
+                      const firstArgId = dae.getExprLeft(id);
+                      const vCtor = resolveToArrayCtor(firstArgId);
+                      if (dae.getExprKind(vCtor) === ExprKind.ArrayCtor) {
+                        const elems = getArrayCtorElements(vCtor, dae);
+                        const n = elems.length;
+                        const isReal = elems.some((e) => isRealExpr(e, dae));
+                        const zeroLit = isReal ? dae.addRealLiteral(0.0) : dae.addIntLiteral(0);
+                        const rows: number[] = [];
+                        for (let r = 0; r < n; r++) {
+                          const cols: number[] = [];
+                          for (let c = 0; c < n; c++) {
+                            cols.push(r === c ? elems[r]! : zeroLit);
+                          }
+                          rows.push(dae.addArrayCtorExpr(cols));
+                        }
+                        return dae.addArrayCtorExpr(rows);
+                      }
+                    }
+                  } else if (fnName === "zeros" || fnName === "ones") {
+                    const argCount = dae.getExprRight(id);
+                    const dims: number[] = [];
+                    for (let i = 0; i < argCount; i++) {
+                      const aId = i === 0 ? dae.getExprLeft(id) : dae.getExprLeft(id + i);
+                      const v = evalDaeExpr(aId, dae);
+                      if (typeof v === "number" && Number.isInteger(v) && v > 0) {
+                        dims.push(Math.trunc(v));
+                      }
+                    }
+                    if (dims.length === argCount && dims.length > 0) {
+                      const defaultVal = fnName === "zeros" ? 0 : 1;
+                      const buildZerosOrOnes = (dimIdx: number): number => {
+                        if (dimIdx === dims.length) {
+                          return dae.addRealLiteral(defaultVal);
+                        }
+                        const children: number[] = [];
+                        const size = dims[dimIdx]!;
+                        for (let j = 0; j < size; j++) {
+                          children.push(buildZerosOrOnes(dimIdx + 1));
+                        }
+                        return dae.addArrayCtorExpr(children);
+                      };
+                      return buildZerosOrOnes(0);
+                    }
+                  } else if (fnName === "fill") {
+                    const argCount = dae.getExprRight(id);
+                    if (argCount >= 2) {
+                      const valId = dae.getExprLeft(id);
+                      const dims: number[] = [];
+                      for (let i = 1; i < argCount; i++) {
+                        const aId = dae.getExprLeft(id + i);
+                        const v = evalDaeExpr(aId, dae);
+                        if (typeof v === "number" && Number.isInteger(v) && v > 0) {
+                          dims.push(Math.trunc(v));
+                        }
+                      }
+                      if (dims.length === argCount - 1 && dims.length > 0) {
+                        const buildFill = (dimIdx: number): number => {
+                          if (dimIdx === dims.length) {
+                            return valId;
+                          }
+                          const children: number[] = [];
+                          const size = dims[dimIdx]!;
+                          for (let j = 0; j < size; j++) {
+                            children.push(buildFill(dimIdx + 1));
+                          }
+                          return dae.addArrayCtorExpr(children);
+                        };
+                        return buildFill(0);
+                      }
                     }
                   }
                 } else if (k === ExprKind.Der) {
@@ -18440,64 +19199,84 @@ export class ModelicaFlattener {
                       return matrixOrVectorMul(lInner, rInner, dae);
                     }
                     if (!lIsArr && rIsArr) {
-                      const rElems = getArrayCtorElements(rInner, dae);
-                      return dae.addArrayCtorExpr(
-                        rElems.map((e) => {
-                          const lK = dae.getExprKind(lInner);
-                          const eK = dae.getExprKind(e);
-                          if (
-                            (lK === ExprKind.RealLiteral || lK === ExprKind.IntLiteral) &&
-                            (eK === ExprKind.RealLiteral || eK === ExprKind.IntLiteral)
-                          ) {
-                            const lV =
-                              lK === ExprKind.IntLiteral ? dae.getExprData1(lInner) : dae.getExprRealValue(lInner);
-                            const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
-                            return dae.addRealLiteral(lV * eV);
-                          }
-                          return dae.addBinaryExpr(BinOp.Mul, lInner, e);
-                        }),
-                      );
+                      const scaleArray = (scalar: number, arr: number): number => {
+                        const rElems = getArrayCtorElements(arr, dae);
+                        return dae.addArrayCtorExpr(
+                          rElems.map((e) => {
+                            if (dae.getExprKind(e) === ExprKind.ArrayCtor) {
+                              return scaleArray(scalar, e);
+                            }
+                            const lK = dae.getExprKind(scalar);
+                            const eK = dae.getExprKind(e);
+                            if (
+                              (lK === ExprKind.RealLiteral || lK === ExprKind.IntLiteral) &&
+                              (eK === ExprKind.RealLiteral || eK === ExprKind.IntLiteral)
+                            ) {
+                              const isReal = lK === ExprKind.RealLiteral || eK === ExprKind.RealLiteral;
+                              const lV =
+                                lK === ExprKind.IntLiteral ? dae.getExprData1(scalar) : dae.getExprRealValue(scalar);
+                              const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
+                              return isReal ? dae.addRealLiteral(lV * eV) : dae.addIntLiteral(lV * eV);
+                            }
+                            return dae.addBinaryExpr(BinOp.Mul, scalar, e);
+                          }),
+                        );
+                      };
+                      return scaleArray(lInner, rInner);
                     }
                     if (lIsArr && !rIsArr) {
-                      const lElems = getArrayCtorElements(lInner, dae);
-                      return dae.addArrayCtorExpr(
-                        lElems.map((e) => {
-                          const rK = dae.getExprKind(rInner);
-                          const eK = dae.getExprKind(e);
-                          if (
-                            (rK === ExprKind.RealLiteral || rK === ExprKind.IntLiteral) &&
-                            (eK === ExprKind.RealLiteral || eK === ExprKind.IntLiteral)
-                          ) {
-                            const rV =
-                              rK === ExprKind.IntLiteral ? dae.getExprData1(rInner) : dae.getExprRealValue(rInner);
-                            const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
-                            return dae.addRealLiteral(eV * rV);
-                          }
-                          return dae.addBinaryExpr(BinOp.Mul, e, rInner);
-                        }),
-                      );
+                      const scaleArray = (arr: number, scalar: number): number => {
+                        const lElems = getArrayCtorElements(arr, dae);
+                        return dae.addArrayCtorExpr(
+                          lElems.map((e) => {
+                            if (dae.getExprKind(e) === ExprKind.ArrayCtor) {
+                              return scaleArray(e, scalar);
+                            }
+                            const rK = dae.getExprKind(scalar);
+                            const eK = dae.getExprKind(e);
+                            if (
+                              (rK === ExprKind.RealLiteral || rK === ExprKind.IntLiteral) &&
+                              (eK === ExprKind.RealLiteral || eK === ExprKind.IntLiteral)
+                            ) {
+                              const isReal = rK === ExprKind.RealLiteral || eK === ExprKind.RealLiteral;
+                              const rV =
+                                rK === ExprKind.IntLiteral ? dae.getExprData1(scalar) : dae.getExprRealValue(scalar);
+                              const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
+                              return isReal ? dae.addRealLiteral(eV * rV) : dae.addIntLiteral(eV * rV);
+                            }
+                            return dae.addBinaryExpr(BinOp.Mul, e, scalar);
+                          }),
+                        );
+                      };
+                      return scaleArray(lInner, rInner);
                     }
                   } else if (op === BinOp.Div) {
                     if (lIsArr && !rIsArr) {
-                      const lElems = getArrayCtorElements(lInner, dae);
-                      return dae.addArrayCtorExpr(
-                        lElems.map((e) => {
-                          const rK = dae.getExprKind(rInner);
-                          const eK = dae.getExprKind(e);
-                          if (
-                            (rK === ExprKind.RealLiteral || rK === ExprKind.IntLiteral) &&
-                            (eK === ExprKind.RealLiteral || eK === ExprKind.IntLiteral)
-                          ) {
-                            const rV =
-                              rK === ExprKind.IntLiteral ? dae.getExprData1(rInner) : dae.getExprRealValue(rInner);
-                            const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
-                            if (rV !== 0) {
-                              return dae.addRealLiteral(eV / rV);
+                      const divArray = (arr: number, scalar: number): number => {
+                        const lElems = getArrayCtorElements(arr, dae);
+                        return dae.addArrayCtorExpr(
+                          lElems.map((e) => {
+                            if (dae.getExprKind(e) === ExprKind.ArrayCtor) {
+                              return divArray(e, scalar);
                             }
-                          }
-                          return dae.addBinaryExpr(BinOp.Div, e, rInner);
-                        }),
-                      );
+                            const rK = dae.getExprKind(scalar);
+                            const eK = dae.getExprKind(e);
+                            if (
+                              (rK === ExprKind.RealLiteral || rK === ExprKind.IntLiteral) &&
+                              (eK === ExprKind.RealLiteral || eK === ExprKind.IntLiteral)
+                            ) {
+                              const rV =
+                                rK === ExprKind.IntLiteral ? dae.getExprData1(scalar) : dae.getExprRealValue(scalar);
+                              const eV = eK === ExprKind.IntLiteral ? dae.getExprData1(e) : dae.getExprRealValue(e);
+                              if (rV !== 0) {
+                                return dae.addRealLiteral(eV / rV);
+                              }
+                            }
+                            return dae.addBinaryExpr(BinOp.Div, e, scalar);
+                          }),
+                        );
+                      };
+                      return divArray(lInner, rInner);
                     }
                   } else if (op === BinOp.Pow) {
                     if (lIsArr) {
@@ -18656,6 +19435,8 @@ export class ModelicaFlattener {
               const isArrayReturningCall = (exprId: number): boolean => {
                 if (exprId < 0) return false;
                 if (dae.getExprKind(exprId) === ExprKind.Call) {
+                  const fn = dae.interner.resolve(dae.getExprData1(exprId));
+                  if (fn && (fn.startsWith("/*Real") || fn === "Real")) return false;
                   const fnDims = getExprDims(exprId, dae, this.db);
                   return Boolean(fnDims && fnDims.length > 0);
                 }
@@ -18664,6 +19445,7 @@ export class ModelicaFlattener {
 
               if (
                 hasLeftDims &&
+                dae.getExprKind(expandedRhs) !== ExprKind.ArrayCtor &&
                 (isSyncArrayCall(rhsExprId) || isCardinalityCall(rhsExprId) || isArrayReturningCall(rhsExprId))
               ) {
                 let finalLhs = lhsExprId;
@@ -18997,7 +19779,9 @@ export class ModelicaFlattener {
               }
 
               const lhsExprId = this.lowerExpr(refs[0], dae, prefix, substitutions);
+              if (lhsExprId < 0) return;
               const rhsExprId = this.lowerExpr(refs[1], dae, prefix, substitutions);
+              if (rhsExprId < 0) return;
               const lhsName =
                 dae.getExprKind(lhsExprId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(lhsExprId)) : "";
               const rhsName =
@@ -19480,29 +20264,19 @@ export class ModelicaFlattener {
                   const varName = fi.child(0)?.text?.trim() ?? "i";
                   const rangeNode = (fi.children || []).find((c: any) => c.type === "expression");
                   let rangeExprId = -1;
-                  const rangeText = rangeNode?.text?.trim() ?? "";
-                  if (rangeText && this.db) {
-                    const syms = this.db.byName(rangeText.split(".").pop()!);
-                    for (const s of syms) {
-                      const targetMeta = s.metadata as any;
-                      const cstNode = this.db.cstNode?.(s.id) as any;
-                      const cstText = cstNode?.text ?? "";
-                      const isEnum =
-                        targetMeta?.classPrefixes === "enumeration" ||
-                        targetMeta?.isEnumeration ||
-                        Boolean(cstText.includes("enumeration("));
-                      if (isEnum) {
-                        const literals = extractEnumLiteralsFromCst(cstNode, targetMeta);
-                        if (literals) {
-                          const qualType = getSymbolQualifiedName(this.db, s.id);
-                          const litExprIds = literals.map((lit: string) =>
-                            dae.addExpression(ExprKind.Name, dae.interner.intern(`${qualType}.${lit}`)),
-                          );
-                          rangeExprId = dae.addArrayCtorExpr(litExprIds);
-                          break;
-                        }
-                      }
-                    }
+                  const enumVals = evaluateEnumRange(
+                    rangeNode,
+                    substitutions,
+                    this.currentRootClassId,
+                    this.db,
+                    dae,
+                    prefix,
+                  );
+                  if (enumVals && enumVals.length > 0) {
+                    const litExprIds = enumVals.map((lit: string) =>
+                      dae.addExpression(ExprKind.Name, dae.interner.intern(lit)),
+                    );
+                    rangeExprId = dae.addArrayCtorExpr(litExprIds);
                   }
                   if (rangeExprId < 0) {
                     rangeExprId = rangeNode ? this.lowerExpr(rangeNode, dae, prefix, substitutions) : -1;

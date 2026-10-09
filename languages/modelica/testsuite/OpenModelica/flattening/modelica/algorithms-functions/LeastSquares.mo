@@ -1,7 +1,6 @@
 // name:     LeastSquares
 // keywords: external function, array
 // status:   correct
-// xfail:    true
 //
 // Drmodelica: 9.2 External Functions (p. 311)
 //

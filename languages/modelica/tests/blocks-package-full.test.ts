@@ -32,7 +32,10 @@ describe("Modelica.Blocks Package Indexing and Loading", async () => {
 
     const tree = context.parse(".mo", source);
     assert.ok(tree.rootNode, "Parser should produce a valid rootNode");
-    assert.strictEqual(tree.rootNode.type, "source_file");
+    assert.ok(
+      tree.rootNode.type === "program" || tree.rootNode.type === "source_file",
+      `Unexpected rootNode type: ${tree.rootNode.type}`,
+    );
     assert.ok(tree.rootNode.namedChildren.length > 0, "Root node should have named children");
 
     const blocksDir = path.dirname(filePath);

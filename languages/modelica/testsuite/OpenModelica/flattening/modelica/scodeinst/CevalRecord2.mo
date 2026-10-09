@@ -1,7 +1,6 @@
 // name: CevalRecord2
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 record R

@@ -1,5 +1,4 @@
 // status: correct
-// xfail:    true
 // bug #2529
 
 model Vectorizable7

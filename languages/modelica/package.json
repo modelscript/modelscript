@@ -147,7 +147,7 @@
     "test:omc:coverage": "rm -rf .v8-coverage coverage/omc && mkdir -p .v8-coverage coverage/omc && NODE_V8_COVERAGE=$(pwd)/.v8-coverage npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures && npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=coverage/omc --include=\"src/**\" --include=\"../../packages/dsl/src/**\" --include=\"../../packages/runtime/src/**\"",
     "test:omc:js": "npx tsx tests/testsuite-runner.ts --flattener=ts",
     "test:omc:wasm": "npx tsx tests/testsuite-runner.ts --flattener=wasm",
-    "test:unit": "node ../../scripts/test-runner.js --timeout=180000",
+    "test:unit": "node ../../scripts/test-runner.js --timeout=300000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

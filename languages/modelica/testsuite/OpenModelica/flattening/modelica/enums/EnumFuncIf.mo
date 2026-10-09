@@ -1,7 +1,6 @@
 // name:     EnumRange
 // keywords: enumeration enum range reduction
 // status:   correct
-// xfail:    true
 //
 // Tests that enum dimensions are used properly when an if-expression containing
 // a function call is expanded.

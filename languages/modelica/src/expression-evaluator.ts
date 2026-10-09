@@ -174,6 +174,20 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     return num;
   }
 
+  // If-then-else expressions: if <cond> then <thenExpr> else <elseExpr>
+  if (trimmed.startsWith("if ") || trimmed.startsWith("if(")) {
+    const ifMatch = trimmed.match(/^if\s+(.+?)\s+then\s+(.+?)(?:\s+else\s+(.+))?$/s);
+    if (ifMatch) {
+      const condVal = evaluateExprText(ifMatch[1].trim(), scope, db);
+      const isTrue = condVal === true || condVal === 1 || (typeof condVal === "number" && condVal !== 0);
+      if (isTrue) {
+        return evaluateExprText(ifMatch[2].trim(), scope, db);
+      } else if (ifMatch[3]) {
+        return evaluateExprText(ifMatch[3].trim(), scope, db);
+      }
+    }
+  }
+
   // Array subscript indexing: arr[index] or arr[start:stop]
   const subscriptMatch = trimmed.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\[([^\]]+)\]$/);
   if (subscriptMatch) {

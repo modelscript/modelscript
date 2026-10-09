@@ -1,7 +1,6 @@
 // name: IfExpression16
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 record R

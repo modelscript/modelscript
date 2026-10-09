@@ -870,6 +870,23 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         if (!isStreamVariable(db, enclosingClass, argNode, $)) {
           db.diagnostic(node, argNode, node);
         }
+      } else {
+        let targetArg: u32 = 0;
+        if ($.function_argument != 0) {
+          for (const arg of db.ast.getDescendants(next, $.function_argument)) {
+            targetArg = arg;
+            break;
+          }
+        }
+        if (targetArg == 0 && $.function_arguments != 0) {
+          for (const args of db.ast.getDescendants(next, $.function_arguments)) {
+            targetArg = args;
+            break;
+          }
+        }
+        if (targetArg != 0) {
+          db.diagnostic(node, targetArg, node);
+        }
       }
     },
   },

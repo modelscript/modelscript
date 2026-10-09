@@ -41,22 +41,24 @@ describe("WASM Linear Algebra & Multi-Variable Newton Solver Engine", () => {
     const outWasm = path.join(tmpDir, "parser.wasm");
 
     const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-    childProcess.execFileSync(
-      ascBin,
-      [
-        ...ascPrefixArgs,
-        parserTs,
-        "-o",
-        outWasm,
-        "--exportRuntime",
-        "--enable",
-        "threads",
-        "--optimize",
-        "--runtime",
-        "stub",
-      ],
-      { stdio: "inherit" },
-    );
+    if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "--optimize",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "inherit" },
+      );
+    }
 
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);

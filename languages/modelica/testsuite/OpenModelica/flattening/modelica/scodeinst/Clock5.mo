@@ -1,7 +1,6 @@
 // name: Clock5
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model Clock5

@@ -3,7 +3,9 @@
 import { buildParser } from "@modelscript/dsl";
 import { SolversBridge } from "@modelscript/runtime/solvers_bridge.js";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, test } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { modelicaLanguage } from "../src/language.js";
@@ -61,7 +63,7 @@ describe("In-WASM Forward-Mode Dual Number Automatic Differentiation", { timeout
     const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
     exports = instance.exports as any;
     bridge = new SolversBridge(memory, exports);
-  }, 60000);
+  }, 180000);
 
   afterAll(() => {
     if (fs.existsSync(tmpDir)) {

@@ -1539,6 +1539,100 @@ export function getShortClassSpecifierNode(cst: any): any {
   return null;
 }
 
+export interface EnumValidationResult {
+  code: number;
+  message: string;
+  startByte: number;
+  endByte: number;
+}
+
+export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): EnumValidationResult | null {
+  if (!cstNode && !sym) return null;
+  const shortSpec = getShortClassSpecifierNode(cstNode);
+  const cstText = cstNode?.text ?? "";
+  const isEnum =
+    shortSpec?.children?.some((c: any) => c.text?.trim() === "enumeration" || c.type === '"enumeration"') ||
+    Boolean(cstText.includes("enumeration(")) ||
+    (sym?.metadata as any)?.classPrefixes === "enumeration";
+  if (!isEnum) return null;
+
+  const literals: string[] = [];
+  const enumListNode = shortSpec
+    ? (shortSpec.children?.find((c: any) => c.type === "enum_list" || c.type === "EnumList") ??
+      (Cst?.ShortClassSpecifier ? Cst.ShortClassSpecifier.enumList(shortSpec) : null))
+    : null;
+
+  if (enumListNode && enumListNode.children) {
+    for (const c of enumListNode.children) {
+      if (c.type === "enumeration_literal" || (Cst?.EnumerationLiteral && Cst.EnumerationLiteral.is(c))) {
+        const idNode = c.children?.find((ch: any) => ch.type === "identifier" || ch.type === "Identifier");
+        const litName = idNode?.text?.trim() ?? c.text?.trim()?.split(/\s+/)[0];
+        if (litName) literals.push(litName);
+      }
+    }
+  } else {
+    const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+    if (enumMatch && enumMatch[1] && enumMatch[1].trim() !== ":") {
+      for (const part of enumMatch[1].split(",")) {
+        const litName = part.trim().split(/\s+/)[0];
+        if (litName) literals.push(litName);
+      }
+    }
+  }
+
+  if (literals.length === 0) return null;
+
+  const reservedAttributes = new Set([
+    "quantity",
+    "unit",
+    "displayUnit",
+    "min",
+    "max",
+    "start",
+    "fixed",
+    "nominal",
+    "stateSelect",
+    "uncertain",
+    "distribution",
+  ]);
+
+  let startByte = sym?.startByte ?? cstNode?.startIndex ?? cstNode?.startByte;
+  let endByte = sym?.endByte ?? cstNode?.endIndex ?? cstNode?.endByte;
+  if (typeof startByte === "number" && cstText) {
+    const leadingWs = cstText.length - cstText.trimStart().length;
+    startByte += leadingWs;
+  }
+
+  // 1. Reserved attribute names
+  for (const lit of literals) {
+    if (reservedAttributes.has(lit)) {
+      return {
+        code: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.code,
+        message: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.message(lit),
+        startByte,
+        endByte,
+      };
+    }
+  }
+
+  // 2. Duplicate literal names
+  const seen = new Set<string>();
+  for (const lit of literals) {
+    if (seen.has(lit)) {
+      const listStr = literals.join(",");
+      return {
+        code: ModelicaErrorCode.ENUM_DUPLICATE_LITERAL.code,
+        message: ModelicaErrorCode.ENUM_DUPLICATE_LITERAL.message(lit, listStr),
+        startByte,
+        endByte,
+      };
+    }
+    seen.add(lit);
+  }
+
+  return null;
+}
+
 function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
   if ((self.metadata as any)?.redeclare) return true;
   let current = db.cstNode(self.id) as any;
@@ -1599,6 +1693,20 @@ export const classDefinitionQueries: Record<string, any> = {
     if (!cst) return null;
     const diags = runModelicaCfaAnalysis(db, self, cst);
     return diags && diags.length > 0 ? diags : null;
+  },
+
+  /** M4083, M4084: Validate enumeration literals for duplicates and reserved attribute names. */
+  lint__validateEnumeration: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    const res = validateEnumeration(cst, self);
+    if (!res) return null;
+    return [
+      error(res.message, {
+        startByte: res.startByte,
+        endByte: res.endByte,
+        code: res.code,
+      }),
+    ];
   },
 
   /** M4062: Invalid external object containing invalid elements. */
@@ -4403,6 +4511,61 @@ export const connectEquationQueries: Record<string, any> = {
       );
     }
     if (diags.length > 0 || !lhsRes.resolved || !rhsRes.resolved) return diags;
+
+    const checkSubscripts = (refText: string, node: any) => {
+      const rawSegments = refText.split(".");
+      for (const seg of rawSegments) {
+        const subMatch = seg.match(/\[(.*)\]$/);
+        if (subMatch) {
+          const subContent = subMatch[1];
+          const subExprs = subContent.split(",").map((s) => s.trim());
+          for (const subExpr of subExprs) {
+            const idMatches = subExpr.match(/\b[a-zA-Z_]\w*\b/g);
+            if (idMatches) {
+              for (const idm of idMatches) {
+                if (idm === "true" || idm === "false" || idm === "end") continue;
+                const resolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", parentClassId);
+                const sym = resolver ? resolver(idm) : null;
+                if (sym) {
+                  const vari = db.query<string | null>("variability", sym.id);
+                  if (vari !== "parameter" && vari !== "constant") {
+                    return {
+                      invalid: true,
+                      subText: subExpr,
+                      refText,
+                      range: getRange(node),
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    const lhsSubErr = checkSubscripts(lhsText, lhsNode);
+    if (lhsSubErr) {
+      diags.push(
+        error(ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.message(lhsText, lhsSubErr.subText), {
+          ...getRange(cst),
+          code: ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.code,
+        }),
+      );
+      return diags;
+    }
+    const rhsSubErr = checkSubscripts(rhsText, rhsNode);
+    if (rhsSubErr) {
+      diags.push(
+        error(ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.message(rhsText, rhsSubErr.subText), {
+          ...getRange(cst),
+          code: ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.code,
+        }),
+      );
+      return diags;
+    }
+    if (diags.length > 0) return diags;
 
     const isOldInst = Boolean(
       cst?.tree?.rootNode?.text?.includes("-d=-newInst") ||

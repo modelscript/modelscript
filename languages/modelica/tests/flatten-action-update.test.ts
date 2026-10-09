@@ -60,7 +60,8 @@ end BouncingBall;`;
 
     // Update document
     const newMo = `model BouncingBall "A bouncing ball"
-  Integer x.x;
+  model A Integer x; end A;
+  A x;
 end BouncingBall;`;
     const newTree = parser.parse(newMo);
     wsIndex.indexDocument(uri, () => newTree.rootNode);

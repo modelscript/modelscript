@@ -1,7 +1,6 @@
 // name: ActualStreamNonCref1
 // keywords: stream actualStream connector
 // status: incorrect
-// xfail:    true
 //
 
 model ActualStreamNonCref1

@@ -179,9 +179,9 @@ function parseAdditiveTerms(expr: string): SignedTerm[] {
     else if (ch === ")" || ch === "]" || ch === "}") depth--;
 
     if (depth === 0 && (ch === "+" || ch === "-") && i > 0 && curTerm.trim().length > 0) {
-      const termStr = cleanTerm(curTerm);
-      if (termStr) {
-        terms.push({ sign: curSign, expr: canonicalizeExpression(termStr) });
+      const termInfo = cleanTerm(curTerm, curSign);
+      if (termInfo.expr) {
+        terms.push({ sign: termInfo.sign, expr: canonicalizeExpression(termInfo.expr) });
       }
       curSign = ch === "-" ? -1 : 1;
       curTerm = "";
@@ -196,9 +196,9 @@ function parseAdditiveTerms(expr: string): SignedTerm[] {
     }
   }
 
-  const lastTermStr = cleanTerm(curTerm);
-  if (lastTermStr) {
-    terms.push({ sign: curSign, expr: canonicalizeExpression(lastTermStr) });
+  const lastTermInfo = cleanTerm(curTerm, curSign);
+  if (lastTermInfo.expr) {
+    terms.push({ sign: lastTermInfo.sign, expr: canonicalizeExpression(lastTermInfo.expr) });
   }
 
   if (outerNeg) {
@@ -210,15 +210,37 @@ function parseAdditiveTerms(expr: string): SignedTerm[] {
   return terms;
 }
 
-function cleanTerm(term: string): string {
+function cleanTerm(term: string, currentSign: 1 | -1): { sign: 1 | -1; expr: string } {
   let t = term.trim();
-  // If term is (-x), strip parens and negate
-  if (t.startsWith("(-") && t.endsWith(")")) {
-    t = t.slice(2, -1).trim();
-  } else if (t.startsWith("(") && t.endsWith(")")) {
-    t = t.slice(1, -1).trim();
+  let sign = currentSign;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    t = t.trim();
+    if (t.startsWith("(") && t.endsWith(")")) {
+      let depth = 0;
+      let ok = true;
+      for (let i = 0; i < t.length - 1; i++) {
+        if (t[i] === "(") depth++;
+        else if (t[i] === ")") {
+          depth--;
+          if (depth === 0) {
+            ok = false;
+            break;
+          }
+        }
+      }
+      if (ok) {
+        t = t.slice(1, -1).trim();
+        changed = true;
+        if (t.startsWith("-")) {
+          sign = (sign * -1) as 1 | -1;
+          t = t.slice(1).trim();
+        }
+      }
+    }
   }
-  return t;
+  return { sign, expr: t };
 }
 
 /**
@@ -310,11 +332,92 @@ export function parseFlatModelica(text: string): ParsedClass[] {
   // Sort each section for order-independent comparison
   for (const c of classes) {
     c.variables.sort();
+    c.equations = canonicalizeEqualityCliques(c.equations);
     c.equations.sort();
+    c.initialEquations = canonicalizeEqualityCliques(c.initialEquations);
     c.initialEquations.sort();
   }
 
   return classes;
+}
+
+function canonicalizeEqualityCliques(equations: string[]): string[] {
+  const varEqRegex = /^([a-zA-Z_][a-zA-Z0-9_.[\]]*)\s*=\s*([a-zA-Z_][a-zA-Z0-9_.[\]]*);?$/;
+  interface Edge {
+    u: string;
+    v: string;
+    eqIdx: number;
+  }
+  const edges: Edge[] = [];
+  const edgeIndices = new Set<number>();
+
+  for (let i = 0; i < equations.length; i++) {
+    const eq = equations[i]!.trim();
+    const m = eq.match(varEqRegex);
+    if (m && m[1] && m[2]) {
+      const u = m[1].trim();
+      const v = m[2].trim();
+      if (u !== "true" && u !== "false" && v !== "true" && v !== "false" && isNaN(Number(u)) && isNaN(Number(v))) {
+        edges.push({ u, v, eqIdx: i });
+        edgeIndices.add(i);
+      }
+    }
+  }
+
+  if (edges.length === 0) return equations;
+
+  const adj = new Map<string, { neighbor: string; eqIdx: number }[]>();
+  for (const e of edges) {
+    if (!adj.has(e.u)) adj.set(e.u, []);
+    if (!adj.has(e.v)) adj.set(e.v, []);
+    adj.get(e.u)!.push({ neighbor: e.v, eqIdx: e.eqIdx });
+    adj.get(e.v)!.push({ neighbor: e.u, eqIdx: e.eqIdx });
+  }
+
+  const visited = new Set<string>();
+  const replacedEqIndices = new Set<number>();
+  const newEquations: string[] = [];
+
+  for (const node of adj.keys()) {
+    if (visited.has(node)) continue;
+    const compNodes: string[] = [];
+    const compEqIndices = new Set<number>();
+    const queue = [node];
+    visited.add(node);
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      compNodes.push(curr);
+      for (const edge of adj.get(curr) || []) {
+        compEqIndices.add(edge.eqIdx);
+        if (!visited.has(edge.neighbor)) {
+          visited.add(edge.neighbor);
+          queue.push(edge.neighbor);
+        }
+      }
+    }
+
+    if (compNodes.length > 1 && compEqIndices.size === compNodes.length - 1) {
+      for (const idx of compEqIndices) {
+        replacedEqIndices.add(idx);
+      }
+      compNodes.sort();
+      const rep = compNodes[0]!;
+      for (let i = 1; i < compNodes.length; i++) {
+        const other = compNodes[i]!;
+        newEquations.push(canonicalizeEquation(`${rep} = ${other};`));
+      }
+    }
+  }
+
+  const result: string[] = [];
+  for (let i = 0; i < equations.length; i++) {
+    if (!replacedEqIndices.has(i)) {
+      result.push(equations[i]!);
+    }
+  }
+  result.push(...newEquations);
+  return result;
 }
 
 /**

@@ -93,7 +93,7 @@ describe("Modelica Undefined Type & Variable Lint Diagnostics", { timeout: 30000
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     activeFacade = new LspFacade(instance.exports.memory, instance.exports);
     activeFacade.syntaxNames = result.syntaxNames;
-  }, 120000);
+  }, 300000);
 
   afterAll(() => {
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -1,7 +1,6 @@
 // name: ActualStream
 // keywords: stream actualStream connector
 // status: correct
-// xfail:    true
 //
 // Checks that actualStream is evaluated correctly.
 //

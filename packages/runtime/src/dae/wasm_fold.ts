@@ -2783,12 +2783,32 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       case ExprKind.Call: {
         const funcNameId = dae.getExprData1(exprId);
         const argCount = dae.getExprRight(exprId);
+        const funcName = dae.interner.resolve(funcNameId) || "";
         const args: number[] = [];
         for (let i = 0; i < argCount; i++) {
           const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
           args.push(cloneExpr(argExprId, indexSuffix, currentShape, true));
         }
-        return out.addCallExpr(dae.interner.resolve(funcNameId) || "", args);
+        if (dae.extensionMetadata?.scalarizeMinMax && (funcName === "min" || funcName === "max") && args.length === 1) {
+          const arg0 = args[0]!;
+          if (out.getExprKind(arg0) === ExprKind.ArrayCtor) {
+            const count = out.getExprData1(arg0);
+            if (count >= 2) {
+              const elems: number[] = [];
+              for (let k = 0; k < count; k++) {
+                elems.push(k === 0 ? out.getExprLeft(arg0) : out.getExprLeft(arg0 + k));
+              }
+              let cur = elems[elems.length - 1]!;
+              for (let k = elems.length - 2; k >= 0; k--) {
+                cur = out.addCallExpr(funcName, [elems[k]!, cur]);
+              }
+              return cur;
+            } else if (count === 1) {
+              return out.getExprLeft(arg0);
+            }
+          }
+        }
+        return out.addCallExpr(funcName, args);
       }
       case ExprKind.Tuple: {
         const count = dae.getExprData1(exprId);
