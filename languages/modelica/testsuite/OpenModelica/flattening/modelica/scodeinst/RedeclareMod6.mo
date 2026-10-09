@@ -1,7 +1,6 @@
 // name: RedeclareMod6
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 record BaseCable

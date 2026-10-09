@@ -239,7 +239,58 @@ export class ModelicaPortBalancer {
         const isBus = isExpBusVar(fromStr) || isExpBusVar(toStr);
         let isPlugCompatible = true;
 
-        if (fromDesc && fromDesc.length > 0) {
+        const getBase = (s: string) => s.replace(/\[[^\]]*\]/g, "");
+        const fromHasSub = fromStr.includes("[");
+        const toHasSub = toStr.includes("[");
+
+        let fDesc = fromDesc;
+        let tDesc = toDesc;
+        if ((!fDesc || fDesc.length === 0 || !tDesc || tDesc.length === 0) && (fromHasSub || toHasSub)) {
+          const fromBase = getBase(fromStr);
+          const toBase = getBase(toStr);
+          if (!fDesc || fDesc.length === 0) {
+            fDesc = prefixMap.get(fromBase);
+            if (!fDesc || fDesc.length === 0) {
+              const pfx = fromBase + ".";
+              fDesc = [];
+              for (let v = 0; v < dae.varCount; v++) {
+                if (dae.isVarRemoved(v)) continue;
+                if (dae.getVarName(v).startsWith(pfx)) fDesc.push(v);
+              }
+            }
+          }
+          if (!tDesc || tDesc.length === 0) {
+            tDesc = prefixMap.get(toBase);
+            if (!tDesc || tDesc.length === 0) {
+              const pfx = toBase + ".";
+              tDesc = [];
+              for (let v = 0; v < dae.varCount; v++) {
+                if (dae.isVarRemoved(v)) continue;
+                if (dae.getVarName(v).startsWith(pfx)) tDesc.push(v);
+              }
+            }
+          }
+
+          if (fDesc && fDesc.length > 0 && tDesc && tDesc.length === fDesc.length) {
+            for (const idxA of fDesc) {
+              const suffix = dae.getVarName(idxA).substring(fromBase.length);
+              const targetName = toBase + suffix;
+              const idxB = dae.getVarIdxByName(targetName);
+              if (
+                idxB === -1 ||
+                dae.isVarRemoved(idxB) ||
+                dae.isVarFlow(idxA) !== dae.isVarFlow(idxB) ||
+                dae.getVarFlowPrefix(idxA) !== dae.getVarFlowPrefix(idxB) ||
+                dae.getVarType(idxA) !== dae.getVarType(idxB)
+              ) {
+                isPlugCompatible = false;
+                break;
+              }
+            }
+          } else if ((fDesc && fDesc.length > 0) || (tDesc && tDesc.length > 0)) {
+            isPlugCompatible = false;
+          }
+        } else if (fromDesc && fromDesc.length > 0) {
           if (!toDesc || toDesc.length !== fromDesc.length || hasArrayDesc(toStr)) {
             isPlugCompatible = false;
           } else {
@@ -539,7 +590,7 @@ export class ModelicaPortBalancer {
     // 5. Emit flow-balance and potential equality equations
     const potentialEqs: { kind: EqKind; lhs: number; rhs: number; str: string; eqIdx?: number; connOrder?: number }[] =
       [];
-    const flowSumEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
+    const flowSumEqs: { kind: EqKind; lhs: number; rhs: number; str: string; eqIdx?: number }[] = [];
     const zeroFlows: { kind: EqKind; lhs: number; rhs: number; varName: string }[] = [];
     const compBusFlowEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
     const connectedBusTerminals = new Set<string>();
@@ -968,7 +1019,7 @@ export class ModelicaPortBalancer {
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
             }
           }
-        } else if (options?.omcCompatibility && options?.isOldFrontend && !hasOutside) {
+        } else if (options?.omcCompatibility && !hasOutside) {
           // Pure inside connections: targets in connect order, then source
           const targets: number[] = [];
           const source = firstVarIdx;
@@ -984,7 +1035,7 @@ export class ModelicaPortBalancer {
               targets.push(vIdx);
             }
           }
-          const ordered = [source, ...targets];
+          const ordered = [...targets, source];
           sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[0]!));
           for (let i = 1; i < ordered.length; i++) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[i]!));
@@ -1003,7 +1054,14 @@ export class ModelicaPortBalancer {
         const flowStr = isWorldGroup
           ? dae.getVarName(group.find((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)))!)
           : dae.getVarName(firstVarIdx);
-        flowSumEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: flowStr });
+        let flowEqIdx = 99999;
+        for (const vIdx of group) {
+          const rank = varConnectEqIdx.get(vIdx);
+          if (rank !== undefined && rank < flowEqIdx) {
+            flowEqIdx = rank;
+          }
+        }
+        flowSumEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: flowStr, eqIdx: flowEqIdx });
       }
     }
 
@@ -1427,7 +1485,13 @@ export class ModelicaPortBalancer {
           }),
         );
         flowSumEqs.forEach((eq) =>
-          allEqs.push({ kind: eq.kind, lhs: eq.lhs, rhs: eq.rhs, varIdx: dae.getVarIdxByName(eq.str), eqIdx: 99999 }),
+          allEqs.push({
+            kind: eq.kind,
+            lhs: eq.lhs,
+            rhs: eq.rhs,
+            varIdx: dae.getVarIdxByName(eq.str),
+            eqIdx: (eq as any).eqIdx ?? 99999,
+          }),
         );
         zeroFlows.forEach((eq) =>
           allEqs.push({
@@ -1454,18 +1518,22 @@ export class ModelicaPortBalancer {
         } else {
           allEqs.sort((a, b) => a.varIdx - b.varIdx);
         }
-        allEqs.forEach((eq) => {
+        allEqs.forEach((eq, idx) => {
           const lhsName =
             dae.getExprKind(eq.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.lhs)) : "";
           const rhsName =
             dae.getExprKind(eq.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.rhs)) : "";
+          let newEqIdx = -1;
           if (
             ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
             (lhsName.includes(".bout.") && rhsName.includes(".bin."))
           ) {
-            dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
+            newEqIdx = dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
           } else {
-            dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+            newEqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+          }
+          if (newEqIdx >= 0 && eq.eqIdx < 99999) {
+            dae.setEqOrder(newEqIdx, eq.eqIdx + (idx + 1) * 0.0001);
           }
         });
       }

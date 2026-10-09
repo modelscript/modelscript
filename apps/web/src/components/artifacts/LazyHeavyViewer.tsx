@@ -12,7 +12,19 @@ interface LazyHeavyViewerProps {
   thumbnailUrlLight?: string;
   thumbnailUrlDark?: string;
   title?: string;
-  placeholderType?: "fea" | "cfd" | "cad" | "pdf" | "generic";
+  placeholderType?:
+    | "fea"
+    | "cfd"
+    | "cad"
+    | "pdf"
+    | "gcode"
+    | "fmu"
+    | "sysml"
+    | "dataset"
+    | "plot"
+    | "webgpu"
+    | "generic"
+    | string;
   children: React.ReactNode;
 }
 
@@ -74,12 +86,53 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
         style={{
           width: "100%",
           maxWidth: "100%",
-          height: "450px",
+          height: "420px",
           position: "relative",
           overflow: "hidden",
           boxSizing: "border-box",
+          borderRadius: "8px",
         }}
       >
+        {/* Floating Deactivate / Sleep Button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsActive(false);
+          }}
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            background: "rgba(15, 23, 42, 0.8)",
+            backdropFilter: "blur(10px)",
+            color: "#e2e8f0",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            borderRadius: "16px",
+            padding: "3px 10px",
+            fontSize: "11px",
+            fontWeight: 600,
+            fontFamily: "var(--font-mono, monospace)",
+            cursor: "pointer",
+            boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+            transition: "all 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(239, 68, 68, 0.85)";
+            e.currentTarget.style.color = "#ffffff";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(15, 23, 42, 0.8)";
+            e.currentTarget.style.color = "#e2e8f0";
+          }}
+          title="Release 3D canvas and return to preview thumbnail"
+        >
+          ✕ Sleep 3D
+        </button>
         {children}
       </div>
     );
@@ -92,11 +145,11 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
       style={{
         width: "100%",
         maxWidth: "100%",
-        aspectRatio: "16 / 9",
-        maxHeight: "450px",
+        height: "420px",
         position: "relative",
         overflow: "hidden",
         boxSizing: "border-box",
+        borderRadius: "8px",
       }}
     >
       {currentThumbnailUrl ? (

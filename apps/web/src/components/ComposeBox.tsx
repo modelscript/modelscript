@@ -9,6 +9,7 @@ import {
   GlobeIcon,
   ImageIcon,
   MentionIcon,
+  PackageIcon,
   PersonIcon,
   PulseIcon,
   ServerIcon,
@@ -19,7 +20,14 @@ import {
 import { Heading, IconButton, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
-import { createArtifactView, createPost, getUserFollowers, uploadStorageFile } from "../api";
+import {
+  createArtifactView,
+  createPost,
+  getTrending,
+  getUserFollowers,
+  resolveFederatedActor,
+  uploadStorageFile,
+} from "../api";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
@@ -28,6 +36,7 @@ import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import Box from "./Box";
 import HpcArtifactPickerModal from "./HpcArtifactPickerModal";
 import MorselComposeModal from "./MorselComposeModal";
+import PackageRepoPickerModal from "./PackageRepoPickerModal";
 import SimpleEmojiPicker from "./SimpleEmojiPicker";
 
 const TweetButton = styled.button`
@@ -208,6 +217,7 @@ export default function ComposeBox({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [showMorselModal, setShowMorselModal] = useState(false);
+  const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
   const hasHpc = useFeatureFlag("cae_cloud_solver");
   const hasExperimental = useFeatureFlag("experimental_viewers");
   const [replyVisibility, setReplyVisibility] = useState<"everyone" | "following" | "mentioned">("everyone");
@@ -227,13 +237,18 @@ export default function ComposeBox({
 
   const allMentionedUsers = useMemo(() => {
     if (!replyToPost) return [];
-    const matches = (replyToPost.content?.match(/@\w+/g) || []).map((m: string) => m.slice(1));
+    const matches = (replyToPost.content?.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g) || []).map((m: string) =>
+      m.slice(1),
+    );
     const unique = Array.from(new Set([replyToPost.username, ...matches])).filter((u) => u !== user?.username);
     return unique;
   }, [replyToPost, user?.username]);
 
   const [followers, setFollowers] = useState<any[]>([]);
   const [mentionQuery, setMentionQuery] = useState<{ query: string; index: number } | null>(null);
+  const [hashtagQuery, setHashtagQuery] = useState<{ query: string; index: number } | null>(null);
+  const [trendingTopics, setTrendingTopics] = useState<any[]>([]);
+  const [remoteActorSuggestions, setRemoteActorSuggestions] = useState<Map<string, any>>(new Map());
 
   useEffect(() => {
     if (user?.username && token) {
@@ -243,11 +258,35 @@ export default function ComposeBox({
         })
         .catch(console.error);
     }
+    getTrending(20)
+      .then((d) => {
+        if (d.topics) setTrendingTopics(d.topics);
+      })
+      .catch(console.error);
   }, [user, token]);
+
+  useEffect(() => {
+    if (!mentionQuery || !mentionQuery.query.includes("@")) return;
+    const handle = mentionQuery.query;
+    const parts = handle.split("@");
+    if (parts.length < 2 || !parts[0] || parts[1].length < 2) return;
+
+    const timer = setTimeout(() => {
+      resolveFederatedActor(handle)
+        .then((res) => {
+          if (res?.user) {
+            setRemoteActorSuggestions((prev) => new Map(prev).set(res.user.username.toLowerCase(), res.user));
+          }
+        })
+        .catch(() => {});
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [mentionQuery]);
 
   const mentionSuggestions = useMemo(() => {
     if (!mentionQuery) return [];
-    const matches = (content.match(/@\w+/g) || []).map((m: string) => m.slice(1));
+    const matches = (content.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g) || []).map((m: string) => m.slice(1));
     const allUsers = new Map<string, any>();
 
     followers.forEach((f) => allUsers.set(f.username.toLowerCase(), f));
@@ -257,31 +296,50 @@ export default function ComposeBox({
     matches.forEach((u) => {
       if (!allUsers.has(u.toLowerCase())) allUsers.set(u.toLowerCase(), { username: u });
     });
+    remoteActorSuggestions.forEach((u, k) => {
+      allUsers.set(k, u);
+    });
 
     const q = mentionQuery.query.toLowerCase();
     return Array.from(allUsers.values())
       .filter((u) => u.username.toLowerCase().includes(q) || u.display_name?.toLowerCase().includes(q))
       .slice(0, 15);
-  }, [mentionQuery, followers, allMentionedUsers, content]);
+  }, [mentionQuery, followers, allMentionedUsers, content, remoteActorSuggestions]);
 
-  const updateMentionState = (val: string, cursor: number) => {
+  const hashtagSuggestions = useMemo(() => {
+    if (!hashtagQuery) return [];
+    const q = hashtagQuery.query.toLowerCase();
+    return trendingTopics.filter((t) => (t.displayName || t.concept || "").toLowerCase().includes(q)).slice(0, 10);
+  }, [hashtagQuery, trendingTopics]);
+
+  const updateTokenState = (val: string, cursor: number) => {
     const textBeforeCursor = val.slice(0, cursor);
-    const match = textBeforeCursor.match(/(?:^|\s)@(\w*)$/);
-    if (match) {
+    const mentionMatch = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]*)?)$/);
+    if (mentionMatch) {
       const atIndex = textBeforeCursor.lastIndexOf("@");
-      setMentionQuery({ query: match[1], index: atIndex });
+      setMentionQuery({ query: mentionMatch[1], index: atIndex });
+      setHashtagQuery(null);
+      return;
     } else {
       setMentionQuery(null);
+    }
+
+    const hashMatch = textBeforeCursor.match(/(?:^|\s)#([a-zA-Z0-9_-]*)$/);
+    if (hashMatch) {
+      const hashIndex = textBeforeCursor.lastIndexOf("#");
+      setHashtagQuery({ query: hashMatch[1], index: hashIndex });
+    } else {
+      setHashtagQuery(null);
     }
   };
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
-    updateMentionState(e.target.value, e.target.selectionStart);
+    updateTokenState(e.target.value, e.target.selectionStart);
   };
 
   const handleInteraction = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
-    updateMentionState(e.currentTarget.value, e.currentTarget.selectionStart || 0);
+    updateTokenState(e.currentTarget.value, e.currentTarget.selectionStart || 0);
   };
 
   const insertMention = (username: string) => {
@@ -295,6 +353,22 @@ export default function ComposeBox({
       if (textareaRef.current) {
         textareaRef.current.focus();
         const newCursor = before.length + username.length + 2;
+        textareaRef.current.setSelectionRange(newCursor, newCursor);
+      }
+    }, 0);
+  };
+
+  const insertHashtag = (tag: string) => {
+    if (!hashtagQuery) return;
+    const before = content.slice(0, hashtagQuery.index);
+    const after = content.slice(textareaRef.current?.selectionStart || content.length);
+    const newContent = `${before}#${tag} ${after}`;
+    setContent(newContent);
+    setHashtagQuery(null);
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const newCursor = before.length + tag.length + 2;
         textareaRef.current.setSelectionRange(newCursor, newCursor);
       }
     }, 0);
@@ -612,9 +686,13 @@ export default function ComposeBox({
           <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
             <OverlayWrapper>
               <Backdrop>
-                {content.split(/(@\w+)/g).map((part, i) =>
+                {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
                   part.startsWith("@") ? (
                     <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
+                      {part}
+                    </span>
+                  ) : part.startsWith("#") ? (
+                    <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
                       {part}
                     </span>
                   ) : (
@@ -639,7 +717,12 @@ export default function ComposeBox({
                     handleSubmit();
                   }
                 }}
-                onBlur={() => setMentionQuery(null)}
+                onBlur={() => {
+                  setTimeout(() => {
+                    setMentionQuery(null);
+                    setHashtagQuery(null);
+                  }, 150);
+                }}
               />
             </OverlayWrapper>
             {mentionQuery && mentionSuggestions.length > 0 && (
@@ -689,6 +772,59 @@ export default function ComposeBox({
                     </Box>
                   </Box>
                 ))}
+              </Box>
+            )}
+            {hashtagQuery && hashtagSuggestions.length > 0 && (
+              <Box
+                position="absolute"
+                bg="var(--surface-overlay)"
+                border="1px solid var(--color-border)"
+                borderRadius="12px"
+                boxShadow="0 8px 24px rgba(0,0,0,0.5)"
+                style={{ backdropFilter: "blur(12px)" }}
+                zIndex={100}
+                top="100%"
+                left={0}
+                mt={2}
+                maxHeight="300px"
+                overflow="auto"
+                width="280px"
+              >
+                <Box px={3} py={2} borderBottom="1px solid var(--color-border)">
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--color-text-muted)" }}>
+                    TRENDING TOPICS
+                  </span>
+                </Box>
+                {hashtagSuggestions.map((t) => {
+                  const tag = t.displayName || t.concept;
+                  return (
+                    <Box
+                      key={t.concept}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      p={2}
+                      px={3}
+                      sx={{ cursor: "pointer", "&:hover": { bg: "rgba(255, 255, 255, 0.06)" } }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertHashtag(tag);
+                      }}
+                    >
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <span style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: "bold" }}>#</span>
+                        <span style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-fg-default)" }}>
+                          {tag}
+                        </span>
+                      </Box>
+                      {t.score !== undefined && (
+                        <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                          {Math.round(t.score)} posts
+                        </span>
+                      )}
+                    </Box>
+                  );
+                })}
               </Box>
             )}
             {artifactId !== null && (
@@ -1000,6 +1136,14 @@ export default function ComposeBox({
                     <PulseIcon size={20} />
                   </ActionIconButton>
                   <ActionIconButton
+                    onClick={() => setShowPackageRepoPicker(true)}
+                    disabled={artifactId !== null}
+                    aria-label="Attach Package or Repository"
+                    title="Attach Package or Repository"
+                  >
+                    <PackageIcon size={20} />
+                  </ActionIconButton>
+                  <ActionIconButton
                     onClick={() => createDummyArtifact("modelica-code")}
                     disabled={artifactId !== null}
                     aria-label="Add Code"
@@ -1120,6 +1264,17 @@ export default function ComposeBox({
             setArtifactId(data.id);
           } catch (err) {
             console.error("Failed to attach morsel artifact:", err);
+          }
+        }}
+      />
+
+      <PackageRepoPickerModal
+        isOpen={showPackageRepoPicker}
+        onClose={() => setShowPackageRepoPicker(false)}
+        onSelect={(res) => {
+          setArtifactId(res.artifactId);
+          if (!content.trim() && res.suggestedCaption) {
+            setContent(res.suggestedCaption);
           }
         }}
       />

@@ -6,6 +6,7 @@ import {
   ArrowLeftIcon,
   CheckCircleIcon,
   ChevronRightIcon,
+  CodeIcon,
   CpuIcon,
   CreditCardIcon,
   DownloadIcon,
@@ -18,11 +19,13 @@ import {
   PaintbrushIcon,
   PersonIcon,
   PlusIcon,
+  RepoIcon,
   ServerIcon,
   ShieldCheckIcon,
   ShieldLockIcon,
   SyncIcon,
   TrashIcon,
+  UnmuteIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -30,11 +33,13 @@ import styled from "styled-components";
 import {
   addPublicKey,
   createBot,
+  DEFAULT_NOTIFICATION_PREFERENCES,
   deleteAccount,
   deleteBot,
   downloadUserDataArchiveJob,
   exportUserDataArchive,
   getBots,
+  getConnectedAccounts,
   getNotificationSettings,
   getPublicKeys,
   getUserBillingSummary,
@@ -43,18 +48,23 @@ import {
   requestUserDataArchiveJob,
   revokePublicKey,
   topUpCredits,
+  unlinkConnectedAccount,
   updateAccount,
   updateNotificationSettings,
   updatePassword,
   updateUserTopic,
   type ArchiveJobInfo,
+  type ConnectedAccount,
+  type NotificationPreferences,
   type PublicKeyInfo,
   type UserBillingSummary,
 } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
 import { CircleIconButton } from "../components/SharedStyles";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useModelingPreferences } from "../ModelingPreferencesContext";
 import { useTheme } from "../theme";
 import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../util/keystore";
 import { usePageTitle } from "../util/title";
@@ -422,7 +432,8 @@ type TabType =
   | "privacy"
   | "dataArchive"
   | "deleteAccount"
-  | "notificationFilters";
+  | "notificationFilters"
+  | "modelingPreferences";
 
 const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -442,6 +453,27 @@ const SettingsPage: React.FC = () => {
   const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
   const [localKeyIds, setLocalKeyIds] = useState<Set<string>>(new Set());
   const [bots, setBots] = useState<any[]>([]);
+
+  // Modeling Preferences Context
+  const {
+    preferences: modelingPrefs,
+    updatePreferences: updateModelingPrefs,
+    resetPreferences: resetModelingPrefs,
+  } = useModelingPreferences();
+
+  // Granular Notification Preferences state
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [notificationSuccess, setNotificationSuccess] = useState<string | null>(null);
+
+  // Connected Accounts state
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [isLoadingConnected, setIsLoadingConnected] = useState(false);
+  const [connectedSuccess, setConnectedSuccess] = useState<string | null>(null);
+  const [connectedError, setConnectedError] = useState<string | null>(null);
+
+  // Keyboard Shortcuts modal state
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
 
   // Billing states
   const [billingSummary, setBillingSummary] = useState<UserBillingSummary | null>(null);
@@ -492,16 +524,60 @@ const SettingsPage: React.FC = () => {
 
   const [qualityFilter, setQualityFilter] = useState(true);
 
+  // Global '?' key listener for Keyboard Shortcuts cheatsheet
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        e.key === "?" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        target.tagName !== "INPUT" &&
+        target.tagName !== "TEXTAREA" &&
+        !target.isContentEditable
+      ) {
+        e.preventDefault();
+        setIsShortcutsModalOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
   // Fetch notification settings when opening that tab
   React.useEffect(() => {
     if (activeTab === "notificationFilters") {
       getNotificationSettings()
         .then((data) => {
-          if (data && typeof data.qualityFilter === "boolean") {
-            setQualityFilter(data.qualityFilter);
+          if (data) {
+            setNotificationPrefs((prev) => ({
+              ...prev,
+              ...data,
+              channels: { ...prev.channels, ...(data.channels || {}) },
+              events: {
+                social: { ...prev.events?.social, ...(data.events?.social || {}) },
+                engineering: { ...prev.events?.engineering, ...(data.events?.engineering || {}) },
+                computeHpc: { ...prev.events?.computeHpc, ...(data.events?.computeHpc || {}) },
+              },
+            }));
+            if (typeof data.qualityFilter === "boolean") {
+              setQualityFilter(data.qualityFilter);
+            }
           }
         })
         .catch(() => {});
+    }
+    if (activeTab === "connectedAccounts") {
+      setIsLoadingConnected(true);
+      getConnectedAccounts()
+        .then((res) => {
+          if (res && Array.isArray(res.providers)) {
+            setConnectedAccounts(res.providers);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsLoadingConnected(false));
     }
     if (activeTab === "contentPreferences") {
       getUserTopics()
@@ -776,6 +852,7 @@ const SettingsPage: React.FC = () => {
           activeTab !== "notifications" &&
           activeTab !== "display" &&
           activeTab !== "contentPreferences" &&
+          activeTab !== "modelingPreferences" &&
           activeTab !== "other"
         }
       >
@@ -836,8 +913,8 @@ const SettingsPage: React.FC = () => {
               id: "notifications",
               label: "Notifications",
               tab: "notifications" as TabType,
-              keywords: "notifications alerts email push filters mentions",
-              isActive: activeTab === "notifications",
+              keywords: "notifications alerts email push filters mentions frequency digest",
+              isActive: activeTab === "notifications" || activeTab === "notificationFilters",
             },
             {
               id: "contentPreferences",
@@ -845,6 +922,13 @@ const SettingsPage: React.FC = () => {
               tab: "contentPreferences" as TabType,
               keywords: "content preferences topics feed interests recommendations",
               isActive: activeTab === "contentPreferences",
+            },
+            {
+              id: "modelingPreferences",
+              label: "Modeling & Simulation",
+              tab: "modelingPreferences" as TabType,
+              keywords: "modeling simulation monaco editor compiler flattener solver cvode wasm tolerance",
+              isActive: activeTab === "modelingPreferences",
             },
             {
               id: "display",
@@ -867,10 +951,10 @@ const SettingsPage: React.FC = () => {
               : []),
             {
               id: "resources",
-              label: "Additional resources",
+              label: "Help & Resources",
               tab: "other" as TabType,
-              keywords: "resources help support docs terms",
-              isActive: false,
+              keywords: "resources help support docs terms shortcuts keyboard guide",
+              isActive: activeTab === "other",
             },
           ];
 
@@ -907,6 +991,7 @@ const SettingsPage: React.FC = () => {
           activeTab === "notifications" ||
           activeTab === "display" ||
           activeTab === "contentPreferences" ||
+          activeTab === "modelingPreferences" ||
           activeTab === "other" ||
           activeTab === "notificationFilters"
         }
@@ -1218,29 +1303,147 @@ const SettingsPage: React.FC = () => {
             </Header>
             <Box p={4}>
               <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4", display: "block", marginBottom: "24px" }}>
-                Connect your external accounts to ModelScript to enable features like "Verified on X".
+                Manage external identities connected to your ModelScript profile for Single Sign-On (SSO) and verified
+                developer badges.
               </DetailSubtitle>
 
-              <Box
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                p={3}
-                style={{ border: "1px solid var(--color-border-default)", borderRadius: "8px" }}
-              >
-                <Box>
-                  <FormLabel style={{ display: "block" }}>X (Twitter)</FormLabel>
-                  <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
-                    Connect to get the "Verified on X" badge on your profile.
-                  </DetailSubtitle>
+              {connectedSuccess && (
+                <Box mb={3} p={3} bg="var(--color-success-subtle)" color="var(--color-success-fg)" borderRadius="6px">
+                  <Text fontSize="14px">{connectedSuccess}</Text>
                 </Box>
-                <SaveButton
-                  onClick={() =>
-                    (window.location.href = `/api/v1/auth/link/twitter?token=${token || localStorage.getItem("modelscript-auth-token") || ""}`)
-                  }
-                >
-                  Connect Account
-                </SaveButton>
+              )}
+              {connectedError && (
+                <Box mb={3} p={3} bg="var(--color-danger-subtle)" color="var(--color-danger-fg)" borderRadius="6px">
+                  <Text fontSize="14px">{connectedError}</Text>
+                </Box>
+              )}
+
+              <Box display="flex" flexDirection="column" gap={3}>
+                {[
+                  {
+                    id: "oidc",
+                    name: "Enterprise Single Sign-On (OIDC)",
+                    desc: "Authenticate via corporate identity providers (Keycloak, Okta, Microsoft Entra ID).",
+                    icon: ShieldCheckIcon,
+                    linkUrl: "/api/v1/auth/oidc/login",
+                  },
+                  {
+                    id: "github",
+                    name: "GitHub",
+                    desc: "Link your GitHub developer profile to synchronize public SSH keys and git repositories.",
+                    icon: RepoIcon,
+                    linkUrl: "/api/v1/auth/link/github",
+                  },
+                  {
+                    id: "gitlab",
+                    name: "GitLab",
+                    desc: "Link your GitLab account for enterprise git repository pipelines and webhooks.",
+                    icon: CodeIcon,
+                    linkUrl: "/api/v1/auth/link/gitlab",
+                  },
+                  {
+                    id: "twitter",
+                    name: "X (Twitter)",
+                    desc: "Verify your public engineering identity and earn the 'Verified on X' badge on your profile.",
+                    icon: GlobeIcon,
+                    linkUrl: `/api/v1/auth/link/twitter?token=${token || localStorage.getItem("modelscript-auth-token") || ""}`,
+                  },
+                ].map((prov) => {
+                  const account = connectedAccounts.find((a) => a.provider.toLowerCase() === prov.id);
+                  const isConnected = Boolean(account?.connected);
+                  const Icon = prov.icon;
+
+                  return (
+                    <Box
+                      key={prov.id}
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      p={3}
+                      style={{
+                        border: "1px solid var(--color-border-default)",
+                        borderRadius: "10px",
+                        background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                      }}
+                    >
+                      <Box display="flex" alignItems="center" gap={3}>
+                        <Box
+                          p={2}
+                          borderRadius="8px"
+                          style={{
+                            background: "rgba(139, 92, 246, 0.12)",
+                            color: "var(--color-accent-purple, #a855f7)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Icon size={20} />
+                        </Box>
+                        <Box>
+                          <Box display="flex" alignItems="center" gap={2}>
+                            <FormLabel style={{ display: "inline-block", margin: 0 }}>{prov.name}</FormLabel>
+                            {isConnected && (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: "700",
+                                  background: "rgba(16, 185, 129, 0.15)",
+                                  color: "var(--color-status-verified, #10b981)",
+                                  padding: "2px 8px",
+                                  borderRadius: "12px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                              >
+                                <CheckCircleIcon size={12} /> Connected
+                              </span>
+                            )}
+                          </Box>
+                          <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                            {isConnected && account?.identifier ? `Linked as: ${account.identifier}` : prov.desc}
+                          </DetailSubtitle>
+                        </Box>
+                      </Box>
+
+                      {isConnected ? (
+                        <SecondaryButton
+                          type="button"
+                          style={{ borderColor: "rgba(239, 68, 68, 0.4)", color: "var(--color-danger-fg, #ef4444)" }}
+                          onClick={async () => {
+                            if (
+                              confirm(
+                                `Unlink ${prov.name}? You may need to reconnect it later to access linked features.`,
+                              )
+                            ) {
+                              try {
+                                await unlinkConnectedAccount(prov.id);
+                                setConnectedAccounts((prev) =>
+                                  prev.map((a) => (a.provider === prov.id ? { ...a, connected: false } : a)),
+                                );
+                                setConnectedSuccess(`Unlinked ${prov.name} successfully.`);
+                              } catch {
+                                setConnectedError(`Failed to unlink ${prov.name}.`);
+                              }
+                            }
+                          }}
+                        >
+                          Disconnect
+                        </SecondaryButton>
+                      ) : (
+                        <SaveButton
+                          type="button"
+                          onClick={() => {
+                            window.location.href = prov.linkUrl;
+                          }}
+                        >
+                          Connect Account
+                        </SaveButton>
+                      )}
+                    </Box>
+                  );
+                })}
               </Box>
             </Box>
           </>
@@ -1356,29 +1559,311 @@ const SettingsPage: React.FC = () => {
                 onClick={() => handleTabChange("notifications")}
               >
                 <ArrowLeftIcon size={20} />
-                <span>Filters</span>
+                <span>Notification Preferences</span>
               </Box>
             </Header>
-            <Box p={4}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Box p={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "24px" }}>
+                Configure delivery channels, email digest frequency, and granular event filters for engineering models,
+                social mentions, and high-performance computing solver jobs.
+              </DetailSubtitle>
+
+              {notificationSuccess && (
+                <Box mb={3} p={3} bg="var(--color-success-subtle)" color="var(--color-success-fg)" borderRadius="6px">
+                  <Text fontSize="14px">{notificationSuccess}</Text>
+                </Box>
+              )}
+
+              {/* Quality Filter Card */}
+              <Box
+                p={3}
+                mb={4}
+                style={{
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: "10px",
+                  background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                }}
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+              >
                 <Box>
-                  <FormLabel style={{ display: "block" }}>Quality filter</FormLabel>
+                  <FormLabel style={{ display: "block", margin: 0 }}>Quality filter</FormLabel>
                   <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
-                    Choose to filter out lower-quality content from your notifications.
+                    Filter out lower-quality content and suspected bot interactions from your notifications stream.
                   </DetailSubtitle>
                 </Box>
                 <input
                   type="checkbox"
-                  checked={qualityFilter}
-                  onChange={async (e) => {
+                  checked={Boolean(notificationPrefs.qualityFilter)}
+                  onChange={(e) => {
                     const val = e.target.checked;
-                    setQualityFilter(val);
-                    try {
-                      await updateNotificationSettings({ qualityFilter: val });
-                    } catch (err) {}
+                    setNotificationPrefs((p) => ({ ...p, qualityFilter: val }));
                   }}
                   style={{ width: "20px", height: "20px", cursor: "pointer" }}
                 />
+              </Box>
+
+              {/* Delivery Channels */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Delivery Channels
+                </DetailTitle>
+                <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap={3}>
+                  <Box
+                    p={3}
+                    style={{ border: "1px solid var(--color-border-subtle)", borderRadius: "8px" }}
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <MailIcon size={16} />
+                      <span style={{ fontSize: "14px", fontWeight: "600" }}>Email Notifications</span>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(notificationPrefs.channels?.email)}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setNotificationPrefs((p) => ({
+                          ...p,
+                          channels: { ...p.channels, email: val } as any,
+                        }));
+                      }}
+                      style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                    />
+                  </Box>
+
+                  <Box
+                    p={3}
+                    style={{ border: "1px solid var(--color-border-subtle)", borderRadius: "8px" }}
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <BroadcastIcon size={16} />
+                      <span style={{ fontSize: "14px", fontWeight: "600" }}>Browser Push</span>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(notificationPrefs.channels?.browserPush)}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setNotificationPrefs((p) => ({
+                          ...p,
+                          channels: { ...p.channels, browserPush: val } as any,
+                        }));
+                      }}
+                      style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                    />
+                  </Box>
+
+                  <Box
+                    p={3}
+                    style={{ border: "1px solid var(--color-border-subtle)", borderRadius: "8px" }}
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <UnmuteIcon size={16} />
+                      <span style={{ fontSize: "14px", fontWeight: "600" }}>In-App Audio Alerts</span>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(notificationPrefs.inAppSounds)}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setNotificationPrefs((p) => ({ ...p, inAppSounds: val }));
+                      }}
+                      style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Social Events */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Social Events
+                </DetailTitle>
+                <Box
+                  p={3}
+                  style={{
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  {[
+                    {
+                      key: "mentions",
+                      label: "Mentions",
+                      desc: "Notify when someone @mentions you in a post or reply",
+                    },
+                    {
+                      key: "replies",
+                      label: "Replies",
+                      desc: "Notify when someone replies to your authored models or posts",
+                    },
+                    { key: "follows", label: "Followers", desc: "Notify when a new engineer follows your profile" },
+                    { key: "reposts", label: "Reposts", desc: "Notify when someone reposts or quotes your model" },
+                  ].map((evt) => (
+                    <Box key={evt.key} display="flex" justifyContent="space-between" alignItems="center">
+                      <Box>
+                        <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>{evt.label}</span>
+                        <DetailSubtitle>{evt.desc}</DetailSubtitle>
+                      </Box>
+                      <input
+                        type="checkbox"
+                        checked={Boolean((notificationPrefs.events?.social as any)?.[evt.key])}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setNotificationPrefs((p) => ({
+                            ...p,
+                            events: {
+                              ...p.events,
+                              social: { ...p.events?.social, [evt.key]: val } as any,
+                            } as any,
+                          }));
+                        }}
+                        style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* Engineering Artifacts & HPC Events */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Engineering Packages &amp; HPC Solver Alerts
+                </DetailTitle>
+                <Box
+                  p={3}
+                  style={{
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  {[
+                    {
+                      key: "packageUpdates",
+                      category: "engineering",
+                      label: "Package Releases",
+                      desc: "Notify when subscribed @modelscript packages publish new versions",
+                    },
+                    {
+                      key: "starredRepoCommits",
+                      category: "engineering",
+                      label: "Repository Activity",
+                      desc: "Notify on new git commits and releases in starred repositories",
+                    },
+                    {
+                      key: "federatedMentions",
+                      category: "engineering",
+                      label: "Fediverse Mentions",
+                      desc: "Notify when remote ActivityPub actors mention your handle",
+                    },
+                    {
+                      key: "jobCompleted",
+                      category: "computeHpc",
+                      label: "HPC Job Finished",
+                      desc: "Alert when cloud SLURM / Local solver simulations finish execution",
+                    },
+                    {
+                      key: "jobFailed",
+                      category: "computeHpc",
+                      label: "Solver Failure / Divergence",
+                      desc: "Immediate alert if a differential-algebraic solver step fails",
+                    },
+                    {
+                      key: "quotaThresholdAlert",
+                      category: "computeHpc",
+                      label: "Low Balance Warning",
+                      desc: "Alert when compute wallet balance falls below 20 credits",
+                    },
+                  ].map((evt) => (
+                    <Box key={evt.key} display="flex" justifyContent="space-between" alignItems="center">
+                      <Box>
+                        <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>{evt.label}</span>
+                        <DetailSubtitle>{evt.desc}</DetailSubtitle>
+                      </Box>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(((notificationPrefs.events as any)?.[evt.category] as any)?.[evt.key])}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setNotificationPrefs((p) => ({
+                            ...p,
+                            events: {
+                              ...p.events,
+                              [evt.category]: {
+                                ...((p.events as any)?.[evt.category] || {}),
+                                [evt.key]: val,
+                              },
+                            } as any,
+                          }));
+                        }}
+                        style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* Email Digest Frequency */}
+              <Box mb={4}>
+                <FormLabel style={{ display: "block", marginBottom: "6px" }}>Email Digest Frequency</FormLabel>
+                <select
+                  value={notificationPrefs.emailDigestFrequency || "daily"}
+                  onChange={(e) => {
+                    const val = e.target.value as any;
+                    setNotificationPrefs((p) => ({ ...p, emailDigestFrequency: val }));
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "var(--color-canvas-default)",
+                    color: "var(--color-text-primary)",
+                    fontSize: "14px",
+                    width: "100%",
+                    maxWidth: "320px",
+                  }}
+                >
+                  <option value="instant">Instant Delivery (As events occur)</option>
+                  <option value="daily">Daily Digest (Morning rollup)</option>
+                  <option value="weekly">Weekly Summary (Mondays)</option>
+                  <option value="never">Never (Mute email notifications)</option>
+                </select>
+              </Box>
+
+              <Box display="flex" justifyContent="flex-end" mt={4}>
+                <SaveButton
+                  disabled={isSavingNotifications}
+                  onClick={async () => {
+                    setIsSavingNotifications(true);
+                    setNotificationSuccess(null);
+                    try {
+                      await updateNotificationSettings(notificationPrefs);
+                      setNotificationSuccess("Notification preferences saved successfully!");
+                    } catch {
+                      // Handled
+                    } finally {
+                      setIsSavingNotifications(false);
+                    }
+                  }}
+                >
+                  {isSavingNotifications ? "Saving..." : "Save Preferences"}
+                </SaveButton>
               </Box>
             </Box>
           </>
@@ -1386,9 +1871,184 @@ const SettingsPage: React.FC = () => {
 
         {activeTab === "other" && (
           <>
-            <Header>Settings</Header>
-            <Box p={3} display="flex" justifyContent="center">
-              <DetailSubtitle>This setting section is under development.</DetailSubtitle>
+            <Header>Help &amp; Additional Resources</Header>
+            <Box px={4} pb={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
+                Explore comprehensive documentation, learn editor keyboard shortcuts, check federation status, and view
+                open-source licensing terms.
+              </DetailSubtitle>
+
+              {/* Shortcuts Banner */}
+              <Box
+                mb={4}
+                p={4}
+                style={{
+                  background: "var(--gradient-cta, linear-gradient(135deg, #8b5cf6, #06b6d4))",
+                  borderRadius: "12px",
+                  color: "white",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                }}
+              >
+                <Box>
+                  <span style={{ fontSize: "18px", fontWeight: "800", display: "block" }}>
+                    ⌨️ Boost Productivity with Keyboard Shortcuts
+                  </span>
+                  <span style={{ fontSize: "13px", opacity: 0.9, marginTop: "4px", display: "block" }}>
+                    Navigate feeds, publish simulations, and format code with speed. Press{" "}
+                    <kbd style={{ background: "rgba(0,0,0,0.3)", padding: "2px 6px", borderRadius: "4px" }}>?</kbd>{" "}
+                    anytime to open the cheat sheet.
+                  </span>
+                </Box>
+                <button
+                  type="button"
+                  onClick={() => setIsShortcutsModalOpen(true)}
+                  style={{
+                    background: "white",
+                    color: "#6b21a8",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "8px 16px",
+                    fontWeight: "700",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  View Shortcuts (Press ?)
+                </button>
+              </Box>
+
+              {/* Documentation & Specifications Grid */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Engineering Documentation &amp; Standards
+                </DetailTitle>
+                <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(280px, 1fr))" gap={3}>
+                  {[
+                    {
+                      title: "ModelScript Language Reference",
+                      desc: "Complete syntax guide for .msx and .mo Modelica models, physical connectors, and equation systems.",
+                      link: "/packages",
+                    },
+                    {
+                      title: "Modelica 3.5 Specification",
+                      desc: "Official language specification for multi-domain equation-based physical modeling.",
+                      link: "https://modelica.org/documents/ModelicaSpec35.pdf",
+                      external: true,
+                    },
+                    {
+                      title: "KerML & SysML v2 Interoperability",
+                      desc: "Systems engineering ontology querying, KerML snapshot library, and metamodel verification.",
+                      link: "/packages",
+                    },
+                    {
+                      title: "FMI 2.0 & 3.0 Co-Simulation Toolkit",
+                      desc: "Functional Mock-up Interface export, master algorithm orchestration, and SSP container tooling.",
+                      link: "/packages",
+                    },
+                  ].map((doc, idx) => (
+                    <Box
+                      key={idx}
+                      p={3}
+                      style={{
+                        border: "1px solid var(--color-border-default)",
+                        borderRadius: "10px",
+                        background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: "700",
+                          display: "block",
+                          color: "var(--color-accent-purple, #a855f7)",
+                        }}
+                      >
+                        {doc.title}
+                      </span>
+                      <DetailSubtitle style={{ display: "block", margin: "6px 0 12px 0", lineHeight: "1.4" }}>
+                        {doc.desc}
+                      </DetailSubtitle>
+                      <a
+                        href={doc.link}
+                        target={doc.external ? "_blank" : undefined}
+                        rel="noreferrer"
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: "600",
+                          color: "var(--color-accent-cyan, #06b6d4)",
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        Read Documentation &rarr;
+                      </a>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* System & Federation Status */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Instance Telemetry &amp; Protocol Compliance
+                </DetailTitle>
+                <Box
+                  p={3}
+                  style={{
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "10px",
+                    background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                  }}
+                  display="flex"
+                  flexDirection="column"
+                  gap={2}
+                >
+                  <Box display="flex" justifyContent="space-between" py={1}>
+                    <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Hub Instance Node</span>
+                    <span style={{ fontSize: "13px", fontFamily: "var(--font-mono)", fontWeight: "600" }}>
+                      hub.modelscript.org
+                    </span>
+                  </Box>
+                  <Box
+                    display="flex"
+                    justifyContent="space-between"
+                    py={1}
+                    style={{ borderTop: "1px solid var(--color-border-subtle)" }}
+                  >
+                    <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>ActivityPub Protocol</span>
+                    <span style={{ fontSize: "13px", color: "#3fb950", fontWeight: "600" }}>
+                      RFC 9421 &amp; FEP-521a Ed25519 Active
+                    </span>
+                  </Box>
+                  <Box
+                    display="flex"
+                    justifyContent="space-between"
+                    py={1}
+                    style={{ borderTop: "1px solid var(--color-border-subtle)" }}
+                  >
+                    <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>HPC / SLURM Gateway</span>
+                    <span style={{ fontSize: "13px", color: "#3fb950", fontWeight: "600" }}>
+                      Connected &amp; Metered
+                    </span>
+                  </Box>
+                  <Box
+                    display="flex"
+                    justifyContent="space-between"
+                    py={1}
+                    style={{ borderTop: "1px solid var(--color-border-subtle)" }}
+                  >
+                    <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Software License</span>
+                    <span style={{ fontSize: "13px", fontWeight: "600" }}>GNU AGPL-3.0 (Copyleft)</span>
+                  </Box>
+                </Box>
+              </Box>
             </Box>
           </>
         )}
@@ -2483,7 +3143,299 @@ const SettingsPage: React.FC = () => {
             </Box>
           </>
         )}
+        {activeTab === "modelingPreferences" && (
+          <>
+            <Header>Modeling &amp; Simulation Preferences</Header>
+            <Box px={4} pb={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
+                Configure the Monaco code editor, select the default ModelScript compiler flattener backend, and tune
+                numerical simulation solver tolerances across the Playground and Web IDE.
+              </DetailSubtitle>
+
+              {/* Monaco Editor Preferences */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Code Editor (Monaco)
+                </DetailTitle>
+                <Box
+                  p={4}
+                  style={{
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "10px",
+                    background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px",
+                  }}
+                >
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Font Size</FormLabel>
+                      <DetailSubtitle>Editor text size in pixels</DetailSubtitle>
+                    </Box>
+                    <Box display="flex" gap={2}>
+                      {[12, 14, 16, 18].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => updateModelingPrefs({ fontSize: size })}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "6px",
+                            border:
+                              modelingPrefs.fontSize === size
+                                ? "2px solid var(--color-accent-purple, #a855f7)"
+                                : "1px solid var(--color-border-default)",
+                            background:
+                              modelingPrefs.fontSize === size
+                                ? "rgba(139, 92, 246, 0.15)"
+                                : "var(--color-canvas-default)",
+                            color: "var(--color-text-primary)",
+                            fontWeight: modelingPrefs.fontSize === size ? "700" : "500",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                          }}
+                        >
+                          {size}px
+                        </button>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Tab Indentation</FormLabel>
+                      <DetailSubtitle>Spaces per indentation level</DetailSubtitle>
+                    </Box>
+                    <Box display="flex" gap={2}>
+                      {[2, 4].map((spaces) => (
+                        <button
+                          key={spaces}
+                          type="button"
+                          onClick={() => updateModelingPrefs({ tabSize: spaces })}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "6px",
+                            border:
+                              modelingPrefs.tabSize === spaces
+                                ? "2px solid var(--color-accent-purple, #a855f7)"
+                                : "1px solid var(--color-border-default)",
+                            background:
+                              modelingPrefs.tabSize === spaces
+                                ? "rgba(139, 92, 246, 0.15)"
+                                : "var(--color-canvas-default)",
+                            color: "var(--color-text-primary)",
+                            fontWeight: modelingPrefs.tabSize === spaces ? "700" : "500",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                          }}
+                        >
+                          {spaces} Spaces
+                        </button>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Word Wrapping</FormLabel>
+                      <DetailSubtitle>Wrap long equation lines automatically</DetailSubtitle>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={modelingPrefs.wordWrap === "on"}
+                      onChange={(e) => updateModelingPrefs({ wordWrap: e.target.checked ? "on" : "off" })}
+                      style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                    />
+                  </Box>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Code Minimap</FormLabel>
+                      <DetailSubtitle>Show high-level code structure scroll preview</DetailSubtitle>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={modelingPrefs.minimapEnabled}
+                      onChange={(e) => updateModelingPrefs({ minimapEnabled: e.target.checked })}
+                      style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                    />
+                  </Box>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Bracket Pair Colorization</FormLabel>
+                      <DetailSubtitle>Colorize matching parentheses and curly braces</DetailSubtitle>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={modelingPrefs.bracketPairColorization}
+                      onChange={(e) => updateModelingPrefs({ bracketPairColorization: e.target.checked })}
+                      style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* ModelScript Compiler & Flattener */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Compiler &amp; Flattener Architecture
+                </DetailTitle>
+                <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))" gap={3}>
+                  {[
+                    {
+                      backend: "hybrid" as const,
+                      title: "Hybrid (Recommended)",
+                      desc: "AssemblyScript WASM Kernel + TS AST Bridge with Salsa query caching.",
+                    },
+                    {
+                      backend: "wasm" as const,
+                      title: "Pure WASM Arena",
+                      desc: "Zero-allocation data-oriented struct-of-arrays in WebAssembly linear memory.",
+                    },
+                    {
+                      backend: "ts" as const,
+                      title: "TypeScript AST",
+                      desc: "Complete TypeScript flattener pipeline for maximum debugging transparency.",
+                    },
+                  ].map((b) => (
+                    <Box
+                      key={b.backend}
+                      p={3}
+                      onClick={() => updateModelingPrefs({ flattenerBackend: b.backend })}
+                      style={{
+                        border:
+                          modelingPrefs.flattenerBackend === b.backend
+                            ? "2px solid var(--color-accent-purple, #a855f7)"
+                            : "1px solid var(--color-border-default)",
+                        borderRadius: "10px",
+                        background:
+                          modelingPrefs.flattenerBackend === b.backend
+                            ? "rgba(139, 92, 246, 0.12)"
+                            : "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: "700",
+                          display: "block",
+                          color: "var(--color-text-primary)",
+                        }}
+                      >
+                        {b.title}
+                      </span>
+                      <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>{b.desc}</DetailSubtitle>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* Numerical Solvers & Integrators */}
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
+                  Numerical Simulation Solvers
+                </DetailTitle>
+                <Box
+                  p={4}
+                  style={{
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "10px",
+                    background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px",
+                  }}
+                >
+                  <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Default Integrator</FormLabel>
+                      <DetailSubtitle>Algorithm used for initial value simulation runs</DetailSubtitle>
+                    </Box>
+                    <select
+                      value={modelingPrefs.defaultSolver}
+                      onChange={(e) => updateModelingPrefs({ defaultSolver: e.target.value as any })}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--color-border-default)",
+                        background: "var(--color-canvas-default)",
+                        color: "var(--color-text-primary)",
+                        fontSize: "14px",
+                      }}
+                    >
+                      <option value="cvode">SUNDIALS CVODE (Stiff &amp; Non-Stiff ODEs)</option>
+                      <option value="ida">SUNDIALS IDA (Differential-Algebraic Equations)</option>
+                      <option value="dopri5">Dormand-Prince 5(4) (Adaptive Step Runge-Kutta)</option>
+                      <option value="rk4">Classical Runge-Kutta (Fixed Step 4th Order)</option>
+                    </select>
+                  </Box>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Relative Tolerance</FormLabel>
+                      <DetailSubtitle>Local error tolerance for adaptive step integrators</DetailSubtitle>
+                    </Box>
+                    <Box display="flex" gap={2}>
+                      {[1e-4, 1e-6, 1e-8].map((tol) => (
+                        <button
+                          key={tol}
+                          type="button"
+                          onClick={() => updateModelingPrefs({ defaultRelativeTolerance: tol })}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "6px",
+                            border:
+                              modelingPrefs.defaultRelativeTolerance === tol
+                                ? "2px solid var(--color-accent-purple, #a855f7)"
+                                : "1px solid var(--color-border-default)",
+                            background:
+                              modelingPrefs.defaultRelativeTolerance === tol
+                                ? "rgba(139, 92, 246, 0.15)"
+                                : "var(--color-canvas-default)",
+                            color: "var(--color-text-primary)",
+                            fontWeight: modelingPrefs.defaultRelativeTolerance === tol ? "700" : "500",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                          }}
+                        >
+                          {tol.toExponential()}
+                        </button>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <FormLabel style={{ margin: 0, display: "block" }}>Diagram Auto-Layout</FormLabel>
+                      <DetailSubtitle>Automatically route schematic connector lines</DetailSubtitle>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={modelingPrefs.diagramAutoLayout}
+                      onChange={(e) => updateModelingPrefs({ diagramAutoLayout: e.target.checked })}
+                      style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+
+              <Box display="flex" justifyContent="space-between" alignItems="center" mt={4}>
+                <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                  ✓ Preferences are automatically persisted to this browser.
+                </span>
+                <SecondaryButton type="button" onClick={resetModelingPrefs}>
+                  Reset to Defaults
+                </SecondaryButton>
+              </Box>
+            </Box>
+          </>
+        )}
       </DetailColumn>
+
+      <KeyboardShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
     </SettingsContainer>
   );
 };

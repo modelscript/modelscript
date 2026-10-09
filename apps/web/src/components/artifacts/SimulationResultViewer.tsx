@@ -11,7 +11,7 @@
  */
 
 import { Spinner, Text } from "@primer/react";
-import { Html, OrbitControls, useProgress } from "@react-three/drei";
+import { Html, useProgress } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -25,11 +25,15 @@ import {
 } from "../../util/colormap";
 import { type VtuField, type VtuParseResult, parseVtu } from "../../util/vtu-parser";
 import Box from "../Box";
+import AutoThumbnailCapture from "./AutoThumbnailCapture";
+import SafeOrbitControls from "./SafeOrbitControls";
 import type { SpatialPin } from "./spatial-pin";
+import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";
 
 // ── Types ───────────────────────────────────────────────────────
 
 interface SimulationResultViewerProps {
+  artifactId?: number;
   viewConfig: any;
   isFullScreen?: boolean;
   onPinCreated?: (pin: SpatialPin) => void;
@@ -79,6 +83,8 @@ const ScalarMesh: React.FC<{
   loadFactor: number;
   onPinCreated?: (pin: SpatialPin) => void;
   activeField: string;
+  isWireframe?: boolean;
+  onProbePoint?: (data: { point: [number, number, number]; value: number } | null) => void;
 }> = ({
   geometry,
   scalarData,
@@ -90,6 +96,8 @@ const ScalarMesh: React.FC<{
   loadFactor,
   onPinCreated,
   activeField,
+  isWireframe = false,
+  onProbePoint,
 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -106,9 +114,10 @@ const ScalarMesh: React.FC<{
       },
       side: THREE.DoubleSide,
       transparent: false,
+      wireframe: Boolean(isWireframe),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colormapTexture, scalarMin, scalarMax]);
+  }, [colormapTexture, scalarMin, scalarMax, isWireframe]);
 
   // Update the scalar attribute on the geometry
   const displayGeometry = useMemo(() => {
@@ -195,7 +204,32 @@ const ScalarMesh: React.FC<{
     }
   };
 
-  return <mesh ref={meshRef} geometry={displayGeometry} material={material} onDoubleClick={handleDoubleClick} />;
+  const handlePointerMove = (e: any) => {
+    e.stopPropagation();
+    let scalarValue = 0;
+    if (e.face && e.face.a !== undefined && scalarData) {
+      scalarValue = scalarData[e.face.a];
+    }
+    onProbePoint?.({
+      point: [e.point.x, e.point.y, e.point.z],
+      value: scalarValue,
+    });
+  };
+
+  const handlePointerOut = () => {
+    onProbePoint?.(null);
+  };
+
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={displayGeometry}
+      material={material}
+      onDoubleClick={handleDoubleClick}
+      onPointerMove={handlePointerMove}
+      onPointerOut={handlePointerOut}
+    />
+  );
 };
 
 // ── Flow Streaks ───────────────────────────────────────────────
@@ -499,9 +533,46 @@ const sliderLabelStyle: React.CSSProperties = {
 
 // ── Camera Controller ───────────────────────────────────────────
 
-const CameraController: React.FC<{ orbitControlsRef: any }> = ({ orbitControlsRef }) => {
+const CameraController: React.FC<{
+  orbitControlsRef: any;
+  presetTrigger?: { preset: CameraPreset; timestamp: number } | null;
+}> = ({ orbitControlsRef, presetTrigger }) => {
   const { camera } = useThree();
   const [targetPin, setTargetPin] = useState<SpatialPin | null>(null);
+
+  useEffect(() => {
+    if (!presetTrigger || !orbitControlsRef.current) return;
+    const controls = orbitControlsRef.current;
+    const target = controls.target || new THREE.Vector3(0, 0, 0);
+    const dist = 50;
+
+    switch (presetTrigger.preset) {
+      case "iso": {
+        const d = dist / Math.sqrt(3);
+        camera.position.set(target.x + d, target.y + d, target.z + d);
+        break;
+      }
+      case "top": {
+        camera.position.set(target.x, target.y + dist, target.z + 0.001);
+        break;
+      }
+      case "front": {
+        camera.position.set(target.x, target.y, target.z + dist);
+        break;
+      }
+      case "right": {
+        camera.position.set(target.x + dist, target.y, target.z);
+        break;
+      }
+      case "reset": {
+        camera.position.set(0, 0, 50);
+        target.set(0, 0, 0);
+        break;
+      }
+    }
+    camera.lookAt(target);
+    controls.update();
+  }, [presetTrigger, camera, orbitControlsRef]);
 
   useEffect(() => {
     const handleFocus = (e: Event) => {
@@ -535,6 +606,7 @@ const CameraController: React.FC<{ orbitControlsRef: any }> = ({ orbitControlsRe
 // ── Main Component ──────────────────────────────────────────────
 
 const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
+  artifactId,
   viewConfig,
   isFullScreen,
   onPinCreated,
@@ -550,6 +622,9 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   const [colormapPreset, setColormapPreset] = useState<ColormapPreset>("turbo");
   const [loadFactor, setLoadFactor] = useState(100);
   const [animateFlow, setAnimateFlow] = useState(true);
+  const [isWireframe, setIsWireframe] = useState(false);
+  const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
+  const [probeData, setProbeData] = useState<{ point: [number, number, number]; value: number } | null>(null);
   const orbitControlsRef = useRef<any>(null);
 
   const isThumbnail = new URLSearchParams(window.location.search).get("thumbnail") === "true";
@@ -818,9 +893,19 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
           unit={fieldUnit}
         />
       )}
+      {/* Viewport Camera & Render Controls */}
+      <ViewportCameraControls
+        onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
+        isWireframe={isWireframe}
+        onToggleWireframe={setIsWireframe}
+      />
 
       {/* 3D Canvas */}
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 50], fov: 50 }}>
+        <AutoThumbnailCapture
+          artifactId={artifactId}
+          hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
+        />
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 10, 8]} intensity={0.6} />
 
@@ -838,7 +923,33 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
                 loadFactor={loadFactor}
                 activeField={activeField}
                 onPinCreated={onPinCreated}
+                isWireframe={isWireframe}
+                onProbePoint={setProbeData}
               />
+              {probeData && (
+                <Html
+                  position={probeData.point}
+                  style={{ pointerEvents: "none", transform: "translate3d(-50%, -130%, 0)" }}
+                >
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.92)",
+                      backdropFilter: "blur(8px)",
+                      color: "#38bdf8",
+                      border: "1px solid rgba(56, 189, 248, 0.5)",
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      fontFamily: "var(--font-mono, monospace)",
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 4px 14px rgba(0, 0, 0, 0.5)",
+                    }}
+                  >
+                    {activeField}: {probeData.value.toFixed(2)} {fieldUnit || ""}
+                  </div>
+                </Html>
+              )}
               {velocityField && (
                 <FlowStreaks
                   geometry={geometry}
@@ -854,9 +965,9 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
               )}
             </group>
           )}
-          <CameraController orbitControlsRef={orbitControlsRef} />
+          <CameraController orbitControlsRef={orbitControlsRef} presetTrigger={presetTrigger} />
         </Suspense>
-        <OrbitControls ref={orbitControlsRef} makeDefault />
+        <SafeOrbitControls controlsRef={orbitControlsRef} isFullScreen={isFullScreen} />
       </Canvas>
 
       {/* Bottom control bar */}

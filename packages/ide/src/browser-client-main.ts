@@ -5,7 +5,7 @@ import { Uri, commands, workspace } from "vscode";
 import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { AnalysisPanel } from "./analysis-panel";
-import { getTemplatePrimaryFile, scaffoldTemplateFiles } from "./templates/catalog";
+import { getTemplatePrimaryFile, mountArtifactToMemFs, scaffoldTemplateFiles } from "./templates/catalog";
 
 import { ChatViewProvider } from "./chat-panel";
 import { CosimViewProvider } from "./cosim-panel";
@@ -844,6 +844,121 @@ export async function activate(context: vscode.ExtensionContext) {
     console.warn("Could not register modelscript.libraryTree view:", e);
   }
 
+  // Handler for dynamic artifact handoff and mounting from web host shell
+  const handleMountArtifact = async (payload: {
+    artifactId: string | number;
+    title?: string;
+    viewType?: string;
+    viewConfig?: any;
+  }) => {
+    if (!payload?.artifactId) return;
+    const targetUri = memfsRootUri || vscode.Uri.from({ scheme: "memfs", path: `/artifact-${payload.artifactId}` });
+    try {
+      memFs.createDirectory(targetUri);
+    } catch {
+      // directory may already exist
+    }
+
+    const { primaryFile } = mountArtifactToMemFs(memFs, targetUri, {
+      artifactId: payload.artifactId,
+      title: payload.title,
+      viewType: payload.viewType,
+      viewConfig: payload.viewConfig,
+    });
+
+    try {
+      const fileUri = Uri.joinPath(targetUri, primaryFile);
+      if (primaryFile.endsWith(".monb")) {
+        await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
+      } else {
+        const doc = await workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc);
+        treeProvider.setDocumentUri(fileUri.toString());
+      }
+      treeProvider.refresh();
+      vscode.window.showInformationMessage(`Mounted artifact #${payload.artifactId}: ${payload.title || primaryFile}`);
+    } catch (err) {
+      console.warn("[artifact-mount] Auto-focus primary file failed:", err);
+    }
+  };
+
+  const sendShareToFeed = async () => {
+    const editor = vscode.window.activeTextEditor;
+    let snippet = "";
+    let title = "Model";
+
+    if (editor) {
+      const doc = editor.document;
+      title = doc.uri.path.split("/").pop() || "Model";
+      const selection = editor.selection;
+      if (!selection.isEmpty) {
+        snippet = doc.getText(selection);
+      } else {
+        snippet = doc.getText();
+      }
+      if (snippet.length > 2000) {
+        snippet = snippet.slice(0, 2000) + "\n// ... (truncated)";
+      }
+    }
+
+    const payload = {
+      title: `Shared model: ${title}`,
+      content: `Sharing model \`${title}\` from ModelScript IDE workbench:\n\n\`\`\`modelica\n${snippet}\n\`\`\``,
+      codeSnippet: snippet,
+      morselPayload: {
+        title: title.replace(/\.[^/.]+$/, ""),
+        code: snippet,
+        dialect: title.endsWith(".sysml") ? "sysml2" : title.endsWith(".owl") ? "owl2" : "modelica",
+      },
+    };
+
+    try {
+      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "MODELSCRIPT_SHARE_TO_FEED", payload }, window.location.origin);
+      }
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage({
+        type: "MODELSCRIPT_SHARE_TO_FEED",
+        payload,
+      });
+      channel.close();
+      vscode.window.showInformationMessage(`Opened share composer in ModelScript Hub for ${title}`);
+    } catch {
+      await vscode.env.clipboard.writeText(snippet);
+      vscode.window.showInformationMessage(`Copied snippet for ${title} to clipboard.`);
+    }
+  };
+
+  try {
+    const bridge = new BroadcastChannel("modelscript:host-bridge");
+    bridge.onmessage = (ev) => {
+      if (ev.data?.type === "MODELSCRIPT_MOUNT_ARTIFACT" && ev.data?.artifactId) {
+        handleMountArtifact(ev.data).catch((e) => console.warn("[host-bridge] Mount artifact error:", e));
+      } else if (ev.data?.type === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
+        sendShareToFeed();
+      } else if (ev.data?.type === "MODELSCRIPT_RESTART_LSP") {
+        vscode.commands.executeCommand("modelscript.restartLsp");
+      }
+    };
+    context.subscriptions.push({ dispose: () => bridge.close() });
+  } catch {
+    // BroadcastChannel unsupported in environment
+  }
+
+  if (typeof window !== "undefined") {
+    const windowMsgHandler = (ev: MessageEvent) => {
+      if (ev.data?.type === "MODELSCRIPT_MOUNT_ARTIFACT" && ev.data?.artifactId) {
+        handleMountArtifact(ev.data).catch((e) => console.warn("[window-message] Mount artifact error:", e));
+      } else if (ev.data?.type === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
+        sendShareToFeed();
+      } else if (ev.data?.type === "MODELSCRIPT_RESTART_LSP") {
+        vscode.commands.executeCommand("modelscript.restartLsp");
+      }
+    };
+    window.addEventListener("message", windowMsgHandler);
+    context.subscriptions.push({ dispose: () => window.removeEventListener("message", windowMsgHandler) });
+  }
+
   // Register MQTT participant tree view
   let mqttTreeProvider: MqttTreeProvider | undefined;
   try {
@@ -906,40 +1021,49 @@ export async function activate(context: vscode.ExtensionContext) {
   shareStatusBar.show();
   context.subscriptions.push(shareStatusBar);
 
-  safeRegisterCommand("modelscript.shareToFeed", async () => {
-    const editor = vscode.window.activeTextEditor;
-    let snippet = "";
-    let title = "Model";
+  safeRegisterCommand("modelscript.shareToFeed", sendShareToFeed);
 
-    if (editor) {
-      const doc = editor.document;
-      title = doc.uri.path.split("/").pop() || "Model";
-      const selection = editor.selection;
-      if (!selection.isEmpty) {
-        snippet = doc.getText(selection);
-      } else {
-        snippet = doc.getText();
+  const broadcastLspStatus = (status: "ready" | "loading" | "error" | "offline", message?: string) => {
+    try {
+      const payload = { type: "MODELSCRIPT_LSP_STATUS", status, message };
+      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, window.location.origin);
       }
-      if (snippet.length > 2000) {
-        snippet = snippet.slice(0, 2000) + "\n// ... (truncated)";
-      }
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage(payload);
+      channel.close();
+    } catch {
+      // ignore
     }
+  };
+
+  safeRegisterCommand("modelscript.restartLsp", async () => {
+    statusItem.show();
+    statusItem.text = "$(sync~spin) Restarting LSP…";
+    broadcastLspStatus("loading", "Restarting language server…");
 
     try {
-      const channel = new BroadcastChannel("modelscript:host-bridge");
-      channel.postMessage({
-        type: "MODELSCRIPT_SHARE_TO_FEED",
-        payload: {
-          title: `Shared model: ${title}`,
-          content: `Sharing model \`${title}\` from ModelScript IDE workbench:\n\n\`\`\`modelica\n${snippet}\n\`\`\``,
-          codeSnippet: snippet,
-        },
-      });
-      channel.close();
-      vscode.window.showInformationMessage(`Opened share composer in ModelScript Hub for ${title}`);
-    } catch {
-      await vscode.env.clipboard.writeText(snippet);
-      vscode.window.showInformationMessage(`Copied snippet for ${title} to clipboard.`);
+      if (client) {
+        try {
+          await client.stop();
+        } catch (e) {
+          console.warn("[lsp-restart] Clean stop error:", e);
+        }
+      }
+      client = await createWorkerLanguageClient(context, clientOptions);
+      await client.start();
+      treeProvider.refresh();
+      experimentsTreeProvider?.refresh();
+      statusItem.text = "$(check) LSP Ready";
+      statusItem.command = undefined;
+      broadcastLspStatus("ready", "Language server restarted");
+      setTimeout(() => statusItem.hide(), 4000);
+      vscode.window.showInformationMessage("ModelScript language server restarted successfully.");
+    } catch (err: any) {
+      statusItem.text = "$(cloud-offline) LSP Offline — Click to Restart";
+      statusItem.command = "modelscript.restartLsp";
+      broadcastLspStatus("error", err?.message || "Failed to restart LSP");
+      vscode.window.showErrorMessage(`Failed to restart language server: ${err?.message || err}`);
     }
   });
 
@@ -956,11 +1080,15 @@ export async function activate(context: vscode.ExtensionContext) {
         statusItem.show();
         statusItem.text = `$(sync~spin) ${params.message}`;
         statusItem.tooltip = "ModelScript is loading...";
+        statusItem.command = undefined;
+        broadcastLspStatus("loading", params.message);
         break;
       case "ready":
         statusItem.show();
         statusItem.text = `$(check) ${params.message}`;
         statusItem.tooltip = "ModelScript language server is ready";
+        statusItem.command = undefined;
+        broadcastLspStatus("ready", params.message);
         hideTimeout = setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
@@ -980,15 +1108,14 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         // Resolve markdown variable values, requirements, and diagram data.
-        // Single delayed call — the workspace index needs time to populate
-        // before the first fetch. Subsequent updates are handled by the
-        // debounced onDidChangeTextDocument listener.
         setTimeout(() => refreshMarkdownData(), 3000);
-
         break;
       case "error":
+        statusItem.show();
         statusItem.text = `$(warning) ${params.message}`;
-        statusItem.tooltip = "ModelScript encountered an error during initialization";
+        statusItem.tooltip = "ModelScript encountered an error. Click to restart.";
+        statusItem.command = "modelscript.restartLsp";
+        broadcastLspStatus("error", params.message);
         break;
     }
   });
@@ -2630,7 +2757,7 @@ end ${studyName};
 
   // Pre-open all .mo files in the workspace so the LSP server can track them.
   // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
-  initWorkspaceAndTree(treeProvider, treeView).catch((e) => {
+  initWorkspaceAndTree(treeProvider, treeView, memFs).catch((e) => {
     console.warn("[workspace-init] Non-fatal initialization error:", e);
   });
 
@@ -2772,6 +2899,7 @@ async function createWorkerLanguageClient(context: vscode.ExtensionContext, clie
 async function initWorkspaceAndTree(
   treeProvider: LibraryTreeProvider,
   treeView: vscode.TreeView<vscode.TreeItem>,
+  memFs?: MemoryFileSystemProvider,
 ): Promise<void> {
   const folders = workspace.workspaceFolders;
 
@@ -2795,6 +2923,47 @@ async function initWorkspaceAndTree(
   if (workspaceUri && workspaceUri.scheme === "memfs") {
     try {
       const template = workspaceUri.path.substring(1) || "empty";
+
+      if ((template === "scratch" || template.startsWith("artifact-")) && memFs) {
+        const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
+        let cachedPayload: any = null;
+        try {
+          const raw =
+            typeof sessionStorage !== "undefined" ? sessionStorage.getItem(`modelscript.artifact_${artifactId}`) : null;
+          if (raw) cachedPayload = JSON.parse(raw);
+        } catch {
+          // ignore
+        }
+
+        if (cachedPayload) {
+          mountArtifactToMemFs(memFs, workspaceUri, {
+            artifactId,
+            title: cachedPayload.title,
+            viewType: cachedPayload.viewType,
+            viewConfig: cachedPayload.viewConfig,
+          });
+        } else {
+          try {
+            const resp = await fetch(`/api/v1/social/artifact-views/${artifactId}`);
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data?.artifactView) {
+                const av = data.artifactView;
+                const config = typeof av.view_config === "string" ? JSON.parse(av.view_config) : av.view_config || {};
+                mountArtifactToMemFs(memFs, workspaceUri, {
+                  artifactId: av.id,
+                  title: av.title || av.name,
+                  viewType: av.view_type,
+                  viewConfig: config,
+                });
+              }
+            }
+          } catch (e) {
+            console.warn("[artifact-init] Proactive fetch failed:", e);
+          }
+        }
+      }
+
       const primaryFile = getTemplatePrimaryFile(template);
       const fileUri = Uri.joinPath(workspaceUri, primaryFile);
 

@@ -1,7 +1,6 @@
 // name: MaxInvalidArg2
 // keywords: max
 // status: incorrect
-// xfail:    true
 //
 
 model MaxInvalidArg2

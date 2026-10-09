@@ -152,8 +152,32 @@ export async function seedPrepackagedLibraries(
 
   for (const pkg of prepackaged) {
     const existingPkg = database.getPackage(pkg.name);
-    if (existingPkg && database.getPackageVersion(existingPkg.id, pkg.version)) {
-      continue; // Already seeded
+    if (existingPkg) {
+      const existingVer = database.getPackageVersion(existingPkg.id, pkg.version);
+      if (existingVer) {
+        const classes = database.getClasses(pkg.name, pkg.version);
+        if (classes.length > 0 || pkg.name !== "Modelica") {
+          continue; // Already seeded and processed
+        }
+
+        // If package and version exist but classes are empty (e.g. failed/interrupted processing), re-enqueue job
+        const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+        const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+        let libraryPath = storage.getExtractedPath(pkg.name, pkg.version);
+        if (!fs.existsSync(libraryPath)) {
+          try {
+            libraryPath = await storage.extractLibrary(pkg.name, pkg.version);
+          } catch (err) {
+            console.warn(`[Seed] Could not extract library for ${pkg.name}@${pkg.version}:`, err);
+          }
+        }
+        if (fs.existsSync(libraryPath)) {
+          console.log(`[Seed] Re-enqueuing processing for unindexed prepackaged library: ${pkg.name}@${pkg.version}`);
+          const jobKey = `${pkg.name}@${pkg.version}`;
+          jobQueue.enqueueProcess(jobKey, workerScript, { name: pkg.name, version: pkg.version, libraryPath });
+          continue;
+        }
+      }
     }
 
     // Resolve relative to this file's location to always find the workspace root

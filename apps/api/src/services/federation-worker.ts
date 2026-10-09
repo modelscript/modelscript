@@ -131,7 +131,11 @@ export class FederationWorker {
    * Broadcasts an ActivityPub activity to all remote followers of an author.
    * Optimizes delivery by deduplicating across remote domains using sharedInbox where available.
    */
-  public enqueueActivityBroadcast(activity: Record<string, unknown>, authorId: number): number {
+  public enqueueActivityBroadcast(
+    activity: Record<string, unknown>,
+    authorId: number,
+    additionalInboxes: { inbox_url: string; shared_inbox_url?: string; remote_domain: string }[] = [],
+  ): number {
     const remoteFollowers = this.db.db
       .prepare(
         `SELECT u.inbox_url, u.shared_inbox_url, u.remote_domain 
@@ -141,12 +145,13 @@ export class FederationWorker {
       )
       .all(authorId) as { inbox_url: string; shared_inbox_url?: string; remote_domain: string }[];
 
-    if (remoteFollowers.length === 0) return 0;
+    const allRecipients = [...remoteFollowers, ...additionalInboxes];
+    if (allRecipients.length === 0) return 0;
 
     // Group recipients by remote domain for sharedInbox deduplication
     const domainGroups = new Map<string, { sharedInbox?: string; personalInboxes: Set<string> }>();
 
-    for (const f of remoteFollowers) {
+    for (const f of allRecipients) {
       const domain = f.remote_domain.toLowerCase();
       let group = domainGroups.get(domain);
       if (!group) {

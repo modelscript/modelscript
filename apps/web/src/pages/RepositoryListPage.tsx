@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertIcon, PlusIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
+import { AlertIcon, PlusIcon, SearchIcon, ShareIcon, SyncIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { createRepo, getPopularRepos, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { ComposeContext } from "../components/ComposeContext";
 import { CircleIconButton } from "../components/SharedStyles";
 import type { RepositoryDTO } from "../types/api";
 import { usePageTitle } from "../util/title";
@@ -107,6 +108,7 @@ const SpinAnimation = styled.div`
 const RepositoryListPage: React.FC = () => {
   usePageTitle("Repositories");
   const { token } = useAuth();
+  const { openCompose } = useContext(ComposeContext);
   const [searchParams] = useSearchParams();
   const [repos, setRepos] = useState<RepositoryDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -354,37 +356,71 @@ const RepositoryListPage: React.FC = () => {
                     </Text>
                   </Box>
                 </Box>
-                <button
-                  style={{
-                    backgroundColor: "#f1f5f9",
-                    color: "#0f172a",
-                    border: "1px solid transparent",
-                    borderRadius: "9999px",
-                    padding: "6px 16px",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                    cursor: "pointer",
-                    marginLeft: "12px",
-                    transition: "all 0.2s ease",
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const btn = e.currentTarget;
-                    if (btn.innerText === "Follow") {
-                      btn.innerText = "Following";
-                      btn.style.backgroundColor = "transparent";
-                      btn.style.color = "var(--color-text-primary)";
-                      btn.style.border = "1px solid var(--color-border)";
-                    } else {
-                      btn.innerText = "Follow";
-                      btn.style.backgroundColor = "#f1f5f9";
-                      btn.style.color = "#0f172a";
-                      btn.style.border = "1px solid transparent";
-                    }
-                  }}
-                >
-                  Follow
-                </button>
+                <Box display="flex" alignItems="center" gap={2} ml={3}>
+                  {openCompose && (
+                    <button
+                      style={{
+                        backgroundColor: "rgba(255, 255, 255, 0.05)",
+                        color: "var(--color-text-primary)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "9999px",
+                        padding: "6px 12px",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s ease",
+                      }}
+                      title="Share repository to feed"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openCompose({
+                          content: `Check out repository **${r.namespace}/${r.project}**! 🚀`,
+                          repoPayload: {
+                            namespace: r.namespace,
+                            project: r.project,
+                            provider: r.provider,
+                            description: r.description || undefined,
+                          },
+                        });
+                      }}
+                    >
+                      <ShareIcon size={14} /> Share
+                    </button>
+                  )}
+                  <button
+                    style={{
+                      backgroundColor: "#f1f5f9",
+                      color: "#0f172a",
+                      border: "1px solid transparent",
+                      borderRadius: "9999px",
+                      padding: "6px 16px",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const btn = e.currentTarget;
+                      if (btn.innerText === "Follow") {
+                        btn.innerText = "Following";
+                        btn.style.backgroundColor = "transparent";
+                        btn.style.color = "var(--color-text-primary)";
+                        btn.style.border = "1px solid var(--color-border)";
+                      } else {
+                        btn.innerText = "Follow";
+                        btn.style.backgroundColor = "#f1f5f9";
+                        btn.style.color = "#0f172a";
+                        btn.style.border = "1px solid transparent";
+                      }
+                    }}
+                  >
+                    Follow
+                  </button>
+                </Box>
               </Box>
             ))}
           </CardList>

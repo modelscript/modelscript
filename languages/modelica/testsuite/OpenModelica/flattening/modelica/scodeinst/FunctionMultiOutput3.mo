@@ -1,7 +1,6 @@
 // name:     FunctionMultiOutput3
 // keywords: 
 // status:   correct
-// xfail:    true
 //
 
 function f

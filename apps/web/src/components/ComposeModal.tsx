@@ -5,9 +5,11 @@ import { ArrowLeftIcon, TrashIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
+import { createArtifactView } from "../api";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
 import ComposeBox from "./ComposeBox";
+import type { ComposeInitialState } from "./ComposeContext";
 
 const Overlay = styled.div`
   position: fixed;
@@ -61,6 +63,7 @@ interface ComposeModalProps {
   quotePost?: any;
   replyToPost?: any;
   pendingPin?: SpatialPin;
+  initialState?: ComposeInitialState;
 }
 
 interface DraftPost {
@@ -106,16 +109,68 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   quotePost: initialQuotePost,
   replyToPost: initialReplyToPost,
   pendingPin: initialPendingPin,
+  initialState,
 }) => {
   const [view, setView] = useState<"compose" | "drafts" | "confirm_save">("compose");
   const [pendingAction, setPendingAction] = useState<"close" | "view_drafts" | null>(null);
 
-  const [content, setContent] = useState("");
-  const [artifactId, setArtifactId] = useState<number | null>(null);
+  const [content, setContent] = useState(initialState?.content || "");
+  const [artifactId, setArtifactId] = useState<number | null>(initialState?.artifactId ?? null);
 
-  const [currentQuotePost, setCurrentQuotePost] = useState(initialQuotePost);
-  const [currentReplyToPost, setCurrentReplyToPost] = useState(initialReplyToPost);
-  const [currentPendingPin, setCurrentPendingPin] = useState(initialPendingPin);
+  const [currentQuotePost, setCurrentQuotePost] = useState(initialState?.quotePost || initialQuotePost);
+  const [currentReplyToPost, setCurrentReplyToPost] = useState(initialState?.replyToPost || initialReplyToPost);
+  const [currentPendingPin, setCurrentPendingPin] = useState(initialState?.pendingPin || initialPendingPin);
+
+  useEffect(() => {
+    if (!initialState) return;
+    if (initialState.content) {
+      setContent(initialState.content);
+    }
+    if (initialState.morselPayload && artifactId === null) {
+      const { code, title, dialect } = initialState.morselPayload;
+      const viewConfigObj: Record<string, any> = {
+        code,
+        dialect: dialect || "modelica",
+        title: title || "Model",
+      };
+      if (initialState.forkedFromArtifactId) {
+        viewConfigObj.forkedFromArtifactId = initialState.forkedFromArtifactId;
+      }
+      createArtifactView({
+        artifact_type: "morsel",
+        view_config: JSON.stringify(viewConfigObj),
+        title: `⚡ ${title || "Interactive Morsel Model"}`,
+      })
+        .then((data) => {
+          setArtifactId(data.id);
+        })
+        .catch(console.error);
+    } else if (initialState.packagePayload && artifactId === null) {
+      const pkg = initialState.packagePayload;
+      createArtifactView({
+        artifact_type: "package",
+        source_type: "registry",
+        title: `${pkg.name}@${pkg.version || "1.0.0"}`,
+        view_config: JSON.stringify(pkg),
+      })
+        .then((data) => {
+          setArtifactId(data.id);
+        })
+        .catch(console.error);
+    } else if (initialState.repoPayload && artifactId === null) {
+      const repo = initialState.repoPayload;
+      createArtifactView({
+        artifact_type: "repository",
+        source_type: "git",
+        title: `${repo.namespace}/${repo.project}`,
+        view_config: JSON.stringify(repo),
+      })
+        .then((data) => {
+          setArtifactId(data.id);
+        })
+        .catch(console.error);
+    }
+  }, [initialState]);
 
   const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
 
@@ -248,6 +303,26 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
             </button>
           </Header>
           <Body>
+            {initialState?.forkedFromArtifactId && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  background: "rgba(245, 158, 11, 0.12)",
+                  color: "#f59e0b",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  marginBottom: "12px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-mono, monospace)",
+                }}
+              >
+                <span>⚡ Forking Artifact #{initialState.forkedFromArtifactId}</span>
+              </div>
+            )}
             <ComposeBox
               content={content}
               setContent={setContent}

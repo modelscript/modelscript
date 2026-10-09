@@ -733,13 +733,90 @@ export const deleteAccount = async () => {
   return data;
 };
 
-export const getNotificationSettings = async () => {
-  const { data } = await api.get("/auth/notifications");
+export interface NotificationPreferences {
+  qualityFilter?: boolean;
+  inAppSounds?: boolean;
+  emailDigestFrequency?: "instant" | "daily" | "weekly" | "never";
+  channels?: {
+    email: boolean;
+    browserPush: boolean;
+    inApp: boolean;
+  };
+  events?: {
+    social: {
+      mentions: boolean;
+      replies: boolean;
+      follows: boolean;
+      reposts: boolean;
+    };
+    engineering: {
+      packageUpdates: boolean;
+      starredRepoCommits: boolean;
+      federatedMentions: boolean;
+    };
+    computeHpc: {
+      jobCompleted: boolean;
+      jobFailed: boolean;
+      quotaThresholdAlert: boolean;
+    };
+  };
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  qualityFilter: true,
+  inAppSounds: true,
+  emailDigestFrequency: "daily",
+  channels: {
+    email: true,
+    browserPush: false,
+    inApp: true,
+  },
+  events: {
+    social: {
+      mentions: true,
+      replies: true,
+      follows: true,
+      reposts: false,
+    },
+    engineering: {
+      packageUpdates: true,
+      starredRepoCommits: true,
+      federatedMentions: true,
+    },
+    computeHpc: {
+      jobCompleted: true,
+      jobFailed: true,
+      quotaThresholdAlert: true,
+    },
+  },
+};
+
+export const getNotificationSettings = async (): Promise<NotificationPreferences> => {
+  const { data } = await api.get<NotificationPreferences>("/auth/notifications");
   return data;
 };
 
-export const updateNotificationSettings = async (settings: any) => {
+export const updateNotificationSettings = async (
+  settings: Partial<NotificationPreferences>,
+): Promise<{ success: boolean }> => {
   const { data } = await api.put("/auth/notifications", settings);
+  return data;
+};
+
+export interface ConnectedAccount {
+  provider: string;
+  name: string;
+  connected: boolean;
+  identifier?: string;
+}
+
+export const getConnectedAccounts = async (): Promise<{ providers: ConnectedAccount[] }> => {
+  const { data } = await api.get<{ providers: ConnectedAccount[] }>("/auth/connected-accounts");
+  return data;
+};
+
+export const unlinkConnectedAccount = async (provider: string): Promise<{ success: boolean }> => {
+  const { data } = await api.delete(`/auth/connected-accounts/${encodeURIComponent(provider)}`);
   return data;
 };
 
@@ -1381,12 +1458,16 @@ export const getTimeline = async (options?: {
   sort?: string;
   limit?: number;
   offset?: number;
+  artifactType?: string;
+  tag?: string;
 }): Promise<{ posts: any[] }> => {
   const endpoint = options?.following ? "/social/timeline/following" : "/social/timeline";
   const params: Record<string, any> = {};
   if (options?.sort) params.sort = options.sort;
   if (options?.limit !== undefined) params.limit = options.limit;
   if (options?.offset !== undefined) params.offset = options.offset;
+  if (options?.artifactType) params.artifactType = options.artifactType;
+  if (options?.tag) params.tag = options.tag;
   const { data } = await api.get(endpoint, { params: Object.keys(params).length > 0 ? params : undefined });
   return data;
 };
@@ -1479,13 +1560,32 @@ export const getTrending = async (limit = 4): Promise<{ topics: any[] }> => {
   return data;
 };
 
-export const getExplore = async (): Promise<{ posts: any[] }> => {
-  const { data } = await api.get("/social/explore");
+export const getExplore = async (options?: {
+  limit?: number;
+  offset?: number;
+  artifactType?: string;
+  tag?: string;
+}): Promise<{ posts: any[] }> => {
+  const params: Record<string, any> = {};
+  if (options?.limit !== undefined) params.limit = options.limit;
+  if (options?.offset !== undefined) params.offset = options.offset;
+  if (options?.artifactType) params.artifactType = options.artifactType;
+  if (options?.tag) params.tag = options.tag;
+  const { data } = await api.get("/social/explore", { params: Object.keys(params).length > 0 ? params : undefined });
   return data;
 };
 
-export const getTopicPosts = async (topic: string): Promise<{ posts: any[] }> => {
-  const { data } = await api.get(`/social/topics/${encodeURIComponent(topic)}/posts`);
+export const getTopicPosts = async (
+  topic: string,
+  options?: { limit?: number; offset?: number; artifactType?: string },
+): Promise<{ posts: any[] }> => {
+  const params: Record<string, any> = {};
+  if (options?.limit !== undefined) params.limit = options.limit;
+  if (options?.offset !== undefined) params.offset = options.offset;
+  if (options?.artifactType) params.artifactType = options.artifactType;
+  const { data } = await api.get(`/social/topics/${encodeURIComponent(topic)}/posts`, {
+    params: Object.keys(params).length > 0 ? params : undefined,
+  });
   return data;
 };
 
@@ -1511,6 +1611,14 @@ export const createArtifactView = async (artifactData: Record<string, any>): Pro
 
 export const getArtifactView = async (id: string | number): Promise<any> => {
   const { data } = await api.get(`/social/artifact-views/${encodeURIComponent(String(id))}`);
+  return data;
+};
+
+export const uploadArtifactThumbnail = async (
+  id: string | number,
+  dataUrl: string,
+): Promise<{ success: boolean; thumbnailUrl: string }> => {
+  const { data } = await api.put(`/social/artifact-views/${encodeURIComponent(String(id))}/thumbnail`, { dataUrl });
   return data;
 };
 
@@ -1628,6 +1736,11 @@ export const runPhysicsJob = async (payload: { geometryHash: string; config: any
 
 export const convertCadGeometry = async (url: string): Promise<any> => {
   const { data } = await api.get("/cad/convert", { params: { url } });
+  return data;
+};
+
+export const resolveFederatedActor = async (handle: string): Promise<any> => {
+  const { data } = await api.post("/federation/resolve", { handle });
   return data;
 };
 

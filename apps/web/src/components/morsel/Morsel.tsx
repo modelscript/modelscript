@@ -1968,6 +1968,40 @@ end Manufacturing;`,
             returnFocusRef={shareButtonRef}
             footerButtons={[
               {
+                buttonType: "primary",
+                content: "Publish to Feed",
+                onClick: () => {
+                  const code = editor?.getValue() ?? "";
+                  const title = documentModels[selectedModelIndex]?.name || selectedTreeClassName || "ModelicaModel";
+                  window.dispatchEvent(
+                    new CustomEvent("modelscript:open-compose", {
+                      detail: {
+                        content: `Interactive physical schematic: **${title}** ⚡`,
+                        morselPayload: {
+                          code,
+                          title,
+                          dialect: "modelica",
+                        },
+                      },
+                    }),
+                  );
+                  if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+                    window.parent.postMessage(
+                      {
+                        type: "MODELSCRIPT_SHARE_TO_FEED",
+                        payload: {
+                          title,
+                          content: `Interactive physical schematic: **${title}** ⚡`,
+                          morselPayload: { code, title, dialect: "modelica" },
+                        },
+                      },
+                      window.location.origin,
+                    );
+                  }
+                  setShareDialogOpen(false);
+                },
+              },
+              {
                 buttonType: "normal",
                 content: translations.copyToClipboard,
                 onClick: async () => {

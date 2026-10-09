@@ -1,7 +1,6 @@
 // name: FuncSimple
 // keywords:
 // status: correct
-// xfail:    true
 //
 // A very simple function test.
 //

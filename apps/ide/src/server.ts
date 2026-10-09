@@ -181,7 +181,13 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   if (hash) {
     if (hash.startsWith('memfs')) {
       var template = hash.split(':')[1] || 'empty';
-      document.title = 'New Project — ModelScript IDE';
+      if (template.startsWith('artifact-')) {
+        document.title = 'Artifact #' + template.slice(9) + ' — ModelScript IDE';
+      } else if (template.startsWith('package-')) {
+        document.title = 'Package ' + template.slice(8) + ' — ModelScript IDE';
+      } else {
+        document.title = 'New Project — ModelScript IDE';
+      }
       config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
     } else {
       var parts = hash.split('@');
@@ -212,6 +218,14 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
           sessionStorage.setItem('modelscript.token', ev.data.token);
           if (ev.data.user) {
             sessionStorage.setItem('modelscript.user', JSON.stringify(ev.data.user));
+          }
+        } catch (e) {}
+      }
+      if (ev.data.type === 'MODELSCRIPT_MOUNT_ARTIFACT' && ev.data.artifactId) {
+        try {
+          sessionStorage.setItem('modelscript.artifact_' + ev.data.artifactId, JSON.stringify(ev.data));
+          if (ev.data.title) {
+            document.title = ev.data.title + ' — ModelScript IDE';
           }
         } catch (e) {}
       }

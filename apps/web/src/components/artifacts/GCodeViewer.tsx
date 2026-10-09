@@ -3,14 +3,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PlayIcon, SquareFillIcon } from "@primer/octicons-react";
 import { IconButton, Spinner, Text } from "@primer/react";
-import { Environment, Html, OrbitControls, useProgress } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Environment, Html, useProgress } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
 import Box from "../Box";
+import AutoThumbnailCapture from "./AutoThumbnailCapture";
+import SafeOrbitControls from "./SafeOrbitControls";
+import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";
 
 interface GCodeViewerProps {
+  artifactId?: number;
   viewConfig: any;
   isFullScreen?: boolean;
 }
@@ -35,7 +39,53 @@ function Loader() {
   );
 }
 
-const GCodeViewer: React.FC<GCodeViewerProps> = ({ viewConfig, isFullScreen }) => {
+function CameraController({
+  controlsRef,
+  presetTrigger,
+}: {
+  controlsRef: React.RefObject<any>;
+  presetTrigger: { preset: CameraPreset; timestamp: number } | null;
+}) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    if (!presetTrigger || !controlsRef.current) return;
+    const controls = controlsRef.current;
+    const target = controls.target || new THREE.Vector3(0, 0, 0);
+    const dist = 100;
+
+    switch (presetTrigger.preset) {
+      case "iso": {
+        const d = dist / Math.sqrt(3);
+        camera.position.set(target.x + d, target.y + d, target.z + d);
+        break;
+      }
+      case "top": {
+        camera.position.set(target.x, target.y + dist, target.z + 0.001);
+        break;
+      }
+      case "front": {
+        camera.position.set(target.x, target.y, target.z + dist);
+        break;
+      }
+      case "right": {
+        camera.position.set(target.x + dist, target.y, target.z);
+        break;
+      }
+      case "reset": {
+        camera.position.set(0, 0, 100);
+        target.set(0, 0, 0);
+        break;
+      }
+    }
+    camera.lookAt(target);
+    controls.update();
+  }, [presetTrigger, camera, controlsRef]);
+
+  return null;
+}
+
+const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFullScreen }) => {
   const [object, setObject] = useState<THREE.Group | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -45,21 +95,40 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ viewConfig, isFullScreen }) =
 
   // We'll sync this state occasionally so the slider can update, but we won't do it every frame
   const [sliderValue, setSliderValue] = useState(0);
+  const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
+  const controlsRef = useRef<any>(null);
 
   useEffect(() => {
     let active = true;
 
     async function loadGCode() {
-      if (!viewConfig.url) {
-        setError("No URL provided in viewConfig");
-        return;
-      }
       try {
-        const response = await fetch(viewConfig.url);
-        if (!response.ok) throw new Error("Failed to fetch GCode");
-        const text = await response.text();
+        let text = "";
+        const inlineCode = viewConfig.data || viewConfig.code || viewConfig.gcode;
+        const targetUrl = viewConfig.url || viewConfig.downloadUrl || viewConfig.fileUrl;
 
-        if (active) {
+        if (typeof inlineCode === "string" && inlineCode.trim().length > 0) {
+          text = inlineCode;
+        } else if (targetUrl) {
+          const response = await fetch(targetUrl);
+          if (!response.ok) throw new Error("Failed to fetch GCode file");
+          text = await response.text();
+        } else {
+          // Graceful parametric helical cylinder toolpath
+          const sampleLines: string[] = ["G21 ; millimeters", "G90 ; absolute positioning", "G1 Z0.2 F1200"];
+          for (let layer = 0; layer < 16; layer++) {
+            const z = 0.2 + layer * 0.3;
+            for (let pt = 0; pt <= 24; pt++) {
+              const th = (pt / 24) * 2 * Math.PI;
+              const x = (Math.cos(th) * 20).toFixed(3);
+              const y = (Math.sin(th) * 20).toFixed(3);
+              sampleLines.push(`G1 X${x} Y${y} Z${z.toFixed(2)} E${(layer * 8 + pt * 0.2).toFixed(3)} F1500`);
+            }
+          }
+          text = sampleLines.join("\n");
+        }
+
+        if (active && text) {
           const loader = new GCodeLoader();
           const obj = loader.parse(text);
 
@@ -127,7 +196,7 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ viewConfig, isFullScreen }) =
     return () => {
       active = false;
     };
-  }, [viewConfig.url]);
+  }, [viewConfig]);
 
   if (error) {
     return (
@@ -163,7 +232,13 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ viewConfig, isFullScreen }) =
       overflow="hidden"
       position="relative"
     >
+      <ViewportCameraControls onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })} />
+
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 100], fov: 50 }}>
+        <AutoThumbnailCapture
+          artifactId={artifactId}
+          hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
+        />
         <ambientLight intensity={0.5} />
         <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.5} />
 
@@ -175,8 +250,9 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ viewConfig, isFullScreen }) =
             progressRef={progressRef}
             onProgressUpdate={setSliderValue}
           />
+          <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
         </Suspense>
-        <OrbitControls makeDefault />
+        <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
       </Canvas>
 
       {/* Animation Controls Overlay */}
@@ -216,6 +292,18 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ viewConfig, isFullScreen }) =
           }}
           style={{ flexGrow: 1, cursor: "pointer" }}
         />
+        <span
+          style={{
+            fontSize: "11px",
+            fontWeight: 700,
+            fontFamily: "var(--font-mono, monospace)",
+            color: "var(--color-accent-cyan, #06b6d4)",
+            minWidth: "36px",
+            textAlign: "right",
+          }}
+        >
+          {(sliderValue * 100).toFixed(0)}%
+        </span>
       </Box>
     </Box>
   );

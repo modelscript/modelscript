@@ -1014,7 +1014,10 @@ export const ModelicaErrorCode = {
     code: 5017,
     rule: "size-first-arg-not-array",
     severity: "error",
-    message: () => `The first argument of size must be an array expression.`,
+    message: (argText?: string) =>
+      argText
+        ? `The first argument of size(${argText}) must be an array expression.`
+        : `The first argument of size must be an array expression.`,
   },
   REDUCTION_INVALID_EXPR_TYPE: {
     code: 5018,
@@ -1022,6 +1025,13 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (exprText: string, actualType: string, op: string, expectedText: string) =>
       `Invalid expression '${exprText}' of type ${actualType} in ${op} reduction, expected ${expectedText}.`,
+  },
+  FAILED_TO_DEDUCE_DIMENSION: {
+    code: 5019,
+    rule: "failed-to-deduce-dimension",
+    severity: "error",
+    message: (dimIdx: string, varName: string) =>
+      `Failed to deduce dimension ${dimIdx} of ${varName} due to missing binding equation.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

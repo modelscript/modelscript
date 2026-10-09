@@ -10,15 +10,17 @@
  */
 
 import { Spinner, Text } from "@primer/react";
-import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import Box from "../Box";
+import AutoThumbnailCapture from "./AutoThumbnailCapture";
+import SafeOrbitControls from "./SafeOrbitControls";
 
 // ── Types ───────────────────────────────────────────────────────
 
 interface CfdAnimationViewerProps {
+  artifactId?: number;
   viewConfig: any;
   isFullScreen?: boolean;
 }
@@ -258,7 +260,7 @@ const selectStyle: React.CSSProperties = {
 
 // ── Main Component ──────────────────────────────────────────────
 
-const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ viewConfig, isFullScreen }) => {
+const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, viewConfig, isFullScreen }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(true);
@@ -456,6 +458,10 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ viewConfig, isF
 
       {/* 3D Canvas */}
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 0.35], fov: 50 }}>
+        <AutoThumbnailCapture
+          artifactId={artifactId}
+          hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
+        />
         <ambientLight intensity={0.5} />
         <directionalLight position={[1, 2, 3]} intensity={0.6} />
         <directionalLight position={[-1, -1, 2]} intensity={0.3} />
@@ -479,7 +485,7 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ viewConfig, isF
           setFrameIndex={handleSetFrame}
         />
 
-        <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+        <SafeOrbitControls isFullScreen={isFullScreen} enableDamping dampingFactor={0.1} />
       </Canvas>
 
       {/* Bottom control bar */}

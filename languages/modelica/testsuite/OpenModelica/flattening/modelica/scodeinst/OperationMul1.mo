@@ -1,7 +1,6 @@
 // name: OperationMul1
 // keywords: 
 // status: correct
-// xfail:    true
 //
 
 model OperationMul1

@@ -154,6 +154,16 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
       }
     }
 
+    if (!rootMetadata) {
+      const rootClassRow = database.getClass(name, version, name);
+      if (rootClassRow) {
+        rootMetadata = {
+          description: rootClassRow.description,
+          documentation: rootClassRow.documentation,
+        };
+      }
+    }
+
     if (rootMetadata) {
       database.updatePackageMeta(packageId, {
         description: rootMetadata.description,
@@ -205,7 +215,9 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
         }
       }
     };
-    scanArtifacts(libraryPath);
+    if (fs.existsSync(libraryPath)) {
+      scanArtifacts(libraryPath);
+    }
     // -----------------------------------
 
     console.log(`[publish] ${name}@${version}: completed — ${classCount} classes processed.`);

@@ -1,7 +1,6 @@
 // name: FuncLocals
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Checks that functions can have local parameters.
 //

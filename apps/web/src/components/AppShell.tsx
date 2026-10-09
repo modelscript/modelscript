@@ -18,8 +18,9 @@ import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
 import { useFeatureFlags } from "../FeatureFlagContext";
-import { ComposeContext } from "./ComposeContext";
+import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
 import { DevFlagsModal } from "./DevFlagsModal";
+import { OfflineBanner } from "./OfflineBanner";
 
 const ShellContainer = styled.div`
   display: flex;
@@ -235,8 +236,25 @@ const AppShell: React.FC = () => {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
+  const [composeInitialState, setComposeInitialState] = React.useState<ComposeInitialState | undefined>(undefined);
+
+  const handleOpenComposeContext = React.useCallback((initial?: string | ComposeInitialState) => {
+    if (typeof initial === "string") {
+      setComposeInitialState({ content: initial });
+    } else if (initial) {
+      setComposeInitialState(initial);
+    } else {
+      setComposeInitialState(undefined);
+    }
+    setIsComposeOpen(true);
+  }, []);
+
   React.useEffect(() => {
-    const handleOpenCompose = () => {
+    const handleOpenCompose = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail) {
+        setComposeInitialState(typeof detail === "string" ? { content: detail } : detail);
+      }
       setIsComposeOpen(true);
     };
     const handleOpenTopUp = () => {
@@ -270,7 +288,8 @@ const AppShell: React.FC = () => {
     location.pathname.startsWith("/ide");
 
   return (
-    <ComposeContext.Provider value={{ openCompose: () => setIsComposeOpen(true) }}>
+    <ComposeContext.Provider value={{ openCompose: handleOpenComposeContext }}>
+      <OfflineBanner />
       <div style={{ "--dev-header-height": isDev && isDevHeaderVisible ? "40px" : "0px" } as React.CSSProperties}>
         {isDev && isDevHeaderVisible && (
           <div
@@ -462,7 +481,7 @@ const AppShell: React.FC = () => {
               $isInspectorLayout={isInspectorLayout}
             >
               <ErrorBoundary>
-                <Outlet context={{ openCompose: () => setIsComposeOpen(true) }} />
+                <Outlet context={{ openCompose: handleOpenComposeContext }} />
               </ErrorBoundary>
             </MainColumn>
             {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
@@ -579,7 +598,11 @@ const AppShell: React.FC = () => {
 
         {isComposeOpen && (
           <ComposeModal
-            onClose={() => setIsComposeOpen(false)}
+            initialState={composeInitialState}
+            onClose={() => {
+              setIsComposeOpen(false);
+              setComposeInitialState(undefined);
+            }}
             onPostCreated={(post) => {
               window.dispatchEvent(new CustomEvent("modelscript:post-created", { detail: post }));
             }}

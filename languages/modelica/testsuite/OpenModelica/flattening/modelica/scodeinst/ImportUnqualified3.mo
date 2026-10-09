@@ -1,6 +1,5 @@
 // name: ImportUnqualified3.mo
 // status: correct
-// xfail:    true
 
 package A
   package B

@@ -53,9 +53,21 @@ export function usersRouter(
   /**
    * GET /api/v1/users/:username
    */
-  router.get("/:username", optionalAuth, (req: Request, res: Response) => {
+  router.get("/:username", optionalAuth, async (req: Request, res: Response) => {
     const username = req.params.username as string;
-    const profile = database.getFullProfileByUsername(username);
+    let profile = database.getFullProfileByUsername(username);
+
+    if (!profile && username.includes("@")) {
+      try {
+        const { resolveActorHandle } = await import("./federation.js");
+        const resolved = await resolveActorHandle(username, database);
+        if (resolved && resolved.user) {
+          profile = database.getFullProfileByUsername(resolved.user.username);
+        }
+      } catch {
+        // Ignore resolution errors and fallback to 404
+      }
+    }
 
     if (!profile) {
       res.status(404).json({ error: "User not found" });

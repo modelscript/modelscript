@@ -587,6 +587,31 @@ export function evaluateConstantArenaExpression(
       return null;
     }
 
+    if (funcName === "/*Integer*/" || funcName === "Integer") {
+      const val = evaluateConstantArenaExpression(
+        arena,
+        getCallArg(0),
+        paramMap,
+        nameToIdx,
+        visitedDepth + 1,
+        db,
+        scopeId,
+        onlyConstants,
+      );
+      if (typeof val === "number") return Math.trunc(val);
+      if (typeof val === "boolean") return val ? 1 : 0;
+      if (Array.isArray(val)) {
+        const castElem = (v: any): any => {
+          if (Array.isArray(v)) return v.map(castElem);
+          if (typeof v === "number") return Math.trunc(v);
+          if (typeof v === "boolean") return v ? 1 : 0;
+          return Math.trunc(Number(v));
+        };
+        return val.map(castElem);
+      }
+      return null;
+    }
+
     if (funcName === "cardinality") {
       const arg0 = getCallArg(0);
       let connectorName: string | null = null;
@@ -2009,6 +2034,88 @@ function getArrayElements(dae: DAEBuilder, exprId: number): number[] | null {
       return innerElems.map((e) => dae.addUnaryExpr(op, e));
     }
   }
+  if (kind === ExprKind.Subscript) {
+    const baseId = dae.getExprData1(exprId);
+    const baseKind = dae.getExprKind(baseId);
+    if (baseKind === ExprKind.Name) {
+      const baseName = dae.interner.resolve(dae.getExprData1(baseId));
+      if (baseName) {
+        const scount = Math.max(1, dae.getExprRight(exprId));
+        let shape: number[] = [];
+        const vIdx = dae.getVarIdxByName(baseName);
+        if (vIdx >= 0) {
+          shape = dae.getVarShape(vIdx);
+        }
+        if (shape.length === 0) {
+          const prefixMatch = `${baseName}[`;
+          const maxDims: number[] = [];
+          for (let v = 0; v < dae.varCount; v++) {
+            if (dae.isVarRemoved(v)) continue;
+            const vName = dae.getVarName(v);
+            if (vName.startsWith(prefixMatch) && vName.endsWith("]")) {
+              const idxParts = vName.slice(prefixMatch.length, -1).split(",").map(Number);
+              for (let d = 0; d < idxParts.length; d++) {
+                if (idxParts[d]! > (maxDims[d] ?? 0)) {
+                  maxDims[d] = idxParts[d]!;
+                }
+              }
+            }
+          }
+          if (maxDims.length > 0) {
+            shape = maxDims;
+          }
+        }
+
+        const dimRanges: number[][] = [];
+        let hasSlice = false;
+        for (let i = 0; i < scount; i++) {
+          const subExpr = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+          const subKind = dae.getExprKind(subExpr);
+          const isColon =
+            subKind === ExprKind.Colon ||
+            (subKind === ExprKind.Name && dae.interner.resolve(dae.getExprData1(subExpr)) === ":");
+          if (isColon) {
+            hasSlice = true;
+            const maxVal = i < shape.length ? shape[i]! : 1;
+            const vals: number[] = [];
+            for (let v = 1; v <= maxVal; v++) vals.push(v);
+            dimRanges.push(vals);
+          } else {
+            const val = evaluateConstantArenaExpression(dae, subExpr);
+            if (typeof val === "number") {
+              dimRanges.push([Math.trunc(val)]);
+            } else if (Array.isArray(val)) {
+              hasSlice = true;
+              dimRanges.push(val.map((x) => Math.trunc(Number(x))));
+            } else {
+              return null;
+            }
+          }
+        }
+
+        if (hasSlice) {
+          const generateCartesian = (ranges: number[][]): number[][] => {
+            if (ranges.length === 0) return [[]];
+            const head = ranges[0]!;
+            const rest = generateCartesian(ranges.slice(1));
+            const res: number[][] = [];
+            for (const h of head) {
+              for (const r of rest) {
+                res.push([h, ...r]);
+              }
+            }
+            return res;
+          };
+          const tuples = generateCartesian(dimRanges);
+          const elements: number[] = [];
+          for (const t of tuples) {
+            elements.push(dae.addExpression(ExprKind.Name, dae.interner.intern(`${baseName}[${t.join(",")}]`)));
+          }
+          return elements;
+        }
+      }
+    }
+  }
   return null;
 }
 
@@ -2019,16 +2126,23 @@ function getRecordFields(dae: DAEBuilder, exprId: number): string[] | null {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (name && dae.getVarIdxByName(name) < 0) {
       const prefix = `${name}.`;
+      const baseName = name.replace(/\[[^\]]*\]/g, "");
+      const basePrefix = `${baseName}.`;
       const fields: string[] = [];
       for (let i = 0; i < dae.varCount; i++) {
         if (dae.isVarRemoved(i)) continue;
         const vName = dae.getVarName(i);
         if (vName.startsWith(prefix)) {
           fields.push(vName.slice(prefix.length));
+        } else if (basePrefix !== prefix && vName.startsWith(basePrefix)) {
+          fields.push(vName.slice(basePrefix.length));
         }
       }
-      if (fields.length > 0) return fields;
+      if (fields.length > 0) return Array.from(new Set(fields));
     }
+  }
+  if (kind === ExprKind.Subscript) {
+    return getRecordFields(dae, dae.getExprLeft(exprId));
   }
   if (kind === ExprKind.IfElse) {
     return getRecordFields(dae, dae.getExprLeft(exprId)) || getRecordFields(dae, dae.getExprRight(exprId));
@@ -2110,6 +2224,11 @@ function getFieldExpr(
       const op = dae.getExprData1(exprId);
       const inner = getFieldExpr(dae, out, dae.getExprLeft(exprId), field, cloneExpr);
       return out.addUnaryExpr(op, inner);
+    }
+    case ExprKind.Subscript: {
+      const target = getFieldExpr(dae, out, dae.getExprLeft(exprId), field, cloneExpr);
+      const sub = cloneExpr ? cloneExpr(dae.getExprRight(exprId), "", null) : dae.getExprRight(exprId);
+      return out.addExpression(ExprKind.Subscript, 0, target, sub);
     }
     default:
       return cloneExpr ? cloneExpr(exprId, "", null) : exprId;
@@ -3120,15 +3239,13 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         isPlugCompatible = false;
       }
       if (!isPlugCompatible) {
-        if (lhsName && rhsName) {
-          const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
-          out.diagnostics.push({
-            severity: "error",
-            code: 3003, // NOT_PLUG_COMPATIBLE
-            message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
-            range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
-          });
-        }
+        const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
+        out.diagnostics.push({
+          severity: "error",
+          code: 3003, // NOT_PLUG_COMPATIBLE
+          message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
+          range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+        });
         return;
       }
     }

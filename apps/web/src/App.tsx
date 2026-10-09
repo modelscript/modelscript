@@ -8,6 +8,7 @@ import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FeatureFlagProvider, useFeatureFlag } from "./FeatureFlagContext";
+import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
 import { ThemeContextProvider, useTheme } from "./theme";
 
 // Lazy-loaded pages for optimal initial bundle transfer
@@ -176,7 +177,9 @@ function AppWithTheme() {
     <ThemeContextProvider>
       <AuthProvider>
         <FeatureFlagProvider>
-          <App />
+          <ModelingPreferencesProvider>
+            <App />
+          </ModelingPreferencesProvider>
         </FeatureFlagProvider>
       </AuthProvider>
     </ThemeContextProvider>

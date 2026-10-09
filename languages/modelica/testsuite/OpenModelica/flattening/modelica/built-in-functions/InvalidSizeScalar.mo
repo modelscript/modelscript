@@ -1,7 +1,6 @@
 // name:     InvalidSizeScalar
 // keywords: size scalar
 // status:   incorrect
-// xfail:    true
 //
 // size of scalars is not allowed.
 //

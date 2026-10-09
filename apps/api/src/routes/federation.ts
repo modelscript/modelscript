@@ -60,6 +60,61 @@ export function serializeArtifactAttachment(artifact: any, publicUrl: string): R
   return attachment;
 }
 
+export async function resolveActorHandle(
+  handleOrUrl: string,
+  db: LibraryDatabase,
+): Promise<{ user: any; actor: Record<string, unknown>; actorUrl: string }> {
+  let actorUrl = handleOrUrl.trim();
+  if (!actorUrl.startsWith("http://") && !actorUrl.startsWith("https://")) {
+    const cleanHandle = actorUrl.startsWith("acct:")
+      ? actorUrl.slice(5)
+      : actorUrl.startsWith("@")
+        ? actorUrl.slice(1)
+        : actorUrl;
+    const [userPart, domainPart] = cleanHandle.split("@");
+    if (!userPart || !domainPart) {
+      throw new Error("Invalid handle format. Expected username@domain");
+    }
+
+    const webfingerUrl = `https://${domainPart}/.well-known/webfinger?resource=acct:${encodeURIComponent(cleanHandle)}`;
+    const wfRes = await safePublicFetch(webfingerUrl, {
+      headers: { Accept: "application/jrd+json, application/json" },
+    });
+
+    if (!wfRes.ok) {
+      throw new Error(`WebFinger lookup failed for ${cleanHandle}`);
+    }
+
+    const wfData = (await wfRes.json()) as any;
+    const selfLink = wfData.links?.find(
+      (l: any) => l.rel === "self" && (l.type === "application/activity+json" || l.type === "application/ld+json"),
+    );
+
+    if (!selfLink || !selfLink.href) {
+      throw new Error("No ActivityPub actor link found in WebFinger response");
+    }
+    actorUrl = selfLink.href;
+  }
+
+  // Fetch actor profile via SSRF-safe fetch
+  const actorRes = await safePublicFetch(actorUrl, {
+    headers: { Accept: "application/activity+json, application/ld+json" },
+  });
+
+  if (!actorRes.ok) {
+    throw new Error("Failed to fetch remote actor profile");
+  }
+
+  const actorProfile = (await actorRes.json()) as Record<string, unknown>;
+  const remoteUser = db.getOrCreateRemoteUser(actorUrl, actorProfile);
+
+  return {
+    user: db.getUserById(remoteUser.id),
+    actor: actorProfile,
+    actorUrl,
+  };
+}
+
 export function federationRouter(db: LibraryDatabase, worker?: FederationWorker): Router {
   const router = Router();
   const verifier = createActivityPubVerifier(db);
@@ -507,58 +562,11 @@ export function federationRouter(db: LibraryDatabase, worker?: FederationWorker)
     }
 
     try {
-      let actorUrl = handleOrUrl.trim();
-      if (!actorUrl.startsWith("http://") && !actorUrl.startsWith("https://")) {
-        const cleanHandle = actorUrl.startsWith("acct:")
-          ? actorUrl.slice(5)
-          : actorUrl.startsWith("@")
-            ? actorUrl.slice(1)
-            : actorUrl;
-        const [userPart, domainPart] = cleanHandle.split("@");
-        if (!userPart || !domainPart) {
-          res.status(400).json({ error: "Invalid handle format. Expected username@domain" });
-          return;
-        }
-
-        const webfingerUrl = `https://${domainPart}/.well-known/webfinger?resource=acct:${encodeURIComponent(cleanHandle)}`;
-        const wfRes = await safePublicFetch(webfingerUrl, {
-          headers: { Accept: "application/jrd+json, application/json" },
-        });
-
-        if (!wfRes.ok) {
-          res.status(404).json({ error: `WebFinger lookup failed for ${cleanHandle}` });
-          return;
-        }
-
-        const wfData = (await wfRes.json()) as any;
-        const selfLink = wfData.links?.find(
-          (l: any) => l.rel === "self" && (l.type === "application/activity+json" || l.type === "application/ld+json"),
-        );
-
-        if (!selfLink || !selfLink.href) {
-          res.status(404).json({ error: "No ActivityPub actor link found in WebFinger response" });
-          return;
-        }
-        actorUrl = selfLink.href;
-      }
-
-      // Fetch actor profile via SSRF-safe fetch
-      const actorRes = await safePublicFetch(actorUrl, {
-        headers: { Accept: "application/activity+json, application/ld+json" },
-      });
-
-      if (!actorRes.ok) {
-        res.status(404).json({ error: "Failed to fetch remote actor profile" });
-        return;
-      }
-
-      const actorProfile = (await actorRes.json()) as Record<string, unknown>;
-      const remoteUser = db.getOrCreateRemoteUser(actorUrl, actorProfile);
-
+      const resolved = await resolveActorHandle(handleOrUrl, db);
       res.json({
         success: true,
-        user: db.getUserById(remoteUser.id),
-        actor: actorProfile,
+        user: resolved.user,
+        actor: resolved.actor,
       });
     } catch (err: any) {
       console.error("[FederationResolve] Error:", err);

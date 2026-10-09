@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon, ZapIcon } from "@primer/octicons-react";
+import { CheckIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useRef, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
@@ -73,10 +73,43 @@ const EditorContainer = styled.div`
 `;
 
 export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ viewConfig, isFullScreen = false }) => {
-  const code = viewConfig.code || "model Example\n\nend Example;";
-  const dialect = viewConfig.dialect || "modelica";
-  const title = viewConfig.title || "Interactive System";
+  const code = (viewConfig.code as string) || "model Example\n\nend Example;";
+  const dialect = (viewConfig.dialect as string) || "modelica";
+  const title = (viewConfig.title as string) || "Interactive System";
   const [interactive, setInteractive] = useState(!viewConfig.thumbnail_url);
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [copied, setCopied] = useState(false);
+  const [copiedSvg, setCopiedSvg] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExportSvg = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const svgEl = containerRef.current?.querySelector("svg");
+    if (svgEl) {
+      const serializer = new XMLSerializer();
+      const svgStr = serializer.serializeToString(svgEl);
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${title.replace(/\s+/g, "_").toLowerCase()}_schematic.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setCopiedSvg(true);
+      setTimeout(() => setCopiedSvg(false), 2000);
+    } else {
+      handleCopy(e);
+    }
+  };
 
   const getForkUrl = () => {
     const hash = compressMorselPayload({
@@ -85,7 +118,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
       code,
       title,
     });
-    return `/playground#m=${hash}`;
+    const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+    return `/playground${fromArtifact}#m=${hash}`;
   };
 
   const handleFork = () => {
@@ -101,19 +135,88 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
         </ToolbarLeft>
 
         <ToolbarRight>
+          <Box
+            display="flex"
+            bg="rgba(0,0,0,0.25)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("diagram")}
+              style={{
+                background: viewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                color: viewMode === "diagram" ? "#06b6d4" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Schematic
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("code")}
+              style={{
+                background: viewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                color: viewMode === "code" ? "#06b6d4" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Code
+            </button>
+          </Box>
+          {viewMode === "diagram" && (
+            <Button
+              size="small"
+              variant="default"
+              leadingVisual={copiedSvg ? CheckIcon : DownloadIcon}
+              onClick={handleExportSvg}
+              title="Download or copy schematic SVG"
+            >
+              {copiedSvg ? "Exported" : "SVG"}
+            </Button>
+          )}
+          <Button size="small" variant="default" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+            {copied ? "Copied" : "Copy"}
+          </Button>
           {!interactive && viewConfig.thumbnail_url && (
             <Button size="small" variant="default" leadingVisual={PlayIcon} onClick={() => setInteractive(true)}>
               Interact
             </Button>
           )}
           <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={handleFork}>
-            Fork in Playground
+            Playground
           </Button>
         </ToolbarRight>
       </CardToolbar>
 
-      <EditorContainer>
-        {interactive || !viewConfig.thumbnail_url ? (
+      <EditorContainer ref={containerRef}>
+        {viewMode === "code" ? (
+          <Box p={3} height="100%" overflow="auto" bg="var(--color-canvas-default)">
+            <pre
+              style={{
+                margin: 0,
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: "12px",
+                lineHeight: "1.6",
+                color: "var(--color-fg-default)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              <code>{code}</code>
+            </pre>
+          </Box>
+        ) : interactive || !viewConfig.thumbnail_url ? (
           <Suspense
             fallback={
               <Box display="flex" alignItems="center" justifyContent="center" height="100%">

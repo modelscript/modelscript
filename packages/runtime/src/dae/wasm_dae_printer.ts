@@ -1541,10 +1541,16 @@ export class ArenaDAEPrinter {
     }
 
     const activeCalledFnNames = new Set<string>();
-    const visitedExprs = new Set<number>();
+    const visitedExprsByBuilder = new Map<DAEBuilder, Set<number>>();
     const walkExprCalls = (builder: DAEBuilder, id: number) => {
-      if (id < 0 || visitedExprs.has(id)) return;
-      visitedExprs.add(id);
+      if (id < 0) return;
+      let visited = visitedExprsByBuilder.get(builder);
+      if (!visited) {
+        visited = new Set<number>();
+        visitedExprsByBuilder.set(builder, visited);
+      }
+      if (visited.has(id)) return;
+      visited.add(id);
       const k = builder.getExprKind(id);
       switch (k) {
         case ExprKind.Call: {
@@ -1565,7 +1571,8 @@ export class ArenaDAEPrinter {
           walkExprCalls(builder, builder.getExprRight(id));
           break;
         }
-        case ExprKind.Unary: {
+        case ExprKind.Unary:
+        case ExprKind.Negate: {
           walkExprCalls(builder, builder.getExprLeft(id));
           break;
         }
@@ -1618,8 +1625,67 @@ export class ArenaDAEPrinter {
           walkExprCalls(builder, builder.getExprLeft(id));
           break;
         }
+        case ExprKind.Name: {
+          const str = builder.interner.resolve(builder.getExprData1(id));
+          if (str && str.includes("(")) {
+            for (const fn of dae.functions.values()) {
+              const baseName = fn.name.split(".").pop()!;
+              const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              if (
+                new RegExp(`\\b${esc(fn.name)}\\s*\\(`).test(str) ||
+                new RegExp(`\\b${esc(baseName)}\\s*\\(`).test(str)
+              ) {
+                activeCalledFnNames.add(fn.name);
+                activeCalledFnNames.add(baseName);
+                calledFnNames.add(fn.name);
+              }
+            }
+          }
+          break;
+        }
         default:
           break;
+      }
+    };
+
+    const walkEquations = (builder: DAEBuilder) => {
+      for (let i = 0; i < builder.eqCount; i++) {
+        walkExprCalls(builder, builder.getEqLhs(i));
+        walkExprCalls(builder, builder.getEqRhs(i));
+        const ifMeta = builder.getIfEquationMeta(i);
+        if (ifMeta) {
+          walkExprCalls(builder, ifMeta.conditionExprId);
+          for (const body of ifMeta.thenEquations) {
+            walkExprCalls(builder, body.lhsExprId);
+            walkExprCalls(builder, body.rhsExprId);
+          }
+          for (const clause of ifMeta.elseIfClauses) {
+            walkExprCalls(builder, clause.conditionExprId);
+            for (const body of clause.bodyEquations) {
+              walkExprCalls(builder, body.lhsExprId);
+              walkExprCalls(builder, body.rhsExprId);
+            }
+          }
+          for (const body of ifMeta.elseEquations) {
+            walkExprCalls(builder, body.lhsExprId);
+            walkExprCalls(builder, body.rhsExprId);
+          }
+        }
+        const whenMeta = builder.getWhenEquationMeta(i);
+        if (whenMeta) {
+          walkExprCalls(builder, whenMeta.conditionExprId);
+          for (const body of whenMeta.bodyEquations) {
+            walkExprCalls(builder, body.lhsExprId);
+            walkExprCalls(builder, body.rhsExprId);
+          }
+          for (const clause of whenMeta.elseWhenClauses) {
+            walkExprCalls(builder, clause.conditionExprId);
+            for (const body of clause.bodyEquations) {
+              walkExprCalls(builder, body.lhsExprId);
+              walkExprCalls(builder, body.rhsExprId);
+            }
+          }
+        }
       }
     };
 
@@ -1631,6 +1697,16 @@ export class ArenaDAEPrinter {
           const rhsId = builder.getStmtLeft(idx);
           walkExprCalls(builder, lhsId);
           walkExprCalls(builder, rhsId);
+          return idx + 1;
+        }
+        case StmtKind.ProcedureCall: {
+          const callId = builder.getStmtData1(idx);
+          walkExprCalls(builder, callId);
+          return idx + 1;
+        }
+        case StmtKind.ComplexAssignment: {
+          const srcId = builder.getStmtLeft(idx);
+          walkExprCalls(builder, srcId);
           return idx + 1;
         }
         case StmtKind.If: {
@@ -1672,10 +1748,7 @@ export class ArenaDAEPrinter {
       }
     };
 
-    for (let i = 0; i < dae.eqCount; i++) {
-      walkExprCalls(dae, dae.getEqLhs(i));
-      walkExprCalls(dae, dae.getEqRhs(i));
-    }
+    walkEquations(dae);
     for (let i = 0; i < dae.varCount; i++) {
       const expr = dae.getVarExpression(i);
       if (expr >= 0) walkExprCalls(dae, expr);
@@ -1702,10 +1775,7 @@ export class ArenaDAEPrinter {
           activeCalledFnNames.has(baseName) ||
           Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
         if (isFnActive) {
-          for (let i = 0; i < fn.eqCount; i++) {
-            walkExprCalls(fn, fn.getEqLhs(i));
-            walkExprCalls(fn, fn.getEqRhs(i));
-          }
+          walkEquations(fn);
           for (let i = 0; i < fn.varCount; i++) {
             const expr = fn.getVarExpression(i);
             if (expr >= 0) walkExprCalls(fn, expr);
@@ -1959,6 +2029,15 @@ export class ArenaDAEPrinter {
     let hasEq = false;
     const eqIndices: number[] = [];
     for (let i = 0; i < dae.eqCount; i++) eqIndices.push(i);
+
+    if (this.omcCompatibility) {
+      eqIndices.sort((a, b) => {
+        const orderA = dae.getEqOrder(a) ?? a;
+        const orderB = dae.getEqOrder(b) ?? b;
+        if (orderA !== orderB) return orderA - orderB;
+        return a - b;
+      });
+    }
 
     for (const i of eqIndices) {
       if (stateEqIndices.has(i)) continue;

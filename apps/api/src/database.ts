@@ -67,6 +67,7 @@ export interface TrendingTopicRow {
   display_name: string;
   current_score: number;
   last_updated_at: string;
+  post_count?: number;
 }
 
 export interface JobRow {
@@ -1610,6 +1611,10 @@ export class LibraryDatabase {
       .run(userId, provider, providerUserId, accessToken ?? null, refreshToken ?? null, expiresAt ?? null);
   }
 
+  unlinkOAuthAccount(userId: number, provider: string): void {
+    this.#db.prepare(`DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?`).run(userId, provider);
+  }
+
   getUserByEmail(email: string):
     | {
         id: number;
@@ -2130,13 +2135,85 @@ export class LibraryDatabase {
     return parents;
   }
 
-  getHomeTimeline(userId: number, limit: number = 20): any[] {
+  private buildArtifactFilter(artifactType?: string): { sql: string; params: any[] } {
+    if (!artifactType || artifactType === "all") return { sql: "", params: [] };
+    const norm = artifactType.toLowerCase();
+    if (norm === "cad") {
+      return {
+        sql: " AND a.view_type IN ('cad', 'cad-step', 'cad_step', 'cad-3d-viewer', 'step', 'stp', '3d-model')",
+        params: [],
+      };
+    }
+    if (norm === "fmu" || norm === "fmi") {
+      return { sql: " AND a.view_type IN ('fmu', 'fmu-package', 'fmu-simulator', 'fmi')", params: [] };
+    }
+    if (norm === "sysml" || norm === "kerml") {
+      return { sql: " AND a.view_type IN ('sysml', 'sysml2', 'sysml-architecture-viewer', 'kerml')", params: [] };
+    }
+    if (norm === "simulation" || norm === "cfd" || norm === "fea") {
+      return {
+        sql: " AND a.view_type IN ('simulation', 'simulation-result', 'fea-result', 'cfd-result', 'cfd-animation', 'fmu', 'fmu-package', 'fmu-simulator')",
+        params: [],
+      };
+    }
+    if (norm === "plot" || norm === "csv" || norm === "dataset") {
+      return {
+        sql: " AND a.view_type IN ('simulation-plot', 'simulation-result', 'csv', 'tsv', 'dataset', 'dataset-table', 'json-table')",
+        params: [],
+      };
+    }
+    if (norm === "modelica" || norm === "code") {
+      return {
+        sql: " AND a.view_type IN ('modelica-code', 'modelica-diagram', 'morsel', 'sysml', 'sysml2')",
+        params: [],
+      };
+    }
+    if (norm === "aas" || norm === "twin") {
+      return {
+        sql: " AND a.view_type IN ('aas-package', 'cyber-physical-system', 'hardware-project', 'digital-thread', 'digital-twin-dashboard')",
+        params: [],
+      };
+    }
+    if (norm === "gcode" || norm === "cam") {
+      return { sql: " AND a.view_type IN ('gcode', 'cam-result')", params: [] };
+    }
+    if (norm === "webgpu") {
+      return { sql: " AND a.view_type IN ('webgpu', 'webgpu-simulation', 'gpu-simulation')", params: [] };
+    }
+    if (norm === "has_artifact" || norm === "artifacts") {
+      return { sql: " AND p.artifact_view_id IS NOT NULL", params: [] };
+    }
+    return { sql: " AND LOWER(a.view_type) = ?", params: [norm] };
+  }
+
+  private buildTagFilter(tag?: string): { sql: string; params: any[] } {
+    if (!tag) return { sql: "", params: [] };
+    const clean = tag.replace(/^#/, "").trim().toLowerCase();
+    if (!clean) return { sql: "", params: [] };
+    return {
+      sql: ` AND (
+        EXISTS (
+          SELECT 1 FROM post_topics pt
+          JOIN trending_topics t ON pt.topic_id = t.id
+          WHERE pt.post_id = p.id AND (LOWER(t.concept) = ? OR LOWER(t.display_name) = ?)
+        ) OR LOWER(p.content) LIKE ?
+      )`,
+      params: [clean, clean, `%#${clean}%`],
+    };
+  }
+
+  getHomeTimeline(userId: number, limit: number = 20, offset: number = 0, artifactType?: string, tag?: string): any[] {
     // Derive topics dynamically before fetching the feed
     try {
       this.deriveUserTopics(userId);
     } catch (e) {
       console.error("Failed to derive user topics", e);
     }
+
+    const artFilter = this.buildArtifactFilter(artifactType);
+    const tagFilter = this.buildTagFilter(tag);
+    const baseParams = [userId, userId, userId, userId, userId, userId, userId, userId, userId];
+    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, limit, offset];
 
     const posts = this.#db
       .prepare(
@@ -2161,26 +2238,44 @@ export class LibraryDatabase {
         (
           (SELECT COUNT(*) FROM likes l JOIN follows f ON l.user_id = f.following_id WHERE l.post_id = p.id AND f.follower_id = ?) * 3
         ) as total_score
-      FROM posts p JOIN users u ON p.author_id = u.id
+      FROM posts p
+      JOIN users u ON p.author_id = u.id
+      LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
       WHERE 
-        p.author_id = ? OR 
-        p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
-        EXISTS (
-          SELECT 1 FROM post_topics pt
-          JOIN trending_topics t ON pt.topic_id = t.id
-          JOIN user_topics ut ON ut.concept = t.concept AND ut.user_id = ? AND ut.is_active = 1
-          WHERE pt.post_id = p.id
+        (
+          p.author_id = ? OR 
+          p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
+          EXISTS (
+            SELECT 1 FROM post_topics pt
+            JOIN trending_topics t ON pt.topic_id = t.id
+            JOIN user_topics ut ON ut.concept = t.concept AND ut.user_id = ? AND ut.is_active = 1
+            WHERE pt.post_id = p.id
+          )
         )
+        ${artFilter.sql}
+        ${tagFilter.sql}
       ORDER BY total_score DESC, p.created_at DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `,
       )
-      .all(userId, userId, userId, userId, userId, userId, userId, userId, userId, limit) as any[];
+      .all(...allParams) as any[];
     return posts.map((p) => this.hydratePost(p, userId));
   }
 
-  getFollowingTimeline(userId: number, limit: number = 20, sort: string = "recent"): any[] {
+  getFollowingTimeline(
+    userId: number,
+    limit: number = 20,
+    sort: string = "recent",
+    offset: number = 0,
+    artifactType?: string,
+    tag?: string,
+  ): any[] {
     const orderBy = sort === "popular" ? "like_count DESC, diversity_score DESC" : "diversity_score DESC";
+    const artFilter = this.buildArtifactFilter(artifactType);
+    const tagFilter = this.buildTagFilter(tag);
+    const baseParams = [userId, userId, userId, userId, userId];
+    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, limit, offset];
+
     const posts = this.#db
       .prepare(
         `
@@ -2200,17 +2295,32 @@ export class LibraryDatabase {
               AND p2.created_at > datetime(p.created_at, '-24 hours')
           ) * 14400 -- 4 hours penalty for each newer post in the same 24h window
         ) as diversity_score
-      FROM posts p JOIN users u ON p.author_id = u.id
-      WHERE p.author_id = ? OR p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?)
+      FROM posts p
+      JOIN users u ON p.author_id = u.id
+      LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
+      WHERE (p.author_id = ? OR p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?))
+        ${artFilter.sql}
+        ${tagFilter.sql}
       ORDER BY ${orderBy}
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `,
       )
-      .all(userId, userId, userId, userId, userId, userId, limit) as any[];
+      .all(...allParams) as any[];
     return posts.map((p) => this.hydratePost(p, userId));
   }
-  getExploreTimeline(currentUserId?: number, limit: number = 20): any[] {
+
+  getExploreTimeline(
+    currentUserId?: number,
+    limit: number = 20,
+    offset: number = 0,
+    artifactType?: string,
+    tag?: string,
+  ): any[] {
     const uid = currentUserId || -1;
+    const artFilter = this.buildArtifactFilter(artifactType);
+    const tagFilter = this.buildTagFilter(tag);
+    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, limit, offset];
+
     const posts = this.#db
       .prepare(
         `
@@ -2227,13 +2337,17 @@ export class LibraryDatabase {
           (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) * 15 +
           (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 20
         ) as engagement_score
-      FROM posts p JOIN users u ON p.author_id = u.id
+      FROM posts p
+      JOIN users u ON p.author_id = u.id
+      LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
       WHERE p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
+        ${artFilter.sql}
+        ${tagFilter.sql}
       ORDER BY (engagement_score / (CAST((julianday('now') - julianday(p.created_at)) * 24 as REAL) + 2)) DESC, p.created_at DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `,
       )
-      .all(uid, uid, uid, limit) as any[];
+      .all(...allParams) as any[];
 
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
@@ -3024,6 +3138,25 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
   }
 
+  updateArtifactThumbnail(id: number, thumbnailUrl: string): void {
+    const row = this.#db.prepare(`SELECT view_config FROM artifact_views WHERE id = ?`).get(id) as
+      | { view_config?: string }
+      | undefined;
+    if (row && row.view_config) {
+      try {
+        const config = JSON.parse(row.view_config);
+        config.thumbnailUrl = thumbnailUrl;
+        config.thumbnailUrlLight = thumbnailUrl;
+        config.thumbnailUrlDark = thumbnailUrl;
+        this.#db
+          .prepare(`UPDATE artifact_views SET thumbnail_url = ?, view_config = ? WHERE id = ?`)
+          .run(thumbnailUrl, JSON.stringify(config), id);
+        return;
+      } catch {}
+    }
+    this.#db.prepare(`UPDATE artifact_views SET thumbnail_url = ? WHERE id = ?`).run(thumbnailUrl, id);
+  }
+
   getUserArchiveData(userId: number): {
     posts: any[];
     libraries: any[];
@@ -3262,31 +3395,81 @@ export class LibraryDatabase {
     limit: number = 10,
     halfLifeHours: number = 24,
     location: string | null = null,
-  ): (TrendingTopicRow & { real_score: number })[] {
+  ): (TrendingTopicRow & { real_score: number; post_count: number })[] {
     const query = location
-      ? `SELECT * FROM trending_topics WHERE current_score > 0.001 AND location = ? ORDER BY current_score DESC LIMIT ?`
-      : `SELECT * FROM trending_topics WHERE current_score > 0.001 ORDER BY current_score DESC LIMIT ?`;
+      ? `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 AND t.location = ? ORDER BY t.current_score DESC LIMIT ?`
+      : `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ORDER BY t.current_score DESC LIMIT ?`;
     const params = location ? [location, limit * 5] : [limit * 5];
 
-    const topics = this.#db.prepare(query).all(...params) as TrendingTopicRow[];
+    const topics = this.#db.prepare(query).all(...params) as (TrendingTopicRow & { post_count?: number })[];
 
     const currentMs = Date.now();
     const scoredTopics = topics.map((t) => {
       const lastUpdatedMs = new Date(t.last_updated_at.replace(" ", "T") + "Z").getTime();
       const deltaHours = Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60);
       const real_score = t.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
-      return { ...t, real_score };
+      return { ...t, real_score, post_count: Number(t.post_count || 0) };
     });
+
+    const CURATED_ENGINEERING_TOPICS: { concept: string; display_name: string; score: number }[] = [
+      { concept: "aerodynamics", display_name: "Aerodynamics", score: 50 },
+      { concept: "thermodynamics", display_name: "Thermodynamics", score: 45 },
+      { concept: "robotics", display_name: "Robotics", score: 42 },
+      { concept: "additivemfg", display_name: "AdditiveMfg", score: 38 },
+      { concept: "digitaltwin", display_name: "DigitalTwin", score: 35 },
+      { concept: "controlsystems", display_name: "ControlSystems", score: 32 },
+      { concept: "multibody", display_name: "Multibody", score: 28 },
+      { concept: "fluiddynamics", display_name: "FluidDynamics", score: 25 },
+      { concept: "cad", display_name: "CAD", score: 22 },
+      { concept: "modelica", display_name: "Modelica", score: 20 },
+    ];
+
+    const existingConcepts = new Map<string, TrendingTopicRow & { real_score: number; post_count: number }>();
+    for (const t of scoredTopics) {
+      existingConcepts.set(t.concept.toLowerCase(), t);
+    }
+
+    for (const [i, cur] of CURATED_ENGINEERING_TOPICS.entries()) {
+      const key = cur.concept.toLowerCase();
+      const match = existingConcepts.get(key);
+      if (match) {
+        match.real_score += cur.score;
+        match.current_score += cur.score;
+      } else {
+        let hashtagPostCount = 0;
+        try {
+          const countRow = this.#db
+            .prepare(`SELECT COUNT(*) as count FROM posts WHERE lower(content) LIKE ?`)
+            .get(`%#${cur.concept}%`) as { count: number } | undefined;
+          hashtagPostCount = countRow?.count || 0;
+        } catch {
+          hashtagPostCount = 0;
+        }
+
+        const newTopic = {
+          id: -(i + 1),
+          concept: cur.concept,
+          display_name: cur.display_name,
+          current_score: cur.score,
+          real_score: cur.score,
+          post_count: hashtagPostCount,
+          last_updated_at: new Date().toISOString(),
+        };
+        scoredTopics.push(newTopic);
+        existingConcepts.set(key, newTopic);
+      }
+    }
 
     scoredTopics.sort((a, b) => b.real_score - a.real_score);
     return scoredTopics.slice(0, limit);
   }
 
-  getTopicPosts(concept: string, currentUserId?: number, limit = 20): any[] {
-    const posts = this.#db
-      .prepare(
-        `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+  getTopicPosts(concept: string, currentUserId?: number, limit = 20, offset = 0, artifactType?: string): any[] {
+    const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
+    const artifactFilter = this.buildArtifactFilter(artifactType);
+
+    const query = `
+      SELECT DISTINCT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3295,15 +3478,18 @@ export class LibraryDatabase {
         ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
       FROM posts p 
       JOIN users u ON p.author_id = u.id
-      JOIN post_topics pt ON pt.post_id = p.id
-      JOIN trending_topics t ON t.id = pt.topic_id
-      WHERE t.concept = ?
+      LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
+      LEFT JOIN post_topics pt ON pt.post_id = p.id
+      LEFT JOIN trending_topics t ON t.id = pt.topic_id
+      WHERE (lower(t.concept) = ? OR lower(t.display_name) = ? OR lower(p.content) LIKE ?)
+        ${artifactFilter.sql}
       ORDER BY p.created_at DESC
-      LIMIT ?
-    `,
-      )
-      .all(concept, limit);
+      LIMIT ? OFFSET ?
+    `;
 
+    const params = [cleanConcept, cleanConcept, `%#${cleanConcept}%`, ...artifactFilter.params, limit, offset];
+
+    const posts = this.#db.prepare(query).all(...params) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 

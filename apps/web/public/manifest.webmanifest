@@ -1,0 +1,25 @@
+{
+  "name": "ModelScript — Polyglot Engineering Platform",
+  "short_name": "ModelScript",
+  "description": "Browser-native simulation, modeling, and cyber-physical systems engineering platform.",
+  "start_url": "/home",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/ms-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/ms-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "engineering", "productivity", "utilities"]
+}

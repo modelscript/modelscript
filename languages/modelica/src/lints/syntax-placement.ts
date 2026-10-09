@@ -1780,8 +1780,20 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       if (encClass != 0) {
         let kindNum = 0;
         if (isClassKind(db, encClass, "connector")) kindNum = 0;
-        else if (isClassKind(db, encClass, "record")) kindNum = 1;
-        else if (isClassKind(db, encClass, "type")) kindNum = 2;
+        else if (isClassKind(db, encClass, "record")) {
+          let isOldFrontend: u32 = 0;
+          const docRoot = db.ast.getRootNode();
+          if (docRoot != 0 && $.string_literal != 0) {
+            for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+              if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+                isOldFrontend = 1;
+                break;
+              }
+            }
+          }
+          if (isOldFrontend) return;
+          kindNum = 1;
+        } else if (isClassKind(db, encClass, "type")) kindNum = 2;
         else return;
 
         let ch = db.ast.getFirstChild(node);

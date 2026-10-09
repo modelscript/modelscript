@@ -11,11 +11,12 @@ import {
   FileIcon,
   HistoryIcon,
   LinkIcon,
+  ShareIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
-import { Heading, Label, Spinner, Text } from "@primer/react";
+import { Button, Heading, Label, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
 import type { ArtifactViewerInfo, ClassDetail, JobInfo, NpmPackument, NpmVersionManifest } from "../api";
@@ -32,6 +33,7 @@ import {
 import CadStepViewer from "../components/artifacts/CadStepViewer";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
+import { ComposeContext } from "../components/ComposeContext";
 import DatasetTableViewer from "../components/DatasetTableViewer";
 import FmuSimulatorViewer from "../components/FmuSimulatorViewer";
 import InvertedSvg from "../components/InvertedSvg";
@@ -604,6 +606,7 @@ const PackageDetailPage: React.FC = () => {
   usePageTitle(name && version ? `${name}@${version}` : "Package Details");
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as TabId) || "readme";
+  const { openCompose } = useContext(ComposeContext);
 
   // Legacy API data
   const [rootClass, setRootClass] = useState<ClassDetail | null>(null);
@@ -837,6 +840,28 @@ const PackageDetailPage: React.FC = () => {
                   <Label variant="secondary" style={{ fontSize: 11 }}>
                     {packument.license}
                   </Label>
+                )}
+                {openCompose && (
+                  <Button
+                    size="small"
+                    variant="default"
+                    leadingVisual={ShareIcon}
+                    onClick={() => {
+                      openCompose({
+                        content: `Check out the **${name}** package (v${version})! 📦`,
+                        packagePayload: {
+                          name: name!,
+                          version: version || "1.0.0",
+                          description: description || undefined,
+                          license: packument?.license || undefined,
+                          dialect: "modelica",
+                        },
+                      });
+                    }}
+                    style={{ marginLeft: "auto" }}
+                  >
+                    Share to Feed
+                  </Button>
                 )}
               </Box>
               {description && (

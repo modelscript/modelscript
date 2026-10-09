@@ -1111,7 +1111,7 @@ interface ActiveDimQuery {
 
 let evaluatingDimensionsStack: DimensionStackFrame[] = [];
 let activeDimQueriesStack: ActiveDimQuery[] = [];
-const cyclicDimensionDiagnostics = new Map<SymbolId, Array<{ dimIndex: number; exprText: string }>>();
+export const cyclicDimensionDiagnostics = new Map<SymbolId, Array<{ dimIndex: number; exprText: string }>>();
 let activeQueryDB: QueryDB | null = null;
 
 function addCyclicDiagnostic(symbolId: SymbolId, dimIndex: number, exprText: string) {
@@ -1326,6 +1326,11 @@ function getOrEvaluateSingleDimension(db: QueryDB, resolved: SymbolEntry, idx: n
   if (dim.kind === "literal") {
     return dim.value;
   } else if (dim.kind === "flexible") {
+    const isEvaluatingThisDim = evaluatingDimensionsStack.some((f) => f.symbolId === resolved.id && f.dimIndex === idx);
+    if (isEvaluatingThisDim) {
+      addCyclicDiagnostic(resolved.id, idx, ":");
+      return null;
+    }
     return 0;
   } else if (dim.kind === "expression") {
     const isEvaluatingThisDim = evaluatingDimensionsStack.some((f) => f.symbolId === resolved.id && f.dimIndex === idx);
@@ -1464,6 +1469,32 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
       break;
     }
     resolved = subResolver(parts[i]!);
+  }
+  if (!resolved) {
+    const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+    if (typeClassId) {
+      const typeEntry = db.symbol(typeClassId);
+      if (typeEntry && typeEntry.parentId != null) {
+        const typeResolver = db.query<((name: string) => SymbolEntry | null) | null>(
+          "resolveSimpleName",
+          typeEntry.parentId,
+        );
+        if (typeResolver) {
+          resolved = typeResolver(parts[0]!);
+          for (let i = 1; i < parts.length && resolved; i++) {
+            const subResolver = db.query<((name: string) => SymbolEntry | null) | null>(
+              "resolveSimpleName",
+              resolved.id,
+            );
+            if (!subResolver) {
+              resolved = null;
+              break;
+            }
+            resolved = subResolver(parts[i]!);
+          }
+        }
+      }
+    }
   }
   if (!resolved) return null;
 
@@ -3680,26 +3711,35 @@ export const componentDeclarationQueries: Record<string, any> = {
         if (dim.kind === "literal") {
           shape.push(dim.value);
         } else if (dim.kind === "flexible") {
-          // Try to infer from binding expression
-          const mod = db.query<any | null>("effectiveModification", self.id);
-          if (mod?.bindingExpression) {
-            const val = db.evaluate(mod.bindingExpression, self.parentId);
-            if (Array.isArray(val)) {
-              let cur: any = val;
-              let valid = true;
-              for (let d = 0; d < i; d++) {
-                if (Array.isArray(cur) && cur.length > 0) {
-                  cur = cur[0];
-                } else {
-                  valid = false;
-                  break;
+          evaluatingDimensionsStack.push({
+            symbolId: self.id,
+            dimIndex: i,
+            exprText: ":",
+          });
+          try {
+            // Try to infer from binding expression
+            const mod = db.query<any | null>("effectiveModification", self.id);
+            if (mod?.bindingExpression) {
+              const val = db.evaluate(mod.bindingExpression, self.parentId);
+              if (Array.isArray(val)) {
+                let cur: any = val;
+                let valid = true;
+                for (let d = 0; d < i; d++) {
+                  if (Array.isArray(cur) && cur.length > 0) {
+                    cur = cur[0];
+                  } else {
+                    valid = false;
+                    break;
+                  }
+                }
+                if (valid && Array.isArray(cur)) {
+                  shape.push(cur.length);
+                  continue;
                 }
               }
-              if (valid && Array.isArray(cur)) {
-                shape.push(cur.length);
-                continue;
-              }
             }
+          } finally {
+            evaluatingDimensionsStack.pop();
           }
           shape.push(0); // Inferred from binding later
         } else if (dim.kind === "expression") {
@@ -4126,6 +4166,28 @@ export const componentDeclarationQueries: Record<string, any> = {
       endCharOffset: endOffset,
       code: 2003,
     });
+  },
+  lint__cyclicDimension: (db: QueryDB, self: SymbolEntry) => {
+    db.query<number[] | null>("resolvedArrayDimensions", self.id);
+    const diags = cyclicDimensionDiagnostics.get(self.id);
+    if (diags && diags.length > 0) {
+      const d = diags[0]!;
+      const cst = db.cstNode(self.id) as any;
+      let clauseNode = cst;
+      while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
+        clauseNode = clauseNode.parent;
+      }
+      const rangeNode = clauseNode ?? cst;
+      const startByte = rangeNode?.startIndex ?? rangeNode?.startByte ?? self.startByte;
+      const endByte = rangeNode?.endIndex ?? rangeNode?.endByte ?? self.endByte;
+      const msg = ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY.message(String(d.dimIndex + 1), self.name, d.exprText);
+      return error(msg, {
+        startByte,
+        endByte,
+        code: ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY.code,
+      });
+    }
+    return null;
   },
   lint__componentBindingRestriction: (db: QueryDB, self: SymbolEntry) => {
     const cstNode = db.cstNode(self.id) as any;

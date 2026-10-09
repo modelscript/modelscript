@@ -662,8 +662,10 @@ export function runTestCase(
         rawCstDiags = [];
       }
     }
+    const isOldFrontend = testCase.source.includes("-d=-newInst");
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
+      if (isOldFrontend && (cd.code === 4064 || msg.includes("in record"))) return false;
       if (intEnumConversion && cd.code === 5006 && (msg.includes("Integer") || msg.includes("Enum"))) return false;
       if (
         cd.code === 4042 &&

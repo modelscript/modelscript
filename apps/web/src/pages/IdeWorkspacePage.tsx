@@ -14,10 +14,12 @@ import { Button, IconButton, Spinner, Text } from "@primer/react";
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
+import { getArtifactView } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { useTheme } from "../theme";
+import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 
 const PageContainer = styled.div`
@@ -175,7 +177,6 @@ export const IdeWorkspacePage: React.FC = () => {
     project?: string;
     templateId?: string;
   }>();
-  usePageTitle(project ? `${project} — Web IDE` : "Web IDE");
 
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -184,10 +185,104 @@ export const IdeWorkspacePage: React.FC = () => {
   const { theme } = useTheme();
   const { openCompose } = useContext(ComposeContext);
 
+  const sourceParam = searchParams.get("source");
+  const titleParam = searchParams.get("title");
+
+  const [artifactMetadata, setArtifactMetadata] = useState<{
+    id: string | number;
+    title: string;
+    viewType: string;
+    viewConfig: any;
+  } | null>(null);
+
+  const artifactIdFromHash = useMemo(() => {
+    if (location.hash && location.hash.startsWith("#memfs:artifact-")) {
+      return location.hash.slice("#memfs:artifact-".length);
+    }
+    return null;
+  }, [location.hash]);
+
+  const packageNameFromHash = useMemo(() => {
+    if (location.hash && location.hash.startsWith("#memfs:package-")) {
+      return location.hash.slice("#memfs:package-".length);
+    }
+    return null;
+  }, [location.hash]);
+
+  useEffect(() => {
+    let active = true;
+    if (artifactIdFromHash) {
+      getArtifactView(artifactIdFromHash)
+        .then((data) => {
+          if (!active) return;
+          const av = data?.artifactView;
+          if (av) {
+            const config = safeJsonParse(av.view_config, {});
+            setArtifactMetadata({
+              id: av.id,
+              title: av.title || av.name || `Artifact #${av.id}`,
+              viewType: av.view_type || "modelica-code",
+              viewConfig: config,
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn("[IdeWorkspacePage] Failed to fetch artifact metadata:", err);
+        });
+    } else if (sourceParam) {
+      const decodedSource = decodeURIComponent(sourceParam);
+      const title = titleParam ? decodeURIComponent(titleParam) : "ScratchModel.mo";
+      const modelName = title.replace(/\.[^/.]+$/, "");
+      const meta = {
+        id: "scratch",
+        title,
+        viewType: "modelica-code",
+        viewConfig: {
+          code: decodedSource,
+          model: modelName,
+        },
+      };
+      setArtifactMetadata(meta);
+      try {
+        sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(meta));
+      } catch {
+        // ignore
+      }
+    } else {
+      setArtifactMetadata(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [artifactIdFromHash, sourceParam, titleParam]);
+
+  usePageTitle(
+    project
+      ? `${project} — Web IDE`
+      : artifactMetadata
+        ? `${artifactMetadata.title} — Web IDE`
+        : packageNameFromHash
+          ? `${packageNameFromHash} — Web IDE`
+          : "Web IDE",
+  );
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [showDeprecationNotice, setShowDeprecationNotice] = useState(true);
+  const [lspStatus, setLspStatus] = useState<{ status: string; message?: string } | null>(null);
+
+  const handleRestartLsp = () => {
+    setLspStatus({ status: "loading", message: "Restarting language server…" });
+    try {
+      iframeRef.current?.contentWindow?.postMessage({ type: "MODELSCRIPT_RESTART_LSP" }, window.location.origin);
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage({ type: "MODELSCRIPT_RESTART_LSP" });
+      channel.close();
+    } catch {
+      // ignore
+    }
+  };
 
   // Compute folder hash and title
   const { folderHash, displayTitle, backUrl, branchName, isDeprecated } = useMemo(() => {
@@ -218,16 +313,50 @@ export const IdeWorkspacePage: React.FC = () => {
       };
     }
 
-    // 3. Fallback: query param or blank project
+    // 3. Fallback: query param, source code handoff, artifact handoff, package, or blank project
+    if (sourceParam) {
+      const title = titleParam ? decodeURIComponent(titleParam) : "ScratchModel.mo";
+      return {
+        folderHash: "#memfs:scratch",
+        displayTitle: title,
+        backUrl: "/feed",
+        branchName: undefined,
+        isDeprecated: false,
+      };
+    }
+
     const customHash = location.hash || "#memfs:empty";
+    let title = "Blank Workspace";
+    let back = "/home";
+
+    if (artifactIdFromHash) {
+      title = artifactMetadata?.title || `Artifact #${artifactIdFromHash}`;
+      back = "/feed";
+    } else if (packageNameFromHash) {
+      title = `Package: ${packageNameFromHash}`;
+      back = "/explore";
+    }
+
     return {
       folderHash: customHash,
-      displayTitle: "Blank Workspace",
-      backUrl: "/home",
+      displayTitle: title,
+      backUrl: back,
       branchName: undefined,
       isDeprecated: false,
     };
-  }, [namespace, project, provider, searchParams, templateId, location.hash]);
+  }, [
+    namespace,
+    project,
+    provider,
+    searchParams,
+    templateId,
+    location.hash,
+    artifactIdFromHash,
+    packageNameFromHash,
+    artifactMetadata,
+    sourceParam,
+    titleParam,
+  ]);
 
   const workbenchUrl = useMemo(() => {
     return `/vscode/workbench${folderHash}`;
@@ -268,10 +397,44 @@ export const IdeWorkspacePage: React.FC = () => {
         },
         targetOrigin,
       );
+
+      // 3. Sync artifact mounting
+      if (artifactMetadata) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "MODELSCRIPT_MOUNT_ARTIFACT",
+            artifactId: artifactMetadata.id,
+            title: artifactMetadata.title,
+            viewType: artifactMetadata.viewType,
+            viewConfig: artifactMetadata.viewConfig,
+          },
+          targetOrigin,
+        );
+
+        try {
+          const bridge = new BroadcastChannel("modelscript:host-bridge");
+          bridge.postMessage({
+            type: "MODELSCRIPT_MOUNT_ARTIFACT",
+            artifactId: artifactMetadata.id,
+            title: artifactMetadata.title,
+            viewType: artifactMetadata.viewType,
+            viewConfig: artifactMetadata.viewConfig,
+          });
+          bridge.close();
+        } catch {
+          // ignore
+        }
+      }
     } catch {
       // Cross-origin restriction fallback
     }
   };
+
+  useEffect(() => {
+    if (artifactMetadata) {
+      sendSyncState();
+    }
+  }, [artifactMetadata]);
 
   const syncStateRef = useRef(sendSyncState);
   useEffect(() => {
@@ -290,13 +453,19 @@ export const IdeWorkspacePage: React.FC = () => {
 
         case "MODELSCRIPT_SHARE_TO_FEED":
           if (data.payload) {
-            window.dispatchEvent(
-              new CustomEvent("modelscript:open-compose", {
-                detail: data.payload,
-              }),
-            );
+            openCompose(data.payload);
+          } else {
+            openCompose();
           }
-          openCompose();
+          break;
+
+        case "MODELSCRIPT_LSP_STATUS":
+          if (data.status && typeof data.status === "string") {
+            setLspStatus({
+              status: data.status,
+              message: typeof data.message === "string" ? data.message : undefined,
+            });
+          }
           break;
 
         case "MODELSCRIPT_NAVIGATE":
@@ -365,6 +534,14 @@ export const IdeWorkspacePage: React.FC = () => {
               <>
                 <Text style={{ fontWeight: 600 }}>{displayTitle}</Text>
                 <Badge>memfs</Badge>
+                {artifactMetadata?.viewType && (
+                  <Badge sx={{ textTransform: "uppercase", background: "rgba(6, 182, 212, 0.15)", color: "#06b6d4" }}>
+                    {artifactMetadata.viewType}
+                  </Badge>
+                )}
+                {packageNameFromHash && (
+                  <Badge sx={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}>package</Badge>
+                )}
                 {isDeprecated && (
                   <span
                     style={{
@@ -390,20 +567,93 @@ export const IdeWorkspacePage: React.FC = () => {
         </ToolbarLeft>
 
         <ToolbarRight>
+          {lspStatus && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                fontSize: "11px",
+                fontFamily: "var(--font-mono, monospace)",
+                padding: "2px 8px",
+                borderRadius: "999px",
+                background:
+                  lspStatus.status === "ready"
+                    ? "rgba(46, 160, 67, 0.15)"
+                    : lspStatus.status === "loading"
+                      ? "rgba(210, 153, 34, 0.15)"
+                      : "rgba(248, 81, 73, 0.15)",
+                color:
+                  lspStatus.status === "ready" ? "#3fb950" : lspStatus.status === "loading" ? "#d29922" : "#f85149",
+                border: `1px solid ${
+                  lspStatus.status === "ready"
+                    ? "rgba(46, 160, 67, 0.3)"
+                    : lspStatus.status === "loading"
+                      ? "rgba(210, 153, 34, 0.3)"
+                      : "rgba(248, 81, 73, 0.3)"
+                }`,
+                cursor: lspStatus.status === "error" || lspStatus.status === "offline" ? "pointer" : "default",
+                fontWeight: 600,
+              }}
+              title={lspStatus.message || "ModelScript Language Server"}
+              onClick={lspStatus.status === "error" || lspStatus.status === "offline" ? handleRestartLsp : undefined}
+            >
+              {lspStatus.status === "ready"
+                ? "● LSP Ready"
+                : lspStatus.status === "loading"
+                  ? "◐ Reconnecting…"
+                  : "⚠ LSP Offline (Restart)"}
+            </span>
+          )}
+
           <Button
             size="small"
             variant="default"
             leadingVisual={ShareIcon}
             onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent("modelscript:open-compose", {
-                  detail: {
-                    content: `Check out my model in the ModelScript IDE: ${displayTitle}`,
-                    title: displayTitle,
+              const fromArtifactParam = searchParams.get("fromArtifact");
+              const forkedId = fromArtifactParam
+                ? Number(fromArtifactParam)
+                : artifactIdFromHash
+                  ? Number(artifactIdFromHash)
+                  : undefined;
+
+              if (artifactIdFromHash) {
+                openCompose({
+                  content: `Sharing an update on **${displayTitle}**:`,
+                  artifactId: Number(artifactIdFromHash),
+                  forkedFromArtifactId: forkedId,
+                });
+                return;
+              }
+
+              if (artifactMetadata?.viewConfig?.code) {
+                openCompose({
+                  content: `Check out my model in the ModelScript IDE: **${displayTitle}**`,
+                  morselPayload: {
+                    code: artifactMetadata.viewConfig.code,
+                    title: displayTitle.replace(/\.[^/.]+$/, ""),
+                    dialect: "modelica",
                   },
-                }),
-              );
-              openCompose();
+                  forkedFromArtifactId: forkedId,
+                });
+                return;
+              }
+
+              // Ask active editor inside iframe for latest content
+              try {
+                iframeRef.current?.contentWindow?.postMessage(
+                  { type: "MODELSCRIPT_REQUEST_ACTIVE_FILE" },
+                  window.location.origin,
+                );
+              } catch {
+                // cross-origin fallback
+              }
+
+              openCompose({
+                content: `Check out my workspace in the ModelScript IDE: **${displayTitle}**`,
+                forkedFromArtifactId: forkedId,
+              });
             }}
           >
             Share to Feed

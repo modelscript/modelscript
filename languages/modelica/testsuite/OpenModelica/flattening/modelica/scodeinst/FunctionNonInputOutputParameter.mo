@@ -1,7 +1,6 @@
 // name: FunctionNonInputOutputParameter
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 function f

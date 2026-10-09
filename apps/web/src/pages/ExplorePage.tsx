@@ -3,11 +3,15 @@
 import {
   AlertIcon,
   ArrowLeftIcon,
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CodeIcon,
+  PlusIcon,
   RocketIcon,
   SearchIcon,
+  ShareIcon,
+  TagIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
@@ -17,9 +21,21 @@ import styled from "styled-components";
 import { getExplore, getLibraries, getRepos, getSearchCompletions, getTopicPosts, getTrending } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { ComposeContext } from "../components/ComposeContext";
 import FollowButton from "../components/FollowButton";
 import Post from "../components/Post";
 import { usePageTitle } from "../util/title";
+
+const CURATED_ENGINEERING_DOMAINS = [
+  { tag: "Aerodynamics", name: "Aerodynamics", icon: "🌪️", desc: "NACA airfoils, compressible flow & CFD" },
+  { tag: "Thermodynamics", name: "Thermodynamics", icon: "🌡️", desc: "Heat transfer, cooling cycles & thermal grids" },
+  { tag: "Robotics", name: "Robotics", icon: "🤖", desc: "Kinematics, inverse dynamics & bipedal control" },
+  { tag: "AdditiveMfg", name: "AdditiveMfg", icon: "🖨️", desc: "Toolpaths, slicing & 5-axis CNC G-Code" },
+  { tag: "DigitalTwin", name: "DigitalTwin", icon: "👥", desc: "AAS Asset Administration Shells & telemetry" },
+  { tag: "ControlSystems", name: "ControlSystems", icon: "🎛️", desc: "State-space, PID & closed-loop stability" },
+  { tag: "Multibody", name: "Multibody", icon: "⚙️", desc: "Rigid body mechanics, joints & articulated assemblies" },
+  { tag: "CAD", name: "CAD 3D", icon: "📐", desc: "STEP, OpenCASCADE & procedural CSG geometry" },
+];
 
 interface StarterTemplate {
   id: string;
@@ -218,10 +234,14 @@ const TabButton = styled.button<{ $active?: boolean }>`
 const ExplorePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
-  const topic = searchParams.get("topic") || "";
-  usePageTitle(query ? `Search: ${query}` : topic ? `Topic: ${topic}` : "Explore");
+  const rawTopic = searchParams.get("topic") || searchParams.get("tag") || "";
+  const topic = rawTopic || (query.startsWith("#") ? query.slice(1) : "");
+  usePageTitle(query && !query.startsWith("#") ? `Search: ${query}` : topic ? `Topic: #${topic}` : "Explore");
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { openCompose } = React.useContext(ComposeContext);
+  const [topicFilter, setTopicFilter] = useState<string>("all");
+  const [copiedTopicLink, setCopiedTopicLink] = useState(false);
   const templatesScrollRef = React.useRef<HTMLDivElement>(null);
 
   const scrollTemplates = (direction: "left" | "right") => {
@@ -296,7 +316,9 @@ const ExplorePage: React.FC = () => {
       async function fetchTopicPosts() {
         setLoading(true);
         try {
-          const data = await getTopicPosts(topic);
+          const data = await getTopicPosts(topic, {
+            artifactType: topicFilter !== "all" ? topicFilter : undefined,
+          });
           setTopicPosts(data.posts || []);
         } catch (err) {
           console.error(err);
@@ -306,7 +328,7 @@ const ExplorePage: React.FC = () => {
       }
       fetchTopicPosts();
     }
-  }, [topic]);
+  }, [topic, topicFilter]);
 
   useEffect(() => {
     async function fetchExplore() {
@@ -472,6 +494,33 @@ const ExplorePage: React.FC = () => {
   const TABS = ["Top", "Latest", "Templates", "People", "Media", "Artifacts", "Repositories"];
 
   if (topic) {
+    const TOPIC_ARTIFACT_TABS = [
+      { id: "all", label: "All Posts" },
+      { id: "cad", label: "CAD 3D", emoji: "📐" },
+      { id: "simulation", label: "FEA / CFD", emoji: "🔥" },
+      { id: "plot", label: "Plots & Data", emoji: "📈" },
+      { id: "modelica", label: "Modelica Code", emoji: "⚡" },
+    ];
+
+    const RELATED_ENGINEERING_TAGS = [
+      "Aerodynamics",
+      "Thermodynamics",
+      "Robotics",
+      "AdditiveMfg",
+      "DigitalTwin",
+      "ControlSystems",
+      "Multibody",
+      "FluidDynamics",
+      "CAD",
+      "Modelica",
+    ].filter((t) => t.toLowerCase() !== topic.toLowerCase());
+
+    const handleCopyTopic = () => {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedTopicLink(true);
+      setTimeout(() => setCopiedTopicLink(false), 2000);
+    };
+
     return (
       <Box>
         <SearchHeader>
@@ -485,12 +534,164 @@ const ExplorePage: React.FC = () => {
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
               onKeyDown={handleSearchSubmit}
-              placeholder="Search"
+              placeholder="Search or enter #hashtag"
             />
           </SearchInputWrapper>
         </SearchHeader>
+
+        {/* Engineering Topic Hero Banner */}
+        <Box
+          p={4}
+          borderBottom="1px solid var(--color-border)"
+          style={{
+            background: "linear-gradient(180deg, rgba(139, 92, 246, 0.12) 0%, rgba(6, 182, 212, 0.04) 100%)",
+          }}
+        >
+          <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={3} flexWrap="wrap">
+            <Box>
+              <Box display="flex" alignItems="center" gap={2} mb={2}>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    padding: "3px 8px",
+                    borderRadius: "9999px",
+                    background: "rgba(139, 92, 246, 0.2)",
+                    color: "var(--color-accent-purple)",
+                    border: "1px solid rgba(139, 92, 246, 0.4)",
+                  }}
+                >
+                  Engineering Topic
+                </span>
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                  {topicPosts.length} {topicPosts.length === 1 ? "post" : "posts"} indexed
+                </span>
+              </Box>
+              <Heading
+                as="h1"
+                style={{
+                  fontSize: "26px",
+                  fontWeight: 800,
+                  margin: "0 0 6px 0",
+                  color: "var(--color-text-heading)",
+                  letterSpacing: "-0.5px",
+                }}
+              >
+                #{topic}
+              </Heading>
+              <Text
+                as="p"
+                style={{
+                  fontSize: "14px",
+                  color: "var(--color-text-muted)",
+                  margin: 0,
+                  maxWidth: "540px",
+                  lineHeight: 1.5,
+                }}
+              >
+                Explore engineering models, dynamic simulations, CAD geometry, and discussions tagged with #{topic}.
+              </Text>
+            </Box>
+
+            <Box display="flex" alignItems="center" gap={2}>
+              <button
+                type="button"
+                onClick={handleCopyTopic}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid var(--color-border-glass)",
+                  color: "var(--color-text-primary)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {copiedTopicLink ? <CheckIcon size={14} fill="var(--color-accent-cyan)" /> : <ShareIcon size={14} />}
+                <span>{copiedTopicLink ? "Link Copied" : "Share"}</span>
+              </button>
+              {openCompose && (
+                <button
+                  type="button"
+                  onClick={() => openCompose({ defaultText: `#${topic} ` })}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    background: "var(--gradient-cta)",
+                    color: "white",
+                    border: "none",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 0 12px rgba(139, 92, 246, 0.35)",
+                  }}
+                >
+                  <PlusIcon size={14} />
+                  <span>Post with #{topic}</span>
+                </button>
+              )}
+            </Box>
+          </Box>
+
+          {/* Related Engineering Hashtags */}
+          <Box mt={3} pt={3} borderTop="1px solid rgba(255, 255, 255, 0.06)">
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "var(--color-text-muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Related Tags:
+              </span>
+              {RELATED_ENGINEERING_TAGS.slice(0, 6).map((rel) => (
+                <Link
+                  key={rel}
+                  to={`/explore?topic=${encodeURIComponent(rel)}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono)",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "var(--color-text-secondary)",
+                    textDecoration: "none",
+                  }}
+                >
+                  #{rel}
+                </Link>
+              ))}
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Topic Sub-filter Tabs */}
+        <TabContainer style={{ borderBottom: "1px solid var(--color-border)" }}>
+          {TOPIC_ARTIFACT_TABS.map((tab) => (
+            <TabButton key={tab.id} $active={topicFilter === tab.id} onClick={() => setTopicFilter(tab.id)}>
+              {tab.emoji ? `${tab.emoji} ` : ""}
+              {tab.label}
+            </TabButton>
+          ))}
+        </TabContainer>
+
         {loading ? (
-          <Box p={4} display="flex" justifyContent="center">
+          <Box p={6} display="flex" justifyContent="center">
             <Spinner size="large" />
           </Box>
         ) : (
@@ -499,8 +700,54 @@ const ExplorePage: React.FC = () => {
               <Post key={post.id} post={post} />
             ))}
             {topicPosts.length === 0 && (
-              <Box p={6} textAlign="center" color="var(--color-text-muted)">
-                No posts found for this topic.
+              <Box p={6} textAlign="center">
+                <div style={{ fontSize: "36px", marginBottom: "12px" }}>🏷️</div>
+                <Heading
+                  as="h3"
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    marginBottom: "8px",
+                    color: "var(--color-text-heading)",
+                  }}
+                >
+                  No Posts Found for #{topic}
+                </Heading>
+                <Text
+                  as="p"
+                  style={{
+                    fontSize: "14px",
+                    color: "var(--color-text-muted)",
+                    maxWidth: "420px",
+                    margin: "0 auto 20px auto",
+                  }}
+                >
+                  {topicFilter !== "all"
+                    ? `No posts tagged #${topic} with ${TOPIC_ARTIFACT_TABS.find((t) => t.id === topicFilter)?.label} artifacts yet.`
+                    : `Be the first engineer to publish a simulation model, CAD geometry, or question tagged #${topic}!`}
+                </Text>
+                {openCompose && (
+                  <button
+                    type="button"
+                    onClick={() => openCompose({ defaultText: `#${topic} ` })}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "8px 16px",
+                      borderRadius: "8px",
+                      background: "var(--gradient-cta)",
+                      color: "white",
+                      border: "none",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <PlusIcon size={14} />
+                    <span>Create First #{topic} Post</span>
+                  </button>
+                )}
               </Box>
             )}
           </Box>
@@ -1635,6 +1882,102 @@ const ExplorePage: React.FC = () => {
                     <CodeIcon size={12} /> Launch Legacy
                   </Link>
                 </Box>
+              ))}
+            </Box>
+          </Box>
+
+          {/* Curated Engineering Domains & Hashtags */}
+          <Box
+            p={3}
+            borderBottom="1px solid var(--color-border)"
+            style={{ background: "var(--surface-hud, rgba(14, 20, 36, 0.35))" }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box>
+                <Heading
+                  as="h3"
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 800,
+                    color: "var(--color-text-heading)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <TagIcon size={16} /> Engineering Domains &amp; Hashtags
+                </Heading>
+                <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                  Discover specialized simulation models, CAD geometries, and physical twin discussions by engineering
+                  discipline.
+                </Text>
+              </Box>
+            </Box>
+            <Box
+              display="flex"
+              gap="12px"
+              sx={{
+                overflowX: "auto",
+                paddingBottom: "8px",
+                "&::-webkit-scrollbar": { display: "none" },
+                scrollbarWidth: "none",
+              }}
+            >
+              {CURATED_ENGINEERING_DOMAINS.map((dom) => (
+                <Link
+                  key={dom.tag}
+                  to={`/explore?topic=${encodeURIComponent(dom.tag)}`}
+                  style={{ textDecoration: "none", flexShrink: 0 }}
+                >
+                  <Box
+                    bg="var(--color-bg-card)"
+                    border="1px solid var(--color-border-glass)"
+                    borderRadius="10px"
+                    p="14px"
+                    minWidth="200px"
+                    maxWidth="220px"
+                    sx={{
+                      transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                      "&:hover": {
+                        backgroundColor: "rgba(255, 255, 255, 0.05)",
+                        borderColor: "var(--color-accent-purple)",
+                        transform: "translateY(-2px)",
+                        boxShadow: "0 0 16px rgba(139, 92, 246, 0.15)",
+                      },
+                    }}
+                  >
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                      <span style={{ fontSize: "22px" }}>{dom.icon}</span>
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "var(--font-mono)",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          backgroundColor: "rgba(139, 92, 246, 0.15)",
+                          color: "var(--color-accent-purple)",
+                          border: "1px solid rgba(139, 92, 246, 0.3)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        #{dom.tag}
+                      </span>
+                    </Box>
+                    <div
+                      style={{
+                        fontWeight: "bold",
+                        fontSize: "14px",
+                        color: "var(--color-text-heading)",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {dom.name}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+                      {dom.desc}
+                    </div>
+                  </Box>
+                </Link>
               ))}
             </Box>
           </Box>

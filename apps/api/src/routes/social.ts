@@ -3,6 +3,8 @@
 /* eslint-disable */
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import fs from "fs";
+import path from "path";
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
@@ -30,7 +32,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const authorId = req.user!.id;
     const {
       content,
-      artifact_view_id,
+      artifact_view_id: raw_artifact_view_id,
+      artifactId,
       reply_to_id,
       quote_post_id,
       repost_of_id,
@@ -39,6 +42,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       metadata,
       reply_visibility,
     } = req.body;
+    const artifact_view_id = raw_artifact_view_id ?? artifactId;
 
     if (!content && !repost_of_id && !artifact_view_id) {
       res.status(400).json({ error: "Content, artifact, or repost target is required" });
@@ -103,7 +107,19 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
             }
           }
 
-          // Broadcast to remote followers via ActivityPub
+          // Extract mentions and create notifications
+          const mentionRegex = /(?:^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g;
+          let match;
+          const mentions = new Set<string>();
+          if (content) {
+            while ((match = mentionRegex.exec(content)) !== null) {
+              if (match[1]) {
+                mentions.add(match[1]);
+              }
+            }
+          }
+
+          // Broadcast to remote followers & mentioned actors via ActivityPub
           (async () => {
             try {
               const fullAuthor = database.getUserFederationInfo(authorId);
@@ -111,9 +127,52 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
               if (fullAuthor && content) {
                 // Find remote followers
                 const remoteFollowers = database.getRemoteFollowersInboxes(authorId);
+                const mentionTags: any[] = [];
+                const additionalInboxes: { inbox_url: string; shared_inbox_url?: string; remote_domain: string }[] = [];
 
-                if (remoteFollowers.length > 0) {
+                for (const username of mentions) {
+                  if (username.includes("@")) {
+                    try {
+                      const { resolveActorHandle } = await import("./federation.js");
+                      const resolved = await resolveActorHandle(username, database);
+                      if (resolved && resolved.user) {
+                        database.createNotification(resolved.user.id, authorId, "mention", id);
+                        if (resolved.actorUrl) {
+                          mentionTags.push({
+                            type: "Mention",
+                            href: resolved.actorUrl,
+                            name: `@${resolved.user.username}`,
+                          });
+                          const inbox =
+                            (resolved.actor?.endpoints as any)?.sharedInbox ||
+                            (resolved.actor?.sharedInbox as string) ||
+                            (resolved.actor?.inbox as string) ||
+                            `${resolved.actorUrl}/inbox`;
+                          const domain = new URL(resolved.actorUrl).hostname;
+                          additionalInboxes.push({
+                            inbox_url: inbox,
+                            shared_inbox_url:
+                              (resolved.actor?.endpoints as any)?.sharedInbox ||
+                              (resolved.actor?.sharedInbox as string) ||
+                              undefined,
+                            remote_domain: domain,
+                          });
+                        }
+                      }
+                    } catch {
+                      // Ignore lookup errors for unresolvable remote handles
+                    }
+                  } else {
+                    const mentionedUser = database.getUserByUsername(username);
+                    if (mentionedUser) {
+                      database.createNotification(mentionedUser.id, authorId, "mention", id);
+                    }
+                  }
+                }
+
+                if (remoteFollowers.length > 0 || additionalInboxes.length > 0) {
                   const apPostId = `${fullAuthor.actor_url}/posts/${id}`;
+                  const ccList = [`${fullAuthor.actor_url}/followers`, ...mentionTags.map((m) => m.href)];
 
                   const noteObject: any = {
                     id: apPostId,
@@ -122,8 +181,12 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     attributedTo: fullAuthor.actor_url,
                     content: content,
                     to: ["https://www.w3.org/ns/activitystreams#Public"],
-                    cc: [`${fullAuthor.actor_url}/followers`],
+                    cc: ccList,
                   };
+
+                  if (mentionTags.length > 0) {
+                    noteObject.tag = mentionTags;
+                  }
 
                   if (client_signature && key_id_string) {
                     noteObject.proof = {
@@ -159,13 +222,13 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     actor: fullAuthor.actor_url,
                     published: new Date().toISOString(),
                     to: ["https://www.w3.org/ns/activitystreams#Public"],
-                    cc: [`${fullAuthor.actor_url}/followers`],
+                    cc: ccList,
                     object: noteObject,
                   };
 
                   const { FederationWorker } = await import("../services/federation-worker.js");
                   const fedWorker = worker || new FederationWorker(database);
-                  fedWorker.enqueueActivityBroadcast(createActivity, authorId);
+                  fedWorker.enqueueActivityBroadcast(createActivity, authorId, additionalInboxes);
                 }
               }
             } catch (err) {
@@ -185,22 +248,6 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
               for (const topic of topics) {
                 const topicId = database.updateTopicScore(topic.concept, topic.displayName, postWeight, 24, location);
                 database.linkPostToTopic(id, topicId);
-              }
-
-              // Extract mentions and create notifications
-              const mentionRegex = /(?:^|\s)@([a-zA-Z0-9_]+)/g;
-              let match;
-              const mentions = new Set<string>();
-              while ((match = mentionRegex.exec(content)) !== null) {
-                if (match[1]) {
-                  mentions.add(match[1]);
-                }
-              }
-              for (const username of mentions) {
-                const mentionedUser = database.getUserByUsername(username);
-                if (mentionedUser) {
-                  database.createNotification(mentionedUser.id, authorId, "mention", id);
-                }
               }
 
               // Extract URLs for link previews (if no artifact exists)
@@ -471,8 +518,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.get("/timeline", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const limit = Number(req.query.limit) || 20;
+    const offset = Number(req.query.offset) || 0;
+    const artifactType = (req.query.artifactType as string) || undefined;
+    const tag = (req.query.tag as string) || undefined;
     try {
-      const posts = database.getHomeTimeline(userId, limit);
+      const posts = database.getHomeTimeline(userId, limit, offset, artifactType, tag);
       res.json({ posts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get timeline" });
@@ -486,8 +536,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const userId = req.user!.id;
     const limit = Number(req.query.limit) || 20;
     const sort = req.query.sort as string;
+    const offset = Number(req.query.offset) || 0;
+    const artifactType = (req.query.artifactType as string) || undefined;
+    const tag = (req.query.tag as string) || undefined;
     try {
-      const posts = database.getFollowingTimeline(userId, limit, sort);
+      const posts = database.getFollowingTimeline(userId, limit, sort, offset, artifactType, tag);
       res.json({ posts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get following timeline" });
@@ -500,8 +553,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.get("/explore", optionalAuth, (req: Request, res: Response) => {
     const currentUserId = req.user?.id;
     const limit = Number(req.query.limit) || 20;
+    const offset = Number(req.query.offset) || 0;
+    const artifactType = (req.query.artifactType as string) || undefined;
+    const tag = (req.query.tag as string) || undefined;
     try {
-      const posts = database.getExploreTimeline(currentUserId, limit);
+      const posts = database.getExploreTimeline(currentUserId, limit, offset, artifactType, tag);
       res.json({ posts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get explore timeline" });
@@ -664,6 +720,56 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   });
 
   /**
+   * PUT /api/v1/social/artifact-views/:id/thumbnail
+   */
+  router.put("/artifact-views/:id/thumbnail", optionalAuth, async (req: Request, res: Response): Promise<void> => {
+    const rawId = req.params["id"];
+    const id = Number(Array.isArray(rawId) ? rawId[0] : rawId);
+    if (!id || isNaN(id)) {
+      res.status(400).json({ error: "Invalid artifact ID" });
+      return;
+    }
+
+    const { dataUrl, image } = req.body;
+    const rawData = dataUrl || image;
+    if (!rawData || typeof rawData !== "string") {
+      res.status(400).json({ error: "dataUrl or image string is required" });
+      return;
+    }
+
+    try {
+      const artifact = database.getArtifactView(id);
+      if (!artifact) {
+        res.status(404).json({ error: "Artifact view not found" });
+        return;
+      }
+
+      // Extract base64
+      const matches = rawData.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      const ext = matches ? (matches[1] === "jpeg" ? "jpg" : matches[1]) : "webp";
+      const base64Data = matches ? matches[2]! : rawData.replace(/^data:.*?;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      const outDir = path.resolve(process.cwd(), "apps/api/public/thumbnails");
+      if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+      }
+
+      const filename = `artifact_${id}_thumb_${Date.now()}.${ext}`;
+      const filePath = path.join(outDir, filename);
+      fs.writeFileSync(filePath, buffer);
+
+      const thumbnailUrl = `/thumbnails/${filename}`;
+      database.updateArtifactThumbnail(id, thumbnailUrl);
+
+      res.json({ success: true, thumbnailUrl });
+    } catch (err: any) {
+      console.error("[socialRouter] Error saving artifact thumbnail:", err);
+      res.status(500).json({ error: "Failed to save thumbnail" });
+    }
+  });
+
+  /**
    * POST /api/v1/social/artifact-views
    */
   router.post("/artifact-views", requireAuth, (req: Request, res: Response) => {
@@ -778,9 +884,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const concept = req.params.concept as string;
     const currentUserId = req.user?.id;
     const limit = Number(req.query.limit) || 20;
+    const offset = Number(req.query.offset) || 0;
+    const artifactType = (req.query.artifactType as string) || undefined;
 
     try {
-      const posts = database.getTopicPosts(concept, currentUserId, limit);
+      const posts = database.getTopicPosts(concept, currentUserId, limit, offset, artifactType);
       res.json({ posts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get topic posts" });

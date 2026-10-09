@@ -28,46 +28,429 @@ export interface IMemoryFileSystemProvider {
   writeFiles?(entries: [vscode.Uri, Uint8Array][]): void;
 }
 
+export interface ArtifactWorkspaceDescriptor {
+  artifactId: string | number;
+  title?: string;
+  viewType?: string;
+  viewConfig?: Record<string, any>;
+}
+
+export interface GeneratedWorkspace {
+  files: Record<string, string>;
+  primaryFile: string;
+}
+
+const artifactRegistry = new Map<string, ArtifactWorkspaceDescriptor>();
+
+export function registerArtifactDescriptor(descriptor: ArtifactWorkspaceDescriptor): void {
+  artifactRegistry.set(String(descriptor.artifactId), descriptor);
+}
+
+export function getArtifactDescriptor(artifactId: string | number): ArtifactWorkspaceDescriptor | undefined {
+  return artifactRegistry.get(String(artifactId));
+}
+
+export function clearArtifactRegistry(): void {
+  artifactRegistry.clear();
+}
+
+export function sanitizeModelicaIdentifier(name?: string, fallback = "ArtifactModel"): string {
+  if (!name) return fallback;
+  let cleaned = name
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/^_+/, "")
+    .replace(/_+$/, "");
+  if (!cleaned || /^[0-9]/.test(cleaned)) {
+    cleaned = "M_" + (cleaned || fallback);
+  }
+  return cleaned;
+}
+
+export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDescriptor): GeneratedWorkspace {
+  const viewType = (descriptor.viewType || "").toLowerCase();
+  const config = descriptor.viewConfig || {};
+
+  // 1. Modelica Code / Schematic / Morsel
+  if (
+    viewType === "modelica-code" ||
+    viewType === "modelica-diagram" ||
+    viewType === "morsel" ||
+    (!viewType && config.code)
+  ) {
+    const rawCode = config.code || config.content || "";
+    let modelName = "";
+    if (rawCode) {
+      const match = rawCode.match(/(?:model|class|block|connector|package)\s+([A-Za-z0-9_]+)/);
+      if (match) {
+        modelName = match[1];
+      }
+    }
+    if (!modelName) {
+      modelName = sanitizeModelicaIdentifier(descriptor.title, `Artifact_${descriptor.artifactId}`);
+    }
+
+    const code =
+      rawCode ||
+      [
+        `// ModelScript Workspace for Artifact #${descriptor.artifactId}`,
+        `// Title: ${descriptor.title || "Community Model"}`,
+        ``,
+        `model ${modelName} "${descriptor.title || "Community Model"}"`,
+        `  Real x(start = 1.0) "State variable";`,
+        `  Real y(start = 0.0) "Coupled variable";`,
+        `equation`,
+        `  der(x) = -y;`,
+        `  der(y) = x;`,
+        `end ${modelName};`,
+        ``,
+      ].join("\n");
+
+    const primaryFile = `${modelName}.mo`;
+    const files: Record<string, string> = {
+      [primaryFile]: code,
+      "README.md": [
+        `# ${descriptor.title || modelName}`,
+        ``,
+        `Mounted from ModelScript Hub Community Feed & Physical Twin Workspace.`,
+        ``,
+        `- **Artifact ID**: #${descriptor.artifactId}`,
+        `- **View Type**: \`${viewType || "modelica-code"}\``,
+        `- **Primary Model**: \`${modelName}\``,
+        ``,
+        `To simulate, open \`${primaryFile}\` and press \`F5\` or click **Run Simulation**.`,
+      ].join("\n"),
+    };
+
+    return { files, primaryFile };
+  }
+
+  // 2. Simulation Plot / Result / CFD / FEA Result
+  if (
+    viewType === "simulation-plot" ||
+    viewType === "simulation-result" ||
+    viewType === "cfd-result" ||
+    viewType === "fea-result" ||
+    viewType === "cfd-animation"
+  ) {
+    const modelName = config.model
+      ? sanitizeModelicaIdentifier(config.model)
+      : sanitizeModelicaIdentifier(descriptor.title, `Simulation_${descriptor.artifactId}`);
+    const primaryFile = `${modelName}.mo`;
+
+    const variables: string[] =
+      Array.isArray(config.variables) && config.variables.length > 0 ? config.variables : ["x", "v"];
+
+    const overrides: Record<string, any> = config.overrides || {};
+    const paramLines = Object.entries(overrides).map(([k, v]) => {
+      const safeK = sanitizeModelicaIdentifier(k);
+      return `  parameter Real ${safeK} = ${v};`;
+    });
+
+    const varLines = variables.map((v) => `  Real ${sanitizeModelicaIdentifier(v)}(start = 1.0);`);
+    const eqLines =
+      variables.length >= 2
+        ? [
+            `  der(${sanitizeModelicaIdentifier(variables[0])}) = ${sanitizeModelicaIdentifier(variables[1])};`,
+            `  der(${sanitizeModelicaIdentifier(variables[1])}) = -${sanitizeModelicaIdentifier(variables[0])};`,
+          ]
+        : variables.map((v) => `  der(${sanitizeModelicaIdentifier(v)}) = -${sanitizeModelicaIdentifier(v)};`);
+
+    const code =
+      config.code ||
+      [
+        `// ModelScript Simulation Experiment: ${descriptor.title || modelName}`,
+        `// Generated from Artifact #${descriptor.artifactId}`,
+        ``,
+        `model ${modelName} "${descriptor.title || "Simulation Model"}"`,
+        paramLines.length > 0 ? paramLines.join("\n") : `  parameter Real k = 1.0 "System stiffness";`,
+        varLines.join("\n"),
+        `equation`,
+        eqLines.join("\n"),
+        `end ${modelName};`,
+        ``,
+      ].join("\n");
+
+    const simScript = [
+      `// ModelScript Simulation Script for ${modelName}`,
+      `simulate(${modelName}, startTime = 0.0, stopTime = 10.0, numberOfIntervals = 500);`,
+      `plot({${variables.map((v) => `"${sanitizeModelicaIdentifier(v)}"`).join(", ")}});`,
+      ``,
+    ].join("\n");
+
+    const files: Record<string, string> = {
+      [primaryFile]: code,
+      "simulate.mos": simScript,
+      "README.md": [
+        `# Simulation: ${descriptor.title || modelName}`,
+        ``,
+        `Mounted from ModelScript Simulation Artifact #${descriptor.artifactId}.`,
+        ``,
+        `- **Model**: \`${modelName}\``,
+        `- **Variables**: ${variables.map((v) => `\`${v}\``).join(", ")}`,
+        `- **Script**: \`simulate.mos\``,
+      ].join("\n"),
+    };
+
+    if (config.csvData || config.data || config.results) {
+      files["trajectory.csv"] =
+        typeof config.csvData === "string"
+          ? config.csvData
+          : typeof config.data === "string"
+            ? config.data
+            : JSON.stringify(config.results || config.data, null, 2);
+    }
+
+    return { files, primaryFile };
+  }
+
+  // 3. 3D CAD STEP
+  if (viewType === "cad-step" || viewType === "cad_step" || viewType === "3d-model") {
+    const stepContent =
+      config.step ||
+      config.content ||
+      config.data ||
+      [
+        `ISO-10303-21;`,
+        `HEADER;`,
+        `FILE_DESCRIPTION(('ModelScript 3D CAD Artifact'), '2;1');`,
+        `FILE_NAME('geometry.step', '2026-10-09', ('ModelScript User'), ('ModelScript CAD Engine'), '', '', '');`,
+        `FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));`,
+        `ENDSEC;`,
+        `DATA;`,
+        `/* CAD Artifact #${descriptor.artifactId}: ${descriptor.title || "CAD Geometry"} */`,
+        `ENDSEC;`,
+        `END-ISO-10303-21;`,
+      ].join("\n");
+
+    const modelName = sanitizeModelicaIdentifier(descriptor.title, `CADAssembly_${descriptor.artifactId}`);
+    const primaryFile = `${modelName}.mo`;
+    const files: Record<string, string> = {
+      [primaryFile]: [
+        `// ModelScript 3D CAD Assembly bound to STEP geometry`,
+        `model ${modelName} "${descriptor.title || "CAD Model"}"`,
+        `  // Bound to local STEP geometry file`,
+        `  annotation(Shape(export = "geometry.step"));`,
+        `equation`,
+        `end ${modelName};`,
+        ``,
+      ].join("\n"),
+      "geometry.step": stepContent,
+      "README.md": [
+        `# 3D CAD: ${descriptor.title || modelName}`,
+        ``,
+        `Mounted from ModelScript CAD Artifact #${descriptor.artifactId}.`,
+        ``,
+        `- **Geometry Asset**: \`geometry.step\``,
+        `- **Modelica Wrapper**: \`${primaryFile}\``,
+      ].join("\n"),
+    };
+
+    return { files, primaryFile };
+  }
+
+  // 4. GCode Toolpath
+  if (viewType === "gcode" || viewType === "cam-result") {
+    const gcodeContent =
+      config.gcode ||
+      config.content ||
+      [
+        `; GCode Toolpath for Artifact #${descriptor.artifactId}: ${descriptor.title || "CNC Job"}`,
+        `G21 ; millimeters`,
+        `G90 ; absolute coordinates`,
+        `G28 ; home all axes`,
+        `M104 S200 ; set extruder temp`,
+        `M140 S60 ; set bed temp`,
+        `G1 Z5 F5000 ; lift nozzle`,
+        `G1 X50 Y50 F3000 ; move to start`,
+        `G1 Z0.2 F1000 ; layer 1`,
+        `G1 X100 Y50 E5 F1500`,
+        `G1 X100 Y100 E10 F1500`,
+        `G1 X50 Y100 E15 F1500`,
+        `G1 X50 Y50 E20 F1500`,
+        `M84 ; disable motors`,
+      ].join("\n");
+
+    const modelName = sanitizeModelicaIdentifier(descriptor.title, `Manufacturing_${descriptor.artifactId}`);
+    const primaryFile = "toolpath.gcode";
+    const files: Record<string, string> = {
+      [primaryFile]: gcodeContent,
+      [`${modelName}.mo`]: [
+        `// ModelScript CNC / CAM Manufacturing Process`,
+        `model ${modelName} "${descriptor.title || "Toolpath Process"}"`,
+        `  parameter String toolpath_file = "toolpath.gcode";`,
+        `end ${modelName};`,
+        ``,
+      ].join("\n"),
+      "README.md": [
+        `# CAM Toolpath: ${descriptor.title || modelName}`,
+        ``,
+        `- **G-Code File**: \`toolpath.gcode\``,
+        `- **Process Model**: \`${modelName}.mo\``,
+      ].join("\n"),
+    };
+
+    return { files, primaryFile };
+  }
+
+  // 5. AAS Package / Cyber-Physical System
+  if (viewType === "aas-package" || viewType === "cyber-physical-system" || viewType === "hardware-project") {
+    const manifest = config.manifest ||
+      config || {
+        idShort: sanitizeModelicaIdentifier(descriptor.title, `Asset_${descriptor.artifactId}`),
+        assetAdministrationShells: [
+          {
+            idShort: descriptor.title || `Asset_${descriptor.artifactId}`,
+            submodels: [
+              { idShort: "TechnicalData", semanticId: "0173-1#01-AHF578#001" },
+              { idShort: "OperationalData", semanticId: "0173-1#01-ADN789#001" },
+            ],
+          },
+        ],
+      };
+
+    const modelName = sanitizeModelicaIdentifier(descriptor.title, `AAS_${descriptor.artifactId}`);
+    const primaryFile = "aas-manifest.json";
+    const files: Record<string, string> = {
+      [primaryFile]: JSON.stringify(manifest, null, 2),
+      [`${modelName}.mo`]: [
+        `// ModelScript Asset Administration Shell (AAS) Digital Twin`,
+        `model ${modelName} "${descriptor.title || "AAS Digital Twin"}"`,
+        `  parameter String manifest_path = "aas-manifest.json";`,
+        `  parameter String idShort = "${manifest.idShort || modelName}";`,
+        `end ${modelName};`,
+        ``,
+      ].join("\n"),
+      "README.md": [
+        `# AAS Digital Twin: ${descriptor.title || modelName}`,
+        ``,
+        `- **Manifest**: \`aas-manifest.json\``,
+        `- **Digital Twin Wrapper**: \`${modelName}.mo\``,
+      ].join("\n"),
+    };
+
+    return { files, primaryFile };
+  }
+
+  // 6. Generic Default Artifact Fallback
+  const modelName = sanitizeModelicaIdentifier(descriptor.title, `ArtifactModel_${descriptor.artifactId}`);
+  const primaryFile = "ArtifactModel.mo";
+  const content = [
+    `// ModelScript Workspace for Social Artifact #${descriptor.artifactId}`,
+    `// Title: ${descriptor.title || "Community Artifact"}`,
+    `// Opened from Community Feed & Physical Twin Hub`,
+    ``,
+    `model ${modelName} "${descriptor.title || "Community Artifact"}"`,
+    `  Real x(start = 1.0) "State variable";`,
+    `  Real y(start = 0.0) "Coupled variable";`,
+    `equation`,
+    `  der(x) = -y;`,
+    `  der(y) = x;`,
+    `end ${modelName};`,
+    ``,
+  ].join("\n");
+
+  const files: Record<string, string> = {
+    [primaryFile]: content,
+    "README.md": [
+      `# Artifact #${descriptor.artifactId}: ${descriptor.title || "Community Model"}`,
+      ``,
+      `Mounted in ModelScript IDE linear in-memory filesystem (\`memfs://\`).`,
+    ].join("\n"),
+  };
+
+  return { files, primaryFile };
+}
+
+export function generatePackageWorkspaceFiles(packageName: string, pkgInfo?: Record<string, any>): GeneratedWorkspace {
+  const safeName = sanitizeModelicaIdentifier(packageName, "PackageDemo");
+  const primaryFile = `${safeName}Demo.mo`;
+  const manifest = {
+    name: packageName,
+    version: pkgInfo?.version || "1.0.0",
+    description: pkgInfo?.description || `ModelScript workspace for package ${packageName}`,
+    dependencies: pkgInfo?.dependencies || {},
+  };
+
+  const files: Record<string, string> = {
+    "package.json": JSON.stringify(manifest, null, 2),
+    "package.mo": [
+      `package ${safeName}`,
+      `  "Library package for ${packageName}"`,
+      `  constant String version = "${manifest.version}";`,
+      `end ${safeName};`,
+      ``,
+    ].join("\n"),
+    [primaryFile]: [
+      `// Test harness and simulation demo for ${packageName}`,
+      `model ${safeName}Demo "Testing ${packageName}"`,
+      `  // import ${safeName}.*;`,
+      `  Real time_val = time;`,
+      `equation`,
+      `end ${safeName}Demo;`,
+      ``,
+    ].join("\n"),
+    "README.md": [
+      `# ${packageName}`,
+      ``,
+      `ModelScript package workspace for \`${packageName}\`.`,
+      ``,
+      `- **Entrypoint**: \`${primaryFile}\``,
+      `- **Package Root**: \`package.mo\``,
+      `- **Registry Metadata**: \`package.json\``,
+    ].join("\n"),
+  };
+
+  return { files, primaryFile };
+}
+
+export function mountArtifactToMemFs(
+  memFs: IMemoryFileSystemProvider,
+  workspaceUri: vscode.Uri,
+  descriptor: ArtifactWorkspaceDescriptor,
+): { files: Record<string, string>; primaryFile: string } {
+  registerArtifactDescriptor(descriptor);
+  const encoder = new TextEncoder();
+  const { files, primaryFile } = generateArtifactWorkspaceFiles(descriptor);
+  for (const [name, fileContent] of Object.entries(files)) {
+    const fileUri = joinPath(workspaceUri, name);
+    memFs.writeFile(fileUri, encoder.encode(fileContent));
+  }
+  return { files, primaryFile };
+}
+
 export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspaceUri: vscode.Uri): void {
   const encoder = new TextEncoder();
   const template = workspaceUri.path.substring(1) || "empty";
 
-  if (template.startsWith("artifact-")) {
-    const artifactId = template.slice("artifact-".length);
-    const content = [
-      `// ModelScript Workspace for Social Artifact #${artifactId}`,
-      `// Opened from Community Feed & Physical Twin Hub`,
-      ``,
-      `model ArtifactModel "Community Artifact #${artifactId}"`,
-      `  Real x(start = 1.0) "State variable";`,
-      `  Real y(start = 0.0) "Coupled variable";`,
-      `equation`,
-      `  der(x) = -y;`,
-      `  der(y) = x;`,
-      `end ArtifactModel;`,
-      ``,
-    ].join("\n");
-    const fileUri = joinPath(workspaceUri, "ArtifactModel.mo");
-    memFs.writeFile(fileUri, encoder.encode(content));
+  if (template === "scratch" || template.startsWith("artifact-")) {
+    const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
+    let registered = artifactRegistry.get(artifactId);
+    if (!registered && typeof sessionStorage !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(`modelscript.artifact_${artifactId}`);
+        if (raw) registered = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+    }
+    const descriptor: ArtifactWorkspaceDescriptor = registered || { artifactId };
+    const { files } = generateArtifactWorkspaceFiles(descriptor);
+    for (const [name, fileContent] of Object.entries(files)) {
+      const fileUri = joinPath(workspaceUri, name);
+      memFs.writeFile(fileUri, encoder.encode(fileContent));
+    }
+    console.log(`[blank-project] Scaffolded ${Object.keys(files).length} artifact file(s) for #${artifactId}`);
     return;
   }
 
   if (template.startsWith("package-")) {
     const pkgName = template.slice("package-".length);
-    const content = [
-      `// ModelScript Workspace for Package: ${pkgName}`,
-      `// Dependencies automatically resolved from registry`,
-      ``,
-      `model PackageDemo "Testing ${pkgName}"`,
-      `  // import ${pkgName}.*;`,
-      `  Real time_val = time;`,
-      `equation`,
-      ``,
-      `end PackageDemo;`,
-      ``,
-    ].join("\n");
-    const fileUri = joinPath(workspaceUri, "PackageDemo.mo");
-    memFs.writeFile(fileUri, encoder.encode(content));
+    const { files } = generatePackageWorkspaceFiles(pkgName);
+    for (const [name, fileContent] of Object.entries(files)) {
+      const fileUri = joinPath(workspaceUri, name);
+      memFs.writeFile(fileUri, encoder.encode(fileContent));
+    }
+    console.log(`[blank-project] Scaffolded ${Object.keys(files).length} package file(s) for '${pkgName}'`);
     return;
   }
 
@@ -1915,7 +2298,28 @@ export function getTemplatePrimaryFile(template: string): string {
     "pendulum-3d": "DoublePendulum.mo",
     "vehicle-architecture": "VehicleSystem.sysml",
   };
-  if (template.startsWith("artifact-")) return "ArtifactModel.mo";
-  if (template.startsWith("package-")) return "PackageDemo.mo";
+  if (template === "scratch" || template.startsWith("artifact-")) {
+    const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
+    let registered = artifactRegistry.get(artifactId);
+    if (!registered && typeof sessionStorage !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(`modelscript.artifact_${artifactId}`);
+        if (raw) registered = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+    }
+    if (registered) {
+      const { primaryFile } = generateArtifactWorkspaceFiles(registered);
+      return primaryFile;
+    }
+    return template === "scratch" ? "ScratchModel.mo" : "ArtifactModel.mo";
+  }
+
+  if (template.startsWith("package-")) {
+    const pkgName = template.slice("package-".length);
+    const { primaryFile } = generatePackageWorkspaceFiles(pkgName);
+    return primaryFile;
+  }
   return map[template] ?? "HelloWorld.mo";
 }

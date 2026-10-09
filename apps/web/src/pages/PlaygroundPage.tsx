@@ -3,7 +3,7 @@
 import { CodeIcon, CopyIcon, DownloadIcon, FileIcon, ShareIcon, ZapIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Dialog, IconButton } from "@primer/react";
 import React, { useContext, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
@@ -180,11 +180,16 @@ end ChuaCircuit;`,
 ];
 
 export const PlaygroundPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { theme } = useTheme();
   const { openCompose } = useContext(ComposeContext);
+
+  const modelParam = searchParams.get("model");
+  const sourceParam = searchParams.get("source");
+  const fromArtifactParam = searchParams.get("fromArtifact");
 
   const [currentCode, setCurrentCode] = useState<string>(HERO_EXAMPLES[0].code);
   const [currentTitle, setCurrentTitle] = useState<string>(HERO_EXAMPLES[0].name);
@@ -192,7 +197,7 @@ export const PlaygroundPage: React.FC = () => {
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
-  // Initialize from URL hash on load
+  // Initialize from URL hash or query params on load
   useEffect(() => {
     if (location.hash && location.hash.length > 1) {
       const payload = decompressMorselPayload(location.hash);
@@ -200,8 +205,48 @@ export const PlaygroundPage: React.FC = () => {
         setCurrentCode(payload.code);
         if (payload.title) setCurrentTitle(payload.title);
       }
+    } else if (sourceParam) {
+      const decodedSource = decodeURIComponent(sourceParam);
+      const title = searchParams.get("title") ? decodeURIComponent(searchParams.get("title")!) : "Custom Model";
+      setCurrentCode(decodedSource);
+      setCurrentTitle(title);
+      const hash = compressMorselPayload({
+        v: 1,
+        lang: "modelica",
+        code: decodedSource,
+        title,
+      });
+      window.history.replaceState(null, "", `#m=${hash}`);
+    } else if (modelParam) {
+      const match = HERO_EXAMPLES.find(
+        (ex) =>
+          ex.id.toLowerCase() === modelParam.toLowerCase() || ex.name.toLowerCase().includes(modelParam.toLowerCase()),
+      );
+      if (match) {
+        setCurrentCode(match.code);
+        setCurrentTitle(match.name);
+        const hash = compressMorselPayload({
+          v: 1,
+          lang: match.lang,
+          code: match.code,
+          title: match.name,
+        });
+        window.history.replaceState(null, "", `#m=${hash}`);
+      } else {
+        const sanitized = modelParam.split(".").pop() || modelParam;
+        const code = `// Parameterized model handoff: ${modelParam}\nmodel ${sanitized} "${modelParam} simulation"\n  Real x(start = 1.0) "State variable";\n  Real y(start = 0.0) "Coupled variable";\nequation\n  der(x) = -y;\n  der(y) = x;\nend ${sanitized};\n`;
+        setCurrentCode(code);
+        setCurrentTitle(sanitized);
+        const hash = compressMorselPayload({
+          v: 1,
+          lang: "modelica",
+          code,
+          title: sanitized,
+        });
+        window.history.replaceState(null, "", `#m=${hash}`);
+      }
     }
-  }, [location.hash]);
+  }, [location.hash, modelParam, sourceParam, searchParams]);
 
   const handleSelectExample = (ex: (typeof HERO_EXAMPLES)[number]) => {
     setCurrentCode(ex.code);
@@ -247,8 +292,17 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handlePublishToFeed = () => {
+    const fromArtifactId = fromArtifactParam ? Number(fromArtifactParam) : null;
     if (openCompose) {
-      openCompose();
+      openCompose({
+        content: `Check out my simulation model: **${currentTitle}**! 🚀`,
+        morselPayload: {
+          code: currentCode,
+          title: currentTitle,
+          dialect: "modelica",
+        },
+        forkedFromArtifactId: fromArtifactId,
+      });
     } else {
       navigate("/home");
     }
@@ -278,6 +332,29 @@ export const PlaygroundPage: React.FC = () => {
             <span>ModelScript</span>
           </BrandLink>
           <Badge>⚡ Playground</Badge>
+
+          {fromArtifactParam && (
+            <Link
+              to={`/feed?artifact=${fromArtifactParam}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "11px",
+                fontFamily: "var(--font-mono, monospace)",
+                padding: "2px 8px",
+                borderRadius: "999px",
+                background: "rgba(245, 158, 11, 0.15)",
+                color: "#f59e0b",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+              title={`Forked from Artifact #${fromArtifactParam}`}
+            >
+              ⚡ Fork of #{fromArtifactParam}
+            </Link>
+          )}
 
           {/* Preset Example Picker */}
           <ActionMenu>

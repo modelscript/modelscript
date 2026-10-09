@@ -668,5 +668,66 @@ export function authRouter(database: LibraryDatabase): Router {
     }
   });
 
+  /**
+   * GET /api/v1/auth/connected-accounts
+   */
+  router.get("/connected-accounts", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const userId = req.user!.id;
+      const linked = database.getPublicOAuthAccounts(userId);
+      const linkedMap = new Map(linked.map((acc) => [acc.provider.toLowerCase(), acc.provider_user_id]));
+
+      const providers = [
+        {
+          provider: "oidc",
+          name: "Enterprise Single Sign-On (OIDC)",
+          connected: linkedMap.has("oidc"),
+          identifier: linkedMap.get("oidc") || undefined,
+        },
+        {
+          provider: "github",
+          name: "GitHub",
+          connected: linkedMap.has("github"),
+          identifier: linkedMap.get("github") || undefined,
+        },
+        {
+          provider: "gitlab",
+          name: "GitLab",
+          connected: linkedMap.has("gitlab"),
+          identifier: linkedMap.get("gitlab") || undefined,
+        },
+        {
+          provider: "twitter",
+          name: "X (Twitter)",
+          connected: linkedMap.has("twitter"),
+          identifier: linkedMap.get("twitter") || undefined,
+        },
+      ];
+
+      res.json({ providers });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch connected accounts" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/auth/connected-accounts/:provider
+   */
+  router.delete("/connected-accounts/:provider", requireAuth, (req: Request, res: Response): void => {
+    const rawProvider = req.params["provider"];
+    const provider = (Array.isArray(rawProvider) ? rawProvider[0] : rawProvider)?.toLowerCase();
+    if (!provider) {
+      res.status(400).json({ error: "Provider parameter is required" });
+      return;
+    }
+
+    try {
+      database.unlinkOAuthAccount(req.user!.id, provider);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to unlink account" });
+    }
+  });
+
   return router;
 }

@@ -554,6 +554,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   private ifMeta = new Map<number, IfEquationMeta>();
   public stateMachines: ArenaStateMachine[] = [];
   private eqSourceRanges = new Map<number, { startByte: number; endByte: number }>();
+  private eqOrders = new Map<number, number>();
   private varSourceRanges = new Map<number, { startByte: number; endByte: number }>();
   private paramNameToEqs = new Map<string, Set<number>>();
   private eqKinds = new Map<number, EqKind>();
@@ -1027,6 +1028,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     this.ifMeta.clear();
     this.stateMachines = [];
     this.eqSourceRanges.clear();
+    this.eqOrders.clear();
     this.varSourceRanges.clear();
     this.paramNameToEqs.clear();
     this.origEqRhs.clear();
@@ -1274,6 +1276,14 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   setEqDescription(eqIdx: number, desc: string): void {
     this.eqDescriptions.set(eqIdx, desc);
+  }
+
+  getEqOrder(eqIdx: number): number | undefined {
+    return this.eqOrders.get(eqIdx);
+  }
+
+  setEqOrder(eqIdx: number, order: number): void {
+    this.eqOrders.set(eqIdx, order);
   }
 
   findEqAtRange(startByte: number, endByte: number): number {

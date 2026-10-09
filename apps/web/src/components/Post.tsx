@@ -606,7 +606,7 @@ const RenderContent = ({ text }: { text: string | null }) => {
     if (!text || !containerRef.current) return;
 
     let processedText = text.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
-    processedText = processedText.replace(/(^|\s)@([a-zA-Z0-9_.-]+)/g, "$1[@$2](/@$2)");
+    processedText = processedText.replace(/(^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g, "$1[@$2](/@$2)");
 
     const rawHtml = marked.parse(processedText, { breaks: true, gfm: true }) as string;
     const sanitizedHtml = DOMPurify.sanitize(rawHtml);
@@ -1640,7 +1640,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
                 {displayPost.artifact_view_id && (
                   <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-                    <ArtifactViewCard artifactId={displayPost.artifact_view_id} />
+                    <ArtifactViewCard
+                      artifactId={displayPost.artifact_view_id}
+                      onPinCreated={(pin) => {
+                        setPendingPin(pin);
+                        setShowReplyModal(true);
+                      }}
+                    />
                     <AiInsightRibbon
                       onClick={(e) => {
                         e.stopPropagation();

@@ -52,7 +52,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
       borderRadius="12px"
       border="1px solid var(--color-border-default)"
       overflow="hidden"
-      height={isFullScreen ? "100vh" : "620px"}
+      height={isFullScreen ? "100%" : "440px"}
     >
       {/* ── Top Header Bar ────────────────────────────────────────── */}
       <Box

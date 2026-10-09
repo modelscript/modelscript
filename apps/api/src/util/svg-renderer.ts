@@ -156,6 +156,171 @@ function extractComponentMetadata(component: any): ComponentMetadata | null {
   return { name, typeName, description, causality, variability, modifiers };
 }
 
+const CLASS_KIND_KEYWORDS = [
+  "class",
+  "model",
+  "record",
+  "block",
+  "connector",
+  "type",
+  "package",
+  "function",
+  "operator",
+  "optimization",
+];
+
+function classKindFromEntry(entry: any): string {
+  const prefixesText = entry?.metadata?.classPrefixes ?? entry?.metadata?.classKind;
+  if (typeof prefixesText !== "string" || !prefixesText) return "class";
+  const lower = prefixesText.toLowerCase();
+  for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
+    const kw = CLASS_KIND_KEYWORDS[i];
+    if (kw && lower.includes(kw)) return kw;
+  }
+  return "class";
+}
+
+function resolveSymbolId(context: Context, name: string): number | null {
+  const byName = context.queryEngine.index.byName.get(name);
+  if (byName && byName.length > 0 && typeof byName[0] === "number") return byName[0];
+  const parts = name.split(".");
+  const first = parts[0];
+  if (!first) return null;
+  let curr = context.queryEngine.index.byName.get(first)?.[0];
+  if (typeof curr !== "number") return null;
+  const db = context.queryEngine.toQueryDB();
+  for (let i = 1; i < parts.length; i++) {
+    if (typeof curr !== "number") return null;
+    const children: any[] = (db.childrenOf(curr) as any[]) || [];
+    const match = children.find((c: any) => c.name === parts[i]);
+    if (!match || typeof match.id !== "number") return null;
+    curr = match.id;
+  }
+  return typeof curr === "number" ? curr : null;
+}
+
+function buildClassAdapter(
+  context: Context,
+  symbolId: number,
+  AnnotationEvaluatorClass: any,
+  visited = new Set<number>(),
+): any {
+  if (visited.has(symbolId)) return null;
+  visited.add(symbolId);
+
+  const queryDB = context.queryEngine.toQueryDB();
+  const entry = queryDB.symbol(symbolId);
+  if (!entry) return null;
+  const cstNode = queryDB.cstNode(symbolId) as any;
+  const children = queryDB.childrenOf(symbolId) || [];
+  const components: any[] = [];
+  const connectEquations: any[] = [];
+  const extendsClassInstances: any[] = [];
+
+  for (const child of children) {
+    if (child.kind === "Component" || child.kind === "Variable") {
+      const childCst = queryDB.cstNode(child.id) as any;
+      const childClassId = queryDB.query("classInstance", child.id) as number | undefined;
+      const compCls =
+        typeof childClassId === "number"
+          ? buildClassAdapter(context, childClassId, AnnotationEvaluatorClass, new Set(visited))
+          : null;
+      const childMod = queryDB.query("effectiveModification", child.id) as any;
+      let exprText = childMod?.bindingExpression?.text ?? childMod?.bindingExpression?.value;
+      if (exprText === undefined && childMod?.args) {
+        const startArg = childMod.args.find((a: any) => a.name === "start");
+        if (startArg) {
+          exprText = startArg.value?.text ?? startArg.value;
+        }
+      }
+      components.push({
+        id: child.id,
+        name: child.name,
+        entry: child,
+        classInstance: compCls,
+        classKind: compCls?.classKind ?? classKindFromEntry(child),
+        modification: {
+          expression: exprText !== undefined ? { text: String(exprText) } : undefined,
+          getModificationArgument: (argName: string) => {
+            const foundArg = childMod?.args?.find((a: any) => a.name === argName);
+            if (foundArg) {
+              const valText = foundArg.value?.text ?? foundArg.value;
+              return { expression: valText !== undefined ? { text: String(valText) } : undefined };
+            }
+            return undefined;
+          },
+        },
+      });
+    } else if (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) {
+      const connCst = queryDB.cstNode(child.id) as any;
+      let lhs = "";
+      let rhs = "";
+      if (connCst) {
+        const cRefs = (connCst.children || []).filter(
+          (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+        );
+        if (cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
+        if (cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
+      }
+      if (!lhs && child.metadata?.lhs) lhs = String(child.metadata.lhs);
+      if (!rhs && child.metadata?.rhs) rhs = String(child.metadata.rhs);
+      connectEquations.push({
+        lhs,
+        rhs,
+        cstNode: connCst,
+      });
+    } else if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
+      let baseSym = queryDB.query("resolvedBaseClass", child.id) as any;
+      if (!baseSym && child.name) {
+        const baseId = resolveSymbolId(context, child.name);
+        if (baseId) baseSym = queryDB.symbol(baseId);
+      }
+      if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id)) {
+        const baseAdapter = buildClassAdapter(context, baseSym.id, AnnotationEvaluatorClass, new Set(visited));
+        if (baseAdapter) {
+          extendsClassInstances.push({ classInstance: baseAdapter });
+        }
+      }
+    }
+  }
+
+  const adapter: any = {
+    id: symbolId,
+    db: queryDB,
+    context,
+    name: entry.name,
+    classKind: classKindFromEntry(entry),
+    entry,
+    components,
+    connectEquations,
+    extendsClassInstances,
+  };
+
+  adapter.resolveName = (parts: string[]): any => {
+    if (!parts || parts.length === 0) return null;
+    const [first, ...rest] = parts;
+    let found = components.find((c) => c.name === first);
+    if (!found) {
+      for (const ext of extendsClassInstances) {
+        found = ext.classInstance?.resolveName?.([first]);
+        if (found) break;
+      }
+    }
+    if (!found) return null;
+    if (rest.length === 0) return found;
+    return found.classInstance?.resolveName?.(rest) ?? null;
+  };
+
+  const evaluator = new AnnotationEvaluatorClass(adapter);
+  for (const comp of components) {
+    const childCst = queryDB.cstNode(comp.id);
+    comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
+  }
+
+  adapter.annotation = (name: string) => (cstNode ? evaluator.evaluate(cstNode, name) : null);
+  return adapter;
+}
+
 /**
  * Check if an SVG string contains any meaningful visual elements.
  * Returns false for SVGs that only have empty groups/wrappers.
@@ -177,7 +342,7 @@ export async function processLibrary(
   ensureSvgWindow();
   await ensureParser();
 
-  const { renderIcon, renderDiagram } = await import("@modelscript/modelica/diagram");
+  const { renderIcon, renderDiagram, AnnotationEvaluator } = await import("@modelscript/modelica/diagram");
 
   const context = new Context(new NodeFileSystem());
 
@@ -220,117 +385,182 @@ export async function processLibrary(
     }
   }
 
-  // Process classes recursively
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function processElement(element: any) {
-    if (!element) return;
-    if (element.isComponentInstance || element.kind === "Extends" || element.kind === "Component") return;
-    if (element.isClassInstance === false && !element.classKind && element.kind !== "Class") return;
+  const queryDB = context.queryEngine.toQueryDB();
+  const symIndex = context.queryEngine.index;
 
-    const className = element.compositeName;
-    if (className) {
-      if (!processedClassNames.has(className)) {
-        try {
-          const classKind = element.classKind ?? "unknown";
-          const baseClasses = (element.extendsClassInstances || [])
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((e: any) => e.classInstance?.compositeName)
-            .filter(Boolean) as string[];
+  async function visitClass(classId: number, fqn: string) {
+    const sym = queryDB.symbol(classId);
+    if (!sym) return;
 
-          const components: ComponentMetadata[] = [];
-          for (const comp of element.components || []) {
-            const compMeta = extractComponentMetadata(comp);
-            if (compMeta) components.push(compMeta);
-          }
+    const className = fqn;
+    const cstNode = queryDB.cstNode(classId) as any;
+    const children = queryDB.childrenOf(classId) || [];
 
-          const metadata: ClassMetadata = {
-            className,
-            classKind: classKind.toString(),
-            description: element.description ?? null,
-            documentation: (element.annotation?.("Documentation") as { info?: string } | undefined)?.info ?? null,
-            baseClasses,
-            components,
-          };
+    if (!processedClassNames.has(className)) {
+      try {
+        const classKind = classKindFromEntry(sym);
+        const baseClasses: string[] = [];
+        const components: ComponentMetadata[] = [];
 
-          const memoryTight = isMemoryTight();
-          // Render SVGs — skip when memory is tight, for packages, or for classes with many declared elements
-          // (declaredElements is a plain array, safe to check without triggering lazy resolution)
-          let iconSvg: string | null = null;
-          let diagramSvg: string | null = null;
-          const skipRendering = memoryTight || (element.declaredElements?.length ?? 0) > 200;
+        for (const child of children) {
+          if (child.kind === "Extends") {
+            const baseName = (child.metadata?.typeSpecifier as string) || child.name;
+            if (baseName) baseClasses.push(baseName);
+          } else if (child.kind === "Component" || child.kind === "Variable") {
+            const compCst = queryDB.cstNode(child.id) as any;
+            let compDesc: string | null = (child.metadata?.description as string) ?? null;
+            if (!compDesc && compCst?.children) {
+              const descChild = compCst.children.find((c: any) => c.type === "description" || c.type === "comment");
+              if (descChild?.text) {
+                compDesc = descChild.text.replace(/^["']|["']$/g, "").trim();
+              }
+            }
 
-          if (!skipRendering) {
+            let causality: string | null = null;
             try {
-              const icon = renderIcon(element);
+              causality = queryDB.query("causality", child.id)?.toString() ?? null;
+            } catch {}
+
+            let variability: string | null = null;
+            try {
+              variability = queryDB.query("variability", child.id)?.toString() ?? null;
+            } catch {}
+
+            const modifiers = extractModifiers(null, compCst);
+
+            components.push({
+              name: child.name ?? "",
+              typeName: (child.metadata?.typeSpecifier as string) ?? "unknown",
+              description: compDesc,
+              causality,
+              variability,
+              modifiers,
+            });
+          }
+        }
+
+        let description: string | null = (sym.metadata?.description as string) ?? null;
+        if (!description && cstNode?.children) {
+          // Check for description_string in long_class_specifier or children
+          const walkForDesc = (n: any): string | null => {
+            if (!n) return null;
+            if (n.type === "description_string" || n.type === "description" || n.type === "comment") {
+              return n.text?.replace(/^["']|["']$/g, "").trim() ?? null;
+            }
+            for (const ch of n.children || []) {
+              if (ch.type === "composition") continue; // Don't look inside class body
+              const d = walkForDesc(ch);
+              if (d) return d;
+            }
+            return null;
+          };
+          description = walkForDesc(cstNode);
+        }
+
+        let documentation: string | null = null;
+        if (cstNode) {
+          try {
+            const evaluator = new AnnotationEvaluator();
+            const doc = evaluator.evaluate(cstNode, "Documentation");
+            if (doc?.info) {
+              documentation = doc.info;
+            }
+          } catch {}
+        }
+
+        const metadata: ClassMetadata = {
+          className,
+          classKind,
+          description,
+          documentation,
+          baseClasses,
+          components,
+        };
+
+        const memoryTight = isMemoryTight();
+        let iconSvg: string | null = null;
+        let diagramSvg: string | null = null;
+        const skipRendering = memoryTight || children.length > 300;
+
+        if (!skipRendering) {
+          try {
+            const adapter = buildClassAdapter(context, classId, AnnotationEvaluator);
+            if (adapter) {
+              const icon = renderIcon(adapter);
               if (icon) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const svgStr: string = (xmlFormat as any)(icon.svg());
-                if (hasVisualContent(svgStr)) {
-                  iconSvg = svgStr;
-                }
-                // Aggressive DOM cleanup to prevent leaks
+                const svgStr = (xmlFormat as any)(icon.svg());
+                if (hasVisualContent(svgStr)) iconSvg = svgStr;
                 icon.remove();
                 icon.clear();
               }
-            } catch {
-              // Skip classes that fail to render
-            }
-
-            try {
-              const diagram = renderDiagram(element);
+              const diagram = renderDiagram(adapter);
               if (diagram) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const svgStr: string = (xmlFormat as any)(diagram.svg());
-                if (hasVisualContent(svgStr)) {
-                  diagramSvg = svgStr;
-                }
-                // Aggressive DOM cleanup to prevent leaks
+                const svgStr = (xmlFormat as any)(diagram.svg());
+                if (hasVisualContent(svgStr)) diagramSvg = svgStr;
                 diagram.remove();
                 diagram.clear();
               }
-            } catch {
-              // Skip classes that fail to render
             }
+          } catch {}
 
-            // Clear global fake window body to ensure no detached nodes accumulate
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const win = (globalThis as any).window;
-            if (win && win.document && win.document.body) {
-              win.document.body.innerHTML = "";
-            }
+          const win = (globalThis as any).window;
+          if (win?.document?.body) {
+            win.document.body.innerHTML = "";
           }
-
-          await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });
-          classesProcessed++;
-
-          // Force GC periodically to reclaim intermediate objects
-          if (classesProcessed % 50 === 0) {
-            tryGC();
-          }
-
-          // Log memory usage for diagnostics
-          if (classesProcessed % 100 === 0) {
-            const mem = process.memoryUsage();
-            console.log(
-              `[publish] ${classesProcessed} classes — heap: ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB${memoryTight ? " [MEMORY TIGHT - SKIPPING SVGS]" : ""}`,
-            );
-          }
-        } catch (err) {
-          console.warn(`[publish] Skipping class ${className}: ${err instanceof Error ? err.message : err}`);
         }
-      }
 
-      await new Promise<void>((resolve) => setImmediate(resolve));
+        await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });
+        classesProcessed++;
+
+        if (classesProcessed % 50 === 0) {
+          tryGC();
+        }
+
+        if (classesProcessed % 100 === 0) {
+          const mem = process.memoryUsage();
+          console.log(
+            `[publish] ${classesProcessed} classes — heap: ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB${memoryTight ? " [MEMORY TIGHT - SKIPPING SVGS]" : ""}`,
+          );
+        }
+      } catch (err) {
+        console.warn(`[publish] Skipping class ${className}: ${err instanceof Error ? err.message : err}`);
+      }
     }
 
-    // Process nested elements
-    for (const child of element.elements) {
-      await processElement(child);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    for (const child of children) {
+      if (child.kind === "Class") {
+        await visitClass(child.id, `${fqn}.${child.name}`);
+      }
     }
   }
 
-  for (const element of context.elements) {
-    await processElement(element);
+  // Find root classes for this library:
+  const rootSymbols: any[] = [];
+  for (const [id, sym] of symIndex.symbols.entries()) {
+    if (
+      sym.kind === "Class" &&
+      (sym.parentId === null || sym.parentId === sym.id) &&
+      !sym.metadata?.isPredefined &&
+      sym.id > 0
+    ) {
+      if (sym.name === library.name || (sym.resourceId && sym.resourceId.startsWith(libraryPath))) {
+        rootSymbols.push(sym);
+      }
+    }
+  }
+
+  if (rootSymbols.length === 0) {
+    const rootFromClasses = context.classes.find((c) => c.name === library.name);
+    if (rootFromClasses) {
+      const sym = queryDB.symbol(rootFromClasses.id);
+      if (sym) rootSymbols.push(sym);
+    }
+  }
+
+  for (const rootSym of rootSymbols) {
+    await visitClass(rootSym.id, rootSym.name);
   }
 
   return context;
