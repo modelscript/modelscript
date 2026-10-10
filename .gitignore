@@ -21,6 +21,8 @@ languages/build/
 scripts/msl/
 .cache/
 msl_report*.html
+.tmp_*
+**/.tmp_*
 
 # Compiled / binary artifacts
 *.wasm
@@ -85,7 +87,9 @@ project-graph.json
 uploads/
 apps/api/uploads/
 apps/api/data/
-apps/api/public/thumbnails
+apps/api/public/thumbnails/
+apps/api/apps/
+**/public/thumbnails/
 
 # React Router (morsel)
 apps/morsel/.react-router/
