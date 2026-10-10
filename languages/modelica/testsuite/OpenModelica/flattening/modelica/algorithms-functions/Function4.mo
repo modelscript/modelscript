@@ -1,7 +1,6 @@
 // name:     Function4
 // keywords: function
 // status:   incorrect
-// xfail:    true
 //
 // This tests for illegal parts of a function definition.
 //

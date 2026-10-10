@@ -1,7 +1,6 @@
 // name: WhenClockedStatement1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model WhenClockedStatement1

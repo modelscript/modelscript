@@ -1,6 +1,5 @@
 // name: ExtObjError
 // status: incorrect
-// xfail:    true
 
 model ExtObjError
   class A

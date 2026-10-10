@@ -158,6 +158,14 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
           if (typeSpec != 0) {
             const cls = findClassByName(db, typeSpec, $);
             if (cls != 0 && isClassKind(db, cls, "connector")) {
+              if ($.short_class_specifier != 0) {
+                let hasShort = false;
+                for (const _ of db.ast.getDescendants(cls, $.short_class_specifier)) {
+                  hasShort = true;
+                  break;
+                }
+                if (hasShort) continue;
+              }
               for (const decl of db.ast.getDescendants(node, $.declaration)) {
                 const nameNode = db.ast.getChildByFieldId(decl, "name");
                 if (nameNode != 0) {

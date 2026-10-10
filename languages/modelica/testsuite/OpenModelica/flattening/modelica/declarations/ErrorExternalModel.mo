@@ -1,6 +1,5 @@
 // name: ErrorExternalModel
 // status: incorrect
-// xfail:    true
 
 model ErrorExternalModel
 external "C";

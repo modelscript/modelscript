@@ -1,7 +1,6 @@
 // name: CardinalityInvalidArg2
 // keywords: cardinality
 // status: incorrect
-// xfail:    true
 //
 // Cardinality can only be applied to scalar connectors.
 //

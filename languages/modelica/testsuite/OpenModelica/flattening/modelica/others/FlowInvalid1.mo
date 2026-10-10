@@ -1,7 +1,6 @@
 // name: FlowDeclRecord
 // keywords: flow
 // status: incorrect
-// xfail:    true
 //
 // Tests the it's not valid to declare a structured component as flow if it
 // contains flow variables, as per section 4.4.2.2 in the Modelica 3.2 spec.

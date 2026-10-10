@@ -1,7 +1,6 @@
 // name: RedeclareComponentClass
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that a component can't be redeclared as a class.
 //

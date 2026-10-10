@@ -1,6 +1,5 @@
 // name: Enum12
 // status: incorrect
-// xfail:    true
 
 model Enum12
   type E1 = enumeration(A);

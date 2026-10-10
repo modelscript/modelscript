@@ -1,7 +1,6 @@
 // name: ConnectNonConnector5
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that a connector class can't be used as a connector.
 //

@@ -1,7 +1,6 @@
 // name: ExternalObjectMissingStructor1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

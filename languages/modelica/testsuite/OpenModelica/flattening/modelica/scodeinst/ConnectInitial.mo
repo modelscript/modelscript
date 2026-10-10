@@ -1,7 +1,6 @@
 // name: ConnectInitial
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that connect isn't allowed in an initial equation.
 //

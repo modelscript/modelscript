@@ -1,7 +1,6 @@
 // name: BuiltinAttribute8
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 

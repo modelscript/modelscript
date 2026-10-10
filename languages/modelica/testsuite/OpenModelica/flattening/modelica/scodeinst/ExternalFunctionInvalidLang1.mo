@@ -1,7 +1,6 @@
 // name: ExternalFunctionInvalidLang1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

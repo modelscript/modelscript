@@ -76,6 +76,8 @@ export interface ModificationArg {
   readonly redeclaredTypeSpecifier?: string;
   /** For redeclarations: whether it redeclares as a component or class. */
   readonly redeclaredKind?: "component" | "class";
+  /** For redeclarations: the new prefix (e.g. "parameter", "flow", "stream"). */
+  readonly redeclaredPrefix?: string;
   /** For redeclarations: the raw array dimensions of the new type specifier. */
   readonly redeclaredArrayDimensionsRaw?: any[];
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
@@ -108,6 +110,8 @@ export interface ModelicaModArgs {
   readonly isRedeclaration?: boolean;
   /** The new type specifier if redeclared. */
   readonly redeclaredTypeSpecifier?: string;
+  /** The new prefix if redeclared. */
+  readonly redeclaredPrefix?: string;
   /** The raw array dimensions of the new type specifier if redeclared. */
   readonly redeclaredArrayDimensionsRaw?: any[];
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
@@ -304,6 +308,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
           final: arg.final || existing.final,
           isRedeclaration: arg.isRedeclaration || existing.isRedeclaration,
           redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier ?? existing.redeclaredTypeSpecifier,
+          redeclaredPrefix: arg.redeclaredPrefix ?? existing.redeclaredPrefix,
           redeclaredArrayDimensionsRaw: arg.redeclaredArrayDimensionsRaw ?? existing.redeclaredArrayDimensionsRaw,
           evaluationScopeId: arg.evaluationScopeId ?? existing.evaluationScopeId,
         });
@@ -315,6 +320,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
           final: arg.final || existing.final,
           isRedeclaration: arg.isRedeclaration || existing.isRedeclaration,
           redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier ?? existing.redeclaredTypeSpecifier,
+          redeclaredPrefix: arg.redeclaredPrefix ?? existing.redeclaredPrefix,
           redeclaredArrayDimensionsRaw: arg.redeclaredArrayDimensionsRaw ?? existing.redeclaredArrayDimensionsRaw,
           value: arg.value ?? existing.value,
           evaluationScopeId: arg.evaluationScopeId ?? existing.evaluationScopeId,
@@ -331,6 +337,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
     bindingExpression: outer.bindingExpression ?? inner.bindingExpression,
     isRedeclaration: outer.isRedeclaration || inner.isRedeclaration,
     redeclaredTypeSpecifier: outer.redeclaredTypeSpecifier ?? inner.redeclaredTypeSpecifier,
+    redeclaredPrefix: outer.redeclaredPrefix ?? inner.redeclaredPrefix,
     redeclaredArrayDimensionsRaw: outer.redeclaredArrayDimensionsRaw ?? inner.redeclaredArrayDimensionsRaw,
     evaluationScopeId: outer.evaluationScopeId ?? inner.evaluationScopeId,
   };
@@ -401,6 +408,7 @@ export function subModification(mod: ModelicaModArgs | null, name: string): Mode
     bindingExpression: arg.value,
     isRedeclaration: arg.isRedeclaration,
     redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier,
+    redeclaredPrefix: arg.redeclaredPrefix,
     redeclaredArrayDimensionsRaw: arg.redeclaredArrayDimensionsRaw,
     evaluationScopeId: arg.evaluationScopeId,
   };

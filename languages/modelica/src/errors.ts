@@ -5,7 +5,7 @@ import type { Range } from "@modelscript/dsl/utils";
 /**
  * Severity level for a diagnostic.
  */
-export type DiagnosticSeverity = "error" | "warning" | "info";
+export type DiagnosticSeverity = "error" | "warning" | "info" | "notification";
 
 /**
  * A structured diagnostic emitted by the compiler or linter.
@@ -61,6 +61,26 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (expected: string) => `Parse error: '${expected}' expected.`,
   },
+  IDENTITY_ARG_COUNT: {
+    code: 1000,
+    rule: "identity-arg-count",
+    severity: "error",
+    message: () => "Wrong number of arguments to identity.",
+  },
+  IDENTITY_FIRST_ARG_INTEGER: {
+    code: 1000,
+    rule: "identity-first-arg-integer",
+    severity: "error",
+    message: (compName: string = "<NO COMPONENT>") =>
+      `First argument to identity in component ${compName} must be Integer expression.`,
+  },
+  WASM_FLATTENER_UNSUPPORTED: {
+    code: 1099,
+    rule: "wasm-flattener-unsupported",
+    severity: "error",
+    message: (rootName: string) =>
+      `[ModelicaFlattener] Model '${rootName}' could not be flattened using strict WASM backend.`,
+  },
 
   // ── 2xxx: Name Resolution ─────────────────────────────────────────────
   DUPLICATE_ELEMENT: {
@@ -81,6 +101,18 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (className: string, scope: string) =>
       `Class ${className} not found in scope ${scope} (looking for a function or record).`,
+  },
+  CLASS_NOT_FOUND_IN_SCOPE: {
+    code: 2003,
+    rule: "class-not-found-in-scope",
+    severity: "error",
+    message: (className: string, scope: string) => `Class ${className} not found in scope ${scope}.`,
+  },
+  BASE_CLASS_NOT_FOUND_IN_SCOPE: {
+    code: 2003,
+    rule: "base-class-not-found-in-scope",
+    severity: "error",
+    message: (className: string, scope: string) => `Base class ${className} not found in scope ${scope}.`,
   },
   MODIFIER_NOT_FOUND: {
     code: 2004,
@@ -107,6 +139,37 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (modText: string, modName: string, className: string) =>
       `In modifier (${modText}), class or component ${modName} not found in <${className}>.`,
+  },
+  PARTIAL_BASE_CLASS: {
+    code: 2003,
+    rule: "partial-base-class",
+    severity: "error",
+    message: (partName: string, extName: string) => `Part ${partName} of base class name ${extName} is not a class.`,
+  },
+  BASE_CLASS_AMBIGUOUS: {
+    code: 2004,
+    rule: "base-class-ambiguous",
+    severity: "error",
+    message: (partName: string, candidateNames: string) =>
+      `The base class name ${partName} was found in one or more base classes: ${candidateNames}.`,
+  },
+  BASE_CLASS_FOUND_IN: {
+    code: 2005,
+    rule: "base-class-found-in",
+    severity: "error",
+    message: (partName: string, baseName: string) => `${partName} was found in base class ${baseName}.`,
+  },
+  NOTIFICATION_FROM_HERE: {
+    code: 2090,
+    rule: "from-here",
+    severity: "notification" as DiagnosticSeverity,
+    message: () => "From here:",
+  },
+  NOTIFICATION_FROM_HERE_TRACE: {
+    code: 2095,
+    rule: "from-here-trace",
+    severity: "notification" as DiagnosticSeverity,
+    message: () => "From here:",
   },
 
   // ── 3xxx: Type System ─────────────────────────────────────────────────
@@ -141,8 +204,14 @@ export const ModelicaErrorCode = {
     code: 3004,
     rule: "not-a-connector",
     severity: "error",
-    message: (ref1: string, ref2: string, which: string) =>
-      `In connect(${ref1}, ${ref2}): '${which}' is not a connector.`,
+    message: (which: string) => `${which} is not a valid connector.`,
+  },
+  CONNECT_INVALID_FORM: {
+    code: 3007,
+    rule: "connect-invalid-form",
+    severity: "error",
+    message: (ref: string) =>
+      `${ref} is not a valid form for a connector, connectors must be either c1.c2...cn or m.c (where c is a connector and m is a non-connector).`,
   },
   REDECLARE_TYPE_MISMATCH: {
     code: 3005,
@@ -183,6 +252,44 @@ export const ModelicaErrorCode = {
   },
 
   // ── 4xxx: Structural / Semantic ───────────────────────────────────────
+  DIMENSION_NOT_PARAMETER: {
+    code: 4000,
+    rule: "dimension-not-parameter",
+    severity: "error",
+    message: (exprName: string, dim: number | string, callText: string) =>
+      `Expression '${exprName}' that determines the size of dimension '${dim}' of '${callText}' is not an evaluable parameter expression.`,
+  },
+  CARDINALITY_IN_CONDITION_ONLY: {
+    code: 4000,
+    rule: "cardinality-in-condition-only",
+    severity: "error",
+    message: () => "cardinality may only be used in the condition of an if-statement or if-equation.",
+  },
+  CONDITIONAL_EXPRESSION_NOT_EVALUATED: {
+    code: 4000,
+    rule: "conditional-expression-not-evaluated",
+    severity: "error",
+    message: (condText: string) => `The conditional expression ${condText} could not be evaluated.`,
+  },
+  DIMENSIONS_MUST_BE_PARAMETER: {
+    code: 4000,
+    rule: "dimensions-must-be-parameter",
+    severity: "error",
+    message: (callStr: string) => `Dimensions must be parameter or constant expression (in ${callStr}).`,
+  },
+  DUPLICATE_INHERITED_ELEMENT_NOT_IDENTICAL: {
+    code: 4056,
+    rule: "duplicate-inherited-element-not-identical",
+    severity: "error",
+    message: (currText: string, prevText: string) =>
+      `Duplicate elements (due to inherited elements) not identical:\n  first element is:  ${currText}\n  second element is: ${prevText}`,
+  },
+  WHEN_IN_INITIAL_EQUATION: {
+    code: 5017,
+    rule: "when-in-initial-equation",
+    severity: "error",
+    message: () => "when-clause is not allowed in initial section.",
+  },
   EXTENDS_CYCLE: {
     code: 4001,
     rule: "extends-cycle",
@@ -300,8 +407,72 @@ export const ModelicaErrorCode = {
     code: 4062,
     rule: "invalid-external-object",
     severity: "error",
-    message: (className: string, invalidElements: string) =>
-      `Invalid external object ${className}, contains invalid elements: ${invalidElements}.`,
+    message: (className: string, elemName: string) =>
+      `External object ${className} contains invalid element '${elemName}'.`,
+  },
+  EXTERNAL_OBJECT_MISSING_DESTRUCTOR: {
+    code: 4066,
+    rule: "external-object-missing-destructor",
+    severity: "error",
+    message: (className: string) => `External object ${className} is missing a destructor.`,
+  },
+  EXTERNAL_OBJECT_MISSING_CONSTRUCTOR: {
+    code: 4067,
+    rule: "external-object-missing-constructor",
+    severity: "error",
+    message: (className: string) => `External object ${className} is missing a constructor.`,
+  },
+  EXTERNAL_OBJECT_NOT_REPLACEABLE: {
+    code: 4068,
+    rule: "external-object-not-replaceable",
+    severity: "error",
+    message: (elemName: string) => `'${elemName}' may not be replaceable.`,
+  },
+  EXTERNAL_OBJECT_RETURN_RESTRICTION: {
+    code: 4069,
+    rule: "external-object-return-restriction",
+    severity: "error",
+    message: (fnName: string, extObjName: string) =>
+      `Function ${fnName} returns an external object, but the only function allowed to return this object is ${extObjName}.constructor.`,
+  },
+  EXTERNAL_INVALID_LANGUAGE: {
+    code: 4071,
+    rule: "external-invalid-language",
+    severity: "error",
+    message: (lang: string) => `'${lang}' is not a valid language for an external function.`,
+  },
+  EXTERNAL_INVALID_ARG_EXPR: {
+    code: 4072,
+    rule: "external-invalid-arg-expr",
+    severity: "error",
+    message: (expr: string) =>
+      `Expression ${expr} cannot be an external argument. Only identifiers, scalar constants, and size-expressions are allowed.`,
+  },
+  EXTERNAL_INVALID_ARG_SIZE_CONST: {
+    code: 4073,
+    rule: "external-invalid-arg-size-const",
+    severity: "error",
+    message: (expr: string) =>
+      `Invalid external argument '${expr}', the dimension index must be a constant expression.`,
+  },
+  EXTERNAL_ARRAY_RETURN_NOT_ALLOWED: {
+    code: 4074,
+    rule: "external-array-return-not-allowed",
+    severity: "error",
+    message: (typeStr: string) =>
+      `The lhs (result) of the external function declaration has array type (${typeStr}), but this is not allowed in the specification. You need to pass it as an input to the function (preferably also with a size()-expression to avoid out-of-bounds errors in the external call).`,
+  },
+  FUNCTION_CALL_CONTAINS_SUBSCRIPTS: {
+    code: 5015,
+    rule: "function-call-contains-subscripts",
+    severity: "error",
+    message: (cref: string) => `Function call ${cref} contains subscripts.`,
+  },
+  TUPLE_SUBSCRIPT_NOT_ALLOWED: {
+    code: 5016,
+    rule: "tuple-subscript-not-allowed",
+    severity: "error",
+    message: () => `Tuple expression can not be subscripted.`,
   },
   CLASS_EXTENDS_NON_INHERITED: {
     code: 4063,
@@ -777,6 +948,51 @@ export const ModelicaErrorCode = {
     message: (name: string) => `${name} is already redeclared in this scope.`,
   },
 
+  INVALID_REDECLARATION_PREFIX: {
+    code: 4106,
+    rule: "invalid-redeclaration-prefix",
+    severity: "error",
+    message: (newPrefix: string, name: string, origPrefix: string) =>
+      `Invalid redeclaration '${newPrefix} ${name}', original element is declared '${origPrefix}'.`,
+  },
+
+  INVALID_REDECLARATION_COMPONENT_AS_CLASS: {
+    code: 4107,
+    rule: "invalid-redeclaration-component-as-class",
+    severity: "error",
+    message: (compName: string) => `Invalid redeclaration of component ${compName} as class.`,
+  },
+
+  REDECLARE_ENUM_NOT_SUBTYPE_GENERIC: {
+    code: 4108,
+    rule: "redeclare-enum-not-subtype-generic",
+    severity: "error",
+    message: (name: string) =>
+      `Redeclaration of enumeration '${name}' is not a subtype of the redeclared element (use enumeration(:) for a generic replaceable enumeration).`,
+  },
+
+  REDECLARE_ENUM_NOT_SUBTYPE: {
+    code: 4109,
+    rule: "redeclare-enum-not-subtype",
+    severity: "error",
+    message: (name: string) => `Redeclaration of enumeration '${name}' is not a subtype of the redeclared element.`,
+  },
+
+  EXTENDS_OTHER_BASE_CLASS: {
+    code: 4112,
+    rule: "extends-other-base-class",
+    severity: "error",
+    message: (baseName: string) => `Found other base class for extends ${baseName} after instantiating extends.`,
+  },
+
+  INVALID_REDECLARATION_BASIC_TYPE_ATTRIBUTE: {
+    code: 4111,
+    rule: "invalid-redeclaration-basic-type-attribute",
+    severity: "error",
+    message: (attrName: string) =>
+      `Invalid redeclaration of ${attrName}, attributes of basic types may not be redeclared.`,
+  },
+
   // ── Array Bounds ─────────────────────────────────────────────────────
   ARRAY_INDEX_OUT_OF_BOUNDS: {
     code: 4031,
@@ -962,8 +1178,8 @@ export const ModelicaErrorCode = {
     code: 4054,
     rule: "stream-unbalanced-connector",
     severity: "error",
-    message: (connectorName: string, flowCount: string) =>
-      `Invalid stream connector .${connectorName}: A stream connector must have exactly one flow variable, this connector has ${flowCount} flow variables.`,
+    message: (connectorName: string, flowCount: string | number) =>
+      `Invalid stream connector ${connectorName.startsWith(".") ? connectorName.slice(1) : connectorName}: A stream connector must have exactly one flow variable, this connector has ${flowCount} flow variables.`,
   },
   CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE: {
     code: 4055,
@@ -1081,6 +1297,26 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (dimIdx: string, varName: string) =>
       `Failed to deduce dimension ${dimIdx} of ${varName} due to missing binding equation.`,
+  },
+  ILLEGAL_END_USAGE: {
+    code: 5020,
+    rule: "illegal-end-usage",
+    severity: "error",
+    message: () => `'end' can not be used outside array subscripts.`,
+  },
+  INVALID_TYPE_PREFIX_FLOW_NESTED: {
+    code: 4075,
+    rule: "invalid-type-prefix-flow-nested",
+    severity: "error",
+    message: (varName: string) =>
+      `Invalid type prefix 'flow' on variable ${varName}, due to existing type prefix 'flow'.`,
+  },
+  INVALID_TYPE_PREFIX_CONFLICT: {
+    code: 4110,
+    rule: "invalid-type-prefix-conflict",
+    severity: "error",
+    message: (newPrefix: string, compName: string, existingPrefix: string) =>
+      `Invalid type prefix '${newPrefix}' on component ${compName}, due to existing type prefix '${existingPrefix}'.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

@@ -1,7 +1,6 @@
 // name:     BuiltinTimeInvalid1
 // keywords: time builtin
 // status:   incorrect
-// xfail:    true
 //
 // Checks that time is not allowed in functions.
 //

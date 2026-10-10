@@ -1,7 +1,6 @@
 // name: arrfunc.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

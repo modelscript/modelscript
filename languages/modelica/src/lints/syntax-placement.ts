@@ -224,10 +224,10 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    */
   functionPublicVariable: {
     nodes: ["component_clause"],
-    severity: "warning",
+    severity: "error",
     code: 4007,
-    message: (target) =>
-      `Invalid public variable '${target.text}', function variables that are not input/output must be protected.`,
+    message: (node, varName) =>
+      `Invalid public variable ${varName && varName.text ? varName.text : node.text}, function variables that are not input/output must be protected.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
@@ -235,9 +235,15 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             if (!isElementProtected(db, node, $)) {
               const isIO = hasTypePrefix(db, node, "input", $) || hasTypePrefix(db, node, "output", $);
               if (!isIO) {
-                for (const decl of db.ast.getDescendants(node, $.component_declaration)) {
-                  db.diagnostic(decl);
+                let varId: u32 = 0;
+                for (const decl of db.ast.getDescendants(node, $.declaration)) {
+                  for (const id of db.ast.getDescendants(decl, $.identifier)) {
+                    varId = id;
+                    break;
+                  }
+                  if (varId != 0) break;
                 }
+                db.diagnostic(node, varId);
               }
             }
           }
@@ -313,14 +319,17 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4014: Tuple expressions only allowed on LHS of assignment/equation.
+   * M4014: Tuple expressions only allowed on LHS of assignment/equation or cannot be subscripted.
    */
   tupleExpressionContext: {
     nodes: ["output_expression_list"],
     severity: "error",
     code: 4014,
-    message: (target, exprNode) => {
-      const exprText = exprNode && exprNode.text ? exprNode.text : target ? target.text : "";
+    message: (target, subNode) => {
+      if (subNode && subNode.text && subNode.text.startsWith("[")) {
+        return "Tuple expression can not be subscripted.";
+      }
+      const exprText = subNode && subNode.text ? subNode.text : target ? target.text : "";
       return `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${
         exprText
           ? ` Got the following expression: (${exprText
@@ -331,6 +340,14 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }`;
     },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      for (const anc of db.ast.getAncestors(node, $.primary)) {
+        for (const sub of db.ast.getDescendants(anc, $.array_subscripts)) {
+          if (sub != 0) {
+            db.diagnostic(anc, sub);
+            return;
+          }
+        }
+      }
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.statement || db.ast.getType(anc) == $.equation_or_procedure) {
           return;
@@ -416,25 +433,6 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             db.diagnostic(targetNode, isAlg, isInitial, kind);
           }
           break;
-        }
-      }
-    },
-  },
-
-  /**
-   * M4018: Partial class instantiation is illegal.
-   */
-  partialInstantiation: {
-    nodes: ["component_clause"],
-    severity: "error",
-    code: 4018,
-    message: (target) => `Illegal to instantiate partial class '${target.text}'.`,
-    query: (db: CodeGraph, node: u32) => {
-      const typeSpec = db.ast.getChildByFieldId(node, "type_specifier");
-      if (typeSpec != 0) {
-        const symId = db.scope.resolve(typeSpec);
-        if (symId != 0 && db.model.hasFlag(symId, "isPartial")) {
-          db.diagnostic(typeSpec);
         }
       }
     },
@@ -1344,7 +1342,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
           db.diagnostic(parentDecl != 0 ? parentDecl : compDecl != 0 ? compDecl : redecl);
           return;
         }
@@ -1354,7 +1352,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
           db.diagnostic(parentDecl != 0 ? parentDecl : compDecl != 0 ? compDecl : redecl);
           return;
         }
@@ -1410,7 +1408,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
           db.diagnostic(targetEl, redeclName);
           return;
         }
@@ -1420,7 +1418,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
           db.diagnostic(targetEl, redeclName);
           return;
         }
@@ -1937,9 +1935,15 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     message: () => `time is not allowed in a function.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       if (!db.ast.textEquals(node, "time")) return;
+      let inDecl = false;
+      let inRedecl = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
-        if (db.ast.getType(anc) == $.class_definition) {
+        const type = db.ast.getType(anc);
+        if (type == $.element_redeclaration) inRedecl = true;
+        if (type == $.component_clause || type == $.component_declaration) inDecl = true;
+        if (type == $.class_definition) {
           if (isClassKind(db, anc, "function")) {
+            if (inDecl && !inRedecl) return;
             let targetNode = node;
             for (const p of db.ast.getAncestors(node, 0)) {
               if (db.ast.getType(p) == $.element_redeclaration) {

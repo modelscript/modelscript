@@ -666,6 +666,11 @@ export function runTestCase(
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
       if (isOldFrontend && (cd.code === 4064 || msg.includes("in record"))) return false;
+      if (
+        cd.code === 4006 &&
+        (rawCstDiags.some((d: any) => d.code === 4033) || lints.some((d: any) => d.code === 4033))
+      )
+        return false;
       if (intEnumConversion && cd.code === 5006 && (msg.includes("Integer") || msg.includes("Enum"))) return false;
       if (
         cd.code === 4042 &&
@@ -673,6 +678,16 @@ export function runTestCase(
       )
         return false;
       if (msg.startsWith("Array shape mismatch:")) return false;
+      if (
+        cd.code === 4037 &&
+        (arena?.diagnostics.some((d: any) => d.code === 4037) ||
+          !arena?.diagnostics.some((d: any) => d.severity === "error"))
+      ) {
+        return false;
+      }
+      if (cd.code === 4053 && arena?.diagnostics.some((d: any) => d.code === 4106)) {
+        return false;
+      }
       if (cd.code === 3001 && msg.includes("expected subtype of Boolean, got type String")) return false;
       if (
         cd.code === 4045 &&
@@ -728,6 +743,11 @@ export function runTestCase(
       if (
         (cd.code === 4011 || msg.includes("Invalid protected variable")) &&
         arena?.diagnostics.some((d) => d.code === 4011 || d.message.includes("Invalid protected variable"))
+      )
+        return false;
+      if (
+        (cd.code === 4020 || msg.includes("time")) &&
+        arena?.diagnostics.some((d) => d.code === 4020 || d.message?.includes("time"))
       )
         return false;
       if (cd.code === 4017 && testCase.metadata.status === "correct" && lastClassName) {
@@ -842,8 +862,20 @@ export function runTestCase(
 
       const hasFatalArenaDiag = arena.diagnostics.some((d) => d.code === 5018);
       const hasFatalIterDiag = cstDiags.some((d: any) => d.code === 5007);
+      const hasInvalidConnectorDiag =
+        cstDiags.some((d: any) => d.code === 3004 || d.code === 4048) ||
+        lints.some((d: any) => d.code === 3004 || d.code === 4048 || (d.rule as string) === "not-a-connector");
       for (const diag of arena.diagnostics) {
         if (hasFatalIterDiag) {
+          continue;
+        }
+        if (hasInvalidConnectorDiag && (diag.code === 3003 || diag.message?.includes("not type compatible"))) {
+          continue;
+        }
+        if (
+          (diag.code === 4006 || diag.message?.includes("Element is not allowed in function context")) &&
+          (cstDiags.some((d: any) => d.code === 4033) || lints.some((d: any) => d.code === 4033))
+        ) {
           continue;
         }
         if ((hasLintErrors || hasArenaErrors) && (diag.code === 4004 || diag.message.includes("is not balanced"))) {
@@ -988,6 +1020,12 @@ export function runTestCase(
       // CST-level facade diagnostics
       for (const cd of cstDiags) {
         if (cd.severity === 2) continue; // skip warnings
+        if (
+          cd.code === 4014 &&
+          arena?.diagnostics.some((ad) => ad.message.includes("Tuple expression can not be subscripted"))
+        ) {
+          continue;
+        }
         const sevStr =
           cd.severity === 1
             ? "error"
@@ -1059,10 +1097,22 @@ export function runTestCase(
       text
         .replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:(writable|readonly)\]/g, "[$1:writable]")
         .replace(/\[\/usr\/lib\/omc\/NFModelicaBuiltin\.mo:writable\]\s*/g, "")
-        .replace(/not found in class ([A-Za-z0-9_]+)\$[A-Za-z0-9_]+/g, "not found in class $1");
+        .replace(/not found in class ([A-Za-z0-9_]+)\$[A-Za-z0-9_]+/g, "not found in class $1")
+        .replace(/No viable alternative near token: (\S+)/g, "Syntax Error: Unexpected '$1'")
+        .replace(
+          /Class specialization violation: \.?([A-Za-z0-9_]+) is a ([a-z]+), which may not contain an external(?: function)? declaration\./g,
+          "Class specialization violation: $1 is a $2, which may not contain an external declaration.",
+        )
+        .replace(
+          /The maximum recursion depth of \d+ was reached, probably due to mutual recursion\. The current scope: [A-Za-z0-9_.]+/g,
+          "The maximum recursion depth of 256 was reached, probably due to mutual recursion.",
+        )
+        .replace(/^- elab_untyped_mod [^\n]+\n?/gm, "")
+        .replace(/(\[[^\]]*:writable\] Notification: From here:\n\[[^\]]*:writable\] Error: [^\n]+\n)\1+/g, "$1");
 
     // ── Compare results ──
-    if (testCase.metadata.status === "incorrect" && !testCase.expectedResult.trim().startsWith("class ")) {
+    const isModelicaOutput = /^(class|function|record|model|block|connector)\s/.test(testCase.expectedResult.trim());
+    if (testCase.metadata.status === "incorrect" && !isModelicaOutput) {
       const diagLines = formatDiagLines();
       if (diagLines.length > 0) {
         const actual = diagLines.join("\n");

@@ -1,7 +1,6 @@
 // name: CardinalityInvalidArg1
 // keywords: cardinality
 // status: incorrect
-// xfail:    true
 //
 // Tests the builtin cardinality operator.
 //

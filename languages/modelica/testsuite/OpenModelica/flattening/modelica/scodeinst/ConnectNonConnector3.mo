@@ -1,7 +1,6 @@
 // name: ConnectNonConnector3
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model ConnectNonConnector3

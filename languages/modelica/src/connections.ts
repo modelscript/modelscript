@@ -772,26 +772,6 @@ export class ModelicaPortBalancer {
       }
     }
 
-    let anyGroupHasOutside = false;
-    if (options?.omcCompatibility && options?.isOldFrontend) {
-      for (const [, group] of roots) {
-        if (group.length > 1 && group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)))) {
-          anyGroupHasOutside = true;
-          break;
-        }
-      }
-    }
-
-    const isInnerVar = (idx: number) => {
-      const inners = (dae as any).innerComponents as Set<string> | undefined;
-      if (!inners) return false;
-      const name = dae.getVarName(idx);
-      for (const inner of inners) {
-        if (name === inner || name.startsWith(inner + ".")) return true;
-      }
-      return false;
-    };
-
     for (const [root, group] of roots) {
       const isStream = dae.getVarFlowPrefix(root) === "stream";
       const isFlow = dae.isVarFlow(root) && !isStream;
@@ -847,22 +827,17 @@ export class ModelicaPortBalancer {
         continue;
       }
       if (!isFlow) {
+        if (options?.omcCompatibility) {
+          for (const vIdx of group) {
+            if (dae.getVarFlowPrefix(vIdx) === "flow" && !handledFlowVars.has(vIdx)) {
+              const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+              zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
+              handledFlowVars.add(vIdx);
+            }
+          }
+        }
         let potRoot = root;
         let orderedGroup = group;
-        const countDots = (name: string) => (name.match(/\./g) || []).length;
-        const minDots = Math.min(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
-        const maxDots = Math.max(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
-        const groupHasOutsideVar = group.some((vIdx) => outsideVarSet.has(vIdx));
-        const isGroupOutside = (vIdx: number) => {
-          if (groupHasOutsideVar) return outsideVarSet.has(vIdx);
-          if (minDots < maxDots) return countDots(dae.getVarName(vIdx)) === minDots;
-          return isOutsideOrOuter(dae.getVarName(vIdx), vIdx);
-        };
-        const hasOutside =
-          options?.isOldFrontend &&
-          (groupHasOutsideVar ||
-            minDots < maxDots ||
-            group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx)));
         const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
         const isExpBusVar = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
         if (options?.omcCompatibility && group.length > 2) {
@@ -972,8 +947,11 @@ export class ModelicaPortBalancer {
               const name = dae.getVarName(vIdx);
               return name.startsWith("bus.") && name.includes(".f");
             }) ||
-            (options?.isOldFrontend && group.length === 2 && group.every((vIdx) => isGroupOutside(vIdx))));
-        if (options?.omcCompatibility && hasOutside) {
+            (options?.omcCompatibility &&
+              group.length === 2 &&
+              group.every((vIdx) => isGroupOutside(vIdx) || !dae.getVarName(vIdx).includes(".")) &&
+              !group.every((vIdx) => dae.getVarFlowPrefix(vIdx) === "flow")));
+        if (options?.omcCompatibility && (hasOutside || isWorldGroup)) {
           if (isWorldGroup) {
             let posSum = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
             for (let i = 1; i < group.length; i++) {
@@ -985,6 +963,7 @@ export class ModelicaPortBalancer {
             }
             sumExpr = dae.addExpression(ExprKind.Negate, 0, posSum);
             for (const vIdx of group) {
+              if (dae.getVarFlowPrefix(vIdx) !== "flow") continue;
               const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
             }
@@ -1015,6 +994,7 @@ export class ModelicaPortBalancer {
               sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
             }
             for (const vIdx of outsideVars) {
+              if (group.every((v) => !dae.getVarName(v).includes("."))) continue;
               const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
             }
@@ -1052,7 +1032,7 @@ export class ModelicaPortBalancer {
           }
         }
         const flowStr = isWorldGroup
-          ? dae.getVarName(group.find((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)))!)
+          ? dae.getVarName(group.find((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx))) ?? firstVarIdx)
           : dae.getVarName(firstVarIdx);
         let flowEqIdx = 99999;
         for (const vIdx of group) {
@@ -1450,7 +1430,18 @@ export class ModelicaPortBalancer {
             }
 
             const hasArrayOutside = zeroFlows.some((eq) => /\[\d+\]\./.test(eq.varName));
-            if (hasArrayOutside) {
+            const isTopLevelOnly =
+              options?.isOldFrontend &&
+              potentialEqs.length > 0 &&
+              potentialEqs.every((eq) => !eq.str.includes(".")) &&
+              flowSumEqs.every((eq) => !eq.str.includes("."));
+            if (isTopLevelOnly) {
+              potentialEqs.forEach((eq) => {
+                dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+              });
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+            } else if (hasArrayOutside) {
               zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
               flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
             } else {
@@ -1459,18 +1450,20 @@ export class ModelicaPortBalancer {
             }
             compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
 
-            potentialEqs.forEach((eq) => {
-              const lhsName = dae.interner.resolve(dae.getExprData1(eq.lhs));
-              const rhsName = dae.interner.resolve(dae.getExprData1(eq.rhs));
-              if (
-                ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
-                (lhsName.includes(".bout.") && rhsName.includes(".bin."))
-              ) {
-                dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
-              } else {
-                dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
-              }
-            });
+            if (!isTopLevelOnly) {
+              potentialEqs.forEach((eq) => {
+                const lhsName = dae.interner.resolve(dae.getExprData1(eq.lhs));
+                const rhsName = dae.interner.resolve(dae.getExprData1(eq.rhs));
+                if (
+                  ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
+                  (lhsName.includes(".bout.") && rhsName.includes(".bin."))
+                ) {
+                  dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
+                } else {
+                  dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+                }
+              });
+            }
           }
         }
       } else {

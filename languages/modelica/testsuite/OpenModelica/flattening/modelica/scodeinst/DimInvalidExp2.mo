@@ -1,7 +1,6 @@
 // name: DimInvalidExp2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model DimInvalidExp2

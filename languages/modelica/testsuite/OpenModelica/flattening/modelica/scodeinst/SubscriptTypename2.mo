@@ -1,7 +1,6 @@
 // name: SubscriptTypename2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model SubscriptTypename2

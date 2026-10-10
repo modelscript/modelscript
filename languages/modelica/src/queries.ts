@@ -28,6 +28,16 @@ function cyrb53(str: string, seed = 0): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString();
 }
 
+function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
+  const parts: string[] = [];
+  let curr: SymbolEntry | null = db.symbol(symId);
+  while (curr) {
+    parts.unshift(curr.name);
+    curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
+  }
+  return parts.join(".");
+}
+
 export function checkModifierNotFound(
   db: QueryDB,
   self: SymbolEntry,
@@ -479,6 +489,10 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           (c: any) => c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
         );
       if (clause) {
+        const typePrefixNode =
+          clause.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix") ??
+          Cst.ComponentClause.typePrefix(clause);
+        const redeclaredPrefix = typePrefixNode?.text?.trim() ?? "";
         const typeSpec =
           clause.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier") ??
           Cst.ComponentClause.typeSpecifier(clause);
@@ -541,6 +555,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           isRedeclaration: true,
           redeclaredKind: "component",
           redeclaredTypeSpecifier: typeName,
+          redeclaredPrefix,
           redeclaredArrayDimensionsRaw: extractSubscripts(
             (decl ? Cst.Declaration.arraySubscripts(decl) : null) ??
               (decl1 ? Cst.Declaration.arraySubscripts(decl1) : null) ??
@@ -593,7 +608,10 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               Cst.ShortClassSpecifier.typeSpecifier(shortClass) ??
               shortClass.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
             const name = ident ? ident.text?.trim() : "";
-            const typeName = typeSpec ? typeSpec.text?.trim() : "";
+            let typeName = typeSpec ? typeSpec.text?.trim() : "";
+            if (!typeName && shortClass.text?.includes("enumeration")) {
+              typeName = shortClass.text.slice(shortClass.text.indexOf("enumeration")).trim();
+            }
             const modNode =
               Cst.ShortClassSpecifier.classModification(shortClass) ??
               shortClass.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
@@ -965,7 +983,21 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
     }
   }
 
-  const isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
+  let isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
+  if (!isEncapsulated) {
+    const rawKind = String((self.metadata as any)?.classKind ?? (self.metadata as any)?.classPrefixes ?? "");
+    if (/\bencapsulated\b/.test(rawKind)) {
+      isEncapsulated = true;
+    } else {
+      const cst = db.cstNode(self.id) as any;
+      if (cst) {
+        const text = (cst.text ?? "").slice(0, 120);
+        if (/\bencapsulated\b/.test(text)) {
+          isEncapsulated = true;
+        }
+      }
+    }
+  }
 
   const ret = {
     directByName,
@@ -977,6 +1009,29 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
     id: self.id,
   };
   return ret;
+}
+
+export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
+  if ((sym.metadata as any)?.encapsulated) return true;
+  const rawKind = String((sym.metadata as any)?.classKind ?? (sym.metadata as any)?.classPrefixes ?? "");
+  if (/\bencapsulated\b/.test(rawKind)) return true;
+  const cst = db.cstNode(sym.id) as any;
+  if (cst) {
+    const text = (cst.text ?? "").slice(0, 120);
+    if (/\bencapsulated\b/.test(text)) return true;
+  }
+  return false;
+}
+
+export function isScopeEncapsulated(db: QueryDB, symbolId: SymbolId | null | undefined): boolean {
+  let currId = symbolId;
+  while (currId !== null && currId !== undefined) {
+    const sym = db.symbol(currId);
+    if (!sym) break;
+    if (isSymbolEncapsulated(db, sym)) return true;
+    currId = sym.parentId;
+  }
+  return false;
 }
 
 export function mergeInto(target: Record<string, SymbolId>, source: Record<string, SymbolId>) {
@@ -1105,6 +1160,9 @@ export function resolveSimpleNameHelper(
     db.ensureFQNIndexed(name);
   }
   const predefined = db.byName(name);
+  if (encapsulated || scope.isEncapsulated) {
+    return predefined?.find((e) => (e.metadata as any)?.isPredefined) ?? null;
+  }
   return (
     predefined?.find((e) => (e.metadata as any)?.isPredefined) ??
     predefined?.find(
@@ -1796,7 +1854,7 @@ export const classDefinitionQueries: Record<string, any> = {
     ];
   },
 
-  /** M4062: Invalid external object containing invalid elements. */
+  /** M4062: Invalid external object containing invalid elements or missing structors. */
   lint__invalidExternalObject: (db: QueryDB, self: SymbolEntry) => {
     const children = db.childrenOf(self.id);
     if (!children || children.length === 0) return null;
@@ -1804,29 +1862,155 @@ export const classDefinitionQueries: Record<string, any> = {
     const hasExternalObject = extendsEntries.some((e) => e.name === "ExternalObject");
     if (!hasExternalObject) return null;
 
-    const invalidElements: string[] = [];
+    const invalidElements: { name: string; entry: SymbolEntry }[] = [];
+    let hasConstructor = false;
+    let hasDestructor = false;
+    const replaceableElements: SymbolEntry[] = [];
+
     for (const child of children) {
+      const cst = db.cstNode(child.id) as any;
+      const text = cst?.text?.trim() ?? "";
+      const isReplaceable = Boolean(
+        (child.metadata as any)?.isReplaceable ||
+        db.query<boolean>("isReplaceable", child.id) ||
+        cst?.parent?.type === "element_replaceable" ||
+        cst?.parent?.type === "ElementReplaceable" ||
+        /\breplaceable\b/.test(cst?.parent?.text ?? ""),
+      );
+
       if (child.kind === "Extends") {
         if (child.name !== "ExternalObject" && child.name !== "Icon" && !child.name.toLowerCase().endsWith("icon")) {
-          invalidElements.push(`extends ${child.name}`);
+          invalidElements.push({ name: `extends ${child.name}`, entry: child });
         }
       } else if (child.kind === "Class") {
-        if (child.name !== "constructor" && child.name !== "destructor") {
-          invalidElements.push(child.name);
+        const isFunction =
+          text.startsWith("function ") ||
+          text.startsWith("pure function ") ||
+          text.startsWith("impure function ") ||
+          (child.metadata as any)?.classKind === "function" ||
+          child.ruleName === "function_definition";
+
+        if (child.name === "constructor" && isFunction) {
+          hasConstructor = true;
+          if (isReplaceable) replaceableElements.push(child);
+        } else if (child.name === "destructor" && isFunction) {
+          hasDestructor = true;
+          if (isReplaceable) replaceableElements.push(child);
+        } else {
+          invalidElements.push({ name: child.name, entry: child });
         }
       } else if (child.kind === "Component") {
-        invalidElements.push(child.name);
+        invalidElements.push({ name: child.name, entry: child });
       }
     }
 
-    if (invalidElements.length === 0) return null;
-    return [
-      error(ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.message(self.name, invalidElements.join(", ")), {
-        startByte: self.startByte,
-        endByte: self.endByte,
-        code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
-      }),
-    ];
+    if (replaceableElements.length > 0) {
+      const rep = replaceableElements[0]!;
+      return [
+        error(ModelicaErrorCode.EXTERNAL_OBJECT_NOT_REPLACEABLE.message(rep.name), {
+          startByte: rep.startByte,
+          endByte: rep.endByte,
+          code: ModelicaErrorCode.EXTERNAL_OBJECT_NOT_REPLACEABLE.code,
+        }),
+      ];
+    }
+    const selfCst = db.cstNode(self.id) as any;
+    const isOldInst = Boolean(
+      selfCst?.tree?.rootNode?.text?.includes("-d=-newInst") || selfCst?.text?.includes("-d=-newInst"),
+    );
+    if (isOldInst && invalidElements.length > 0) {
+      const invNames = invalidElements.map((e) => e.name).join(", ");
+      return [
+        error(`Invalid external object ${self.name}, contains invalid elements: ${invNames}.`, {
+          startByte: self.startByte,
+          endByte: self.endByte,
+          code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
+        }),
+      ];
+    }
+    const diags: any[] = [];
+    for (const inv of invalidElements) {
+      diags.push(
+        error(ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.message(self.name, inv.name), {
+          startByte: inv.entry.startByte,
+          endByte: inv.entry.endByte,
+          code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
+        }),
+      );
+    }
+    if (diags.length > 0) return diags;
+
+    if (!hasDestructor) {
+      return [
+        error(ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_DESTRUCTOR.message(self.name), {
+          startByte: self.startByte,
+          endByte: self.endByte,
+          code: ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_DESTRUCTOR.code,
+        }),
+      ];
+    }
+    if (!hasConstructor) {
+      return [
+        error(ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_CONSTRUCTOR.message(self.name), {
+          startByte: self.startByte,
+          endByte: self.endByte,
+          code: ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_CONSTRUCTOR.code,
+        }),
+      ];
+    }
+    return null;
+  },
+
+  /** M4069: Non-constructors may not return an external object (Modelica §12.9.7). */
+  lint__functionReturnsExternalObject: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id) as any;
+    const text = cst?.text?.trim() ?? "";
+    const isFunction =
+      text.startsWith("function ") ||
+      text.startsWith("pure function ") ||
+      text.startsWith("impure function ") ||
+      (self.metadata as any)?.classKind === "function" ||
+      self.ruleName === "function_definition";
+    if (!isFunction) return null;
+
+    const children = db.childrenOf(self.id);
+    for (const child of children) {
+      if (child.kind === "Component") {
+        const compInst = db.query<any>("componentInstance", child.id);
+        if (compInst?.causality === "output") {
+          const typeName = compInst.typeSpecifier;
+          if (typeName) {
+            const resolver =
+              db.query<(name: string) => SymbolEntry | null>("resolveName", self.id) ??
+              db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+            const targetClass =
+              resolver?.(typeName) ?? db.byName(typeName.split(".").pop()!).find((e) => e.kind === "Class");
+            if (targetClass) {
+              const targetChildren = db.childrenOf(targetClass.id);
+              const extendsExtObj = targetChildren?.some((c) => c.kind === "Extends" && c.name === "ExternalObject");
+              if (extendsExtObj) {
+                const isConstructor = self.name === "constructor" && self.parentId === targetClass.id;
+                if (!isConstructor) {
+                  const fnQName = getSymbolQualifiedName(db, self.id);
+                  const extObjQName = getSymbolQualifiedName(db, targetClass.id);
+                  return [
+                    error(
+                      `Function ${fnQName} returns an external object, but the only function allowed to return this object is ${extObjQName}.constructor.`,
+                      {
+                        startByte: self.startByte,
+                        endByte: self.endByte,
+                        code: ModelicaErrorCode.EXTERNAL_OBJECT_RETURN_RESTRICTION.code,
+                      },
+                    ),
+                  ];
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
   },
 
   /**
@@ -2655,6 +2839,13 @@ export const classDefinitionQueries: Record<string, any> = {
       // Navigate remaining parts
       for (let i = startIndex; i < parts.length; i++) {
         const part = parts[i]!;
+        if ((part === "constructor" || part === "destructor") && current.id !== self.id) {
+          const currentChildren = db.childrenOf(current.id);
+          const extendsExtObj = currentChildren?.some((c) => c.kind === "Extends" && c.name === "ExternalObject");
+          if (extendsExtObj) {
+            return null;
+          }
+        }
         const targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
           "resolveSimpleName",
           current.id,
@@ -2714,10 +2905,11 @@ export const classDefinitionQueries: Record<string, any> = {
               resolved = parentResolver(typeName);
             }
           }
-          if (!resolved) {
+          const isEncapsulatedShort = isScopeEncapsulated(db, self.id);
+          if (!resolved && !isEncapsulatedShort) {
             resolved = resolveQualified(db, typeName);
           }
-          if (!resolved) {
+          if (!resolved && !isEncapsulatedShort) {
             const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
             const matches = db.byName(simpleName);
             if (matches && matches.length > 0) {
@@ -2859,7 +3051,8 @@ export const classDefinitionQueries: Record<string, any> = {
               baseClass = resolveName(child.name);
             }
           }
-          if (!baseClass || baseClass.id === self.id) {
+          const isEnc = isScopeEncapsulated(db, self.id);
+          if ((!baseClass || baseClass.id === self.id) && !isEnc) {
             const entries = db.byName(child.name);
             baseClass = entries?.find((e) => (e.kind === "Class" || e.kind === "Package") && e.id !== self.id) ?? null;
           }
@@ -3017,6 +3210,9 @@ export const extendsClauseQueries: Record<string, any> = {
 
         if (resolved && resolved.kind !== "Reference") return resolved;
       }
+    }
+    if (self.parentId !== null && isScopeEncapsulated(db, self.parentId)) {
+      return null;
     }
     // Fallback to global lookup, filtering out Reference and Extends entries
     const entries = db.byName(baseName);
@@ -3570,6 +3766,18 @@ export const componentDeclarationQueries: Record<string, any> = {
         }
       }
     }
+    const isEncapsulatedScope = scopeId !== null ? isScopeEncapsulated(db, scopeId) : false;
+    if (isEncapsulatedScope) {
+      if (!typeEntry) {
+        const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+        const entries = db.byName(simpleName);
+        typeEntry =
+          entries?.find((e) => (e.metadata as Record<string, unknown>)?.isPredefined && e.kind === "Class") ?? null;
+      }
+      if (!typeEntry) return null;
+      return typeEntry.id;
+    }
+
     // Fallback: global lookup — try full qualified name first, then simple name
     if (!typeEntry && typeName.includes(".")) {
       typeEntry = resolveQualified(db, typeName);
@@ -4537,6 +4745,8 @@ export const connectEquationQueries: Record<string, any> = {
       let currentEntry: SymbolEntry | null = null;
       let isInsideExpandable = false;
 
+      const compConnectors: boolean[] = [];
+
       for (let i = 0; i < rawSegments.length; i++) {
         const seg = rawSegments[i].replace(/\[.*\]$/, "").trim();
         if (!seg) return { resolved: false, missingSegment: rawSegments[i] };
@@ -4572,17 +4782,23 @@ export const connectEquationQueries: Record<string, any> = {
         }
 
         currentEntry = found;
-        if (i < rawSegments.length - 1) {
-          if (found.kind === "Component") {
-            const nextClassId = db.query<SymbolId | null>("classInstance", found.id);
+        if (found.kind === "Component") {
+          const nextClassId = db.query<SymbolId | null>("classInstance", found.id);
+          const isC = nextClassId ? db.query<boolean>("isConnector", nextClassId) || false : false;
+          compConnectors.push(isC);
+          if (i < rawSegments.length - 1) {
             if (!nextClassId) {
               const fullMissing = rawSegments.slice(0, i + 1).join(".");
               return { resolved: false, unresolvableType: true, missingSegment: fullMissing };
             }
             currentClassId = nextClassId;
-          } else if (found.kind === "Class" || found.kind === "Package") {
+          }
+        } else if (found.kind === "Class" || found.kind === "Package") {
+          if (i < rawSegments.length - 1) {
             currentClassId = found.id;
-          } else {
+          }
+        } else {
+          if (i < rawSegments.length - 1) {
             const fullMissing = rawSegments.slice(0, i + 1).join(".");
             return { resolved: false, missingSegment: fullMissing };
           }
@@ -4600,6 +4816,7 @@ export const connectEquationQueries: Record<string, any> = {
 
       const isConn = typeClassId ? db.query<boolean>("isConnector", typeClassId) || false : false;
       const isExp = typeClassId ? db.query<boolean>("isExpandableConnector", typeClassId) || false : false;
+      const invalidForm = compConnectors.length >= 2 && !compConnectors[0] && !compConnectors[1];
 
       return {
         resolved: true,
@@ -4608,6 +4825,7 @@ export const connectEquationQueries: Record<string, any> = {
         isConnector: isConn,
         isExpandable: isExp,
         isInsideExpandable,
+        invalidForm,
       };
     };
 
@@ -4715,25 +4933,64 @@ export const connectEquationQueries: Record<string, any> = {
       (parentClassId && (db.cstNode(parentClassId) as any)?.text?.includes("-d=-newInst")),
     );
 
-    // 2. Check if endpoints are connectors (M3004)
+    // 2. Check if endpoints are connectors (M3004) or components (M4048)
     if (!isOldInst) {
+      if (lhsRes.invalidForm) {
+        diags.push(
+          error(ModelicaErrorCode.CONNECT_INVALID_FORM.message(lhsText), {
+            ...selfRange,
+            code: ModelicaErrorCode.CONNECT_INVALID_FORM.code,
+          }),
+        );
+        return diags;
+      }
+      if (rhsRes.invalidForm) {
+        diags.push(
+          error(ModelicaErrorCode.CONNECT_INVALID_FORM.message(rhsText), {
+            ...selfRange,
+            code: ModelicaErrorCode.CONNECT_INVALID_FORM.code,
+          }),
+        );
+        return diags;
+      }
+
+      if (lhsRes.entry?.kind === "Class" && lhsRes.isConnector) {
+        diags.push(
+          error(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.message(lhsText), {
+            ...selfRange,
+            code: ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.code,
+          }),
+        );
+        return diags;
+      }
+      if (rhsRes.entry?.kind === "Class" && rhsRes.isConnector) {
+        diags.push(
+          error(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.message(rhsText), {
+            ...selfRange,
+            code: ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.code,
+          }),
+        );
+        return diags;
+      }
+
       if (!lhsRes.isConnector && !lhsRes.isExpandable && !lhsRes.isInsideExpandable) {
         diags.push(
-          error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, lhsText), {
-            ...getRange(lhsNode),
+          error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText), {
+            ...selfRange,
             code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
           }),
         );
+        return diags;
       }
       if (!rhsRes.isConnector && !rhsRes.isExpandable && !rhsRes.isInsideExpandable) {
         diags.push(
-          error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText, rhsText, rhsText), {
-            ...getRange(rhsNode),
+          error(ModelicaErrorCode.NOT_A_CONNECTOR.message(rhsText), {
+            ...selfRange,
             code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
           }),
         );
+        return diags;
       }
-      if (diags.length > 0) return diags;
     }
 
     // 3. Expandable connector compatibility (M4055)

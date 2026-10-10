@@ -1,7 +1,6 @@
 // name:   ExternalFunctionInvalidArg
 // keywords: external function
 // status: incorrect
-// xfail:    true
 //
 // Checks that expressions such as arrays are not allowed as external function
 // arguments.

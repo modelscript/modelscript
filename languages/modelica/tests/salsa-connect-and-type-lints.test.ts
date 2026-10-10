@@ -108,10 +108,10 @@ describe("Salsa Connect & Short Class Specifier Lint Suite", () => {
     ctx.load(code, uri);
 
     const diags = await ctx.queryEngine.runAllLintsAsync(uri);
-    const m3004 = diags.filter((d: any) => d.code === 3004 || d.message?.includes("is not a connector"));
+    const m3004 = diags.filter((d: any) => d.code === 3004 || d.message?.includes("is not a valid connector"));
 
     assert.ok(m3004.length > 0, "Expected M3004 for non-connector endpoint");
-    assert.match(m3004[0].message, /'notAConnector' is not a connector/);
+    assert.match(m3004[0].message, /notAConnector is not a valid connector/);
   });
 
   it("should detect M5004 when connecting connectors with mismatched flow variables", async () => {

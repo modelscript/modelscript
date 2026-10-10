@@ -1,7 +1,6 @@
 // name: WhenVariablity2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model WhenVariability2

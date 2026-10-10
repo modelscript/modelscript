@@ -1,7 +1,6 @@
 // name: conn8.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 connector C = input Real;

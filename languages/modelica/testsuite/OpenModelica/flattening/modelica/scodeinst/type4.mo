@@ -1,7 +1,6 @@
 // name: type4.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 type RealInput = input Real;
