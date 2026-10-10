@@ -39,6 +39,8 @@ export interface X6PortGroup {
 export interface X6PortItem {
   id?: string;
   group?: string;
+  direction?: string;
+  isConjugated?: boolean;
   args?: Record<string, unknown>;
   markup?: X6Markup | X6Markup[];
   attrs?: X6Attrs;
@@ -379,6 +381,39 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
 // ── Builder ──
 
 /**
+ * Formats mathematical expressions with clean typographic symbols
+ * for equations in constraints, calculations, and parametric blocks.
+ */
+export function formatMathExpression(expr: string): string {
+  return expr
+    .replace(/\bder\s*\(\s*([a-zA-Z0-9_]+)\s*\)/g, "d/dt($1)")
+    .replace(/\s*==\s*/g, " = ")
+    .replace(/\s*>=\s*/g, " ≥ ")
+    .replace(/\s*<=\s*/g, " ≤ ")
+    .replace(/\s*!=\s*/g, " ≠ ")
+    .replace(/(\b[a-zA-Z0-9_]+|\))\s*\*\s*([a-zA-Z0-9_]+|\()/g, "$1 · $2")
+    .replace(/\^2\b/g, "²")
+    .replace(/\^3\b/g, "³")
+    .replace(/\b(tau|omega|theta|alpha|beta|gamma|delta|lambda|pi|rho|sigma|phi)\b/gi, (match) => {
+      const g: Record<string, string> = {
+        tau: "τ",
+        omega: "ω",
+        theta: "θ",
+        alpha: "α",
+        beta: "β",
+        gamma: "γ",
+        delta: "δ",
+        lambda: "λ",
+        pi: "π",
+        rho: "ρ",
+        sigma: "σ",
+        phi: "φ",
+      };
+      return g[match.toLowerCase()] ?? match;
+    });
+}
+
+/**
  * Builds an X6-compatible diagram from a SymbolIndex and a GraphicsConfig lookup.
  *
  * @param index        The unified symbol index (from WorkspaceIndex.toUnified()).
@@ -553,6 +588,45 @@ export function buildPolyglotDiagram(
   const symbolIdToNodeId = new Map<SymbolId, string>();
 
   const typingRules = opts.typingRules ? new Set(opts.typingRules) : new Set(["OwnedFeatureTyping", "FeatureTyping"]);
+  const USAGE_KINDS = opts.usageKinds
+    ? new Set(opts.usageKinds)
+    : new Set([
+        "PartUsage",
+        "ItemUsage",
+        "PortUsage",
+        "ActionUsage",
+        "StateUsage",
+        "ConstraintUsage",
+        "RequirementUsage",
+        "CalculationUsage",
+        "AttributeUsage",
+        "ConnectionUsage",
+        "OccurrenceUsage",
+        "ReferenceUsage",
+      ]);
+  const DEFINITION_KINDS = opts.definitionKinds
+    ? new Set(opts.definitionKinds)
+    : new Set([
+        "PartDefinition",
+        "ItemDefinition",
+        "PortDefinition",
+        "ActionDefinition",
+        "StateDefinition",
+        "ConstraintDefinition",
+        "RequirementDefinition",
+        "CalculationDefinition",
+        "AttributeDefinition",
+        "ConnectionDefinition",
+        "OccurrenceDefinition",
+        "InterfaceDefinition",
+        "AllocationDefinition",
+        "FlowDefinition",
+        "UseCaseDefinition",
+        "AnalysisCaseDefinition",
+        "VerificationCaseDefinition",
+        "ViewDefinition",
+        "ViewpointDefinition",
+      ]);
 
   // ── Structural parent kinds whose children get absorbed as compartment text ──
   const STRUCTURAL_KINDS = opts.structuralKinds
@@ -945,7 +1019,13 @@ export function buildPolyglotDiagram(
       sections.length > 0;
 
     // Resolve name for templates
-    const nameText = sym.name ?? "";
+    let nameText = sym.name ?? "";
+    if (USAGE_KINDS.has(sym.ruleName)) {
+      const typeName = resolveTypeName(sym.id, index, resolver, typingRules);
+      if (typeName) {
+        nameText = `${nameText} : ${typeName}`;
+      }
+    }
 
     // Extract colors from the rule's GraphicsConfig (falls back to neutral grey)
     const configAttrs = config.node?.attrs ?? {};
@@ -954,14 +1034,23 @@ export function buildPolyglotDiagram(
     const strokeColor = (bodyAttrs?.["stroke"] as string) ?? "#757575";
     const fillColor = (bodyAttrs?.["fill"] as string) ?? "#f5f5f5";
     const isDef = sym.ruleName.endsWith("Definition");
-    const stereoText =
+    const rawStereo =
       (headerAttrs?.["text"] as string) ??
       (isDef
         ? `\u00ab${sym.ruleName.replace("Definition", " def")}\u00bb`
         : `\u00ab${sym.ruleName.replace("Usage", "")}\u00bb`);
-    const textColor = strokeColor;
+    const stereoKeyword = rawStereo
+      .replace(/[«»]/g, "")
+      .replace(/Definition$/, " def")
+      .replace(/Usage$/, "")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .trim()
+      .toLowerCase();
+    const stereoText = `\u00ab${stereoKeyword}\u00bb`;
+    const textColor = "#1e293b";
+    const secHeaderColor = "#475569";
     const headerColor = strokeColor;
-    const labelColor = "#1a1a1a";
+    const labelColor = "#0f172a";
 
     // ── Special case: ActorUsage/ActorDefinition → stick figure ──
     if (sym.ruleName === "ActorUsage" || sym.ruleName === "ActorDefinition") {
@@ -1381,7 +1470,21 @@ export function buildPolyglotDiagram(
       continue;
     }
 
-    if (isStructural) {
+    const hasExplicitVectorGlyph =
+      sections.length === 0 &&
+      config.node?.markup &&
+      (config.node.shape === "ellipse" ||
+        config.node.shape === "polygon" ||
+        (Array.isArray(config.node.markup) &&
+          config.node.markup.some(
+            (m: any) =>
+              m.selector === "actorHead" ||
+              m.tagName === "polygon" ||
+              m.tagName === "ellipse" ||
+              m.selector === "actorSpine",
+          )));
+
+    if (isStructural && !hasExplicitVectorGlyph) {
       // ── Dynamic markup generation for compartmented BDD blocks ──
       const HEADER_HEIGHT = 42; // stereotype + label area
       const LINE_HEIGHT = 15; // pixels per text line
@@ -1390,10 +1493,16 @@ export function buildPolyglotDiagram(
       // Build markup array and attrs dynamically
       const markup: any[] = [
         { tagName: "rect", selector: "body" },
+        { tagName: "path", selector: "headerBody" },
         { tagName: "text", selector: "stereotype" },
         { tagName: "text", selector: "label" },
         { tagName: "line", selector: "headerSep" },
       ];
+
+      const shortName = (sym as any).attributes?.shortName ?? (sym.metadata as any)?.shortName;
+      if (shortName) {
+        markup.push({ tagName: "rect", selector: "idBadgeRect" }, { tagName: "text", selector: "idBadgeText" });
+      }
 
       const attrs: Record<string, any> = {
         stereotype: {
@@ -1409,7 +1518,7 @@ export function buildPolyglotDiagram(
         label: {
           text: nameText,
           fill: labelColor,
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: "bold",
           textAnchor: "middle",
           textVerticalAnchor: "top",
@@ -1430,8 +1539,8 @@ export function buildPolyglotDiagram(
         strokeWidth: 1,
       };
 
-      // Find the longest text for width calculation
-      let maxTextLen = nameText.length;
+      // Find the required width based on longest text content
+      let maxContentWidth = Math.max(size.width, nameText.length * 9.5 + 40, stereoText.length * 7.5 + 32);
 
       for (let si = 0; si < sections.length; si++) {
         const section = sections[si];
@@ -1444,7 +1553,7 @@ export function buildPolyglotDiagram(
           attrs[sepId] = {
             x1: 0,
             y1: currentY,
-            x2: 999,
+            x2: 999, // will be clamped by node width
             y2: currentY,
             stroke: strokeColor,
             strokeWidth: 0.5,
@@ -1456,9 +1565,10 @@ export function buildPolyglotDiagram(
         // Section header (centered, italic)
         markup.push({ tagName: "text", selector: headerId });
         attrs[headerId] = {
-          text: section.header,
-          fill: textColor,
-          fontSize: 11,
+          text: section.header.toLowerCase(),
+          fill: secHeaderColor,
+          fontSize: 10,
+          fontWeight: "600",
           fontStyle: "italic",
           textAnchor: "middle",
           textVerticalAnchor: "top",
@@ -1466,14 +1576,26 @@ export function buildPolyglotDiagram(
           refY: currentY,
         };
         currentY += LINE_HEIGHT;
-        maxTextLen = Math.max(maxTextLen, section.header.length);
+        maxContentWidth = Math.max(maxContentWidth, section.header.length * 8 + 32);
 
         // Entries (left-aligned)
         for (let ei = 0; ei < section.entries.length; ei++) {
           const entryId = `entry_${si}_${ei}`;
+          let entryText = section.entries[ei];
+          if (
+            section.header === "constraints" ||
+            section.header === "calculations" ||
+            sym.ruleName?.includes("Constraint") ||
+            sym.ruleName?.includes("Calculation")
+          ) {
+            entryText = formatMathExpression(entryText);
+          } else if (sym.ruleName?.startsWith("State") && /^(entry|do|exit)\s+/i.test(entryText)) {
+            entryText = entryText.replace(/^(entry|do|exit)\s+/i, "$1 / ");
+          }
+
           markup.push({ tagName: "text", selector: entryId });
           attrs[entryId] = {
-            text: section.entries[ei],
+            text: entryText,
             fill: textColor,
             fontSize: 11,
             textAnchor: "start",
@@ -1482,14 +1604,66 @@ export function buildPolyglotDiagram(
             refY: currentY,
           };
           currentY += LINE_HEIGHT;
-          maxTextLen = Math.max(maxTextLen, section.entries[ei].length + 2);
+          // Entry font is 11px, starts at refX: 16, needs generous right clearance (>=24px)
+          // so text never overlaps right-side boundary ports or box edges
+          const entryWidth = entryText.length * 8.2 + 42;
+          maxContentWidth = Math.max(maxContentWidth, entryWidth);
         }
       }
 
       currentY += 4; // bottom padding
 
-      const adjustedWidth = Math.max(size.width, maxTextLen * 8 + 32);
+      const adjustedWidth = Math.ceil(maxContentWidth);
       const adjustedHeight = Math.max(size.height, currentY);
+      const hasSections = sections.length > 0;
+
+      // Header band covering top area with rounded top corners
+      const headerPath = `M 0 6 A 6 6 0 0 1 6 0 L ${adjustedWidth - 6} 0 A 6 6 0 0 1 ${adjustedWidth} 6 L ${adjustedWidth} ${HEADER_HEIGHT} L 0 ${HEADER_HEIGHT} Z`;
+
+      attrs.headerBody = {
+        d: hasSections ? headerPath : "",
+        fill: hasSections ? fillColor : "transparent",
+        stroke: "none",
+      };
+
+      if (shortName) {
+        const badgeWidth = shortName.length * 6.8 + 12;
+        attrs.idBadgeRect = {
+          x: adjustedWidth - badgeWidth - 8,
+          y: 6,
+          width: badgeWidth,
+          height: 15,
+          rx: 3,
+          ry: 3,
+          fill: strokeColor,
+          stroke: "none",
+        };
+        attrs.idBadgeText = {
+          text: shortName,
+          fill: "#ffffff",
+          fontSize: 9,
+          fontWeight: "bold",
+          textAnchor: "middle",
+          textVerticalAnchor: "top",
+          refX: adjustedWidth - badgeWidth / 2 - 8,
+          refY: 8,
+        };
+      }
+
+      const isParallel = (sym as any).attributes?.isParallel || (sym.metadata as any)?.isParallel;
+      if (isParallel && hasSections) {
+        const midY = (HEADER_HEIGHT + adjustedHeight) / 2;
+        markup.push({ tagName: "line", selector: "parallelRegionDivider" });
+        attrs.parallelRegionDivider = {
+          x1: 4,
+          y1: midY,
+          x2: adjustedWidth - 4,
+          y2: midY,
+          stroke: strokeColor,
+          strokeWidth: 1,
+          strokeDasharray: "4 3",
+        };
+      }
 
       // Update separator x2 values to match the width
       attrs.headerSep.x2 = adjustedWidth;
@@ -1500,13 +1674,13 @@ export function buildPolyglotDiagram(
         }
       }
 
-      // Body rect — use refWidth/refHeight so X6 scales to node dimensions
+      // Body rect — clean white/surface fill when compartments exist, with subtle border
       attrs.body = {
-        fill: fillColor,
+        fill: hasSections ? "#ffffff" : fillColor,
         stroke: strokeColor,
-        strokeWidth: isDef ? 2 : 1.5,
-        rx: 4,
-        ry: 4,
+        strokeWidth: isDef ? 1.5 : 1,
+        rx: 6,
+        ry: 6,
         refWidth: "100%",
         refHeight: "100%",
       };
@@ -1580,7 +1754,7 @@ export function buildPolyglotDiagram(
     const resolvedAttrs = resolveTemplates(nodeConfig.attrs, sym, compartmentText);
 
     let adjustedHeight = size.height;
-    const adjustedWidth = size.width;
+    const adjustedWidth = Math.ceil(Math.max(size.width, nameText.length * 9.5 + 40));
 
     // Strip separator/compartment for standalone usages that have no compartment text
     // to avoid the green line extending beyond the box
@@ -1592,7 +1766,15 @@ export function buildPolyglotDiagram(
         (resolvedAttrs.compartment as any).display = "none";
       }
       // Also shrink height since there's no compartment slot
-      adjustedHeight = Math.min(adjustedHeight, 50);
+      if (!hasExplicitVectorGlyph) {
+        adjustedHeight = Math.min(adjustedHeight, 50);
+      }
+    }
+    if (resolvedAttrs?.label && nameText) {
+      (resolvedAttrs.label as any).text = nameText;
+    }
+    if (resolvedAttrs?.separator) {
+      (resolvedAttrs.separator as any).x2 = adjustedWidth;
     }
 
     // Build metadata for properties panel
@@ -1688,41 +1870,138 @@ export function buildPolyglotDiagram(
       groups.in = {
         position: "left",
         attrs: {
-          circle: { r: 6, fill: "#ef6c00", stroke: "#fff", strokeWidth: 1.5 },
-          text: { fontSize: 9, fill: "#333" },
+          rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          circle: { r: 5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          text: { fontSize: 10, fill: "#334155" },
         },
         label: {
-          position: { name: "outside" },
+          position: { name: "left" },
         },
       };
+    } else if (!groups.in.label || !groups.in.label.position) {
+      groups.in.label = { position: { name: "left" } };
     }
+
     if (!groups.out) {
       groups.out = {
         position: "right",
         attrs: {
-          circle: { r: 6, fill: "#ef6c00", stroke: "#fff", strokeWidth: 1.5 },
-          text: { fontSize: 9, fill: "#333" },
+          rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          circle: { r: 5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          text: { fontSize: 10, fill: "#334155" },
         },
         label: {
-          position: { name: "outside" },
+          position: { name: "right" },
         },
       };
+    } else if (!groups.out.label || !groups.out.label.position) {
+      groups.out.label = { position: { name: "right" } };
+    }
+
+    for (const [gName, gVal] of Object.entries(groups)) {
+      if (gVal && (!gVal.label || !gVal.label.position)) {
+        const pos = typeof gVal.position === "string" ? gVal.position : (gVal.position as any)?.name;
+        if (pos === "left" || pos === "right" || pos === "top" || pos === "bottom") {
+          gVal.label = { position: { name: pos } };
+        } else if (gName === "in") {
+          gVal.label = { position: { name: "left" } };
+        } else if (gName === "out") {
+          gVal.label = { position: { name: "right" } };
+        }
+      }
     }
 
     const portName = sym.name ?? `port_${sym.id}`;
-    // Alternate sides: odd index → 'in' (left), even index → 'out' (right)
     const portItems = parentNode.ports.items ?? [];
-    const group = portItems.length % 2 === 0 ? "out" : "in";
+
+    // Intelligently assign port side based on causality/direction metadata or naming convention
+    const metaDir = (sym.metadata as any)?.direction ?? (sym as any).attributes?.direction;
+    let group: string;
+    if (
+      metaDir === "in" ||
+      metaDir === "input" ||
+      /(?:^|[a-z0-9_])(?:in|input)$/i.test(portName) ||
+      /^in(?:[A-Z0-9_]|$)/.test(portName)
+    ) {
+      group = "in";
+    } else if (
+      metaDir === "out" ||
+      metaDir === "output" ||
+      /(?:^|[a-z0-9_])(?:out|output)$/i.test(portName) ||
+      /^out(?:[A-Z0-9_]|$)/.test(portName)
+    ) {
+      group = "out";
+    } else {
+      // Default: alternating sides starting with "in" on left, "out" on right
+      group = portItems.length % 2 === 0 ? "in" : "out";
+    }
+
+    const groupDef = groups[group];
+    const groupPos = typeof groupDef?.position === "string" ? groupDef.position : (groupDef?.position as any)?.name;
+    const labelSide =
+      groupPos === "right" || group === "out"
+        ? "right"
+        : groupPos === "top"
+          ? "top"
+          : groupPos === "bottom"
+            ? "bottom"
+            : "left";
+
+    const isConjugated = Boolean(
+      (sym.metadata as any)?.isConjugated ||
+      (sym as any).attributes?.isConjugated ||
+      portName.startsWith("~") ||
+      sym.ruleName === "ConjugatedPortTyping",
+    );
 
     const portCfg = gfxConfig[sym.ruleName];
-    const portCustomAttrs = portCfg?.node?.attrs?.body || portCfg?.node?.attrs?.circle;
+    const portCustomAttrs = portCfg?.node?.attrs?.body || portCfg?.node?.attrs?.circle || portCfg?.node?.attrs?.rect;
 
     portItems.push({
       id: portName,
       group,
+      direction: metaDir,
+      isConjugated,
       attrs: {
         text: { text: portName },
-        ...(portCustomAttrs ? { circle: portCustomAttrs } : {}),
+        rect: {
+          width: 10,
+          height: 10,
+          x: -5,
+          y: -5,
+          fill: isConjugated ? "#ea580c" : "#ffffff",
+          stroke: "#ea580c",
+          strokeWidth: 1.5,
+          ...(portCustomAttrs ?? {}),
+        },
+        circle: {
+          r: 5,
+          fill: isConjugated ? "#ea580c" : "#ffffff",
+          stroke: "#ea580c",
+          strokeWidth: 1.5,
+          ...(portCustomAttrs ?? {}),
+        },
+        portBody: {
+          width: 10,
+          height: 10,
+          x: -5,
+          y: -5,
+          fill: isConjugated ? "#ea580c" : "#ffffff",
+          stroke: "#ea580c",
+          strokeWidth: 1.5,
+          ...(portCustomAttrs ?? {}),
+        },
+      },
+      label: {
+        position: { name: labelSide },
+        attrs: {
+          text: {
+            text: isConjugated && !portName.startsWith("~") ? `~${portName}` : portName,
+            fontSize: 10,
+            fill: "#334155",
+            fontWeight: "500",
+          },
+        },
       },
     });
     parentNode.ports.items = portItems;
@@ -1752,10 +2031,25 @@ export function buildPolyglotDiagram(
     }
 
     // Resolve {{name}} templates in labels
-    let resolvedLabels = edgeConfig.labels?.map((label) => ({
-      ...label,
-      attrs: resolveTemplates(label.attrs, sym),
-    }));
+    let resolvedLabels = edgeConfig.labels?.map((label) => {
+      const resolvedAttrs = resolveTemplates(label.attrs, sym);
+      if (resolvedAttrs?.rect) {
+        resolvedAttrs.rect.stroke = resolvedAttrs.rect.stroke || "#cbd5e1";
+        resolvedAttrs.rect.strokeWidth = resolvedAttrs.rect.strokeWidth ?? 1;
+        resolvedAttrs.rect.fill = resolvedAttrs.rect.fill || "#ffffff";
+        resolvedAttrs.rect.rx = resolvedAttrs.rect.rx ?? 4;
+        resolvedAttrs.rect.ry = resolvedAttrs.rect.ry ?? 4;
+        resolvedAttrs.rect.refWidth = resolvedAttrs.rect.refWidth ?? 12;
+        resolvedAttrs.rect.refHeight = resolvedAttrs.rect.refHeight ?? 6;
+        resolvedAttrs.rect.refX = resolvedAttrs.rect.refX ?? -6;
+        resolvedAttrs.rect.refY = resolvedAttrs.rect.refY ?? -3;
+      }
+      return {
+        ...label,
+        attrs: resolvedAttrs,
+        position: label.position || { distance: 0.5, offset: -8 },
+      };
+    });
 
     // ── Dynamic transition labels: trigger [guard] / effect ──
     // If this is a TransitionUsage or SuccessionAsUsage with guard/trigger/effect metadata,
@@ -1941,45 +2235,6 @@ export function buildPolyglotDiagram(
   // parented to each usage (OwnedFeatureTyping isn't in the indexer config,
   // so it can't be found via childrenOf — we must scan symbols directly,
   // mirroring ScopeResolver.findRefChildren).
-  const USAGE_KINDS = opts.usageKinds
-    ? new Set(opts.usageKinds)
-    : new Set([
-        "PartUsage",
-        "ItemUsage",
-        "PortUsage",
-        "ActionUsage",
-        "StateUsage",
-        "ConstraintUsage",
-        "RequirementUsage",
-        "CalculationUsage",
-        "AttributeUsage",
-        "ConnectionUsage",
-        "OccurrenceUsage",
-        "ReferenceUsage",
-      ]);
-  const DEFINITION_KINDS = opts.definitionKinds
-    ? new Set(opts.definitionKinds)
-    : new Set([
-        "PartDefinition",
-        "ItemDefinition",
-        "PortDefinition",
-        "ActionDefinition",
-        "StateDefinition",
-        "ConstraintDefinition",
-        "RequirementDefinition",
-        "CalculationDefinition",
-        "AttributeDefinition",
-        "ConnectionDefinition",
-        "OccurrenceDefinition",
-        "InterfaceDefinition",
-        "AllocationDefinition",
-        "FlowDefinition",
-        "UseCaseDefinition",
-        "AnalysisCaseDefinition",
-        "VerificationCaseDefinition",
-        "ViewDefinition",
-        "ViewpointDefinition",
-      ]);
   const addedTypingEdges = new Set<string>();
 
   // Build a parentId → ref-entry children map by scanning ALL symbols
@@ -2071,6 +2326,21 @@ export function buildPolyglotDiagram(
           if (usageNode.attrs) {
             if (usageNode.attrs.label) {
               (usageNode.attrs.label as any).text = typedLabel;
+            }
+          }
+          const neededWidth = Math.ceil(typedLabel.length * 9.5 + 40);
+          if (neededWidth > usageNode.width) {
+            usageNode.width = neededWidth;
+            if (usageNode.attrs) {
+              if (usageNode.attrs.headerBody && (usageNode.attrs.headerBody as any).d) {
+                (usageNode.attrs.headerBody as any).d =
+                  `M 0 6 A 6 6 0 0 1 6 0 L ${neededWidth - 6} 0 A 6 6 0 0 1 ${neededWidth} 6 L ${neededWidth} 42 L 0 42 Z`;
+              }
+              for (const [k, v] of Object.entries(usageNode.attrs)) {
+                if ((k === "headerSep" || k.startsWith("sep_")) && typeof v === "object" && v !== null) {
+                  (v as any).x2 = neededWidth;
+                }
+              }
             }
           }
         }
@@ -2916,8 +3186,8 @@ export function buildDiagramFromDSL(
     }
 
     const portGroups: Record<string, any> = {
-      left: { position: "left", attrs: { circle: { magnet: true } } },
-      right: { position: "right", attrs: { circle: { magnet: true } } },
+      left: { position: "left", label: { position: { name: "left" } }, attrs: { circle: { magnet: true } } },
+      right: { position: "right", label: { position: { name: "right" } }, attrs: { circle: { magnet: true } } },
     };
 
     const fill = style.fill || "#1e293b";
@@ -2931,7 +3201,7 @@ export function buildDiagramFromDSL(
       parent: parentId,
       x: rawNode.x || 0,
       y: rawNode.y || 0,
-      width: rawNode.width || style.width || 150,
+      width: rawNode.width || Math.ceil(Math.max(style.width || 150, label.length * 9.5 + 40)),
       height: rawNode.height || style.height || 42,
       angle: rawNode.rotation || 0,
       opacity: style.opacity !== undefined ? style.opacity : 1,

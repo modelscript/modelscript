@@ -27,14 +27,15 @@ function escapeXml(str: any): string {
  * Renders DiagramData into a standalone, pure SVG XML string with zero DOM dependencies.
  */
 export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExportOptions = {}): string {
-  const isDark = options.theme !== "light";
+  const isBlueprint = options.theme === "blueprint";
+  const isDark = options.theme !== "light" && !isBlueprint;
   const padding = options.padding ?? 40;
-  const bgColor = options.background ?? (isDark ? "#0f172a" : "#ffffff");
-  const textColor = isDark ? "#f8fafc" : "#0f172a";
-  const mutedTextColor = isDark ? "#94a3b8" : "#64748b";
-  const borderColor = isDark ? "#334155" : "#cbd5e1";
-  const defaultNodeFill = isDark ? "#1e293b" : "#f1f5f9";
-  const defaultEdgeStroke = isDark ? "#38bdf8" : "#0284c7";
+  const bgColor = options.background ?? (isBlueprint ? "#1e3a8a" : isDark ? "#0f172a" : "#ffffff");
+  const textColor = isBlueprint ? "#ffffff" : isDark ? "#f8fafc" : "#0f172a";
+  const mutedTextColor = isBlueprint ? "#bfdbfe" : isDark ? "#94a3b8" : "#64748b";
+  const borderColor = isBlueprint ? "#93c5fd" : isDark ? "#334155" : "#cbd5e1";
+  const defaultNodeFill = isBlueprint ? "#172554" : isDark ? "#1e293b" : "#f1f5f9";
+  const defaultEdgeStroke = isBlueprint ? "#93c5fd" : isDark ? "#38bdf8" : "#0284c7";
 
   // 1. Calculate bounding box enclosing all nodes and edges
   let minX = Infinity;
@@ -271,8 +272,12 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       const lp = ep.points[midIdx];
       const labelText = ep.edge.labels[0].attrs?.text?.text || "";
       if (labelText) {
+        const textStr = escapeXml(String(labelText));
+        const badgeW = textStr.length * 6.5 + 16;
+        const badgeH = 18;
         bodyParts.push(
-          `<text x="${lp.x}" y="${lp.y - 6}" text-anchor="middle" fill="${mutedTextColor}" class="edge-label">${escapeXml(String(labelText))}</text>`,
+          `<rect x="${lp.x - badgeW / 2}" y="${lp.y - 15}" width="${badgeW}" height="${badgeH}" rx="4" fill="${isDark ? "#1e293b" : "#ffffff"}" stroke="${borderColor}" stroke-width="1"/>`,
+          `<text x="${lp.x}" y="${lp.y - 3}" text-anchor="middle" fill="${textColor}" class="edge-label">${textStr}</text>`,
         );
       }
     }
@@ -349,10 +354,13 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const sections = (node.data?.sections as { header: string; entries: string[] }[]) || [];
     if (sections.length > 0) {
       let curY = 24;
-      // Header area
+      // Two-tone header band with rounded top corners
+      bodyParts.push(
+        `<path d="M 0 ${rx} A ${rx} ${ry} 0 0 1 ${rx} 0 L ${nw - rx} 0 A ${rx} ${ry} 0 0 1 ${nw} ${rx} L ${nw} 34 L 0 34 Z" fill="${escapeXml(fill)}" stroke="none"/>`,
+      );
       if (stereotype) {
         bodyParts.push(
-          `<text x="${nw / 2}" y="14" text-anchor="middle" fill="${mutedTextColor}" class="node-stereotype">«${escapeXml(stereotype)}»</text>`,
+          `<text x="${nw / 2}" y="14" text-anchor="middle" fill="${stroke}" class="node-stereotype">«${escapeXml(stereotype.toLowerCase())}»</text>`,
         );
       }
       bodyParts.push(
@@ -361,18 +369,18 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       curY += 10;
 
       // Divider below title
-      bodyParts.push(`<line x1="0" y1="${curY}" x2="${nw}" y2="${curY}" stroke="${borderColor}" stroke-width="1"/>`);
+      bodyParts.push(`<line x1="0" y1="${curY}" x2="${nw}" y2="${curY}" stroke="${stroke}" stroke-width="1"/>`);
       curY += 4;
 
       for (const sec of sections) {
         curY += 12;
         bodyParts.push(
-          `<text x="8" y="${curY}" fill="${mutedTextColor}" class="compartment-header">«${escapeXml(sec.header)}»</text>`,
+          `<text x="${nw / 2}" y="${curY}" text-anchor="middle" fill="${mutedTextColor}" class="compartment-header">«${escapeXml(sec.header.toLowerCase())}»</text>`,
         );
         for (const entry of sec.entries) {
           curY += 14;
           bodyParts.push(
-            `<text x="12" y="${curY}" fill="${textColor}" class="compartment-row">${escapeXml(entry)}</text>`,
+            `<text x="16" y="${curY}" fill="${textColor}" class="compartment-row">${escapeXml(entry)}</text>`,
           );
         }
         curY += 4;
@@ -384,7 +392,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       // Standard Node Label (when no icon is centered)
       if (stereotype) {
         bodyParts.push(
-          `<text x="${nw / 2}" y="${nh / 2 - 8}" text-anchor="middle" fill="${mutedTextColor}" class="node-stereotype">«${escapeXml(stereotype)}»</text>`,
+          `<text x="${nw / 2}" y="${nh / 2 - 8}" text-anchor="middle" fill="${mutedTextColor}" class="node-stereotype">«${escapeXml(stereotype.toLowerCase())}»</text>`,
         );
         bodyParts.push(
           `<text x="${nw / 2}" y="${nh / 2 + 10}" text-anchor="middle" fill="${textColor}" class="node-title">${escapeXml(labelText)}</text>`,
@@ -401,9 +409,41 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       for (const port of node.ports.items) {
         const px = port.args?.x ?? (port.group === "in" || port.group === "left" ? 0 : nw);
         const py = port.args?.y ?? nh / 2;
+        const isConj = (port as any).isConjugated;
+        const portFill = isConj ? stroke : isBlueprint ? "#172554" : isDark ? "#1e293b" : "#ffffff";
+        const portStroke = isBlueprint ? "#93c5fd" : stroke;
         bodyParts.push(
-          `<circle cx="${px}" cy="${py}" r="3.5" fill="${isDark ? "#38bdf8" : "#0284c7"}" stroke="${isDark ? "#0f172a" : "#ffffff"}" stroke-width="1"/>`,
+          `<rect x="${px - 4.5}" y="${py - 4.5}" width="9" height="9" fill="${portFill}" stroke="${portStroke}" stroke-width="1.5" rx="1" ry="1"/>`,
         );
+
+        // Directional arrow indicator
+        const dir =
+          (port as any).direction ??
+          (port.group === "in" || port.group === "left"
+            ? "in"
+            : port.group === "out" || port.group === "right"
+              ? "out"
+              : undefined);
+        const arrowColor = isConj ? "#ffffff" : portStroke;
+        if (dir === "in") {
+          // Pointing into the block
+          const d =
+            px <= 5
+              ? `M ${px - 2} ${py - 2.5} L ${px + 2} ${py} L ${px - 2} ${py + 2.5} Z`
+              : `M ${px + 2} ${py - 2.5} L ${px - 2} ${py} L ${px + 2} ${py + 2.5} Z`;
+          bodyParts.push(`<path d="${d}" fill="${arrowColor}"/>`);
+        } else if (dir === "out") {
+          // Pointing out of the block
+          const d =
+            px <= 5
+              ? `M ${px + 2} ${py - 2.5} L ${px - 2} ${py} L ${px + 2} ${py + 2.5} Z`
+              : `M ${px - 2} ${py - 2.5} L ${px + 2} ${py} L ${px - 2} ${py + 2.5} Z`;
+          bodyParts.push(`<path d="${d}" fill="${arrowColor}"/>`);
+        } else if (dir === "inout") {
+          bodyParts.push(
+            `<polygon points="${px},${py - 2.5} ${px + 2.5},${py} ${px},${py + 2.5} ${px - 2.5},${py}" fill="${arrowColor}"/>`,
+          );
+        }
       }
     }
 

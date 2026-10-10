@@ -1318,6 +1318,99 @@ export const ModelicaErrorCode = {
     message: (newPrefix: string, compName: string, existingPrefix: string) =>
       `Invalid type prefix '${newPrefix}' on component ${compName}, due to existing type prefix '${existingPrefix}'.`,
   },
+  SAME_NAME_TYPE_SHADOWING: {
+    code: 2011,
+    rule: "same-name-type-shadowing",
+    severity: "error",
+    message: (typeSpec: string) => `Found a component with same name when looking for type ${typeSpec}.`,
+  },
+  ATTRIBUTE_TYPE_MISMATCH: {
+    code: 3015,
+    rule: "attribute-type-mismatch",
+    severity: "error",
+    message: (varName: string, attrName: string, actualType: string, expectedType: string) =>
+      `Variable ${varName}: Wrong type on builtin attribute ${attrName} (type was: ${actualType}, expected: ${expectedType}).`,
+  },
+  CONDITIONAL_TYPE_MISMATCH: {
+    code: 3016,
+    rule: "conditional-type-mismatch",
+    severity: "error",
+    message: (condExpr: string, actualType: string) =>
+      `Type error in conditional '${condExpr}'. Expected Boolean, got ${actualType}.`,
+  },
+  CONNECT_TYPES_INCONSISTENT: {
+    code: 3017,
+    rule: "connect-types-inconsistent",
+    severity: "error",
+    message: (r0Raw: string, type0: string, r1Raw: string, type1: string) =>
+      `The type of variables \n${r0Raw} type:\n${type0} and \n${r1Raw} type:\n${type1}\nare inconsistent in connect equations.`,
+  },
+  RECURSIVE_DEFINITION: {
+    code: 4058,
+    rule: "recursive-definition",
+    severity: "error",
+    message: (elemName: string, className: string) =>
+      `Declaration of element ${elemName} causes recursive definition of class ${className}.`,
+  },
+  MAX_RECURSION_DEPTH_EXCEEDED: {
+    code: 4059,
+    rule: "max-recursion-depth-exceeded",
+    severity: "error",
+    message: (depth: string = "256") =>
+      `The maximum recursion depth of ${depth} was reached, probably due to mutually recursive definitions.`,
+  },
+  IMPLICIT_ITERATOR_SUBSCRIPT_MISSING: {
+    code: 5025,
+    rule: "implicit-iterator-subscript-missing",
+    severity: "error",
+    message: (iterName: string) =>
+      `Identifier ${iterName} of implicit for iterator must be present as array subscript in the loop body.`,
+  },
+  IMPLICIT_ITERATION_DIM_MISMATCH: {
+    code: 5026,
+    rule: "implicit-iteration-dim-mismatch",
+    severity: "error",
+    message: (dim1: string, name1: string, dim2: string, name2: string) =>
+      `Dimension ${dim1} of ${name1} and ${dim2} of ${name2} differs when trying to deduce implicit iteration range.`,
+  },
+  WHEN_CONDITION_NOT_DISCRETE: {
+    code: 5027,
+    rule: "when-condition-not-discrete",
+    severity: "error",
+    message: (condText: string) => `When-condition '${condText}' is not a discrete-time expression.`,
+  },
+  WHEN_IF_BRANCH_LHS_MISMATCH: {
+    code: 5028,
+    rule: "when-if-branch-lhs-mismatch",
+    severity: "error",
+    message: () =>
+      "The branches of an if-equation inside a when-equation must have the same set of component references on the left-hand side.",
+  },
+  CLOCKED_WHEN_HAS_ELSEWHEN: {
+    code: 5029,
+    rule: "clocked-when-has-elsewhen",
+    severity: "error",
+    message: () => "Clocked when equation can not contain elsewhen part.",
+  },
+  CLOCKED_WHEN_BRANCH_IN_WHEN: {
+    code: 5030,
+    rule: "clocked-when-branch-in-when",
+    severity: "error",
+    message: () => "Clocked when branch in when equation.",
+  },
+  INVALID_WHEN_LHS: {
+    code: 5031,
+    rule: "invalid-when-lhs",
+    severity: "error",
+    message: (lhsStr: string) => `Invalid left-hand side of when-equation: ${lhsStr}.`,
+  },
+  WHEN_CONDITIONAL_EXPECTED_BOOLEAN: {
+    code: 5032,
+    rule: "when-conditional-expected-boolean",
+    severity: "error",
+    message: (condStr: string) =>
+      `Type error in when conditional '${condStr}'. Expected Boolean scalar or vector, got Clock.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

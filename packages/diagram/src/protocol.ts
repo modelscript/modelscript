@@ -292,7 +292,7 @@ export type DiagramEditAction =
 // ── SVG Export Options ──
 
 export interface SvgExportOptions {
-  theme?: "dark" | "light";
+  theme?: "dark" | "light" | "blueprint" | string;
   padding?: number;
   scale?: number;
   embedFonts?: boolean;

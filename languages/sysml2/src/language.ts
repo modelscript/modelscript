@@ -93,6 +93,7 @@ const defAttrs = (_defKind: string) => (self: any) => ({
   attributes: {
     isAbstract: self.isAbstract,
     isVariation: self.isVariation,
+    shortName: self.declaredShortName,
   },
 });
 
@@ -111,8 +112,9 @@ const usageAttrs = (_usageKind: string) => (self: any) => ({
     isOrdered: self.isOrdered,
     isNonunique: self.isNonunique,
     isConstant: self.isConstant,
-    multiplicityLower: self.ownedMultiplicity.ownedRelatedElement.lowerBound,
-    multiplicityUpper: self.ownedMultiplicity.ownedRelatedElement.upperBound,
+    shortName: self.declaredShortName,
+    multiplicityLower: self.ownedMultiplicity?.ownedRelatedElement?.lowerBound,
+    multiplicityUpper: self.ownedMultiplicity?.ownedRelatedElement?.upperBound,
   },
 });
 
@@ -2361,11 +2363,12 @@ const sysmlNodeGraphics = (opts: {
     shape: "rect",
     markup: opts.iconHref ? blockMarkupWithIcon : blockMarkup,
     attrs: {
-      body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 2, rx: 4, ry: 4 },
+      body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 1.5, rx: 6, ry: 6 },
       header: {
-        text: `«${opts.stereotype}»`,
+        text: `«${opts.stereotype.toLowerCase()}»`,
         fill: opts.stroke,
         fontSize: 10,
+        fontStyle: "italic",
         textAnchor: "middle",
         refX: 0.5,
         refY: 14,
@@ -2373,8 +2376,8 @@ const sysmlNodeGraphics = (opts: {
       separator: { x1: 0, y1: 24, x2: "100%", y2: 24, stroke: opts.stroke, strokeWidth: 1 },
       label: {
         text: "{{name}}",
-        fill: "#1a1a1a",
-        fontSize: 14,
+        fill: "#0f172a",
+        fontSize: 13,
         fontWeight: "bold",
         textAnchor: "middle",
         refX: 0.5,
@@ -2389,15 +2392,31 @@ const sysmlNodeGraphics = (opts: {
     size: { width: opts.width ?? 180, height: opts.height ?? 60 },
     ports: {
       groups: {
-        in: { position: "left", attrs: { circle: { r: 5, fill: opts.stroke, stroke: "#fff", strokeWidth: 1.5 } } },
-        out: { position: "right", attrs: { circle: { r: 5, fill: opts.stroke, stroke: "#fff", strokeWidth: 1.5 } } },
+        in: {
+          position: "left",
+          attrs: {
+            portBody: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
+            rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
+            circle: { r: 5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
+          },
+          label: { position: { name: "left" } },
+        },
+        out: {
+          position: "right",
+          attrs: {
+            portBody: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
+            rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
+            circle: { r: 5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
+          },
+          label: { position: { name: "right" } },
+        },
       },
     },
     portQuery: opts.portQuery,
   },
 });
 
-/** Create a SysML usage-style node (lighter fill, no header separator) */
+/** Create a SysML usage-style node (lighter fill, dashed border) */
 const sysmlUsageGraphics = (opts: {
   stereotype: string;
   fill: string;
@@ -2409,11 +2428,12 @@ const sysmlUsageGraphics = (opts: {
     shape: "rect",
     markup: opts.iconHref ? simpleMarkupWithIcon : simpleMarkup,
     attrs: {
-      body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 1.5, rx: 4, ry: 4, strokeDasharray: "6 3" },
+      body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 1.5, rx: 6, ry: 6, strokeDasharray: "6 3" },
       label: {
         text: "{{name}}",
-        fill: "#1a1a1a",
+        fill: "#0f172a",
         fontSize: 13,
+        fontWeight: "bold",
         textAnchor: "middle",
         refX: 0.5,
         refY: 0.5,
@@ -2440,12 +2460,20 @@ const sysmlGroupGraphics = (opts: { fill: string; stroke: string; tabText: strin
       { tagName: "text", selector: "label" },
     ],
     attrs: {
-      body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 2, rx: 0, ry: 0 },
-      tab: { fill: opts.stroke, width: 80, height: 20, rx: 0, ry: 0, x: 0, y: 0 },
-      tabLabel: { text: opts.tabText, fill: "#fff", fontSize: 10, x: 40, y: 13, textAnchor: "middle" },
+      body: { fill: opts.fill, stroke: opts.stroke, strokeWidth: 1.5, rx: 6, ry: 6 },
+      tab: { fill: opts.stroke, width: 80, height: 20, rx: 4, ry: 4, x: 0, y: 0 },
+      tabLabel: {
+        text: opts.tabText,
+        fill: "#fff",
+        fontSize: 10,
+        fontWeight: "600",
+        x: 40,
+        y: 13,
+        textAnchor: "middle",
+      },
       label: {
         text: "{{name}}",
-        fill: "#1a1a1a",
+        fill: "#0f172a",
         fontSize: 14,
         fontWeight: "bold",
         refX: 0.5,
@@ -2471,7 +2499,7 @@ const sysmlEdgeGraphics = (opts: {
     shape: "edge",
     attrs: {
       line: {
-        stroke: opts.stroke ?? "#333",
+        stroke: opts.stroke ?? "#64748b",
         strokeWidth: 1.5,
         ...(opts.strokeDasharray ? { strokeDasharray: opts.strokeDasharray } : {}),
         targetMarker: opts.targetMarker ?? "classic",
@@ -2481,10 +2509,20 @@ const sysmlEdgeGraphics = (opts: {
       ? [
           {
             attrs: {
-              text: { text: opts.label, fill: "#666", fontSize: 11 },
-              rect: { fill: "#fff", stroke: "none", rx: 3, ry: 3 },
+              text: { text: opts.label, fill: "#334155", fontSize: 10, fontWeight: "500" },
+              rect: {
+                fill: "#ffffff",
+                stroke: "#cbd5e1",
+                strokeWidth: 1,
+                rx: 4,
+                ry: 4,
+                refWidth: 12,
+                refHeight: 6,
+                refX: -6,
+                refY: -3,
+              },
             },
-            position: { distance: 0.5, offset: 0 },
+            position: { distance: 0.5, offset: -8 },
           },
         ]
       : undefined,
@@ -3242,7 +3280,7 @@ export const sysml2Language = language({
         queries: packageTraceabilityQueries,
         model: packageTraceabilityModel,
         lints: packageTraceabilityLints,
-        graphics: () => sysmlGroupGraphics({ fill: "#f0f4ff", stroke: "#4a90d9", tabText: "package" }),
+        graphics: () => sysmlGroupGraphics({ fill: "#f8fafc", stroke: "#475569", tabText: "package" }),
       }),
 
     LibraryPackage: ($) =>
@@ -3264,7 +3302,7 @@ export const sysml2Language = language({
         queries: packageTraceabilityQueries,
         model: packageTraceabilityModel,
         lints: packageTraceabilityLints,
-        graphics: () => sysmlGroupGraphics({ fill: "#f0f4ff", stroke: "#4a90d9", tabText: "library" }),
+        graphics: () => sysmlGroupGraphics({ fill: "#f8fafc", stroke: "#475569", tabText: "library" }),
       }),
 
     _PackageBody: ($) => choice(";", seq("{", repeat($._PackageBodyElement), "}")),
@@ -3786,7 +3824,7 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "item def", fill: "#e0f2f1", stroke: "#00897b" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "item def", fill: "#f0fdfa", stroke: "#0d9488" }),
       }),
 
     ItemUsage: ($) =>
@@ -3796,7 +3834,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "item", fill: "#e0f2f1", stroke: "#4db6ac" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "item", fill: "#f0fdfa", stroke: "#14b8a6" }),
       }),
 
     PartDefinition: ($) =>
@@ -3807,7 +3845,7 @@ export const sysml2Language = language({
         model: definitionModel,
         lints: definitionLints,
         graphics: () =>
-          sysmlNodeGraphics({ stereotype: "part def", fill: "#e8f5e9", stroke: "#43a047", portQuery: "ownedPorts" }),
+          sysmlNodeGraphics({ stereotype: "part def", fill: "#ecfdf5", stroke: "#059669", portQuery: "ownedPorts" }),
         diff: {
           ignore: ["annotationClause", "description"],
           breaking: ["isAbstract"],
@@ -3821,7 +3859,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "part", fill: "#e8f5e9", stroke: "#66bb6a" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "part", fill: "#ecfdf5", stroke: "#10b981" }),
       }),
 
     // =====================================================================
@@ -3835,7 +3873,7 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "port def", fill: "#fff9c4", stroke: "#f57f17" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "port def", fill: "#fff7ed", stroke: "#ea580c" }),
         diff: {
           ignore: ["annotationClause", "description"],
           breaking: ["direction"],
@@ -3858,10 +3896,18 @@ export const sysml2Language = language({
               { tagName: "text", selector: "label" },
             ],
             attrs: {
-              body: { fill: "#fff3e0", stroke: "#ef6c00", strokeWidth: 2, rx: 0, ry: 0, width: 16, height: 16 },
-              label: { text: "{{name}}", fill: "#1a1a1a", fontSize: 10, refX: 0.5, refY: 20, textAnchor: "middle" },
+              body: { fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5, rx: 0, ry: 0, width: 12, height: 12 },
+              label: {
+                text: "{{name}}",
+                fill: "#334155",
+                fontSize: 10,
+                fontWeight: "500",
+                refX: 0.5,
+                refY: 18,
+                textAnchor: "middle",
+              },
             },
-            size: { width: 16, height: 16 },
+            size: { width: 12, height: 12 },
           },
         }),
       }),
@@ -3919,7 +3965,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: connectionLints,
-        graphics: () => sysmlEdgeGraphics({ stroke: "#546e7a", label: "«connect»" }),
+        graphics: () => sysmlEdgeGraphics({ stroke: "#546e7a", label: "«connect»", connector: "jumpover" }),
         diff: {
           identity: (self) => self.name || `connection_${self.id}`,
         },
@@ -3947,7 +3993,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: connectionLints,
-        graphics: () => sysmlEdgeGraphics({ label: "«bind»", stroke: "#37474f" }),
+        graphics: () => sysmlEdgeGraphics({ label: "«bind»", stroke: "#37474f", connector: "jumpover" }),
       }),
 
     SuccessionAsUsage: ($) =>
@@ -4077,7 +4123,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        graphics: () => sysmlEdgeGraphics({ label: "«flow»", stroke: "#01579b" }),
+        graphics: () => sysmlEdgeGraphics({ label: "«flow»", stroke: "#01579b", connector: "jumpover" }),
       }),
 
     SuccessionFlowUsage: ($) =>
@@ -4099,9 +4145,14 @@ export const sysml2Language = language({
         ),
         symbol: usageAttrs("flow"),
         queries: usageQueries,
-        model: usageModel,
         lints: usageLints,
-        graphics: () => sysmlEdgeGraphics({ label: "«succession flow»", stroke: "#01579b", strokeDasharray: "4 2" }),
+        graphics: () =>
+          sysmlEdgeGraphics({
+            label: "«succession flow»",
+            stroke: "#01579b",
+            strokeDasharray: "4 2",
+            connector: "jumpover",
+          }),
       }),
 
     PayloadFeatureMember: ($) => field("ownedRelatedElement", $.PayloadFeature),
@@ -4148,7 +4199,7 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: actionDefinitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#e3f2fd", stroke: "#1565c0" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#f0f9ff", stroke: "#0284c7" }),
       }),
 
     _ActionBody: ($) => choice(";", seq("{", repeat($._ActionBodyItem), "}")),
@@ -4223,28 +4274,100 @@ export const sysml2Language = language({
       def({
         syntax: seq(repeat($._usage_modifier), "merge", optional($._UsageDeclaration), $._ActionBody),
         symbol: usageAttrs("merge"),
-        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "polygon",
+            markup: [
+              { tagName: "polygon", selector: "body" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { points: "20,0 40,20 20,40 0,20", fill: "#f0f9ff", stroke: "#0284c7", strokeWidth: 1.5 },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 10,
+                fontWeight: "600",
+                refX: 20,
+                refY: 48,
+                textAnchor: "middle",
+              },
+            },
+            size: { width: 40, height: 40 },
+          },
+        }),
       }),
 
     DecisionNode: ($) =>
       def({
         syntax: seq(repeat($._usage_modifier), "decide", optional($._UsageDeclaration), $._ActionBody),
         symbol: usageAttrs("decide"),
-        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "polygon",
+            markup: [
+              { tagName: "polygon", selector: "body" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { points: "20,0 40,20 20,40 0,20", fill: "#f0f9ff", stroke: "#0284c7", strokeWidth: 1.5 },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 10,
+                fontWeight: "600",
+                refX: 20,
+                refY: 48,
+                textAnchor: "middle",
+              },
+            },
+            size: { width: 40, height: 40 },
+          },
+        }),
       }),
 
     JoinNode: ($) =>
       def({
         syntax: seq(repeat($._usage_modifier), "join", optional($._UsageDeclaration), $._ActionBody),
         symbol: usageAttrs("join"),
-        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "rect",
+            markup: [
+              { tagName: "rect", selector: "body" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { fill: "#1e293b", stroke: "#0f172a", strokeWidth: 1, rx: 1, ry: 1 },
+              label: { text: "{{name}}", fill: "#475569", fontSize: 9, refX: 0.5, refY: -8, textAnchor: "middle" },
+            },
+            size: { width: 60, height: 6 },
+          },
+        }),
       }),
 
     ForkNode: ($) =>
       def({
         syntax: seq(repeat($._usage_modifier), "fork", optional($._UsageDeclaration), $._ActionBody),
         symbol: usageAttrs("fork"),
-        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "rect",
+            markup: [
+              { tagName: "rect", selector: "body" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { fill: "#1e293b", stroke: "#0f172a", strokeWidth: 1, rx: 1, ry: 1 },
+              label: { text: "{{name}}", fill: "#475569", fontSize: 9, refX: 0.5, refY: -8, textAnchor: "middle" },
+            },
+            size: { width: 60, height: 6 },
+          },
+        }),
       }),
 
     ActionUsage: ($) =>
@@ -4261,7 +4384,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: actionUsageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "action", fill: "#e3f2fd", stroke: "#1976d2" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "action", fill: "#f0f9ff", stroke: "#0284c7" }),
       }),
 
     // -----------------------------------------------------------------
@@ -4281,6 +4404,39 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "polygon",
+            markup: [
+              { tagName: "polygon", selector: "body" },
+              { tagName: "text", selector: "stereotype" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { points: "0,0 120,0 120,40 0,40 16,20", fill: "#f0f9ff", stroke: "#0284c7", strokeWidth: 1.5 },
+              stereotype: {
+                text: "«accept»",
+                fill: "#0284c7",
+                fontSize: 9,
+                fontStyle: "italic",
+                refX: 0.55,
+                refY: 14,
+                textAnchor: "middle",
+              },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 11,
+                fontWeight: "bold",
+                refX: 0.55,
+                refY: 28,
+                textAnchor: "middle",
+              },
+            },
+            size: { width: 120, height: 40 },
+          },
+        }),
       }),
 
     SendActionNode: ($) =>
@@ -4297,6 +4453,39 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "polygon",
+            markup: [
+              { tagName: "polygon", selector: "body" },
+              { tagName: "text", selector: "stereotype" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { points: "0,0 104,0 120,20 104,40 0,40", fill: "#f0f9ff", stroke: "#0284c7", strokeWidth: 1.5 },
+              stereotype: {
+                text: "«send»",
+                fill: "#0284c7",
+                fontSize: 9,
+                fontStyle: "italic",
+                refX: 0.45,
+                refY: 14,
+                textAnchor: "middle",
+              },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 11,
+                fontWeight: "bold",
+                refX: 0.45,
+                refY: 28,
+                textAnchor: "middle",
+              },
+            },
+            size: { width: 120, height: 40 },
+          },
+        }),
       }),
 
     AssignActionNode: ($) =>
@@ -4331,7 +4520,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: actionUsageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "perform", fill: "#e3f2fd", stroke: "#0d47a1" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "perform", fill: "#f0f9ff", stroke: "#0369a1" }),
       }),
 
     // =====================================================================
@@ -4353,7 +4542,7 @@ export const sysml2Language = language({
         queries: calculationQueries,
         model: calculationDefinitionModel,
         lints: definitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "calc def", fill: "#e0f7fa", stroke: "#00838f" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "calc def", fill: "#f0fdfa", stroke: "#0f766e" }),
       }),
 
     _CalculationBody: ($) =>
@@ -4386,7 +4575,7 @@ export const sysml2Language = language({
         queries: calculationUsageQueries,
         model: calculationUsageModel,
         lints: usageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "calc", fill: "#e0f7fa", stroke: "#006064" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "calc", fill: "#f0fdfa", stroke: "#0f766e" }),
       }),
 
     // =====================================================================
@@ -4407,7 +4596,7 @@ export const sysml2Language = language({
         queries: constraintDefinitionQueries,
         model: constraintDefinitionModel,
         lints: constraintDefinitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "constraint def", fill: "#ffebee", stroke: "#c62828" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "constraint def", fill: "#fff1f2", stroke: "#e11d48" }),
       }),
 
     ConstraintUsage: ($) =>
@@ -4422,8 +4611,8 @@ export const sysml2Language = language({
         symbol: usageAttrs("constraint"),
         queries: constraintUsageQueries,
         model: constraintUsageModel,
-        graphics: () => sysmlUsageGraphics({ stereotype: "constraint", fill: "#ffebee", stroke: "#b71c1c" }),
         lints: constraintUsageLintRules,
+        graphics: () => sysmlUsageGraphics({ stereotype: "constraint", fill: "#fff1f2", stroke: "#f43f5e" }),
       }),
 
     AssertConstraintUsage: ($) =>
@@ -4477,8 +4666,8 @@ export const sysml2Language = language({
         graphics: () =>
           sysmlNodeGraphics({
             stereotype: "requirement def",
-            fill: "#f3e5f5",
-            stroke: "#9c27b0",
+            fill: "#f5f3ff",
+            stroke: "#7c3aed",
             width: 200,
             height: 70,
           }),
@@ -4534,7 +4723,47 @@ export const sysml2Language = language({
         syntax: seq("actor", repeat($._usage_modifier), $._Usage),
         symbol: usageAttrs("actor"),
         model: usageModel,
-        graphics: () => sysmlUsageGraphics({ stereotype: "actor", fill: "#fff3e0", stroke: "#e65100" }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "rect",
+            markup: [
+              { tagName: "circle", selector: "actorHead" },
+              { tagName: "line", selector: "actorSpine" },
+              { tagName: "line", selector: "actorArms" },
+              { tagName: "line", selector: "actorLeftLeg" },
+              { tagName: "line", selector: "actorRightLeg" },
+              { tagName: "text", selector: "stereotype" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              actorHead: { cx: 25, cy: 12, r: 8, fill: "#fff7ed", stroke: "#ea580c", strokeWidth: 1.5 },
+              actorSpine: { x1: 25, y1: 20, x2: 25, y2: 38, stroke: "#ea580c", strokeWidth: 1.5 },
+              actorArms: { x1: 10, y1: 26, x2: 40, y2: 26, stroke: "#ea580c", strokeWidth: 1.5 },
+              actorLeftLeg: { x1: 25, y1: 38, x2: 12, y2: 54, stroke: "#ea580c", strokeWidth: 1.5 },
+              actorRightLeg: { x1: 25, y1: 38, x2: 38, y2: 54, stroke: "#ea580c", strokeWidth: 1.5 },
+              stereotype: {
+                text: "«actor»",
+                fill: "#ea580c",
+                fontSize: 9,
+                fontStyle: "italic",
+                textAnchor: "middle",
+                refX: 25,
+                refY: 66,
+              },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 11,
+                fontWeight: "bold",
+                textAnchor: "middle",
+                refX: 25,
+                refY: 78,
+              },
+            },
+            size: { width: 50, height: 85 },
+          },
+        }),
       }),
 
     StakeholderMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.StakeholderUsage)),
@@ -4560,7 +4789,7 @@ export const sysml2Language = language({
         queries: requirementUsageQueries,
         model: requirementUsageModel,
         lints: requirementUsageLintsEnhanced,
-        graphics: () => sysmlUsageGraphics({ stereotype: "requirement", fill: "#f3e5f5", stroke: "#4a148c" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "requirement", fill: "#f5f3ff", stroke: "#8b5cf6" }),
       }),
 
     SatisfyRequirementUsage: ($) =>
@@ -4582,7 +4811,7 @@ export const sysml2Language = language({
         queries: satisfyRequirementQueries,
         model: satisfyRequirementModel,
         lints: satisfyRequirementLints,
-        graphics: () => sysmlEdgeGraphics({ label: "«satisfy»", stroke: "#9c27b0", strokeDasharray: "8 4" }),
+        graphics: () => sysmlEdgeGraphics({ label: "«satisfy»", stroke: "#7c3aed", strokeDasharray: "8 4" }),
       }),
 
     // =====================================================================
@@ -4603,7 +4832,7 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "concern def", fill: "#fce4ec", stroke: "#ad1457" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "concern def", fill: "#fdf2f8", stroke: "#db2777" }),
       }),
 
     ConcernUsage: ($) =>
@@ -4619,7 +4848,7 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "concern", fill: "#fce4ec", stroke: "#c2185b" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "concern", fill: "#fdf2f8", stroke: "#ec4899" }),
       }),
 
     // =====================================================================
@@ -4794,7 +5023,39 @@ export const sysml2Language = language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "use case def", fill: "#fce4ec", stroke: "#880e4f" }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "ellipse",
+            markup: [
+              { tagName: "ellipse", selector: "body" },
+              { tagName: "text", selector: "stereotype" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: { cx: 80, cy: 30, rx: 80, ry: 30, fill: "#fdf2f8", stroke: "#db2777", strokeWidth: 1.5 },
+              stereotype: {
+                text: "«use case def»",
+                fill: "#db2777",
+                fontSize: 10,
+                fontStyle: "italic",
+                textAnchor: "middle",
+                refX: 0.5,
+                refY: 20,
+              },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 12,
+                fontWeight: "bold",
+                textAnchor: "middle",
+                refX: 0.5,
+                refY: 38,
+              },
+            },
+            size: { width: 160, height: 60 },
+          },
+        }),
       }),
 
     UseCaseUsage: ($) =>
@@ -4811,7 +5072,48 @@ export const sysml2Language = language({
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "use case", fill: "#fce4ec", stroke: "#c2185b" }),
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "ellipse",
+            markup: [
+              { tagName: "ellipse", selector: "body" },
+              { tagName: "text", selector: "stereotype" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: {
+                cx: 70,
+                cy: 25,
+                rx: 70,
+                ry: 25,
+                fill: "#fdf2f8",
+                stroke: "#db2777",
+                strokeWidth: 1.5,
+                strokeDasharray: "6 3",
+              },
+              stereotype: {
+                text: "«use case»",
+                fill: "#db2777",
+                fontSize: 9,
+                fontStyle: "italic",
+                textAnchor: "middle",
+                refX: 0.5,
+                refY: 18,
+              },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 12,
+                fontWeight: "bold",
+                textAnchor: "middle",
+                refX: 0.5,
+                refY: 33,
+              },
+            },
+            size: { width: 140, height: 50 },
+          },
+        }),
       }),
 
     IncludeUseCaseUsage: ($) =>
@@ -4858,7 +5160,7 @@ export const sysml2Language = language({
         queries: stateQueries,
         model: stateDefinitionModel,
         lints: definitionLints,
-        graphics: () => sysmlNodeGraphics({ stereotype: "state def", fill: "#fff8e1", stroke: "#f9a825" }),
+        graphics: () => sysmlNodeGraphics({ stereotype: "state def", fill: "#fffbeb", stroke: "#d97706" }),
       }),
 
     _StateBodyItem: ($) =>
@@ -4905,7 +5207,7 @@ export const sysml2Language = language({
         queries: { ...usageQueries, ...stateQueries },
         model: stateUsageModel,
         lints: usageLints,
-        graphics: () => sysmlUsageGraphics({ stereotype: "state", fill: "#fff8e1", stroke: "#fbc02d" }),
+        graphics: () => sysmlUsageGraphics({ stereotype: "state", fill: "#fffbeb", stroke: "#f59e0b" }),
       }),
 
     ExhibitStateUsage: ($) =>

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import assert from "node:assert";
 import { computeOptimalAllocation } from "../scripts/test-coordinator.js";
 

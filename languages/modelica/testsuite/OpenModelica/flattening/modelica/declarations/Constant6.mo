@@ -1,7 +1,6 @@
 // name:     Constant6
 // keywords: declaration,array
 // status:   correct
-// xfail:    true
 //
 // Can you call functions in constant expressions?
 //

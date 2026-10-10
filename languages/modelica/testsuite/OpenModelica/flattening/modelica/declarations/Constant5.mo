@@ -1,7 +1,6 @@
 // name:     Constant5
 // keywords: declaration,array
 // status:   correct
-// xfail:    true
 //
 //
 //

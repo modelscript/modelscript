@@ -940,7 +940,7 @@ function detectHardwareConcurrency(): number {
         return (process as any).availableParallelism();
       }
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const os = require("node:os");
+      const os = require("node:os") as any;
       if (os && typeof os.cpus === "function") {
         return Math.max(1, os.cpus().length);
       }

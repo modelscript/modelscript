@@ -1308,6 +1308,14 @@ function extractModUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
   return extractModAttr(modLoc, "unit", exprVisitor);
 }
 
+function extractModStart(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
+  return extractModAttr(modLoc, "start", exprVisitor);
+}
+
+function extractModFixed(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
+  return extractModAttr(modLoc, "fixed", exprVisitor);
+}
+
 
 
 const MOD_ENTRY_SLOTS: u32 = 256;
@@ -4280,11 +4288,15 @@ export class ModelicaFlattener {
     }
 
     let declModLoc = findClassModificationLoc(modLoc);
+    let declStartId: u32 = 0xffffffff;
+    let declFixedId: u32 = 0xffffffff;
     if (!locIsNull(declModLoc)) {
       let declUnitId = extractModUnit(declModLoc, this.exprVisitor);
       if (declUnitId != 0xffffffff) {
         subtypeUnitId = declUnitId;
       }
+      declStartId = extractModStart(declModLoc, this.exprVisitor);
+      declFixedId = extractModFixed(declModLoc, this.exprVisitor);
     }
 
     if (this.scopeStackPtr != 0) {
@@ -4360,7 +4372,14 @@ export class ModelicaFlattener {
     }
 
     let startVal: f64 = 0.0;
-    if (valExprId != 0xffffffff) {
+    if (declStartId != 0xffffffff) {
+      let expr = ExprAccessor.at(this.dae.getExprData(), declStartId);
+      if (expr.kind == ExprKind.RealLiteral) {
+        startVal = expr.realValue;
+      } else if (expr.kind == ExprKind.IntLiteral) {
+        startVal = expr.intValue as f64;
+      }
+    } else if (valExprId != 0xffffffff) {
       let expr = ExprAccessor.at(this.dae.getExprData(), valExprId);
       if (expr.kind == ExprKind.RealLiteral) {
         startVal = expr.realValue;
@@ -4401,8 +4420,13 @@ export class ModelicaFlattener {
             }
           }
           let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, effectiveCausality, elemStartVal, varFlags);
-          if (elemExprId != 0xffffffff && isParamOrConst) {
+          if (declStartId != 0xffffffff) {
+            this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, declStartId);
+          } else if (elemExprId != 0xffffffff && isParamOrConst) {
             this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, elemExprId);
+          }
+          if (declFixedId != 0xffffffff) {
+            this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Fixed as u32, declFixedId);
           }
           if (subtypeUnitId != 0xffffffff) {
             this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Unit as u32, subtypeUnitId);
@@ -4434,8 +4458,13 @@ export class ModelicaFlattener {
               }
             }
             let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, effectiveCausality, elemStartVal, varFlags);
-            if (elemExprId != 0xffffffff && isParamOrConst) {
+            if (declStartId != 0xffffffff) {
+              this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, declStartId);
+            } else if (elemExprId != 0xffffffff && isParamOrConst) {
               this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, elemExprId);
+            }
+            if (declFixedId != 0xffffffff) {
+              this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Fixed as u32, declFixedId);
             }
             if (subtypeUnitId != 0xffffffff) {
               this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Unit as u32, subtypeUnitId);
@@ -4474,8 +4503,13 @@ export class ModelicaFlattener {
                 }
               }
               let elemVarIdx = this.dae.addVariable(elemNameId, varType, variability, effectiveCausality, elemStartVal, varFlags);
-              if (elemExprId != 0xffffffff && isParamOrConst) {
+              if (declStartId != 0xffffffff) {
+                this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, declStartId);
+              } else if (elemExprId != 0xffffffff && isParamOrConst) {
                 this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Start as u32, elemExprId);
+              }
+              if (declFixedId != 0xffffffff) {
+                this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Fixed as u32, declFixedId);
               }
               if (subtypeUnitId != 0xffffffff) {
                 this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Unit as u32, subtypeUnitId);
@@ -4486,9 +4520,14 @@ export class ModelicaFlattener {
         }
       } else {
         let isParamOrConst = variability == (Variability.Parameter as i32) || variability == (Variability.Constant as i32);
-        let varIdx = this.dae.addVariable(fullVarNameId, varType, variability, effectiveCausality, isParamOrConst ? startVal : 0.0, varFlags);
-        if (valExprId != 0xffffffff && isParamOrConst) {
+        let varIdx = this.dae.addVariable(fullVarNameId, varType, variability, effectiveCausality, (isParamOrConst || declStartId != 0xffffffff) ? startVal : 0.0, varFlags);
+        if (declStartId != 0xffffffff) {
+          this.dae.setVarAttrExpr(varIdx, VarAttrKind.Start as u32, declStartId);
+        } else if (valExprId != 0xffffffff && isParamOrConst) {
           this.dae.setVarAttrExpr(varIdx, VarAttrKind.Start as u32, valExprId);
+        }
+        if (declFixedId != 0xffffffff) {
+          this.dae.setVarAttrExpr(varIdx, VarAttrKind.Fixed as u32, declFixedId);
         }
         if (subtypeUnitId != 0xffffffff) {
           this.dae.setVarAttrExpr(varIdx, VarAttrKind.Unit as u32, subtypeUnitId);

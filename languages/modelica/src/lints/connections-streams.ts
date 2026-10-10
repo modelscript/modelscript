@@ -231,6 +231,19 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
           }
         }
       }
+      if ($.component_clause1 != 0) {
+        for (const comp of db.ast.getDescendants(node, $.component_clause1)) {
+          if (isDescendantOfInnerClass(db, comp, node, $)) continue;
+          if (hasTypePrefix(db, comp, "stream", $)) {
+            hasStream = true;
+          }
+          if (hasTypePrefix(db, comp, "flow", $)) {
+            for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+              if (decl != 0) flowCount++;
+            }
+          }
+        }
+      }
       if (hasStream && flowCount != 1) {
         let nameNode: u32 = 0;
         for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {

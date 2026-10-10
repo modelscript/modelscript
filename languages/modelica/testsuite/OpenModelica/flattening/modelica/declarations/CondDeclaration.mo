@@ -1,7 +1,6 @@
 // name: CondDeclaration
 // keywords: conditional, declaration
 // status: correct
-// xfail:    true
 //
 // Tests conditional declaration of components
 //

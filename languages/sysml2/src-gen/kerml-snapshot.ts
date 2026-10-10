@@ -74,7 +74,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -110,7 +111,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -146,7 +148,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -182,7 +185,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -218,7 +222,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Integer"
     }
   },
   {
@@ -285,7 +290,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Integer"
     }
   },
   {
@@ -419,7 +425,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -486,7 +493,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -553,7 +561,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -620,7 +629,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -687,7 +697,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -754,7 +765,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -821,7 +833,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -888,7 +901,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -955,7 +969,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1022,7 +1037,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1089,7 +1105,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1156,7 +1173,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1223,7 +1241,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1290,7 +1309,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1357,7 +1377,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1424,7 +1445,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1491,7 +1513,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1558,7 +1581,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1692,7 +1716,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1759,7 +1784,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1826,7 +1852,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1893,7 +1920,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -1960,7 +1988,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2027,7 +2056,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2094,7 +2124,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2228,7 +2259,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2295,7 +2327,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2362,7 +2395,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2429,7 +2463,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2496,7 +2531,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2563,7 +2599,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2630,7 +2667,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Real"
     }
   },
   {
@@ -2730,7 +2768,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -2766,7 +2805,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Collection"
     }
   },
   {
@@ -2833,7 +2873,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Collection"
     }
   },
   {
@@ -2933,7 +2974,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -2969,7 +3011,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Anything"
     }
   },
   {
@@ -3036,7 +3079,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Element"
     }
   },
   {
@@ -3103,7 +3147,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Element"
     }
   },
   {
@@ -3170,7 +3215,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Type"
     }
   },
   {
@@ -3237,7 +3283,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Classifier"
     }
   },
   {
@@ -3304,7 +3351,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Classifier"
     }
   },
   {
@@ -3371,7 +3419,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Class"
     }
   },
   {
@@ -3438,7 +3487,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Class"
     }
   },
   {
@@ -3538,7 +3588,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -3574,7 +3625,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -3641,7 +3693,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -3708,7 +3761,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -3775,7 +3829,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -3875,7 +3930,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -3911,7 +3967,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Transfer"
     }
   },
   {
@@ -3978,7 +4035,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": "Transfer"
     }
   },
   {
@@ -4078,7 +4136,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -4114,7 +4173,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
@@ -4181,7 +4241,8 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "inherits": [],
     "metadata": {
       "isAbstract": "abstract",
-      "isVariation": null
+      "isVariation": null,
+      "shortName": null
     }
   },
   {
