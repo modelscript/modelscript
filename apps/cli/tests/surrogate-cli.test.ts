@@ -14,7 +14,18 @@ describe("ModelScript CLI Surrogate Command (Export Formats, Guardrails, ONNX Im
   const cPath = path.join(tmpDir, "Cooler_surrogate.c");
   const reportPath = path.join(tmpDir, "surrogate_report.json");
 
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
   before(async () => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+
     await fs.mkdir(tmpDir, { recursive: true });
 
     // Create a mock ONNX graph file using exportROMToONNX
@@ -47,6 +58,9 @@ describe("ModelScript CLI Surrogate Command (Export Formats, Guardrails, ONNX Im
   });
 
   after(async () => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 

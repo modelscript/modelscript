@@ -21,7 +21,18 @@ describe("msx install --frozen-lockfile CI mode", () => {
   const zipBuffer = zip.toBuffer();
   const validHash = `sha256:${crypto.createHash("sha256").update(zipBuffer).digest("hex")}`;
 
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
   before(async () => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
@@ -65,8 +76,14 @@ describe("msx install --frozen-lockfile CI mode", () => {
     });
   });
 
-  after(() => {
-    server.close();
+  after(async () => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
+    if (server) {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }

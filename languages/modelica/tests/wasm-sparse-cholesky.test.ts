@@ -1,68 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { buildParser } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
-import * as path from "path";
+
+import path from "path";
 import { fileURLToPath } from "url";
-import { modelicaLanguage } from "../src/language.js";
+import { createWasmParser } from "../src-gen/bindings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe("In-WASM Sparse Cholesky (LDL^T) Linear Solver", () => {
   it("should analyze, factorize, and solve symmetric positive-definite sparse systems in WASM linear memory", async () => {
-    const result = buildParser(modelicaLanguage);
-    const tmpDir = path.resolve(__dirname, "../build/tmp-sparse-cholesky-test");
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-    for (const f of result.assemblyScriptFiles) {
-      const destPath = path.join(tmpDir, f.filename);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, f.content);
-    }
-    fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
-
-    const ascBin = path.resolve(__dirname, "../../../node_modules/assemblyscript/bin/asc.js");
-    childProcess.execSync(
-      `node "${ascBin}" parser.ts --debug --enable threads --sharedMemory --runtime stub --exportRuntime --importMemory --maximumMemory 16384 --outFile parser.wasm`,
-      { cwd: tmpDir, stdio: "inherit" },
-    );
-
-    const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-    const imports = {
-      env: {
-        memory: memory,
-        abort: (msg: number, file: number, line: number, col: number) => {
-          function readString(ptr: number): string {
-            if (!ptr) return "";
-            try {
-              const len = new Uint32Array(memory.buffer, ptr - 4, 1)[0] >> 1;
-              const u16 = new Uint16Array(memory.buffer, ptr, len);
-              return String.fromCharCode(...u16);
-            } catch {
-              return `ptr_${ptr}`;
-            }
-          }
-          console.error(`WASM abort: "${readString(msg)}" at ${readString(file)}:${line}:${col}`);
-        },
-        logNode: () => {},
-        debugLog: () => {},
-      },
-      JavaScript: {
-        debugLog: () => {},
-        logNode: () => {},
-      },
-      engine: {
-        debugLog: () => {},
-      },
-      parser: { logInt: () => {} },
-      recovery: {},
-      host: { runHostQuery: () => {} },
-    };
-
-    const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
-    const exports = instance.exports as any;
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { facade } = await createWasmParser(modelicaWasm);
+    const exports = facade.exports as any;
+    const memory = facade.wasmMemory;
 
     const n = 3;
 
@@ -136,5 +86,5 @@ describe("In-WASM Sparse Cholesky (LDL^T) Linear Solver", () => {
     expect(xVals[0]).toBeCloseTo(1.0, 6);
     expect(xVals[1]).toBeCloseTo(2.0, 6);
     expect(xVals[2]).toBeCloseTo(3.0, 6);
-  }, 180000);
+  });
 });

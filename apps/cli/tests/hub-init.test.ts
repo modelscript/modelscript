@@ -4,10 +4,28 @@ import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { generateEnvConfig, Hub, HubInit, HubStatus } from "../src/commands/hub.js";
 
 describe("CLI Hub Initialization & Profiles", () => {
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
+  before(() => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+  });
+
+  after(() => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
+  });
   it("generateEnvConfig emits correct standalone profile configuration", () => {
     const env = generateEnvConfig({
       profile: "standalone",

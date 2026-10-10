@@ -1665,6 +1665,10 @@ module.exports.default = module.exports;
 }`,
       },
       plugins: [ignorePlugin],
+      logOverride: {
+        "duplicate-object-key": "silent",
+        "empty-import-meta": "silent",
+      },
       sourcemap: "inline",
     });
   }
@@ -1696,6 +1700,10 @@ module.exports.default = module.exports;
       define: {
         "process.env": JSON.stringify({}),
         "process.browser": "true",
+      },
+      logOverride: {
+        "duplicate-object-key": "silent",
+        "empty-import-meta": "silent",
       },
       banner: {
         js: `if (typeof globalThis.Buffer === "undefined") {
@@ -1749,6 +1757,10 @@ module.exports.default = module.exports;
       format: "esm",
       platform: "browser",
       sourcemap: "inline",
+      logOverride: {
+        "duplicate-object-key": "silent",
+        "empty-import-meta": "silent",
+      },
     });
     if (fs.existsSync(nbOut)) {
       fs.copyFileSync(nbOut, nbAlias);
@@ -1799,13 +1811,14 @@ module.exports.default = module.exports;
     }
   }
 
-  // 6. Bundle LSP browser server into standalone IIFE
+  // 6. Bundle LSP browser server into standalone IIFE (if not already copied from lsp dist)
   const lspDir = path.join(repoRoot, "packages/lsp");
   const browserServerMain = path.join(lspDir, "src/browserServerMain.ts");
-  if (fs.existsSync(browserServerMain)) {
+  const destBrowserServer = path.join(outDir, "server/dist/browserServerMain.js");
+  if (fs.existsSync(browserServerMain) && !fs.existsSync(destBrowserServer)) {
     await esbuild.build({
       entryPoints: [browserServerMain],
-      outfile: path.join(outDir, "server/dist/browserServerMain.js"),
+      outfile: destBrowserServer,
       bundle: true,
       format: "iife",
       platform: "browser",
@@ -1818,14 +1831,19 @@ module.exports.default = module.exports;
         "process.browser": "true",
         "import.meta.url": "''",
       },
+      logOverride: {
+        "duplicate-object-key": "silent",
+        "empty-import-meta": "silent",
+      },
       plugins: [ignorePlugin],
     });
 
     const indexerWorker = path.join(lspDir, "src/workers/indexer.worker.ts");
-    if (fs.existsSync(indexerWorker)) {
+    const destIndexerWorker = path.join(outDir, "server/dist/workers/indexer.worker.js");
+    if (fs.existsSync(indexerWorker) && !fs.existsSync(destIndexerWorker)) {
       await esbuild.build({
         entryPoints: [indexerWorker],
-        outfile: path.join(outDir, "server/dist/workers/indexer.worker.js"),
+        outfile: destIndexerWorker,
         bundle: true,
         format: "iife",
         platform: "browser",
@@ -1837,6 +1855,10 @@ module.exports.default = module.exports;
           "process.env": "{}",
           "process.browser": "true",
           "import.meta.url": "''",
+        },
+        logOverride: {
+          "duplicate-object-key": "silent",
+          "empty-import-meta": "silent",
         },
         plugins: [ignorePlugin],
       });

@@ -51,6 +51,7 @@ end FormalControl;
   };
 
   const mockWorkspaceManager: any = {
+    getQueryEngine: () => undefined,
     unifiedWorkspace: {
       owl2Store: {
         getAxioms: () => [],
@@ -296,6 +297,7 @@ end DaeModel;
 
       // Check CodeLens badges
       const daeWorkspaceManager: any = {
+        getQueryEngine: () => undefined,
         globalWorkspaceIndex: {
           getFileIndex: (uri: string) => {
             if (uri === daeUri) {

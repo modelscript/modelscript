@@ -1,74 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
-import { modelicaLanguage } from "../src/language.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createWasmParser } from "../src-gen/bindings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe("Modelica Array Shape Linting & Pipeline Preservation", () => {
-  const tmpDir = path.resolve(__dirname, "../build/tmp-modelica-array-shape-test");
   let facade: any;
-  let wasmExports: any;
 
   beforeAll(async () => {
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    const result = buildParser(modelicaLanguage);
-    for (const f of result.assemblyScriptFiles) {
-      const destPath = path.join(tmpDir, f.filename);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, f.content);
-    }
-    fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
-
-    const ascBin = path.resolve(__dirname, "../../../node_modules/assemblyscript/bin/asc.js");
-    try {
-      childProcess.execSync(
-        `node "${ascBin}" parser.ts -O0 --enable threads --sharedMemory --runtime stub --exportRuntime --importMemory --maximumMemory 16384 --outFile parser.wasm`,
-        { cwd: tmpDir, stdio: "pipe" },
-      );
-    } catch (e: any) {
-      console.error("ASC STDOUT:", e.stdout?.toString());
-      console.error("ASC STDERR:", e.stderr?.toString());
-      throw e;
-    }
-
-    const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-    const imports = {
-      env: {
-        memory: memory,
-        abort: (msg: number, file: number, line: number, col: number) => {
-          console.error(`WASM abort: ${msg} at ${file}:${line}:${col}`);
-        },
-        logNode: () => {},
-        debugLog: () => {},
-      },
-      JavaScript: {
-        debugLog: () => {},
-        logNode: () => {},
-      },
-      engine: {
-        debugLog: () => {},
-      },
-      parser: { logInt: () => {} },
-      recovery: {},
-      host: { runHostQuery: () => {} },
-    };
-
-    const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
-    wasmExports = instance.exports;
-    const { LspFacade } = await import(path.join(tmpDir, "bindings.js"));
-    facade = new LspFacade(memory, instance.exports);
-  }, 180000);
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const res = await createWasmParser(modelicaWasm);
+    facade = res.facade;
+  });
 
   describe("Linter: Array Shape Mismatch (M4003)", () => {
     it("should flag array shape mismatch 4003 when initializing Real x[9] with {8}", () => {

@@ -5,7 +5,9 @@
     "default": [
       "{projectRoot}/**/*",
       "sharedGlobals",
+      "!{projectRoot}/**/scratch*",
       "!{projectRoot}/**/scratch*/**",
+      "!{projectRoot}/**/scratch_*",
       "!{projectRoot}/**/scratch_*/**",
       "!{projectRoot}/**/.cache/**",
       "!{projectRoot}/**/ctrf/**",
@@ -49,7 +51,9 @@
         "{projectRoot}/*.wasm",
         "{projectRoot}/build/**/*.wasm",
         "{projectRoot}/.cache",
-        "{projectRoot}/.tsbuildinfo"
+        "{projectRoot}/.tsbuildinfo",
+        "{projectRoot}/*.tsbuildinfo",
+        "{projectRoot}/docs/.vitepress/dist"
       ],
       "maxParallel": 8
     },
@@ -57,8 +61,7 @@
       "cache": true,
       "dependsOn": ["^build", "build"],
       "inputs": ["default", "^production"],
-      "outputs": ["{projectRoot}/coverage", "{projectRoot}/ctrf"],
-      "maxParallel": 3
+      "outputs": ["{projectRoot}/coverage", "{projectRoot}/ctrf"]
     },
     "lint": {
       "cache": true,
@@ -116,5 +119,7 @@
     }
   },
   "analytics": false,
-  "tui": false
+  "tui": {
+    "autoExit": true
+  }
 }

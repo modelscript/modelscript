@@ -20,7 +20,18 @@ describe("msx login, whoami, and logout CLI commands", () => {
   const originalApiToken = process.env.MODELSCRIPT_API_TOKEN;
   const originalAuthToken = process.env.MODELSCRIPT_AUTH_TOKEN;
 
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
   before(async () => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+
     delete process.env.MODELSCRIPT_API_TOKEN;
     delete process.env.MODELSCRIPT_AUTH_TOKEN;
 
@@ -136,8 +147,14 @@ describe("msx login, whoami, and logout CLI commands", () => {
     });
   });
 
-  after(() => {
-    server?.close();
+  after(async () => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
+    if (server) {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
     clearToken();
     if (originalRcContent !== null) {
       fs.writeFileSync(originalRcPath, originalRcContent, "utf8");
@@ -187,7 +204,7 @@ describe("msx login, whoami, and logout CLI commands", () => {
       assert.strictEqual(parsed.user.username, "alice");
       assert.strictEqual(parsed.user.email, "alice@example.com");
     } finally {
-      console.log = origLog;
+      console.log = () => {};
     }
   });
 

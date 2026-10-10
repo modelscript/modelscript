@@ -5,7 +5,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import test, { describe } from "node:test";
+import test, { after, before, describe } from "node:test";
 import { Archive } from "../src/commands/archive.js";
 
 describe("CLI Archive Management (msx archive)", () => {
@@ -15,6 +15,25 @@ describe("CLI Archive Management (msx archive)", () => {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-archive-test-"));
   const outputFile = path.join(tmpDir, "test-archive.zip");
+
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
+  before(() => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+  });
+
+  after(() => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
+  });
 
   test("msx archive status queries /api/v1/users/me/export/status", async () => {
     requests.length = 0;
@@ -59,7 +78,7 @@ describe("CLI Archive Management (msx archive)", () => {
       assert.strictEqual(requests[0]?.url, "/api/v1/users/me/export/status");
     } finally {
       server.closeAllConnections?.();
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -137,7 +156,7 @@ describe("CLI Archive Management (msx archive)", () => {
       assert.strictEqual(fs.readFileSync(outputFile, "utf-8"), "PK\x03\x04test_zip_payload");
     } finally {
       server.closeAllConnections?.();
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       } catch {}

@@ -97,8 +97,8 @@ function enhanceWithDigitalThreadTwin(
   const qe =
     bridge?.engine ??
     bridge?.getQueryEngine?.() ??
-    validationService?.workspaceManager?.getQueryEngine("modelica") ??
-    validationService?.workspaceManager?.getQueryEngine("sysml2") ??
+    validationService?.workspaceManager?.getQueryEngine?.("modelica") ??
+    validationService?.workspaceManager?.getQueryEngine?.("sysml2") ??
     globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
 
   let counterpartEntry: any = null;
@@ -399,8 +399,8 @@ export function registerHoverProvider(
       const qe =
         (bridge as any)?.engine ??
         (bridge as any)?.getQueryEngine?.() ??
-        validationService?.workspaceManager?.getQueryEngine("modelica") ??
-        validationService?.workspaceManager?.getQueryEngine("sysml2") ??
+        validationService?.workspaceManager?.getQueryEngine?.("modelica") ??
+        validationService?.workspaceManager?.getQueryEngine?.("sysml2") ??
         globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
 
       if (qe && fullToken && typeof qe.resolvePolyglotSymbol === "function") {
@@ -431,7 +431,7 @@ export function registerHoverProvider(
       const resolver = (bridge as any).resolver;
       if (resolver && bridgePos) {
         // find symbol at offset
-        const queryEngine = plugin?.queryEngine ?? validationService.workspaceManager.globalSysML2QueryEngine;
+        const queryEngine = plugin?.queryEngine ?? validationService?.workspaceManager?.globalSysML2QueryEngine;
         if (queryEngine && validationService.reasonerService) {
           const id = (resolver as any).findSymbolAtPosition(document.uri, offset);
           if (id !== undefined) {

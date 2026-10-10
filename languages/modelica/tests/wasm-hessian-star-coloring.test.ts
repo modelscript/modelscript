@@ -1,58 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { buildParser } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
-import * as path from "path";
+
+import path from "path";
 import { fileURLToPath } from "url";
-import { modelicaLanguage } from "../src/language.js";
+import { createWasmParser } from "../src-gen/bindings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe("Second-Order Derivatives (Hessians) & Symmetric Star-Coloring", () => {
   it("should evaluate exact analytical Lagrangian Hessian and compute symmetric star-coloring", async () => {
-    const result = buildParser(modelicaLanguage);
-    const tmpDir = path.resolve(__dirname, "../build/tmp-hessian-star-coloring-test");
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-    for (const f of result.assemblyScriptFiles) {
-      const destPath = path.join(tmpDir, f.filename);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, f.content);
-    }
-    fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
-
-    const ascBin = path.resolve(__dirname, "../../../node_modules/assemblyscript/bin/asc.js");
-    childProcess.execSync(
-      `node "${ascBin}" parser.ts -O0 --enable threads --sharedMemory --runtime stub --exportRuntime --importMemory --maximumMemory 16384 --outFile parser.wasm`,
-      { cwd: tmpDir, stdio: "inherit" },
-    );
-
-    const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-    const imports = {
-      env: {
-        memory: memory,
-        abort: (msg: number, file: number, line: number, col: number) => {
-          console.error(`WASM abort: ${msg} at ${file}:${line}:${col}`);
-        },
-        logNode: () => {},
-        debugLog: () => {},
-      },
-      JavaScript: {
-        debugLog: () => {},
-        logNode: () => {},
-      },
-      engine: {
-        debugLog: () => {},
-      },
-      parser: { logInt: () => {} },
-      recovery: {},
-      host: { runHostQuery: () => {} },
-    };
-
-    const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
-    const exports = instance.exports as any;
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { facade } = await createWasmParser(modelicaWasm);
+    const exports = facade.exports as any;
+    const memory = facade.wasmMemory;
 
     // 1. Create DaeBuilder
     const dae = exports.dae_createBuilder();
@@ -144,5 +104,5 @@ describe("Second-Order Derivatives (Hessians) & Symmetric Star-Coloring", () => 
     expect(hValues[1]).toBeCloseTo(-475.0, 4); // H[1, 0]
     expect(hValues[2]).toBeCloseTo(-475.0, 4); // H[0, 1]
     expect(hValues[3]).toBeCloseTo(200.0, 4); // H[1, 1]
-  }, 180000);
+  });
 });

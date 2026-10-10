@@ -169,7 +169,7 @@
     "check:as": "node scripts/check-as.js",
     "clean": "rimraf dist src/src-gen build",
     "lint": "eslint src --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js --concurrency=1 --timeout=300000",
+    "test": "node ../../scripts/test-runner.js --timeout=300000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

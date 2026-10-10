@@ -1,74 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser } from "@modelscript/dsl";
 import { SolversBridge } from "@modelscript/runtime/solvers_bridge.js";
-import * as childProcess from "child_process";
 import expect from "expect";
-import * as fs from "fs";
-import { after as afterAll, before as beforeAll, describe, test } from "node:test";
+import { describe, test } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { modelicaLanguage } from "../src/language.js";
+import { createWasmParser } from "../src-gen/bindings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("In-WASM Forward-Mode Dual Number Automatic Differentiation", { timeout: 300000 }, () => {
-  let tmpDir: string;
+describe("In-WASM Forward-Mode Dual Number Automatic Differentiation", () => {
   let exports: any;
   let memory: WebAssembly.Memory;
   let bridge: SolversBridge;
 
   beforeAll(async () => {
-    const result = buildParser(modelicaLanguage);
-    tmpDir = path.resolve(__dirname, "../build/tmp-wasm-dual-ad-test");
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-    for (const f of result.assemblyScriptFiles) {
-      const destPath = path.join(tmpDir, f.filename);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, f.content);
-    }
-    fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
-
-    const ascBin = path.resolve(__dirname, "../../../node_modules/assemblyscript/bin/asc.js");
-    childProcess.execSync(
-      `node "${ascBin}" parser.ts -O0 --enable threads --sharedMemory --runtime stub --exportRuntime --importMemory --maximumMemory 16384 --outFile parser.wasm`,
-      { cwd: tmpDir, stdio: "inherit" },
-    );
-
-    const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-    memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-    const imports = {
-      env: {
-        memory: memory,
-        abort: (msg: number, file: number, line: number, col: number) => {
-          console.error(`WASM abort: ${msg} at ${file}:${line}:${col}`);
-        },
-        logNode: () => {},
-        debugLog: () => {},
-      },
-      JavaScript: {
-        debugLog: () => {},
-        logNode: () => {},
-      },
-      engine: {
-        debugLog: () => {},
-      },
-      parser: { logInt: () => {} },
-      recovery: {},
-      host: { runHostQuery: () => {} },
-    };
-
-    const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
-    exports = instance.exports as any;
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { facade } = await createWasmParser(modelicaWasm);
+    exports = facade.exports as any;
+    memory = facade.wasmMemory;
     bridge = new SolversBridge(memory, exports);
-  }, 180000);
-
-  afterAll(() => {
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
   });
 
   test("should evaluate polynomial expressions with exact derivatives via Dual AD", () => {

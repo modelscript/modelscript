@@ -552,17 +552,21 @@ async function main(): Promise<void> {
   const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
 
   let concurrency: number;
+  const envConcurrency = process.env.CONCURRENCY || process.env.TEST_CONCURRENCY;
   if (concurrencyArg) {
     concurrency = Math.max(1, parseInt(concurrencyArg.split("=")[1] ?? "1", 10));
+  } else if (envConcurrency) {
+    concurrency = Math.max(1, parseInt(envConcurrency, 10));
   } else {
     const availableMem = getAvailableMemoryBytes();
     // Reserve 1.2 GB for OS / parent runner
     const usableMem = Math.max(512 * 1024 * 1024, availableMem - 1200 * 1024 * 1024);
     // Allow ~1.1 GB memory envelope per worker
     const memBasedWorkers = Math.max(1, Math.floor(usableMem / (1100 * 1024 * 1024)));
-    const cpuWorkers = process.env.CI ? os.availableParallelism() : Math.floor(os.availableParallelism() / 2);
-    // Bound default concurrency to prevent OOM spikes (cap at 4 on local dev machines unless explicitly overridden)
-    concurrency = Math.max(1, Math.min(cpuWorkers, memBasedWorkers, process.env.CI ? cpuWorkers : 4));
+    const cpuWorkers = process.env.CI
+      ? os.availableParallelism()
+      : Math.max(2, Math.floor(os.availableParallelism() / 2));
+    concurrency = Math.max(1, Math.min(cpuWorkers, memBasedWorkers));
   }
 
   const flattenerArg = rawArgs.find((a) => a.startsWith("--flattener=") || a.startsWith("--backend="));

@@ -5,11 +5,29 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import test, { describe } from "node:test";
+import test, { after, before, describe } from "node:test";
 import { simulateCloud } from "../src/commands/simulate-cloud.js";
 import type { SimulateArgs } from "../src/commands/simulate.js";
 
 describe("CLI Cloud Bursting (msx simulate --cloud)", () => {
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
+  before(() => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+  });
+
+  after(() => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
+  });
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-cloud-test-"));
   const modelFile = path.join(tempDir, "SimpleRLC.mo");
   fs.writeFileSync(
@@ -96,7 +114,7 @@ end SimpleRLC;
       assert.equal(parsed.profile, "gpu-a100");
       assert.ok(parsed.modelSource.includes("model SimpleRLC"));
     } finally {
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -139,7 +157,7 @@ end SimpleRLC;
         await simulateCloud(args, { exitOnError: false });
       }, /Payment Required \(402\) - Insufficient Compute Credits/);
     } finally {
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -205,7 +223,7 @@ end SimpleRLC;
       assert.ok(result.resultPath && fs.existsSync(result.resultPath));
       assert.equal(fs.readFileSync(result.resultPath, "utf-8"), csvContent);
     } finally {
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

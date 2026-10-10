@@ -1,65 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
-import * as path from "path";
+import path from "path";
 import { fileURLToPath } from "url";
-import { modelicaLanguage } from "../src/language.js";
+import { createWasmParser } from "../src-gen/bindings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 describe("Modelica Salsa 3.0 Query Engine & Memoization", () => {
-  it(
-    "should compile Modelica Salsa queries, index symbols, and memoize type resolutions",
-    { timeout: 180000 },
-    async () => {
-      const sourcePath = path.resolve(__dirname, "../src/language.ts");
-      const result = buildParser(modelicaLanguage as any, { sourcePath });
-      const tmpDir = path.resolve(__dirname, "../build/tmp-modelica-salsa-test");
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  it("should compile Modelica Salsa queries, index symbols, and memoize type resolutions", async () => {
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { facade } = await createWasmParser(modelicaWasm);
+    const instance = { exports: facade.exports };
 
-      for (const f of result.assemblyScriptFiles) {
-        const destPath = path.join(tmpDir, f.filename);
-        fs.mkdirSync(path.dirname(destPath), { recursive: true });
-        fs.writeFileSync(destPath, f.content);
-      }
-      fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
-
-      const ascBin = path.resolve(__dirname, "../../../node_modules/assemblyscript/bin/asc.js");
-      childProcess.execSync(
-        `node "${ascBin}" parser.ts -O0 --enable threads --sharedMemory --runtime stub --exportRuntime --importMemory --maximumMemory 16384 --outFile parser.wasm`,
-        { cwd: tmpDir, stdio: "inherit" },
-      );
-
-      const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-      const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-      const imports = {
-        env: {
-          memory: memory,
-          abort: (msg: number, file: number, line: number, col: number) => {
-            console.error(`WASM abort: ${msg} at ${file}:${line}:${col}`);
-          },
-          logNode: () => {},
-          debugLog: () => {},
-        },
-        JavaScript: {
-          debugLog: () => {},
-          logNode: () => {},
-        },
-        engine: {
-          debugLog: () => {},
-        },
-        parser: { logInt: () => {} },
-        recovery: {},
-        host: { runHostQuery: () => {} },
-      };
-
-      const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
-      const { LspFacade } = await import(path.join(tmpDir, "bindings.js"));
-      const facade = new LspFacade(memory, instance.exports);
-
-      const code = `model X
+    const code = `model X
   Real x;
 end X;
 
@@ -69,20 +22,18 @@ equation
   x = 1;
 end Y;`;
 
-      const root = facade.parse(code);
-      expect(root).toBeGreaterThan(0);
+    const root = facade.parse(code);
+    expect(root).toBeGreaterThan(0);
 
-      // 1. Verify Salsa query exports exist on WASM module
-      expect(typeof instance.exports.runQuery).toBe("function");
-      expect(typeof instance.exports.resolveComponentTypeInClass).toBe("function");
-      expect(typeof instance.exports.resolveDottedType).toBe("function");
+    // 1. Verify Salsa query exports exist on WASM module
+    expect(typeof instance.exports.runQuery).toBe("function");
+    expect(typeof instance.exports.resolveComponentTypeInClass).toBe("function");
+    expect(typeof instance.exports.resolveDottedType).toBe("function");
 
-      // 2. Verify diagnostics work through Salsa query resolution
-      const diags = facade.getDiagnostics(root);
-      const mismatchDiag = diags.find((d: any) => d.code === 5001);
-      expect(mismatchDiag).toBeDefined();
-      expect(mismatchDiag.message).toContain("Type mismatch in equation x = 1");
-    },
-    180000,
-  );
+    // 2. Verify diagnostics work through Salsa query resolution
+    const diags = facade.getDiagnostics(root);
+    const mismatchDiag = diags.find((d: any) => d.code === 5001);
+    expect(mismatchDiag).toBeDefined();
+    expect(mismatchDiag.message).toContain("Type mismatch in equation x = 1");
+  });
 });

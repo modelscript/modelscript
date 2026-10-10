@@ -398,6 +398,10 @@ async function run() {
       "process.browser": "true",
       "import.meta.url": "''",
     },
+    logOverride: {
+      "duplicate-object-key": "silent",
+      "empty-import-meta": "silent",
+    },
     plugins: [ignorePlugin],
   });
   console.log("Bundle completed successfully!");

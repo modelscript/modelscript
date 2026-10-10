@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { modelicaLanguage } from "../src/language.js";
+import { createWasmParser } from "../src-gen/bindings.js";
 import {
   checkEquationUnits,
   DIMENSIONLESS,
@@ -107,76 +104,12 @@ describe("Modelica SI Units System & Diagnostics", () => {
 
   describe("WASM Linter Unit Mismatch Diagnostics (M3010)", () => {
     let facade: any;
-    let memory: WebAssembly.Memory;
 
     beforeAll(async () => {
-      const result = buildParser(modelicaLanguage);
-      const tmpDir = path.resolve(__dirname, "../build/tmp-units-lint-test");
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-      for (const f of result.assemblyScriptFiles) {
-        const destPath = path.join(tmpDir, f.filename);
-        fs.mkdirSync(path.dirname(destPath), { recursive: true });
-        fs.writeFileSync(destPath, f.content);
-      }
-      fs.writeFileSync(path.join(tmpDir, "bindings.js"), result.javascriptWrapper.js);
-
-      const ascPath =
-        [
-          path.resolve(__dirname, "../../node_modules/.bin/asc"),
-          path.resolve(__dirname, "../../../node_modules/.bin/asc"),
-          "npx asc",
-        ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
-
-      const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-      childProcess.execFileSync(
-        ascBin,
-        [
-          ...ascPrefixArgs,
-          "parser.ts",
-          "-O0",
-          "--enable",
-          "threads",
-          "--sharedMemory",
-          "--runtime",
-          "stub",
-          "--exportRuntime",
-          "--importMemory",
-          "--maximumMemory",
-          "16384",
-          "--outFile",
-          "parser.wasm",
-        ],
-        { cwd: tmpDir, stdio: "pipe" },
-      );
-
-      const wasmBytes = fs.readFileSync(path.join(tmpDir, "parser.wasm"));
-      memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-      const imports = {
-        env: {
-          memory: memory,
-          abort: (msg: number, file: number, line: number, col: number) => {
-            console.error(`WASM abort: ${msg} at ${file}:${line}:${col}`);
-          },
-          logNode: () => {},
-          debugLog: () => {},
-        },
-        JavaScript: {
-          debugLog: () => {},
-          logNode: () => {},
-        },
-        engine: {
-          debugLog: () => {},
-        },
-        parser: { logInt: () => {} },
-        recovery: {},
-        host: { runHostQuery: () => {} },
-      };
-
-      const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
-      const { LspFacade } = await import(path.join(tmpDir, "bindings.js"));
-      facade = new LspFacade(memory, instance.exports);
-    }, 240000);
+      const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+      const res = await createWasmParser(modelicaWasm);
+      facade = res.facade;
+    });
 
     it("should accept dimensionally consistent equations (v = der(x))", () => {
       const code = `model Kinematics

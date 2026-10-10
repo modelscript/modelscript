@@ -38,7 +38,18 @@ describe("Polyglot Package End-to-End: Pack, Publish, Index, Install & Parity Ve
   const pkgName = "@acme/drone-avionics";
   const pkgVersion = "1.0.0";
 
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
   before(async () => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "polyglot-e2e-"));
     const dbDir = path.join(tmpRoot, "registry-db");
     const storageDir = path.join(tmpRoot, "registry-storage");
@@ -182,9 +193,15 @@ END-ISO-10303-21;
     );
   });
 
-  after(() => {
+  after(async () => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
     try {
-      server.close();
+      if (server) {
+        server.closeAllConnections?.();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
       jobQueue.clear();
       db.db.close();
       fs.rmSync(tmpRoot, { recursive: true, force: true });

@@ -5,8 +5,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { computeOptimalAllocation } from "./test-coordinator.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function getDefaultConcurrency() {
+  if (process.env.TEST_CONCURRENCY) return process.env.TEST_CONCURRENCY;
+  if (process.env.CONCURRENCY) return process.env.CONCURRENCY;
+  const alloc = computeOptimalAllocation({ targetCount: 1 });
+  return String(alloc.workers);
+}
 
 /**
  * Universal ModelScript Test Runner wrapper.
@@ -31,28 +40,39 @@ export function runTests(argv = process.argv.slice(2)) {
   const repoRoot = path.resolve(__dirname, "..");
   const ctrfReporter = path.resolve(repoRoot, "scripts", "node-test-ctrf-reporter.cjs");
 
-  // 1. Ensure coverage output directory exists
-  fs.mkdirSync(path.join(cwd, "coverage"), { recursive: true });
+  // 1. Detect coverage requirements (opt-in locally, default in CI)
+  let enableCoverage =
+    Boolean(process.env.CI) || process.env.COVERAGE === "true" || process.env.TEST_COVERAGE === "true";
 
   // 2. Parse custom flags or supply standardized defaults
   const customArgs = [];
   const testFiles = [];
   let timeout = "60000";
-  let concurrency = "2";
+  let concurrency = getDefaultConcurrency();
   let hasImport = false;
   let hasTsConfig = false;
   let lcovDest = "coverage/lcov.info";
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg.startsWith("--test-timeout=") || arg.startsWith("--timeout=")) {
+    if (arg === "--coverage" || arg === "--experimental-test-coverage") {
+      enableCoverage = true;
+    } else if (arg === "--no-coverage") {
+      enableCoverage = false;
+    } else if (arg.startsWith("--test-timeout=") || arg.startsWith("--timeout=")) {
       timeout = arg.split("=")[1];
     } else if (arg === "--timeout" || arg === "--test-timeout") {
       timeout = argv[++i];
     } else if (arg.startsWith("--test-concurrency=") || arg.startsWith("--concurrency=")) {
-      concurrency = arg.split("=")[1];
+      // If coordinator explicitly assigned TEST_CONCURRENCY, keep coordinator's allocation
+      if (!process.env.TEST_CONCURRENCY) {
+        concurrency = arg.split("=")[1];
+      }
     } else if (arg === "--concurrency" || arg === "--test-concurrency") {
-      concurrency = argv[++i];
+      const val = argv[++i];
+      if (!process.env.TEST_CONCURRENCY) {
+        concurrency = val;
+      }
     } else if (arg.startsWith("--import=")) {
       customArgs.push(arg);
       hasImport = true;
@@ -76,7 +96,19 @@ export function runTests(argv = process.argv.slice(2)) {
     }
   }
 
-  // 3. Auto-detect test setup file and tsconfig if not explicitly passed
+  if (enableCoverage) {
+    fs.mkdirSync(path.join(cwd, "coverage"), { recursive: true });
+  }
+
+  process.env.TEST_TIMEOUT = timeout;
+
+  // 3. Transparent AssemblyScript compiler caching across all tests
+  const ascCachePath = path.resolve(repoRoot, "scripts", "asc-cache.js");
+  if (fs.existsSync(ascCachePath)) {
+    customArgs.push("--import", ascCachePath);
+  }
+
+  // 4. Auto-detect test setup file and tsconfig if not explicitly passed
   if (!hasImport && fs.existsSync(path.join(cwd, "tests", "test-setup.ts"))) {
     customArgs.push("--import", "./tests/test-setup.ts");
   }
@@ -86,7 +118,7 @@ export function runTests(argv = process.argv.slice(2)) {
     process.env.TSX_TSCONFIG_PATH = path.join(cwd, "validation", "tsconfig.json");
   }
 
-  // 4. Default test discovery pattern if no files specified
+  // 5. Default test discovery pattern if no files specified
   if (testFiles.length === 0) {
     if (fs.existsSync(path.join(cwd, "tests"))) {
       testFiles.push("tests/**/*.test.ts");
@@ -95,25 +127,31 @@ export function runTests(argv = process.argv.slice(2)) {
     }
   }
 
+  const coverageArgs = enableCoverage
+    ? [
+        "--experimental-test-coverage",
+        "--test-coverage-exclude=**/dist/**",
+        "--test-coverage-exclude=**/node_modules/**",
+        "--test-coverage-exclude=**/tests/**",
+        "--test-coverage-exclude=**/validation/**",
+        "--test-coverage-exclude=**/as-gen/**",
+        "--test-coverage-exclude=**/src-gen/**",
+        "--test-coverage-exclude=**/build/**",
+        "--test-reporter=lcov",
+        `--test-reporter-destination=${lcovDest}`,
+      ]
+    : [];
+
   const tsxPath = path.resolve(repoRoot, "node_modules", ".bin", "tsx");
   const execArgs = [
     "--test",
-    "--experimental-test-coverage",
-    "--test-coverage-exclude=**/dist/**",
-    "--test-coverage-exclude=**/node_modules/**",
-    "--test-coverage-exclude=**/tests/**",
-    "--test-coverage-exclude=**/validation/**",
-    "--test-coverage-exclude=**/as-gen/**",
-    "--test-coverage-exclude=**/src-gen/**",
-    "--test-coverage-exclude=**/build/**",
     `--test-concurrency=${concurrency}`,
     `--test-timeout=${timeout}`,
     "--test-reporter=spec",
     "--test-reporter-destination=stdout",
-    "--test-reporter=lcov",
-    `--test-reporter-destination=${lcovDest}`,
     `--test-reporter=${ctrfReporter}`,
     "--test-reporter-destination=stdout",
+    ...coverageArgs,
     ...customArgs,
     ...testFiles,
   ];

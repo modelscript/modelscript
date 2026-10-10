@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import http from "node:http";
-import test, { describe } from "node:test";
+import test, { after, before, describe } from "node:test";
 import { Db } from "../src/commands/db.js";
 
 describe("CLI Database Management (msx db)", () => {
@@ -11,6 +11,25 @@ describe("CLI Database Management (msx db)", () => {
   let receivedMethod = "";
   let receivedUrl = "";
   let receivedBody = "";
+
+  let origLog: typeof console.log;
+  let origError: typeof console.error;
+  let origWrite: typeof process.stdout.write;
+
+  before(() => {
+    origLog = console.log;
+    origError = console.error;
+    origWrite = process.stdout.write;
+    console.log = () => {};
+    console.error = () => {};
+    (process.stdout as any).write = () => true;
+  });
+
+  after(() => {
+    console.log = origLog;
+    console.error = origError;
+    process.stdout.write = origWrite;
+  });
 
   test("msx db status queries /api/v1/admin/db/status", async () => {
     server = http.createServer((req, res) => {
@@ -48,7 +67,7 @@ describe("CLI Database Management (msx db)", () => {
       assert.equal(receivedMethod, "GET");
       assert.equal(receivedUrl, "/api/v1/admin/db/status");
     } finally {
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -93,7 +112,7 @@ describe("CLI Database Management (msx db)", () => {
       assert.equal(parsedBody.dryRun, false);
       assert.equal(parsedBody.skipBackup, false);
     } finally {
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -127,7 +146,7 @@ describe("CLI Database Management (msx db)", () => {
       assert.equal(receivedMethod, "GET");
       assert.equal(receivedUrl, "/api/v1/admin/db/verify");
     } finally {
-      server.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

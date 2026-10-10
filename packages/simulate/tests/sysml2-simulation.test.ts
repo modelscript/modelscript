@@ -180,7 +180,7 @@ describe("SysML v2 Direct DAE Simulation Pipeline — Verification Suite", () =>
   });
 
   it("Benchmark 4: CLI integration simulates .sysml model from command-line interface", async () => {
-    const tmpSysmlPath = path.join(import.meta.dirname, "scratch-cli-oscillator.sysml");
+    const tmpSysmlPath = path.join(import.meta.dirname, `scratch-cli-oscillator-${process.pid}.sysml`);
     const sysmlCode = `
       constraint def OscillatorModel {
         attribute m : Real = 1.0;

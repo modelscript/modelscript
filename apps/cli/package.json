@@ -33,7 +33,7 @@
   "scripts": {
     "build": "tsc && mkdir -p dist/vendor && cp -r src/vendor/* dist/vendor/ && chmod +x dist/main.js",
     "clean": "rimraf dist",
-    "test": "node ../../scripts/test-runner.js --timeout=120000 --concurrency=2",
+    "test": "node ../../scripts/test-runner.js --timeout=120000",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch"
   },

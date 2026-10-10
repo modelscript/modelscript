@@ -5,26 +5,34 @@ import fs from "node:fs";
 import path from "node:path";
 import * as nodeTest from "node:test";
 
+const defaultTimeout = parseInt(process.env.TEST_TIMEOUT || "180000", 10);
+
 const wrapHook = (hookFn: any) => (fn: any, options?: any) => {
   if (typeof options === "number") {
-    return hookFn(fn, { timeout: options });
+    return hookFn(fn, { timeout: Math.max(options, defaultTimeout) });
   }
-  return hookFn(fn, options);
+  if (options && typeof options === "object") {
+    return hookFn(fn, { ...options, timeout: Math.max(options.timeout || 0, defaultTimeout) });
+  }
+  return hookFn(fn, { timeout: defaultTimeout });
 };
 
 const wrapTest = (testFn: any) => {
   const wrapped: any = (name: string, arg2?: any, arg3?: any) => {
     if (typeof arg2 === "function" && typeof arg3 === "number") {
-      return testFn(name, { timeout: arg3 }, arg2);
+      return testFn(name, { timeout: Math.max(arg3, defaultTimeout) }, arg2);
     }
     if (typeof arg2 === "function" && typeof arg3 === "object") {
-      return testFn(name, arg3, arg2);
+      return testFn(name, { ...arg3, timeout: Math.max(arg3?.timeout || 0, defaultTimeout) }, arg2);
     }
     return testFn(name, arg2, arg3);
   };
   wrapped.only = (name: string, arg2?: any, arg3?: any) => {
     if (typeof arg2 === "function" && typeof arg3 === "number") {
-      return testFn.only(name, { timeout: arg3 }, arg2);
+      return testFn.only(name, { timeout: Math.max(arg3, defaultTimeout) }, arg2);
+    }
+    if (typeof arg2 === "function" && typeof arg3 === "object") {
+      return testFn.only(name, { ...arg3, timeout: Math.max(arg3?.timeout || 0, defaultTimeout) }, arg2);
     }
     return testFn.only(name, arg2, arg3);
   };

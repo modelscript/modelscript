@@ -61,7 +61,7 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "lint": "eslint src --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js --concurrency=1 --timeout=180000",
+    "test": "node ../../scripts/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

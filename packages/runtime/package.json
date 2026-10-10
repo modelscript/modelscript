@@ -269,7 +269,7 @@
     "build": "npm run asbuild && tsc",
     "clean": "rimraf dist build",
     "lint": "eslint src --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js --timeout=120000",
+    "test": "node ../../scripts/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

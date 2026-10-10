@@ -1,90 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildParser } from "@modelscript/dsl";
-import * as childProcess from "child_process";
-import * as fs from "fs";
-import * as path from "path";
+import path from "path";
 import { fileURLToPath } from "url";
+import { createWasmParser } from "../src-gen/bindings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe("Modelica Incremental Nested Model Edit Test", () => {
   let activeFacade: any;
-  let tmpDir: string;
 
   beforeAll(async () => {
-    const langMod = await import("../dist/src/language.js");
-    const modelicaLanguage = langMod.modelicaLanguage;
-    const sourcePath = path.resolve(__dirname, "../src/language.ts");
-    const result = buildParser(modelicaLanguage as any, { sourcePath });
-
-    tmpDir = path.join(__dirname, "scratch_build_nested_incremental_test");
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.mkdirSync(tmpDir, { recursive: true });
-
-    for (const file of result.assemblyScriptFiles) {
-      const destPath = path.join(tmpDir, file.filename);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.writeFileSync(destPath, file.content);
-    }
-
-    const ascPath =
-      [
-        path.resolve(__dirname, "../../node_modules/.bin/asc"),
-        path.resolve(__dirname, "../../../node_modules/.bin/asc"),
-        "npx asc",
-      ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
-    const parserTs = path.join(tmpDir, "parser.ts");
-    const outWasm = path.join(tmpDir, "parser.wasm");
-    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-    childProcess.execFileSync(
-      ascBin,
-      [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "-O0", "--runtime", "stub"],
-      { stdio: "pipe" },
-    );
-
-    const wasm = fs.readFileSync(outWasm);
-    const wasmModule = await WebAssembly.compile(wasm);
-
-    const wrapperSrc =
-      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
-    const getFacade = new Function(wrapperSrc);
-    const { LspFacade } = getFacade();
-
-    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
-    const imports = {
-      env: {
-        memory: memory,
-        abort: () => console.log("ABORT!"),
-        logNode: () => {},
-        debugLog: () => {},
-      },
-      JavaScript: {
-        debugLog: () => {},
-        logNode: () => {},
-      },
-      engine: {
-        debugLog: () => {},
-      },
-      parser: { logInt: () => {} },
-      recovery: {},
-      host: { runHostQuery: () => {} },
-    };
-
-    const instance = await WebAssembly.instantiate(wasmModule, imports);
-    activeFacade = new LspFacade(instance.exports.memory, instance.exports);
-    activeFacade.syntaxNames = result.syntaxNames;
-  }, 240000);
-
-  afterAll(() => {
-    if (fs.existsSync(tmpDir)) {
-      try {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup error
-      }
-    }
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const res = await createWasmParser(modelicaWasm);
+    activeFacade = res.facade;
   });
 
   it("should cleanly resolve syntax errors when inner model is closed with end;", () => {
