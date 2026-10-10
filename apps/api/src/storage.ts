@@ -262,6 +262,32 @@ export class LibraryStorage {
   }
 
   /**
+   * Get the path to the cached pre-tessellated CAD mesh file.
+   */
+  getCadMeshPath(name: string, version: string, relPath: string): string {
+    const cleanRel = relPath.replace(/^(\.\/|\/)+/, "").replace(/[^a-zA-Z0-9_.-]/g, "_");
+    return path.join(this.#dataDir, this.#safe(name), this.#safe(version), "cad-meshes", `${cleanRel}.mesh.json`);
+  }
+
+  /**
+   * Read the cached CAD mesh JSON if available.
+   */
+  readCadMesh(name: string, version: string, relPath: string): string | null {
+    const p = this.getCadMeshPath(name, version, relPath);
+    if (!fs.existsSync(p)) return null;
+    return fs.readFileSync(p, "utf-8");
+  }
+
+  /**
+   * Store pre-tessellated CAD mesh JSON.
+   */
+  storeCadMesh(name: string, version: string, relPath: string, meshContent: string): void {
+    const p = this.getCadMeshPath(name, version, relPath);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, meshContent, "utf-8");
+  }
+
+  /**
    * Delete a specific library version.
    * Removes the zip file and all version data (SVGs, extracted files).
    * If no other versions remain, removes the library directory entirely.

@@ -1,18 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DownloadIcon, GlobeIcon, PackageIcon, SearchIcon, UploadIcon } from "@primer/octicons-react";
-import {
-  Button,
-  Dialog,
-  FormControl,
-  Heading,
-  Label,
-  Spinner,
-  Text,
-  TextInput,
-  UnderlineNav,
-  useTheme,
-} from "@primer/react";
+import { Button, Dialog, FormControl, Heading, Label, Spinner, Text, TextInput, UnderlineNav } from "@primer/react";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useToast } from "../ToastContext";
@@ -63,7 +52,6 @@ export default function AddLibraryModal({
   const [searchResults, setSearchResults] = useState<RegistryPackage[]>([]);
   const [searching, setSearching] = useState(false);
   const [installingPkg, setInstallingPkg] = useState<string | null>(null);
-  const { colorMode } = useTheme();
   const toast = useToast();
 
   // Search the registry when the user types
@@ -195,7 +183,7 @@ export default function AddLibraryModal({
                   style={{
                     textAlign: "center",
                     padding: 32,
-                    color: colorMode === "dark" ? "#8b949e" : "#57606a",
+                    color: "var(--color-fg-muted)",
                   }}
                 >
                   <PackageIcon size={32} />
@@ -214,10 +202,9 @@ export default function AddLibraryModal({
                       alignItems: "center",
                       gap: 12,
                       padding: "12px 16px",
-                      border: "1px solid",
-                      borderColor: colorMode === "dark" ? "#30363d" : "#d0d7de",
+                      border: "1px solid var(--color-border-default)",
                       borderRadius: 6,
-                      background: colorMode === "dark" ? "#161b22" : "#fff",
+                      background: "var(--color-canvas-subtle)",
                       transition: "border-color 0.2s",
                     }}
                   >
@@ -228,7 +215,7 @@ export default function AddLibraryModal({
                           style={{
                             fontWeight: 600,
                             fontSize: 14,
-                            color: colorMode === "dark" ? "#58a6ff" : "#0969da",
+                            color: "var(--color-accent-fg)",
                           }}
                         >
                           {pkg.name}
@@ -242,7 +229,7 @@ export default function AddLibraryModal({
                           as="p"
                           style={{
                             fontSize: 12,
-                            color: colorMode === "dark" ? "#8b949e" : "#57606a",
+                            color: "var(--color-fg-muted)",
                             margin: "2px 0 0",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -273,16 +260,12 @@ export default function AddLibraryModal({
               {...getRootProps()}
               style={{
                 border: "2px dashed",
-                borderColor: isDragActive
-                  ? "var(--color-accent-emphasis, #0969da)"
-                  : "var(--color-border-default, #30363d)",
+                borderColor: isDragActive ? "var(--color-accent-emphasis)" : "var(--color-border-default)",
                 borderRadius: 6,
                 padding: 32,
                 textAlign: "center",
                 cursor: "pointer",
-                backgroundColor: isDragActive
-                  ? "var(--color-accent-subtle, rgba(56,139,253,0.1))"
-                  : "var(--color-canvas-subtle, #161b22)",
+                backgroundColor: isDragActive ? "var(--color-accent-subtle)" : "var(--color-canvas-subtle)",
                 transition: "all 0.2s",
               }}
             >

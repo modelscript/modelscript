@@ -4,9 +4,15 @@
 import {
   CheckIcon,
   ChevronDownIcon,
+  CpuIcon,
+  FileCodeIcon,
   FilterIcon,
+  FlameIcon,
+  GearIcon,
   GlobeIcon,
+  PackageIcon,
   PlusIcon,
+  PulseIcon,
   RocketIcon,
   SearchIcon,
   TagIcon,
@@ -81,7 +87,11 @@ const TabText = styled.div<{ $active?: boolean }>`
     background: var(--gradient-cta);
     box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
     border-radius: var(--radius-pill);
-    display: ${(props) => (props.$active ? "block" : "none")};
+    transform: ${(props) => (props.$active ? "scaleX(1)" : "scaleX(0.4)")};
+    opacity: ${(props) => (props.$active ? 1 : 0)};
+    transition:
+      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 0.2s ease;
   }
 `;
 
@@ -142,17 +152,19 @@ const ComposePrompt = styled.div`
 export interface FilterChip {
   id: string;
   label: string;
-  emoji: string;
+  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
+  emoji?: string;
   artifactType?: string;
   description: string;
 }
 
 const FILTER_CHIPS: FilterChip[] = [
-  { id: "all", label: "All", emoji: "🌐", description: "All engineering updates" },
-  { id: "cad", label: "CAD 3D", emoji: "📐", artifactType: "cad", description: "STEP & CAD models" },
+  { id: "all", label: "All", icon: GlobeIcon, emoji: "🌐", description: "All engineering updates" },
+  { id: "cad", label: "CAD 3D", icon: PackageIcon, emoji: "📐", artifactType: "cad", description: "STEP & CAD models" },
   {
     id: "simulation",
     label: "FEA / CFD",
+    icon: FlameIcon,
     emoji: "🔥",
     artifactType: "simulation",
     description: "Finite element & CFD simulations",
@@ -160,13 +172,21 @@ const FILTER_CHIPS: FilterChip[] = [
   {
     id: "plot",
     label: "Plots & Data",
+    icon: PulseIcon,
     emoji: "📈",
     artifactType: "plot",
     description: "Dynamic simulation trajectories",
   },
-  { id: "modelica", label: "Modelica Code", emoji: "⚡", artifactType: "modelica", description: "Equations & models" },
-  { id: "aas", label: "AAS Twins", emoji: "🏭", artifactType: "aas", description: "Digital Twins" },
-  { id: "gcode", label: "Toolpaths", emoji: "⚙️", artifactType: "gcode", description: "G-Code & CNC" },
+  {
+    id: "modelica",
+    label: "Modelica Code",
+    icon: FileCodeIcon,
+    emoji: "⚡",
+    artifactType: "modelica",
+    description: "Equations & models",
+  },
+  { id: "aas", label: "AAS Twins", icon: CpuIcon, emoji: "🏭", artifactType: "aas", description: "Digital Twins" },
+  { id: "gcode", label: "Toolpaths", icon: GearIcon, emoji: "⚙️", artifactType: "gcode", description: "G-Code & CNC" },
 ];
 
 interface TopicItem {
@@ -193,7 +213,7 @@ const FilterSection = styled.div`
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--color-border);
-  padding: 10px 16px 12px 16px;
+  padding: 8px 16px;
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
   z-index: 15;
@@ -214,21 +234,23 @@ const FilterChipButton = styled.button<{ $active?: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 5px 12px;
   border-radius: 9999px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: ${(props) => (props.$active ? "600" : "500")};
   white-space: nowrap;
   cursor: pointer;
   outline: none;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: inherit;
+  flex-shrink: 0;
 
   background: ${(props) =>
     props.$active
       ? "linear-gradient(135deg, rgba(6, 182, 212, 0.22) 0%, rgba(139, 92, 246, 0.3) 100%)"
       : "rgba(255, 255, 255, 0.04)"};
-  border: 1px solid ${(props) => (props.$active ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.08)")};
+  border: 1px solid
+    ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))")};
   color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-secondary)")};
   box-shadow: ${(props) => (props.$active ? "0 0 12px rgba(6, 182, 212, 0.35)" : "none")};
 
@@ -237,41 +259,18 @@ const FilterChipButton = styled.button<{ $active?: boolean }>`
       props.$active
         ? "linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(139, 92, 246, 0.4) 100%)"
         : "rgba(255, 255, 255, 0.08)"};
-    border-color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.2)")};
+    border-color: ${(props) =>
+      props.$active ? "var(--color-accent-cyan)" : "var(--color-border-default, rgba(255, 255, 255, 0.2))"};
     color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-primary)")};
     transform: translateY(-1px);
   }
 
-  .emoji-icon {
-    font-size: 13px;
-    line-height: 1;
-  }
-`;
-
-const HashtagStripContainer = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  margin-top: 8px;
-  &::-webkit-scrollbar {
-    display: none;
-  }
-
-  .topic-label {
+  .chip-icon {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    white-space: nowrap;
-    padding-right: 4px;
+    justify-content: center;
+    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted)")};
+    transition: color 0.15s ease;
   }
 `;
 
@@ -279,7 +278,7 @@ const HashtagPill = styled.button<{ $active?: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 4px 9px;
   border-radius: 6px;
   font-size: 11.5px;
   font-family: var(--font-mono, monospace);
@@ -287,9 +286,12 @@ const HashtagPill = styled.button<{ $active?: boolean }>`
   cursor: pointer;
   outline: none;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 
   background: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.25)" : "rgba(255, 255, 255, 0.03)")};
-  border: 1px solid ${(props) => (props.$active ? "var(--color-accent-purple)" : "rgba(255, 255, 255, 0.07)")};
+  border: 1px solid
+    ${(props) =>
+      props.$active ? "var(--color-accent-purple)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.07))"};
   color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-muted)")};
   box-shadow: ${(props) => (props.$active ? "0 0 10px rgba(139, 92, 246, 0.35)" : "none")};
   font-weight: ${(props) => (props.$active ? "600" : "400")};
@@ -1000,11 +1002,12 @@ const HomeFeedPage: React.FC = () => {
         </Tab>
       </TabBar>
 
-      {/* Engineering Filter Chips & Hashtag Discovery Bar */}
+      {/* Engineering Filter Chips & Hashtag Streamlined Bar */}
       <FilterSection>
-        <FilterChipsScroll role="toolbar" aria-label="Engineering Artifact Filters">
+        <FilterChipsScroll role="toolbar" aria-label="Engineering Artifact Filters & Topics">
           {FILTER_CHIPS.map((chip) => {
             const isActive = activeFilter === chip.id;
+            const IconComponent = chip.icon;
             return (
               <FilterChipButton
                 key={chip.id}
@@ -1019,17 +1022,42 @@ const HomeFeedPage: React.FC = () => {
                 title={chip.description}
                 aria-pressed={isActive}
               >
-                <span className="emoji-icon">{chip.emoji}</span>
+                <span className="chip-icon">
+                  <IconComponent size={13} />
+                </span>
                 <span>{chip.label}</span>
               </FilterChipButton>
             );
           })}
-        </FilterChipsScroll>
 
-        <HashtagStripContainer role="region" aria-label="Trending Engineering Hashtags">
-          <span className="topic-label">
+          <div
+            style={{
+              height: "18px",
+              width: "1px",
+              background: "var(--color-border-default)",
+              margin: "0 4px",
+              flexShrink: 0,
+            }}
+          />
+
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "11px",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: "var(--color-text-muted)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              paddingRight: "2px",
+            }}
+          >
             <TagIcon size={12} /> Topics:
           </span>
+
           {trendingTopics.map((item) => {
             const isSelected = activeTag === item.concept || activeTag === item.displayName;
             return (
@@ -1053,7 +1081,7 @@ const HomeFeedPage: React.FC = () => {
               </HashtagPill>
             );
           })}
-        </HashtagStripContainer>
+        </FilterChipsScroll>
       </FilterSection>
 
       {/* Active Filter Notification Ribbon */}
@@ -1062,17 +1090,22 @@ const HomeFeedPage: React.FC = () => {
           <div className="filter-summary">
             <FilterIcon size={13} />
             <span>Filtering feed:</span>
-            {activeFilter !== "all" && (
-              <span className="filter-pill">
-                <span>
-                  {FILTER_CHIPS.find((c) => c.id === activeFilter)?.emoji}{" "}
-                  {FILTER_CHIPS.find((c) => c.id === activeFilter)?.label}
-                </span>
-                <button type="button" onClick={() => setActiveFilter("all")} aria-label="Remove artifact filter">
-                  <XIcon size={12} />
-                </button>
-              </span>
-            )}
+            {activeFilter !== "all" &&
+              (() => {
+                const matched = FILTER_CHIPS.find((c) => c.id === activeFilter);
+                const MatchedIcon = matched?.icon;
+                return (
+                  <span className="filter-pill">
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      {MatchedIcon && <MatchedIcon size={12} />}
+                      {matched?.label}
+                    </span>
+                    <button type="button" onClick={() => setActiveFilter("all")} aria-label="Remove artifact filter">
+                      <XIcon size={12} />
+                    </button>
+                  </span>
+                );
+              })()}
             {activeTag && (
               <span className="filter-pill">
                 <span>#{trendingTopics.find((t) => t.concept === activeTag)?.displayName || activeTag}</span>

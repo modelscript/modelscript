@@ -13,7 +13,8 @@ export const StickyHeader = styled.div`
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   align-items: center;
-  background: rgba(6, 8, 15, 0.85);
+  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
+  color: var(--color-text-heading);
 `;
 
 export const CircleIconButton = styled.button<{ $color?: string; $hoverColor?: string; $hoverBg?: string }>`
@@ -34,7 +35,7 @@ export const CircleIconButton = styled.button<{ $color?: string; $hoverColor?: s
 
   &:hover:not(:disabled) {
     color: ${(props) => props.$hoverColor || "var(--color-text-heading)"};
-    background-color: ${(props) => props.$hoverBg || "rgba(255, 255, 255, 0.08)"};
+    background-color: ${(props) => props.$hoverBg || "var(--surface-row-hover, rgba(125, 125, 125, 0.1))"};
   }
 
   &:disabled {

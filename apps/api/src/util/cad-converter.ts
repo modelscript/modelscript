@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { AssemblyBVH, type BVHItem } from "@modelscript/cad";
+import { extractStepAssembly } from "@modelscript/step";
 // @ts-expect-error missing types for occt-import-js
 import occtimportjs from "occt-import-js";
 import type { LibraryDatabase } from "../database.js";
@@ -56,6 +58,83 @@ function computeMeshProperties(meshes: any[]) {
   return { volume: totalVolume, surfaceArea: totalSurfaceArea };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: string): Promise<any> {
+  // occtimportjs is a wasm module factory
+  const occt = await // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (occtimportjs as unknown as () => Promise<{ ReadStepFile: (data: Uint8Array, param: null) => any }>)();
+
+  // Read the STEP file from memory
+  const result = occt.ReadStepFile(fileData, null) || { meshes: [] };
+
+  if (result.meshes && result.meshes.length > 0) {
+    // Compute mass properties for manufacturing estimation
+    result.properties = computeMeshProperties(result.meshes);
+
+    // Build BVH tree over the meshes for fast spatial queries/culling
+    try {
+      const bvhItems: BVHItem[] = [];
+      for (let i = 0; i < result.meshes.length; i++) {
+        const mesh = result.meshes[i];
+        if (mesh.attributes?.position?.array) {
+          const pos = mesh.attributes.position.array;
+          let minX = Infinity;
+          let minY = Infinity;
+          let minZ = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+          let maxZ = -Infinity;
+          for (let j = 0; j < pos.length; j += 3) {
+            const x = pos[j];
+            const y = pos[j + 1];
+            const z = pos[j + 2];
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (z < minZ) minZ = z;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+            if (z > maxZ) maxZ = z;
+          }
+          bvhItems.push({
+            id: i,
+            aabb: { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
+          });
+        }
+      }
+      if (bvhItems.length > 0) {
+        const bvh = new AssemblyBVH(bvhItems);
+        result.bvh = {
+          depth: bvh.depth,
+          totalItems: bvh.totalItems,
+          root: bvh.root,
+        };
+      }
+    } catch (err) {
+      console.warn("[CAD] AssemblyBVH build warning:", err);
+    }
+  }
+
+  // If STEP text is provided, extract semantic assembly hierarchy and joints
+  if (stepText) {
+    try {
+      const parsedAssembly = extractStepAssembly(stepText);
+      result.assembly = {
+        parts: Object.fromEntries(parsedAssembly.parts.entries()),
+        edges: parsedAssembly.edges,
+        joints: parsedAssembly.joints,
+        massProperties: Object.fromEntries(parsedAssembly.massProperties.entries()),
+        tolerances: parsedAssembly.tolerances,
+        datums: parsedAssembly.datums ? Object.fromEntries(parsedAssembly.datums.entries()) : {},
+        datumSystems: parsedAssembly.datumSystems,
+      };
+    } catch (err) {
+      console.warn("[CAD] extractStepAssembly warning:", err);
+    }
+  }
+
+  return result;
+}
+
 export async function convertStepToJson(url: string, database: LibraryDatabase): Promise<unknown> {
   // Check cache first
   const cached = database.getCachedCadGeometry(url);
@@ -71,20 +150,13 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
 
   const buffer = await response.arrayBuffer();
   const fileData = new Uint8Array(buffer);
+  const text = new TextDecoder().decode(fileData);
 
-  // occtimportjs is a wasm module factory
-  const occt = await // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (occtimportjs as unknown as () => Promise<{ ReadStepFile: (data: Uint8Array, param: null) => any }>)();
+  const result = await convertStepBufferToJson(fileData, text);
 
-  // Read the STEP file from memory
-  const result = occt.ReadStepFile(fileData, null);
-
-  if (!result || !result.meshes || result.meshes.length === 0) {
-    throw new Error("No meshes found in STEP file");
+  if (!result || (!result.meshes?.length && !result.assembly)) {
+    throw new Error("No meshes or assembly found in STEP file");
   }
-
-  // Compute mass properties for manufacturing estimation
-  result.properties = computeMeshProperties(result.meshes);
 
   // We have the raw meshes output from OCCT. We can cache and return it directly.
   const jsonStr = JSON.stringify(result);

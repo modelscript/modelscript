@@ -70,6 +70,7 @@ export * from "./interop/polyglot-transformer.js";
 export * from "./interop/provenance.js";
 export * from "./interop/reqif.js";
 export * from "./interop/shape_refit.js";
+export * from "./interop/simplex_reconciler.js";
 export * from "./interop/thread_hypergraph.js";
 export * from "./interop/thread_serializer.js";
 export * from "./interop/trade_study.js";

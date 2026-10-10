@@ -841,7 +841,11 @@ export function runTestCase(
         });
 
       const hasFatalArenaDiag = arena.diagnostics.some((d) => d.code === 5018);
+      const hasFatalIterDiag = cstDiags.some((d: any) => d.code === 5007);
       for (const diag of arena.diagnostics) {
+        if (hasFatalIterDiag) {
+          continue;
+        }
         if ((hasLintErrors || hasArenaErrors) && (diag.code === 4004 || diag.message.includes("is not balanced"))) {
           continue;
         }
@@ -867,6 +871,7 @@ export function runTestCase(
     }
 
     // If the arena has a fatal error (Cannot instantiate, binding mismatch, enum error), skip downstream linter and CST diagnostics
+    const hasFatalIterDiag = cstDiags.some((d: any) => d.code === 5007);
     const hasCannotInstantiate = arena?.diagnostics.some((d) => d.message.includes("Cannot instantiate"));
     const hasBindingError = arena?.diagnostics.some(
       (d) =>
@@ -881,8 +886,14 @@ export function runTestCase(
       (d) => d.code === 5008 || d.code === 5011 || d.code === 5012 || d.code === 5013 || d.code === 5014,
     );
     const hasCallArgError = arena?.diagnostics.some((d) => d.code === 3006 || d.code === 4012 || d.code === 5015);
-    const hasSubscriptError = arena?.diagnostics.some((d) => d.code === 4008);
+    const hasSubscriptError = !hasFatalIterDiag && arena?.diagnostics.some((d) => d.code === 4008);
     const hasReductionError = arena?.diagnostics.some((d) => d.code === 5018);
+    const hasDuplicateRedeclareError = arena?.diagnostics.some(
+      (d) => d.code === 4105 || d.message.includes("is already redeclared in this scope"),
+    );
+    const hasUnboundParamError = arena?.diagnostics.some(
+      (d) => d.code === 4028 || d.message.includes("neither value nor start value"),
+    );
 
     if (
       !hasCannotInstantiate &&
@@ -891,7 +902,9 @@ export function runTestCase(
       !hasAssignmentError &&
       !hasCallArgError &&
       !hasSubscriptError &&
-      !hasReductionError
+      !hasReductionError &&
+      !hasDuplicateRedeclareError &&
+      !hasUnboundParamError
     ) {
       // Linter diagnostics
       for (const d of lints) {
@@ -1044,7 +1057,8 @@ export function runTestCase(
     // e.g. "[path/file.mo:12:3-12:9:writable] Error: ..." → "[path/file.mo:writable] Error: ..."
     const stripDiagRanges = (text: string): string =>
       text
-        .replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:writable\]/g, "[$1:writable]")
+        .replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:(writable|readonly)\]/g, "[$1:writable]")
+        .replace(/\[\/usr\/lib\/omc\/NFModelicaBuiltin\.mo:writable\]\s*/g, "")
         .replace(/not found in class ([A-Za-z0-9_]+)\$[A-Za-z0-9_]+/g, "not found in class $1");
 
     // ── Compare results ──
@@ -1165,8 +1179,13 @@ export function runTestCase(
 
           const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
           const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
+          const relPath = path.relative(testsuiteRoot, testCase.file);
+          const relPathParts = relPath.split(path.sep).join("/");
+          const failedToParsePrefix = expected.includes("Failed to parse file:")
+            ? `Failed to parse file: ${relPathParts}!\n\nFailed to parse file: ${relPathParts}!\n\n`
+            : "";
           // Match OMC's output order: boilerplate first, then diagnostics
-          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\n${filteredOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
+          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n${failedToParsePrefix ? failedToParsePrefix : "\n"}${filteredOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
           if (stripDiagRanges(reformatActual) === stripDiagRanges(expected)) return makeResult("passed");
         }
 

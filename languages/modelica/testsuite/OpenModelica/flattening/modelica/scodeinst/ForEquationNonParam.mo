@@ -1,7 +1,6 @@
 // name: ForEquationNonPAram.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that the range of a for loop equation must be a parameter expression.
 //

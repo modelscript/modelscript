@@ -13,9 +13,9 @@
 import { LinkExternalIcon, PauseIcon, PlayIcon, PulseIcon, ServerIcon, SyncIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Flash, IconButton, Select } from "@primer/react";
 import { useCallback, useState } from "react";
-import type { MqttConnectionState, MqttParticipantMeta } from "../util/mqtt-client";
-import type { SimulationDataSource } from "../util/use-mqtt-simulation";
-import { useMqttSimulation } from "../util/use-mqtt-simulation";
+import type { MqttConnectionState, MqttParticipantMeta } from "./util/mqtt-client";
+import type { SimulationDataSource } from "./util/use-mqtt-simulation";
+import { useMqttSimulation } from "./util/use-mqtt-simulation";
 
 export interface HistorianSession {
   id: string;
@@ -69,10 +69,10 @@ interface CosimPanelProps {
 }
 
 const STATUS_COLORS: Record<MqttConnectionState, string> = {
-  connected: "#2da44e",
-  connecting: "#bf8700",
-  disconnected: "#57606a",
-  error: "#cf222e",
+  connected: "var(--color-success-fg)",
+  connecting: "var(--color-attention-fg)",
+  disconnected: "var(--color-fg-muted)",
+  error: "var(--color-danger-fg)",
 };
 
 const STATUS_LABELS: Record<MqttConnectionState, string> = {
@@ -124,9 +124,9 @@ export function CosimPanel({
   }, [mqtt]);
 
   const isDark = colorMode === "dark";
-  const borderColor = "var(--color-border-default, #30363d)";
-  const bgColor = "var(--color-canvas-subtle, #161b22)";
-  const textMuted = "var(--color-fg-muted, #8b949e)";
+  const borderColor = "var(--color-border-default)";
+  const bgColor = "var(--color-canvas-subtle)";
+  const textMuted = "var(--color-fg-muted)";
 
   return (
     <div
@@ -243,7 +243,7 @@ export function CosimPanel({
                   padding: 10,
                   borderRadius: 6,
                   border: `1px solid ${borderColor}`,
-                  background: "var(--color-canvas-default, #0d1117)",
+                  background: "var(--color-canvas-default)",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -376,7 +376,7 @@ function ParticipantRow({
         border: `1px solid ${borderColor}`,
         borderRadius: 6,
         overflow: "hidden",
-        background: "var(--color-canvas-default, #0d1117)",
+        background: "var(--color-canvas-default)",
       }}
     >
       {/* Participant header */}
@@ -392,7 +392,7 @@ function ParticipantRow({
           background: "transparent",
           cursor: "pointer",
           fontSize: 12,
-          color: "var(--color-fg-default, #c9d1d9)",
+          color: "var(--color-fg-default)",
           textAlign: "left",
         }}
       >
@@ -401,7 +401,7 @@ function ParticipantRow({
             width: 6,
             height: 6,
             borderRadius: "50%",
-            backgroundColor: "var(--color-success-fg, #2da44e)",
+            backgroundColor: "var(--color-success-fg)",
             flexShrink: 0,
           }}
         />
@@ -431,7 +431,7 @@ function ParticipantRow({
                     padding: "3px 10px 3px 24px",
                     cursor: onVariableSelected ? "pointer" : "default",
                     fontSize: 11,
-                    color: "var(--color-fg-default, #c9d1d9)",
+                    color: "var(--color-fg-default)",
                   }}
                   title={`${v.causality}: ${v.name}`}
                 >
@@ -439,10 +439,7 @@ function ParticipantRow({
                     style={{
                       fontSize: 9,
                       fontWeight: 700,
-                      color:
-                        v.causality === "output"
-                          ? "var(--color-success-fg, #2da44e)"
-                          : "var(--color-accent-fg, #0969da)",
+                      color: v.causality === "output" ? "var(--color-success-fg)" : "var(--color-accent-fg)",
                       width: 14,
                       textAlign: "center",
                     }}

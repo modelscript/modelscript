@@ -1,4 +1,3 @@
-// xfail:    true
 partial package PM1
   partial model BP1
     parameter Integer nXi;

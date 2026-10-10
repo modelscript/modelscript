@@ -1,7 +1,6 @@
 // name: EnumConversion3
 // keywords:
 // status: correct
-// xfail:    true
 
 model A
   replaceable type AE = enumeration(:);

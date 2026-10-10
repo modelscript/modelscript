@@ -1,7 +1,6 @@
 // name:     Abs2
 // keywords: abs operator
 // status:   incorrect
-// xfail:    true
 //
 //  The abs operator
 //

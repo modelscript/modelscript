@@ -1,7 +1,6 @@
 // name: EnumInvalidLiteralName1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model EnumInvalidLiteralName1

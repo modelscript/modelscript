@@ -320,6 +320,184 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   });
 
   /**
+   * GET /api/v1/libraries/:name/compare
+   * GET /api/v1/libraries/:scope/:name/compare
+   *
+   * Compare two versions of a package across physical classes, parameters,
+   * 3D CAD models, and physical unit parity drift.
+   * Query params: `base` (string), `head` (string)
+   */
+  router.get(["/:name/compare", "/:scope/:name/compare"], (req: Request, res: Response, next: NextFunction): void => {
+    if (isScopeInvalid(req)) return next();
+    const { name } = extractPkgAndVersion(req);
+    const base = req.query["base"] as string;
+    const head = req.query["head"] as string;
+
+    if (!name || !isValidPackageName(name)) {
+      res.status(400).json({ error: "Valid package name is required" });
+      return;
+    }
+
+    if (!base || !head) {
+      res.status(400).json({ error: "Both 'base' and 'head' query parameters are required" });
+      return;
+    }
+
+    const pkg = database.getPackage(name);
+    if (!pkg) {
+      res.status(404).json({ error: `Package "${name}" not found` });
+      return;
+    }
+
+    const baseVersionRow = database.getPackageVersion(pkg.id, base);
+    const headVersionRow = database.getPackageVersion(pkg.id, head);
+
+    if (!baseVersionRow || !headVersionRow) {
+      res.status(404).json({
+        error: `Specified versions not found: base="${base}" (${baseVersionRow ? "found" : "missing"}), head="${head}" (${headVersionRow ? "found" : "missing"})`,
+      });
+      return;
+    }
+
+    // 1. Compare classes
+    const baseClasses = database.getClasses(name, base);
+    const headClasses = database.getClasses(name, head);
+
+    const baseClassMap = new Map(baseClasses.map((c) => [c.class_name, c]));
+    const headClassMap = new Map(headClasses.map((c) => [c.class_name, c]));
+
+    const addedClasses: { name: string; kind: string; description: string | null }[] = [];
+    const removedClasses: { name: string; kind: string; description: string | null }[] = [];
+    const modifiedClasses: {
+      name: string;
+      kind: string;
+      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string }[];
+    }[] = [];
+    const parityDrift: { className: string; parameter: string; oldUnit: string; newUnit: string }[] = [];
+
+    for (const [clsName, headCls] of headClassMap.entries()) {
+      if (!baseClassMap.has(clsName)) {
+        addedClasses.push({ name: clsName, kind: headCls.class_kind, description: headCls.description });
+      } else {
+        // Compare class details & parameters
+        const baseDetail = database.getClass(name, base, clsName);
+        const headDetail = database.getClass(name, head, clsName);
+
+        if (baseDetail && headDetail) {
+          const baseCompMap = new Map(baseDetail.components.map((c) => [c.component_name, c]));
+          const paramChanges: { name: string; old: unknown; new: unknown; unit?: string }[] = [];
+
+          for (const headComp of headDetail.components) {
+            const baseComp = baseCompMap.get(headComp.component_name);
+            const headMod = headComp.modifiers?.[0];
+            const baseMod = baseComp?.modifiers?.[0];
+
+            if (!baseComp) {
+              paramChanges.push({
+                name: headComp.component_name,
+                old: null,
+                new: headMod?.modifier_value ?? headComp.type_name,
+              });
+            } else if (headMod?.modifier_value !== baseMod?.modifier_value) {
+              paramChanges.push({
+                name: headComp.component_name,
+                old: baseMod?.modifier_value ?? null,
+                new: headMod?.modifier_value ?? null,
+              });
+            }
+
+            // Check unit changes in modifiers or type
+            const baseUnit = baseComp?.type_name || "";
+            const headUnit = headComp.type_name || "";
+            if (baseComp && baseUnit !== headUnit && (baseUnit.includes(".") || headUnit.includes("."))) {
+              parityDrift.push({
+                className: clsName,
+                parameter: headComp.component_name,
+                oldUnit: baseUnit,
+                newUnit: headUnit,
+              });
+            }
+          }
+
+          if (paramChanges.length > 0) {
+            modifiedClasses.push({
+              name: clsName,
+              kind: headCls.class_kind,
+              parameterChanges: paramChanges,
+            });
+          }
+        }
+      }
+    }
+
+    for (const [clsName, baseCls] of baseClassMap.entries()) {
+      if (!headClassMap.has(clsName)) {
+        removedClasses.push({ name: clsName, kind: baseCls.class_kind, description: baseCls.description });
+      }
+    }
+
+    // 2. Compare CAD artifacts
+    const baseArtifacts = database.getArtifacts(baseVersionRow.id).filter((a) => a.type === "cad");
+    const headArtifacts = database.getArtifacts(headVersionRow.id).filter((a) => a.type === "cad");
+
+    const baseCadMap = new Map(baseArtifacts.map((a) => [a.path, a]));
+    const headCadMap = new Map(headArtifacts.map((a) => [a.path, a]));
+
+    const cadChanges: {
+      file: string;
+      status: "added" | "removed" | "modified" | "unchanged";
+      volumeDeltaPercent?: number;
+    }[] = [];
+
+    for (const [cadPath] of headCadMap.entries()) {
+      if (!baseCadMap.has(cadPath)) {
+        cadChanges.push({ file: cadPath, status: "added" });
+      } else {
+        // Compare mesh properties if cached
+        const baseMeshRaw = storage.readCadMesh(name, base, cadPath);
+        const headMeshRaw = storage.readCadMesh(name, head, cadPath);
+
+        if (baseMeshRaw && headMeshRaw) {
+          try {
+            const baseJson = JSON.parse(baseMeshRaw);
+            const headJson = JSON.parse(headMeshRaw);
+            const baseVol = baseJson.properties?.volume || 0;
+            const headVol = headJson.properties?.volume || 0;
+
+            if (baseVol > 0 && headVol > 0 && Math.abs(baseVol - headVol) > 1e-6) {
+              const deltaPct = Number((((headVol - baseVol) / baseVol) * 100).toFixed(2));
+              cadChanges.push({ file: cadPath, status: "modified", volumeDeltaPercent: deltaPct });
+            } else {
+              cadChanges.push({ file: cadPath, status: "unchanged" });
+            }
+          } catch {
+            cadChanges.push({ file: cadPath, status: "modified" });
+          }
+        } else {
+          cadChanges.push({ file: cadPath, status: "modified" });
+        }
+      }
+    }
+
+    for (const [cadPath] of baseCadMap.entries()) {
+      if (!headCadMap.has(cadPath)) {
+        cadChanges.push({ file: cadPath, status: "removed" });
+      }
+    }
+
+    res.json({
+      versionDelta: { base, head },
+      classes: {
+        added: addedClasses,
+        removed: removedClasses,
+        modified: modifiedClasses,
+      },
+      cadChanges,
+      parityDrift,
+    });
+  });
+
+  /**
    * GET /api/v1/libraries/:name/dependents
    * GET /api/v1/libraries/:scope/:name/dependents
    *
@@ -1273,6 +1451,58 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   );
 
   /**
+   * GET /api/v1/libraries/:name/:version/cad-mesh/{*path}
+   * GET /api/v1/libraries/:scope/:name/:version/cad-mesh/{*path}
+   *
+   * Serve pre-tessellated WebGL CAD mesh JSON for a STEP file.
+   */
+  router.get(
+    ["/:name/:version/cad-mesh/{*path}", "/:scope/:name/:version/cad-mesh/{*path}"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const rawPath = req.params["path"];
+      const relPath = Array.isArray(rawPath) ? rawPath.join("/") : String(rawPath || "");
+
+      if (!name || !version || !relPath) {
+        res.status(400).json({ error: "Missing required parameters" });
+        return;
+      }
+
+      // Check if pre-tessellated mesh exists in storage
+      const cached = storage.readCadMesh(name, version, relPath);
+      if (cached) {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.send(cached);
+        return;
+      }
+
+      // If not cached yet, attempt on-demand conversion from extracted STEP file
+      try {
+        const extractedDir = storage.getExtractedPath(name, version);
+        const stepFilePath = path.join(extractedDir, relPath);
+        if (fs.existsSync(stepFilePath)) {
+          const fileBuf = fs.readFileSync(stepFilePath);
+          const text = fileBuf.toString("utf-8");
+          const { convertStepBufferToJson } = await import("../util/cad-converter.js");
+          const meshData = await convertStepBufferToJson(new Uint8Array(fileBuf), text);
+          const jsonStr = JSON.stringify(meshData);
+          storage.storeCadMesh(name, version, relPath, jsonStr);
+          res.setHeader("Content-Type", "application/json");
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          res.send(jsonStr);
+          return;
+        }
+      } catch (err) {
+        console.warn(`[cad-mesh] On-demand conversion failed for ${name}@${version}/${relPath}:`, err);
+      }
+
+      res.status(404).json({ error: "Pre-tessellated CAD mesh not found" });
+    },
+  );
+
+  /**
    * POST /api/v1/libraries/:name/:version/deprecate
    * POST /api/v1/libraries/:scope/:name/:version/deprecate
    *
@@ -1384,7 +1614,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       if (reason.toLowerCase().match(/vulnerab|security|cve|exploit|compromise/)) {
-        database.createNotification(req.user!.id, req.user!.id, "security_alert");
+        database.createNotification(req.user!.id, req.user!.id, "security_alert", null, {
+          packageName: name,
+          packageVersion: version,
+          reason,
+          severity: "critical",
+        });
       }
 
       res.json({

@@ -198,10 +198,33 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
         if (Array.isArray(viewConfig.meshes) && viewConfig.meshes.length > 0) {
           rawMeshes = viewConfig.meshes;
         } else if (stepUrl) {
-          // 2. Fetch converted CAD geometry from backend
-          const result = await convertCadGeometry(stepUrl);
-          if (result && Array.isArray(result.meshes) && result.meshes.length > 0) {
-            rawMeshes = result.meshes;
+          // Fast-path: check for pre-tessellated CAD mesh endpoint
+          const meshFastPathUrl =
+            viewConfig.meshUrl ||
+            (typeof stepUrl === "string" && stepUrl.includes("/resources/")
+              ? stepUrl.replace("/resources/", "/cad-mesh/")
+              : null);
+
+          if (meshFastPathUrl) {
+            try {
+              const res = await fetch(meshFastPathUrl);
+              if (res.ok) {
+                const cachedData = await res.json();
+                if (cachedData && Array.isArray(cachedData.meshes) && cachedData.meshes.length > 0) {
+                  rawMeshes = cachedData.meshes;
+                }
+              }
+            } catch {
+              // Fallback to convertCadGeometry below
+            }
+          }
+
+          // Fallback: Fetch converted CAD geometry from backend converter
+          if (!rawMeshes) {
+            const result = await convertCadGeometry(stepUrl);
+            if (result && Array.isArray(result.meshes) && result.meshes.length > 0) {
+              rawMeshes = result.meshes;
+            }
           }
         }
 

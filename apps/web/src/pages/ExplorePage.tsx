@@ -7,11 +7,20 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CodeIcon,
+  CpuIcon,
+  FileCodeIcon,
+  FlameIcon,
+  GearIcon,
+  PackageIcon,
   PlusIcon,
+  PulseIcon,
   RocketIcon,
   SearchIcon,
   ShareIcon,
+  SlidersIcon,
+  StackIcon,
   TagIcon,
+  WorkflowIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
@@ -27,14 +36,29 @@ import Post from "../components/Post";
 import { usePageTitle } from "../util/title";
 
 const CURATED_ENGINEERING_DOMAINS = [
-  { tag: "Aerodynamics", name: "Aerodynamics", icon: "🌪️", desc: "NACA airfoils, compressible flow & CFD" },
-  { tag: "Thermodynamics", name: "Thermodynamics", icon: "🌡️", desc: "Heat transfer, cooling cycles & thermal grids" },
-  { tag: "Robotics", name: "Robotics", icon: "🤖", desc: "Kinematics, inverse dynamics & bipedal control" },
-  { tag: "AdditiveMfg", name: "AdditiveMfg", icon: "🖨️", desc: "Toolpaths, slicing & 5-axis CNC G-Code" },
-  { tag: "DigitalTwin", name: "DigitalTwin", icon: "👥", desc: "AAS Asset Administration Shells & telemetry" },
-  { tag: "ControlSystems", name: "ControlSystems", icon: "🎛️", desc: "State-space, PID & closed-loop stability" },
-  { tag: "Multibody", name: "Multibody", icon: "⚙️", desc: "Rigid body mechanics, joints & articulated assemblies" },
-  { tag: "CAD", name: "CAD 3D", icon: "📐", desc: "STEP, OpenCASCADE & procedural CSG geometry" },
+  { tag: "Aerodynamics", name: "Aerodynamics", icon: PulseIcon, desc: "NACA airfoils, compressible flow & CFD" },
+  {
+    tag: "Thermodynamics",
+    name: "Thermodynamics",
+    icon: FlameIcon,
+    desc: "Heat transfer, cooling cycles & thermal grids",
+  },
+  { tag: "Robotics", name: "Robotics", icon: CpuIcon, desc: "Kinematics, inverse dynamics & bipedal control" },
+  { tag: "AdditiveMfg", name: "AdditiveMfg", icon: GearIcon, desc: "Toolpaths, slicing & 5-axis CNC G-Code" },
+  { tag: "DigitalTwin", name: "DigitalTwin", icon: StackIcon, desc: "AAS Asset Administration Shells & telemetry" },
+  {
+    tag: "ControlSystems",
+    name: "ControlSystems",
+    icon: SlidersIcon,
+    desc: "State-space, PID & closed-loop stability",
+  },
+  {
+    tag: "Multibody",
+    name: "Multibody",
+    icon: WorkflowIcon,
+    desc: "Rigid body mechanics, joints & articulated assemblies",
+  },
+  { tag: "CAD", name: "CAD 3D", icon: PackageIcon, desc: "STEP, OpenCASCADE & procedural CSG geometry" },
 ];
 
 interface StarterTemplate {
@@ -494,12 +518,16 @@ const ExplorePage: React.FC = () => {
   const TABS = ["Top", "Latest", "Templates", "People", "Media", "Artifacts", "Repositories"];
 
   if (topic) {
-    const TOPIC_ARTIFACT_TABS = [
+    const TOPIC_ARTIFACT_TABS: {
+      id: string;
+      label: string;
+      icon?: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+    }[] = [
       { id: "all", label: "All Posts" },
-      { id: "cad", label: "CAD 3D", emoji: "📐" },
-      { id: "simulation", label: "FEA / CFD", emoji: "🔥" },
-      { id: "plot", label: "Plots & Data", emoji: "📈" },
-      { id: "modelica", label: "Modelica Code", emoji: "⚡" },
+      { id: "cad", label: "CAD 3D", icon: PackageIcon },
+      { id: "simulation", label: "FEA / CFD", icon: FlameIcon },
+      { id: "plot", label: "Plots & Data", icon: PulseIcon },
+      { id: "modelica", label: "Modelica Code", icon: FileCodeIcon },
     ];
 
     const RELATED_ENGINEERING_TAGS = [
@@ -682,12 +710,15 @@ const ExplorePage: React.FC = () => {
 
         {/* Topic Sub-filter Tabs */}
         <TabContainer style={{ borderBottom: "1px solid var(--color-border)" }}>
-          {TOPIC_ARTIFACT_TABS.map((tab) => (
-            <TabButton key={tab.id} $active={topicFilter === tab.id} onClick={() => setTopicFilter(tab.id)}>
-              {tab.emoji ? `${tab.emoji} ` : ""}
-              {tab.label}
-            </TabButton>
-          ))}
+          {TOPIC_ARTIFACT_TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <TabButton key={tab.id} $active={topicFilter === tab.id} onClick={() => setTopicFilter(tab.id)}>
+                {Icon && <Icon size={13} style={{ marginRight: "5px", verticalAlign: "middle" }} />}
+                {tab.label}
+              </TabButton>
+            );
+          })}
         </TabContainer>
 
         {loading ? (
@@ -701,7 +732,7 @@ const ExplorePage: React.FC = () => {
             ))}
             {topicPosts.length === 0 && (
               <Box p={6} textAlign="center">
-                <div style={{ fontSize: "36px", marginBottom: "12px" }}>🏷️</div>
+                <TagIcon size={36} style={{ color: "var(--color-text-muted)", marginBottom: "12px" }} />
                 <Heading
                   as="h3"
                   style={{
@@ -1946,8 +1977,22 @@ const ExplorePage: React.FC = () => {
                       },
                     }}
                   >
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <span style={{ fontSize: "22px" }}>{dom.icon}</span>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "8px",
+                          background: "var(--color-canvas-subtle)",
+                          border: "1px solid var(--color-border-subtle)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--color-accent-cyan)",
+                        }}
+                      >
+                        <dom.icon size={16} />
+                      </div>
                       <span
                         style={{
                           fontSize: "10px",

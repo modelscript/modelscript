@@ -5,8 +5,10 @@ import {
   ArrowRightIcon,
   KebabHorizontalIcon,
   MarkGithubIcon,
+  PeopleIcon,
   PlayIcon,
   PlusIcon,
+  RepoIcon,
   ServerIcon,
   SyncIcon,
   ZapIcon,
@@ -166,8 +168,7 @@ const Card = styled.div`
 `;
 
 const WalletCard = styled(Card)`
-  background: linear-gradient(135deg, rgba(30, 27, 75, 0.45) 0%, rgba(15, 23, 42, 0.75) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.25);
+  border: 1px solid var(--color-accent-purple-border);
   position: relative;
   overflow: hidden;
 
@@ -178,7 +179,61 @@ const WalletCard = styled(Card)`
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #06b6d4, #8b5cf6, #3b82f6);
+    background: linear-gradient(90deg, var(--color-accent-cyan), var(--color-accent-purple), var(--color-accent-blue));
+  }
+`;
+
+const TopUpButton = styled.button`
+  background: var(--color-accent-purple-bg);
+  border: 1px solid var(--color-accent-purple-border);
+  color: var(--color-accent-purple);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    background: var(--color-accent-purple);
+    color: #ffffff;
+    border-color: var(--color-accent-purple);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const CloudRunButton = styled.button`
+  margin-top: 6px;
+  background: var(--color-canvas-subtle, rgba(6, 182, 212, 0.08));
+  border: 1px solid var(--color-border-default, rgba(6, 182, 212, 0.25));
+  color: var(--color-accent-cyan);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    background: var(--surface-row-hover, rgba(6, 182, 212, 0.16));
+    border-color: var(--color-accent-cyan);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -195,25 +250,31 @@ const SpinSyncIcon = styled(SyncIcon)<{ $isSpinning: boolean }>`
 `;
 
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background-color: var(--color-done-emphasis);
+  background: var(--gradient-icon-box, linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2)));
+  border: 1px solid var(--color-border-default);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
   background-size: cover;
+  background-position: center;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-weight: bold;
+  color: var(--color-text-heading);
+  font-size: 13.5px;
+  font-weight: 700;
   flex-shrink: 0;
+  transition: all 0.2s ease;
 
   &::after {
     content: "${(props) => (!props.$url && props.$letter ? props.$letter : "")}";
   }
 
   &:hover {
-    filter: brightness(0.85);
+    transform: scale(1.05);
+    border-color: var(--color-accent-purple-border);
   }
 `;
 
@@ -640,15 +701,14 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
         <WalletCard>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <Box display="flex" alignItems="center" gap={2}>
-              <ZapIcon size={14} fill="#8b5cf6" style={{ color: "var(--color-accent-purple)" }} />
+              <ZapIcon size={14} fill="var(--color-accent-purple)" style={{ color: "var(--color-accent-purple)" }} />
               <Text
                 style={{
                   fontSize: "12px",
-                  fontWeight: "bold",
+                  fontWeight: 700,
                   textTransform: "uppercase",
-                  letterSpacing: "0.5px",
+                  letterSpacing: "0.06em",
                   color: "var(--color-text-muted)",
-                  fontFamily: "var(--font-mono)",
                 }}
               >
                 Compute Wallet
@@ -659,11 +719,12 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                 fontSize: "10px",
                 color: "var(--color-accent-purple)",
                 fontFamily: "var(--font-mono)",
-                background: "rgba(139, 92, 246, 0.15)",
-                border: "1px solid rgba(139, 92, 246, 0.3)",
-                padding: "1px 6px",
+                background: "var(--color-accent-purple-bg)",
+                border: "1px solid var(--color-accent-purple-border)",
+                padding: "2px 6px",
                 borderRadius: "4px",
-                fontWeight: 600,
+                fontWeight: 700,
+                letterSpacing: "0.02em",
               }}
             >
               RESEARCH TIER
@@ -677,9 +738,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                   fontSize: "26px",
                   fontWeight: 800,
                   fontFamily: "var(--font-mono)",
-                  background: "linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
+                  color: "var(--color-text-heading)",
                   letterSpacing: "-0.5px",
                 }}
               >
@@ -697,27 +756,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                 cr
               </span>
             </div>
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-topup"))}
-              style={{
-                background: "rgba(139, 92, 246, 0.15)",
-                border: "1px solid rgba(139, 92, 246, 0.4)",
-                color: "var(--color-text-primary)",
-                borderRadius: "6px",
-                padding: "4px 10px",
-                fontSize: "11px",
-                fontFamily: "var(--font-mono)",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                transition: "all 0.15s ease",
-              }}
-            >
+            <TopUpButton onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-topup"))}>
               <PlusIcon size={12} />
               <span>Top Up</span>
-            </button>
+            </TopUpButton>
           </Box>
 
           <Box
@@ -726,7 +768,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
             alignItems="center"
             pt={2}
             style={{
-              borderTop: "1px solid var(--color-border)",
+              borderTop: "1px solid var(--color-border-default)",
               fontSize: "11px",
               fontFamily: "var(--font-mono)",
             }}
@@ -741,6 +783,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                 alignItems: "center",
                 gap: "3px",
                 fontSize: "11px",
+                fontWeight: 600,
               }}
             >
               <span>Usage Log</span>
@@ -767,11 +810,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
               <Text
                 style={{
                   fontSize: "12px",
-                  fontWeight: "bold",
+                  fontWeight: 700,
                   textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                  color: "var(--color-text-primary)",
-                  fontFamily: "var(--font-mono)",
+                  letterSpacing: "0.06em",
+                  color: "var(--color-text-muted)",
                   cursor: "pointer",
                 }}
               >
@@ -818,12 +860,7 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
             </Box>
           </Box>
 
-          <Box
-            display="flex"
-            flexDirection="column"
-            gap={3}
-            style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}
-          >
+          <Box display="flex" flexDirection="column" gap={3} style={{ fontSize: "12px" }}>
             {hpcJobs.length > 0 ? (
               hpcJobs.map((job) => {
                 const isRunning = job.status === "running" || job.status === "processing";
@@ -947,28 +984,10 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                 <div style={{ fontSize: "11px", color: "var(--color-text-muted)", maxWidth: 220, lineHeight: 1.4 }}>
                   No active simulations. Run batched SUNDIALS CVODE, SU2 CFD, or CalculiX FEA.
                 </div>
-                <button
-                  onClick={() => setIsSimModalOpen(true)}
-                  style={{
-                    marginTop: "6px",
-                    background: "rgba(6, 182, 212, 0.1)",
-                    border: "1px solid rgba(6, 182, 212, 0.3)",
-                    color: "var(--color-accent-cyan)",
-                    borderRadius: "6px",
-                    padding: "5px 12px",
-                    fontSize: "11px",
-                    fontFamily: "var(--font-mono)",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    transition: "all 0.15s ease",
-                  }}
-                >
+                <CloudRunButton onClick={() => setIsSimModalOpen(true)}>
                   <PlayIcon size={12} />
                   <span>Launch Cloud Run</span>
-                </button>
+                </CloudRunButton>
               </Box>
             )}
 
@@ -989,7 +1008,6 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                   alignItems: "center",
                   gap: "4px",
                   fontSize: "11px",
-                  fontFamily: "var(--font-mono)",
                   fontWeight: 600,
                 }}
               >
@@ -1018,12 +1036,11 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
         <Heading
           as="h2"
           style={{
-            fontSize: "15px",
+            fontSize: "12px",
             fontWeight: 700,
             marginBottom: "12px",
-            fontFamily: "var(--font-mono)",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
+            letterSpacing: "0.06em",
             color: "var(--color-text-muted)",
           }}
         >
@@ -1158,16 +1175,27 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
 
       {user && (
         <Card>
-          <Heading as="h2" style={{ fontSize: "20px", marginBottom: "16px" }}>
-            Who to follow
-          </Heading>
+          <Box display="flex" alignItems="center" gap={2} mb={3}>
+            <PeopleIcon size={14} style={{ color: "var(--color-accent-purple)" }} />
+            <Text
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              Who to follow
+            </Text>
+          </Box>
           <Box display="flex" flexDirection="column" gap={3}>
             {suggestions
               .filter((u) => !user || u.username !== user.username)
               .map((u) => (
                 <Box key={u.id} display="flex" alignItems="center" justifyContent="space-between">
                   <ProfileHoverCard username={u.username}>
-                    <ProfileNameLink to={`/${u.username}`} style={{ flex: 1, minWidth: 0 }}>
+                    <ProfileNameLink to={`/${u.username}`} style={{ flexShrink: 0 }}>
                       <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
                     </ProfileNameLink>
                   </ProfileHoverCard>
@@ -1184,8 +1212,8 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                         <ProfileNameLink to={`/${u.username}`} style={{ maxWidth: "100%" }}>
                           <Text
                             style={{
-                              fontWeight: "bold",
-                              fontSize: "15px",
+                              fontWeight: "600",
+                              fontSize: "14px",
                               color: "var(--color-text-heading)",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -1199,20 +1227,22 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
                         </ProfileNameLink>
                       </ProfileHoverCard>
                     </div>
-                    <Text
-                      className="handle-text"
+                    <span
                       style={{
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        marginTop: "-2px",
+                        marginTop: "1px",
                         display: "block",
                         maxWidth: "100%",
+                        fontSize: "12.5px",
+                        color: "var(--color-text-muted)",
+                        lineHeight: 1.2,
                       }}
                       title={`@${u.username}`}
                     >
                       @{u.username}
-                    </Text>
+                    </span>
                   </Box>
                   <div style={{ flexShrink: 0 }}>
                     <FollowButton username={u.username} initialIsFollowing={false} size="small" />
@@ -1225,14 +1255,28 @@ const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, o
               </Text>
             )}
           </Box>
+          <ShowMoreLink to="/explore" style={{ marginTop: "12px" }}>
+            Explore all creators →
+          </ShowMoreLink>
         </Card>
       )}
 
       {location.pathname.startsWith("/repos") && popularRepos.length > 0 && (
         <Card>
-          <Heading as="h2" style={{ fontSize: "20px", marginBottom: "16px" }}>
-            Popular Repositories
-          </Heading>
+          <Box display="flex" alignItems="center" gap={2} mb={3}>
+            <RepoIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
+            <Text
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              Popular Repositories
+            </Text>
+          </Box>
           <Box display="flex" flexDirection="column" gap={3}>
             {popularRepos.map((repo) => (
               <Box key={repo.id} display="flex" alignItems="center" justifyContent="space-between">

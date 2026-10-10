@@ -1693,6 +1693,26 @@ module.exports.default = module.exports;
       platform: "browser",
       sourcemap: "inline",
       external: ["@kitware/vtk.js", "@kitware/vtk.js/*"],
+      define: {
+        "process.env": JSON.stringify({}),
+        "process.browser": "true",
+      },
+      banner: {
+        js: `if (typeof globalThis.Buffer === "undefined") {
+  globalThis.Buffer = class Buffer extends Uint8Array {
+    static from(val) {
+      if (typeof val === "string") return new TextEncoder().encode(val);
+      if (ArrayBuffer.isView(val)) return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+      if (val instanceof ArrayBuffer) return new Uint8Array(val);
+      return new Uint8Array(val);
+    }
+    static alloc(size) { return new Uint8Array(size); }
+    static isBuffer(val) { return val instanceof Uint8Array; }
+    toString(enc) { return new TextDecoder().decode(this); }
+  };
+}`,
+      },
+      plugins: [ignorePlugin],
     });
 
     // Provide camelCase aliases for all kebab-case webviews for backward compatibility

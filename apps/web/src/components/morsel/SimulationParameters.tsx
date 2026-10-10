@@ -363,6 +363,11 @@ export interface ExperimentOverrides {
   stopTime?: number;
   interval?: number;
   tolerance?: number;
+  solver?: string;
+  numberOfIntervals?: number;
+  atol?: number;
+  equidistant?: boolean;
+  steadyStateOnly?: boolean;
 }
 
 export function SimulationExperimentSettings({
@@ -371,30 +376,47 @@ export function SimulationExperimentSettings({
   onChange,
   onReset,
 }: {
-  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
+  experiment?: {
+    startTime?: number;
+    stopTime?: number;
+    interval?: number;
+    tolerance?: number;
+    solver?: string;
+    numberOfIntervals?: number;
+  };
   overrides: ExperimentOverrides;
-  onChange: (name: keyof ExperimentOverrides, value: number) => void;
+  onChange: (name: keyof ExperimentOverrides, value: any) => void;
   onReset: (name: keyof ExperimentOverrides) => void;
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const defaults = {
     startTime: experiment?.startTime ?? 0,
     stopTime: experiment?.stopTime ?? 10,
     interval: experiment?.interval ?? ((experiment?.stopTime ?? 10) - (experiment?.startTime ?? 0)) / 500,
     tolerance: experiment?.tolerance ?? 1e-6,
+    solver: experiment?.solver ?? "dopri5",
+    numberOfIntervals: experiment?.numberOfIntervals ?? 500,
+    atol: 1e-6,
+    equidistant: true,
+    steadyStateOnly: false,
   };
 
-  const fields: { key: keyof ExperimentOverrides; label: string }[] = [
+  const fields: { key: "startTime" | "stopTime" | "interval" | "tolerance"; label: string }[] = [
     { key: "startTime", label: "Start Time" },
     { key: "stopTime", label: "Stop Time" },
     { key: "interval", label: "Interval" },
     { key: "tolerance", label: "Tolerance" },
   ];
 
+  const currentSolver = overrides.solver ?? defaults.solver;
+  const isSolverOverridden = overrides.solver !== undefined && overrides.solver !== defaults.solver;
+
   return (
     <div style={{ paddingTop: 4, paddingBottom: 4 }}>
       {fields.map(({ key, label }) => {
         const isOverridden = overrides[key] !== undefined;
-        const currentValue = isOverridden ? overrides[key]! : defaults[key];
+        const currentValue = isOverridden ? (overrides[key] as number) : defaults[key];
 
         return (
           <NumericParameterRow
@@ -407,6 +429,138 @@ export function SimulationExperimentSettings({
           />
         );
       })}
+
+      {/* Solver Engine Selector */}
+      <div style={ROW_STYLE}>
+        <ResetButton visible={isSolverOverridden} name="solver" onReset={() => onReset("solver")} />
+        <span style={labelStyle(isSolverOverridden)} title="Numerical Integration Solver">
+          Solver
+        </span>
+        <select
+          value={currentSolver}
+          onChange={(e) => onChange("solver", e.target.value)}
+          style={{
+            fontSize: "12px",
+            padding: "3px 6px",
+            borderRadius: "6px",
+            border: "1px solid var(--color-border-default)",
+            background: "var(--color-canvas-default, #ffffff)",
+            color: "var(--color-fg-default, #24292f)",
+            width: 140,
+            cursor: "pointer",
+            outline: "none",
+          }}
+          title="Select numerical solver algorithm"
+        >
+          <option value="dopri5">DOPRI5 (Adaptive 5(4))</option>
+          <option value="cvode">CVODE (SUNDIALS BDF)</option>
+          <option value="tsit5">TSIT5 (Adaptive 5(4))</option>
+          <option value="bdf">BDF (Stiff Multi-Step)</option>
+          <option value="rk4">RK4 (Fixed Step 4th)</option>
+          <option value="euler">Euler (Fixed Step 1st)</option>
+          <option value="rodas4p">RODAS4P (Stiff DAE)</option>
+          <option value="trbdf2">TR-BDF2 (SDIRK)</option>
+          <option value="auto">Auto (Adaptive)</option>
+          <option value="webgpu">WebGPU (Batched)</option>
+        </select>
+      </div>
+
+      {/* Advanced Settings Accordion */}
+      <div style={{ padding: "6px 12px 2px 12px" }}>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          style={{
+            fontSize: "11px",
+            background: "transparent",
+            border: "none",
+            color: "var(--color-accent-fg, #0969da)",
+            cursor: "pointer",
+            padding: "2px 0",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            fontWeight: 600,
+          }}
+        >
+          <span>{showAdvanced ? "▾" : "▸"}</span>
+          <span>Advanced Solver Options</span>
+        </button>
+      </div>
+
+      {showAdvanced && (
+        <div
+          style={{
+            background: "var(--color-canvas-subtle, rgba(0,0,0,0.02))",
+            padding: "4px 0",
+            borderRadius: "4px",
+            margin: "2px 8px",
+          }}
+        >
+          <NumericParameterRow
+            key="numberOfIntervals"
+            info={{ name: "Intervals", type: "integer", defaultValue: defaults.numberOfIntervals } as any}
+            currentValue={
+              overrides.numberOfIntervals !== undefined ? overrides.numberOfIntervals : defaults.numberOfIntervals
+            }
+            isOverridden={overrides.numberOfIntervals !== undefined}
+            onChange={(_, val) => onChange("numberOfIntervals", Math.round(val))}
+            onReset={() => onReset("numberOfIntervals")}
+          />
+          <NumericParameterRow
+            key="atol"
+            info={{ name: "Absolute Tol", type: "real", defaultValue: defaults.atol } as any}
+            currentValue={overrides.atol !== undefined ? overrides.atol : defaults.atol}
+            isOverridden={overrides.atol !== undefined}
+            onChange={(_, val) => onChange("atol", val)}
+            onReset={() => onReset("atol")}
+          />
+          <div style={ROW_STYLE}>
+            <div style={{ width: 24, flexShrink: 0 }} />
+            <label
+              style={{
+                flex: 1,
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer",
+                color: "var(--color-fg-default)",
+              }}
+            >
+              <span>Equidistant Grid</span>
+              <input
+                type="checkbox"
+                checked={overrides.equidistant !== false}
+                onChange={(e) => onChange("equidistant", e.target.checked)}
+                style={{ cursor: "pointer", accentColor: "var(--color-accent-emphasis, #0969da)" }}
+              />
+            </label>
+          </div>
+          <div style={ROW_STYLE}>
+            <div style={{ width: 24, flexShrink: 0 }} />
+            <label
+              style={{
+                flex: 1,
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer",
+                color: "var(--color-fg-default)",
+              }}
+            >
+              <span>Steady-State Equilibrium</span>
+              <input
+                type="checkbox"
+                checked={!!overrides.steadyStateOnly}
+                onChange={(e) => onChange("steadyStateOnly", e.target.checked)}
+                style={{ cursor: "pointer", accentColor: "var(--color-accent-emphasis, #0969da)" }}
+              />
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

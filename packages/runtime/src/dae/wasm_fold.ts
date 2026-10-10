@@ -942,7 +942,7 @@ function isLiteralMinusOne(dae: DAEBuilder, exprId: number): boolean {
   return false;
 }
 
-function getNegatedInner(dae: DAEBuilder, exprId: number): number | null {
+function _getNegatedInner(dae: DAEBuilder, exprId: number): number | null {
   if (exprId < 0) return null;
   const k = dae.getExprKind(exprId);
   if (k === ExprKind.Negate) {
@@ -1570,7 +1570,6 @@ export function foldArenaConstants(
           );
           if (foldedRhs !== null) {
             let varType = VarType.Real;
-            let varFound = false;
             if (lhsKind === ExprKind.Name) {
               const varName = arena.interner.resolve(arena.getExprData1(lhsExpr));
               let varIdx = nameToIdx
@@ -1598,7 +1597,6 @@ export function foldArenaConstants(
               }
               if (varIdx !== undefined && varIdx >= 0) {
                 varType = arena.getVarType(varIdx);
-                varFound = true;
               } else {
                 continue;
               }
@@ -2457,6 +2455,13 @@ export function isArrayOfLength(dae: DAEBuilder, exprId: number, n: number): boo
   if (kind === ExprKind.Der || kind === ExprKind.Pre) {
     return isArrayOfLength(dae, dae.getExprData1(exprId), n);
   }
+  if (kind === ExprKind.Subscript) {
+    const subCount = dae.getExprRight(exprId);
+    for (let i = 0; i < subCount; i++) {
+      const sId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (isArrayOfLength(dae, sId, n)) return true;
+    }
+  }
   if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
     return isArrayOfLength(dae, dae.getExprLeft(exprId), n);
   }
@@ -2724,6 +2729,20 @@ export function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number
         }
       }
       return exprId;
+    }
+    case ExprKind.Subscript: {
+      const baseId = dae.getExprData1(exprId);
+      const subCount = dae.getExprRight(exprId);
+      const subIds: number[] = [];
+      for (let i = 0; i < subCount; i++) {
+        const sId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+        if (isArrayOfLength(dae, sId, n)) {
+          subIds.push(getNthExpr(dae, sId, k, n));
+        } else {
+          subIds.push(sId);
+        }
+      }
+      return dae.addSubscriptExpr(baseId, subIds);
     }
     default:
       return exprId;

@@ -1707,7 +1707,8 @@ export class ArenaDAEPrinter {
         case StmtKind.ComplexAssignment: {
           const srcId = builder.getStmtLeft(idx);
           walkExprCalls(builder, srcId);
-          return idx + 1;
+          const tcount = builder.getStmtData1(idx);
+          return idx + 1 + tcount;
         }
         case StmtKind.If: {
           const condId = builder.getStmtData1(idx);
@@ -2023,7 +2024,8 @@ export class ArenaDAEPrinter {
       if (sec.count > 0) {
         this.out.write("initial algorithm\n");
         let idx = sec.start;
-        for (let i = 0; i < sec.count; i++) idx = this.printStmt(idx);
+        const end = sec.start + sec.count;
+        while (idx < end) idx = this.printStmt(idx);
       }
     }
 
@@ -2125,7 +2127,13 @@ export class ArenaDAEPrinter {
     const oldArena = this.arena;
     this.arena = fn;
 
-    if (fn.isImpure && !this.isOldFrontend) this.out.write("impure ");
+    const isExplicitImpure = Boolean(
+      (fn as any).isExplicitImpure ||
+      ((fn as any).cstNode?.text && /\bimpure\s+function\b/.test((fn as any).cstNode.text)),
+    );
+    if (isExplicitImpure || (fn.isImpure && !this.isOldFrontend)) {
+      this.out.write("impure ");
+    }
     this.out.write(fn.classKind + " " + fn.name);
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");

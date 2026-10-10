@@ -99,6 +99,10 @@ export interface SimulateParams {
   interval?: number;
   equidistant?: boolean;
   solver?: string;
+  rtol?: number;
+  atol?: number;
+  numberOfIntervals?: number;
+  steadyStateOnly?: boolean;
   format?: string;
   parameterOverrides?: Record<string, number>;
   sweepConfig?: { parameterName: string; start: number; end: number; steps: number };

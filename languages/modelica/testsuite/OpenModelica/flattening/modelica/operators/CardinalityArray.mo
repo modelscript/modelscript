@@ -1,7 +1,6 @@
 // name:     CardinalityArray
 // keywords: cardinality #2585
 // status:   correct
-// xfail:    true
 //
 // Tests the cardinality operator when arrays are involved.
 //

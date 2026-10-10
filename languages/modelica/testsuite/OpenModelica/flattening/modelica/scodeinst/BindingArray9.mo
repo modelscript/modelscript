@@ -1,7 +1,6 @@
 // name: BindingArray9
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

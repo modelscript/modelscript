@@ -1,7 +1,6 @@
 // name: FuncBuiltinSymmetric2
 // keywords: symmetric
 // status: incorrect
-// xfail:    true
 //
 // Tests the builtin symmetric operator.
 //

@@ -25,6 +25,7 @@ import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./AnimationTimeline";
 import { CadBindingPickerModal } from "./CadBindingPickerModal";
+import { InstancedCadAssembly } from "./InstancedCadAssembly";
 import { VtkRenderer } from "./VtkRenderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -375,18 +376,25 @@ function SceneContents({
       />
       <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={20} blur={2} far={4} />
 
-      {/* Models */}
+      {/* Models: GPU Instanced rendering for clusters, fallback to CadModel for singletons */}
       <group onPointerMissed={handlePointerMissed}>
-        {components.map((comp) => (
-          <CadModel
-            key={comp.name}
-            component={comp}
-            assetBaseUrl={assetBaseUrl}
-            selected={selectedName === comp.name}
-            onSelect={onSelect}
-            animationController={animationController}
-          />
-        ))}
+        <InstancedCadAssembly
+          components={components}
+          assetBaseUrl={assetBaseUrl}
+          selectedName={selectedName}
+          onSelect={onSelect}
+          animationController={animationController}
+          renderSingleton={(comp) => (
+            <CadModel
+              key={comp.name}
+              component={comp}
+              assetBaseUrl={assetBaseUrl}
+              selected={selectedName === comp.name}
+              onSelect={onSelect}
+              animationController={animationController}
+            />
+          )}
+        />
       </group>
 
       {/* CFD Isosurface rendering */}

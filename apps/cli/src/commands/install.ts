@@ -6,11 +6,38 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import path from "node:path";
 import type { CommandModule } from "yargs";
 import { getToken } from "../util/auth.js";
+import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface InstallArgs {
   package?: string;
   save?: boolean;
+  frozenLockfile?: boolean;
+  frozen?: boolean;
+  ci?: boolean;
+}
+
+function extractDomainSummaryFromZip(zip: AdmZip): Record<string, { files: string[] }> {
+  const domains: Record<string, { files: string[] }> = {};
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const name = entry.entryName;
+    const ext = path.extname(name).toLowerCase();
+    let domain: string | null = null;
+    if (ext === ".mo") domain = "modelica";
+    else if (ext === ".sysml") domain = "sysml2";
+    else if (ext === ".step" || ext === ".stp") domain = "cad";
+    else if (ext === ".csv" || ext === ".tsv") domain = "dataset";
+    else if (ext === ".inp") domain = "fea";
+    else if (ext === ".cfg") domain = "cfd";
+    else if (ext === ".reqif") domain = "requirements";
+
+    if (domain) {
+      if (!domains[domain]) domains[domain] = { files: [] };
+      domains[domain]!.files.push(name);
+    }
+  }
+  return domains;
 }
 
 export function installLocalArchive(
@@ -103,6 +130,16 @@ export function installLocalArchive(
         // Ignore failure to update package.json
       }
     }
+
+    // Update msx.lock
+    const domains = extractDomainSummaryFromZip(zip);
+    updateLockfilePackage(cwd, pkgName, {
+      version: pkgVersion,
+      resolved: `file:${path.relative(cwd, archivePath)}`,
+      integrity: actualHash,
+      domains,
+    });
+    console.log(`✓ Updated msx.lock with ${pkgName}@${pkgVersion}`);
   }
 
   return { name: pkgName, version: pkgVersion };
@@ -124,11 +161,27 @@ export const Install: CommandModule<{}, InstallArgs> = {
         description: "Save installed package to package.json dependencies",
         type: "boolean",
         default: true,
+      })
+      .option("frozen-lockfile", {
+        alias: ["frozen", "ci"],
+        description:
+          "Enforce zero-trust installation against msx.lock (fails if lockfile is missing, out of sync, or tampered)",
+        type: "boolean",
+        default: false,
       }) as any;
   },
   handler: async (args) => {
     const API_URL = process.env.MODELSCRIPT_API_URL || "http://localhost:3000";
     const cwd = process.cwd();
+    const isFrozen = Boolean(args.frozenLockfile || args.frozen || args.ci);
+    const lockfile = readLockfile(cwd);
+
+    if (isFrozen && !lockfile) {
+      console.error(
+        "Error: Lockfile 'msx.lock' not found. Run 'msx install' without --frozen-lockfile to generate one.",
+      );
+      process.exit(1);
+    }
 
     const packagesToInstall: { name: string; version?: string | undefined }[] = [];
 
@@ -168,6 +221,15 @@ export const Install: CommandModule<{}, InstallArgs> = {
         try {
           const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
           const deps = { ...pkgJson.dependencies, ...pkgJson.modelscript?.dependencies };
+          if (isFrozen && lockfile) {
+            for (const [depName] of Object.entries(deps)) {
+              if (!lockfile.packages[depName]) {
+                console.error(`Error: Lockfile 'msx.lock' is out of sync with 'package.json': missing "${depName}".`);
+                process.exit(1);
+              }
+            }
+          }
+
           for (const [depName, depVer] of Object.entries(deps)) {
             if (typeof depVer === "string") {
               if (depVer.startsWith("file:")) {
@@ -241,15 +303,36 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
         const arrayBuf = await dlRes.arrayBuffer();
         const buffer = Buffer.from(arrayBuf);
+        const actualHash = computeBufferIntegrity(buffer);
 
         const expectedHash = dlRes.headers.get("x-content-sha256");
         if (expectedHash) {
-          const actualHash = `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`;
           if (expectedHash.toLowerCase() !== actualHash.toLowerCase()) {
             console.warn(`Warning: Content hash mismatch! Expected ${expectedHash}, got ${actualHash}`);
           } else {
             console.log(`✓ Verified CAS integrity: ${actualHash.slice(0, 19)}...`);
           }
+        }
+
+        // Check lockfile entry if present before extraction
+        const currentLock = lockfile || readLockfile(cwd);
+        const lockedPkg = currentLock?.packages[item.name];
+        if (lockedPkg && lockedPkg.integrity) {
+          if (!verifyIntegrity(buffer, lockedPkg.integrity)) {
+            if (isFrozen) {
+              console.error(
+                `Error: Integrity verification failed for ${item.name}@${resolvedVersion}: expected ${lockedPkg.integrity}, got ${actualHash}.`,
+              );
+              process.exit(1);
+            } else {
+              console.warn(
+                `⚠️ Lockfile integrity warning for ${item.name}: expected ${lockedPkg.integrity}, got ${actualHash}`,
+              );
+            }
+          }
+        } else if (isFrozen) {
+          console.error(`Error: Package "${item.name}" is not listed in 'msx.lock'.`);
+          process.exit(1);
         }
 
         const targetDirName = item.name.startsWith("@") ? item.name.replace("/", "__") : item.name;
@@ -280,7 +363,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
         console.log(`✓ Installed ${item.name}@${resolvedVersion} to ${path.relative(cwd, destDir)}`);
 
-        if (args.save) {
+        if (args.save && !isFrozen) {
           const pkgJsonPath = path.join(cwd, "package.json");
           if (existsSync(pkgJsonPath)) {
             try {
@@ -293,6 +376,16 @@ export const Install: CommandModule<{}, InstallArgs> = {
               // Ignore failure to update package.json
             }
           }
+
+          // Update msx.lock
+          const domains = extractDomainSummaryFromZip(zip);
+          updateLockfilePackage(cwd, item.name, {
+            version: resolvedVersion,
+            resolved: downloadUrl,
+            integrity: actualHash,
+            domains,
+          });
+          console.log(`✓ Updated msx.lock with ${item.name}@${resolvedVersion}`);
         }
       } catch (err) {
         console.error(`Failed to install ${item.name}: ${err instanceof Error ? err.message : String(err)}`);

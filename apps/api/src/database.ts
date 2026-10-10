@@ -554,10 +554,12 @@ export class LibraryDatabase {
         actor_id    INTEGER NOT NULL REFERENCES users(id),
         type        TEXT NOT NULL,
         post_id     INTEGER REFERENCES posts(id),
+        metadata    TEXT,
         read        INTEGER DEFAULT 0,
         created_at  TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id, read);
+      CREATE INDEX IF NOT EXISTS idx_notifs_type_user ON notifications(user_id, type, read);
 
       CREATE TABLE IF NOT EXISTS linked_repos (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -925,6 +927,12 @@ export class LibraryDatabase {
     `);
 
     // Migrations
+    try {
+      this.#db.exec(`ALTER TABLE notifications ADD COLUMN metadata TEXT`);
+    } catch {
+      // Column already exists
+    }
+
     try {
       this.#db.exec(`ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{}'`);
     } catch (e) {
@@ -2671,28 +2679,64 @@ export class LibraryDatabase {
     return posts.map((p) => this.hydratePost(p, userId));
   }
 
-  createNotification(userId: number, actorId: number, type: string, postId?: number): void {
+  createNotification(
+    userId: number,
+    actorId: number,
+    type: string,
+    postId?: number | null,
+    metadata?: Record<string, unknown> | string | null,
+  ): void {
     const isSystemNotification = [
       "simulation",
       "simulation_completed",
+      "simulation_failed",
       "package",
       "package_published",
+      "package_yanked",
       "security_alert",
       "credit_warning",
     ].includes(type);
     if (userId === actorId && !isSystemNotification) return;
-    this.#db
-      .prepare(
-        `
-      INSERT INTO notifications (user_id, actor_id, type, post_id)
-      VALUES (?, ?, ?, ?)
-    `,
-      )
-      .run(userId, actorId, type, postId ?? null);
+
+    let metadataStr: string | null = null;
+    if (metadata) {
+      metadataStr = typeof metadata === "string" ? metadata : JSON.stringify(metadata);
+    }
+
+    try {
+      this.#db
+        .prepare(
+          `
+        INSERT INTO notifications (user_id, actor_id, type, post_id, metadata)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+        )
+        .run(userId, actorId, type, postId ?? null, metadataStr);
+    } catch {
+      this.#db
+        .prepare(
+          `
+        INSERT INTO notifications (user_id, actor_id, type, post_id)
+        VALUES (?, ?, ?, ?)
+      `,
+        )
+        .run(userId, actorId, type, postId ?? null);
+    }
   }
 
-  getNotifications(userId: number, limit: number = 20): any[] {
-    return this.#db
+  getNotifications(userId: number, limit: number = 20, category?: string): any[] {
+    let typeClause = "";
+    if (category === "engineering") {
+      typeClause = "AND n.type IN ('simulation', 'simulation_completed', 'simulation_failed')";
+    } else if (category === "packages") {
+      typeClause = "AND n.type IN ('package', 'package_published', 'package_yanked')";
+    } else if (category === "social" || category === "mentions") {
+      typeClause = "AND n.type IN ('mention', 'reply', 'like', 'repost', 'follow')";
+    } else if (category === "system") {
+      typeClause = "AND n.type IN ('security_alert', 'credit_warning')";
+    }
+
+    const rows = this.#db
       .prepare(
         `
       SELECT n.*, 
@@ -2706,16 +2750,37 @@ export class LibraryDatabase {
       JOIN users u ON n.actor_id = u.id
       LEFT JOIN posts p ON n.post_id = p.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
-      WHERE n.user_id = ?
+      WHERE n.user_id = ? ${typeClause}
       ORDER BY n.created_at DESC
       LIMIT ?
     `,
       )
       .all(userId, limit) as any[];
+
+    return rows.map((r) => {
+      if (r.metadata && typeof r.metadata === "string") {
+        try {
+          r.metadata = JSON.parse(r.metadata);
+        } catch {
+          // Keep as string
+        }
+      }
+      return r;
+    });
   }
 
-  markNotificationsRead(userId: number): void {
-    this.#db.prepare(`UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0`).run(userId);
+  markNotificationsRead(userId: number, category?: string): void {
+    let typeClause = "";
+    if (category === "engineering") {
+      typeClause = "AND type IN ('simulation', 'simulation_completed', 'simulation_failed')";
+    } else if (category === "packages") {
+      typeClause = "AND type IN ('package', 'package_published', 'package_yanked')";
+    } else if (category === "social" || category === "mentions") {
+      typeClause = "AND type IN ('mention', 'reply', 'like', 'repost', 'follow')";
+    } else if (category === "system") {
+      typeClause = "AND type IN ('security_alert', 'credit_warning')";
+    }
+    this.#db.prepare(`UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0 ${typeClause}`).run(userId);
   }
 
   getUnreadNotificationCount(userId: number): number {
@@ -5286,7 +5351,11 @@ export class LibraryDatabase {
           .prepare(`SELECT id FROM notifications WHERE user_id = ? AND type = 'credit_warning' AND read = 0`)
           .get(userId);
         if (!existingUnread) {
-          this.createNotification(userId, userId, "credit_warning");
+          this.createNotification(userId, userId, "credit_warning", null, {
+            balance: newBalance,
+            threshold: 10,
+            message: `Your compute balance is ${newBalance} credits (below threshold of 10).`,
+          });
         }
       }
 
@@ -5490,7 +5559,11 @@ export class LibraryDatabase {
           .prepare(`SELECT id FROM notifications WHERE user_id = ? AND type = 'credit_warning' AND read = 0`)
           .get(userId);
         if (!existingUnread) {
-          this.createNotification(userId, userId, "credit_warning");
+          this.createNotification(userId, userId, "credit_warning", null, {
+            balance: currentBalance,
+            threshold: 10,
+            message: `Your compute balance is ${currentBalance} credits (below threshold of 10).`,
+          });
         }
       }
 
@@ -6427,7 +6500,182 @@ export class LibraryDatabase {
       .run(key, isEnabled ? 1 : 0, rolloutPercentage, roles);
   }
 
+  createThreadProposal(proposal: {
+    threadId: string;
+    title: string;
+    description?: string | undefined;
+    proposedBy: string;
+    diffSummary: string | object;
+    safetyStandard?: string | undefined;
+  }): ThreadProposal {
+    const diffStr =
+      typeof proposal.diffSummary === "object" ? JSON.stringify(proposal.diffSummary) : proposal.diffSummary;
+    const stmt = this.#db.prepare(`
+      INSERT INTO thread_proposals (thread_id, title, description, status, proposed_by, diff_summary, created_at)
+      VALUES (?, ?, ?, 'open', ?, ?, datetime('now'))
+    `);
+    const res = stmt.run(proposal.threadId, proposal.title, proposal.description || null, proposal.proposedBy, diffStr);
+    const newId = Number(res.lastInsertRowid);
+
+    this.logThreadAudit({
+      threadId: proposal.threadId,
+      proposalId: newId,
+      action: "proposal_created",
+      actor: proposal.proposedBy,
+      safetyStandard: proposal.safetyStandard || "ISO-26262",
+      metadata: { title: proposal.title, diffSummary: proposal.diffSummary },
+    });
+
+    return this.getThreadProposalById(newId)!;
+  }
+
+  getThreadProposalById(id: number): ThreadProposal | undefined {
+    return this.#db.prepare(`SELECT * FROM thread_proposals WHERE id = ?`).get(id) as ThreadProposal | undefined;
+  }
+
+  getThreadProposals(threadId?: string, status?: string): ThreadProposal[] {
+    let sql = `SELECT * FROM thread_proposals WHERE 1=1`;
+    const params: any[] = [];
+    if (threadId) {
+      sql += ` AND thread_id = ?`;
+      params.push(threadId);
+    }
+    if (status) {
+      sql += ` AND status = ?`;
+      params.push(status);
+    }
+    sql += ` ORDER BY created_at DESC`;
+    return this.#db.prepare(sql).all(...params) as ThreadProposal[];
+  }
+
+  reviewThreadProposal(
+    id: number,
+    status: "approved" | "rejected" | "applied",
+    resolvedBy: string,
+    comment?: string,
+    safetyStandard?: string,
+  ): ThreadProposal | undefined {
+    const existing = this.getThreadProposalById(id);
+    if (!existing) return undefined;
+
+    this.#db
+      .prepare(
+        `
+      UPDATE thread_proposals
+      SET status = ?, resolved_at = datetime('now'), resolved_by = ?, review_comment = ?
+      WHERE id = ?
+    `,
+      )
+      .run(status, resolvedBy, comment || null, id);
+
+    this.logThreadAudit({
+      threadId: existing.thread_id,
+      proposalId: id,
+      action: `proposal_${status}`,
+      actor: resolvedBy,
+      safetyStandard: safetyStandard || "ISO-26262",
+      metadata: { comment, previousStatus: existing.status, newStatus: status },
+    });
+
+    return this.getThreadProposalById(id);
+  }
+
+  logThreadAudit(entry: {
+    threadId: string;
+    proposalId?: number | null;
+    action: string;
+    actor: string;
+    safetyStandard?: string | null;
+    metadata?: string | object;
+  }): ThreadAuditLogEntry {
+    const last = this.#db
+      .prepare(`SELECT checksum FROM thread_audit_log WHERE thread_id = ? ORDER BY id DESC LIMIT 1`)
+      .get(entry.threadId) as { checksum: string } | undefined;
+    const prevChecksum = last?.checksum || "GENESIS_ROOT";
+
+    const metaStr = entry.metadata
+      ? typeof entry.metadata === "object"
+        ? JSON.stringify(entry.metadata)
+        : entry.metadata
+      : null;
+
+    // Cryptographic hash chaining: SHA256(prevChecksum + fields)
+    const raw = `${prevChecksum}:${entry.threadId}:${entry.proposalId ?? ""}:${entry.action}:${entry.actor}:${entry.safetyStandard ?? ""}:${metaStr ?? ""}`;
+    const checksum = crypto.createHash("sha256").update(raw).digest("hex");
+
+    const stmt = this.#db.prepare(`
+      INSERT INTO thread_audit_log (thread_id, proposal_id, action, actor, safety_standard, checksum, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+    const res = stmt.run(
+      entry.threadId,
+      entry.proposalId ?? null,
+      entry.action,
+      entry.actor,
+      entry.safetyStandard ?? null,
+      checksum,
+      metaStr,
+    );
+
+    return this.#db
+      .prepare(`SELECT * FROM thread_audit_log WHERE id = ?`)
+      .get(res.lastInsertRowid) as ThreadAuditLogEntry;
+  }
+
+  getThreadAuditLogs(threadId?: string): ThreadAuditLogEntry[] {
+    if (threadId) {
+      return this.#db
+        .prepare(`SELECT * FROM thread_audit_log WHERE thread_id = ? ORDER BY id ASC`)
+        .all(threadId) as ThreadAuditLogEntry[];
+    }
+    return this.#db.prepare(`SELECT * FROM thread_audit_log ORDER BY id ASC`).all() as ThreadAuditLogEntry[];
+  }
+
+  verifyThreadAuditChain(threadId: string): { valid: boolean; totalEntries: number; brokenAtId?: number } {
+    const logs = this.getThreadAuditLogs(threadId);
+    let prevChecksum = "GENESIS_ROOT";
+
+    for (const log of logs) {
+      const raw = `${prevChecksum}:${log.thread_id}:${log.proposal_id ?? ""}:${log.action}:${log.actor}:${log.safety_standard ?? ""}:${log.metadata ?? ""}`;
+      const expectedChecksum = crypto.createHash("sha256").update(raw).digest("hex");
+      if (log.checksum !== expectedChecksum) {
+        return { valid: false, totalEntries: logs.length, brokenAtId: log.id };
+      }
+      prevChecksum = log.checksum;
+    }
+
+    return { valid: true, totalEntries: logs.length };
+  }
+
   close(): void {
     this.#db.close();
   }
 }
+
+export interface ThreadProposal {
+  id: number;
+  thread_id: string;
+  title: string;
+  description: string | null;
+  status: "open" | "approved" | "rejected" | "applied";
+  proposed_by: string;
+  diff_summary: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  review_comment: string | null;
+}
+
+export interface ThreadAuditLogEntry {
+  id: number;
+  thread_id: string;
+  proposal_id: number | null;
+  action: string;
+  actor: string;
+  safety_standard: string | null;
+  checksum: string;
+  metadata: string | null;
+  created_at: string;
+}
+
+export type Database = LibraryDatabase;

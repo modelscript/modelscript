@@ -271,6 +271,18 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (className: string) => `Illegal to instantiate partial class ${className}.`,
   },
+  PARTIAL_LOOKUP_DISALLOWED: {
+    code: 2038,
+    rule: "partial-lookup-disallowed",
+    severity: "error",
+    message: (className: string) => `${className} is partial, name lookup is not allowed in partial classes.`,
+  },
+  CALLED_FUNCTION_PARTIAL: {
+    code: 4039,
+    rule: "called-function-partial",
+    severity: "error",
+    message: (fnName: string) => `Called function '${fnName}' is partial.`,
+  },
   REDECLARE_NON_REPLACEABLE: {
     code: 4019,
     rule: "redeclare-non-replaceable",
@@ -726,6 +738,43 @@ export const ModelicaErrorCode = {
     rule: "outer-modifier",
     severity: "error",
     message: (modText: string, elementName: string) => `Modifier '${modText}' found on outer element ${elementName}.`,
+  },
+
+  TOP_LEVEL_OUTER_ELEMENT: {
+    code: 4101,
+    rule: "top-level-outer-element",
+    severity: "error",
+    message: (elementName: string) =>
+      `The model can't be instantiated due to top-level outer element '${elementName}', it may only be used as part of a simulation model.`,
+  },
+
+  INNER_NOT_FOUND_EXISTING_DECL: {
+    code: 4102,
+    rule: "inner-not-found-existing-decl",
+    severity: "error",
+    message: (elementName: string) =>
+      `An inner declaration for outer element '${elementName}' could not be found, and could not be automatically generated due to an existing declaration of that name.`,
+  },
+
+  MISSING_REDECLARE_KEYWORD: {
+    code: 4103,
+    rule: "missing-redeclare-keyword",
+    severity: "error",
+    message: (className: string) => `Missing redeclare keyword on attempted redeclaration of class ${className}.`,
+  },
+
+  INVALID_REDECLARATION_CLASS_AS_COMPONENT: {
+    code: 4104,
+    rule: "invalid-redeclaration-class-as-component",
+    severity: "error",
+    message: (className: string) => `Invalid redeclaration of class ${className} as component.`,
+  },
+
+  DUPLICATE_REDECLARE: {
+    code: 4105,
+    rule: "duplicate-redeclare",
+    severity: "error",
+    message: (name: string) => `${name} is already redeclared in this scope.`,
   },
 
   // ── Array Bounds ─────────────────────────────────────────────────────

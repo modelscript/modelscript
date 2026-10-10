@@ -538,6 +538,12 @@ export default function MorselEditor(props: MorselEditorProps) {
           startTime: experimentOverrides.startTime,
           stopTime: experimentOverrides.stopTime,
           interval: experimentOverrides.interval,
+          solver: experimentOverrides.solver,
+          numberOfIntervals: experimentOverrides.numberOfIntervals,
+          rtol: experimentOverrides.tolerance,
+          atol: experimentOverrides.atol,
+          equidistant: experimentOverrides.equidistant,
+          steadyStateOnly: experimentOverrides.steadyStateOnly,
         });
 
         if (result.error) throw new Error(result.error);
@@ -932,6 +938,12 @@ end Manufacturing;`,
         startTime: experimentOverrides.startTime,
         stopTime: experimentOverrides.stopTime,
         interval: experimentOverrides.interval,
+        solver: experimentOverrides.solver,
+        numberOfIntervals: experimentOverrides.numberOfIntervals,
+        rtol: experimentOverrides.tolerance,
+        atol: experimentOverrides.atol,
+        equidistant: experimentOverrides.equidistant,
+        steadyStateOnly: experimentOverrides.steadyStateOnly,
       });
 
       if (result.error) {
@@ -1049,8 +1061,8 @@ end Manufacturing;`,
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              background: colorMode === "dark" ? "#161b22" : "#f6f8fa",
-              borderBottom: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
+              background: "var(--color-canvas-subtle)",
+              borderBottom: "1px solid var(--color-border-default)",
               padding: "4px 8px",
               overflowX: "auto",
               flexShrink: 0,
@@ -2609,6 +2621,9 @@ end Manufacturing;`,
             startTime: experimentOverrides.startTime,
             stopTime: experimentOverrides.stopTime,
             interval: experimentOverrides.interval,
+            solver: experimentOverrides.solver,
+            numberOfIntervals: experimentOverrides.numberOfIntervals,
+            tolerance: experimentOverrides.tolerance,
           }}
           onResultLoaded={(data) => {
             const chartData = data.t.map((t: number, i: number) => {

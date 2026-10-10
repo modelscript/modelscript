@@ -103,7 +103,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.function_call != 0 && t == $.function_call) ||
                 ($.function_call_args != 0 && t == $.function_call_args) ||
                 ($.function_arguments != 0 && t == $.function_arguments) ||
-                ($.named_argument != 0 && t == $.named_argument)
+                ($.named_argument != 0 && t == $.named_argument) ||
+                ($.subscript != 0 && t == $.subscript) ||
+                ($.array_subscripts != 0 && t == $.array_subscripts)
               ) {
                 isDesc = true;
                 break;

@@ -3,6 +3,7 @@
 import {
   AlertFillIcon,
   AlertIcon,
+  ArrowLeftIcon,
   BookIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -11,8 +12,11 @@ import {
   CpuIcon,
   DatabaseIcon,
   DependabotIcon,
+  FileCodeIcon,
   FileIcon,
   GearIcon,
+  GitCompareIcon,
+  GlobeIcon,
   HistoryIcon,
   LinkIcon,
   PackageIcon,
@@ -20,6 +24,7 @@ import {
   ShareIcon,
   SyncIcon,
   VerifiedIcon,
+  WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Dialog, Flash, Heading, Label, Spinner, Text, TextInput } from "@primer/react";
@@ -64,6 +69,7 @@ import DatasetTableViewer from "../components/DatasetTableViewer";
 import DigitalThreadExplorer from "../components/DigitalThreadExplorer";
 import FmuSimulatorViewer from "../components/FmuSimulatorViewer";
 import InvertedSvg from "../components/InvertedSvg";
+import { PolyglotVersionDiffView } from "../components/PolyglotVersionDiffView";
 import SysmlViewer from "../components/SysmlViewer";
 import { TerminalLogViewer } from "../components/TerminalLogViewer";
 import { usePageTitle } from "../util/title";
@@ -935,13 +941,14 @@ function timeAgo(dateStr: string): string {
 
 /* ─── tab types ─── */
 
-type TabId = "readme" | "digital-thread" | "versions" | "artifacts" | "dependencies";
+type TabId = "readme" | "digital-thread" | "versions" | "compare" | "artifacts" | "dependencies";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "readme", label: "Readme", icon: <BookIcon size={16} /> },
   { id: "digital-thread", label: "Digital Thread", icon: <CpuIcon size={16} /> },
   { id: "artifacts", label: "Artifacts", icon: <FileIcon size={16} /> },
   { id: "versions", label: "Versions", icon: <HistoryIcon size={16} /> },
+  { id: "compare", label: "Compare", icon: <GitCompareIcon size={16} /> },
   { id: "dependencies", label: "Dependencies", icon: <DependabotIcon size={16} /> },
 ];
 
@@ -1118,38 +1125,6 @@ const PackageDetailPage: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (loading) {
-    return <PackageDetailSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <PageWrap style={{ justifyContent: "center", alignItems: "center" }}>
-        <Box
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 16,
-            padding: 40,
-            textAlign: "center",
-          }}
-        >
-          <AlertIcon size={48} fill="var(--color-error)" />
-          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 22, margin: 0 }}>
-            Failed to load artifact details
-          </Heading>
-          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
-            The artifact may not exist, is still being processed, or the server is unavailable.
-          </Text>
-          <Link to="/packages" style={{ color: "var(--color-link)", fontSize: 14, textDecoration: "none" }}>
-            ← Back to libraries
-          </Link>
-        </Box>
-      </PageWrap>
-    );
-  }
-
   const tree = useMemo(() => (name ? buildClassTree(classes, name) : []), [classes, name]);
   const filteredTree = useMemo(() => filterClassTree(tree, treeSearchFilter), [tree, treeSearchFilter]);
 
@@ -1202,7 +1177,13 @@ const PackageDetailPage: React.FC = () => {
   const filteredOther = useMemo(() => filterArtifactList(otherArtifacts), [filterArtifactList, otherArtifacts]);
 
   const availableDomains = useMemo(() => {
-    const list: { id: PolyglotDomain; label: string; icon: string; count: number; color: string }[] = [];
+    const list: {
+      id: PolyglotDomain;
+      label: string;
+      icon: React.ComponentType<{ size?: number }>;
+      count: number;
+      color: string;
+    }[] = [];
     const mCount = classes.length;
     const sCount = sysmlArtifacts.length;
     const cCount = cadArtifacts.length;
@@ -1215,25 +1196,31 @@ const PackageDetailPage: React.FC = () => {
       (mCount > 0 ? 1 : 0) + (sCount > 0 ? 1 : 0) + (cCount > 0 ? 1 : 0) + (dCount > 0 ? 1 : 0) + (fCount > 0 ? 1 : 0);
 
     if (domainTypesPresent > 1 || totalCount > 0) {
-      list.push({ id: "all", label: "All", icon: "🌐", count: totalCount, color: "var(--color-accent-cyan, #06b6d4)" });
+      list.push({
+        id: "all",
+        label: "All",
+        icon: GlobeIcon,
+        count: totalCount,
+        color: "var(--color-accent-cyan, #06b6d4)",
+      });
     }
     if (mCount > 0) {
-      list.push({ id: "modelica", label: "Modelica", icon: "⚡", count: mCount, color: "#eab308" });
+      list.push({ id: "modelica", label: "Modelica", icon: FileCodeIcon, count: mCount, color: "#eab308" });
     }
     if (sCount > 0) {
-      list.push({ id: "sysml2", label: "SysML v2", icon: "📐", count: sCount, color: "#a855f7" });
+      list.push({ id: "sysml2", label: "SysML v2", icon: WorkflowIcon, count: sCount, color: "#a855f7" });
     }
     if (cCount > 0) {
-      list.push({ id: "cad", label: "3D CAD", icon: "🧊", count: cCount, color: "#06b6d4" });
+      list.push({ id: "cad", label: "3D CAD", icon: PackageIcon, count: cCount, color: "#06b6d4" });
     }
     if (dCount > 0) {
-      list.push({ id: "dataset", label: "Datasets", icon: "📊", count: dCount, color: "#3b82f6" });
+      list.push({ id: "dataset", label: "Datasets", icon: DatabaseIcon, count: dCount, color: "#3b82f6" });
     }
     if (fCount > 0) {
-      list.push({ id: "fmu", label: "FMUs", icon: "⚙️", count: fCount, color: "#f43f5e" });
+      list.push({ id: "fmu", label: "FMUs", icon: CpuIcon, count: fCount, color: "#f43f5e" });
     }
     if (oCount > 0 && domainTypesPresent > 1) {
-      list.push({ id: "other", label: "Files", icon: "📁", count: oCount, color: "#9ca3af" });
+      list.push({ id: "other", label: "Files", icon: FileIcon, count: oCount, color: "#9ca3af" });
     }
     return list;
   }, [
@@ -1289,8 +1276,9 @@ const PackageDetailPage: React.FC = () => {
       setManageModal(null);
       setYankReasonInput("");
       await fetchData();
-    } catch (err: any) {
-      setActionError(err.response?.data?.error || err.message || "Failed to update yank status");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setActionError(e.response?.data?.error || e.message || "Failed to update yank status");
     } finally {
       setActionLoading(false);
     }
@@ -1311,8 +1299,9 @@ const PackageDetailPage: React.FC = () => {
       setManageModal(null);
       setDeprecateReasonInput("");
       await fetchData();
-    } catch (err: any) {
-      setActionError(err.response?.data?.error || err.message || "Failed to update deprecation status");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setActionError(e.response?.data?.error || e.message || "Failed to update deprecation status");
     } finally {
       setActionLoading(false);
     }
@@ -1327,14 +1316,57 @@ const PackageDetailPage: React.FC = () => {
       setActionSuccess(`Ownership transfer request sent to @${transferTargetInput.trim()}.`);
       setManageModal(null);
       setTransferTargetInput("");
-    } catch (err: any) {
-      setActionError(err.response?.data?.error || err.message || "Failed to transfer ownership");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setActionError(e.response?.data?.error || e.message || "Failed to transfer ownership");
     } finally {
       setActionLoading(false);
     }
   };
 
   const description = packument?.description ?? rootClass?.description ?? null;
+
+  if (loading) {
+    return <PackageDetailSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <PageWrap style={{ justifyContent: "center", alignItems: "center" }}>
+        <Box
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            padding: 40,
+            textAlign: "center",
+          }}
+        >
+          <AlertIcon size={48} fill="var(--color-error)" />
+          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 22, margin: 0 }}>
+            Failed to load artifact details
+          </Heading>
+          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
+            The artifact may not exist, is still being processed, or the server is unavailable.
+          </Text>
+          <Link
+            to="/packages"
+            style={{
+              color: "var(--color-link)",
+              fontSize: 14,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <ArrowLeftIcon size={14} /> Back to libraries
+          </Link>
+        </Box>
+      </PageWrap>
+    );
+  }
 
   return (
     <PageWrap>
@@ -1395,19 +1427,22 @@ const PackageDetailPage: React.FC = () => {
           {/* Polyglot Domain Navigation Pills */}
           {availableDomains.length > 2 && (
             <DomainNavWrap>
-              {availableDomains.map((d) => (
-                <DomainPill
-                  key={d.id}
-                  $active={selectedDomain === d.id}
-                  $color={d.color}
-                  onClick={() => setSelectedDomain(d.id)}
-                  title={`${d.label} (${d.count})`}
-                >
-                  <span>{d.icon}</span>
-                  <span>{d.label}</span>
-                  <span className="domain-count">{d.count}</span>
-                </DomainPill>
-              ))}
+              {availableDomains.map((d) => {
+                const IconComp = d.icon;
+                return (
+                  <DomainPill
+                    key={d.id}
+                    $active={selectedDomain === d.id}
+                    $color={d.color}
+                    onClick={() => setSelectedDomain(d.id)}
+                    title={`${d.label} (${d.count})`}
+                  >
+                    <IconComp size={12} />
+                    <span>{d.label}</span>
+                    <span className="domain-count">{d.count}</span>
+                  </DomainPill>
+                );
+              })}
             </DomainNavWrap>
           )}
 
@@ -1444,7 +1479,9 @@ const PackageDetailPage: React.FC = () => {
               <>
                 {selectedDomain === "all" && availableDomains.length > 2 && (
                   <DomainSectionHeader>
-                    <span>⚡ Modelica Classes</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <FileCodeIcon size={13} /> Modelica Classes
+                    </span>
                     <span>{filteredTree.length}</span>
                   </DomainSectionHeader>
                 )}
@@ -1466,7 +1503,9 @@ const PackageDetailPage: React.FC = () => {
               <>
                 {selectedDomain === "all" && availableDomains.length > 2 && (
                   <DomainSectionHeader>
-                    <span>📐 SysML v2 Architecture</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <WorkflowIcon size={13} /> SysML v2 Architecture
+                    </span>
                     <span>{filteredSysml.length}</span>
                   </DomainSectionHeader>
                 )}
@@ -1499,7 +1538,9 @@ const PackageDetailPage: React.FC = () => {
               <>
                 {selectedDomain === "all" && availableDomains.length > 2 && (
                   <DomainSectionHeader>
-                    <span>🧊 3D CAD Models</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <PackageIcon size={13} /> 3D CAD Models
+                    </span>
                     <span>{filteredCad.length}</span>
                   </DomainSectionHeader>
                 )}
@@ -1540,7 +1581,9 @@ const PackageDetailPage: React.FC = () => {
               <>
                 {selectedDomain === "all" && availableDomains.length > 2 && (
                   <DomainSectionHeader>
-                    <span>📊 Datasets &amp; Tables</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <DatabaseIcon size={13} /> Datasets &amp; Tables
+                    </span>
                     <span>{filteredDatasets.length}</span>
                   </DomainSectionHeader>
                 )}
@@ -1573,7 +1616,9 @@ const PackageDetailPage: React.FC = () => {
               <>
                 {selectedDomain === "all" && availableDomains.length > 2 && (
                   <DomainSectionHeader>
-                    <span>⚙️ FMU Simulators</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <CpuIcon size={13} /> FMU Simulators
+                    </span>
                     <span>{filteredFmu.length}</span>
                   </DomainSectionHeader>
                 )}
@@ -1609,7 +1654,9 @@ const PackageDetailPage: React.FC = () => {
               <>
                 {selectedDomain === "all" && availableDomains.length > 2 && (
                   <DomainSectionHeader>
-                    <span>📁 Other Files</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <FileIcon size={13} /> Other Files
+                    </span>
                     <span>{filteredOther.length}</span>
                   </DomainSectionHeader>
                 )}
@@ -2191,9 +2238,20 @@ const PackageDetailPage: React.FC = () => {
                                 </Label>
                               )}
                             </Box>
-                            <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-                              {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
-                            </Text>
+                            <Box display="flex" alignItems="center" gap="12px">
+                              <Button
+                                size="small"
+                                variant="invisible"
+                                leadingVisual={GitCompareIcon}
+                                onClick={() => setTab("compare")}
+                                style={{ fontSize: 12, padding: "2px 8px" }}
+                              >
+                                Compare
+                              </Button>
+                              <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
+                                {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
+                              </Text>
+                            </Box>
                           </Box>
 
                           {isVManifestYanked && (
@@ -2234,6 +2292,18 @@ const PackageDetailPage: React.FC = () => {
                     </Text>
                   )}
                 </GlassCard>
+              </>
+            )}
+
+            {/* Compare tab */}
+            {activeTab === "compare" && name && version && (
+              <>
+                <SectionTitle as="h3">Polyglot Release Comparison</SectionTitle>
+                <Text as="p" style={{ color: "var(--color-text-muted)", marginBottom: 24, fontSize: 14 }}>
+                  Inspect multi-domain architectural, equation, CAD geometry, and parameter shifts between package
+                  releases.
+                </Text>
+                <PolyglotVersionDiffView packageName={name} currentVersion={version} allVersions={versionList} />
               </>
             )}
 

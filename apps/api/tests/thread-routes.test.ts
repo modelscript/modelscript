@@ -77,4 +77,44 @@ test("Digital Thread Hypergraph Explorer REST Endpoints", async (t) => {
 
     assert.strictEqual(diagRes.body.status, "synced");
   });
+
+  await t.test("POST /api/v1/threads/trade-study evaluates non-dominated Pareto frontier", async () => {
+    const res = await request(app)
+      .post("/api/v1/threads/trade-study")
+      .send({
+        studyName: "DronePowertrainTrade",
+        objectives: [
+          { name: "mass", sense: "minimize", unit: "kg" },
+          { name: "efficiency", sense: "maximize", unit: "%" },
+        ],
+        candidates: [
+          {
+            id: "c1",
+            name: "High Torque Direct Drive",
+            parameters: { vBus: 48 },
+            objectives: { mass: 14.5, efficiency: 91.2 },
+          },
+          {
+            id: "c2",
+            name: "Lightweight High Speed",
+            parameters: { vBus: 24 },
+            objectives: { mass: 9.8, efficiency: 86.4 },
+          },
+          {
+            id: "c3",
+            name: "Balanced Hybrid Geared",
+            parameters: { vBus: 36 },
+            objectives: { mass: 11.2, efficiency: 89.8 },
+          },
+        ],
+      })
+      .expect(200);
+
+    assert.strictEqual(res.body.studyName, "DronePowertrainTrade");
+    assert.strictEqual(res.body.totalCandidates, 3);
+    assert.ok(Array.isArray(res.body.paretoFront));
+    assert.ok(res.body.paretoFront.length > 0);
+    assert.ok(res.body.kneePoint);
+    assert.ok(typeof res.body.hypervolumeEstimate === "number");
+  });
 });

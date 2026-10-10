@@ -294,6 +294,18 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
                     });
                   }
                 }
+                if (userId) {
+                  database.createNotification(userId, userId, "simulation_completed", null, {
+                    jobId: jobRecord.jobId,
+                    dbJobId,
+                    name: name || caeSpec.solver,
+                    domain: "cae",
+                    solver: caeSpec.solver,
+                    duration: ((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(2),
+                    profile: profile.id,
+                    status: "completed",
+                  });
+                }
               }
             } else {
               jobRecord.status = "failed";
@@ -303,6 +315,16 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
                 database.updateJobStatus(dbJobId, "FAILED");
                 if (userId) {
                   database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE solver failed");
+                  database.createNotification(userId, userId, "simulation_failed", null, {
+                    jobId: jobRecord.jobId,
+                    dbJobId,
+                    name: name || caeSpec.solver,
+                    domain: "cae",
+                    solver: caeSpec.solver,
+                    error: jobRecord.error,
+                    profile: profile.id,
+                    status: "failed",
+                  });
                 }
               }
             }
@@ -314,6 +336,16 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
               database.updateJobStatus(dbJobId, "FAILED");
               if (userId) {
                 database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE execution error");
+                database.createNotification(userId, userId, "simulation_failed", null, {
+                  jobId: jobRecord.jobId,
+                  dbJobId,
+                  name: name || caeSpec.solver,
+                  domain: "cae",
+                  solver: caeSpec.solver,
+                  error: jobRecord.error,
+                  profile: profile.id,
+                  status: "failed",
+                });
               }
             }
           }
@@ -431,7 +463,16 @@ getErrorString();
                     profile: profile.id,
                     ...usage,
                   });
-                  database.createNotification(userId, userId, "simulation_completed");
+                  database.createNotification(userId, userId, "simulation_completed", null, {
+                    jobId: jobRecord.jobId,
+                    dbJobId,
+                    name,
+                    domain: "modelica",
+                    engine: isNative ? "modelscript" : "omc",
+                    duration: ((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(2),
+                    profile: profile.id,
+                    status: "completed",
+                  });
                 }
               }
             } else {
@@ -447,6 +488,16 @@ getErrorString();
                 database.updateJobStatus(dbJobId, "FAILED");
                 if (userId) {
                   database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation failed");
+                  database.createNotification(userId, userId, "simulation_failed", null, {
+                    jobId: jobRecord.jobId,
+                    dbJobId,
+                    name,
+                    domain: "modelica",
+                    engine: isNative ? "modelscript" : "omc",
+                    error: jobRecord.error,
+                    profile: profile.id,
+                    status: "failed",
+                  });
                 }
               }
             }
@@ -458,6 +509,16 @@ getErrorString();
               database.updateJobStatus(dbJobId, "FAILED");
               if (userId) {
                 database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation error");
+                database.createNotification(userId, userId, "simulation_failed", null, {
+                  jobId: jobRecord.jobId,
+                  dbJobId,
+                  name,
+                  domain: "modelica",
+                  engine: payload.engine ?? "modelscript",
+                  error: jobRecord.error,
+                  profile: profile.id,
+                  status: "failed",
+                });
               }
             }
           }

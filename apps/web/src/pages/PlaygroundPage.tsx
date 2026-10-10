@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, CopyIcon, DownloadIcon, FileIcon, SearchIcon, ShareIcon, ZapIcon } from "@primer/octicons-react";
+import {
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
+  FileIcon,
+  PulseIcon,
+  RepoForkedIcon,
+  SearchIcon,
+  ShareIcon,
+  ZapIcon,
+} from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Dialog, IconButton } from "@primer/react";
 import React, { useContext, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -18,7 +28,7 @@ const PlaygroundContainer = styled.div`
   flex-direction: column;
   width: 100vw;
   height: 100vh;
-  background-color: var(--color-canvas-default, #0d1117);
+  background-color: var(--color-canvas-default);
   overflow: hidden;
   position: relative;
 `;
@@ -26,8 +36,8 @@ const PlaygroundContainer = styled.div`
 const PlaygroundNavbar = styled.header`
   height: 48px;
   min-height: 48px;
-  background-color: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background-color: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -35,18 +45,33 @@ const PlaygroundNavbar = styled.header`
   gap: 12px;
   z-index: 20;
   box-sizing: border-box;
+
+  @media (max-width: 768px) {
+    padding: 0 8px;
+    gap: 6px;
+  }
 `;
 
 const NavLeft = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+
+  @media (max-width: 768px) {
+    gap: 6px;
+  }
 `;
 
 const NavRight = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    gap: 4px;
+  }
 `;
 
 const BrandLink = styled(Link)`
@@ -75,6 +100,16 @@ const Badge = styled.span`
   color: var(--color-accent-cyan, #06b6d4);
   border: 1px solid rgba(6, 182, 212, 0.25);
   font-weight: 600;
+
+  @media (max-width: 600px) {
+    display: none;
+  }
+`;
+
+const NavText = styled.span`
+  @media (max-width: 640px) {
+    display: none;
+  }
 `;
 
 const EditorArea = styled.main`
@@ -344,7 +379,9 @@ export const PlaygroundPage: React.FC = () => {
             />
             <span>ModelScript</span>
           </BrandLink>
-          <Badge>⚡ Playground</Badge>
+          <Badge style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <PulseIcon size={12} /> Playground
+          </Badge>
 
           {fromArtifactParam && (
             <Link
@@ -352,7 +389,7 @@ export const PlaygroundPage: React.FC = () => {
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "4px",
+                gap: "5px",
                 fontSize: "11px",
                 fontFamily: "var(--font-mono, monospace)",
                 padding: "2px 8px",
@@ -365,7 +402,7 @@ export const PlaygroundPage: React.FC = () => {
               }}
               title={`Forked from Artifact #${fromArtifactParam}`}
             >
-              ⚡ Fork of #{fromArtifactParam}
+              <RepoForkedIcon size={12} /> Fork of #{fromArtifactParam}
             </Link>
           )}
 
@@ -408,7 +445,7 @@ export const PlaygroundPage: React.FC = () => {
           {/* Export Menu */}
           <ActionMenu>
             <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
-              Export
+              <NavText>Export</NavText>
             </ActionMenu.Button>
             <ActionMenu.Overlay>
               <ActionList>
@@ -434,7 +471,7 @@ export const PlaygroundPage: React.FC = () => {
 
           {/* Share Button */}
           <Button size="small" variant="default" leadingVisual={ShareIcon} onClick={() => setShareModalOpen(true)}>
-            Share
+            <NavText>Share</NavText>
           </Button>
 
           {/* Publish / Open in IDE */}

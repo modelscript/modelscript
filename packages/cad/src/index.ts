@@ -159,3 +159,27 @@ export {
   type CadAnnotationConfig,
   type DynamicBindingConfig,
 } from "./binding-writer.js";
+
+// Large-Assembly Performance & Instancing
+export {
+  AssemblyClusteringEngine,
+  InstanceBatchBuffer,
+  composeTransformMatrixDirect,
+  type ClusteringOptions,
+  type ClusteringResult,
+  type InstanceCluster,
+  type InstancedPartDescriptor,
+} from "./instancing.js";
+
+// Hierarchical Spatial Partitioning & Frustum Culling (BVH)
+export { AssemblyBVH, type BVHItem, type BVHNode, type FrustumPlane, type RaycastHit } from "./bvh.js";
+
+// Dynamic Level of Detail (LoD)
+export {
+  LoDTier,
+  computeProjectedScreenDiameter,
+  generateBoxProxyMesh,
+  selectLoDTier,
+  type CameraViewportConfig,
+  type LoDThresholds,
+} from "./lod.js";

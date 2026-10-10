@@ -12,5 +12,6 @@ export { AnimationTimeline } from "./animation-timeline";
 export { default as CadViewer } from "./cad-viewer";
 export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./cad-viewer";
 export { CaeTelemetryPanel } from "./cae-telemetry-panel";
+export { InstancedCadAssembly, type InstancedCadAssemblyProps } from "./instanced-cad-assembly";
 export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";
 export { VrButton, default as VrMode } from "./vr-mode";

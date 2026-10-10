@@ -73,14 +73,12 @@ export default function OpenFileDropzone({
       {...getRootProps()}
       style={{
         border: "2px dashed",
-        borderColor: isDragActive ? "var(--color-accent-emphasis, #0969da)" : "var(--color-border-default, #30363d)",
+        borderColor: isDragActive ? "var(--color-accent-emphasis)" : "var(--color-border-default)",
         borderRadius: 6,
         padding: 32,
         textAlign: "center",
         cursor: "pointer",
-        backgroundColor: isDragActive
-          ? "var(--color-accent-subtle, rgba(56,139,253,0.1))"
-          : "var(--color-canvas-subtle, #161b22)",
+        backgroundColor: isDragActive ? "var(--color-accent-subtle)" : "var(--color-canvas-subtle)",
         transition: "all 0.2s",
       }}
     >

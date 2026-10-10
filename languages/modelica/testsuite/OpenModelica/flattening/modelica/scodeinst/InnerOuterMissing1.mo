@@ -1,7 +1,6 @@
 // name: InnerOuterMissing1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model InnerOuterMissing1

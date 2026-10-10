@@ -2,6 +2,7 @@
 
 /* eslint-disable */
 import {
+  BeakerIcon,
   BookIcon,
   CheckCircleIcon,
   CircleIcon,
@@ -10,12 +11,16 @@ import {
   ImageIcon,
   MentionIcon,
   PackageIcon,
+  PaperclipIcon,
   PersonIcon,
+  PinIcon,
   PulseIcon,
   ServerIcon,
   SlidersIcon,
   SmileyIcon,
+  SparkleIcon,
   XIcon,
+  ZapIcon,
 } from "@primer/octicons-react";
 import { Heading, IconButton, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -45,9 +50,10 @@ const TweetButton = styled.button`
   border: none;
   border-radius: 8px;
   padding: 8px 18px;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
-  font-family: var(--font-mono);
+  font-family: inherit;
+  letter-spacing: -0.01em;
   cursor: pointer;
   box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
   transition: all 0.2s ease;
@@ -61,6 +67,42 @@ const TweetButton = styled.button`
     opacity: 0.5;
     cursor: not-allowed;
     box-shadow: none;
+    background: var(--color-btn-disabled-bg, rgba(255, 255, 255, 0.08));
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-subtle);
+  }
+`;
+
+const CommandPill = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--color-text-heading);
+    background: var(--surface-row-hover, rgba(255, 255, 255, 0.08));
+    border-color: var(--color-border-strong, rgba(255, 255, 255, 0.25));
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+
+  .pill-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-accent-cyan);
+    opacity: 0.85;
   }
 `;
 
@@ -897,8 +939,19 @@ export default function ComposeBox({
                 borderRadius="8px"
                 backgroundColor="rgba(255, 255, 255, 0.03)"
               >
-                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                  📍 Pinned to <b>{pendingPin.fieldName}</b> = {pendingPin.scalarValue.toFixed(2)}
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-text-muted)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
+                  <span>
+                    Pinned to <b>{pendingPin.fieldName}</b> = {pendingPin.scalarValue.toFixed(2)}
+                  </span>
                 </span>
               </Box>
             )}
@@ -1091,68 +1144,48 @@ export default function ComposeBox({
               }}
             >
               <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    background: "rgba(139, 92, 246, 0.15)",
-                    color: "var(--color-accent-purple)",
-                    border: "1px solid rgba(139, 92, 246, 0.3)",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                  }}
+                <CommandPill
+                  type="button"
                   onClick={() => setContent(content ? `${content} /synthesize model ` : "/synthesize model ")}
+                  title="Generate a physics-informed Modelica or DAE model"
                 >
-                  ✨ /synthesize model
-                </span>
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    background: "rgba(6, 182, 212, 0.12)",
-                    color: "var(--color-accent-cyan)",
-                    border: "1px solid rgba(6, 182, 212, 0.3)",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                  }}
+                  <span className="pill-icon">
+                    <SparkleIcon size={11} />
+                  </span>
+                  <span>/synthesize model</span>
+                </CommandPill>
+                <CommandPill
+                  type="button"
                   onClick={() =>
                     setContent(content ? `${content} /benchmark solver=cvode ` : "/benchmark solver=cvode ")
                   }
+                  title="Run numerical benchmark on SUNDIALS CVODE solver"
                 >
-                  ⚡ /benchmark solver
-                </span>
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    background: "rgba(16, 185, 129, 0.12)",
-                    color: "var(--color-status-verified)",
-                    border: "1px solid rgba(16, 185, 129, 0.3)",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                  }}
+                  <span className="pill-icon">
+                    <ZapIcon size={11} />
+                  </span>
+                  <span>/benchmark solver</span>
+                </CommandPill>
+                <CommandPill
+                  type="button"
                   onClick={() => setContent(content ? `${content} /analyze dae_index=1 ` : "/analyze dae_index=1 ")}
+                  title="Perform structural DAE index analysis"
                 >
-                  🔬 /analyze DAE
-                </span>
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    background: "var(--color-btn-secondary-bg)",
-                    color: "var(--color-text-secondary)",
-                    border: "1px solid var(--color-border-glass)",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                  }}
+                  <span className="pill-icon">
+                    <BeakerIcon size={11} />
+                  </span>
+                  <span>/analyze DAE</span>
+                </CommandPill>
+                <CommandPill
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
+                  title="Attach CAD STEP model or FMU co-simulation container"
                 >
-                  📎 Attach CAD/FMU
-                </span>
+                  <span className="pill-icon">
+                    <PaperclipIcon size={11} />
+                  </span>
+                  <span>Attach CAD/FMU</span>
+                </CommandPill>
               </Box>
               <Box display="flex" justifyContent="space-between" alignItems="center">
                 <Box display="flex" gap={2} alignItems="center">

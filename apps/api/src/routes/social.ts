@@ -868,8 +868,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.get("/notifications", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const limit = Number(req.query.limit) || 20;
+    const category = typeof req.query.category === "string" ? req.query.category : undefined;
     try {
-      const notifications = database.getNotifications(userId, limit);
+      const notifications = database.getNotifications(userId, limit, category);
       const unreadCount = database.getUnreadNotificationCount(userId);
       res.json({ notifications, unreadCount });
     } catch (err) {
@@ -882,8 +883,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/notifications/read", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
+    const category = typeof req.body?.category === "string" ? req.body.category : undefined;
     try {
-      database.markNotificationsRead(userId);
+      database.markNotificationsRead(userId, category);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to mark notifications read" });

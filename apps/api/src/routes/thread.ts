@@ -11,9 +11,13 @@ import {
   DigitalThreadHypergraph,
   DOMAIN_INDEX_TO_NAME,
   DOMAIN_NAME_TO_INDEX,
+  PhysicsSimplexReconciler,
   ThreadDomain,
+  TradeStudyEngine,
 } from "@modelscript/runtime";
-import { Router } from "express";
+import { Router, type Response } from "express";
+import crypto from "node:crypto";
+import type { Database, ThreadAuditLogEntry, ThreadProposal } from "../database.js";
 
 export interface ThreadMetadata {
   name?: string;
@@ -23,10 +27,55 @@ export interface ThreadMetadata {
   properties?: Record<string, any>;
 }
 
-export function threadRouter(externalHypergraph?: DigitalThreadHypergraph): Router {
+export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: Database): Router {
   const router = Router();
-  const hypergraph = externalHypergraph ?? new DigitalThreadHypergraph();
+  let hypergraph: DigitalThreadHypergraph;
+  let db: Database | undefined;
+
+  if (arg1 instanceof DigitalThreadHypergraph) {
+    hypergraph = arg1;
+    db = arg2;
+  } else if (arg1 && typeof (arg1 as any).createThreadProposal === "function") {
+    db = arg1 as Database;
+    hypergraph = new DigitalThreadHypergraph();
+  } else {
+    hypergraph = new DigitalThreadHypergraph();
+    db = arg2;
+  }
+
+  const memProposals: ThreadProposal[] = [];
+  const memAuditLogs: ThreadAuditLogEntry[] = [];
   const metadataMap = new Map<string, ThreadMetadata>();
+  const sseClients = new Set<Response>();
+
+  function broadcastThreadEvent(event: string, data: unknown): void {
+    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.write(payload);
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+  }
+
+  // ── GET /api/v1/threads/stream ────────────────────────────────────────
+  router.get("/stream", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    if (typeof (res as any).flushHeaders === "function") {
+      (res as any).flushHeaders();
+    }
+
+    sseClients.add(res);
+    res.write(`event: init\ndata: ${JSON.stringify({ status: "connected", timestamp: new Date().toISOString() })}\n\n`);
+
+    req.on("close", () => {
+      sseClients.delete(res);
+    });
+  });
+
   const conflictRegistry = new Map<
     string,
     {
@@ -192,30 +241,43 @@ export function threadRouter(externalHypergraph?: DigitalThreadHypergraph): Rout
     const conflictId = req.body.conflictId || "conflict_bus_voltage";
     const entry = conflictRegistry.get(conflictId);
 
-    if (entry) {
-      const isConflicted = hypergraph.isConflicted(entry.slot);
-      res.json({
-        conflictId,
-        status: isConflicted ? "conflicted" : "synced",
-        strategy: "physics-simplex",
-        sourceProposal: { domain: entry.sourceDomain, value: entry.sourceValue, unit: entry.sourceUnit },
-        targetProposal: { domain: entry.targetDomain, value: entry.targetValue, unit: entry.targetUnit },
-        physicsEnvelope: { min: entry.min, max: entry.max },
-        simplexConsensus: (entry.sourceValue + entry.targetValue) / 2,
-        recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
-      });
-      return;
-    }
+    const sourceProposal = entry
+      ? { domain: entry.sourceDomain, value: entry.sourceValue, unit: entry.sourceUnit }
+      : { domain: "sysml2", value: 24.0, unit: "V" };
+    const targetProposal = entry
+      ? { domain: entry.targetDomain, value: entry.targetValue, unit: entry.targetUnit }
+      : { domain: "modelica", value: 12.0, unit: "V" };
+    const envelope = entry ? { min: entry.min, max: entry.max } : { min: 10.0, max: 48.0 };
+
+    const simplexRes = PhysicsSimplexReconciler.reconcile({
+      name: conflictId,
+      parameters: {
+        targetParam: {
+          name: "targetParam",
+          unit: sourceProposal.unit,
+          bounds: envelope,
+          proposals: [
+            { domain: sourceProposal.domain, value: sourceProposal.value, unit: sourceProposal.unit, weight: 1.0 },
+            { domain: targetProposal.domain, value: targetProposal.value, unit: targetProposal.unit, weight: 1.0 },
+          ],
+        },
+      },
+    });
+
+    const isConflicted = entry ? hypergraph.isConflicted(entry.slot) : true;
+    const consensus =
+      simplexRes.parameters["targetParam"]?.optimalValue ?? (sourceProposal.value + targetProposal.value) / 2;
 
     res.json({
       conflictId,
-      status: "conflicted",
+      status: isConflicted ? "conflicted" : "synced",
       strategy: "physics-simplex",
-      sourceProposal: { domain: "sysml2", value: 24.0, unit: "V" },
-      targetProposal: { domain: "modelica", value: 12.0, unit: "V" },
-      physicsEnvelope: { min: 10.0, max: 48.0 },
-      simplexConsensus: 18.0,
-      recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
+      sourceProposal,
+      targetProposal,
+      physicsEnvelope: envelope,
+      simplexConsensus: consensus,
+      recommendation: simplexRes.recommendation || "Apply physics-simplex midpoint or narrow to target specifications.",
+      activeConstraints: simplexRes.activeConstraints,
     });
   });
 
@@ -229,12 +291,27 @@ export function threadRouter(externalHypergraph?: DigitalThreadHypergraph): Rout
     let resolvedValue = customValue ?? 18.0;
 
     if (entry) {
-      if (strategy === "source-wins") resolvedValue = entry.sourceValue;
-      else if (strategy === "target-wins") resolvedValue = entry.targetValue;
-      else if (strategy === "physics-simplex") {
-        resolvedValue = (entry.sourceValue + entry.targetValue) / 2;
-        if (resolvedValue < entry.min) resolvedValue = entry.min;
-        if (resolvedValue > entry.max) resolvedValue = entry.max;
+      if (strategy === "source-wins") {
+        resolvedValue = entry.sourceValue;
+      } else if (strategy === "target-wins") {
+        resolvedValue = entry.targetValue;
+      } else if (strategy === "physics-simplex") {
+        const simplexRes = PhysicsSimplexReconciler.reconcile({
+          name: conflictId,
+          parameters: {
+            resolvedParam: {
+              name: "resolvedParam",
+              unit: entry.sourceUnit,
+              bounds: { min: entry.min, max: entry.max },
+              proposals: [
+                { domain: entry.sourceDomain, value: entry.sourceValue, unit: entry.sourceUnit, weight: 1.0 },
+                { domain: entry.targetDomain, value: entry.targetValue, unit: entry.targetUnit, weight: 1.0 },
+              ],
+            },
+          },
+        });
+        resolvedValue =
+          simplexRes.parameters["resolvedParam"]?.optimalValue ?? (entry.sourceValue + entry.targetValue) / 2;
       }
 
       hypergraph.clearConflict(entry.slot);
@@ -244,6 +321,16 @@ export function threadRouter(externalHypergraph?: DigitalThreadHypergraph): Rout
       if (strategy === "target-wins") resolvedValue = 12.0;
     }
 
+    // Broadcast live collaborative thread mutation to all connected clients
+    broadcastThreadEvent("thread_updated", {
+      conflictId,
+      status: "resolved",
+      strategy,
+      resolvedValue,
+      threadId: entry?.slot,
+      timestamp: new Date().toISOString(),
+    });
+
     res.json({
       conflictId,
       status: "resolved",
@@ -251,6 +338,257 @@ export function threadRouter(externalHypergraph?: DigitalThreadHypergraph): Rout
       resolvedValue,
       isSynchronized: true,
     });
+  });
+
+  // ── POST /api/v1/threads/trade-study ──────────────────────────────────
+  router.post("/trade-study", (req, res) => {
+    const studyName = req.body.studyName || "PowertrainTradeStudy";
+    const objectives = req.body.objectives || [
+      { name: "mass", sense: "minimize", unit: "kg" },
+      { name: "efficiency", sense: "maximize", unit: "%" },
+    ];
+    const candidates = req.body.candidates || [
+      {
+        id: "cand_1",
+        name: "High Torque Direct Drive",
+        parameters: { vBus: 48, ratio: 1.0 },
+        objectives: { mass: 14.5, efficiency: 91.2 },
+      },
+      {
+        id: "cand_2",
+        name: "Lightweight High Speed",
+        parameters: { vBus: 24, ratio: 4.5 },
+        objectives: { mass: 9.8, efficiency: 86.4 },
+      },
+      {
+        id: "cand_3",
+        name: "Balanced Hybrid Geared",
+        parameters: { vBus: 36, ratio: 2.5 },
+        objectives: { mass: 11.2, efficiency: 89.8 },
+      },
+    ];
+
+    const engine = new TradeStudyEngine(studyName, objectives);
+    engine.addCandidates(candidates);
+    const result = engine.evaluate();
+
+    res.json(result);
+  });
+
+  function getProposals(threadId?: string, status?: string): ThreadProposal[] {
+    if (db) return db.getThreadProposals(threadId, status);
+    return memProposals.filter((p) => {
+      if (threadId && p.thread_id !== threadId) return false;
+      if (status && p.status !== status) return false;
+      return true;
+    });
+  }
+
+  function getProposalById(id: number): ThreadProposal | undefined {
+    if (db) return db.getThreadProposalById(id);
+    return memProposals.find((p) => p.id === id);
+  }
+
+  function createProposal(p: {
+    threadId: string;
+    title: string;
+    description?: string | undefined;
+    proposedBy: string;
+    diffSummary: string | object;
+    safetyStandard?: string | undefined;
+  }): ThreadProposal {
+    if (db) return db.createThreadProposal(p);
+
+    const diffStr = typeof p.diffSummary === "object" ? JSON.stringify(p.diffSummary) : p.diffSummary;
+    const newId = memProposals.length + 1;
+    const entry: ThreadProposal = {
+      id: newId,
+      thread_id: p.threadId,
+      title: p.title,
+      description: p.description || null,
+      status: "open",
+      proposed_by: p.proposedBy,
+      diff_summary: diffStr,
+      created_at: new Date().toISOString(),
+      resolved_at: null,
+      resolved_by: null,
+      review_comment: null,
+    };
+    memProposals.unshift(entry);
+    logAudit({
+      threadId: p.threadId,
+      proposalId: newId,
+      action: "proposal_created",
+      actor: p.proposedBy,
+      safetyStandard: p.safetyStandard || "ISO-26262",
+      metadata: { title: p.title, diffSummary: p.diffSummary },
+    });
+    return entry;
+  }
+
+  function reviewProposal(
+    id: number,
+    status: "approved" | "rejected" | "applied",
+    resolvedBy: string,
+    comment?: string,
+    safetyStandard?: string,
+  ): ThreadProposal | undefined {
+    if (db) return db.reviewThreadProposal(id, status, resolvedBy, comment, safetyStandard);
+
+    const p = memProposals.find((x) => x.id === id);
+    if (!p) return undefined;
+    p.status = status;
+    p.resolved_at = new Date().toISOString();
+    p.resolved_by = resolvedBy;
+    p.review_comment = comment || null;
+
+    logAudit({
+      threadId: p.thread_id,
+      proposalId: id,
+      action: `proposal_${status}`,
+      actor: resolvedBy,
+      safetyStandard: safetyStandard || "ISO-26262",
+      metadata: { comment, newStatus: status },
+    });
+    return p;
+  }
+
+  function logAudit(entry: {
+    threadId: string;
+    proposalId?: number | null;
+    action: string;
+    actor: string;
+    safetyStandard?: string | null;
+    metadata?: string | object;
+  }): ThreadAuditLogEntry {
+    if (db) return db.logThreadAudit(entry);
+
+    const last = memAuditLogs.filter((x) => x.thread_id === entry.threadId).slice(-1)[0];
+    const prevChecksum = last?.checksum || "GENESIS_ROOT";
+    const metaStr = entry.metadata
+      ? typeof entry.metadata === "object"
+        ? JSON.stringify(entry.metadata)
+        : entry.metadata
+      : null;
+    const raw = `${prevChecksum}:${entry.threadId}:${entry.proposalId ?? ""}:${entry.action}:${entry.actor}:${entry.safetyStandard ?? ""}:${metaStr ?? ""}`;
+    const checksum = crypto.createHash("sha256").update(raw).digest("hex");
+
+    const newLog: ThreadAuditLogEntry = {
+      id: memAuditLogs.length + 1,
+      thread_id: entry.threadId,
+      proposal_id: entry.proposalId ?? null,
+      action: entry.action,
+      actor: entry.actor,
+      safety_standard: entry.safetyStandard ?? null,
+      checksum,
+      metadata: metaStr,
+      created_at: new Date().toISOString(),
+    };
+    memAuditLogs.push(newLog);
+    return newLog;
+  }
+
+  function getAuditLogs(threadId?: string): ThreadAuditLogEntry[] {
+    if (db) return db.getThreadAuditLogs(threadId);
+    if (threadId) return memAuditLogs.filter((x) => x.thread_id === threadId);
+    return [...memAuditLogs];
+  }
+
+  function verifyAuditChain(threadId: string): { valid: boolean; totalEntries: number; brokenAtId?: number } {
+    if (db) return db.verifyThreadAuditChain(threadId);
+    const logs = memAuditLogs.filter((x) => x.thread_id === threadId);
+    let prevChecksum = "GENESIS_ROOT";
+    for (const log of logs) {
+      const raw = `${prevChecksum}:${log.thread_id}:${log.proposal_id ?? ""}:${log.action}:${log.actor}:${log.safety_standard ?? ""}:${log.metadata ?? ""}`;
+      const expected = crypto.createHash("sha256").update(raw).digest("hex");
+      if (log.checksum !== expected) {
+        return { valid: false, totalEntries: logs.length, brokenAtId: log.id };
+      }
+      prevChecksum = log.checksum;
+    }
+    return { valid: true, totalEntries: logs.length };
+  }
+
+  // ── POST /api/v1/threads/proposals ────────────────────────────────────
+  router.post("/proposals", (req, res) => {
+    const { threadId, title, description, diffSummary, safetyStandard } = req.body;
+    if (!threadId || !title) {
+      return res.status(400).json({ error: "Missing required fields: threadId, title" });
+    }
+    const proposedBy = (req as any).user?.username || (req as any).user?.email || req.body.proposedBy || "engineer";
+    const proposal = createProposal({
+      threadId: String(threadId),
+      title: String(title),
+      description: description ? String(description) : undefined,
+      proposedBy,
+      diffSummary: diffSummary || {},
+      safetyStandard: safetyStandard || "ISO-26262",
+    });
+
+    broadcastThreadEvent("proposal_created", {
+      proposal,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(201).json({ proposal });
+  });
+
+  // ── GET /api/v1/threads/proposals ─────────────────────────────────────
+  router.get("/proposals", (req, res) => {
+    const threadId = req.query.threadId as string | undefined;
+    const status = req.query.status as string | undefined;
+    const proposals = getProposals(threadId, status);
+    res.json({ proposals });
+  });
+
+  // ── GET /api/v1/threads/proposals/:id ─────────────────────────────────
+  router.get("/proposals/:id", (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const proposal = getProposalById(id);
+    if (!proposal) {
+      return res.status(404).json({ error: `Proposal ${req.params.id} not found` });
+    }
+    const auditLogs = getAuditLogs(proposal.thread_id).filter((x) => x.proposal_id === id);
+    res.json({ proposal, auditLogs });
+  });
+
+  // ── POST /api/v1/threads/proposals/:id/review ─────────────────────────
+  router.post("/proposals/:id/review", (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const { status, comment, safetyStandard } = req.body;
+    if (!["approved", "rejected", "applied"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be 'approved', 'rejected', or 'applied'." });
+    }
+    const resolvedBy = (req as any).user?.username || (req as any).user?.email || req.body.resolvedBy || "reviewer";
+    const updated = reviewProposal(id, status, resolvedBy, comment, safetyStandard);
+    if (!updated) {
+      return res.status(404).json({ error: `Proposal ${req.params.id} not found` });
+    }
+
+    broadcastThreadEvent("proposal_reviewed", {
+      proposal: updated,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({ proposal: updated });
+  });
+
+  // ── GET /api/v1/threads/audit-log ─────────────────────────────────────
+  router.get("/audit-log", (req, res) => {
+    const threadId = req.query.threadId as string | undefined;
+    const auditLogs = getAuditLogs(threadId);
+    const verification = threadId ? verifyAuditChain(threadId) : { valid: true, totalEntries: auditLogs.length };
+    res.json({ auditLogs, verification });
+  });
+
+  // ── GET /api/v1/threads/audit-log/verify ──────────────────────────────
+  router.get("/audit-log/verify", (req, res) => {
+    const threadId = req.query.threadId as string | undefined;
+    if (!threadId) {
+      return res.status(400).json({ error: "threadId is required to verify cryptographic audit chain" });
+    }
+    const verification = verifyAuditChain(threadId);
+    res.json(verification);
   });
 
   return router;

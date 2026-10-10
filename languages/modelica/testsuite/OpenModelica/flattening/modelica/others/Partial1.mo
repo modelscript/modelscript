@@ -1,7 +1,6 @@
 // name:     Partial1
 // keywords: partial
 // status:   incorrect
-// xfail:    true
 //
 // This is a test of the `partial' keyword.  The class `A' is declared
 // as `partial' which means that it cannot be instantiated.

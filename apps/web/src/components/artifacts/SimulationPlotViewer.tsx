@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { DownloadIcon, GraphIcon, PlayIcon } from "@primer/octicons-react";
+import { DownloadIcon, GraphIcon, PlayIcon, SearchIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import Papa from "papaparse";
 import React, { useEffect, useMemo, useState } from "react";
@@ -212,8 +212,12 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
           {(left !== "dataMin" || right !== "dataMax") && (
-            <Button size="small" onClick={zoomOut} style={{ color: "#38bdf8" }}>
-              🔍 Reset Zoom
+            <Button
+              size="small"
+              onClick={zoomOut}
+              style={{ color: "#38bdf8", display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              <SearchIcon size={12} /> Reset Zoom
             </Button>
           )}
           <Button

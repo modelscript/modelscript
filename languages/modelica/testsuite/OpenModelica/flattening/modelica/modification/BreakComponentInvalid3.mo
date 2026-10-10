@@ -20,6 +20,7 @@ end BreakComponentInvalid3;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid3.mo:7:3-7:23:writable] Error: Variable x in package P is not constant.
 // [OpenModelica/flattening/modelica/modification/BreakComponentInvalid3.mo:15:13-15:20:writable] Error: Modified element x not found in class A.
 //
 // Execution failed!

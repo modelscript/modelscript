@@ -74,10 +74,19 @@ export interface ModificationArg {
   readonly redeclaredClassPrefixes?: string;
   /** For redeclarations: the new type specifier. */
   readonly redeclaredTypeSpecifier?: string;
+  /** For redeclarations: whether it redeclares as a component or class. */
+  readonly redeclaredKind?: "component" | "class";
   /** For redeclarations: the raw array dimensions of the new type specifier. */
   readonly redeclaredArrayDimensionsRaw?: any[];
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
   readonly evaluationScopeId?: number;
+  /** Exact text of the modification (e.g. '= 30', ' = 30', '(x = 2.0)'). */
+  readonly modText?: string;
+  /** Line and column position of the modifier. */
+  readonly modPosition?: {
+    startPosition?: { row: number; column: number };
+    endPosition?: { row: number; column: number };
+  };
 }
 
 /**

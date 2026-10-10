@@ -1,7 +1,6 @@
 // name: ConditionInvalidType1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model ConditionInvalidType1

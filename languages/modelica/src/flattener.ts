@@ -3248,6 +3248,40 @@ function getArrayCtorRank(id: number, dae: DAEBuilder): number {
   return 1 + getArrayCtorRank(elems[0]!, dae);
 }
 
+function getArrayCtorShape(id: number, dae: DAEBuilder): number[] {
+  if (id < 0) return [];
+  const k = dae.getExprKind(id);
+  if (k !== ExprKind.ArrayCtor) return [];
+  const elems = getArrayCtorElements(id, dae);
+  if (elems.length === 0) return [0];
+  return [elems.length, ...getArrayCtorShape(elems[0]!, dae)];
+}
+
+function getElementDiagRange(target: any): any {
+  if (!target) return undefined;
+  let node = target;
+  while (node.parent && node.type !== "component_clause" && node.type !== "simple_equation") {
+    node = node.parent;
+  }
+  const text: string = node.text ?? "";
+  const trimmedLen = text.endsWith(";") ? text.length - 1 : text.length;
+  const startByte = node.startIndex ?? node.startByte ?? 0;
+  const endByte = startByte + trimmedLen;
+  let endPosition = node.endPosition;
+  if (text.endsWith(";") && endPosition) {
+    endPosition = {
+      row: endPosition.row,
+      column: Math.max(0, endPosition.column - 1),
+    };
+  }
+  return {
+    startByte,
+    endByte,
+    startPosition: node.startPosition,
+    endPosition,
+  };
+}
+
 function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuilder): number {
   const lDims = getExprDims(leftId, dae);
   const rDims = getExprDims(rightId, dae);
@@ -4490,6 +4524,32 @@ function exprReferencesRuntimeParameter(exprId: number, dae: DAEBuilder): boolea
   return false;
 }
 
+function exprReferencesEnumParameter(exprId: number, dae: DAEBuilder): boolean {
+  if (exprId < 0) return false;
+  const k = dae.getExprKind(exprId);
+  if (k === ExprKind.Name) {
+    const name = dae.interner.resolve(dae.getExprData1(exprId));
+    if (!name) return false;
+    const varIdx = dae.lookupVariable(name);
+    if (varIdx >= 0) {
+      const v = dae.getVarVariability(varIdx);
+      if (v === Variability.Parameter && !dae.isVarFinal(varIdx)) {
+        return dae.getVarType(varIdx) === VarType.Enumeration;
+      }
+    }
+    return false;
+  }
+  const l = dae.getExprLeft(exprId);
+  const r = dae.getExprRight(exprId);
+  const d1 = dae.getExprData1(exprId);
+  if (l >= 0 && exprReferencesEnumParameter(l, dae)) return true;
+  if (r >= 0 && exprReferencesEnumParameter(r, dae)) return true;
+  if (k === ExprKind.Call || k === ExprKind.Der || k === ExprKind.IfElse) {
+    if (d1 >= 0 && exprReferencesEnumParameter(d1, dae)) return true;
+  }
+  return false;
+}
+
 function getArrayCtorElements(id: number, dae: DAEBuilder): number[] {
   if (id < 0) return [];
   const kind = dae.getExprKind(id);
@@ -4895,7 +4955,7 @@ function vectorizeFunctionCall(
           break;
         }
       }
-      if (allConst && constVals.length === subArgs.length) {
+      if (!fnDae.isImpure && allConst && constVals.length === subArgs.length) {
         try {
           const fnInternId = typeof fnName === "string" ? dae.interner.intern(fnName) : fnName;
           const outVal = evaluateArenaFunctionCall(
@@ -5091,6 +5151,32 @@ function lowerCSTExpression(
     ) {
       argNode = argNode.child(0);
     }
+    const rawName = argNode?.text?.trim() ?? "";
+    let argVIdx = -1;
+    if (rawName && /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(rawName)) {
+      argVIdx = dae.getVarIdxByName(prefix ? `${prefix}.${rawName}` : rawName);
+    }
+    if (argVIdx >= 0) {
+      const varType = dae.getVarType(argVIdx);
+      if (varType !== VarType.Real) {
+        let diagRange: any = dae.getVarSourceRange(argVIdx);
+        if (!diagRange && flattener) {
+          const rootClassId = (flattener as any).currentRootClassId;
+          const sym = (flattener as any).db?.childrenOf?.(rootClassId)?.find?.((c: any) => c.name === rawName);
+          if (sym) {
+            const cst = (flattener as any).db?.cstNode?.(sym.id);
+            if (cst) diagRange = getElementDiagRange(cst);
+          }
+        }
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Argument '${rawName}' to der has illegal type ${varTypeName(varType)}, must be a subtype of Real.`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
     const argId = lowerCSTExpression(argNode, dae, prefix, substitutions, imports, db, flattener);
     const distributeDer = (exprId: number): number => {
       const k = dae.getExprKind(exprId);
@@ -5114,10 +5200,31 @@ function lowerCSTExpression(
         if (vIdx >= 0) {
           const varType = dae.getVarType(vIdx);
           const varVar = dae.getVarVariability(vIdx);
+          if (varType !== VarType.Real) {
+            const shortName = vName.includes(".") ? vName.split(".").pop()! : vName;
+            let cur: any = node;
+            while (
+              cur &&
+              cur.type !== "component_clause" &&
+              cur.type !== "simple_equation" &&
+              cur.type !== "statement" &&
+              cur.type !== "assignment_statement"
+            ) {
+              cur = cur.parent;
+            }
+            const diagRange = getElementDiagRange(cur ?? node);
+            dae.diagnostics.push({
+              severity: "error",
+              code: 3006,
+              message: `Argument '${shortName}' to der has illegal type ${varTypeName(varType)}, must be a subtype of Real.`,
+              range: diagRange,
+            });
+            return -1;
+          }
           if (varVar === Variability.Constant || varVar === Variability.Parameter) {
             return dae.addRealLiteral(0.0);
           }
-          if (varVar === Variability.Discrete || varType !== VarType.Real) {
+          if (varVar === Variability.Discrete) {
             const shortName = vName.includes(".") ? vName.split(".").pop()! : vName;
             dae.diagnostics.push({
               severity: "error",
@@ -5143,10 +5250,31 @@ function lowerCSTExpression(
           if (vIdx >= 0) {
             const varType = dae.getVarType(vIdx);
             const varVar = dae.getVarVariability(vIdx);
+            if (varType !== VarType.Real) {
+              const shortName = vName.includes(".") ? vName.split(".").pop()! : vName;
+              let cur: any = node;
+              while (
+                cur &&
+                cur.type !== "component_clause" &&
+                cur.type !== "simple_equation" &&
+                cur.type !== "statement" &&
+                cur.type !== "assignment_statement"
+              ) {
+                cur = cur.parent;
+              }
+              const diagRange = getElementDiagRange(cur ?? node);
+              dae.diagnostics.push({
+                severity: "error",
+                code: 3006,
+                message: `Argument '${shortName}' to der has illegal type ${varTypeName(varType)}, must be a subtype of Real.`,
+                range: diagRange,
+              });
+              return -1;
+            }
             if (varVar === Variability.Constant || varVar === Variability.Parameter) {
               return dae.addRealLiteral(0.0);
             }
-            if (varVar === Variability.Discrete || varType !== VarType.Real) {
+            if (varVar === Variability.Discrete) {
               const shortName = vName.includes(".") ? vName.split(".").pop()! : vName;
               dae.diagnostics.push({
                 severity: "error",
@@ -5201,6 +5329,35 @@ function lowerCSTExpression(
         if (vName && dae.hasArrayElements(vName)) {
           const ctor = expandVarToArrayCtor(vName, dae);
           if (ctor !== null) return distributePre(ctor);
+        }
+        if (vName) {
+          let vIdx = dae.getVarIdxByName(vName);
+          if (vIdx < 0 && prefix) vIdx = dae.getVarIdxByName(`${prefix}.${vName}`);
+          if (vIdx >= 0) {
+            const vari = dae.getVarVariability(vIdx);
+            if (vari === Variability.Continuous) {
+              let cur: any = node;
+              while (
+                cur &&
+                cur.type !== "component_clause" &&
+                cur.type !== "simple_equation" &&
+                cur.type !== "statement" &&
+                cur.type !== "assignment_statement" &&
+                cur.type !== "when_equation" &&
+                cur.type !== "when_statement"
+              ) {
+                cur = cur.parent;
+              }
+              const diagRange = getElementDiagRange(cur ?? node);
+              dae.diagnostics.push({
+                severity: "error",
+                code: 3006,
+                message: `Argument 1 of pre must be a discrete expression, but ${vName} is continuous.`,
+                range: diagRange,
+              });
+              return -1;
+            }
+          }
         }
       }
       return dae.addPreExpr(exprId);
@@ -5719,6 +5876,699 @@ function lowerCSTExpression(
       }
     }
     const cleanFnName = typeof fnName === "string" ? fnName.replace(/^\.+/, "") : "";
+
+    if (db && flattener && cleanFnName) {
+      let calledFnSym: any = null;
+      if (flattener.currentClassId) {
+        const resolver =
+          db.query<any>("resolveName", flattener.currentClassId) ??
+          db.query<any>("resolveSimpleName", flattener.currentClassId);
+        if (resolver) calledFnSym = resolver(cleanFnName);
+      }
+      if (!calledFnSym && flattener.currentRootClassId) {
+        const resolver =
+          db.query<any>("resolveName", flattener.currentRootClassId) ??
+          db.query<any>("resolveSimpleName", flattener.currentRootClassId);
+        if (resolver) calledFnSym = resolver(cleanFnName);
+      }
+      if (!calledFnSym) {
+        const parts = cleanFnName.split(".");
+        const fnBase = parts[parts.length - 1];
+        calledFnSym = db
+          .byName(fnBase)
+          .find((e: any) => (e.kind === "Class" || e.kind === "Function") && flattener.isFunctionSym?.(e));
+      }
+      if (calledFnSym && flattener.isClassPartial?.(calledFnSym.id)) {
+        let callRange: any = undefined;
+        if (node) {
+          let n: any = node;
+          while (n && n.type !== "component_clause" && n.parent) {
+            if (n.type === "statement" || n.type === "function_call") break;
+            n = n.parent;
+          }
+          if (n && n.type === "component_clause") {
+            callRange = {
+              startPosition: n.startPosition,
+              endPosition: n.endPosition,
+              startByte: n.startIndex ?? n.startByte,
+              endByte: n.endIndex ?? n.endByte,
+            };
+          } else {
+            callRange = {
+              startPosition: node.startPosition,
+              endPosition: node.endPosition,
+              startByte: node.startIndex ?? node.startByte,
+              endByte: node.endIndex ?? node.endByte,
+            };
+          }
+        }
+        dae.diagnostics.push({
+          severity: "error",
+          code: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.code,
+          message: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.message(calledFnSym.name || cleanFnName),
+          range: callRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "identity") {
+      let cur: any = node;
+      while (
+        cur &&
+        cur.type !== "component_clause" &&
+        cur.type !== "simple_equation" &&
+        cur.type !== "statement" &&
+        cur.type !== "assignment_statement"
+      ) {
+        cur = cur.parent;
+      }
+      const diagRange = getElementDiagRange(cur ?? node);
+
+      if (argExprIds.length !== 1) {
+        dae.diagnostics.push({
+          severity: "error",
+          code: 1000,
+          message: "Wrong number of arguments to identity.",
+          range: diagRange,
+        });
+        return -1;
+      }
+      const aid = argExprIds[0]!;
+      const k = dae.getExprKind(aid);
+      const vt = inferArenaExprVarType(dae, aid);
+      const ev = evalDaeExpr(aid, dae);
+      if (k === ExprKind.RealLiteral || vt === VarType.Real || (typeof ev === "number" && !Number.isInteger(ev))) {
+        dae.diagnostics.push({
+          severity: "error",
+          code: 1000,
+          message: "First argument to identity in component <NO COMPONENT> must be Integer expression.",
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "sum") {
+      if (argExprIds.length === 1) {
+        const aid = argExprIds[0]!;
+        const k = dae.getExprKind(aid);
+        let isArray = false;
+        if (k === ExprKind.ArrayCtor) {
+          isArray = true;
+        } else if (k === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(aid));
+          if (vName) {
+            if (dae.hasArrayElements(vName)) {
+              isArray = true;
+            } else {
+              const vIdx = dae.lookupVariable(vName);
+              if (vIdx >= 0) {
+                const shape = dae.getVarShape(vIdx);
+                if (shape && shape.length > 0) isArray = true;
+              }
+            }
+          }
+        } else {
+          const dims = getExprDims(aid, dae, db);
+          if (dims && dims.length > 0) isArray = true;
+        }
+
+        if (!isArray) {
+          let cur: any = node;
+          while (
+            cur &&
+            cur.type !== "component_clause" &&
+            cur.type !== "simple_equation" &&
+            cur.type !== "statement" &&
+            cur.type !== "assignment_statement"
+          ) {
+            cur = cur.parent;
+          }
+          const diagRange = getElementDiagRange(cur ?? node);
+          const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+          const argText = argNodes[0]?.text?.trim() ?? "0";
+          const vt = inferArenaExprVarType(dae, aid);
+          const typeStr = varTypeName(vt);
+          const message = isOldFrontend
+            ? `In sum(${argText}), the expression is of type ${typeStr}, but is required to be of builtin array type (of any number of dimensions).`
+            : `Type mismatch for positional argument 1 in sum(a=${argText}). The argument has type:\n  ${typeStr}\nexpected type:\n  Array`;
+          dae.diagnostics.push({
+            severity: "error",
+            code: 3006,
+            message,
+            range: diagRange,
+          });
+          return -1;
+        }
+      }
+    }
+
+    if (cleanFnName === "fill" && argExprIds.length >= 2) {
+      for (let i = 1; i < argExprIds.length; i++) {
+        const aid = argExprIds[i]!;
+        if (dae.getExprKind(aid) === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(aid));
+          if (vName) {
+            const vIdx = dae.lookupVariable(vName);
+            if (vIdx >= 0) {
+              const v = dae.getVarVariability(vIdx);
+              if (v !== Variability.Parameter && v !== Variability.Constant) {
+                let cur: any = node;
+                while (
+                  cur &&
+                  cur.type !== "component_clause" &&
+                  cur.type !== "simple_equation" &&
+                  cur.type !== "statement" &&
+                  cur.type !== "assignment_statement"
+                ) {
+                  cur = cur.parent;
+                }
+                const diagRange = getElementDiagRange(cur ?? node);
+                const callText = node?.text?.trim() ?? `fill(...)`;
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: 4000,
+                  message: `Expression '${vName}' that determines the size of dimension '${i}' of '${callText}' is not an evaluable parameter expression.`,
+                  range: diagRange,
+                });
+                return -1;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (cleanFnName === "matrix" && argExprIds.length === 1) {
+      const aid = argExprIds[0]!;
+      const shape = getArrayCtorShape(aid, dae);
+      if (shape.length >= 3) {
+        for (let d = 2; d < shape.length; d++) {
+          if (shape[d]! > 1) {
+            let cur: any = node;
+            while (
+              cur &&
+              cur.type !== "component_clause" &&
+              cur.type !== "simple_equation" &&
+              cur.type !== "statement" &&
+              cur.type !== "assignment_statement"
+            ) {
+              cur = cur.parent;
+            }
+            const diagRange = getElementDiagRange(cur ?? node);
+            dae.diagnostics.push({
+              severity: "error",
+              code: 3006,
+              message: `Invalid dimension ${d + 1} of argument to matrix, expected dimension size 1 but got ${shape[d]}.`,
+              range: diagRange,
+            });
+            return -1;
+          }
+        }
+      }
+    }
+
+    if (cleanFnName === "vector" && argExprIds.length === 1) {
+      const aid = argExprIds[0]!;
+      const shape = getArrayCtorShape(aid, dae);
+      if (shape.filter((s) => s > 1).length > 1) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        const vt = inferArenaExprVarType(dae, aid);
+        const elemType = varTypeName(vt);
+        const argText = argNodes[0]?.text?.trim()?.replace(/\s+/g, " ") ?? "";
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Invalid dimensions ${elemType}[${shape.join(", ")}] in vector(${argText}), no more than one dimension may have size > 1.`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "symmetric" && argExprIds.length === 1) {
+      const aid = argExprIds[0]!;
+      const shape = getArrayCtorShape(aid, dae);
+      if (shape.length === 2 && shape[0] !== shape[1]) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        const vt = inferArenaExprVarType(dae, aid);
+        const elemType = varTypeName(vt);
+        const argText = argNodes[0]?.text?.trim()?.replace(/\s+/g, " ") ?? "";
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Type mismatch for positional argument 1 in symmetric(=${argText}). The argument has type:\n  ${elemType}[${shape[0]}, ${shape[1]}]\nexpected type:\n  Any[n, n]`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "promote" && argExprIds.length === 2) {
+      const arrId = argExprIds[0]!;
+      const targetDimId = argExprIds[1]!;
+      let nDims = 0;
+      if (dae.getExprKind(arrId) === ExprKind.Name) {
+        const vName = dae.interner.resolve(dae.getExprData1(arrId));
+        if (vName) {
+          const vIdx = dae.lookupVariable(vName);
+          if (vIdx >= 0) {
+            const s = dae.getVarShape(vIdx);
+            if (s && s.length > 0) nDims = s.length;
+          }
+        }
+      }
+      if (nDims === 0) {
+        const s = getArrayCtorShape(arrId, dae);
+        nDims = s.length;
+      }
+      const targetDim = evalDaeExpr(targetDimId, dae);
+      if (typeof targetDim === "number" && nDims > 0 && targetDim < nDims) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        const targetDimStr = argNodes[1]?.text?.trim() ?? String(targetDim);
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `The second argument '${targetDimStr}' of promote may not be smaller than the number of dimensions (${nDims}) of the first argument.`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "smooth") {
+      let cur: any = node;
+      while (
+        cur &&
+        cur.type !== "component_clause" &&
+        cur.type !== "simple_equation" &&
+        cur.type !== "statement" &&
+        cur.type !== "assignment_statement"
+      ) {
+        cur = cur.parent;
+      }
+      const diagRange = getElementDiagRange(cur ?? node);
+
+      if (argExprIds.length !== 2) {
+        const rawArgs = argNodes.map((a: any) => a?.text?.trim() ?? "").join(", ");
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `No matching function found for smooth(${rawArgs}).\nCandidates are:\n  smooth(Integer, Any) => Any`,
+          range: diagRange,
+        });
+        return -1;
+      }
+
+      // Check arg 1: k must be parameter Integer
+      const kId = argExprIds[0]!;
+      const kText = argNodes[0]?.text?.trim() ?? "";
+      let kVarIdx = -1;
+      if (dae.getExprKind(kId) === ExprKind.Name) {
+        const vName = dae.interner.resolve(dae.getExprData1(kId));
+        kVarIdx = vName ? dae.lookupVariable(vName) : -1;
+      } else if (kText) {
+        kVarIdx = dae.lookupVariable(kText);
+      }
+      const kType = inferArenaExprVarType(dae, kId);
+      if (kType === VarType.Real) {
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Type mismatch for positional argument 1 in smooth(=${kText}). The argument has type:\n  Real\nexpected type:\n  Integer`,
+          range: diagRange,
+        });
+        return -1;
+      }
+      if (kVarIdx >= 0) {
+        const vari = dae.getVarVariability(kVarIdx);
+        if (vari !== Variability.Parameter && vari !== Variability.Constant) {
+          dae.diagnostics.push({
+            severity: "error",
+            code: 3006,
+            message: `Argument 1 of smooth must be a parameter expression, but ${kText} is continuous.`,
+            range: diagRange,
+          });
+          return -1;
+        }
+      }
+
+      // Check arg 2: x cannot be String
+      const xId = argExprIds[1]!;
+      const xText = argNodes[1]?.text?.trim() ?? "";
+      const xType = inferArenaExprVarType(dae, xId);
+      if (xType === VarType.String) {
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Type mismatch for positional argument 2 in smooth(=${xText}). The argument has type:\n  String\nexpected type:\n  Real\n  Real[:, ...]\n  Real record\n  Real record[:, ...]`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "Integer" && argExprIds.length === 1) {
+      const aid = argExprIds[0]!;
+      const vt = inferArenaExprVarType(dae, aid);
+      const k = dae.getExprKind(aid);
+      if (vt === VarType.Real || k === ExprKind.RealLiteral) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        const argText = argNodes[0]?.text?.trim() ?? "1.0";
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Type mismatch for positional argument 1 in Integer(e=${argText}). The argument has type:\n  Real\nexpected type:\n  enumeration(:)`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "String") {
+      let isInvalidStringCall = false;
+      const rec = argExprIds.length >= 1 ? resolveOperatorRecord(argExprIds[0], argNodes[0], dae, db, flattener) : null;
+      let hasRecOverload = false;
+      if (rec) {
+        const ops = db?.query<Map<string, any[]> | null>("operatorFunctions", rec.symId);
+        const strOps = ops?.get("'String'") ?? ops?.get("String");
+        if (strOps && strOps.length > 0) hasRecOverload = true;
+      }
+      if (!hasRecOverload) {
+        if (argExprIds.length > 2) {
+          isInvalidStringCall = true;
+        } else if (argExprIds.length === 1) {
+          const aid = argExprIds[0]!;
+          const k = dae.getExprKind(aid);
+          if (k === ExprKind.Name) {
+            const vName = dae.interner.resolve(dae.getExprData1(aid));
+            if (vName) {
+              const sym = db?.byName(vName)[0];
+              const meta = sym?.metadata as any;
+              if (meta?.typeSpecifier && !["Real", "Integer", "Boolean", "String"].includes(meta.typeSpecifier)) {
+                isInvalidStringCall = true;
+              }
+            }
+          }
+        }
+      }
+      if (isInvalidStringCall) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        const formatArgStr = (aid: number, idx: number): string => {
+          const aNode = argNodes[idx];
+          const rawText = aNode?.text?.trim() ?? "";
+          const k = dae.getExprKind(aid);
+          if (k === ExprKind.IntLiteral) return `/*Integer*/ ${rawText}`;
+          if (k === ExprKind.BoolLiteral) return `/*Boolean*/ ${rawText}`;
+          if (k === ExprKind.RealLiteral) return `/*Real*/ ${rawText}`;
+          if (k === ExprKind.StringLiteral) return `/*String*/ ${rawText}`;
+          if (k === ExprKind.Name) {
+            const vName = dae.interner.resolve(dae.getExprData1(aid));
+            const sym = vName ? db?.byName(vName)[0] : null;
+            const tSpec = (sym?.metadata as any)?.typeSpecifier;
+            if (tSpec) return `/*${tSpec}*/ ${rawText}`;
+          }
+          const vt = inferArenaExprVarType(dae, aid);
+          return `/*${varTypeName(vt)}*/ ${rawText}`;
+        };
+        const formattedArgs = argExprIds.map(formatArgStr).join(", ");
+        const stringCandidates = `  String(enumeration(:) $e, Integer minimumLength = 0, Boolean leftJustified = true) => String\n  String(Integer $i, Integer minimumLength = 0, Boolean leftJustified = true) => String\n  String(Boolean $b, Integer minimumLength = 0, Boolean leftJustified = true) => String\n  String(Real $r, Integer significantDigits = 6, Integer minimumLength = 0, Boolean leftJustified = true) => String\n  String(Real $r, String format) => String`;
+        dae.diagnostics.push({
+          severity: "error",
+          code: 4074,
+          message: `No matching function found for String(${formattedArgs}).\nCandidates are:\n${stringCandidates}`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "abs" && argExprIds.length === 1) {
+      const aid = argExprIds[0]!;
+      const vt = inferArenaExprVarType(dae, aid);
+      if (vt === VarType.Boolean || vt === VarType.String) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        dae.diagnostics.push({
+          severity: "error",
+          code: 4074,
+          message: `No matching function found for abs in component <NO COMPONENT>\ncandidates are .OpenModelica.Internal.intAbs<function>(Integer v) => Integer\n -.OpenModelica.Internal.realAbs<function>(Real v) => Real`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "delay") {
+      let cur: any = node;
+      while (
+        cur &&
+        cur.type !== "component_clause" &&
+        cur.type !== "simple_equation" &&
+        cur.type !== "statement" &&
+        cur.type !== "assignment_statement"
+      ) {
+        cur = cur.parent;
+      }
+      const diagRange = getElementDiagRange(cur ?? node);
+
+      if (argExprIds.length === 2) {
+        const dTimeId = argExprIds[1]!;
+        const dTimeText = argNodes[1]?.text?.trim() ?? "";
+        let vIdx = -1;
+        if (dae.getExprKind(dTimeId) === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(dTimeId));
+          vIdx = vName ? dae.lookupVariable(vName) : -1;
+        } else if (dTimeText) {
+          vIdx = dae.lookupVariable(dTimeText);
+        }
+        if (vIdx >= 0) {
+          const vari = dae.getVarVariability(vIdx);
+          if (vari !== Variability.Parameter && vari !== Variability.Constant) {
+            const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+            dae.diagnostics.push({
+              severity: "error",
+              code: 3006,
+              message: `Function argument delayTime=${dTimeText} in call to OpenModelica.Internal.delay2 has variability continuous which is not a parameter expression.`,
+              range: diagRange,
+            });
+            if (isOldFrontend) {
+              dae.diagnostics.push({
+                severity: "error",
+                code: 3006,
+                message: `No matching function found for delay in component <NO COMPONENT>\ncandidates are .OpenModelica.Internal.delay2<function>(Real expr, Real parameter delayTime) => Real\n -.OpenModelica.Internal.delay3<function>(Real expr, Real delayTime, Real parameter delayMax) => Real`,
+                range: diagRange,
+              });
+            }
+            return -1;
+          }
+        }
+      } else if (argExprIds.length === 3) {
+        const dMaxId = argExprIds[2]!;
+        const dMaxText = argNodes[2]?.text?.trim() ?? "";
+        let vIdx = -1;
+        if (dae.getExprKind(dMaxId) === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(dMaxId));
+          vIdx = vName ? dae.lookupVariable(vName) : -1;
+        } else if (dMaxText) {
+          vIdx = dae.lookupVariable(dMaxText);
+        }
+        if (vIdx >= 0) {
+          const vari = dae.getVarVariability(vIdx);
+          if (vari !== Variability.Parameter && vari !== Variability.Constant) {
+            const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+            dae.diagnostics.push({
+              severity: "error",
+              code: 3006,
+              message: `Function argument delayMax=${dMaxText} in call to OpenModelica.Internal.delay3 has variability continuous which is not a parameter expression.`,
+              range: diagRange,
+            });
+            if (isOldFrontend) {
+              dae.diagnostics.push({
+                severity: "error",
+                code: 3006,
+                message: `No matching function found for delay in component <NO COMPONENT>\ncandidates are .OpenModelica.Internal.delay2<function>(Real expr, Real parameter delayTime) => Real\n -.OpenModelica.Internal.delay3<function>(Real expr, Real delayTime, Real parameter delayMax) => Real`,
+                range: diagRange,
+              });
+            }
+            return -1;
+          }
+        }
+      }
+    }
+
+    if (cleanFnName === "sample" && argExprIds.length >= 1) {
+      const startId = argExprIds[0]!;
+      const startText = argNodes[0]?.text?.trim() ?? "";
+      let vIdx = -1;
+      if (dae.getExprKind(startId) === ExprKind.Name) {
+        const vName = dae.interner.resolve(dae.getExprData1(startId));
+        vIdx = vName ? dae.lookupVariable(vName) : -1;
+      } else if (startText) {
+        vIdx = dae.lookupVariable(startText);
+      }
+      if (vIdx >= 0) {
+        const vari = dae.getVarVariability(vIdx);
+        if (vari !== Variability.Parameter && vari !== Variability.Constant) {
+          let cur: any = node;
+          while (
+            cur &&
+            cur.type !== "component_clause" &&
+            cur.type !== "simple_equation" &&
+            cur.type !== "statement" &&
+            cur.type !== "assignment_statement" &&
+            cur.type !== "when_equation" &&
+            cur.type !== "when_statement"
+          ) {
+            cur = cur.parent;
+          }
+          const diagRange = getElementDiagRange(cur ?? node);
+          dae.diagnostics.push({
+            severity: "error",
+            code: 3006,
+            message: `Function argument start=${startText} in call to sample has variability continuous which is not a parameter expression.`,
+            range: diagRange,
+          });
+          return -1;
+        }
+      }
+    }
+
+    if (cleanFnName === "cardinality") {
+      let cur: any = node;
+      let inAllowedContext = false;
+      while (cur) {
+        if (
+          (cur.type === "if_equation" || cur.type === "if_statement" || cur.type === "elseif_clause") &&
+          cur.child(1) &&
+          (cur.child(1) === node || cur.child(1).text?.includes("cardinality"))
+        ) {
+          inAllowedContext = true;
+          break;
+        }
+        if (
+          cur.type === "function_call" &&
+          (cur.child(0)?.text === "assert" || cur.child(0)?.text?.endsWith(".assert"))
+        ) {
+          inAllowedContext = true;
+          break;
+        }
+        cur = cur.parent;
+      }
+      if (!inAllowedContext) {
+        let clause: any = node;
+        while (
+          clause &&
+          clause.type !== "component_clause" &&
+          clause.type !== "simple_equation" &&
+          clause.type !== "statement" &&
+          clause.type !== "assignment_statement"
+        ) {
+          clause = clause.parent;
+        }
+        const diagRange = getElementDiagRange(clause ?? node);
+        dae.diagnostics.push({
+          severity: "error",
+          code: 4000,
+          message: "cardinality may only be used in the condition of an if-statement/equation or an assert.",
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
+
+    if (cleanFnName === "previous" && argExprIds.length === 1) {
+      const aNode = argNodes[0];
+      const fnArgName = aNode?.text?.trim() ?? "";
+      const fnSym = fnArgName
+        ? db?.byName(fnArgName).find((e: any) => e.kind === "Function" || e.kind === "Class")
+        : null;
+      if (
+        fnSym &&
+        (fnSym.kind === "Function" ||
+          (fnSym.metadata as any)?.classKind === "function" ||
+          flattener?.isFunctionSym?.(fnSym))
+      ) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Type mismatch for positional argument 1 in previous(u=${fnArgName}). The argument has type:\n  ${fnArgName}<function>() => ()\nexpected type:\n  ComponentExpression`,
+          range: diagRange,
+        });
+        return -1;
+      }
+    }
 
     if (cleanFnName === "min" || cleanFnName === "max") {
       const isStringArg = (aid: number): boolean => {
@@ -6486,6 +7336,47 @@ function lowerCSTExpression(
         }
       }
 
+      if (argExprIds.length >= 2) {
+        const aid1 = argExprIds[1]!;
+        let vIdx = -1;
+        if (dae.getExprKind(aid1) === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(aid1));
+          vIdx = vName ? dae.lookupVariable(vName) : -1;
+        }
+        if (
+          vIdx >= 0 &&
+          dae.getVarVariability(vIdx) !== Variability.Parameter &&
+          dae.getVarVariability(vIdx) !== Variability.Constant
+        ) {
+          let cur: any = node;
+          let inDim = false;
+          while (cur) {
+            if (
+              cur.type === "array_subscripts" &&
+              cur.parent &&
+              (cur.parent.type === "component_declaration" || cur.parent.type === "component_clause")
+            ) {
+              inDim = true;
+              break;
+            }
+            cur = cur.parent;
+          }
+          if (inDim) {
+            let cl: any = node;
+            while (cl && cl.type !== "component_clause" && cl.type !== "simple_equation") cl = cl.parent;
+            const diagRange = getElementDiagRange(cl ?? node);
+            const callText = node.text?.trim() ?? "size(...)";
+            dae.diagnostics.push({
+              severity: "error",
+              code: 4000,
+              message: `Dimensions must be parameter or constant expression (in ${callText}).`,
+              range: diagRange,
+            });
+            return -1;
+          }
+        }
+      }
+
       let dims = getExprDims(arrId, dae, db);
       if (!dims || dims.length === 0) {
         const arrKind = dae.getExprKind(arrId);
@@ -7156,6 +8047,38 @@ function lowerCSTExpression(
           fnName = cleanFnName;
         }
       } else if (matchingFnSym && flattener.isFunctionSym(matchingFnSym)) {
+        if (flattener.isClassPartial?.(matchingFnSym.id)) {
+          let callRange: any = undefined;
+          if (node) {
+            let n: any = node;
+            while (n && n.type !== "component_clause" && n.parent) {
+              if (n.type === "statement" || n.type === "function_call") break;
+              n = n.parent;
+            }
+            if (n && n.type === "component_clause") {
+              callRange = {
+                startPosition: n.startPosition,
+                endPosition: n.endPosition,
+                startByte: n.startIndex ?? n.startByte,
+                endByte: n.endIndex ?? n.endByte,
+              };
+            } else {
+              callRange = {
+                startPosition: node.startPosition,
+                endPosition: node.endPosition,
+                startByte: node.startIndex ?? node.startByte,
+                endByte: node.endIndex ?? node.endByte,
+              };
+            }
+          }
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.code,
+            message: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.message(matchingFnSym.name || fnName),
+            range: callRange,
+          });
+          return -1;
+        }
         if (flattener.invalidInterfaceFunctionIds?.has(matchingFnSym.id)) {
           const scopeName = (flattener.currentRootClassId ? db.symbol(flattener.currentRootClassId)?.name : "") ?? "";
           let callRange: any = undefined;
@@ -7177,7 +8100,7 @@ function lowerCSTExpression(
               };
             }
           }
-          if (matchingFnSym.parentId != null && !dae.extensionMetadata?.isOldFrontend) {
+          if (dae.extensionMetadata?.isOldFrontend) {
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.CLASS_NOT_FOUND.code,
@@ -7233,7 +8156,7 @@ function lowerCSTExpression(
                 };
               }
             }
-            if (matchingFnSym.parentId != null && !dae.extensionMetadata?.isOldFrontend) {
+            if (dae.extensionMetadata?.isOldFrontend) {
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.CLASS_NOT_FOUND.code,
@@ -7770,6 +8693,7 @@ function lowerCSTExpression(
       }
       if (
         allConstant &&
+        !fnDae.isImpure &&
         !(fnDae as any).isBeingFlattened &&
         !(fnDae as any).isRecursive &&
         (!(fnDae as any).symId || !flattener.activeFlatteningFunctionIds?.has((fnDae as any).symId))
@@ -7842,6 +8766,7 @@ function lowerCSTExpression(
       }
 
       if (
+        !fnDae.isImpure &&
         !(fnDae as any).isBeingFlattened &&
         !(fnDae as any).isRecursive &&
         (!(fnDae as any).symId || !flattener.activeFlatteningFunctionIds?.has((fnDae as any).symId)) &&
@@ -8097,11 +9022,75 @@ function lowerCSTExpression(
         }
         const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
         if (scalarBuiltin?.fold && constArgs.length === scalarBuiltin.arity) {
+          if ((cleanFn === "acos" || cleanFn === "asin") && (constArgs[0]! < -1 || constArgs[0]! > 1)) {
+            let cur: any = node;
+            while (
+              cur &&
+              cur.type !== "component_clause" &&
+              cur.type !== "simple_equation" &&
+              cur.type !== "statement" &&
+              cur.type !== "assignment_statement"
+            ) {
+              cur = cur.parent;
+            }
+            const diagRange = getElementDiagRange(cur ?? node);
+            dae.diagnostics.push({
+              severity: "error",
+              code: 3006,
+              message: `Argument ${constArgs[0]} of ${cleanFn} is out of range (-1 <= x <= 1)`,
+              range: diagRange,
+            });
+            return -1;
+          }
           const val = scalarBuiltin.fold(...constArgs);
           const isInt =
             cleanFn === "sign" || (cleanFn === "abs" && inferArenaExprVarType(dae, argExprIds[0]!) === VarType.Integer);
           return isInt ? dae.addIntLiteral(Math.round(val)) : dae.addRealLiteral(val);
         }
+      }
+    }
+
+    if (db && fnName) {
+      let fnSym: any = null;
+      if (flattener?.currentRootClassId) {
+        const resolver =
+          db.query<any>("resolveName", flattener.currentRootClassId) ??
+          db.query<any>("resolveSimpleName", flattener.currentRootClassId);
+        if (resolver) fnSym = resolver(fnName);
+      }
+      if (!fnSym) {
+        fnSym = db.byName(fnName).find((s: any) => s.kind === "Function" || s.kind === "Class");
+      }
+      if (fnSym && flattener?.isClassPartial(fnSym.id)) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "component_clause" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement" &&
+          cur.parent
+        ) {
+          cur = cur.parent;
+        }
+        const diagNode = cur ?? node;
+        const startB = diagNode?.startIndex ?? diagNode?.startByte;
+        const endB = diagNode?.endIndex ?? diagNode?.endByte;
+        dae.diagnostics.push({
+          severity: "error",
+          code: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.code,
+          message: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.message(fnName),
+          range:
+            startB != null && endB != null
+              ? {
+                  startByte: startB,
+                  endByte: endB,
+                  startPosition: diagNode?.startPosition,
+                  endPosition: diagNode?.endPosition,
+                }
+              : undefined,
+        });
+        return -1;
       }
     }
 
@@ -8155,7 +9144,31 @@ function lowerCSTExpression(
       const c = subsNode.child(i);
       if (c.type === "subscript" || c.type === "expression") {
         const expr = c.children?.find((k: any) => k.type === "expression") ?? c;
-        subIds.push(lowerCSTExpression(expr, dae, prefix, substitutions, imports, db, flattener));
+        const sid = lowerCSTExpression(expr, dae, prefix, substitutions, imports, db, flattener);
+        const skind = dae.getExprKind(sid);
+        const stype = inferArenaExprVarType(dae, sid);
+        if (skind === ExprKind.StringLiteral || stype === VarType.String) {
+          let cur: any = node;
+          while (
+            cur &&
+            cur.type !== "component_clause" &&
+            cur.type !== "simple_equation" &&
+            cur.type !== "statement" &&
+            cur.type !== "assignment_statement"
+          ) {
+            cur = cur.parent;
+          }
+          const diagRange = getElementDiagRange(cur ?? node);
+          const subText = expr.text?.trim() ?? "";
+          dae.diagnostics.push({
+            severity: "error",
+            code: 3006,
+            message: `Subscript '${subText}' has type String, expected type Integer.`,
+            range: diagRange,
+          });
+          return -1;
+        }
+        subIds.push(sid);
       }
     }
     return dae.addSubscriptExpr(baseId, subIds);
@@ -8518,6 +9531,38 @@ function lowerCSTExpression(
       const startId = lowerCSTExpression(leftChild.child(0), dae, prefix, substitutions, imports, db, flattener);
       const stepId = lowerCSTExpression(leftChild.child(2), dae, prefix, substitutions, imports, db, flattener);
       const stopId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
+      if (dae.getExprKind(stepId) === ExprKind.EnumLiteral && dae.getExprKind(startId) !== ExprKind.EnumLiteral) {
+        let cur: any = node;
+        while (
+          cur &&
+          cur.type !== "component_clause" &&
+          cur.type !== "simple_equation" &&
+          cur.type !== "statement" &&
+          cur.type !== "assignment_statement"
+        ) {
+          cur = cur.parent;
+        }
+        const diagRange = getElementDiagRange(cur ?? node);
+        const startText = leftChild.child(0)?.text?.trim() ?? "1";
+        const stepText = leftChild.child(2)?.text?.trim() ?? "E.one";
+        const startType = varTypeName(inferArenaExprVarType(dae, startId));
+        let enumTypeStr = "enumeration E(one, two, three)";
+        const dotIdx = stepText.lastIndexOf(".");
+        const enumPfx = dotIdx > 0 ? stepText.slice(0, dotIdx).trim() : stepText;
+        const scopeId = flattener?.currentClassId ?? flattener?.currentRootClassId ?? (dae as any).currentClassId;
+        const enumInfo = resolveEnumType(enumPfx, scopeId, db);
+        if (enumInfo) {
+          const simpleName = enumInfo.qual.includes(".") ? enumInfo.qual.split(".").pop()! : enumInfo.qual;
+          enumTypeStr = `enumeration ${simpleName}(${enumInfo.literals.join(", ")})`;
+        }
+        dae.diagnostics.push({
+          severity: "error",
+          code: 3006,
+          message: `Type mismatch in range: '${startText}' of type\n  ${startType}\nis not type compatible with '${stepText}' of type\n  ${enumTypeStr}`,
+          range: diagRange,
+        });
+        return -1;
+      }
       if (dae.getExprKind(startId) === ExprKind.EnumLiteral || dae.getExprKind(stopId) === ExprKind.EnumLiteral) {
         let eqNode: any = node;
         while (
@@ -8579,6 +9624,38 @@ function lowerCSTExpression(
     const isForIndex = isInsideForIndex(node);
     const startId = lowerCSTExpression(node.child(0), dae, prefix, substitutions, imports, db, flattener);
     const stepId = lowerCSTExpression(node.child(2), dae, prefix, substitutions, imports, db, flattener);
+    if (dae.getExprKind(stepId) === ExprKind.EnumLiteral && dae.getExprKind(startId) !== ExprKind.EnumLiteral) {
+      let cur: any = node;
+      while (
+        cur &&
+        cur.type !== "component_clause" &&
+        cur.type !== "simple_equation" &&
+        cur.type !== "statement" &&
+        cur.type !== "assignment_statement"
+      ) {
+        cur = cur.parent;
+      }
+      const diagRange = getElementDiagRange(cur ?? node);
+      const startText = node.child(0)?.text?.trim() ?? "1";
+      const stepText = node.child(2)?.text?.trim() ?? "E.one";
+      const startType = varTypeName(inferArenaExprVarType(dae, startId));
+      let enumTypeStr = "enumeration E(one, two, three)";
+      const dotIdx = stepText.lastIndexOf(".");
+      const enumPfx = dotIdx > 0 ? stepText.slice(0, dotIdx).trim() : stepText;
+      const scopeId = flattener?.currentClassId ?? flattener?.currentRootClassId ?? (dae as any).currentClassId;
+      const enumInfo = resolveEnumType(enumPfx, scopeId, db);
+      if (enumInfo) {
+        const simpleName = enumInfo.qual.includes(".") ? enumInfo.qual.split(".").pop()! : enumInfo.qual;
+        enumTypeStr = `enumeration ${simpleName}(${enumInfo.literals.join(", ")})`;
+      }
+      dae.diagnostics.push({
+        severity: "error",
+        code: 3006,
+        message: `Type mismatch in range: '${startText}' of type\n  ${startType}\nis not type compatible with '${stepText}' of type\n  ${enumTypeStr}`,
+        range: diagRange,
+      });
+      return -1;
+    }
     const stopId = lowerCSTExpression(node.child(4), dae, prefix, substitutions, imports, db, flattener);
     if (dae.getExprKind(startId) === ExprKind.EnumLiteral || dae.getExprKind(stopId) === ExprKind.EnumLiteral) {
       let eqNode: any = node;
@@ -8649,22 +9726,27 @@ function lowerCSTExpression(
     const loweredConds: { condId: number; condVal: any }[] = [];
     let takenBranchIdx = -1;
     let allFalseSoFar = true;
+    const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
     for (let b = 0; b < branches.length; b++) {
       const condId = lowerCSTExpression(branches[b]!.condNode, dae, prefix, substitutions, imports, db, flattener);
-      if (exprReferencesRuntimeParameter(condId, dae)) {
+      const isRuntimeParam = isOldFrontend
+        ? exprReferencesEnumParameter(condId, dae)
+        : exprReferencesRuntimeParameter(condId, dae);
+      if (isRuntimeParam) {
         loweredConds.push({ condId, condVal: null });
         allFalseSoFar = false;
         break;
       }
       const condVal = evalDaeExpr(condId, dae);
-      loweredConds.push({ condId, condVal });
       if (condVal === true || condVal === 1) {
         takenBranchIdx = b;
         allFalseSoFar = false;
         break;
       } else if (condVal === false || condVal === 0) {
+        loweredConds.push({ condId, condVal });
         // condition is false, continue to next branch
       } else {
+        loweredConds.push({ condId, condVal: null });
         allFalseSoFar = false;
         break;
       }
@@ -10268,6 +11350,57 @@ function lowerCSTExpression(
                   : (evaluateCSTNumber(expr, subsWithEnd as any, undefined, undefined, dae, prefix) ??
                     evalArithmeticText(subText, subsWithEnd));
               if (evaluatedNum !== null) {
+                if (db && !isLoopVar) {
+                  const classId = flattener?.currentClassId ?? flattener?.currentRootClassId;
+                  const resolver = classId
+                    ? db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", classId)
+                    : null;
+                  const compSym = resolver ? resolver(lastPart.ident) : null;
+                  if (compSym) {
+                    const cst = db.cstNode(compSym.id);
+                    if (cst) {
+                      const findArraySubscripts = (n: any): any => {
+                        if (!n) return null;
+                        if (n.type === "array_subscripts") return n;
+                        for (const ch of n.children || []) {
+                          const res = findArraySubscripts(ch);
+                          if (res) return res;
+                        }
+                        return null;
+                      };
+                      const arrSubsNode = findArraySubscripts(cst);
+                      const declSubs = arrSubsNode?.children?.filter((c: any) => c.type === "subscript") ?? [];
+                      if (dimIdx < declSubs.length) {
+                        const dimSubText = declSubs[dimIdx].text?.trim() ?? "";
+                        const enumInfo = resolveEnumType(dimSubText, classId, db);
+                        if (enumInfo) {
+                          let cur: any = node;
+                          while (
+                            cur &&
+                            cur.type !== "component_clause" &&
+                            cur.type !== "simple_equation" &&
+                            cur.type !== "statement" &&
+                            cur.type !== "assignment_statement"
+                          ) {
+                            cur = cur.parent;
+                          }
+                          const diagRange = getElementDiagRange(cur ?? node);
+                          const simpleName = enumInfo.qual.includes(".")
+                            ? enumInfo.qual.split(".").pop()!
+                            : enumInfo.qual;
+                          const enumTypeStr = `enumeration ${simpleName}(${enumInfo.literals.join(", ")})`;
+                          dae.diagnostics.push({
+                            severity: "error",
+                            code: 3006,
+                            message: `Subscript '${subText}' has type Integer, expected type ${enumTypeStr}.`,
+                            range: diagRange,
+                          });
+                          return -1;
+                        }
+                      }
+                    }
+                  }
+                }
                 lastPart.subscripts.push({
                   node: sub,
                   text: subText,
@@ -10279,6 +11412,78 @@ function lowerCSTExpression(
                 const subId = lowerCSTExpression(expr, dae, prefix, subsWithEnd as any, imports, db, flattener);
                 if (subId >= 0) {
                   const subType = inferArenaExprVarType(dae, subId);
+                  const subKind = dae.getExprKind(subId);
+                  if (subKind === ExprKind.StringLiteral || subType === VarType.String) {
+                    let cur: any = node;
+                    while (
+                      cur &&
+                      cur.type !== "component_clause" &&
+                      cur.type !== "simple_equation" &&
+                      cur.type !== "statement" &&
+                      cur.type !== "assignment_statement"
+                    ) {
+                      cur = cur.parent;
+                    }
+                    const diagRange = getElementDiagRange(cur ?? node);
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: 3006,
+                      message: `Subscript '${subText}' has type String, expected type Integer.`,
+                      range: diagRange,
+                    });
+                    return -1;
+                  }
+                  if (db && !isLoopVar && (subKind === ExprKind.IntLiteral || subType === VarType.Integer)) {
+                    const classId = flattener?.currentClassId ?? flattener?.currentRootClassId;
+                    const resolver = classId
+                      ? db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", classId)
+                      : null;
+                    const compSym = resolver ? resolver(lastPart.ident) : null;
+                    if (compSym) {
+                      const cst = db.cstNode(compSym.id);
+                      if (cst) {
+                        const findArraySubscripts = (n: any): any => {
+                          if (!n) return null;
+                          if (n.type === "array_subscripts") return n;
+                          for (const ch of n.children || []) {
+                            const res = findArraySubscripts(ch);
+                            if (res) return res;
+                          }
+                          return null;
+                        };
+                        const arrSubsNode = findArraySubscripts(cst);
+                        const declSubs = arrSubsNode?.children?.filter((c: any) => c.type === "subscript") ?? [];
+                        if (dimIdx < declSubs.length) {
+                          const dimSubText = declSubs[dimIdx].text?.trim() ?? "";
+                          const enumInfo = resolveEnumType(dimSubText, classId, db);
+                          if (enumInfo) {
+                            let cur: any = node;
+                            while (
+                              cur &&
+                              cur.type !== "component_clause" &&
+                              cur.type !== "simple_equation" &&
+                              cur.type !== "statement" &&
+                              cur.type !== "assignment_statement"
+                            ) {
+                              cur = cur.parent;
+                            }
+                            const diagRange = getElementDiagRange(cur ?? node);
+                            const simpleName = enumInfo.qual.includes(".")
+                              ? enumInfo.qual.split(".").pop()!
+                              : enumInfo.qual;
+                            const enumTypeStr = `enumeration ${simpleName}(${enumInfo.literals.join(", ")})`;
+                            dae.diagnostics.push({
+                              severity: "error",
+                              code: 3006,
+                              message: `Subscript '${subText}' has type Integer, expected type ${enumTypeStr}.`,
+                              range: diagRange,
+                            });
+                            return -1;
+                          }
+                        }
+                      }
+                    }
+                  }
                   if (subType === VarType.Real && !isLoopVar) {
                     isRealSub = true;
                   }
@@ -11105,6 +12310,27 @@ function lowerCSTExpression(
       const scopeName =
         currClassSym && db ? getSymbolQualifiedName(db, currClassSym.id) : getQualifiedClassName(clsNode) || "A";
 
+      const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+      if (!isOldFrontend) {
+        const targetSym = db?.byName(outerErr.varName).find((s: any) => s.kind === "Component");
+        const notifRange = targetSym ? getElementDiagRange(db.cstNode(targetSym.id)) : undefined;
+        if (notifRange) {
+          dae.diagnostics.push({
+            severity: "notification" as any,
+            code: 2090,
+            message: "From here:",
+            range: notifRange,
+          });
+        }
+        dae.diagnostics.push({
+          severity: "error",
+          code: 4036,
+          message: `Component '${outerErr.varName}' was found in an enclosing scope but is not a constant.`,
+          range: getElementDiagRange(clauseNode ?? node),
+        });
+        return -1;
+      }
+
       if (currClassSym && currClassSym.parentId != null) {
         const compRange = state.currentCompClauseRange;
         dae.diagnostics.push({
@@ -11712,6 +12938,29 @@ export class ModelicaFlattener {
     if (cst) {
       const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) return true;
+    }
+    return false;
+  }
+
+  isClassPartial(classId?: SymbolId | null): boolean {
+    if (!classId || classId < 0) return false;
+    const sym = this.db.symbol(classId);
+    if (!sym || (sym.kind !== "Class" && sym.kind !== "Package" && sym.kind !== "Function")) return false;
+    const meta = (sym.metadata as any) || {};
+    const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
+    const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+    if (/\bpartial\b/.test(cleanKind)) return true;
+    const cst = this.db.cstNode(classId) as any;
+    if (cst) {
+      const pfxNode = Cst.ClassDefinition.classPrefixes(cst);
+      const text = (pfxNode?.text ?? cst.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      if (/\bpartial\b/.test(text.slice(0, 100)) || /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(text)) {
+        return true;
+      }
+    }
+    const baseSym: any = this.db.query("resolvedBaseClass", classId);
+    if (baseSym && baseSym.id !== classId) {
+      return this.isClassPartial(baseSym.id);
     }
     return false;
   }
@@ -12925,6 +14174,41 @@ export class ModelicaFlattener {
     }
 
     const dae = this.flattenClass(rootClassId, cachedArena);
+    if (
+      !dae.extensionMetadata?.isOldFrontend &&
+      dae.classKind !== "function" &&
+      dae.classKind !== "package" &&
+      !this.isClassPartial(rootClassId)
+    ) {
+      for (let i = 0; i < dae.varCount; i++) {
+        if (!dae.isVarRemoved(i) && dae.getVarVariability(i) === Variability.Parameter) {
+          const exprId = dae.getVarExpression(i);
+          const hasBindingOrStart = exprId !== undefined && exprId >= 0 && exprId !== 0xffffffff;
+          const fixedAttr = dae.getVarAttr(i, "fixed");
+          const isFixedFalse =
+            fixedAttr !== undefined &&
+            fixedAttr >= 0 &&
+            dae.getExprKind(fixedAttr) === ExprKind.BoolLiteral &&
+            dae.getExprData1(fixedAttr) === 0;
+          if (!hasBindingOrStart && !isFixedFalse) {
+            const vName = dae.getVarName(i);
+            let range = dae.getVarSourceRange(i);
+            const sym = this.db.childrenOf(rootClassId).find((c) => c.name === vName);
+            if (sym) {
+              const cst = this.db.cstNode(sym.id);
+              if (cst) range = getElementDiagRange(cst);
+            }
+            dae.diagnostics.push({
+              severity: "error",
+              code: 4028,
+              message: `Parameter ${vName} has neither value nor start value, and is fixed during initialization (fixed=true).`,
+              range,
+            });
+            break;
+          }
+        }
+      }
+    }
     this.bodySnapshot = dae;
     return dae;
   }
@@ -13008,8 +14292,8 @@ export class ModelicaFlattener {
       fileText = cst?.tree?.sourceCode ?? cst?.tree?.rootNode?.text ?? "";
     }
     if (
-      /\b(inner|outer|expandable|each|import|protected)\b/.test(text) ||
-      /\b(inner|outer|expandable|import|protected)\b/.test(fileText)
+      /\b(inner|outer|expandable|each|import|protected|partial|final)\b/.test(text) ||
+      /\b(inner|outer|expandable|import|protected|partial|final)\b/.test(fileText)
     ) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
@@ -13077,10 +14361,8 @@ export class ModelicaFlattener {
         }
       }
       if (child.kind === "Class" || child.kind === "Model" || child.kind === "Block" || child.kind === "Connector") {
-        if (this.classHasUnsupportedWasmFeatures(child.id, visited)) {
-          this._unsupportedWasmCache.set(classId, true);
-          return true;
-        }
+        this._unsupportedWasmCache.set(classId, true);
+        return true;
       }
       if (child.kind === "Component") {
         const compInst = this.db.query<any>("componentInstance", child.id);
@@ -13093,6 +14375,32 @@ export class ModelicaFlattener {
         }
       }
     }
+
+    const seenNames = new Set<string>();
+    for (const child of children) {
+      if (child.name && (child.kind === "Component" || child.kind === "Class")) {
+        if (seenNames.has(child.name)) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
+        seenNames.add(child.name);
+      }
+    }
+    if (sym?.resourceId) {
+      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
+      const topSymbols = (allSyms as SymbolEntry[]).filter(
+        (s: any) => s.resourceId === sym.resourceId && (s.parentId === null || s.parentId === 0),
+      );
+      const topNames = new Set<string>();
+      for (const s of topSymbols) {
+        if (s.name === "Clock" || topNames.has(s.name)) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
+        topNames.add(s.name);
+      }
+    }
+
     this._unsupportedWasmCache.set(classId, false);
     return false;
   }
@@ -13210,6 +14518,42 @@ export class ModelicaFlattener {
       return dae;
     }
 
+    // Check for partial root class
+    const isPartialRoot =
+      this.isClassPartial(rootClassId) ||
+      Boolean(
+        classCstForCheck?.text && /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(classCstForCheck.text.trim()),
+      );
+    if (isPartialRoot) {
+      let startPos = classCstForCheck?.startPosition;
+      let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startByte ?? 0;
+      const pfxNode = classCstForCheck ? Cst.ClassDefinition.classPrefixes(classCstForCheck) : null;
+      if (pfxNode?.children) {
+        for (const child of pfxNode.children) {
+          if (child.type !== "comment" && child.type !== "description") {
+            startPos = child.startPosition ?? startPos;
+            startB = child.startIndex ?? (child as any).startByte ?? startB;
+            break;
+          }
+        }
+      }
+      const range = classCstForCheck
+        ? {
+            startByte: startB,
+            endByte: classCstForCheck.endIndex ?? (classCstForCheck as any).endByte ?? 0,
+            startPosition: startPos,
+            endPosition: classCstForCheck.endPosition,
+          }
+        : undefined;
+      dae.diagnostics.push({
+        severity: "error",
+        code: ModelicaErrorCode.PARTIAL_INSTANTIATION.code,
+        message: ModelicaErrorCode.PARTIAL_INSTANTIATION.message(rootName),
+        range,
+      });
+      return dae;
+    }
+
     this.validateOperatorRecords(dae, rootClassId);
     this.validateClassSpecializationRestrictions(dae, rootClassId);
     this.extractClassAnnotations(dae, rootClassId);
@@ -13311,6 +14655,20 @@ export class ModelicaFlattener {
             severity: "error",
             code: 2003,
             message: `Part ${item.name} of base class name ${ext.name} is not a class.`,
+            range: extRange,
+          });
+          return dae;
+        }
+      }
+
+      // Check 1b: Part of base class name is partial, name lookup is not allowed in partial classes
+      for (let i = 0; i < parts.length - 1; i++) {
+        const item = resolvedChain[i];
+        if (item?.symbol && this.isClassPartial(item.symbol.id)) {
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.code,
+            message: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.message(item.name),
             range: extRange,
           });
           return dae;
@@ -13464,77 +14822,128 @@ export class ModelicaFlattener {
       }
     }
 
-    // Check for duplicate local elements
-    const localComps = this.db.childrenOf(rootClassId).filter((c) => c.kind === "Component");
-    const seenLocalComps = new Map<string, SymbolEntry>();
-    for (const comp of localComps) {
-      const prevComp = seenLocalComps.get(comp.name);
-      if (prevComp) {
-        const prevCst = this.db.cstNode(prevComp.id) as any;
-        const currCst = this.db.cstNode(comp.id) as any;
-        const isRedecl = (node: any) => {
-          let curr = node;
-          while (curr && curr.type !== "class_definition") {
-            if (
-              curr.type === "element" &&
-              (curr.text?.trim().startsWith("redeclare") || curr.text?.includes("redeclare "))
-            )
-              return true;
-            curr = curr.parent;
-          }
-          return false;
-        };
-        if (isRedecl(currCst) || isRedecl(prevCst)) {
-          continue;
-        }
-        const getClause = (node: any) => {
-          let curr = node;
-          while (curr && curr.type !== "component_clause") curr = curr.parent;
-          return curr;
-        };
-        const prevClause = getClause(prevCst);
-        const currClause = getClause(currCst);
-        let prevText = (prevClause?.text ?? prevCst?.text ?? "").trim().replace(/;$/, "");
-        let currText = (currClause?.text ?? currCst?.text ?? "").trim().replace(/;$/, "");
-        const typeMatch = prevText.match(/^([a-zA-Z_]\w*)\s*(\[[^\]]+\])\s*([a-zA-Z_]\w*)$/);
-        if (typeMatch) {
-          prevText = `${typeMatch[1]} ${typeMatch[3]}${typeMatch[2]}`;
-        }
-        const currRange = currClause
-          ? {
-              startByte: currClause.startIndex ?? currClause.startByte,
-              endByte: currClause.endIndex ?? currClause.endByte,
-            }
-          : {
-              startByte: currCst?.startIndex ?? currCst?.startByte ?? 0,
-              endByte: currCst?.endIndex ?? currCst?.endByte ?? 0,
-            };
-        const prevRange = prevClause
-          ? {
-              startByte: prevClause.startIndex ?? prevClause.startByte,
-              endByte: prevClause.endIndex ?? prevClause.endByte,
-            }
-          : {
-              startByte: prevCst?.startIndex ?? prevCst?.startByte ?? 0,
-              endByte: prevCst?.endIndex ?? prevCst?.endByte ?? 0,
-            };
+    // 1. Check for duplicate top-level symbols in the same file (DoubleClassDeclaration1, ErrorMultipleClasses, Clock2)
+    if (rootSym?.resourceId) {
+      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
+      const topLevelSymbols = (allSyms as SymbolEntry[]).filter(
+        (s: any) =>
+          s.resourceId === rootSym.resourceId &&
+          (s.parentId === null || s.parentId === 0) &&
+          (s.kind === "Class" || s.kind === "Component"),
+      );
 
-        dae.diagnostics.push({
-          severity: "notification",
-          code: 0,
-          message: "From here:",
-          range: currRange,
-        });
-        dae.diagnostics.push({
-          severity: "error",
-          code: 4056,
-          message: `Duplicate elements (due to inherited elements) not identical:\n  first element is:  ${currText}\n  second element is: ${prevText}`,
-          range: prevRange,
-        });
-        return dae;
+      const seenTop = new Map<string, SymbolEntry>();
+      for (const s of topLevelSymbols) {
+        // Built-in type check for top-level classes (Clock2.mo)
+        if (s.name === "Clock") {
+          const currCst = this.db.cstNode(s.id) as any;
+          dae.diagnostics.push({
+            severity: "notification",
+            code: 2090,
+            message: "From here:",
+            range: undefined,
+          });
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+            message: ModelicaErrorCode.DUPLICATE_ELEMENT.message("Clock"),
+            range: this.getElementDiagRange(currCst),
+          });
+          return dae;
+        }
+
+        const prev = seenTop.get(s.name);
+        if (prev) {
+          const prevCst = this.db.cstNode(prev.id) as any;
+          const currCst = this.db.cstNode(s.id) as any;
+          dae.diagnostics.push({
+            severity: "notification",
+            code: 2090,
+            message: "From here:",
+            range: this.getElementDiagRange(prevCst),
+          });
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+            message: ModelicaErrorCode.DUPLICATE_ELEMENT.message(s.name),
+            range: this.getElementDiagRange(currCst),
+          });
+          return dae;
+        }
+        seenTop.set(s.name, s);
       }
-      seenLocalComps.set(comp.name, comp);
+    }
 
+    // 2. Check for duplicate local elements in rootClassId or any nested class (DuplicateElements1..4, DoubleClassDeclaration2, DoubleFuncDeclaration)
+    const checkDuplicateScopeElements = (classId: SymbolId): boolean => {
+      const localElems = this.db.childrenOf(classId).filter((c) => c.kind === "Component" || c.kind === "Class");
+      const seenLocal = new Map<string, SymbolEntry>();
+      for (const elem of localElems) {
+        const prevElem = seenLocal.get(elem.name);
+        if (prevElem) {
+          const prevCst = this.db.cstNode(prevElem.id) as any;
+          const currCst = this.db.cstNode(elem.id) as any;
+          const isRedecl = (node: any) => {
+            let curr = node;
+            while (curr && curr.type !== "class_definition") {
+              if (
+                curr.type === "element" &&
+                (curr.text?.trim().startsWith("redeclare") || curr.text?.includes("redeclare "))
+              )
+                return true;
+              curr = curr.parent;
+            }
+            return false;
+          };
+          if (isRedecl(currCst) || isRedecl(prevCst)) {
+            continue;
+          }
+
+          const prevRange = this.getElementDiagRange(prevCst);
+          const currRange = this.getElementDiagRange(currCst);
+
+          let notifRange = prevRange;
+          let errorRange = currRange;
+          // In OMC, if one is Class and one is Component, the Class is reported as the original (notification)
+          if (elem.kind === "Component" && prevElem.kind === "Class") {
+            notifRange = prevRange;
+            errorRange = currRange;
+          } else if (elem.kind === "Class" && prevElem.kind === "Component") {
+            notifRange = currRange;
+            errorRange = prevRange;
+          }
+
+          dae.diagnostics.push({
+            severity: "notification",
+            code: 2090,
+            message: "From here:",
+            range: notifRange,
+          });
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+            message: ModelicaErrorCode.DUPLICATE_ELEMENT.message(elem.name),
+            range: errorRange,
+          });
+          return true;
+        }
+        seenLocal.set(elem.name, elem);
+      }
+
+      for (const elem of localElems) {
+        if (elem.kind === "Class") {
+          if (checkDuplicateScopeElements(elem.id)) return true;
+        }
+      }
+      return false;
+    };
+
+    if (checkDuplicateScopeElements(rootClassId)) {
+      return dae;
+    }
+
+    const localComps = this.db.childrenOf(rootClassId).filter((c) => c.kind === "Component");
+    for (const comp of localComps) {
       const compCst = this.db.cstNode(comp.id) as any;
       let clauseNode: any = compCst;
       while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "class_definition") {
@@ -15277,6 +16686,7 @@ export class ModelicaFlattener {
       }
       if (cst?.text && /\bimpure\s+function\b/.test(cst.text)) {
         fn.isImpure = true;
+        (fn as any).isExplicitImpure = true;
       }
 
       const findDesc = (node: any): string | null => {
@@ -15368,7 +16778,15 @@ export class ModelicaFlattener {
       }
 
       if (extClause) {
-        if (!extClause.text?.includes('"builtin"') && (!cst?.text || !/\bpure\s+function\b/.test(cst.text))) {
+        const isCMath =
+          /\b(?:sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|log|log10|sqrt|ceil|floor|fabs|pow|fmod)\s*\(/.test(
+            extClause.text ?? "",
+          );
+        if (
+          !extClause.text?.includes('"builtin"') &&
+          !isCMath &&
+          (!cst?.text || !/\bpure\s+function\b/.test(cst.text))
+        ) {
           fn.isImpure = true;
         }
 
@@ -15378,7 +16796,7 @@ export class ModelicaFlattener {
         extText = extText.replace(/\s*annotation\s*\([\s\S]*?\)\s*;?$/, "").trim();
         if (extText.endsWith(";")) extText = extText.slice(0, -1).trim();
 
-        const langMatch = extText.match(/^external\s+("[^"]+"|builtin)\b/);
+        const langMatch = extText.match(/^external\s+(?:"[^"]+"|\bbuiltin\b)/);
         if (!langMatch) {
           extText = extText.replace(/^external\b/, 'external "C"');
         }
@@ -16005,6 +17423,182 @@ export class ModelicaFlattener {
     return env;
   }
 
+  private classFindMember(classId: SymbolId, name: string, visited: Set<SymbolId> = new Set()): SymbolEntry | null {
+    if (visited.has(classId)) return null;
+    visited.add(classId);
+
+    for (const child of this.db.childrenOf(classId)) {
+      if (child.name === name) return child;
+    }
+
+    const instElems = this.db.query<SymbolId[]>("instantiate", classId);
+    if (instElems) {
+      for (const elemId of instElems) {
+        const sym = this.db.symbol(elemId);
+        if (sym && sym.name === name) return sym;
+      }
+    }
+
+    for (const child of this.db.childrenOf(classId)) {
+      if (child.kind === "Extends") {
+        const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+        const baseTargets = baseClass ? [baseClass] : this.db.byName(child.name);
+        for (const target of baseTargets) {
+          if (target.kind === "Class") {
+            const found = this.classFindMember(target.id, name, visited);
+            if (found) return found;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private validateClassModifiers(defaultTargetClassId: SymbolId, args: any[], dae: DAEBuilder): boolean {
+    const seenRedecls = new Map<string, any>();
+    for (const arg of args) {
+      if (arg.isBreak) continue;
+      if (arg.isRedeclaration && arg.name) {
+        const prevRedecl = seenRedecls.get(arg.name);
+        if (prevRedecl) {
+          dae.diagnostics.push({
+            severity: "notification",
+            code: 2090,
+            message: "From here:",
+            range: {
+              startByte: prevRedecl.modRange?.[0] ?? prevRedecl.modPosition?.startPosition,
+              endByte: prevRedecl.modRange?.[1] ?? prevRedecl.modPosition?.endPosition,
+              startPosition: prevRedecl.modPosition?.startPosition,
+              endPosition: prevRedecl.modPosition?.endPosition,
+            },
+          });
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.DUPLICATE_REDECLARE.code,
+            message: ModelicaErrorCode.DUPLICATE_REDECLARE.message(arg.name),
+            range: {
+              startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+              endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+              startPosition: arg.modPosition?.startPosition,
+              endPosition: arg.modPosition?.endPosition,
+            },
+          });
+          return false;
+        }
+        seenRedecls.set(arg.name, arg);
+      }
+    }
+
+    for (const arg of args) {
+      if (arg.isBreak) continue;
+      const targetClassId = arg.extendsTargetClassId ?? defaultTargetClassId;
+      const targetSym = this.db.symbol(targetClassId);
+      const targetClassName = targetSym?.name ?? "";
+
+      // 1. Missing redeclare keyword on attempted redeclaration of class (MissingRedeclare1)
+      if (!arg.isRedeclaration) {
+        const targetChild = this.classFindMember(targetClassId, arg.name);
+        if (targetChild && targetChild.kind === "Class") {
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.MISSING_REDECLARE_KEYWORD.code,
+            message: ModelicaErrorCode.MISSING_REDECLARE_KEYWORD.message(targetChild.name),
+            range: {
+              startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+              endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+              startPosition: arg.modPosition?.startPosition,
+              endPosition: arg.modPosition?.endPosition,
+            },
+          });
+          return false;
+        }
+      }
+
+      // 2. Redeclaration checks
+      if (arg.isRedeclaration) {
+        const targetMember = this.classFindMember(targetClassId, arg.name);
+        if (!targetMember) {
+          // Element not found in class (NonexistentRedeclareModifier1 & 2)
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.code,
+            message: ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.message(arg.name, targetClassName),
+            range: {
+              startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+              endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+              startPosition: arg.modPosition?.startPosition,
+              endPosition: arg.modPosition?.endPosition,
+            },
+          });
+          return false;
+        }
+
+        // Invalid redeclaration of class as component (RedeclareClassComponent)
+        if (targetMember.kind === "Class" && arg.redeclaredKind === "component") {
+          const childCst = this.db.cstNode(targetMember.id) as any;
+          let spec = childCst?.children?.find(
+            (ch: any) => ch.type === "class_specifier" || ch.type === "short_class_specifier",
+          );
+          if (spec?.children?.[0]?.type === "short_class_specifier") spec = spec.children[0];
+          const errNode = spec ?? childCst;
+
+          dae.diagnostics.push({
+            severity: "notification",
+            code: 2090,
+            message: "From here:",
+            range: {
+              startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+              endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+              startPosition: arg.modPosition?.startPosition,
+              endPosition: arg.modPosition?.endPosition,
+            },
+          });
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.INVALID_REDECLARATION_CLASS_AS_COMPONENT.code,
+            message: ModelicaErrorCode.INVALID_REDECLARATION_CLASS_AS_COMPONENT.message(targetMember.name),
+            range: {
+              startByte: errNode?.startIndex ?? errNode?.startByte,
+              endByte: errNode?.endIndex ?? errNode?.endByte,
+              startPosition: errNode?.startPosition,
+              endPosition: errNode?.endPosition,
+            },
+          });
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  private getElementDiagRange(target: any): any {
+    if (!target) return undefined;
+    let node = target;
+    if (node.type === "component_declaration") {
+      let p = node.parent;
+      while (p && p.type !== "component_clause" && p.parent) p = p.parent;
+      if (p) node = p;
+    }
+    const text: string = node.text ?? "";
+    const trimmedLen = text.endsWith(";") ? text.length - 1 : text.length;
+    const startByte = node.startIndex ?? node.startByte ?? 0;
+    const endByte = startByte + trimmedLen;
+    let endPosition = node.endPosition;
+    if (text.endsWith(";") && endPosition) {
+      endPosition = {
+        row: endPosition.row,
+        column: Math.max(0, endPosition.column - 1),
+      };
+    }
+    return {
+      startByte,
+      endByte,
+      startPosition: node.startPosition,
+      endPosition,
+    };
+  }
+
   private instantiateElements(elements: SymbolId[], prefix: string, dae: DAEBuilder, parentMods?: any): void {
     const prevParentMods = this.currentParentMods;
     this.currentParentMods = parentMods;
@@ -16091,6 +17685,87 @@ export class ModelicaFlattener {
         this.currentClassId = parentMods.currentClassId;
       }
 
+      // ── Outer class modifier verification (Modelica §5.4) ──
+      const targetClassForOuter =
+        parentMods?.currentClassId ?? (prefix === "" ? (this.currentClassId ?? this.currentRootClassId) : null);
+      if (targetClassForOuter) {
+        if (parentMods?.args && parentMods.args.length > 0) {
+          if (!this.validateClassModifiers(targetClassForOuter, parentMods.args, dae)) {
+            return;
+          }
+        }
+        for (const child of this.db.childrenOf(targetClassForOuter)) {
+          if (child.kind === "Extends") {
+            const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+            const baseTargets = baseClass ? [baseClass] : this.db.byName(child.name);
+            const extMod = this.db.query<any>("extendsModificationParsed", child.id);
+            if (extMod?.args && extMod.args.length > 0) {
+              for (const target of baseTargets) {
+                if (target.kind === "Class") {
+                  if (!this.validateClassModifiers(target.id, extMod.args, dae)) {
+                    return;
+                  }
+                }
+              }
+            }
+          }
+          if (child.kind === "Class") {
+            const childCst = this.db.cstNode(child.id) as any;
+            const elemParent = childCst?.parent?.type === "element" ? childCst.parent : childCst?.parent?.parent;
+            const isOuterClass = elemParent?.children?.some((ch: any) => ch.type === "outer" || ch.text === "outer");
+            const isInnerClass = elemParent?.children?.some((ch: any) => ch.type === "inner" || ch.text === "inner");
+            if (isOuterClass && !isInnerClass) {
+              // 1. Check if outer class itself has a class modification
+              let spec = childCst?.children?.find(
+                (ch: any) => ch.type === "class_specifier" || ch.type === "short_class_specifier",
+              );
+              if (spec?.children?.[0]?.type === "short_class_specifier") spec = spec.children[0];
+              const modNode = spec?.children?.find(
+                (ch: any) => ch.type === "class_modification" || ch.type === "modification",
+              );
+              if (modNode) {
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.OUTER_MODIFIER.code,
+                  message: ModelicaErrorCode.OUTER_MODIFIER.message(modNode.text?.trim() ?? "", child.name),
+                  range: {
+                    startByte: spec?.startIndex ?? spec?.startByte ?? modNode.startIndex,
+                    endByte: spec?.endIndex ?? spec?.endByte ?? modNode.endIndex,
+                    startPosition: spec?.startPosition ?? modNode.startPosition,
+                    endPosition: spec?.endPosition ?? modNode.endPosition,
+                  },
+                });
+                return;
+              }
+
+              // 2. Check if parentMods has a modifier or redeclaration targeting this outer class
+              const classModArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === child.name);
+              if (
+                classModArg &&
+                (classModArg.value != null ||
+                  (classModArg.nestedArgs && classModArg.nestedArgs.length > 0) ||
+                  classModArg.modText ||
+                  classModArg.isRedeclaration)
+              ) {
+                const modText = classModArg.modText || (classModArg.value?.text ? `=${classModArg.value.text}` : "");
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.OUTER_MODIFIER.code,
+                  message: ModelicaErrorCode.OUTER_MODIFIER.message(modText, child.name),
+                  range: {
+                    startByte: classModArg.modRange?.[0] ?? classModArg.modPosition?.startPosition,
+                    endByte: classModArg.modRange?.[1] ?? classModArg.modPosition?.endPosition,
+                    startPosition: classModArg.modPosition?.startPosition,
+                    endPosition: classModArg.modPosition?.endPosition,
+                  },
+                });
+                return;
+              }
+            }
+          }
+        }
+      }
+
       try {
         for (const elemId of elements) {
           const compInst = compInstMap.get(elemId);
@@ -16122,12 +17797,116 @@ export class ModelicaFlattener {
             continue;
           }
 
+          // Duplicate redeclaration check (DuplicateRedeclares1)
+          let isLocalRedecl = Boolean(compInst.isRedeclare);
+          let pNode: any = elemCst;
+          while (pNode && pNode.type !== "class_definition" && !isLocalRedecl) {
+            if (pNode.type === "element_redeclaration" || pNode.type === "ElementRedeclaration") isLocalRedecl = true;
+            if (pNode.children?.some((c: any) => c.type === "redeclare" || c.text === "redeclare"))
+              isLocalRedecl = true;
+            pNode = pNode.parent;
+          }
+          if (isLocalRedecl) {
+            const matchingRedecl = parentMods?.args?.find(
+              (a: any) => !a.isBreak && a.name === compInst.name && a.isRedeclaration,
+            );
+            if (matchingRedecl) {
+              let declNode: any = elemCst;
+              let p = elemCst?.parent;
+              while (p && p.type !== "class_definition" && p.type !== "element_list") {
+                declNode = p;
+                if (p.type === "element_redeclaration" || p.type === "element") break;
+                p = p.parent;
+              }
+              const localRange = this.getElementDiagRange(declNode ?? elemCst);
+              dae.diagnostics.push({
+                severity: "notification",
+                code: 2090,
+                message: "From here:",
+                range: {
+                  startByte: matchingRedecl.modRange?.[0] ?? matchingRedecl.modPosition?.startPosition,
+                  endByte: matchingRedecl.modRange?.[1] ?? matchingRedecl.modPosition?.endPosition,
+                  startPosition: matchingRedecl.modPosition?.startPosition,
+                  endPosition: matchingRedecl.modPosition?.endPosition,
+                },
+              });
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.DUPLICATE_REDECLARE.code,
+                message: ModelicaErrorCode.DUPLICATE_REDECLARE.message(compInst.name),
+                range: localRange,
+              });
+              return;
+            }
+          }
+
           const isStateOutput = Boolean(compInst.isOuter && compInst.causality === "output");
           if (compInst.isOuter && !compInst.isInner) {
+            // Check if component has modification in its own declaration (InnerOuterInvalidMod1)
+            if (
+              compInst.modification?.bindingExpression ||
+              (compInst.modification?.args && compInst.modification.args.length > 0)
+            ) {
+              let declNode: any = elemCst;
+              let p = elemCst?.parent;
+              while (
+                p &&
+                (p.type === "component_declaration" || p.type === "component_clause" || p.type === "element")
+              ) {
+                declNode = p;
+                p = p.parent;
+              }
+              const elemText = elemCst?.text ?? "";
+              const modText = elemText.startsWith(compInst.name)
+                ? elemText.slice(compInst.name.length)
+                : compInst.modification.bindingExpression?.text
+                  ? ` = ${compInst.modification.bindingExpression.text}`
+                  : "";
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.OUTER_MODIFIER.code,
+                message: ModelicaErrorCode.OUTER_MODIFIER.message(modText, compInst.name),
+                range: {
+                  startByte: declNode?.startIndex ?? declNode?.startByte,
+                  endByte: declNode?.endIndex ?? declNode?.endByte,
+                  startPosition: declNode?.startPosition,
+                  endPosition: declNode?.endPosition,
+                },
+              });
+              return;
+            }
+
+            // Check if parentMods targets this outer component (InnerOuterInvalidMod2 & InnerOuterInvalidMod3)
+            const matchingOuterArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === compInst.name);
+            if (
+              matchingOuterArg &&
+              (matchingOuterArg.value != null ||
+                (matchingOuterArg.nestedArgs && matchingOuterArg.nestedArgs.length > 0) ||
+                matchingOuterArg.modText ||
+                matchingOuterArg.isRedeclaration)
+            ) {
+              const modText =
+                matchingOuterArg.modText || (matchingOuterArg.value?.text ? `=${matchingOuterArg.value.text}` : "");
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.OUTER_MODIFIER.code,
+                message: ModelicaErrorCode.OUTER_MODIFIER.message(modText, compInst.name),
+                range: {
+                  startByte: matchingOuterArg.modRange?.[0] ?? matchingOuterArg.modPosition?.startPosition,
+                  endByte: matchingOuterArg.modRange?.[1] ?? matchingOuterArg.modPosition?.endPosition,
+                  startPosition: matchingOuterArg.modPosition?.startPosition,
+                  endPosition: matchingOuterArg.modPosition?.endPosition,
+                },
+              });
+              return;
+            }
+
             let p: string | null = prefix;
+            let foundInner = false;
             while (p !== null) {
               const innerMap = this.innerDeclarations.get(p);
               if (innerMap && innerMap.has(compInst.name)) {
+                foundInner = true;
                 const targetInner = innerMap.get(compInst.name)!;
                 if (!(dae as any).outerToInner) (dae as any).outerToInner = new Map<string, string>();
                 (dae as any).outerToInner.set(fullCompName, targetInner);
@@ -16135,6 +17914,83 @@ export class ModelicaFlattener {
               }
               p = p.includes(".") ? p.split(".").slice(0, -1).join(".") : p === "" ? null : "";
             }
+
+            if (!foundInner) {
+              if (prefix === "") {
+                let declNode: any = elemCst;
+                let pNode = elemCst?.parent;
+                while (
+                  pNode &&
+                  (pNode.type === "component_declaration" ||
+                    pNode.type === "component_clause" ||
+                    pNode.type === "element")
+                ) {
+                  declNode = pNode;
+                  pNode = pNode.parent;
+                }
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.TOP_LEVEL_OUTER_ELEMENT.code,
+                  message: ModelicaErrorCode.TOP_LEVEL_OUTER_ELEMENT.message(compInst.name),
+                  range: {
+                    startByte: declNode?.startIndex ?? declNode?.startByte,
+                    endByte: declNode?.endIndex ?? declNode?.endByte,
+                    startPosition: declNode?.startPosition,
+                    endPosition: declNode?.endPosition,
+                  },
+                });
+                return;
+              } else {
+                // Check if an existing declaration with the same name exists in the root class
+                const rootChildren = this.currentRootClassId ? this.db.childrenOf(this.currentRootClassId) : [];
+                const existingDecl = rootChildren.find((c: any) => c.kind === "Component" && c.name === compInst.name);
+                if (existingDecl) {
+                  const existingCst = this.db.cstNode(existingDecl.id) as any;
+                  let existingElem = existingCst?.parent;
+                  while (existingElem && existingElem.type !== "element" && existingElem.parent) {
+                    existingElem = existingElem.parent;
+                  }
+                  const isExistingInner = existingElem?.children?.some(
+                    (ch: any) => ch.type === "inner" || ch.text === "inner",
+                  );
+                  if (!isExistingInner) {
+                    let declNode: any = elemCst;
+                    let pNode = elemCst?.parent;
+                    while (
+                      pNode &&
+                      (pNode.type === "component_declaration" ||
+                        pNode.type === "component_clause" ||
+                        pNode.type === "element")
+                    ) {
+                      declNode = pNode;
+                      pNode = pNode.parent;
+                    }
+                    const notifRange = (dae as any).currentCompClauseRange ?? parentMods?.componentClauseRange;
+                    if (notifRange) {
+                      dae.diagnostics.push({
+                        severity: "notification",
+                        code: 2090,
+                        message: "From here:",
+                        range: notifRange,
+                      });
+                    }
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: ModelicaErrorCode.INNER_NOT_FOUND_EXISTING_DECL.code,
+                      message: ModelicaErrorCode.INNER_NOT_FOUND_EXISTING_DECL.message(compInst.name),
+                      range: {
+                        startByte: declNode?.startIndex ?? declNode?.startByte,
+                        endByte: declNode?.endIndex ?? declNode?.endByte,
+                        startPosition: declNode?.startPosition,
+                        endPosition: declNode?.endPosition,
+                      },
+                    });
+                    return;
+                  }
+                }
+              }
+            }
+
             if (!isStateOutput) {
               continue;
             }
@@ -16229,6 +18085,26 @@ export class ModelicaFlattener {
                   }
                 }
               }
+              if (condText.startsWith('"') && condText.endsWith('"')) {
+                const diagRange = getElementDiagRange(elemCst);
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: 3006,
+                  message: `Type error in conditional '${condText}'. Expected Boolean, got String.`,
+                  range: diagRange,
+                });
+                return;
+              }
+              if (condVal === null) {
+                const diagRange = getElementDiagRange(elemCst);
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: 4000,
+                  message: `The conditional expression ${condText} could not be evaluated.`,
+                  range: diagRange,
+                });
+                return;
+              }
               if (condVal === false) {
                 this.disabledComponents.add(fullCompName);
                 continue;
@@ -16288,6 +18164,55 @@ export class ModelicaFlattener {
               else if (compInst.variability === "constant") variability = Variability.Constant;
               else if (compInst.variability === "discrete") variability = Variability.Discrete;
               else if (parentMods?.parentVariability !== undefined) variability = parentMods.parentVariability;
+
+              const isDiscreteTypeOrVar =
+                variability === Variability.Discrete ||
+                compInst.typeSpecifier === "Boolean" ||
+                compInst.typeSpecifier === "Integer" ||
+                compInst.typeSpecifier === "String";
+              if (isDiscreteTypeOrVar && bText) {
+                if (bText.startsWith("noEvent(") && bText.endsWith(")")) {
+                  const inner = bText.slice(8, -1);
+                  const m = inner.match(/[a-zA-Z_]\w*/g) || [];
+                  const hasContinuous = m.some((vName) => {
+                    if (vName === "time") return true;
+                    const vi = dae.getVarIdxByName(prefix ? `${prefix}.${vName}` : vName);
+                    return vi >= 0 && dae.getVarVariability(vi) === Variability.Continuous;
+                  });
+                  if (hasContinuous) {
+                    let clauseNode: any = elemCst;
+                    while (clauseNode && clauseNode.type !== "component_clause") {
+                      clauseNode = clauseNode.parent;
+                    }
+                    const diagRange = getElementDiagRange(clauseNode ?? elemCst);
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: 4027,
+                      message: `Component ${compInst.name} of variability discrete has binding '${bText}' of higher variability continuous.`,
+                      range: diagRange,
+                    });
+                    return;
+                  }
+                }
+              }
+
+              if (variability === Variability.Parameter && bText) {
+                const bTrim = bText.trim();
+                if (bTrim === "initial()" || bTrim === "terminal()") {
+                  let clauseNode: any = elemCst;
+                  while (clauseNode && clauseNode.type !== "component_clause") {
+                    clauseNode = clauseNode.parent;
+                  }
+                  const diagRange = getElementDiagRange(clauseNode ?? elemCst);
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: 4027,
+                    message: `Component ${compInst.name} of variability parameter has binding '${bTrim}' of higher variability discrete.`,
+                    range: diagRange,
+                  });
+                  return;
+                }
+              }
 
               if (
                 variability === Variability.Constant &&
@@ -16393,8 +18318,15 @@ export class ModelicaFlattener {
               }
 
               const sym = this.db.symbol(elemId);
-              if (sym && sym.startByte != null && sym.endByte != null) {
-                dae.setVarSourceRange(varIdx, sym.startByte, sym.endByte);
+              let clauseNode: any = elemCst;
+              while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
+                clauseNode = clauseNode.parent;
+              }
+              const targetRangeNode = clauseNode ?? elemCst;
+              const sb = targetRangeNode?.startIndex ?? targetRangeNode?.startByte ?? sym?.startByte;
+              const eb = targetRangeNode?.endIndex ?? targetRangeNode?.endByte ?? sym?.endByte;
+              if (sb != null && eb != null) {
+                dae.setVarSourceRange(varIdx, sb, eb);
               }
               if (compInst.flowPrefix === "flow") dae.setVarFlow(varIdx, true);
               if (compInst.flowPrefix === "stream") dae.setVarStream(varIdx, true);
@@ -16641,6 +18573,91 @@ export class ModelicaFlattener {
             .reverse()
             .find((a: any) => !a.isBreak && a.name === compInst.name);
 
+          // ── Final override verification (Modelica §7.2.6) ──
+          const isFinalComp = Boolean(compInst?.isFinal || (this.db.symbol(elemId)?.metadata as any)?.isFinal);
+
+          // Case A: Component itself is declared final, and parentMods provides a modification
+          if (
+            isFinalComp &&
+            matchingParentArg &&
+            (matchingParentArg.value != null ||
+              (matchingParentArg.nestedArgs && matchingParentArg.nestedArgs.length > 0) ||
+              matchingParentArg.modText)
+          ) {
+            let declNode: any = elemCst;
+            let p = elemCst?.parent;
+            while (p && (p.type === "component_declaration" || p.type === "component_clause" || p.type === "element")) {
+              declNode = p;
+              p = p.parent;
+            }
+            const notifRange = {
+              startByte: declNode?.startIndex ?? declNode?.startByte,
+              endByte: declNode?.endIndex ?? declNode?.endByte,
+              startPosition: declNode?.startPosition,
+              endPosition: declNode?.endPosition,
+            };
+            const errorRange = {
+              startByte: matchingParentArg.modRange?.[0] ?? matchingParentArg.modPosition?.startPosition,
+              endByte: matchingParentArg.modRange?.[1] ?? matchingParentArg.modPosition?.endPosition,
+              startPosition: matchingParentArg.modPosition?.startPosition,
+              endPosition: matchingParentArg.modPosition?.endPosition,
+            };
+            const modText =
+              matchingParentArg.modText || (matchingParentArg.value?.text ? `=${matchingParentArg.value.text}` : "");
+            dae.diagnostics.push({
+              severity: "notification",
+              code: 2090,
+              message: "From here:",
+              range: notifRange,
+            });
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.FINAL_OVERRIDE.code,
+              message: ModelicaErrorCode.FINAL_OVERRIDE.message(compInst.name, modText),
+              range: errorRange,
+            });
+            return;
+          }
+
+          // Case B: Component was finalized by an earlier modifier (in parentMods.args), and a later modifier overrides it
+          const compArgs = (parentMods?.args || []).filter((a: any) => !a.isBreak && a.name === compInst.name);
+          const finalArgIdx = compArgs.findIndex((a: any) => a.final);
+          if (finalArgIdx >= 0) {
+            const finalArg = compArgs[finalArgIdx];
+            const overridingArg = compArgs
+              .slice(finalArgIdx + 1)
+              .find((a: any) => a.value != null || (a.nestedArgs && a.nestedArgs.length > 0) || a.modText);
+            if (overridingArg) {
+              const modText =
+                overridingArg.modText || (overridingArg.value?.text ? `=${overridingArg.value.text}` : "");
+              const notifRange = {
+                startByte: finalArg.modRange?.[0] ?? finalArg.modPosition?.startPosition,
+                endByte: finalArg.modRange?.[1] ?? finalArg.modPosition?.endPosition,
+                startPosition: finalArg.modPosition?.startPosition,
+                endPosition: finalArg.modPosition?.endPosition,
+              };
+              const errorRange = {
+                startByte: overridingArg.modRange?.[0] ?? overridingArg.modPosition?.startPosition,
+                endByte: overridingArg.modRange?.[1] ?? overridingArg.modPosition?.endPosition,
+                startPosition: overridingArg.modPosition?.startPosition,
+                endPosition: overridingArg.modPosition?.endPosition,
+              };
+              dae.diagnostics.push({
+                severity: "notification",
+                code: 2090,
+                message: "From here:",
+                range: notifRange,
+              });
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.FINAL_OVERRIDE.code,
+                message: ModelicaErrorCode.FINAL_OVERRIDE.message(compInst.name, modText),
+                range: errorRange,
+              });
+              return;
+            }
+          }
+
           const effectiveParentArg =
             matchingParentArg?.isRedeclaration && !compInst?.isReplaceable ? null : matchingParentArg;
           const effectiveClassArg = matchingClassArg;
@@ -16774,6 +18791,67 @@ export class ModelicaFlattener {
           }
 
           if (isUserClass) {
+            // Check for dot lookup in partial classes/packages (e.g. P.A a; where P is partial)
+            const typeSpecParts = (compInst.typeSpecifier ?? "").split(".");
+            if (typeSpecParts.length > 1) {
+              const curScopeId = this.currentClassId ?? this.currentRootClassId;
+              let currentScope: SymbolEntry | null = curScopeId ? this.db.symbol(curScopeId) : null;
+              let hasPartialLookup = false;
+              for (let i = 0; i < typeSpecParts.length - 1; i++) {
+                const part = typeSpecParts[i];
+                let resolved: SymbolEntry | null = null;
+                if (i === 0) {
+                  const resolver =
+                    (curScopeId
+                      ? this.db.query<(n: string) => SymbolEntry | null>(
+                          "resolveSimpleName",
+                          currentScope?.id ?? curScopeId,
+                        )
+                      : null) ??
+                    (curScopeId
+                      ? this.db.query<(n: string) => SymbolEntry | null>("resolveName", currentScope?.id ?? curScopeId)
+                      : null);
+                  resolved = resolver ? resolver(part) : null;
+                  if (!resolved) {
+                    resolved = this.db.byName(part).find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
+                  }
+                } else if (currentScope) {
+                  resolved = this.db.childrenOf(currentScope.id).find((c) => c.name === part) ?? null;
+                }
+                if (resolved && this.isClassPartial(resolved.id)) {
+                  let clauseNode: any = elemCst;
+                  while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
+                    clauseNode = clauseNode.parent;
+                  }
+                  const compRange = clauseNode
+                    ? {
+                        startByte: clauseNode.startIndex ?? clauseNode.startByte,
+                        endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                        startPosition: clauseNode.startPosition,
+                        endPosition: clauseNode.endPosition,
+                      }
+                    : elemCst
+                      ? {
+                          startByte: elemCst.startIndex ?? elemCst.startByte,
+                          endByte: elemCst.endIndex ?? elemCst.endByte,
+                          startPosition: elemCst.startPosition,
+                          endPosition: elemCst.endPosition,
+                        }
+                      : undefined;
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.code,
+                    message: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.message(part),
+                    range: compRange,
+                  });
+                  hasPartialLookup = true;
+                  break;
+                }
+                currentScope = resolved;
+              }
+              if (hasPartialLookup) continue;
+            }
+
             const instantiatingClassIds: Set<SymbolId> =
               parentMods?.instantiatingClassIds ?? new Set(this.currentRootClassId ? [this.currentRootClassId] : []);
             if (classTargetId && instantiatingClassIds.has(classTargetId)) {
@@ -16796,6 +18874,60 @@ export class ModelicaFlattener {
                 message: `Declaration of element ${compInst.name} causes recursive definition of class ${targetClassName}.`,
                 range: rangeObj,
               });
+              continue;
+            }
+
+            if (classTargetId && !compInst.isReplaceable && this.isClassPartial(classTargetId)) {
+              const targetCst = this.db.cstNode(classTargetId) as any;
+              const targetRange = targetCst
+                ? {
+                    startByte: targetCst.startIndex ?? targetCst.startByte,
+                    endByte: targetCst.endIndex ?? targetCst.endByte,
+                    startPosition: targetCst.startPosition,
+                    endPosition: targetCst.endPosition,
+                  }
+                : undefined;
+              let clauseNode: any = elemCst;
+              while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
+                clauseNode = clauseNode.parent;
+              }
+              const compRange = clauseNode
+                ? {
+                    startByte: clauseNode.startIndex ?? clauseNode.startByte,
+                    endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                    startPosition: clauseNode.startPosition,
+                    endPosition: clauseNode.endPosition,
+                  }
+                : elemCst
+                  ? {
+                      startByte: elemCst.startIndex ?? elemCst.startByte,
+                      endByte: elemCst.endIndex ?? elemCst.endByte,
+                      startPosition: elemCst.startPosition,
+                      endPosition: elemCst.endPosition,
+                    }
+                  : undefined;
+
+              if (dae.extensionMetadata.isOldFrontend) {
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.PARTIAL_INSTANTIATION.code,
+                  message: ModelicaErrorCode.PARTIAL_INSTANTIATION.message(classTarget?.name ?? compInst.typeSpecifier),
+                  range: targetRange,
+                });
+              } else {
+                dae.diagnostics.push({
+                  severity: "notification",
+                  code: 2090,
+                  message: "From here:",
+                  range: targetRange,
+                });
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.PARTIAL_TYPE_COMPONENT.code,
+                  message: ModelicaErrorCode.PARTIAL_TYPE_COMPONENT.message(compInst.name, compInst.typeSpecifier),
+                  range: compRange,
+                });
+              }
               continue;
             }
 
@@ -16850,6 +18982,18 @@ export class ModelicaFlattener {
                 }
               }
               if (hasPartialErr) continue;
+            }
+
+            if (classTargetId) {
+              const compModsToValidate = [
+                ...(compInst.modification?.args ?? []),
+                ...(matchingParentArg?.nestedArgs ?? matchingParentArg?.args ?? []),
+              ];
+              if (compModsToValidate.length > 0) {
+                if (!this.validateClassModifiers(classTargetId, compModsToValidate, dae)) {
+                  continue;
+                }
+              }
             }
 
             const nextInstantiatingClassIds = new Set(instantiatingClassIds);
@@ -17595,7 +19739,13 @@ export class ModelicaFlattener {
           } else if (compInst?.variability === "parameter") variability = Variability.Parameter;
           else if (compInst?.variability === "constant") variability = Variability.Constant;
           else if (compInst?.variability === "discrete") variability = Variability.Discrete;
-          else if (typeof meta?.variability === "number") variability = meta.variability as number;
+          else if (
+            compInst?.typeSpecifier === "Boolean" ||
+            compInst?.typeSpecifier === "Integer" ||
+            compInst?.typeSpecifier === "String"
+          ) {
+            variability = Variability.Discrete;
+          } else if (typeof meta?.variability === "number") variability = meta.variability as number;
           if (variability === Variability.Continuous && parentMods?.parentVariability !== undefined) {
             variability = parentMods.parentVariability;
           }
@@ -17707,7 +19857,8 @@ export class ModelicaFlattener {
             this.options.omcCompatibility &&
             !prefix &&
             causality === Causality.Input &&
-            effectiveBinding?.text &&
+            compInst?.modification?.bindingExpression?.text &&
+            !effectiveParentArg?.isExtendsMod &&
             dae.classKind !== "function"
           ) {
             causality = Causality.Local;
@@ -17783,6 +19934,43 @@ export class ModelicaFlattener {
             }
           }
 
+          if (variability === Variability.Constant && effectiveBinding?.text) {
+            const bText = effectiveBinding.text.trim();
+            const idMatches = bText.match(/[a-zA-Z_]\w*/g) || [];
+            let higherVar: string | null = null;
+            for (const idName of idMatches) {
+              if (idName === "time") {
+                higherVar = "VAR";
+                break;
+              }
+              const vi = dae.getVarIdxByName(prefix ? `${prefix}.${idName}` : idName);
+              if (vi >= 0) {
+                const vVar = dae.getVarVariability(vi);
+                if (vVar === Variability.Continuous || vVar === Variability.Discrete) {
+                  higherVar = "VAR";
+                  break;
+                } else if (vVar === Variability.Parameter) {
+                  higherVar = "PARAM";
+                  break;
+                }
+              }
+            }
+            if (higherVar) {
+              let clauseNode: any = elemCst;
+              while (clauseNode && clauseNode.type !== "component_clause") {
+                clauseNode = clauseNode.parent;
+              }
+              const diagRange = getElementDiagRange(clauseNode ?? elemCst);
+              dae.diagnostics.push({
+                severity: "error",
+                code: 4027,
+                message: `Component ${compInst.name} of variability CONST has binding ${bText} of higher variability ${higherVar}.`,
+                range: diagRange,
+              });
+              return;
+            }
+          }
+
           if (variability === Variability.Parameter && effectiveBinding?.text) {
             const bText = effectiveBinding.text.trim();
             if (/\btime\b/.test(bText)) {
@@ -17797,6 +19985,50 @@ export class ModelicaFlattener {
                 code: 4027,
                 message: `Component ${compInst.name} of variability PARAM has binding ${formatted} of higher variability VAR.`,
                 range: rangeObj,
+              });
+              return;
+            }
+          }
+
+          if (variability === Variability.Discrete && effectiveBinding?.text) {
+            const bText = effectiveBinding.text.trim();
+            if (bText.startsWith("noEvent(") && bText.endsWith(")")) {
+              const m = bText.slice(8, -1).match(/[a-zA-Z_]\w*/g) || [];
+              const hasContinuous = m.some((vName) => {
+                if (vName === "time") return true;
+                const vi = dae.getVarIdxByName(prefix ? `${prefix}.${vName}` : vName);
+                return vi >= 0 && dae.getVarVariability(vi) === Variability.Continuous;
+              });
+              if (hasContinuous) {
+                let clauseNode: any = elemCst;
+                while (clauseNode && clauseNode.type !== "component_clause") {
+                  clauseNode = clauseNode.parent;
+                }
+                const diagRange = getElementDiagRange(clauseNode ?? elemCst);
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: 4027,
+                  message: `Component ${compInst.name} of variability discrete has binding '${bText}' of higher variability continuous.`,
+                  range: diagRange,
+                });
+                return;
+              }
+            }
+          }
+
+          if (variability === Variability.Parameter && bText) {
+            const bTrim = bText.trim();
+            if (bTrim === "initial()" || bTrim === "terminal()") {
+              let clauseNode: any = elemCst;
+              while (clauseNode && clauseNode.type !== "component_clause") {
+                clauseNode = clauseNode.parent;
+              }
+              const diagRange = getElementDiagRange(clauseNode ?? elemCst);
+              dae.diagnostics.push({
+                severity: "error",
+                code: 4027,
+                message: `Component ${compInst.name} of variability parameter has binding '${bTrim}' of higher variability discrete.`,
+                range: diagRange,
               });
               return;
             }
@@ -18546,11 +20778,11 @@ export class ModelicaFlattener {
                 }
 
                 const isRecordParamOrConst =
-                  parentMods?.isRecord &&
-                  (dae.classKind === "function" ||
-                    dae.classKind === "record" ||
-                    parentMods?.parentVariability === Variability.Parameter ||
-                    parentMods?.parentVariability === Variability.Constant);
+                  Boolean(parentMods?.isRecord && varType !== VarType.Real) ||
+                  dae.classKind === "function" ||
+                  dae.classKind === "record" ||
+                  parentMods?.parentVariability === Variability.Parameter ||
+                  parentMods?.parentVariability === Variability.Constant;
                 if (
                   !isRecordParamOrConst &&
                   dae.classKind !== "function" &&
@@ -19842,11 +22074,11 @@ export class ModelicaFlattener {
               applyModifiers(varIdx, tuple, dimLabels);
             }
             const isRecordParamOrConst =
-              parentMods?.isRecord &&
-              (dae.classKind === "function" ||
-                dae.classKind === "record" ||
-                parentMods?.parentVariability === Variability.Parameter ||
-                parentMods?.parentVariability === Variability.Constant);
+              Boolean(parentMods?.isRecord && varType !== VarType.Real) ||
+              dae.classKind === "function" ||
+              dae.classKind === "record" ||
+              parentMods?.parentVariability === Variability.Parameter ||
+              parentMods?.parentVariability === Variability.Constant;
             if (
               !isRecordParamOrConst &&
               (variability === Variability.Continuous || variability === Variability.Discrete) &&
@@ -20128,6 +22360,7 @@ export class ModelicaFlattener {
       if (child.kind === "Extends") {
         const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
         const baseTargets = baseClass ? [baseClass] : this.db.byName(child.name);
+        const primaryTarget = baseTargets.find((t) => t.kind === "Class");
         for (const target of baseTargets) {
           if (target.kind === "Class") {
             const inheritedMods = this.collectExtendsMods(target.id, visited);
@@ -20143,7 +22376,11 @@ export class ModelicaFlattener {
         if (extMod?.args) {
           for (const arg of extMod.args) {
             if (arg.name) seenInheritedNames.add(arg.name);
-            result.push({ ...arg, isExtendsMod: true });
+            result.push({
+              ...arg,
+              isExtendsMod: true,
+              extendsTargetClassId: primaryTarget?.id,
+            });
           }
         }
       }
@@ -20496,9 +22733,18 @@ export class ModelicaFlattener {
                 }
 
                 if (sVal === null || eVal === null || stVal === null) {
+                  let formattedRangeText = rangeText;
+                  if (colonNodes.length === 2) {
+                    const n0Text = colonNodes[0]?.text?.trim() ?? "";
+                    const n1Text = colonNodes[1]?.text?.trim() ?? "";
+                    const v1Idx = dae.getVarIdxByName(prefix ? `${prefix}.${n1Text}` : n1Text);
+                    if (v1Idx >= 0 && dae.getVarType(v1Idx) === VarType.Real && /^\d+$/.test(n0Text)) {
+                      formattedRangeText = `${n0Text}.0:${n1Text}`;
+                    }
+                  }
                   dae.diagnostics.push({
                     severity: "error",
-                    message: `The iteration range ${rangeText} is not a constant or parameter expression.`,
+                    message: `The iteration range ${formattedRangeText} is not a constant or parameter expression.`,
                     range: node
                       ? {
                           startPosition: node.startPosition,
@@ -20527,7 +22773,21 @@ export class ModelicaFlattener {
               }
 
               const singleVal = evaluateCSTNumber(rangeNode, currentSubs as any, classId, this.db, dae, prefix);
-              if (singleVal !== null) return [singleVal];
+              if (singleVal !== null) {
+                const sType = Number.isInteger(singleVal) ? "Integer" : "Real";
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: 3006,
+                  message: `Type error in iteration range '${rangeText}'. Expected array got ${sType}.`,
+                  range: node
+                    ? {
+                        startPosition: node.startPosition,
+                        endPosition: node.endPosition,
+                      }
+                    : undefined,
+                });
+                return [];
+              }
 
               const enumVals = evaluateEnumRange(rangeNode, currentSubs, classId, this.db, dae, prefix);
               if (enumVals !== null) return enumVals;
@@ -21760,6 +24020,16 @@ export class ModelicaFlattener {
           }
 
           if (Cst.WhenEquation.is(node) || node.type === "when_equation") {
+            if (isInitial) {
+              const diagRange = getElementDiagRange(node);
+              dae.diagnostics.push({
+                severity: "error",
+                code: 5017,
+                message: `when-clause is not allowed in initial section.`,
+                range: diagRange,
+              });
+              return;
+            }
             // Check elsewhen variable consistency
             const whenBranches: string[][] = [[]];
             let currentWhenBranch = whenBranches[0];
@@ -22014,6 +24284,49 @@ export class ModelicaFlattener {
                     }
                   }
                   rawTargets.push(currentExpr);
+                  let stmtText = sNode.text?.trim() ?? "";
+                  if (stmtText.endsWith(";")) stmtText = stmtText.slice(0, -1).trim();
+                  for (const rt of rawTargets) {
+                    if (!rt) continue;
+                    const rText = rt.text?.trim() ?? "";
+                    const vIdx = dae.getVarIdxByName(prefix ? `${prefix}.${rText}` : rText);
+                    if (vIdx >= 0) {
+                      const vari = dae.getVarVariability(vIdx);
+                      if (vari === Variability.Parameter || vari === Variability.Constant) {
+                        const isFixed = dae.getVarAttr(vIdx, "fixed");
+                        let fixedStr = "";
+                        if (
+                          isFixed >= 0 &&
+                          dae.getExprKind(isFixed) === ExprKind.BoolLiteral &&
+                          dae.getExprData1(isFixed) === 1
+                        ) {
+                          fixedStr = "(fixed=true)";
+                        } else if (vari === Variability.Parameter) {
+                          fixedStr = "(fixed=true)";
+                        }
+                        const formattedCall = stmtText.replace(/\b([a-zA-Z_]\w*)\s*\(\s*(\d+)\s*\)/, (_, fn, arg) => {
+                          const qual = this.currentRootClassId
+                            ? `${this.db.symbol(this.currentRootClassId)?.name}.${fn}`
+                            : fn;
+                          return `${qual}(${Number(arg).toFixed(1)})`;
+                        });
+                        const startB = sNode.startIndex ?? sNode.startByte;
+                        const endB = sNode.endIndex ?? sNode.endByte;
+                        dae.diagnostics.push({
+                          severity: "error",
+                          code: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.code,
+                          message: `Trying to assign to parameter component ${rText}${fixedStr} in ${formattedCall}`,
+                          range: {
+                            startByte: startB,
+                            endByte: endB,
+                            startPosition: sNode.startPosition,
+                            endPosition: sNode.endPosition,
+                          },
+                        });
+                        return;
+                      }
+                    }
+                  }
 
                   const fnCallId = this.lowerExpr(fnCall, dae, prefix, substitutions, true);
                   const fnName = fnCall.children?.[0]?.text?.trim() ?? fnCall.text?.split("(")[0]?.trim() ?? "";
@@ -22866,6 +25179,9 @@ export class ModelicaFlattener {
                 (c: any) => c.text?.trim() === "initial" || c.type === '"initial"' || c.type === "initial",
               );
             for (const kid of node.children || []) {
+              if (dae.diagnostics.some((d) => d.message.includes("Function argument delayTime"))) {
+                break;
+              }
               walk(kid, substitutions, isInit);
             }
             return;

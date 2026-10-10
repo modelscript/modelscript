@@ -39,6 +39,7 @@
     "@comunica/query-sparql": "^5.1.3",
     "@comunica/query-sparql-rdfjs": "^5.1.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelscript/cad": "*",
     "@modelscript/cfd": "*",
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",

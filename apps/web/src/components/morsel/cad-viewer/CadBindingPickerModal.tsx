@@ -166,9 +166,9 @@ export function CadBindingPickerModal({
         maxHeight: "90vh",
         display: "flex",
         flexDirection: "column",
-        backgroundColor: dark ? "#161b22" : "#ffffff",
-        color: dark ? "#c9d1d9" : "#24292f",
-        border: `1px solid ${dark ? "#30363d" : "#d0d7de"}`,
+        backgroundColor: "var(--color-canvas-default)",
+        color: "var(--color-fg-default)",
+        border: "1px solid var(--color-border-default)",
         borderRadius: "12px",
         boxShadow: dark ? "0 16px 32px rgba(0,0,0,0.6)" : "0 16px 32px rgba(0,0,0,0.15)",
         overflow: "hidden",
@@ -177,8 +177,8 @@ export function CadBindingPickerModal({
       <Dialog.Header
         id="cad-binding-title"
         sx={{
-          backgroundColor: dark ? "#0d1117" : "#f6f8fa",
-          borderBottom: `1px solid ${dark ? "#30363d" : "#d0d7de"}`,
+          backgroundColor: "var(--color-canvas-subtle)",
+          borderBottom: "1px solid var(--color-border-default)",
           padding: "16px 20px",
         }}
       >
@@ -186,10 +186,10 @@ export function CadBindingPickerModal({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontSize: "20px" }}>🧵</span>
             <div>
-              <div style={{ fontWeight: 600, fontSize: "16px", color: dark ? "#f0f6fc" : "#1f2328" }}>
+              <div style={{ fontWeight: 600, fontSize: "16px", color: "var(--color-fg-default)" }}>
                 Link 3D CAD Geometry to Simulation Variables
               </div>
-              <div style={{ fontSize: "12px", color: dark ? "#8b949e" : "#656d76" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
                 Component: <code style={{ color: "#58a6ff", fontWeight: 600 }}>{component.name}</code>
                 {component.cad.uri && ` • Asset: ${component.cad.uri.split("/").pop()}`}
               </div>
@@ -286,8 +286,8 @@ export function CadBindingPickerModal({
                     gap: "10px",
                     padding: "10px 14px",
                     borderRadius: "8px",
-                    background: dark ? "#0d1117" : "#f6f8fa",
-                    border: `1px solid ${dark ? "#30363d" : "#d0d7de"}`,
+                    background: "var(--color-canvas-subtle)",
+                    border: "1px solid var(--color-border-default)",
                     fontSize: "13px",
                   }}
                 >
@@ -441,8 +441,8 @@ export function CadBindingPickerModal({
 
       <Dialog.Footer
         sx={{
-          backgroundColor: dark ? "#0d1117" : "#f6f8fa",
-          borderTop: `1px solid ${dark ? "#30363d" : "#d0d7de"}`,
+          backgroundColor: "var(--color-canvas-subtle)",
+          borderTop: "1px solid var(--color-border-default)",
           padding: "12px 20px",
           display: "flex",
           justifyContent: "flex-end",

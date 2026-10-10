@@ -1,7 +1,6 @@
 // name: PartialLookup1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 partial package P

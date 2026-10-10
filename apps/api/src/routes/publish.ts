@@ -231,7 +231,12 @@ export function publishRouter(
         });
 
         if (req.user?.id) {
-          database.createNotification(req.user.id, req.user.id, "package_published");
+          database.createNotification(req.user.id, req.user.id, "package_published", null, {
+            packageName: name,
+            packageVersion: version,
+            distTag: tag,
+            totalFiles: scanResult.totalFiles,
+          });
         }
 
         // Broadcast ActivityPub Package Release Activity

@@ -1,7 +1,6 @@
 // name:     ModifyConstant6
 // keywords: scoping,modification
 // status:   incorrect
-// xfail:    true
 //
 // Finalized constants can not be modified.
 //

@@ -1,7 +1,6 @@
 // name: FuncIntegerWrongType
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that type checking works for Integer.
 //

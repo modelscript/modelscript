@@ -1,7 +1,6 @@
 // name: NoEvent1
 // keywords: noEvent
 // status: incorrect
-// xfail:    true
 //
 // Tests the builtin noEvent operator.
 //

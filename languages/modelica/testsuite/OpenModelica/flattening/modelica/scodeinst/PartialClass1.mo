@@ -1,7 +1,6 @@
 // name: PartialClass1
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 partial class PartialClass1

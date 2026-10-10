@@ -518,7 +518,7 @@ graph TD
     "/api/v1/threads",
     optionalAuth,
     requireFeatureFlag(() => featureFlagService, "digital_thread_explorer"),
-    threadRouter(),
+    threadRouter(undefined, database),
   );
 
   // Co-simulation routes (with MQTT client injection)

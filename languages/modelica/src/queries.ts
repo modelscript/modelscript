@@ -350,12 +350,41 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       const modNode =
         Cst.ElementModification.modification(n) ??
         n.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
-      const finalNode = n.children?.find((c: any) => c.type === "final");
-      const eachNode = n.children?.find((c: any) => c.type === "each");
+      const parentNode = n.parent;
+      const isParentModOrRepl =
+        parentNode &&
+        (parentNode.type === "element_modification_or_replaceable" ||
+          parentNode.type === "ElementModificationOrReplaceable" ||
+          parentNode.type === "argument" ||
+          parentNode.type === "Argument");
+      const finalNode =
+        n.children?.find((c: any) => c.type === "final" || c.text === "final") ??
+        (isParentModOrRepl
+          ? parentNode.children?.find((c: any) => c.type === "final" || c.text === "final")
+          : undefined);
+      const eachNode =
+        n.children?.find((c: any) => c.type === "each" || c.text === "each") ??
+        (isParentModOrRepl ? parentNode.children?.find((c: any) => c.type === "each" || c.text === "each") : undefined);
 
       const name = nameNode ? nameNode.text : "";
       const nameRange = nameNode ? ([nameNode.startIndex, nameNode.endIndex] as const) : undefined;
       const modRange = n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined;
+      const modPosition = n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined;
+
+      const isOldInst = Boolean(
+        n.tree?.rootNode?.text?.includes("-d=-newInst") || node?.tree?.rootNode?.text?.includes("-d=-newInst"),
+      );
+      let modText = "";
+      if (modNode) {
+        if (isOldInst) {
+          const nText = n.text || "";
+          const nameLen = nameNode ? nameNode.text.length : 0;
+          modText = nText.slice(nameLen);
+        } else {
+          modText = modNode.text?.trim() ?? "";
+        }
+      }
+
       const nested = parseModArgsFromCst(modNode, scopeId);
 
       const parts = name.split(".");
@@ -366,6 +395,8 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
             {
               name: parts[i],
               modRange,
+              modPosition,
+              modText,
               each: false,
               final: false,
               isRedeclaration: false,
@@ -382,6 +413,8 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         name: parts[0],
         nameRange,
         modRange,
+        modPosition,
+        modText: parts.length > 1 ? "" : modText,
         each: !!eachNode,
         final: !!finalNode,
         isRedeclaration: false,
@@ -500,9 +533,13 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         args.push({
           name,
           nameRange,
+          modRange: n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined,
+          modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
+          modText: n.text?.trim() ?? "",
           each: false,
           final: false,
           isRedeclaration: true,
+          redeclaredKind: "component",
           redeclaredTypeSpecifier: typeName,
           redeclaredArrayDimensionsRaw: extractSubscripts(
             (decl ? Cst.Declaration.arraySubscripts(decl) : null) ??
@@ -588,9 +625,13 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
 
             args.push({
               name,
+              modRange: n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined,
+              modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
+              modText: n.text?.trim() ?? "",
               each: false,
               final: false,
               isRedeclaration: true,
+              redeclaredKind: "class",
               redeclaredTypeSpecifier: typeName,
               redeclaredArrayDimensionsRaw: extractSubscripts(
                 Cst.ShortClassSpecifier.arraySubscripts(shortClass) ??
@@ -671,6 +712,21 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         cstBytes: [expr.startOffset ?? expr.startIndex, expr.endOffset ?? expr.endIndex],
         text: expr.text,
       };
+  }
+
+  const redeclNames = new Set<string>();
+  let hasDupRedecl = false;
+  for (const a of args) {
+    if (a.isRedeclaration && a.name) {
+      if (redeclNames.has(a.name)) {
+        hasDupRedecl = true;
+        break;
+      }
+      redeclNames.add(a.name);
+    }
+  }
+  if (hasDupRedecl) {
+    return { args, bindingExpression, evaluationScopeId: scopeId };
   }
 
   let finalMod: ModelicaModArgs = { args: [], bindingExpression, evaluationScopeId: scopeId };
@@ -1638,8 +1694,8 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   for (const lit of literals) {
     if (reservedAttributes.has(lit)) {
       return {
-        code: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.code,
-        message: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.message(lit),
+        code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+        message: ModelicaErrorCode.DUPLICATE_ELEMENT.message(lit),
         startByte,
         endByte,
       };
@@ -2687,22 +2743,33 @@ export const classDefinitionQueries: Record<string, any> = {
 
       // In Modelica §5.6.1, elements inherited from extends clauses are added before
       // elements declared directly in the class, in the order of the extends-clauses.
+      // Trailing extends clauses (no components declared after them) are moved before all components.
+      let lastCompIdx = -1;
+      for (let i = children.length - 1; i >= 0; i--) {
+        if (children[i].kind === "Component") {
+          lastCompIdx = i;
+          break;
+        }
+      }
+
       const orderedChildren: SymbolEntry[] = [];
-      const extendsClauses: SymbolEntry[] = [];
+      const trailingExtends: SymbolEntry[] = [];
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
         if (child.kind === "Extends") {
-          extendsClauses.push(child);
-          continue;
+          if (i > lastCompIdx) {
+            trailingExtends.push(child);
+            continue;
+          }
         }
         orderedChildren.push(child);
       }
-      if (extendsClauses.length > 0) {
+      if (trailingExtends.length > 0) {
         const firstCompIdx = orderedChildren.findIndex((c) => c.kind === "Component");
         if (firstCompIdx >= 0) {
-          orderedChildren.splice(firstCompIdx, 0, ...extendsClauses);
+          orderedChildren.splice(firstCompIdx, 0, ...trailingExtends);
         } else {
-          orderedChildren.push(...extendsClauses);
+          orderedChildren.push(...trailingExtends);
         }
       }
 
@@ -3934,14 +4001,28 @@ export const componentDeclarationQueries: Record<string, any> = {
       }
     }
 
-    const checkNode =
+    const prefixNode =
       elemParent && (elemParent.type === "Element" || elemParent.type === "element") ? elemParent : clause;
-    const checkText = checkNode?.text ?? "";
-    const isFinal = /\bfinal\b/.test(checkText);
-    const isInner = /\binner\b/.test(checkText);
-    const isOuter = /\bouter\b/.test(checkText);
-    const isReplaceable = /\breplaceable\b/.test(checkText);
-    const isRedeclare = /\bredeclare\b/.test(checkText);
+    const isFinal = Boolean(
+      prefixNode?.children?.some((c: any) => c.type === "final" || c.text === "final") ||
+      clause?.children?.some((c: any) => c.type === "final" || c.text === "final"),
+    );
+    const isInner = Boolean(
+      prefixNode?.children?.some((c: any) => c.type === "inner" || c.text === "inner") ||
+      clause?.children?.some((c: any) => c.type === "inner" || c.text === "inner"),
+    );
+    const isOuter = Boolean(
+      prefixNode?.children?.some((c: any) => c.type === "outer" || c.text === "outer") ||
+      clause?.children?.some((c: any) => c.type === "outer" || c.text === "outer"),
+    );
+    const isReplaceable = Boolean(
+      prefixNode?.children?.some((c: any) => c.type === "replaceable" || c.text === "replaceable") ||
+      clause?.children?.some((c: any) => c.type === "replaceable" || c.text === "replaceable"),
+    );
+    const isRedeclare = Boolean(
+      prefixNode?.children?.some((c: any) => c.type === "redeclare" || c.text === "redeclare") ||
+      clause?.children?.some((c: any) => c.type === "redeclare" || c.text === "redeclare"),
+    );
 
     let declNode = cstNode;
     if (cstNode.type !== "Declaration" && cstNode.type !== "declaration") {

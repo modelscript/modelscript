@@ -1,7 +1,6 @@
 // name: NonexistentRedeclareModifier2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model M

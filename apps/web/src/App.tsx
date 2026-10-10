@@ -9,6 +9,7 @@ import AppShell from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
+import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import { ToastProvider } from "./components/ToastContext";
 import { FeatureFlagProvider, useFeatureFlag } from "./FeatureFlagContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
@@ -213,6 +214,7 @@ function App() {
         <ToastProvider>
           <BrowserRouter>
             <GlobalModals />
+            <RealtimeNotificationListener />
             <ErrorBoundary>
               <Suspense fallback={<PageLoadingFallback />}>
                 <Routes>

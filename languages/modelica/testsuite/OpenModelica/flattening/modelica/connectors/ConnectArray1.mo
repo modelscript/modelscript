@@ -1,7 +1,6 @@
 // name:     ConnectArray1
 // keywords: connect
 // status:   correct
-// xfail:    true
 //
 // Basic connections
 //

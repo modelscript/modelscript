@@ -1,7 +1,6 @@
 // name: DuplicateElements2
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that duplicate elements are detected and reported.
 //

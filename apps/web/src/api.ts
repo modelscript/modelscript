@@ -1588,13 +1588,15 @@ export const getBookmarks = async (): Promise<{ posts: any[] }> => {
   return data;
 };
 
-export const getNotifications = async (): Promise<{ notifications: any[] }> => {
-  const { data } = await api.get("/social/notifications");
+export const getNotifications = async (category?: string): Promise<{ notifications: any[]; unreadCount?: number }> => {
+  const params = category && category !== "all" ? { category } : undefined;
+  const { data } = await api.get("/social/notifications", { params });
   return data;
 };
 
-export const markNotificationsRead = async (): Promise<void> => {
-  await api.post("/social/notifications/read");
+export const markNotificationsRead = async (category?: string): Promise<void> => {
+  const body = category && category !== "all" ? { category } : undefined;
+  await api.post("/social/notifications/read", body);
 };
 
 export const getFeeds = async (): Promise<{ feeds: any[] }> => {
@@ -1878,6 +1880,107 @@ export const logoutApi = async (): Promise<{ success: boolean; message: string }
   } catch {
     return { success: true, message: "Logged out" };
   }
+};
+
+export interface VersionComparisonResult {
+  versionDelta: { base: string; head: string };
+  classes: {
+    added: { name: string; kind: string; description: string | null }[];
+    removed: { name: string; kind: string; description: string | null }[];
+    modified: {
+      name: string;
+      kind: string;
+      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string }[];
+    }[];
+  };
+  cadChanges: {
+    file: string;
+    status: "added" | "removed" | "modified" | "unchanged";
+    volumeDeltaPercent?: number;
+  }[];
+  parityDrift: {
+    className: string;
+    parameter: string;
+    oldUnit: string;
+    newUnit: string;
+  }[];
+}
+
+export const comparePackageVersions = async (
+  name: string,
+  base: string,
+  head: string,
+): Promise<VersionComparisonResult> => {
+  const { data } = await api.get(`/libraries/${encodeURIComponent(name)}/compare`, {
+    params: { base, head },
+  });
+  return data;
+};
+
+export interface ThreadProposalDto {
+  id: number;
+  thread_id: string;
+  title: string;
+  description: string | null;
+  status: "open" | "approved" | "rejected" | "applied";
+  proposed_by: string;
+  diff_summary: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  review_comment: string | null;
+}
+
+export interface ThreadAuditLogDto {
+  id: number;
+  thread_id: string;
+  proposal_id: number | null;
+  action: string;
+  actor: string;
+  safety_standard: string | null;
+  checksum: string;
+  metadata: string | null;
+  created_at: string;
+}
+
+export const getThreadProposals = async (params?: {
+  threadId?: string;
+  status?: string;
+}): Promise<ThreadProposalDto[]> => {
+  const { data } = await api.get("/threads/proposals", { params });
+  return data.proposals || [];
+};
+
+export const createThreadProposal = async (payload: {
+  threadId: string;
+  title: string;
+  description?: string;
+  proposedBy?: string;
+  diffSummary?: any;
+  safetyStandard?: string;
+}): Promise<ThreadProposalDto> => {
+  const { data } = await api.post("/threads/proposals", payload);
+  return data.proposal;
+};
+
+export const reviewThreadProposal = async (
+  id: number,
+  payload: {
+    status: "approved" | "rejected" | "applied";
+    comment?: string;
+    resolvedBy?: string;
+    safetyStandard?: string;
+  },
+): Promise<ThreadProposalDto> => {
+  const { data } = await api.post(`/threads/proposals/${id}/review`, payload);
+  return data.proposal;
+};
+
+export const getThreadAuditLogs = async (params?: {
+  threadId?: string;
+}): Promise<{ auditLogs: ThreadAuditLogDto[]; verification: { valid: boolean; totalEntries: number } }> => {
+  const { data } = await api.get("/threads/audit-log", { params });
+  return data;
 };
 
 export { api };

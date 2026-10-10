@@ -26,6 +26,7 @@ import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
 import { CfdMeshRenderer, type CfdMeshPayload } from "./cfd-mesh-renderer";
 import { FeaMeshRenderer, type FeaMeshPayload } from "./fea-mesh-renderer";
+import { InstancedCadAssembly } from "./instanced-cad-assembly";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -471,19 +472,26 @@ function SceneContents({
       />
       <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={20} blur={2} far={4} />
 
-      {/* Models */}
+      {/* Models: GPU Instanced rendering for clusters, fallback to CadModel for singletons */}
       <group onPointerMissed={handlePointerMissed}>
-        {components.map((comp) => (
-          <CadModel
-            key={comp.name}
-            component={comp}
-            assetBaseUrl={assetBaseUrl}
-            selected={selectedName === comp.name}
-            onSelect={onSelect}
-            animationController={animationController}
-            onCommitGizmoDelta={onCommitGizmoDelta}
-          />
-        ))}
+        <InstancedCadAssembly
+          components={components}
+          assetBaseUrl={assetBaseUrl}
+          selectedName={selectedName}
+          onSelect={onSelect}
+          animationController={animationController}
+          renderSingleton={(comp) => (
+            <CadModel
+              key={comp.name}
+              component={comp}
+              assetBaseUrl={assetBaseUrl}
+              selected={selectedName === comp.name}
+              onSelect={onSelect}
+              animationController={animationController}
+              onCommitGizmoDelta={onCommitGizmoDelta}
+            />
+          )}
+        />
       </group>
 
       {/* CFD Mesh Visualization (co-simulation melt front) */}

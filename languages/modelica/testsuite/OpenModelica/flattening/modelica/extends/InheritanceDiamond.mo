@@ -1,7 +1,6 @@
 // name: InheritanceDiamond.mo
 // keywords: inheritance
 // status: correct
-// xfail:    true
 //
 // Tests diamond inheritance
 //

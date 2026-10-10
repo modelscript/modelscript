@@ -20,6 +20,7 @@ import {
   MuteIcon,
   PaperclipIcon,
   PersonAddIcon,
+  PinIcon,
   QuoteIcon,
   ReportIcon,
   RssIcon,
@@ -1125,9 +1126,20 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 window.dispatchEvent(new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }));
               }}
             >
-              <span style={{ fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                📍 View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
-                {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
+              <span
+                style={{
+                  fontSize: "13px",
+                  color: "var(--color-fg-muted)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
+                <span>
+                  View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
+                  {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
+                </span>
               </span>
             </Box>
           )}
@@ -1827,9 +1839,20 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           );
                         }}
                       >
-                        <span style={{ fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                          📍 View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
-                          {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
+                        <span
+                          style={{
+                            fontSize: "13px",
+                            color: "var(--color-fg-muted)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
+                          <span>
+                            View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
+                            {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
+                          </span>
                         </span>
                       </Box>
                     )}

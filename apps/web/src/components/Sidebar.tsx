@@ -119,29 +119,32 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-secondary, #334155)")};
   font-size: 15px;
   font-weight: ${(props) => (props.$active ? "600" : "500")};
   width: 100%;
   box-sizing: border-box;
 
   svg {
-    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "inherit")};
-    transition: transform 0.2s;
+    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted, #475569)")};
+    transition:
+      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      color 0.2s ease;
   }
 
   &:hover {
     text-decoration: none;
-    color: var(--color-text-primary);
+    color: var(--color-text-heading);
   }
 
   &:hover svg {
+    color: var(--color-accent-cyan);
     transform: scale(1.08);
   }
 
   &:hover > div {
     background-color: var(--surface-row-hover);
-    border-color: var(--color-border);
+    border-color: var(--color-border-default);
   }
 
   @media (max-width: 1280px) {
@@ -152,10 +155,10 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
 const SectionHeader = styled.div`
   font-size: 11px;
   font-weight: 700;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted, #475569);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  padding: 8px 14px 2px;
+  padding: 10px 14px 4px;
   user-select: none;
 
   @media (max-width: 1280px) {
@@ -165,7 +168,7 @@ const SectionHeader = styled.div`
 
 const SectionDivider = styled.div`
   height: 1px;
-  background-color: var(--color-border);
+  background-color: var(--color-border-default);
   margin: 6px 8px;
 
   @media (max-width: 1280px) {
@@ -176,11 +179,12 @@ const SectionDivider = styled.div`
 const ShortcutBadge = styled.span`
   margin-left: auto;
   font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--color-text-muted);
-  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--color-border);
-  padding: 1px 6px;
+  background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--color-border-default);
+  padding: 2px 6px;
   border-radius: 4px;
   opacity: 0;
   transform: translateX(-4px);
@@ -203,6 +207,7 @@ const NavPill = styled.div<{ $active?: boolean }>`
   width: 100%;
   border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
   background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
+  box-shadow: ${(props) => (props.$active ? "0 1px 3px rgba(0, 0, 0, 0.04)" : "none")};
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover .shortcut-badge {
@@ -219,16 +224,75 @@ const NavPill = styled.div<{ $active?: boolean }>`
   }
 `;
 
-const LogoPill = styled(NavPill)`
-  width: 50px;
-  height: 50px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 50%;
-  margin-left: 5px;
+const BrandHeader = styled(Link)`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  text-decoration: none;
+  margin-bottom: 10px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--color-text-heading);
+
+  &:hover {
+    text-decoration: none;
+    background-color: var(--surface-row-hover);
+  }
 
   @media (max-width: 1280px) {
-    margin-left: 0;
+    justify-content: center;
+    padding: 6px 0;
+    margin-bottom: 8px;
+  }
+`;
+
+const BrandIconBox = styled.div`
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 9px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  border: 1px solid var(--color-border-default);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+
+  img {
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
+  }
+
+  ${BrandHeader}:hover & {
+    transform: scale(1.05);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+  }
+`;
+
+const BrandTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-heading);
+  white-space: nowrap;
+
+  .brand-hub {
+    color: var(--color-accent-cyan);
+    font-weight: 700;
+  }
+
+  @media (max-width: 1280px) {
+    display: none;
   }
 `;
 
@@ -302,11 +366,11 @@ const ProfileFooterContainer = styled.div`
 
 const GuestFooter = styled.div`
   margin-top: auto;
-  padding: 12px 8px 8px 8px;
-  border-top: 1px solid var(--color-border);
+  padding: 14px 8px 8px 8px;
+  border-top: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 
   @media (max-width: 1280px) {
     display: none;
@@ -318,20 +382,29 @@ const GuestSignInBtn = styled(Link)`
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 6px 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--color-border-glass);
-  color: var(--color-text-primary);
-  font-size: 12px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--color-bg-surface, #ffffff);
+  border: 1px solid var(--color-border-strong, rgba(0, 0, 0, 0.16));
+  color: var(--color-text-primary, #0f172a);
+  font-size: 13.5px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--surface-row-hover, #f1f5f9);
+    border-color: var(--color-accent-blue-border);
+    color: var(--color-text-heading);
     text-decoration: none;
-    color: var(--color-text-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -340,19 +413,28 @@ const GuestSignUpBtn = styled(Link)`
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 6px 12px;
-  border-radius: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
   background: var(--gradient-cta);
-  color: white;
-  font-size: 12px;
+  border: 1px solid transparent;
+  color: #ffffff !important;
+  font-size: 13.5px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.28);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.35);
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    color: #ffffff !important;
     text-decoration: none;
-    color: white;
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -461,25 +543,15 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <NavItem to={user ? "/home" : "/explore"} style={{ marginBottom: "8px", marginTop: "0px" }}>
-        <LogoPill>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 28,
-              height: 28,
-            }}
-          >
-            <img
-              src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
-              alt="ModelScript"
-              style={{ width: 32, height: 32, minWidth: 32 }}
-            />
-          </div>
-        </LogoPill>
-      </NavItem>
+      <BrandHeader to={user ? "/home" : "/explore"}>
+        <BrandIconBox>
+          <img src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"} alt="ModelScript" />
+        </BrandIconBox>
+        <BrandTitle className="nav-label">
+          <span>ModelScript</span>
+          <span className="brand-hub">Hub</span>
+        </BrandTitle>
+      </BrandHeader>
 
       <Box
         display="flex"
@@ -583,9 +655,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
       {!user && (
         <GuestFooter>
-          <Text style={{ fontSize: "11px", color: "var(--color-text-tertiary)", letterSpacing: "0.2px" }}>
-            ModelScript Hub
-          </Text>
           <Box display="flex" gap={2}>
             <GuestSignInBtn to="/login" style={{ flex: 1 }}>
               Log in

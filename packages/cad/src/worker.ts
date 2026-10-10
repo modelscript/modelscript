@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import * as fs from "fs";
-import { createRequire } from "module";
-import * as path from "path";
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OpenCascadeInstance = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,7 +19,14 @@ export class CSGWorker {
   private oc: OpenCascadeInstance;
 
   async init() {
+    if (typeof window !== "undefined") {
+      throw new Error("CSGWorker is only supported in Node.js environments.");
+    }
     try {
+      const { createRequire } = await import(/* @vite-ignore */ "node:module");
+      const path = await import(/* @vite-ignore */ "node:path");
+      const fs = await import(/* @vite-ignore */ "node:fs");
+
       const require = createRequire(import.meta.url);
       if (typeof (globalThis as { __dirname?: string }).__dirname === "undefined") {
         (globalThis as { __dirname?: string }).__dirname = path.dirname(new URL(import.meta.url).pathname);
@@ -48,7 +51,13 @@ export class CSGWorker {
   }
 
   async processGraph(graph: CSGExecutionGraph, outputDir: string) {
+    if (typeof window !== "undefined") {
+      throw new Error("CSGWorker is only supported in Node.js environments.");
+    }
     if (!this.oc) await this.init();
+
+    const path = await import(/* @vite-ignore */ "node:path");
+    const fs = await import(/* @vite-ignore */ "node:fs");
 
     console.log(`[CSG] Processing graph with ${graph.nodes.length} nodes...`);
     fs.mkdirSync(outputDir, { recursive: true });
@@ -69,7 +78,7 @@ export class CSGWorker {
         shapeDictionary.set(node.uuid, solid);
 
         // Export to disk for visualization
-        this.exportMesh(solid, path.join(outputDir, `${node.uuid}.stl`));
+        this.exportMesh(solid, path.join(outputDir, `${node.uuid}.stl`), fs);
         makeBox.delete();
       }
 
@@ -94,7 +103,7 @@ export class CSGWorker {
         if (cutAlgo.IsDone()) {
           const cutShape = cutAlgo.Shape();
           shapeDictionary.set(node.uuid, cutShape);
-          this.exportMesh(cutShape, path.join(outputDir, `${node.uuid}.stl`));
+          this.exportMesh(cutShape, path.join(outputDir, `${node.uuid}.stl`), fs);
         }
 
         makeTool.delete();
@@ -104,7 +113,8 @@ export class CSGWorker {
     console.log(`[CSG] Graph processing complete. Meshes saved to ${outputDir}`);
   }
 
-  private exportMesh(shape: TopoDS_Shape, filePath: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private exportMesh(shape: TopoDS_Shape, filePath: string, fs: any) {
     // Generates the rendering triangulation
     const incMesh = new this.oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.5, false);
     incMesh.Perform();

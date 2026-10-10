@@ -1,7 +1,6 @@
 // name: IfExpression3
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model IfExpression3

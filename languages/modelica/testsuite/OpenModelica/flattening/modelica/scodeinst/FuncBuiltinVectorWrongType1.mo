@@ -1,7 +1,6 @@
 // name: FuncBuiltinVectorWrongType1
 // keywords: vector
 // status: incorrect
-// xfail:    true
 //
 // Tests the builtin vector operator.
 //

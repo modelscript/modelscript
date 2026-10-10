@@ -1,7 +1,6 @@
 // name:     DeclareConstant3
 // keywords: declaration
 // status:   incorrect
-// xfail:    true
 //
 // A constant requires a declaration equation with constant
 // expression on the right hand side.

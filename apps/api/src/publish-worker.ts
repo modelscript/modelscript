@@ -26,6 +26,7 @@ import { getArtifactRegistry } from "./artifacts/registry.js";
 import type { ClassMetadata } from "./database.js";
 import { LibraryDatabase } from "./database.js";
 import { LibraryStorage } from "./storage.js";
+import { convertStepBufferToJson } from "./util/cad-converter.js";
 import { exportLspBundle } from "./util/lsp-bundle-exporter.js";
 import { exportSalsaIndex } from "./util/salsa-index-exporter.js";
 import { processLibrary } from "./util/svg-renderer.js";
@@ -298,6 +299,17 @@ process.on(
             const fileBuf = fs.readFileSync(file);
             const fileUri = "file://" + path.resolve(file);
             await stepWs.parseStepFile(fileUri, fileBuf);
+
+            // Pre-tessellate CAD WebGL mesh and store in cache
+            const relPath = path.relative(libraryPath, file);
+            try {
+              const text = fileBuf.toString("utf-8");
+              const meshData = await convertStepBufferToJson(new Uint8Array(fileBuf), text);
+              storage.storeCadMesh(name, version, relPath, JSON.stringify(meshData));
+              console.log(`[publish] ${name}@${version}: cached pre-tessellated CAD mesh for ${relPath}`);
+            } catch (meshErr) {
+              console.warn(`[publish] Failed to pre-tessellate CAD mesh for ${relPath}:`, meshErr);
+            }
           } catch (err) {
             console.warn(`[publish] Failed to index STEP file ${file}:`, err);
           }
