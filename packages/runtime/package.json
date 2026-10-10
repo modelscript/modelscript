@@ -276,7 +276,7 @@
     "@modelscript/dsl": "*"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
+    "@types/node": "^26.6.4",
     "assemblyscript": "^0.28.19",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
