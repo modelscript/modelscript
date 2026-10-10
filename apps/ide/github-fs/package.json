@@ -47,5 +47,9 @@
   },
   "engines": {
     "vscode": "^1.72.0"
+  },
+  "dependencies": {
+    "express-rate-limit": "^8.7.1",
+    "http-proxy-middleware": "^4.2.0"
   }
 }
