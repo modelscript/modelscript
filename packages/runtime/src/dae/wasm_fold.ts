@@ -855,7 +855,8 @@ export function evaluateConstantArenaExpression(
           arg2 = arg2Val;
         }
         if (argCount <= 2) {
-          return evalMathBuiltin(funcName, arg1, arg2);
+          const mathRes = evalMathBuiltin(funcName, arg1, arg2);
+          if (mathRes !== null) return mathRes;
         }
       }
 

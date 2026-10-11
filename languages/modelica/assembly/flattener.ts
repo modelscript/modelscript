@@ -1078,6 +1078,43 @@ export function resolveVarToArrayCtor(dae: DaeBuilder, pool: ArenaStringPool, ex
         tempBuffer.length = matStart;
         return ctorId;
       }
+
+      let test3 = concatArrayIndex3D(pool, nameId, 1, 1, 1);
+      if (dae.lookupVariableByName(test3) >= 0) {
+        let dim1: u32 = 1;
+        while (dae.lookupVariableByName(concatArrayIndex3D(pool, nameId, dim1 + 1, 1, 1)) >= 0) {
+          dim1++;
+        }
+        let dim2: u32 = 1;
+        while (dae.lookupVariableByName(concatArrayIndex3D(pool, nameId, 1, dim2 + 1, 1)) >= 0) {
+          dim2++;
+        }
+        let dim3: u32 = 1;
+        while (dae.lookupVariableByName(concatArrayIndex3D(pool, nameId, 1, 1, dim3 + 1)) >= 0) {
+          dim3++;
+        }
+        let tStart = tempBuffer.length;
+        for (let i: u32 = 1; i <= dim1; i++) {
+          let mStart = tempBuffer.length;
+          for (let j: u32 = 1; j <= dim2; j++) {
+            let rStart = tempBuffer.length;
+            for (let k: u32 = 1; k <= dim3; k++) {
+              let elemNameId = concatArrayIndex3D(pool, nameId, i, j, k);
+              let elemExpr = dae.addExpression(ExprKind.Name, elemNameId);
+              tempBuffer.push(elemExpr);
+            }
+            let rCtorId = addArrayCtorFromChunked(dae, tempBuffer, rStart, dim3);
+            tempBuffer.length = rStart;
+            tempBuffer.push(rCtorId);
+          }
+          let mCtorId = addArrayCtorFromChunked(dae, tempBuffer, mStart, dim2);
+          tempBuffer.length = mStart;
+          tempBuffer.push(mCtorId);
+        }
+        let ctorId = addArrayCtorFromChunked(dae, tempBuffer, tStart, dim1);
+        tempBuffer.length = tStart;
+        return ctorId;
+      }
     }
   } else if (kind == ExprKind.Range) {
     let expId = expandColonToArrayCtor(dae, exprId, tempBuffer);
@@ -1267,7 +1304,7 @@ function isExpandableConnectorClassLoc(classLoc: u64, rootLoc: u64 = 0, pool: Ar
   return false;
 }
 
-function getExprDimensions(dae: DaeBuilder, exprId: u32): u64 {
+function getExprDimensions(dae: DaeBuilder, exprId: u32, pool: ArenaStringPool | null = null): u64 {
   if (exprId >= dae.exprCount) return 0;
   let kind = dae.getExprKind(exprId);
   if (kind == ExprKind.ArrayCtor) {
@@ -1280,17 +1317,35 @@ function getExprDimensions(dae: DaeBuilder, exprId: u32): u64 {
     return ((d1 as u64) << 32) | (d2 as u64);
   }
   if (kind == ExprKind.Unary) {
-    return getExprDimensions(dae, dae.getExprLeft(exprId));
+    return getExprDimensions(dae, dae.getExprLeft(exprId), pool);
   }
   if (kind == ExprKind.Binary) {
-    let d = getExprDimensions(dae, dae.getExprLeft(exprId));
+    let d = getExprDimensions(dae, dae.getExprLeft(exprId), pool);
     if (d != 0) return d;
-    return getExprDimensions(dae, dae.getExprRight(exprId));
+    return getExprDimensions(dae, dae.getExprRight(exprId), pool);
+  }
+  if (kind == ExprKind.Name && pool != null) {
+    let nameId = dae.getExprData1(exprId);
+    let test2 = concatArrayIndex2D(pool, nameId, 1, 1);
+    if (dae.lookupVariableByName(test2) >= 0) {
+      let d1: u32 = 1;
+      while (dae.lookupVariableByName(concatArrayIndex2D(pool, nameId, d1 + 1, 1)) >= 0) d1++;
+      let d2: u32 = 1;
+      while (dae.lookupVariableByName(concatArrayIndex2D(pool, nameId, 1, d2 + 1)) >= 0) d2++;
+      return ((d1 as u64) << 32) | (d2 as u64);
+    }
+    let test1 = concatArrayIndex1D(pool, nameId, 1);
+    if (dae.lookupVariableByName(test1) >= 0) {
+      let d1: u32 = 1;
+      while (dae.lookupVariableByName(concatArrayIndex1D(pool, nameId, d1 + 1)) >= 0) d1++;
+      return (d1 as u64) << 32;
+    }
   }
   return 0;
 }
 
 export var g_lastParsedDim3: u32 = 0;
+export var g_lastParsedNDims: u32 = 0;
 export var g_hasExplicitZeroDim: boolean = false;
 
 function parseIntSlice(text: SourceTextView, startChar: u32, endChar: u32): i32 {
@@ -1448,6 +1503,7 @@ function isColonSubscript(text: SourceTextView, startChar: u32, endChar: u32): b
 
 function parseArrayDimensionsLoc(subscriptsLoc: u64, dae: DaeBuilder | null = null, pool: ArenaStringPool | null = null, prefixPathId: u32 = 0, scopeStackPtr: usize = 0): u64 {
   g_lastParsedDim3 = 0;
+  g_lastParsedNDims = 0;
   g_hasExplicitZeroDim = false;
   if (locIsNull(subscriptsLoc)) return 0;
   let src = locBytes(subscriptsLoc);
@@ -1514,6 +1570,7 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64, dae: DaeBuilder | null = nu
     return 0xffffffffffffffff;
   }
   g_lastParsedDim3 = d3;
+  g_lastParsedNDims = totalDims;
   return ((d1 as u64) << 32) | (d2 as u64);
 }
 
@@ -3079,6 +3136,73 @@ export class WasmExprVisitor {
     return this.dae.addExpression(ExprKind.Unary, op as u32, operand);
   }
 
+  catArrays(catDim: u32, argsStart: u32, numArrs: u32): u32 {
+    let pool = this.dae.getStringPool();
+    let arrsStart = this.scratchBuffer.length;
+    for (let i: u32 = 0; i < numArrs; i++) {
+      let aid = this.tempBuffer.get(argsStart + i);
+      aid = resolveVarToArrayCtor(this.dae, pool, aid, this.scratchBuffer);
+      this.scratchBuffer.push(aid);
+    }
+    let resultId = this.catRecursive(catDim, arrsStart, numArrs);
+    this.scratchBuffer.length = arrsStart;
+    return resultId;
+  }
+
+  catRecursive(dim: u32, arrsStart: u32, numArrs: u32): u32 {
+    if (numArrs == 0) return 0xffffffff;
+    if (numArrs == 1 && dim > 1) {
+      return this.scratchBuffer.get(arrsStart);
+    }
+    if (dim == 1) {
+      let resStart = this.tempBuffer.length;
+      for (let i: u32 = 0; i < numArrs; i++) {
+        let aid = this.scratchBuffer.get(arrsStart + i);
+        if (this.dae.getExprKind(aid) == ExprKind.ArrayCtor) {
+          let count = this.dae.getExprData1(aid);
+          for (let c: u32 = 0; c < count; c++) {
+            this.tempBuffer.push(getArrayCtorElement(this.dae, aid, c));
+          }
+        } else {
+          this.tempBuffer.push(aid);
+        }
+      }
+      let totalCount = this.tempBuffer.length - resStart;
+      let ctorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, resStart, totalCount);
+      this.tempBuffer.length = resStart;
+      return ctorId;
+    }
+
+    let firstArr = this.scratchBuffer.get(arrsStart);
+    if (this.dae.getExprKind(firstArr) != ExprKind.ArrayCtor) return 0xffffffff;
+    let outerLen = this.dae.getExprData1(firstArr);
+    for (let i: u32 = 1; i < numArrs; i++) {
+      let aid = this.scratchBuffer.get(arrsStart + i);
+      if (this.dae.getExprKind(aid) != ExprKind.ArrayCtor) return 0xffffffff;
+      if (this.dae.getExprData1(aid) != outerLen) return 0xffffffff;
+    }
+
+    let resStart = this.tempBuffer.length;
+    for (let i: u32 = 0; i < outerLen; i++) {
+      let sliceStart = this.scratchBuffer.length;
+      for (let a: u32 = 0; a < numArrs; a++) {
+        let aid = this.scratchBuffer.get(arrsStart + a);
+        let subElem = getArrayCtorElement(this.dae, aid, i);
+        this.scratchBuffer.push(subElem);
+      }
+      let subCtorId = this.catRecursive(dim - 1, sliceStart, numArrs);
+      this.scratchBuffer.length = sliceStart;
+      if (subCtorId == 0xffffffff) {
+        this.tempBuffer.length = resStart;
+        return 0xffffffff;
+      }
+      this.tempBuffer.push(subCtorId);
+    }
+    let ctorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, resStart, outerLen);
+    this.tempBuffer.length = resStart;
+    return ctorId;
+  }
+
   collectArrayElements(argLoc: u64, out: ChunkedUint32Array): void {
     let ch = locFirstChild(argLoc);
     while (!locIsNull(ch)) {
@@ -3913,44 +4037,13 @@ export class WasmExprVisitor {
       }
     }
 
-    if (poolMatchesSimple(pool, fnNameId, "cat") && argCount >= 3) {
+    if (poolMatchesSimple(pool, fnNameId, "cat") && argCount >= 2) {
       let a0 = this.tempBuffer.get(argStart);
       if (this.dae.getExprKind(a0) == ExprKind.IntLiteral) {
         let catDim = this.dae.getExprData1(a0);
-        if (catDim == 1) {
-          let all1DVectors = true;
-          for (let i: u32 = 1; i < argCount; i++) {
-            let aid = this.tempBuffer.get(argStart + i);
-            if (this.dae.getExprKind(aid) == ExprKind.Name) {
-              aid = resolveVarToArrayCtor(this.dae, pool, aid, this.tempBuffer);
-            }
-            if (this.dae.getExprKind(aid) != ExprKind.ArrayCtor) {
-              all1DVectors = false;
-              break;
-            }
-            let firstElem = getArrayCtorElement(this.dae, aid, 0);
-            if (this.dae.getExprKind(firstElem) == ExprKind.ArrayCtor) {
-              all1DVectors = false;
-              break;
-            }
-          }
-          if (all1DVectors) {
-            let catStart = this.tempBuffer.length;
-            for (let i: u32 = 1; i < argCount; i++) {
-              let aid = this.tempBuffer.get(argStart + i);
-              if (this.dae.getExprKind(aid) == ExprKind.Name) {
-                aid = resolveVarToArrayCtor(this.dae, pool, aid, this.tempBuffer);
-              }
-              let count = this.dae.getExprData1(aid);
-              for (let c: u32 = 0; c < count; c++) {
-                this.tempBuffer.push(getArrayCtorElement(this.dae, aid, c));
-              }
-            }
-            let totalCount = this.tempBuffer.length - catStart;
-            let catCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, catStart, totalCount);
-            this.tempBuffer.length = catStart;
-            return catCtorId;
-          }
+        let catCtorId = this.catArrays(catDim, argStart + 1, argCount - 1);
+        if (catCtorId != 0xffffffff) {
+          return catCtorId;
         }
       }
     }
@@ -4829,11 +4922,6 @@ export class WasmExprVisitor {
         let matStart = this.tempBuffer.length;
         this.collectMatrixRows(loc, this.tempBuffer);
         let rowCount = this.tempBuffer.length - matStart;
-        if (!hasSemicolon && rowCount == 1) {
-          let vecCtorId = this.tempBuffer.get(matStart);
-          this.tempBuffer.length = matStart;
-          return vecCtorId;
-        }
         let matCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, matStart, rowCount);
         this.tempBuffer.length = matStart;
         return matCtorId;
@@ -8260,6 +8348,7 @@ export class ModelicaFlattener {
 
     let clauseDims = parseArrayDimensionsLoc(clauseSubscriptsLoc, this.dae, pool, prefixPathId, this.scopeStackPtr);
     let clauseHasExplicitZero = g_hasExplicitZeroDim;
+    let clauseNDims = g_lastParsedNDims;
     if (clauseDims == 0xffffffffffffffff) {
       this.setErrorAt(WasmBailReason.ClauseDimensions, clauseLoc);
       return 0;
@@ -8297,7 +8386,7 @@ export class ModelicaFlattener {
     this.curSubtypeDisplayUnitId = subtypeDisplayUnitId;
     this.curSubtypeQuantityId = subtypeQuantityId;
 
-    let res = this.instantiateDeclarationsUnder(clauseLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter);
+    let res = this.instantiateDeclarationsUnder(clauseLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter, clauseNDims);
 
     this.curSubtypeStartId = prevSubtypeStartId;
     this.curSubtypeFixedId = prevSubtypeFixedId;
@@ -8310,7 +8399,7 @@ export class ModelicaFlattener {
     return res;
   }
 
-  instantiateDeclarationsUnder(parentLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false): u32 {
+  instantiateDeclarationsUnder(parentLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false, clauseNDims: u32 = 0): u32 {
     let ch = locFirstChild(parentLoc);
     let count: u32 = 0;
     while (!locIsNull(ch)) {
@@ -8352,14 +8441,14 @@ export class ModelicaFlattener {
         }
 
         if (!locIsNull(declLoc)) {
-          count += this.instantiateDeclaration(declLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter, declDescId);
+          count += this.instantiateDeclaration(declLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter, declDescId, clauseNDims);
           if (this.hasError) return 0;
         }
       } else if (t == SyntaxType.DECLARATION) {
-        count += this.instantiateDeclaration(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter);
+        count += this.instantiateDeclaration(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter, 0xffffffff, clauseNDims);
         if (this.hasError) return 0;
       } else if (t != SyntaxType.TYPE_SPECIFIER && t != SyntaxType.TYPE_PREFIX && t != SyntaxType.CONDITION_ATTRIBUTE && t != SyntaxType.DESCRIPTION) {
-        count += this.instantiateDeclarationsUnder(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter);
+        count += this.instantiateDeclarationsUnder(ch, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter, clauseNDims);
         if (this.hasError) return 0;
       }
       ch = locNextSibling(ch);
@@ -8367,7 +8456,7 @@ export class ModelicaFlattener {
     return count;
   }
 
-  instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false, declDescId: u32 = 0xffffffff): u32 {
+  instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false, declDescId: u32 = 0xffffffff, clauseNDims: u32 = 0): u32 {
     let idLoc = locFirstNonEmptyChild(declLoc);
     if (locIsNull(idLoc)) return 0;
     let innerId = locFindDescendant(idLoc, SyntaxType.IDENTIFIER);
@@ -8407,6 +8496,7 @@ export class ModelicaFlattener {
     let declSubscripts = locFindDescendant(declLoc, SyntaxType.ARRAY_SUBSCRIPTS);
     let declDims = parseArrayDimensionsLoc(declSubscripts, this.dae, pool, prefixPathId, this.scopeStackPtr);
     let declHasExplicitZero = g_hasExplicitZeroDim;
+    let declNDims = g_lastParsedNDims;
     if (declDims == 0xffffffffffffffff) {
       this.setErrorAt(WasmBailReason.DeclarationDimensions, declLoc);
       return 0;
@@ -8556,14 +8646,14 @@ export class ModelicaFlattener {
       }
     }
 
-    let hasSubscripts = !locIsNull(declSubscripts) || clauseDim1 > 0 || declHasExplicitZero || clauseHasExplicitZero;
+    let hasSubscripts = declNDims > 0 || clauseNDims > 0 || !locIsNull(declSubscripts) || clauseDim1 > 0 || declHasExplicitZero || clauseHasExplicitZero;
     let isExplicitZero = declHasExplicitZero || clauseHasExplicitZero;
     let isArrayCtor = valExprId != 0xffffffff && this.dae.getExprKind(valExprId) == ExprKind.ArrayCtor;
     let ctorCount: u32 = isArrayCtor ? getArrayCtorCount(this.dae, valExprId) : 0;
 
     if (hasSubscripts) {
       if ((dim1 == 0 || dim2 == 0) && valExprId != 0xffffffff) {
-        let inferred = getExprDimensions(this.dae, valExprId);
+        let inferred = getExprDimensions(this.dae, valExprId, pool);
         let infD1 = (inferred >> 32) as u32;
         let infD2 = (inferred & 0xffffffff) as u32;
         if (dim1 == 0 && (infD1 > 0 || isArrayCtor)) dim1 = infD1;
@@ -8574,6 +8664,10 @@ export class ModelicaFlattener {
         nDims = 3;
       } else if (dim2 > 0 || clauseDim2 > 0) {
         nDims = 2;
+      } else if (declNDims > 0) {
+        nDims = declNDims;
+      } else if (clauseNDims > 0) {
+        nDims = clauseNDims;
       } else if (!locIsNull(declSubscripts)) {
         let commaLoc = locFindMatchingDescendant(declSubscripts, ",");
         nDims = !locIsNull(commaLoc) ? 2 : 1;
