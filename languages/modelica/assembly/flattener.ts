@@ -68,6 +68,38 @@ export const FLAG_VAR_PROTECTED: i32 = 1 << 7;
 export const FLAG_VAR_FINAL: i32 = 1 << 8;
 export const FLAG_VAR_VIRTUAL: i32 = 1 << 9;
 
+/**
+ * Reasons the WASM flattening kernel bails out of a model. The numeric values are
+ * stable identifiers that cross the WASM boundary (`flattener_getErrorCode`) and are
+ * mirrored on the host side in `src/flattener/support/wasm-bail-reasons.ts` — keep
+ * both lists in sync.
+ */
+const enum WasmBailReason {
+  None = 0,
+  WhenOrIfEquation = 3290,
+  ForEquationNoIndex = 3291,
+  ForEquationRange = 3292,
+  ForEquationNoBody = 3293,
+  SimpleEquationOperands = 3323,
+  SimpleEquationExpr = 3330,
+  ArrayEquationSize = 3348,
+  ArrayEquationNonCtor = 3363,
+  EquationLhsUnresolved = 3370,
+  EquationRhsUnresolved = 3377,
+  ConnectRefExpr = 3425,
+  AlgorithmSectionInstantiate = 3474,
+  ClauseDimensions = 3570,
+  DeclarationDimensions = 3609,
+  BindingExpr = 3625,
+  ArrayBindingShape = 3626,
+  IntegerRealBinding = 3629,
+  IntegerRealModifier = 3645,
+  IfExprArraySize = 3760,
+  IfExprArrayNesting = 3770,
+  IfExprArrayScalarMix = 3775,
+  AlgorithmSectionEquations = 3792,
+}
+
 
 function parseIntBytes(src: usize, len: u32): i32 {
   if (len == 0 || src == 0) return 0;
@@ -4786,6 +4818,13 @@ export class ModelicaFlattener {
   // Flattening error flag
   hasError: boolean;
   errorCode: u32;
+  // Absolute byte range (into the root program's input buffer) of the CST node that
+  // triggered the bail-out; 0xffffffff when unknown.
+  errorStartByte: u32;
+  errorEndByte: u32;
+  // Location of the simple equation currently being expanded, used to attribute
+  // bail-outs raised from expression-level helpers such as emitExpandedEquation.
+  curEqLoc: u64;
 
   @inline static create(dae: DaeBuilder): ModelicaFlattener {
     let ptr = atomicChunkAlloc(offsetof<ModelicaFlattener>());
@@ -4795,9 +4834,20 @@ export class ModelicaFlattener {
   }
 
   @inline setError(code: u32): void {
+    this.setErrorAt(code, this.curEqLoc);
+  }
+
+  setErrorAt(code: u32, loc: u64): void {
     if (this.hasError) return;
     this.hasError = true;
     this.errorCode = code;
+    if (!locIsNull(loc)) {
+      this.errorStartByte = locOffset(loc);
+      this.errorEndByte = locOffset(loc) + locLen(loc);
+    } else {
+      this.errorStartByte = 0xffffffff;
+      this.errorEndByte = 0xffffffff;
+    }
   }
 
   @inline get rootProgramNode(): CstCursor {
@@ -4823,6 +4873,9 @@ export class ModelicaFlattener {
     this.currentClassLoc = 0;
     this.hasError = false;
     this.errorCode = 0;
+    this.errorStartByte = 0xffffffff;
+    this.errorEndByte = 0xffffffff;
+    this.curEqLoc = 0;
     this.curSubtypeStartId = 0xffffffff;
     this.curSubtypeFixedId = 0xffffffff;
     this.curSubtypeMinId = 0xffffffff;
@@ -5887,7 +5940,7 @@ export class ModelicaFlattener {
     } else if (t == SyntaxType.FOR_EQUATION) {
       return this.lowerForEquation(nodeLoc, isInitial);
     } else if (t == SyntaxType.WHEN_EQUATION || t == SyntaxType.IF_EQUATION) {
-      this.setError(3290);
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, nodeLoc);
       return 0;
     } else if (t != SyntaxType.CLASS_DEFINITION) {
       let count: u32 = 0;
@@ -5908,7 +5961,7 @@ export class ModelicaFlattener {
     let fiLoc = locFindDescendant(forLoc, SyntaxType.FOR_INDEX);
     if (locIsNull(fiLoc)) fiLoc = locFindDescendant(forLoc, SyntaxType.FOR_INDICES);
     if (locIsNull(fiLoc)) {
-      this.setError(3291);
+      this.setErrorAt(WasmBailReason.ForEquationNoIndex, forLoc);
       return 0;
     }
 
@@ -5917,7 +5970,7 @@ export class ModelicaFlattener {
     let tempRange = createChunkedInt32Array(8);
     let ok = parseForIndexRange(fiLoc, this.dae, pool, tempRange, prefixPathId, this.scopeStackPtr);
     if (ok == 0) {
-      this.setError(3292);
+      this.setErrorAt(WasmBailReason.ForEquationRange, fiLoc);
       return 0;
     }
 
@@ -5937,7 +5990,7 @@ export class ModelicaFlattener {
       ch = locNextSibling(ch);
     }
     if (locIsNull(loopLoc)) {
-      this.setError(3293);
+      this.setErrorAt(WasmBailReason.ForEquationNoBody, forLoc);
       return 0;
     }
 
@@ -5988,21 +6041,25 @@ export class ModelicaFlattener {
       if (locIsNull(rhsLoc)) rhsLoc = eq.child(1).loc;
     }
     if (locIsNull(lhsLoc) || locIsNull(rhsLoc)) {
-      this.setError(3323);
+      this.setErrorAt(WasmBailReason.SimpleEquationOperands, eqLoc);
       return 0;
     }
 
     let lhsExpr = this.exprVisitor.visitLoc(lhsLoc);
     let rhsExpr = this.exprVisitor.visitLoc(rhsLoc);
     if (lhsExpr == 0xffffffff || rhsExpr == 0xffffffff) {
-      this.setError(3330);
+      this.setErrorAt(WasmBailReason.SimpleEquationExpr, eqLoc);
       return 0;
     }
     let pool = this.dae.getStringPool();
     lhsExpr = resolveVarToArrayCtor(this.dae, pool, lhsExpr, this.exprVisitor.tempBuffer);
     rhsExpr = resolveVarToArrayCtor(this.dae, pool, rhsExpr, this.exprVisitor.tempBuffer);
 
-    return this.emitExpandedEquation(lhsExpr, rhsExpr, isInitial);
+    let prevEqLoc = this.curEqLoc;
+    this.curEqLoc = eqLoc;
+    let emitted = this.emitExpandedEquation(lhsExpr, rhsExpr, isInitial);
+    this.curEqLoc = prevEqLoc;
+    return emitted;
   }
 
   emitExpandedEquation(lhs: u32, rhs: u32, isInitial: boolean): u32 {
@@ -6023,7 +6080,7 @@ export class ModelicaFlattener {
         let tCount = getArrayCtorCount(this.dae, thenExpr);
         let eCount = getArrayCtorCount(this.dae, elseExpr);
         if (tCount != eCount) {
-          this.setError(3760);
+          this.setError(WasmBailReason.IfExprArraySize);
           return 0;
         }
         if (tCount > 0) {
@@ -6033,12 +6090,12 @@ export class ModelicaFlattener {
           let eFirstKind = this.dae.getExprKind(eFirst);
           if ((tFirstKind == ExprKind.ArrayCtor && eFirstKind != ExprKind.ArrayCtor) ||
               (tFirstKind != ExprKind.ArrayCtor && eFirstKind == ExprKind.ArrayCtor)) {
-            this.setError(3770);
+            this.setError(WasmBailReason.IfExprArrayNesting);
             return 0;
           }
         }
       } else if (tKind == ExprKind.ArrayCtor || eKind == ExprKind.ArrayCtor) {
-        this.setError(3775);
+        this.setError(WasmBailReason.IfExprArrayScalarMix);
         return 0;
       }
     }
@@ -6047,7 +6104,7 @@ export class ModelicaFlattener {
       let lCount = getArrayCtorCount(this.dae, lhs);
       let rCount = getArrayCtorCount(this.dae, rhs);
       if (lCount != rCount || lCount == 0) {
-        this.setError(3348);
+        this.setError(WasmBailReason.ArrayEquationSize);
         return 0;
       }
       let total: u32 = 0;
@@ -6062,7 +6119,7 @@ export class ModelicaFlattener {
     }
 
     if (lKind == ExprKind.ArrayCtor || rKind == ExprKind.ArrayCtor) {
-      this.setError(3363);
+      this.setError(WasmBailReason.ArrayEquationNonCtor);
       return 0;
     }
 
@@ -6074,7 +6131,7 @@ export class ModelicaFlattener {
         lExpr = ExprAccessor.at(this.dae.getExprData(), lhs);
       }
       if (this.dae.lookupVariableByName(lNameId) == -1 && !pool.isTime(lNameId) && !this.isInsideExpandableBus(lNameId, pool)) {
-        this.setError(3370);
+        this.setError(WasmBailReason.EquationLhsUnresolved);
         return 0;
       }
     }
@@ -6085,7 +6142,7 @@ export class ModelicaFlattener {
         rExpr = ExprAccessor.at(this.dae.getExprData(), rhs);
       }
       if (this.dae.lookupVariableByName(rNameId) == -1 && !pool.isTime(rNameId) && !this.isInsideExpandableBus(rNameId, pool)) {
-        this.setError(3377);
+        this.setError(WasmBailReason.EquationRhsUnresolved);
         return 0;
       }
     }
@@ -6167,7 +6224,7 @@ export class ModelicaFlattener {
     let e1 = this.exprVisitor.visitLoc(c1);
     let e2 = this.exprVisitor.visitLoc(c2);
     if (e1 == 0xffffffff || e2 == 0xffffffff) {
-      this.setError(3425);
+      this.setErrorAt(WasmBailReason.ConnectRefExpr, eqLoc);
       return 0;
     }
 
@@ -6282,7 +6339,7 @@ export class ModelicaFlattener {
     }
 
     if (t == SyntaxType.ALGORITHM_SECTION) {
-      this.setError(3474);
+      this.setErrorAt(WasmBailReason.AlgorithmSectionInstantiate, elementLoc);
       return 0;
     }
 
@@ -6682,7 +6739,7 @@ export class ModelicaFlattener {
     let clauseDims = parseArrayDimensionsLoc(clauseSubscriptsLoc, this.dae, pool, prefixPathId, this.scopeStackPtr);
     let clauseHasExplicitZero = g_hasExplicitZeroDim;
     if (clauseDims == 0xffffffffffffffff) {
-      this.setError(3570);
+      this.setErrorAt(WasmBailReason.ClauseDimensions, clauseLoc);
       return 0;
     }
     let clauseDim1 = (clauseDims >> 32) as u32;
@@ -6803,7 +6860,7 @@ export class ModelicaFlattener {
     let declDims = parseArrayDimensionsLoc(declSubscripts, this.dae, pool, prefixPathId, this.scopeStackPtr);
     let declHasExplicitZero = g_hasExplicitZeroDim;
     if (declDims == 0xffffffffffffffff) {
-      this.setError(3609);
+      this.setErrorAt(WasmBailReason.DeclarationDimensions, declLoc);
       return 0;
     }
     let dim1 = (declDims >> 32) as u32;
@@ -6835,11 +6892,11 @@ export class ModelicaFlattener {
     if (!locIsNull(bExprLoc)) {
       valExprId = this.exprVisitor.visitLoc(bExprLoc);
       if (valExprId == 0xffffffff) {
-        this.setError(3625);
+        this.setErrorAt(WasmBailReason.BindingExpr, bExprLoc);
         return 0;
       }
       if (varType == VarType.Integer && this.exprVisitor.isRealExpr(valExprId)) {
-        this.setError(3629);
+        this.setErrorAt(WasmBailReason.IntegerRealBinding, bExprLoc);
         return 0;
       }
       if (varType == VarType.Real && !this.exprVisitor.isRealExpr(valExprId)) {
@@ -6910,7 +6967,7 @@ export class ModelicaFlattener {
       if (modOverride != 0xffffffff) {
         valExprId = modOverride;
         if (varType == VarType.Integer && this.exprVisitor.isRealExpr(valExprId)) {
-          this.setError(3645);
+          this.setErrorAt(WasmBailReason.IntegerRealModifier, declLoc);
           return 0;
         }
         if (varType == VarType.Real && !this.exprVisitor.isRealExpr(valExprId)) {
@@ -6963,13 +7020,13 @@ export class ModelicaFlattener {
 
     // Scalar variable with ArrayCtor binding is invalid
     if (!hasSubscripts && isArrayCtor) {
-      this.setError(3626);
+      this.setErrorAt(WasmBailReason.ArrayBindingShape, declLoc);
       return 0;
     }
 
     // Array variable with mismatched ArrayCtor length
     if (hasSubscripts && dim1 > 0 && isArrayCtor && ctorCount != dim1) {
-      this.setError(3626);
+      this.setErrorAt(WasmBailReason.ArrayBindingShape, declLoc);
       return 0;
     }
 
@@ -6980,7 +7037,7 @@ export class ModelicaFlattener {
         let firstKind = this.dae.getExprKind(firstElemId);
         if (varType == VarType.Real || varType == VarType.Integer) {
           if (firstKind == ExprKind.StringLiteral) {
-            this.setError(3626);
+            this.setErrorAt(WasmBailReason.ArrayBindingShape, declLoc);
             return 0;
           }
         }
@@ -6992,7 +7049,7 @@ export class ModelicaFlattener {
       let ek = this.dae.getExprKind(valExprId);
       let isScalarLiteral = ek == ExprKind.RealLiteral || ek == ExprKind.IntLiteral || ek == ExprKind.BoolLiteral || ek == ExprKind.StringLiteral;
       if (isScalarLiteral && !modHasEach(modLoc)) {
-        this.setError(3626);
+        this.setErrorAt(WasmBailReason.ArrayBindingShape, declLoc);
         return 0;
       }
     }
@@ -7412,7 +7469,7 @@ export class ModelicaFlattener {
     let ct = locType(elementLoc);
 
     if (ct == SyntaxType.ALGORITHM_SECTION) {
-      this.setError(3792);
+      this.setErrorAt(WasmBailReason.AlgorithmSectionEquations, elementLoc);
       return 0;
     }
 
@@ -7856,6 +7913,18 @@ export function flattener_flatten(flattenerPtr: u32, rootClassNodePtr: u32, prog
 export function flattener_getErrorCode(flattenerPtr: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ModelicaFlattener>(flattenerPtr).errorCode;
+}
+
+/** Start byte of the CST node that triggered the bail-out (0xffffffff if unknown). */
+export function flattener_getErrorStartByte(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0xffffffff;
+  return changetype<ModelicaFlattener>(flattenerPtr).errorStartByte;
+}
+
+/** End byte of the CST node that triggered the bail-out (0xffffffff if unknown). */
+export function flattener_getErrorEndByte(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0xffffffff;
+  return changetype<ModelicaFlattener>(flattenerPtr).errorEndByte;
 }
 
 export function flattener_getExpandableBusCount(flattenerPtr: u32): u32 {

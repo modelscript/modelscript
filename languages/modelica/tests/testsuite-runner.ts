@@ -379,7 +379,7 @@ function printResult(result: TestResult, showBackend = false): void {
   }
 }
 
-function printSummary(results: TestResult[], suiteLabel: string): void {
+function printSummary(results: TestResult[], suiteLabel: string, showBailHistogram = false): void {
   const passed = results.filter((r) => r.status === "passed" && !r.xfail).length;
   const xpass = results.filter((r) => r.status === "passed" && Boolean(r.xfail)).length;
   const xfail = results.filter((r) => r.status === "failed" && Boolean(r.xfail)).length;
@@ -415,6 +415,31 @@ function printSummary(results: TestResult[], suiteLabel: string): void {
     console.log(
       `  ${YELLOW}${BOLD}★ ${xpass} test(s) marked as xfail passed! Consider removing '// xfail: true'.${RESET}`,
     );
+  }
+
+  const oracleRetries = results.filter((r) => r.status === "passed" && (r.extra as any)?.oracleRetry).length;
+  if (oracleRetries > 0) {
+    console.log(
+      `  ${YELLOW}⚠ ${oracleRetries} hybrid pass(es) needed the harness TS retry (gated on expected output); ` +
+        `production hybrid would emit WASM output for these.${RESET}`,
+    );
+  }
+
+  const bailCounts = new Map<string, { total: number; failed: number }>();
+  for (const r of results) {
+    const bail = (r.extra as any)?.wasmBail as { reason?: string } | undefined;
+    if (!bail?.reason) continue;
+    const entry = bailCounts.get(bail.reason) ?? { total: 0, failed: 0 };
+    entry.total++;
+    if (r.status === "failed") entry.failed++;
+    bailCounts.set(bail.reason, entry);
+  }
+  if (showBailHistogram && bailCounts.size > 0) {
+    const totalBails = [...bailCounts.values()].reduce((s, e) => s + e.total, 0);
+    console.log(`  ${DIM}WASM kernel bail-outs: ${totalBails} test(s)${RESET}`);
+    for (const [reason, e] of [...bailCounts.entries()].sort((a, b) => b[1].total - a[1].total)) {
+      console.log(`    ${DIM}${String(e.total).padStart(5)}  ${reason} (${e.failed} failed)${RESET}`);
+    }
   }
 }
 
@@ -631,7 +656,8 @@ async function main(): Promise<void> {
       a !== "--both" &&
       !a.startsWith("--concurrency=") &&
       !a.startsWith("--flattener=") &&
-      !a.startsWith("--backend="),
+      !a.startsWith("--backend=") &&
+      !a.startsWith("--wasm-baseline="),
   );
 
   const modeStr = freshProcess ? "isolated processes" : "persistent worker pool";
@@ -888,7 +914,7 @@ async function main(): Promise<void> {
 
   // Print grand total
   if (suiteRuns.size > 1 || skippedResults.length > 0) {
-    printSummary(allResults, "Grand Total");
+    printSummary(allResults, "Grand Total", !isMultiBackend);
     const elapsed = ((globalStop - globalStart) / 1000).toFixed(1);
     console.log(`  ${DIM}Wall time: ${elapsed}s${RESET}`);
   }
@@ -927,7 +953,7 @@ async function main(): Promise<void> {
       for (const b of backendsToRun) {
         const bLabel = b === "ts" ? "JS/TS" : b.toUpperCase();
         const bResults = allResults.filter((r) => r.backend === b || (b === "ts" && r.backend === "hybrid"));
-        printSummary(bResults, `${bLabel} Implementation`);
+        printSummary(bResults, `${bLabel} Implementation`, true);
       }
 
       console.log();
@@ -950,7 +976,7 @@ async function main(): Promise<void> {
       }
       console.log(`--------------------------------------------------------------------------------`);
     } else {
-      const activeBackend = backendsToRun[0] === "wasm" ? "wasm" : "js";
+      const activeBackend = backendsToRun[0] === "ts" ? "js" : (backendsToRun[0] ?? "js");
       const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
       const report = generateCtrfReport(allResults, globalStart, globalStop, activeBackend);
       fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
@@ -1021,6 +1047,27 @@ async function main(): Promise<void> {
   });
   const wasmRegressions = allResults.filter((r) => r.status === "failed" && !r.xfail && r.backend === "wasm");
   const xfails = allResults.filter((r) => r.status === "failed" && Boolean(r.xfail));
+
+  // --wasm-baseline=<file>: ratchet that fails if the WASM pass count drops below
+  // the recorded floor, even when individual WASM failures are tolerated.
+  const baselineArg = rawArgs.find((a) => a.startsWith("--wasm-baseline="));
+  if (baselineArg && backendsToRun.includes("wasm")) {
+    const baselinePath = path.resolve(baselineArg.slice("--wasm-baseline=".length));
+    const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf-8")) as { passed: number };
+    const wasmPassed = allResults.filter((r) => r.backend === "wasm" && r.status === "passed").length;
+    if (wasmPassed < baseline.passed) {
+      console.error(
+        `\n${RED}${BOLD}Error: WASM pass count ${wasmPassed} is below baseline ${baseline.passed} (${baselinePath}).${RESET}`,
+      );
+      if (!allowFailures) process.exit(1);
+    } else if (wasmPassed > baseline.passed) {
+      console.log(
+        `\n${GREEN}WASM pass count ${wasmPassed} exceeds baseline ${baseline.passed}; consider raising it in ${path.relative(process.cwd(), baselinePath)}.${RESET}`,
+      );
+    } else {
+      console.log(`\n${DIM}WASM pass count matches baseline (${wasmPassed}).${RESET}`);
+    }
+  }
 
   if (regressions.length > 0) {
     if (allowFailures) {

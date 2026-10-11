@@ -143,7 +143,7 @@
     "test:msl:sim": "npx tsx tests/msl-comparison-runner.ts --stage=simulate",
     "test:omc": "npx tsx tests/testsuite-runner.ts",
     "test:omc:both": "npx tsx tests/testsuite-runner.ts --flattener=both",
-    "test:omc:both:allow-wasm": "npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
+    "test:omc:both:allow-wasm": "npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures --wasm-baseline=tests/wasm-parity-baseline.json",
     "test:omc:coverage": "rm -rf .v8-coverage coverage/omc && mkdir -p .v8-coverage coverage/omc && NODE_V8_COVERAGE=$(pwd)/.v8-coverage npx tsx tests/testsuite-runner.ts --flattener=both --allow-wasm-failures && npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=coverage/omc --include=\"src/**\" --include=\"../../packages/dsl/src/**\" --include=\"../../packages/runtime/src/**\"",
     "test:omc:js": "npx tsx tests/testsuite-runner.ts --flattener=ts",
     "test:omc:wasm": "npx tsx tests/testsuite-runner.ts --flattener=wasm",

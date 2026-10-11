@@ -104,11 +104,14 @@ Couenne/
 ThirdParty/
 f2ctmp/
 
-# FMI / OpenModelica build artifacts
+# FMI / OpenModelica build & test execution artifacts
 *.fmu
 *_FMU.mo
-*_FMU.libs
-*_FMU.makefile
+*.libs
+*.makefile
+*_includes.h
+*_records.c
+*_merged_table.json
 *_info.json
 *_res.mat
 *_res.csv
@@ -116,4 +119,10 @@ f2ctmp/
 packages/exchange/validation/fmi/exported_fmus/
 packages/exchange/validation/fmi/reference_fmus/
 packages/exchange/validation/fmi/reference_fmus_repo/
+
+# OpenModelica testsuite generated C/H artifacts
+languages/modelica/testsuite/OpenModelica/flattening/modelica/**/*.c
+languages/modelica/testsuite/OpenModelica/flattening/modelica/**/*.h
+
+
 

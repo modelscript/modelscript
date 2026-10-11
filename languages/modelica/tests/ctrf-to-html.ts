@@ -138,6 +138,32 @@ export function generateHtmlReport(inputPath: string, outputPath: string): void 
         .join("")
     : "";
 
+  const bailBadge = (t: CtrfTest): string => {
+    const bail = t.extra?.wasmBail as { reason?: string; description?: string; location?: string } | undefined;
+    if (!bail?.reason) return "";
+    const title = `${bail.description ?? ""}${bail.location ? ` @ ${bail.location}` : ""}`;
+    return ` <span class="chip bail-chip" title="${esc(title)}">bail: ${esc(bail.reason)}</span>`;
+  };
+
+  const bailHistogram = new Map<string, number>();
+  for (const t of tests) {
+    const reason = (t.extra?.wasmBail as { reason?: string } | undefined)?.reason;
+    if (reason) bailHistogram.set(reason, (bailHistogram.get(reason) ?? 0) + 1);
+  }
+  const bailCard =
+    bailHistogram.size > 0
+      ? `
+  <div class="card bail-card">
+    <div class="num">${[...bailHistogram.values()].reduce((s, n) => s + n, 0)}</div>
+    <div class="label">WASM Kernel Bail-outs</div>
+    <div class="sub-label">${[...bailHistogram.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([r, n]) => `${esc(r)}: ${n}`)
+      .join("<br>")}</div>
+  </div>`
+      : "";
+
   let suiteRows = "";
   let filterControls: string;
 
@@ -218,7 +244,7 @@ export function generateHtmlReport(inputPath: string, outputPath: string): void 
             const cpuStr = `${t.cpuTime ?? 0}ms`;
             const memVal = t.memoryMb ?? (t.extra?.memoryMb as number | undefined);
             const memStr = memVal !== undefined && memVal > 0 ? `${memVal.toFixed(1)} MB` : "-";
-            cells += `<td class="${cellCls}">${icon} ${t.status}</td><td class="num-cell">${cpuStr}</td><td class="num-cell">${memStr}</td>`;
+            cells += `<td class="${cellCls}">${icon} ${t.status}${bailBadge(t)}</td><td class="num-cell">${cpuStr}</td><td class="num-cell">${memStr}</td>`;
           }
         }
 
@@ -354,7 +380,7 @@ export function generateHtmlReport(inputPath: string, outputPath: string): void 
         const msg = t.message ? `<details><summary>Details</summary><pre>${esc(t.message)}</pre></details>` : "";
         const memVal = t.memoryMb ?? (t.extra?.memoryMb as number | undefined);
         const memStr = memVal !== undefined && memVal > 0 ? `${memVal.toFixed(1)} MB` : "-";
-        testRows += `<tr class="${cls}" data-backend="${b}" data-status="${cls}"><td>${icon}</td><td>${backendBadge}${esc(t.name)}</td><td>${t.status}</td><td>${t.duration ?? 0}ms</td><td>${t.cpuTime ?? 0}ms</td><td>${memStr}</td><td class="msg">${msg}</td></tr>\n`;
+        testRows += `<tr class="${cls}" data-backend="${b}" data-status="${cls}"><td>${icon}</td><td>${backendBadge}${esc(t.name)}${bailBadge(t)}</td><td>${t.status}</td><td>${t.duration ?? 0}ms</td><td>${t.cpuTime ?? 0}ms</td><td>${memStr}</td><td class="msg">${msg}</td></tr>\n`;
       }
 
       suiteRows += `
@@ -433,6 +459,8 @@ h1{font-size:1.8rem;margin-bottom:8px;color:#f0f6fc;display:flex;align-items:cen
 .wasm-chip{background:#2a1945;color:#d2a8ff;border:1px solid rgba(210,168,255,0.3)}
 .js-chip{background:#332608;color:#e3b341;border:1px solid rgba(227,179,65,0.3)}
 .omc-chip{background:#3b1d4a;color:#ce93d8;border:1px solid rgba(206,147,216,0.3)}
+.bail-chip{background:#2d1b0e;color:#ffa657;border:1px solid rgba(255,166,87,0.35);font-size:.68rem;margin-left:4px;cursor:help;white-space:nowrap}
+.bail-card .sub-label{text-align:left;line-height:1.5}
 .bar-wrap{width:80px;height:6px;background:#21262d;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
 .bar{height:100%;border-radius:3px;transition:width .3s}
 .table-container{overflow-x:auto}
@@ -519,6 +547,7 @@ function setMatrixFilter(filterType, btn) {
   <div class="card skip"><div class="num">${summary.pending}</div><div class="label">Skipped</div></div>
   <div class="card rate"><div class="num">${passRate}%</div><div class="label">Overall Pass Rate</div></div>
   ${multiBackendCards}
+  ${bailCard}
   <div class="card time"><div class="num">${dur}s</div><div class="label">Duration (${cpuTime}s cpu)</div><div class="sub-label">Peak RSS: ${summaryPeakMem} MB</div></div>
 </div>
 ${filterControls}

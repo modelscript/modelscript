@@ -79,6 +79,12 @@ import {
 import { extractCompilerOptions } from "./support/compiler-options.js";
 import { getElementDiagRange } from "./support/range-utils.js";
 import { type FlatteningState, getFlatteningState } from "./support/state.js";
+import {
+  describeWasmBail,
+  inputEncodingUnitSize,
+  type WasmBailInfo,
+  WasmBailReason,
+} from "./support/wasm-bail-reasons.js";
 import { ModelicaModificationEnv } from "./support/wasm-bridge.js";
 import type { FlattenerBackend, FlattenOptions } from "./types.js";
 
@@ -1944,6 +1950,7 @@ export class ModelicaFlattener {
     }
 
     let flattenedInWasm = false;
+    let wasmBail: WasmBailInfo | null = null;
     const classNodePtr = classCst?.ptr ?? classCst?.id;
     const rootProgramPtr =
       classCst?.tree?.rootPtr ?? classCst?.tree?.rootNode?.ptr ?? (this.db as any)?.rootNode?.ptr ?? 0;
@@ -2001,6 +2008,22 @@ export class ModelicaFlattener {
             typeof (dae.exports as any)?.flattener_getDisabledCount === "function"
               ? (dae.exports as any).flattener_getDisabledCount(wasmFlattener)
               : 0;
+          if (wasmErrorCode !== 0) {
+            const ex = dae.exports as any;
+            wasmBail = describeWasmBail(
+              wasmErrorCode,
+              typeof ex.flattener_getErrorStartByte === "function"
+                ? ex.flattener_getErrorStartByte(wasmFlattener)
+                : undefined,
+              typeof ex.flattener_getErrorEndByte === "function"
+                ? ex.flattener_getErrorEndByte(wasmFlattener)
+                : undefined,
+              isStrictWasm ? "strict-partial" : "ts-fallback",
+              inputEncodingUnitSize(
+                typeof ex.lsp_getInputEncoding === "function" ? ex.lsp_getInputEncoding() : undefined,
+              ),
+            );
+          }
           if ((varCount > 0 || disabledCount > 0 || isStrictWasm) && (wasmErrorCode === 0 || isStrictWasm)) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
@@ -2042,6 +2065,12 @@ export class ModelicaFlattener {
         }
       } catch {
         flattenedInWasm = false;
+        wasmBail ??= describeWasmBail(
+          WasmBailReason.KernelTrap,
+          undefined,
+          undefined,
+          isStrictWasm ? "strict-partial" : "ts-fallback",
+        );
       }
       if (!flattenedInWasm) {
         if (isStrictWasm) {
@@ -2052,6 +2081,7 @@ export class ModelicaFlattener {
             message: `[ModelicaFlattener] Model '${rootName}' could not be flattened using strict WASM backend.`,
             range: null,
           });
+          if (wasmBail) (dae as any).wasmBail = wasmBail;
           return dae;
         }
         const savedDesc = dae.description;
@@ -2248,6 +2278,11 @@ export class ModelicaFlattener {
     this.checkBalance(dae, rootClassId);
 
     attachDiffReport(dae);
+    if (wasmBail) {
+      // Structured metadata only: a diagnostic here would perturb tests whose
+      // expected output is driven by linter diagnostics.
+      (dae as any).wasmBail = wasmBail;
+    }
     (dae as any)._isRealNameCache?.clear();
     (dae as any)._varPrefixSet?.clear();
     (dae as any)._varPrefixCount = 0;

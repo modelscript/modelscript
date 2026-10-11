@@ -359,7 +359,8 @@ export function consolidateReports(opts: CliOptions): {
       if (fileName === "ctrf-testsuite-report.json") {
         const hasWasm = fs.existsSync(path.join(dirName, "ctrf-testsuite-report-wasm.json"));
         const hasJs = fs.existsSync(path.join(dirName, "ctrf-testsuite-report-js.json"));
-        if (hasWasm || hasJs) continue;
+        const hasHybrid = fs.existsSync(path.join(dirName, "ctrf-testsuite-report-hybrid.json"));
+        if (hasWasm || hasJs || hasHybrid) continue;
       }
 
       for (const t of data.tests) {

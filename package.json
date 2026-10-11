@@ -70,7 +70,7 @@
     "test:consolidate": "npx tsx scripts/consolidate-test-reports.ts",
     "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
     "test:modelica:both": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both",
-    "test:modelica:both:allow-wasm": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both --allow-wasm-failures",
+    "test:modelica:both:allow-wasm": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both --allow-wasm-failures --wasm-baseline=languages/modelica/tests/wasm-parity-baseline.json",
     "test:modelica:coverage": "npm run test:omc:coverage --workspace=@modelscript/modelica",
     "test:modelica:js": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=ts",
     "test:modelica:update": "npx tsx languages/modelica/tests/testsuite-runner.ts --update --omc",

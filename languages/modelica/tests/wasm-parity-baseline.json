@@ -1,0 +1,4 @@
+{
+  "$comment": "Floor for strict-WASM testsuite passes (incl. xpass). Enforced by --wasm-baseline; raise it as parity improves.",
+  "passed": 816
+}

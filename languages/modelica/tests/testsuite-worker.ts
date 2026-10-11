@@ -83,6 +83,17 @@ interface TestResult {
   keywords?: string;
   testStatus?: string;
   xfail?: boolean | string;
+  memoryMb?: number;
+  extra?: Record<string, unknown>;
+}
+
+/** Shape of `dae.wasmBail` attached by `ModelicaFlattener` (see `wasm-bail-reasons.ts`). */
+interface WasmBailRecord {
+  code: number;
+  reason: string;
+  description: string;
+  range: { startByte: number; endByte: number } | null;
+  action: "strict-partial" | "ts-fallback";
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -458,19 +469,27 @@ function runTestCaseCore(
       ? (testCase.metadata.xfailWasm ?? (testCase.metadata.xfail === "wasm" ? true : testCase.metadata.xfail))
       : (testCase.metadata.xfailJs ?? (testCase.metadata.xfail === "wasm" ? false : testCase.metadata.xfail));
 
-  const makeResult = (status: "passed" | "failed" | "skipped", message?: string): TestResult => ({
-    name: path.basename(testCase.file),
-    keywords: testCase.metadata.keywords,
-    testStatus: testCase.metadata.status,
-    xfail: effectiveXfail,
-    backend: flattenerBackend,
-    file: testCase.file,
-    status,
-    duration: performance.now() - start,
-    cpuTime: cpuMs(),
-    memoryMb: memMb(),
-    ...(message ? { message } : {}),
-  });
+  let wasmBail: WasmBailRecord | null = null;
+  let wasmBailLoc: string | undefined;
+
+  const makeResult = (status: "passed" | "failed" | "skipped", message?: string): TestResult => {
+    const bailTag = wasmBail ? `[wasm bail: ${wasmBail.reason}${wasmBailLoc ? ` @ ${wasmBailLoc}` : ""}] ` : "";
+    const finalMessage = status === "failed" && bailTag ? `${bailTag}${message ?? ""}` : message;
+    return {
+      name: path.basename(testCase.file),
+      keywords: testCase.metadata.keywords,
+      testStatus: testCase.metadata.status,
+      xfail: effectiveXfail,
+      backend: flattenerBackend,
+      file: testCase.file,
+      status,
+      duration: performance.now() - start,
+      cpuTime: cpuMs(),
+      memoryMb: memMb(),
+      ...(finalMessage ? { message: finalMessage } : {}),
+      ...(wasmBail ? { extra: { wasmBail: { ...wasmBail, ...(wasmBailLoc ? { location: wasmBailLoc } : {}) } } } : {}),
+    };
+  };
 
   let lastClassName = testCase.metadata.name;
   try {
@@ -769,6 +788,7 @@ function runTestCaseCore(
       ...(intEnumConversion ? { intEnumConversion } : {}),
       ...(scalarizeMinMax ? { scalarizeMinMax } : {}),
     });
+    wasmBail = ((arena as any)?.wasmBail as WasmBailRecord | undefined) ?? null;
 
     const lints = Array.from(context.queryEngine.runAllLints());
 
@@ -956,6 +976,10 @@ function runTestCaseCore(
       const charCol = byte - (lineOffsets[lo] ?? 0);
       return { row: lo, column: lspPositionToUtf8Column(lo, charCol) };
     };
+    if (wasmBail?.range) {
+      const p = byteToPosition(wasmBail.range.startByte);
+      wasmBailLoc = `${p.row + 1}:${p.column + 1}`;
+    }
 
     // ── Lint diagnostics ──
     interface DiagEntry {
@@ -1549,7 +1573,10 @@ export function runTestCase(
           ...((initialResult as any).extra ?? {}),
           ...((tsResult as any).extra ?? {}),
           backend: "hybrid",
+          // The retry is gated on the expected output (an oracle unavailable in
+          // production), so these passes mask real WASM divergences.
           usedTsFallback: true,
+          oracleRetry: true,
           wasmFailureMessage: initialResult.message,
         },
       };
