@@ -105,7 +105,7 @@ export const STMT_RIGHT: u32 = 3;
 // Compound Equation & State Machine Layout
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const VAR_ATTR_STRIDE: u32 = 8;
+export const VAR_ATTR_STRIDE: u32 = 10;
 export const CLOCK_STRIDE: u32 = 4;
 export const WHEN_STRIDE: u32 = 4;
 export const FOR_STRIDE: u32 = 4;
@@ -237,4 +237,6 @@ export enum VarAttrKind {
   Start = 5,
   Fixed = 6,
   Binding = 7,
+  Quantity = 8,
+  Description = 9,
 }

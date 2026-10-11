@@ -1766,6 +1766,10 @@ function extractModDisplayUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
   return extractModAttr(modLoc, "displayUnit", exprVisitor);
 }
 
+function extractModQuantity(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
+  return extractModAttr(modLoc, "quantity", exprVisitor);
+}
+
 
 
 const MOD_ENTRY_SLOTS: u32 = 256;
@@ -5370,6 +5374,7 @@ export class ModelicaFlattener {
   curSubtypeMaxId: u32;
   curSubtypeNominalId: u32;
   curSubtypeDisplayUnitId: u32;
+  curSubtypeQuantityId: u32;
 
   // Flattening error flag
   hasError: boolean;
@@ -5452,6 +5457,7 @@ export class ModelicaFlattener {
     this.curSubtypeMaxId = 0xffffffff;
     this.curSubtypeNominalId = 0xffffffff;
     this.curSubtypeDisplayUnitId = 0xffffffff;
+    this.curSubtypeQuantityId = 0xffffffff;
     let ss = ScopeStack.create();
     this.scopeStackPtr = changetype<usize>(ss) as u32;
 
@@ -7727,6 +7733,7 @@ export class ModelicaFlattener {
     let subtypeMaxId: u32 = 0xffffffff;
     let subtypeNominalId: u32 = 0xffffffff;
     let subtypeDisplayUnitId: u32 = 0xffffffff;
+    let subtypeQuantityId: u32 = 0xffffffff;
     let aliasDim1: u32 = 0;
     let aliasDim2: u32 = 0;
     let aliasDim3: u32 = 0;
@@ -7739,12 +7746,7 @@ export class ModelicaFlattener {
       typeNameId = locIntern(pool, idLoc);
 
       if (locMatches(idLoc, "Real") ||
-          locMatches(idLoc, "TypeReal") ||
-          locStartsWith(typeSpecLoc, "SI.") ||
-          locStartsWith(typeSpecLoc, "Modelica.Units.SI.") ||
-          locStartsWith(typeSpecLoc, "Modelica.SIunits.") ||
-          locStartsWith(typeSpecLoc, "NonSI.") ||
-          locStartsWith(typeSpecLoc, "Modelica.Units.NonSI.")) {
+          locMatches(idLoc, "TypeReal")) {
         varType = VarType.Real;
         isPrimitive = true;
       } else if (locMatches(idLoc, "Integer") || locMatches(idLoc, "TypeInteger")) {
@@ -7758,11 +7760,15 @@ export class ModelicaFlattener {
         isPrimitive = true;
       } else {
         // Resolve type alias / short class definition (e.g. type Angle = Real(unit="rad"), type Color = Modelica.Icons.TypeInteger[3])
-        let defLoc: u64 = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
+        let fullTypeId = locIntern(pool, typeSpecLoc);
+        let defLoc: u64 = this.findClassLoc(this.currentClassLoc, fullTypeId, pool);
+        if (locIsNull(defLoc)) {
+          defLoc = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
+        }
         let firstIdLoc = locFindDescendant(typeSpecLoc, SyntaxType.IDENTIFIER);
         if (locIsNull(defLoc) && !locIsNull(firstIdLoc)) {
           let firstId = locIntern(pool, firstIdLoc);
-          if (firstId != typeNameId) {
+          if (firstId != typeNameId && firstId != fullTypeId) {
             defLoc = this.findClassLoc(this.currentClassLoc, firstId, pool);
           }
         }
@@ -7780,44 +7786,48 @@ export class ModelicaFlattener {
               let extNameLoc = locFindDescendant(extClause, SyntaxType.NAME);
               if (locIsNull(extNameLoc)) extNameLoc = locFindDescendant(extClause, SyntaxType.IDENTIFIER);
               if (!locIsNull(extNameLoc)) {
-                if (locMatches(extNameLoc, "Real") || locMatches(extNameLoc, "TypeReal")) {
-                  varType = VarType.Real;
+                let isPrimitiveExt = locMatches(extNameLoc, "Real") ||
+                  locMatches(extNameLoc, "TypeReal") ||
+                  locMatches(extNameLoc, "Integer") ||
+                  locMatches(extNameLoc, "TypeInteger") ||
+                  locMatches(extNameLoc, "Boolean") ||
+                  locMatches(extNameLoc, "TypeBoolean") ||
+                  locMatches(extNameLoc, "String") ||
+                  locMatches(extNameLoc, "TypeString");
+                if (isPrimitiveExt) {
                   isPrimitive = true;
-                } else if (locMatches(extNameLoc, "Integer") || locMatches(extNameLoc, "TypeInteger")) {
-                  varType = VarType.Integer;
-                  isPrimitive = true;
-                } else if (locMatches(extNameLoc, "Boolean") || locMatches(extNameLoc, "TypeBoolean")) {
-                  varType = VarType.Boolean;
-                  isPrimitive = true;
-                } else if (locMatches(extNameLoc, "String") || locMatches(extNameLoc, "TypeString")) {
-                  varType = VarType.String;
-                  isPrimitive = true;
-                } else if (isTypeClassLoc(curDefLoc)) {
-                  // Follow extends alias chain
+                  if (locMatches(extNameLoc, "Real") || locMatches(extNameLoc, "TypeReal")) varType = VarType.Real;
+                  else if (locMatches(extNameLoc, "Integer") || locMatches(extNameLoc, "TypeInteger")) varType = VarType.Integer;
+                  else if (locMatches(extNameLoc, "Boolean") || locMatches(extNameLoc, "TypeBoolean")) varType = VarType.Boolean;
+                  else if (locMatches(extNameLoc, "String") || locMatches(extNameLoc, "TypeString")) varType = VarType.String;
+                }
+                let extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_MODIFICATION);
+                if (locIsNull(extModLoc)) extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
+                if (!locIsNull(extModLoc)) {
+                  let qid = extractModQuantity(extModLoc, this.exprVisitor);
+                  if (qid != 0xffffffff && subtypeQuantityId == 0xffffffff) subtypeQuantityId = qid;
+                  let uid = extractModUnit(extModLoc, this.exprVisitor);
+                  if (uid != 0xffffffff && subtypeUnitId == 0xffffffff) subtypeUnitId = uid;
+                  let sid = extractModStart(extModLoc, this.exprVisitor);
+                  if (sid != 0xffffffff && subtypeStartId == 0xffffffff) subtypeStartId = sid;
+                  let fid = extractModFixed(extModLoc, this.exprVisitor);
+                  if (fid != 0xffffffff && subtypeFixedId == 0xffffffff) subtypeFixedId = fid;
+                  let minId = extractModMin(extModLoc, this.exprVisitor);
+                  if (minId != 0xffffffff && subtypeMinId == 0xffffffff) subtypeMinId = minId;
+                  let maxId = extractModMax(extModLoc, this.exprVisitor);
+                  if (maxId != 0xffffffff && subtypeMaxId == 0xffffffff) subtypeMaxId = maxId;
+                  let nomId = extractModNominal(extModLoc, this.exprVisitor);
+                  if (nomId != 0xffffffff && subtypeNominalId == 0xffffffff) subtypeNominalId = nomId;
+                  let duId = extractModDisplayUnit(extModLoc, this.exprVisitor);
+                  if (duId != 0xffffffff && subtypeDisplayUnitId == 0xffffffff) subtypeDisplayUnitId = duId;
+                }
+                if (!isPrimitiveExt && isTypeClassLoc(curDefLoc)) {
+                  // Follow extends alias chain (e.g. type MyReal2 extends MyReal)
                   let nextExtId = locIntern(pool, extNameLoc);
                   curDefLoc = this.findClassLoc(this.currentClassLoc, nextExtId, pool);
                   continue;
                 }
                 if (isPrimitive) {
-                  let extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_MODIFICATION);
-                  if (locIsNull(extModLoc)) extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
-                  if (!locIsNull(extModLoc)) {
-
-                    let uid = extractModUnit(extModLoc, this.exprVisitor);
-                    if (uid != 0xffffffff && subtypeUnitId == 0xffffffff) subtypeUnitId = uid;
-                    let sid = extractModStart(extModLoc, this.exprVisitor);
-                    if (sid != 0xffffffff && subtypeStartId == 0xffffffff) subtypeStartId = sid;
-                    let fid = extractModFixed(extModLoc, this.exprVisitor);
-                    if (fid != 0xffffffff && subtypeFixedId == 0xffffffff) subtypeFixedId = fid;
-                    let minId = extractModMin(extModLoc, this.exprVisitor);
-                    if (minId != 0xffffffff && subtypeMinId == 0xffffffff) subtypeMinId = minId;
-                    let maxId = extractModMax(extModLoc, this.exprVisitor);
-                    if (maxId != 0xffffffff && subtypeMaxId == 0xffffffff) subtypeMaxId = maxId;
-                    let nomId = extractModNominal(extModLoc, this.exprVisitor);
-                    if (nomId != 0xffffffff && subtypeNominalId == 0xffffffff) subtypeNominalId = nomId;
-                    let duId = extractModDisplayUnit(extModLoc, this.exprVisitor);
-                    if (duId != 0xffffffff && subtypeDisplayUnitId == 0xffffffff) subtypeDisplayUnitId = duId;
-                  }
                   break;
                 }
               }
@@ -7889,6 +7899,8 @@ export class ModelicaFlattener {
           }
           let classModLoc = locFindDescendant(shortSpec, SyntaxType.CLASS_MODIFICATION);
           if (!locIsNull(classModLoc)) {
+            let qid = extractModQuantity(classModLoc, this.exprVisitor);
+            if (qid != 0xffffffff && subtypeQuantityId == 0xffffffff) subtypeQuantityId = qid;
             let uid = extractModUnit(classModLoc, this.exprVisitor);
             if (uid != 0xffffffff && subtypeUnitId == 0xffffffff) subtypeUnitId = uid;
             let sid = extractModStart(classModLoc, this.exprVisitor);
@@ -7943,6 +7955,16 @@ export class ModelicaFlattener {
             }
           }
         }
+        if (!isPrimitive) {
+          if (locStartsWith(typeSpecLoc, "SI.") ||
+              locStartsWith(typeSpecLoc, "Modelica.Units.SI.") ||
+              locStartsWith(typeSpecLoc, "Modelica.SIunits.") ||
+              locStartsWith(typeSpecLoc, "NonSI.") ||
+              locStartsWith(typeSpecLoc, "Modelica.Units.NonSI.")) {
+            varType = VarType.Real;
+            isPrimitive = true;
+          }
+        }
         let hasOwnMod = false;
         let defShortSpec = this.findShortClassSpecifier(defLoc);
         if (!locIsNull(defShortSpec)) {
@@ -7988,6 +8010,7 @@ export class ModelicaFlattener {
     let prevSubtypeMaxId = this.curSubtypeMaxId;
     let prevSubtypeNominalId = this.curSubtypeNominalId;
     let prevSubtypeDisplayUnitId = this.curSubtypeDisplayUnitId;
+    let prevSubtypeQuantityId = this.curSubtypeQuantityId;
 
     this.curSubtypeStartId = subtypeStartId;
     this.curSubtypeFixedId = subtypeFixedId;
@@ -7995,6 +8018,7 @@ export class ModelicaFlattener {
     this.curSubtypeMaxId = subtypeMaxId;
     this.curSubtypeNominalId = subtypeNominalId;
     this.curSubtypeDisplayUnitId = subtypeDisplayUnitId;
+    this.curSubtypeQuantityId = subtypeQuantityId;
 
     let res = this.instantiateDeclarationsUnder(clauseLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter);
 
@@ -8004,6 +8028,7 @@ export class ModelicaFlattener {
     this.curSubtypeMaxId = prevSubtypeMaxId;
     this.curSubtypeNominalId = prevSubtypeNominalId;
     this.curSubtypeDisplayUnitId = prevSubtypeDisplayUnitId;
+    this.curSubtypeQuantityId = prevSubtypeQuantityId;
 
     return res;
   }
@@ -8039,8 +8064,18 @@ export class ModelicaFlattener {
           }
         }
 
+        let declDescId: u32 = 0xffffffff;
+        let descLoc = locFindChild(ch, SyntaxType.DESCRIPTION);
+        if (locIsNull(descLoc)) descLoc = locFindDescendant(ch, SyntaxType.DESCRIPTION);
+        if (!locIsNull(descLoc)) {
+          let strLoc = locFindDescendant(descLoc, SyntaxType.STRING_LITERAL);
+          if (!locIsNull(strLoc)) {
+            declDescId = this.exprVisitor.visitLoc(strLoc);
+          }
+        }
+
         if (!locIsNull(declLoc)) {
-          count += this.instantiateDeclaration(declLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter);
+          count += this.instantiateDeclaration(declLoc, isPrimitive, varType, variability, causality, varFlags, typeNameId, clauseDim1, clauseDim2, clauseDim3, prefixPathId, pool, isTopLevelInterface, parentCausality, subtypeUnitId, clauseHasExplicitZero, isInner, isOuter, declDescId);
           if (this.hasError) return 0;
         }
       } else if (t == SyntaxType.DECLARATION) {
@@ -8055,7 +8090,7 @@ export class ModelicaFlattener {
     return count;
   }
 
-  instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false): u32 {
+  instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false, declDescId: u32 = 0xffffffff): u32 {
     let idLoc = locFirstNonEmptyChild(declLoc);
     if (locIsNull(idLoc)) return 0;
     let innerId = locFindDescendant(idLoc, SyntaxType.IDENTIFIER);
@@ -8063,6 +8098,17 @@ export class ModelicaFlattener {
 
     let compNameId = locIntern(pool, idLoc);
     let fullVarNameId = prefixPathId != 0 ? pool.concatIds(prefixPathId, compNameId) : compNameId;
+
+    if (declDescId == 0xffffffff) {
+      let descLoc = locFindChild(declLoc, SyntaxType.DESCRIPTION);
+      if (locIsNull(descLoc)) descLoc = locFindDescendant(declLoc, SyntaxType.DESCRIPTION);
+      if (!locIsNull(descLoc)) {
+        let strLoc = locFindDescendant(descLoc, SyntaxType.STRING_LITERAL);
+        if (!locIsNull(strLoc)) {
+          declDescId = this.exprVisitor.visitLoc(strLoc);
+        }
+      }
+    }
 
     if (isInner) {
       this.registerInnerDeclaration(prefixPathId, compNameId, fullVarNameId);
@@ -8134,10 +8180,15 @@ export class ModelicaFlattener {
     let declMaxId: u32 = 0xffffffff;
     let declNominalId: u32 = 0xffffffff;
     let declDisplayUnitId: u32 = 0xffffffff;
+    let declQuantityId: u32 = 0xffffffff;
     if (!locIsNull(declModLoc)) {
       let declUnitId = extractModUnit(declModLoc, this.exprVisitor);
       if (declUnitId != 0xffffffff) {
         subtypeUnitId = declUnitId;
+      }
+      let dq = extractModQuantity(declModLoc, this.exprVisitor);
+      if (dq != 0xffffffff) {
+        declQuantityId = dq;
       }
       declStartId = extractModStart(declModLoc, this.exprVisitor);
       declFixedId = extractModFixed(declModLoc, this.exprVisitor);
@@ -8147,6 +8198,7 @@ export class ModelicaFlattener {
       declDisplayUnitId = extractModDisplayUnit(declModLoc, this.exprVisitor);
     }
 
+    if (declQuantityId == 0xffffffff) declQuantityId = this.curSubtypeQuantityId;
     if (declStartId == 0xffffffff) declStartId = this.curSubtypeStartId;
     if (declFixedId == 0xffffffff) declFixedId = this.curSubtypeFixedId;
     if (declMinId == 0xffffffff) declMinId = this.curSubtypeMinId;
@@ -8163,6 +8215,12 @@ export class ModelicaFlattener {
       let childEnv = changetype<ScopeStack>(this.scopeStackPtr).lookupNested(compNameId);
       if (childEnv != 0) {
         let childEnvObj = changetype<ModificationEnvironment>(childEnv);
+        let quantKey = internStaticString(pool, "quantity");
+        let overrideQuant = childEnvObj.lookup(quantKey);
+        if (overrideQuant != 0xffffffff) declQuantityId = overrideQuant;
+        let unitKey = internStaticString(pool, "unit");
+        let overrideUnit = childEnvObj.lookup(unitKey);
+        if (overrideUnit != 0xffffffff) subtypeUnitId = overrideUnit;
         let startKey = internStaticString(pool, "start");
         let overrideStart = childEnvObj.lookup(startKey);
         if (overrideStart != 0xffffffff) declStartId = overrideStart;
@@ -8325,6 +8383,7 @@ export class ModelicaFlattener {
           let elemMaxId = sliceAttrExpr1D(this.dae, declMaxId, i - 1);
           let elemNominalId = sliceAttrExpr1D(this.dae, declNominalId, i - 1);
           let elemDisplayUnitId = sliceAttrExpr1D(this.dae, declDisplayUnitId, i - 1);
+          let elemQuantityId = sliceAttrExpr1D(this.dae, declQuantityId, i - 1);
 
           let isParamOrConst = variability == (Variability.Parameter as i32) || variability == (Variability.Constant as i32);
           let elemStartVal: f64 = 0.0;
@@ -8370,6 +8429,12 @@ export class ModelicaFlattener {
           if (subtypeUnitId != 0xffffffff) {
             this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Unit as u32, subtypeUnitId);
           }
+          if (elemQuantityId != 0xffffffff) {
+            this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Quantity as u32, elemQuantityId);
+          }
+          if (declDescId != 0xffffffff) {
+            this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Description as u32, declDescId);
+          }
           count++;
         }
       } else if (dim1 > 0 && dim2 > 0 && dim3 == 0) {
@@ -8392,6 +8457,7 @@ export class ModelicaFlattener {
             let elemMaxId = sliceAttrExpr2D(this.dae, declMaxId, i - 1, j - 1);
             let elemNominalId = sliceAttrExpr2D(this.dae, declNominalId, i - 1, j - 1);
             let elemDisplayUnitId = sliceAttrExpr2D(this.dae, declDisplayUnitId, i - 1, j - 1);
+            let elemQuantityId = sliceAttrExpr2D(this.dae, declQuantityId, i - 1, j - 1);
 
             let isParamOrConst = variability == (Variability.Parameter as i32) || variability == (Variability.Constant as i32);
             let elemStartVal: f64 = 0.0;
@@ -8437,6 +8503,12 @@ export class ModelicaFlattener {
             if (subtypeUnitId != 0xffffffff) {
               this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Unit as u32, subtypeUnitId);
             }
+            if (elemQuantityId != 0xffffffff) {
+              this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Quantity as u32, elemQuantityId);
+            }
+            if (declDescId != 0xffffffff) {
+              this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Description as u32, declDescId);
+            }
             count++;
           }
         }
@@ -8466,6 +8538,7 @@ export class ModelicaFlattener {
               let elemMaxId = sliceAttrExpr3D(this.dae, declMaxId, i - 1, j - 1, k - 1);
               let elemNominalId = sliceAttrExpr3D(this.dae, declNominalId, i - 1, j - 1, k - 1);
               let elemDisplayUnitId = sliceAttrExpr3D(this.dae, declDisplayUnitId, i - 1, j - 1, k - 1);
+              let elemQuantityId = sliceAttrExpr3D(this.dae, declQuantityId, i - 1, j - 1, k - 1);
 
               let isParamOrConst = variability == (Variability.Parameter as i32) || variability == (Variability.Constant as i32);
               let elemStartVal: f64 = 0.0;
@@ -8511,6 +8584,12 @@ export class ModelicaFlattener {
               if (subtypeUnitId != 0xffffffff) {
                 this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Unit as u32, subtypeUnitId);
               }
+              if (elemQuantityId != 0xffffffff) {
+                this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Quantity as u32, elemQuantityId);
+              }
+              if (declDescId != 0xffffffff) {
+                this.dae.setVarAttrExpr(elemVarIdx, VarAttrKind.Description as u32, declDescId);
+              }
               count++;
             }
           }
@@ -8543,6 +8622,12 @@ export class ModelicaFlattener {
         }
         if (subtypeUnitId != 0xffffffff) {
           this.dae.setVarAttrExpr(varIdx, VarAttrKind.Unit as u32, subtypeUnitId);
+        }
+        if (declQuantityId != 0xffffffff) {
+          this.dae.setVarAttrExpr(varIdx, VarAttrKind.Quantity as u32, declQuantityId);
+        }
+        if (declDescId != 0xffffffff) {
+          this.dae.setVarAttrExpr(varIdx, VarAttrKind.Description as u32, declDescId);
         }
         count++;
       }

@@ -66,6 +66,8 @@ export enum VarAttrKind {
   Start = 5,
   Fixed = 6,
   Binding = 7,
+  Quantity = 8,
+  Description = 9,
 }
 
 // ── State Machine Types ──
@@ -844,6 +846,14 @@ export class WasmDaeBridge implements IDaeBuilder {
     if ((this.getVarFlags(varIdx) & FLAG_VAR_VIRTUAL) !== 0) {
       return "virtual variable in expandable connector";
     }
+    if (this.exports?.dae_getVarAttrExpr) {
+      const descExprId = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, VarAttrKind.Description);
+      if (descExprId !== 0xffffffff && descExprId !== -1 && descExprId >>> 0 < this.exprCount) {
+        const strId = this.getExprData1(descExprId >>> 0);
+        const resolved = this.interner.resolve(strId);
+        if (resolved) return resolved;
+      }
+    }
     return undefined;
   }
 
@@ -1130,7 +1140,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     const val = this.varAttrs.get(varIdx)?.get(attrName);
     if (val !== undefined) return val;
     if (this.exports?.dae_getVarAttrExpr) {
-      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed"];
+      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed", "binding", "quantity"];
       const k = ATTR_NAMES.indexOf(attrName);
       if (k >= 0) {
         const exprId = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, k);
@@ -1145,9 +1155,10 @@ export class WasmDaeBridge implements IDaeBuilder {
   getVarAttrExprIds(varIdx: number): Map<string, number> | undefined {
     let map = this.varAttrs.get(varIdx);
     if (this.exports?.dae_getVarAttrExpr) {
-      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed"];
+      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed", "binding", "quantity"];
       for (let k = 0; k < ATTR_NAMES.length; k++) {
         const attrName = ATTR_NAMES[k];
+        if (attrName === "binding") continue;
         if (!map || !map.has(attrName)) {
           const exprId = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, k);
           if (exprId !== 0xffffffff && exprId !== -1 && exprId >>> 0 < this.exprCount) {
