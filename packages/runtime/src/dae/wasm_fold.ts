@@ -1901,6 +1901,7 @@ export function hasArrayEquations(dae: DAEBuilder): boolean {
 
   for (let i = 0; i < dae.eqCount; i++) {
     const kind = dae.getEqKind(i);
+    if (kind === EqKind.Array) return true;
     if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
       const lhs = dae.getEqLhs(i);
       const rhs = dae.getEqRhs(i);

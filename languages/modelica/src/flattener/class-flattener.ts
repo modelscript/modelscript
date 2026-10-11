@@ -92,6 +92,7 @@ export class ModelicaFlattener {
   bodySnapshot: DAEBuilder | null = null;
   public db: QueryDB;
   public options: Required<FlattenOptions>;
+  public explicitArrayMode?: "scalarize" | "preserve";
   public currentRootClassId: SymbolId = 0;
   public currentClassId: SymbolId = 0;
 
@@ -816,6 +817,7 @@ export class ModelicaFlattener {
     const omcCompatibility = options?.omcCompatibility ?? false;
     let backend: FlattenerBackend =
       options?.backend ?? (options as any)?.flattenerBackend ?? (options?.useWasmKernel ? "wasm" : "hybrid");
+    this.explicitArrayMode = options?.arrayMode;
     this.options = {
       backend,
       arrayMode: options?.arrayMode ?? (omcCompatibility ? "scalarize" : "preserve"),
@@ -842,7 +844,10 @@ export class ModelicaFlattener {
         this.options.useWasmKernel = options.useWasmKernel;
         this.options.backend = options.useWasmKernel ? "wasm" : "ts";
       }
-      if (options.arrayMode !== undefined) this.options.arrayMode = options.arrayMode;
+      if (options.arrayMode !== undefined) {
+        this.explicitArrayMode = options.arrayMode;
+        this.options.arrayMode = options.arrayMode;
+      }
       if (options.functionInlining !== undefined) this.options.functionInlining = options.functionInlining;
       if (options.omcCompatibility !== undefined) {
         this.options.omcCompatibility = options.omcCompatibility;
@@ -1960,6 +1965,7 @@ export class ModelicaFlattener {
     const allowWasm =
       this.options.backend === "wasm" ||
       ((this.options.backend === "hybrid" || !this.options.backend) &&
+        this.explicitArrayMode !== "preserve" &&
         Boolean(this.options.useWasmKernel) &&
         !this.useLocalDirection &&
         !this.classHasRedeclare(rootClassId) &&

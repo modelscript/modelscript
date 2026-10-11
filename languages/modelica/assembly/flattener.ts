@@ -2205,6 +2205,7 @@ export class WasmExprVisitor {
   envPtr: u32;
   scopeStackPtr: u32;
   tempBufferPtr: usize;
+  scratchBufferPtr: usize;
   flattenerPtr: u32;
   currentDimEnd: i32;
   subLoc1: u64;
@@ -2229,6 +2230,10 @@ export class WasmExprVisitor {
     return changetype<ChunkedUint32Array>(this.tempBufferPtr);
   }
 
+  @inline get scratchBuffer(): ChunkedUint32Array {
+    return changetype<ChunkedUint32Array>(this.scratchBufferPtr);
+  }
+
   @inline static create(dae: DaeBuilder, prefixHash: u32 = 0, envPtr: u32 = 0, scopeStackPtr: u32 = 0, flattenerPtr: u32 = 0): WasmExprVisitor {
     let ptr = atomicChunkAlloc(offsetof<WasmExprVisitor>());
     let obj = changetype<WasmExprVisitor>(ptr);
@@ -2243,6 +2248,7 @@ export class WasmExprVisitor {
     this.envPtr = envPtr;
     this.scopeStackPtr = scopeStackPtr;
     this.tempBufferPtr = changetype<usize>(createChunkedUint32Array(64)) as u32;
+    this.scratchBufferPtr = changetype<usize>(createChunkedUint32Array(64)) as u32;
     this.flattenerPtr = flattenerPtr;
     this.currentDimEnd = 0;
     this.subLoc1 = 0;
@@ -2790,65 +2796,133 @@ export class WasmExprVisitor {
       if (len > 0) {
         let ct = locType(ch);
         if (ct == SyntaxType.EXPRESSION_LIST) {
-          let rowStart = this.tempBuffer.length;
-          this.collectRowElements(ch, this.tempBuffer);
-          let rowCount = this.tempBuffer.length - rowStart;
-          if (rowCount == 1) {
-            let singleEid = this.tempBuffer.get(rowStart);
-            if (this.dae.getExprKind(singleEid) == ExprKind.ArrayCtor) {
-              let eCount = getArrayCtorCount(this.dae, singleEid);
-              let is1D = true;
-              if (eCount > 0 && this.dae.getExprKind(getArrayCtorElement(this.dae, singleEid, 0)) == ExprKind.ArrayCtor) {
-                is1D = false;
-              }
-              if (is1D) {
-                let hasSemicolon = false;
-                let sib = locNextSibling(ch);
-                while (!locIsNull(sib)) {
-                  if (locMatches(sib, ";")) { hasSemicolon = true; break; }
-                  sib = locNextSibling(sib);
-                }
-                if (!hasSemicolon && rowsAdded == 0) {
-                  this.tempBuffer.length = rowStart;
-                  for (let i: u32 = 0; i < eCount; i++) {
-                    let elem = getArrayCtorElement(this.dae, singleEid, i);
-                    let rStart = this.tempBuffer.length;
-                    this.tempBuffer.push(elem);
-                    let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, rStart, 1);
-                    this.tempBuffer.length = rStart;
-                    rowOut.push(rowCtorId);
-                    rowsAdded++;
-                  }
-                  ch = locNextSibling(ch);
-                  continue;
-                } else {
-                  this.tempBuffer.length = rowStart;
-                  rowOut.push(singleEid);
-                  rowsAdded++;
-                  ch = locNextSibling(ch);
-                  continue;
-                }
+          let itemStart = this.scratchBuffer.length;
+          this.collectRowElements(ch, this.scratchBuffer);
+          let itemCount = this.scratchBuffer.length - itemStart;
+
+          let pool = this.dae.getStringPool();
+          for (let i: u32 = 0; i < itemCount; i++) {
+            let itemEid = this.scratchBuffer.get(itemStart + i);
+            itemEid = resolveVarToArrayCtor(this.dae, pool, itemEid, this.scratchBuffer);
+            this.scratchBuffer.set(itemStart + i, itemEid);
+          }
+
+          let maxRows: u32 = 1;
+          let any2D: bool = false;
+          for (let i: u32 = 0; i < itemCount; i++) {
+            let item = this.scratchBuffer.get(itemStart + i);
+            if (this.dae.getExprKind(item) == ExprKind.ArrayCtor) {
+              let cnt = getArrayCtorCount(this.dae, item);
+              if (cnt > 0 && this.dae.getExprKind(getArrayCtorElement(this.dae, item, 0)) == ExprKind.ArrayCtor) {
+                any2D = true;
+                if (cnt > maxRows) maxRows = cnt;
               }
             }
           }
-          if (rowCount > 0) {
+
+          if (itemCount == 1 && !any2D) {
+            let singleEid = this.scratchBuffer.get(itemStart);
+            if (this.dae.getExprKind(singleEid) == ExprKind.ArrayCtor) {
+              let eCount = getArrayCtorCount(this.dae, singleEid);
+              let hasSemicolon = false;
+              let sib = locNextSibling(ch);
+              while (!locIsNull(sib)) {
+                if (locMatches(sib, ";")) { hasSemicolon = true; break; }
+                sib = locNextSibling(sib);
+              }
+              if (!hasSemicolon && rowsAdded == 0) {
+                this.scratchBuffer.length = itemStart;
+                for (let i: u32 = 0; i < eCount; i++) {
+                  let elem = getArrayCtorElement(this.dae, singleEid, i);
+                  let rStart = this.scratchBuffer.length;
+                  this.scratchBuffer.push(elem);
+                  let rowCtorId = addArrayCtorFromChunked(this.dae, this.scratchBuffer, rStart, 1);
+                  this.scratchBuffer.length = rStart;
+                  rowOut.push(rowCtorId);
+                  rowsAdded++;
+                }
+                ch = locNextSibling(ch);
+                continue;
+              } else {
+                this.scratchBuffer.length = itemStart;
+                rowOut.push(singleEid);
+                rowsAdded++;
+                ch = locNextSibling(ch);
+                continue;
+              }
+            }
+          }
+
+          if (any2D) {
+            for (let r: u32 = 0; r < maxRows; r++) {
+              let rowElementsStart = this.scratchBuffer.length;
+              for (let k: u32 = 0; k < itemCount; k++) {
+                let item = this.scratchBuffer.get(itemStart + k);
+                if (this.dae.getExprKind(item) == ExprKind.ArrayCtor) {
+                  let cnt = getArrayCtorCount(this.dae, item);
+                  let isSub2D = cnt > 0 && this.dae.getExprKind(getArrayCtorElement(this.dae, item, 0)) == ExprKind.ArrayCtor;
+                  if (isSub2D) {
+                    let subRowIdx = r < cnt ? r : (cnt == 1 ? 0 : r);
+                    let subRowCtor = getArrayCtorElement(this.dae, item, subRowIdx);
+                    let subColCount = getArrayCtorCount(this.dae, subRowCtor);
+                    for (let c: u32 = 0; c < subColCount; c++) {
+                      let colElem = getArrayCtorElement(this.dae, subRowCtor, c);
+                      this.scratchBuffer.push(colElem);
+                    }
+                  } else {
+                    for (let c: u32 = 0; c < cnt; c++) {
+                      let colElem = getArrayCtorElement(this.dae, item, c);
+                      this.scratchBuffer.push(colElem);
+                    }
+                  }
+                } else {
+                  this.scratchBuffer.push(item);
+                }
+              }
+              let rowElemCount = this.scratchBuffer.length - rowElementsStart;
+              let hasReal = false;
+              for (let c: u32 = 0; c < rowElemCount; c++) {
+                if (this.isRealExpr(this.scratchBuffer.get(rowElementsStart + c))) {
+                  hasReal = true;
+                  break;
+                }
+              }
+              if (hasReal) {
+                for (let c: u32 = 0; c < rowElemCount; c++) {
+                  let eid = this.scratchBuffer.get(rowElementsStart + c);
+                  if (!this.isRealExpr(eid)) {
+                    this.scratchBuffer.set(rowElementsStart + c, this.castToReal(eid));
+                  }
+                }
+              }
+              let rowCtorId = addArrayCtorFromChunked(this.dae, this.scratchBuffer, rowElementsStart, rowElemCount);
+              this.scratchBuffer.length = rowElementsStart;
+              rowOut.push(rowCtorId);
+              rowsAdded++;
+            }
+            this.scratchBuffer.length = itemStart;
+            ch = locNextSibling(ch);
+            continue;
+          }
+
+          if (itemCount > 0) {
             let hasReal = false;
-            for (let i: u32 = 0; i < rowCount; i++) {
-              if (this.isRealExpr(this.tempBuffer.get(rowStart + i))) {
+            for (let i: u32 = 0; i < itemCount; i++) {
+              if (this.isRealExpr(this.scratchBuffer.get(itemStart + i))) {
                 hasReal = true;
                 break;
               }
             }
             if (hasReal) {
-              for (let i: u32 = 0; i < rowCount; i++) {
-                let eid = this.tempBuffer.get(rowStart + i);
+              for (let i: u32 = 0; i < itemCount; i++) {
+                let eid = this.scratchBuffer.get(itemStart + i);
                 if (!this.isRealExpr(eid)) {
-                  this.tempBuffer.set(rowStart + i, this.castToReal(eid));
+                  this.scratchBuffer.set(itemStart + i, this.castToReal(eid));
                 }
               }
             }
-            let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, rowStart, rowCount);
-            this.tempBuffer.length = rowStart;
+            let rowCtorId = addArrayCtorFromChunked(this.dae, this.scratchBuffer, itemStart, itemCount);
+            this.scratchBuffer.length = itemStart;
             rowOut.push(rowCtorId);
             rowsAdded++;
           }
@@ -2856,31 +2930,42 @@ export class WasmExprVisitor {
           let eid = this.visitLoc(ch);
           if (eid != 0xffffffff) {
             let pool = this.dae.getStringPool();
-            eid = resolveVarToArrayCtor(this.dae, pool, eid, this.tempBuffer);
+            eid = resolveVarToArrayCtor(this.dae, pool, eid, this.scratchBuffer);
             if (this.dae.getExprKind(eid) == ExprKind.ArrayCtor) {
               let eCount = getArrayCtorCount(this.dae, eid);
               let is1D = true;
               if (eCount > 0 && this.dae.getExprKind(getArrayCtorElement(this.dae, eid, 0)) == ExprKind.ArrayCtor) {
                 is1D = false;
               }
+              if (!is1D) {
+                for (let i: u32 = 0; i < eCount; i++) {
+                  let rowCtor = getArrayCtorElement(this.dae, eid, i);
+                  rowOut.push(rowCtor);
+                  rowsAdded++;
+                }
+                ch = locNextSibling(ch);
+                continue;
+              }
               if (is1D) {
                 for (let i: u32 = 0; i < eCount; i++) {
                   let elem = getArrayCtorElement(this.dae, eid, i);
-                  let rStart = this.tempBuffer.length;
-                  this.tempBuffer.push(elem);
-                  let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, rStart, 1);
-                  this.tempBuffer.length = rStart;
+                  let rStart = this.scratchBuffer.length;
+                  this.scratchBuffer.push(elem);
+                  let rowCtorId = addArrayCtorFromChunked(this.dae, this.scratchBuffer, rStart, 1);
+                  this.scratchBuffer.length = rStart;
                   rowOut.push(rowCtorId);
+                  rowsAdded++;
                 }
                 ch = locNextSibling(ch);
                 continue;
               }
             }
-            let rowStart = this.tempBuffer.length;
-            this.tempBuffer.push(eid);
-            let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, rowStart, 1);
-            this.tempBuffer.length = rowStart;
+            let rowStart = this.scratchBuffer.length;
+            this.scratchBuffer.push(eid);
+            let rowCtorId = addArrayCtorFromChunked(this.dae, this.scratchBuffer, rowStart, 1);
+            this.scratchBuffer.length = rowStart;
             rowOut.push(rowCtorId);
+            rowsAdded++;
           }
         } else if (locChildCount(ch) > 0 && !locMatches(ch, ";") && !locMatches(ch, "[") && !locMatches(ch, "]")) {
           this.collectMatrixRows(ch, rowOut);
