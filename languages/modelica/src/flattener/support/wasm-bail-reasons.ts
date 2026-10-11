@@ -12,6 +12,8 @@ export const WasmBailReason = {
   KernelTrap: -1,
   /** Host-only: hybrid mode routes models with algorithm sections to TS until parity is proven. */
   HybridAlgorithmGate: -2,
+  /** Host-only: hybrid mode routes models with compound when/if equations to TS until parity is proven. */
+  HybridWhenIfGate: -3,
   None: 0,
   WhenOrIfEquation: 3290,
   ForEquationNoIndex: 3291,
@@ -36,6 +38,11 @@ export const WasmBailReason = {
   AlgorithmStatementUnsupported: 3800,
   AlgorithmReinit: 3801,
   ForStatementImplicitRange: 3802,
+  WhenInInitialEquation: 3810,
+  ConnectInWhen: 3811,
+  ConnectInDynamicIf: 3812,
+  InvalidWhenLhs: 3813,
+  WhenConditionNonDiscrete: 3814,
 } as const;
 
 export type WasmBailReasonName = keyof typeof WasmBailReason;
@@ -43,6 +50,7 @@ export type WasmBailReasonName = keyof typeof WasmBailReason;
 const DESCRIPTIONS: Record<number, string> = {
   [WasmBailReason.KernelTrap]: "kernel trapped or threw",
   [WasmBailReason.HybridAlgorithmGate]: "algorithm section (hybrid routes to TS)",
+  [WasmBailReason.HybridWhenIfGate]: "when/if equation (hybrid routes to TS)",
   [WasmBailReason.WhenOrIfEquation]: "when/if equation",
   [WasmBailReason.ForEquationNoIndex]: "for-equation without index",
   [WasmBailReason.ForEquationRange]: "for-equation range not evaluable",
@@ -66,6 +74,11 @@ const DESCRIPTIONS: Record<number, string> = {
   [WasmBailReason.AlgorithmStatementUnsupported]: "algorithm statement not lowerable",
   [WasmBailReason.AlgorithmReinit]: "reinit in algorithm section",
   [WasmBailReason.ForStatementImplicitRange]: "for-statement with implicit range",
+  [WasmBailReason.WhenInInitialEquation]: "when-equation inside initial equation section",
+  [WasmBailReason.ConnectInWhen]: "connect inside when-equation",
+  [WasmBailReason.ConnectInDynamicIf]: "connect inside non-parametric if-equation",
+  [WasmBailReason.InvalidWhenLhs]: "invalid left-hand side of when-equation",
+  [WasmBailReason.WhenConditionNonDiscrete]: "when-equation condition is not discrete",
 };
 
 const NAMES: Record<number, WasmBailReasonName> = Object.fromEntries(

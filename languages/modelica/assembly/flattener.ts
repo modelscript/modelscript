@@ -99,6 +99,11 @@ const enum WasmBailReason {
   AlgorithmStatementUnsupported = 3800,
   AlgorithmReinit = 3801,
   ForStatementImplicitRange = 3802,
+  WhenInInitialEquation = 3810,
+  ConnectInWhen = 3811,
+  ConnectInDynamicIf = 3812,
+  InvalidWhenLhs = 3813,
+  WhenConditionNonDiscrete = 3814,
 }
 
 
@@ -4541,13 +4546,43 @@ export class WasmExprVisitor {
         if (prefixId != 0) {
           let prefixedId = pool.concatIds(prefixId, nameId);
           prefixedId = this.resolveVarName(prefixedId);
-          if (this.dae.lookupVariableByName(prefixedId) >= 0) {
+          let varIdx = this.dae.lookupVariableByName(prefixedId);
+          if (varIdx >= 0) {
+            let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
+            if (varAcc.variability == Variability.Constant) {
+              let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
+              if (bExpr != 0 && bExpr != 0xffffffff) {
+                let bk = this.dae.getExprKind(bExpr);
+                if (bk == ExprKind.RealLiteral || bk == ExprKind.IntLiteral || bk == ExprKind.BoolLiteral) {
+                  return bExpr;
+                }
+              }
+              let vt = varAcc.varType;
+              if (vt == VarType.Real) return this.dae.addRealLiteral(varAcc.startValue);
+              if (vt == VarType.Integer) return this.dae.addIntLiteral(varAcc.startValue as i32);
+              if (vt == VarType.Boolean) return this.dae.addExpression(ExprKind.BoolLiteral, varAcc.startValue != 0.0 ? 1 : 0);
+            }
             return this.dae.addExpression(ExprKind.Name, prefixedId);
           }
         }
       }
       let resolvedSimpleId = this.resolveVarName(nameId);
-      if (this.dae.lookupVariableByName(resolvedSimpleId) >= 0) {
+      let varIdx = this.dae.lookupVariableByName(resolvedSimpleId);
+      if (varIdx >= 0) {
+        let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
+        if (varAcc.variability == Variability.Constant) {
+          let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
+          if (bExpr != 0 && bExpr != 0xffffffff) {
+            let bk = this.dae.getExprKind(bExpr);
+            if (bk == ExprKind.RealLiteral || bk == ExprKind.IntLiteral || bk == ExprKind.BoolLiteral) {
+              return bExpr;
+            }
+          }
+          let vt = varAcc.varType;
+          if (vt == VarType.Real) return this.dae.addRealLiteral(varAcc.startValue);
+          if (vt == VarType.Integer) return this.dae.addIntLiteral(varAcc.startValue as i32);
+          if (vt == VarType.Boolean) return this.dae.addExpression(ExprKind.BoolLiteral, varAcc.startValue != 0.0 ? 1 : 0);
+        }
         return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
       }
 
@@ -4971,6 +5006,11 @@ export class ModelicaFlattener {
   // Algorithm sections emitted into the DAE statement arena: [start, count, isInitial] stride = 3
   algSections: ChunkedUint32Array;
   algSectionCount: u32;
+  // Compound when/if equations emitted into DAE:
+  whenRecords: ChunkedInt32Array;
+  whenRecordCount: u32;
+  ifRecords: ChunkedInt32Array;
+  ifRecordCount: u32;
   // Stack-disciplined scratch buffers used while walking statements:
   // stmtItems holds CST locs as (lo, hi) u32 pairs, stmtAux holds per-construct records.
   stmtItems: ChunkedUint32Array;
@@ -5084,6 +5124,10 @@ export class ModelicaFlattener {
 
     this.algSections = createChunkedUint32Array(16 * 3);
     this.algSectionCount = 0;
+    this.whenRecords = createChunkedInt32Array(256);
+    this.whenRecordCount = 0;
+    this.ifRecords = createChunkedInt32Array(256);
+    this.ifRecordCount = 0;
     this.stmtItems = createChunkedUint32Array(256);
     this.stmtAux = createChunkedUint32Array(64);
   }
@@ -6094,9 +6138,10 @@ export class ModelicaFlattener {
       return 0;
     } else if (t == SyntaxType.FOR_EQUATION) {
       return this.lowerForEquation(nodeLoc, isInitial);
-    } else if (t == SyntaxType.WHEN_EQUATION || t == SyntaxType.IF_EQUATION) {
-      this.setErrorAt(WasmBailReason.WhenOrIfEquation, nodeLoc);
-      return 0;
+    } else if (t == SyntaxType.WHEN_EQUATION) {
+      return this.lowerWhenEquation(nodeLoc, isInitial);
+    } else if (t == SyntaxType.IF_EQUATION) {
+      return this.lowerIfEquation(nodeLoc, isInitial);
     } else if (t != SyntaxType.CLASS_DEFINITION) {
       let count: u32 = 0;
       let sub = ch.firstChildLoc;
@@ -6321,6 +6366,583 @@ export class ModelicaFlattener {
 
     let eqKind = isInitial ? EqKind.InitialSimple : EqKind.Simple;
     this.dae.addEquation(eqKind, lhs, rhs, isInitial ? (FLAG_EQ_INITIAL as u32) : 0);
+    return 1;
+  }
+
+  evalConstScalar(exprId: u32, out: StaticArray<f64>, depth: i32 = 0): bool {
+    if (exprId >= this.dae.exprCount || depth > 30) return false;
+    let k = this.dae.getExprKind(exprId);
+    if (k == ExprKind.RealLiteral) {
+      out[0] = this.dae.getExprRealValue(exprId);
+      return true;
+    }
+    if (k == ExprKind.IntLiteral) {
+      out[0] = (this.dae.getExprData1(exprId) as i32) as f64;
+      return true;
+    }
+    if (k == ExprKind.BoolLiteral) {
+      out[0] = this.dae.getExprData1(exprId) != 0 ? 1.0 : 0.0;
+      return true;
+    }
+    if (k == ExprKind.Name) {
+      let nameId = this.dae.getExprData1(exprId);
+      let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
+      let varIdx = this.dae.lookupVariableByName(resolvedNameId);
+      if (varIdx < 0) varIdx = this.dae.lookupVariableByName(nameId);
+      if (varIdx >= 0) {
+        let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
+        let vVar = varAcc.variability;
+        if (vVar == Variability.Constant || vVar == Variability.Parameter) {
+          let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
+          if (bExpr != 0 && bExpr != 0xffffffff && bExpr != exprId) {
+            if (this.evalConstScalar(bExpr, out, depth + 1)) return true;
+          }
+          let vt = varAcc.varType;
+          if (vt == VarType.Real || vt == VarType.Integer || vt == VarType.Boolean) {
+            out[0] = varAcc.startValue;
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    if (k == ExprKind.Negate) {
+      if (this.evalConstScalar(this.dae.getExprLeft(exprId), out, depth + 1)) {
+        out[0] = -out[0];
+        return true;
+      }
+      return false;
+    }
+    if (k == ExprKind.Unary) {
+      let op = this.dae.getExprData1(exprId);
+      if (op == UnaryOp.Negate) {
+        if (this.evalConstScalar(this.dae.getExprLeft(exprId), out, depth + 1)) {
+          out[0] = -out[0];
+          return true;
+        }
+      }
+      return false;
+    }
+    if (k == ExprKind.Binary) {
+      let op = this.dae.getExprData1(exprId);
+      if (!this.evalConstScalar(this.dae.getExprLeft(exprId), out, depth + 1)) return false;
+      let lVal = out[0];
+      if (!this.evalConstScalar(this.dae.getExprRight(exprId), out, depth + 1)) return false;
+      let rVal = out[0];
+      if (op == BinOp.Add) { out[0] = lVal + rVal; return true; }
+      if (op == BinOp.Sub) { out[0] = lVal - rVal; return true; }
+      if (op == BinOp.Mul) { out[0] = lVal * rVal; return true; }
+      if (op == BinOp.Div) {
+        if (rVal != 0.0) { out[0] = lVal / rVal; return true; }
+        return false;
+      }
+      if (op == BinOp.Pow) { out[0] = Math.pow(lVal, rVal); return true; }
+      return false;
+    }
+    return false;
+  }
+
+  evalCondExpr(exprId: u32, depth: i32 = 0): i32 {
+    if (exprId >= this.dae.exprCount || depth > 30) return 2;
+    let k = this.dae.getExprKind(exprId);
+    if (k == ExprKind.BoolLiteral) {
+      return this.dae.getExprData1(exprId) != 0 ? 1 : 0;
+    }
+    if (k == ExprKind.Name) {
+      let nameId = this.dae.getExprData1(exprId);
+      let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
+      let varIdx = this.dae.lookupVariableByName(resolvedNameId);
+      if (varIdx < 0) varIdx = this.dae.lookupVariableByName(nameId);
+      if (varIdx >= 0) {
+        let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
+        let vVar = varAcc.variability;
+        if (vVar == Variability.Constant || vVar == Variability.Parameter) {
+          let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
+          if (bExpr != 0 && bExpr != 0xffffffff && bExpr != exprId) {
+            let res = this.evalCondExpr(bExpr, depth + 1);
+            if (res != 2) return res;
+          }
+          let vt = varAcc.varType;
+          if (vt == VarType.Boolean) {
+            return varAcc.startValue != 0.0 ? 1 : 0;
+          }
+        }
+      }
+      return 2;
+    }
+    if (k == ExprKind.Unary) {
+      let op = this.dae.getExprData1(exprId);
+      if (op == UnaryOp.Not) {
+        let sub = this.evalCondExpr(this.dae.getExprLeft(exprId), depth + 1);
+        if (sub == 0) return 1;
+        if (sub == 1) return 0;
+        return 2;
+      }
+    }
+    if (k == ExprKind.Binary) {
+      let op = this.dae.getExprData1(exprId);
+      let left = this.dae.getExprLeft(exprId);
+      let right = this.dae.getExprRight(exprId);
+      if (op == BinOp.And) {
+        let l = this.evalCondExpr(left, depth + 1);
+        let r = this.evalCondExpr(right, depth + 1);
+        if (l == 0 || r == 0) return 0;
+        if (l == 1 && r == 1) return 1;
+        return 2;
+      }
+      if (op == BinOp.Or) {
+        let l = this.evalCondExpr(left, depth + 1);
+        let r = this.evalCondExpr(right, depth + 1);
+        if (l == 1 || r == 1) return 1;
+        if (l == 0 && r == 0) return 0;
+        return 2;
+      }
+      let scalarBuf = new StaticArray<f64>(1);
+      if (this.evalConstScalar(left, scalarBuf, depth + 1)) {
+        let lVal = scalarBuf[0];
+        if (this.evalConstScalar(right, scalarBuf, depth + 1)) {
+          let rVal = scalarBuf[0];
+          let diff = lVal - rVal;
+          if (op == BinOp.Eq) return Math.abs(diff) < 1e-12 ? 1 : 0;
+          if (op == BinOp.Neq) return Math.abs(diff) >= 1e-12 ? 1 : 0;
+          if (op == BinOp.Lt) return lVal < rVal ? 1 : 0;
+          if (op == BinOp.Lte) return lVal <= rVal ? 1 : 0;
+          if (op == BinOp.Gt) return lVal > rVal ? 1 : 0;
+          if (op == BinOp.Gte) return lVal >= rVal ? 1 : 0;
+        }
+      }
+      return 2;
+    }
+    return 2;
+  }
+
+  isEqAtom(t: u16): boolean {
+    return t == SyntaxType.SOME_EQUATION || t == SyntaxType.EQUATION_OR_PROCEDURE ||
+      t == SyntaxType.SIMPLE_EQUATION || t == SyntaxType.CONNECT_EQUATION ||
+      t == SyntaxType.FUNCTION_CALL || t == SyntaxType.EXPRESSION ||
+      t == SyntaxType.IF_EQUATION || t == SyntaxType.FOR_EQUATION ||
+      t == SyntaxType.WHEN_EQUATION || t == SyntaxType.DESCRIPTION;
+  }
+
+  collectEqItems(nodeLoc: u64): void {
+    let ch = locFirstChild(nodeLoc);
+    while (!locIsNull(ch)) {
+      if (locLen(ch) > 0) {
+        if (this.isEqAtom(locType(ch)) || locChildCount(ch) == 0) {
+          this.stmtItems.push((ch & 0xffffffff) as u32);
+          this.stmtItems.push((ch >> 32) as u32);
+        } else {
+          this.collectEqItems(ch);
+        }
+      }
+      ch = locNextSibling(ch);
+    }
+  }
+
+  lowerInlineEquation(eqLoc: u64, out: ChunkedInt32Array, isWhen: boolean): boolean {
+    if (locIsNull(eqLoc) || locMatches(eqLoc, ";") || locLen(eqLoc) == 0 || locType(eqLoc) == SyntaxType.DESCRIPTION) return true;
+    let t = locType(eqLoc);
+    if (t == SyntaxType.SIMPLE_EQUATION) {
+      let eq = CstNodeView.at(eqLoc);
+      let lhsLoc: u64 = 0;
+      let rhsLoc: u64 = 0;
+      let chLoc = eq.firstChildLoc;
+      while (!locIsNull(chLoc)) {
+        let ch = CstNodeView.at(chLoc);
+        if (ch.byteLength > 0) {
+          if (lhsLoc == 0) {
+            lhsLoc = chLoc;
+          } else if (ch.matches("=")) {
+            // skip '='
+          } else if (rhsLoc == 0) {
+            rhsLoc = chLoc;
+          }
+        }
+        chLoc = locNextSibling(chLoc);
+      }
+      if (locIsNull(lhsLoc) || locIsNull(rhsLoc)) {
+        lhsLoc = eq.child(0).loc;
+        rhsLoc = eq.child(2).loc;
+        if (locIsNull(rhsLoc)) rhsLoc = eq.child(1).loc;
+      }
+      if (locIsNull(lhsLoc) || locIsNull(rhsLoc)) {
+        this.setErrorAt(WasmBailReason.SimpleEquationOperands, eqLoc);
+        return false;
+      }
+      let lhsId = this.exprVisitor.visitLoc(lhsLoc);
+      let rhsId = this.exprVisitor.visitLoc(rhsLoc);
+      if (lhsId == 0xffffffff || rhsId == 0xffffffff) {
+        this.setErrorAt(WasmBailReason.SimpleEquationExpr, eqLoc);
+        return false;
+      }
+      let pool = this.dae.getStringPool();
+      lhsId = resolveVarToArrayCtor(this.dae, pool, lhsId, this.exprVisitor.tempBuffer);
+      rhsId = resolveVarToArrayCtor(this.dae, pool, rhsId, this.exprVisitor.tempBuffer);
+      if (isWhen) {
+        let lhsKind = this.dae.getExprKind(lhsId);
+        if (lhsKind == ExprKind.Binary || lhsKind == ExprKind.RealLiteral ||
+            lhsKind == ExprKind.IntLiteral || lhsKind == ExprKind.Unary) {
+          this.setErrorAt(WasmBailReason.InvalidWhenLhs, lhsLoc);
+          return false;
+        }
+      }
+      if (this.exprVisitor.isRealExpr(lhsId) && !this.exprVisitor.isRealExpr(rhsId)) {
+        rhsId = this.exprVisitor.castToReal(rhsId);
+      } else if (!this.exprVisitor.isRealExpr(lhsId) && this.exprVisitor.isRealExpr(rhsId)) {
+        lhsId = this.exprVisitor.castToReal(lhsId);
+      }
+      out.push(EqKind.Simple as i32);
+      out.push(lhsId as i32);
+      out.push(rhsId as i32);
+      return true;
+    }
+    if (t == SyntaxType.FUNCTION_CALL) {
+      let callExpr = this.exprVisitor.visitLoc(eqLoc);
+      if (callExpr == 0xffffffff) {
+        this.setErrorAt(WasmBailReason.SimpleEquationExpr, eqLoc);
+        return false;
+      }
+      out.push(EqKind.FunctionCall as i32);
+      out.push(callExpr as i32);
+      out.push(0xffffffff);
+      return true;
+    }
+    if (t != SyntaxType.CLASS_DEFINITION && locChildCount(eqLoc) > 0) {
+      let ch = locFirstChild(eqLoc);
+      while (!locIsNull(ch)) {
+        if (!locMatches(ch, ";") && locLen(ch) > 0 && locType(ch) != SyntaxType.DESCRIPTION) {
+          if (!this.lowerInlineEquation(ch, out, isWhen)) return false;
+        }
+        ch = locNextSibling(ch);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  lowerIfEquation(ifLoc: u64, isInitial: boolean): u32 {
+    let start = this.stmtItems.length;
+    this.collectEqItems(ifLoc);
+    let end = this.stmtItems.length;
+    let auxStart = this.stmtAux.length;
+    this.collectStmtBranches(start, end, "if", "elseif", "end if");
+    let auxEnd = this.stmtAux.length;
+
+    let numBranches = (auxEnd - auxStart) / 4;
+    if (numBranches == 0) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, ifLoc);
+      return 0;
+    }
+
+    // Static parameter branch evaluation
+    let isDynamic = false;
+    let chosenBranch: i32 = -1;
+
+    for (let b = auxStart; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx != 0xffffffff) {
+        let condLoc = this.stmtItemAt(condIdx);
+        let condId = this.exprVisitor.visitLoc(condLoc);
+        if (condId == 0xffffffff) {
+          isDynamic = true;
+          break;
+        }
+        let st = this.evalCondExpr(condId);
+        if (st == 2) {
+          isDynamic = true;
+          break;
+        } else if (st == 1) {
+          chosenBranch = (b - auxStart) / 4;
+          break;
+        }
+      } else {
+        chosenBranch = (b - auxStart) / 4;
+        break;
+      }
+    }
+
+    if (!isDynamic && chosenBranch >= 0) {
+      let b = auxStart + (chosenBranch as u32) * 4;
+      let bodyFrom = this.stmtAux.get(b + 1);
+      let bodyTo = this.stmtAux.get(b + 2);
+      let locs = new Array<u64>();
+      for (let i = bodyFrom; i < bodyTo; i += 2) {
+        let it = this.stmtItemAt(i);
+        if (!locMatches(it, ";") && locLen(it) > 0 && locType(it) != SyntaxType.DESCRIPTION) {
+          locs.push(it);
+        }
+      }
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      let count: u32 = 0;
+      for (let i: i32 = 0; i < locs.length; i++) {
+        count += this.lowerEquationNode(locs[i], isInitial);
+        if (this.hasError) break;
+      }
+      return this.hasError ? 0 : count;
+    }
+
+    // Dynamic if-equation: check for connect()
+    for (let b = auxStart; b < auxEnd; b += 4) {
+      let bodyFrom = this.stmtAux.get(b + 1);
+      let bodyTo = this.stmtAux.get(b + 2);
+      for (let i = bodyFrom; i < bodyTo; i += 2) {
+        let it = this.stmtItemAt(i);
+        if (!locMatches(it, ";") && locLen(it) > 0 && locType(it) != SyntaxType.DESCRIPTION) {
+          if (!locIsNull(locFindDescendant(it, SyntaxType.CONNECT_EQUATION))) {
+            this.stmtAux.length = auxStart;
+            this.stmtItems.length = start;
+            this.setErrorAt(WasmBailReason.ConnectInDynamicIf, it);
+            return 0;
+          }
+        }
+      }
+    }
+
+    let firstCondIdx = this.stmtAux.get(auxStart);
+    if (firstCondIdx == 0xffffffff) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, ifLoc);
+      return 0;
+    }
+    let firstCondLoc = this.stmtItemAt(firstCondIdx);
+    let firstCondId = this.exprVisitor.visitLoc(firstCondLoc);
+    if (firstCondId == 0xffffffff) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, firstCondLoc);
+      return 0;
+    }
+
+    let ifEqIdx = this.dae.addEquation(EqKind.If as i32, firstCondId, 0);
+
+    let tempEqs = createChunkedInt32Array(32);
+    this.ifRecords.push(ifEqIdx as i32);
+    this.ifRecords.push(firstCondId as i32);
+
+    let thenFrom = this.stmtAux.get(auxStart + 1);
+    let thenTo = this.stmtAux.get(auxStart + 2);
+    tempEqs.length = 0;
+    for (let i = thenFrom; i < thenTo; i += 2) {
+      let eqLoc = this.stmtItemAt(i);
+      if (!locMatches(eqLoc, ";") && locLen(eqLoc) > 0 && locType(eqLoc) != SyntaxType.DESCRIPTION) {
+        if (!this.lowerInlineEquation(eqLoc, tempEqs, false)) {
+          this.stmtAux.length = auxStart;
+          this.stmtItems.length = start;
+          if (!this.hasError) this.setErrorAt(WasmBailReason.WhenOrIfEquation, eqLoc);
+          return 0;
+        }
+      }
+    }
+    this.ifRecords.push((tempEqs.length / 3) as i32);
+    for (let i: u32 = 0; i < tempEqs.length; i++) {
+      this.ifRecords.push(tempEqs.get(i));
+    }
+
+    let elseIfBranchCount: i32 = 0;
+    for (let b = auxStart + 4; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx != 0xffffffff) elseIfBranchCount++;
+    }
+    this.ifRecords.push(elseIfBranchCount);
+
+    for (let b = auxStart + 4; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx != 0xffffffff) {
+        let condLoc = this.stmtItemAt(condIdx);
+        let elseCondId = this.exprVisitor.visitLoc(condLoc);
+        if (elseCondId == 0xffffffff) {
+          this.stmtAux.length = auxStart;
+          this.stmtItems.length = start;
+          this.setErrorAt(WasmBailReason.WhenOrIfEquation, condLoc);
+          return 0;
+        }
+        let bFrom = this.stmtAux.get(b + 1);
+        let bTo = this.stmtAux.get(b + 2);
+        tempEqs.length = 0;
+        for (let i = bFrom; i < bTo; i += 2) {
+          let eqLoc = this.stmtItemAt(i);
+          if (!locMatches(eqLoc, ";") && locLen(eqLoc) > 0 && locType(eqLoc) != SyntaxType.DESCRIPTION) {
+            if (!this.lowerInlineEquation(eqLoc, tempEqs, false)) {
+              this.stmtAux.length = auxStart;
+              this.stmtItems.length = start;
+              if (!this.hasError) this.setErrorAt(WasmBailReason.WhenOrIfEquation, eqLoc);
+              return 0;
+            }
+          }
+        }
+        this.ifRecords.push(elseCondId as i32);
+        this.ifRecords.push((tempEqs.length / 3) as i32);
+        for (let i: u32 = 0; i < tempEqs.length; i++) {
+          this.ifRecords.push(tempEqs.get(i));
+        }
+      }
+    }
+
+    let hasElse = false;
+    for (let b = auxStart + 4; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx == 0xffffffff) {
+        hasElse = true;
+        let bFrom = this.stmtAux.get(b + 1);
+        let bTo = this.stmtAux.get(b + 2);
+        tempEqs.length = 0;
+        for (let i = bFrom; i < bTo; i += 2) {
+          let eqLoc = this.stmtItemAt(i);
+          if (!locMatches(eqLoc, ";") && locLen(eqLoc) > 0 && locType(eqLoc) != SyntaxType.DESCRIPTION) {
+            if (!this.lowerInlineEquation(eqLoc, tempEqs, false)) {
+              this.stmtAux.length = auxStart;
+              this.stmtItems.length = start;
+              if (!this.hasError) this.setErrorAt(WasmBailReason.WhenOrIfEquation, eqLoc);
+              return 0;
+            }
+          }
+        }
+        this.ifRecords.push((tempEqs.length / 3) as i32);
+        for (let i: u32 = 0; i < tempEqs.length; i++) {
+          this.ifRecords.push(tempEqs.get(i));
+        }
+        break;
+      }
+    }
+    if (!hasElse) {
+      this.ifRecords.push(0);
+    }
+
+    this.ifRecordCount++;
+    this.stmtAux.length = auxStart;
+    this.stmtItems.length = start;
+    return 1;
+  }
+
+  lowerWhenEquation(whenLoc: u64, isInitial: boolean): u32 {
+    if (isInitial) {
+      this.setErrorAt(WasmBailReason.WhenInInitialEquation, whenLoc);
+      return 0;
+    }
+
+    let start = this.stmtItems.length;
+    this.collectEqItems(whenLoc);
+    let end = this.stmtItems.length;
+    let auxStart = this.stmtAux.length;
+    this.collectStmtBranches(start, end, "when", "elsewhen", "end when");
+    let auxEnd = this.stmtAux.length;
+
+    let numBranches = (auxEnd - auxStart) / 4;
+    if (numBranches == 0) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, whenLoc);
+      return 0;
+    }
+
+    // Check conditions for noEvent and connect()
+    for (let b = auxStart; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx != 0xffffffff) {
+        let condLoc = this.stmtItemAt(condIdx);
+        if (!locIsNull(locFindMatchingDescendant(condLoc, "noEvent"))) {
+          this.stmtAux.length = auxStart;
+          this.stmtItems.length = start;
+          this.setErrorAt(WasmBailReason.WhenConditionNonDiscrete, condLoc);
+          return 0;
+        }
+      }
+      let bFrom = this.stmtAux.get(b + 1);
+      let bTo = this.stmtAux.get(b + 2);
+      for (let i = bFrom; i < bTo; i += 2) {
+        let eqLoc = this.stmtItemAt(i);
+        if (!locMatches(eqLoc, ";") && locLen(eqLoc) > 0 && locType(eqLoc) != SyntaxType.DESCRIPTION) {
+          if (!locIsNull(locFindDescendant(eqLoc, SyntaxType.CONNECT_EQUATION))) {
+            this.stmtAux.length = auxStart;
+            this.stmtItems.length = start;
+            this.setErrorAt(WasmBailReason.ConnectInWhen, eqLoc);
+            return 0;
+          }
+        }
+      }
+    }
+
+    let firstCondIdx = this.stmtAux.get(auxStart);
+    if (firstCondIdx == 0xffffffff) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, whenLoc);
+      return 0;
+    }
+    let firstCondLoc = this.stmtItemAt(firstCondIdx);
+    let firstCondId = this.exprVisitor.visitLoc(firstCondLoc);
+    if (firstCondId == 0xffffffff) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.WhenOrIfEquation, firstCondLoc);
+      return 0;
+    }
+
+    let whenEqIdx = this.dae.addEquation(EqKind.When as i32, firstCondId, 0);
+
+    let tempEqs = createChunkedInt32Array(32);
+    this.whenRecords.push(whenEqIdx as i32);
+    this.whenRecords.push(firstCondId as i32);
+
+    let thenFrom = this.stmtAux.get(auxStart + 1);
+    let thenTo = this.stmtAux.get(auxStart + 2);
+    tempEqs.length = 0;
+    for (let i = thenFrom; i < thenTo; i += 2) {
+      let eqLoc = this.stmtItemAt(i);
+      if (!locMatches(eqLoc, ";") && locLen(eqLoc) > 0 && locType(eqLoc) != SyntaxType.DESCRIPTION) {
+        if (!this.lowerInlineEquation(eqLoc, tempEqs, true)) {
+          this.stmtAux.length = auxStart;
+          this.stmtItems.length = start;
+          if (!this.hasError) this.setErrorAt(WasmBailReason.WhenOrIfEquation, eqLoc);
+          return 0;
+        }
+      }
+    }
+    this.whenRecords.push((tempEqs.length / 3) as i32);
+    for (let i: u32 = 0; i < tempEqs.length; i++) {
+      this.whenRecords.push(tempEqs.get(i));
+    }
+
+    // Elsewhen branches
+    this.whenRecords.push((numBranches - 1) as i32);
+    for (let b = auxStart + 4; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      let condLoc = condIdx != 0xffffffff ? this.stmtItemAt(condIdx) : 0;
+      let elseCondId = condLoc != 0 ? this.exprVisitor.visitLoc(condLoc) : 0xffffffff;
+      if (elseCondId == 0xffffffff) {
+        this.stmtAux.length = auxStart;
+        this.stmtItems.length = start;
+        this.setErrorAt(WasmBailReason.WhenOrIfEquation, condLoc);
+        return 0;
+      }
+      let bFrom = this.stmtAux.get(b + 1);
+      let bTo = this.stmtAux.get(b + 2);
+      tempEqs.length = 0;
+      for (let i = bFrom; i < bTo; i += 2) {
+        let eqLoc = this.stmtItemAt(i);
+        if (!locMatches(eqLoc, ";") && locLen(eqLoc) > 0 && locType(eqLoc) != SyntaxType.DESCRIPTION) {
+          if (!this.lowerInlineEquation(eqLoc, tempEqs, true)) {
+            this.stmtAux.length = auxStart;
+            this.stmtItems.length = start;
+            if (!this.hasError) this.setErrorAt(WasmBailReason.WhenOrIfEquation, eqLoc);
+            return 0;
+          }
+        }
+      }
+      this.whenRecords.push(elseCondId as i32);
+      this.whenRecords.push((tempEqs.length / 3) as i32);
+      for (let i: u32 = 0; i < tempEqs.length; i++) {
+        this.whenRecords.push(tempEqs.get(i));
+      }
+    }
+
+    this.whenRecordCount++;
+    this.stmtAux.length = auxStart;
+    this.stmtItems.length = start;
     return 1;
   }
 
@@ -7216,6 +7838,8 @@ export class ModelicaFlattener {
         startVal = expr.realValue;
       } else if (expr.kind == ExprKind.IntLiteral) {
         startVal = expr.intValue as f64;
+      } else if (expr.kind == ExprKind.BoolLiteral) {
+        startVal = expr.intValue != 0 ? 1.0 : 0.0;
       }
     } else if (valExprId != 0xffffffff) {
       let expr = ExprAccessor.at(this.dae.getExprData(), valExprId);
@@ -7223,6 +7847,8 @@ export class ModelicaFlattener {
         startVal = expr.realValue;
       } else if (expr.kind == ExprKind.IntLiteral) {
         startVal = expr.intValue as f64;
+      } else if (expr.kind == ExprKind.BoolLiteral) {
+        startVal = expr.intValue != 0 ? 1.0 : 0.0;
       }
     }
 
@@ -8430,6 +9056,10 @@ export class ModelicaFlattener {
     this.pendingArrayCount = 0;
     this.algSections.length = 0;
     this.algSectionCount = 0;
+    this.whenRecords.length = 0;
+    this.whenRecordCount = 0;
+    this.ifRecords.length = 0;
+    this.ifRecordCount = 0;
 
     let pool = this.dae.getStringPool();
     let varsBefore = this.dae.varCount;
@@ -8758,4 +9388,35 @@ export function flattener_getDisabledCount(flattenerPtr: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ModelicaFlattener>(flattenerPtr).disabledCount;
 }
+
+export function flattener_getWhenRecordCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).whenRecordCount;
+}
+
+export function flattener_getWhenRecordLength(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).whenRecords.length;
+}
+
+export function flattener_getWhenRecordData(flattenerPtr: u32, idx: u32): i32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).whenRecords.get(idx);
+}
+
+export function flattener_getIfRecordCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).ifRecordCount;
+}
+
+export function flattener_getIfRecordLength(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).ifRecords.length;
+}
+
+export function flattener_getIfRecordData(flattenerPtr: u32, idx: u32): i32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).ifRecords.get(idx);
+}
+
 

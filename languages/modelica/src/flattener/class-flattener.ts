@@ -2032,6 +2032,14 @@ export class ModelicaFlattener {
           if (hybridAlgorithmGate) {
             wasmBail = describeWasmBail(WasmBailReason.HybridAlgorithmGate, undefined, undefined, "ts-fallback");
           }
+          const whenRecCount: number =
+            typeof (dae.exports as any).flattener_getWhenRecordCount === "function"
+              ? (dae.exports as any).flattener_getWhenRecordCount(wasmFlattener)
+              : 0;
+          const ifRecCount: number =
+            typeof (dae.exports as any).flattener_getIfRecordCount === "function"
+              ? (dae.exports as any).flattener_getIfRecordCount(wasmFlattener)
+              : 0;
           if (
             (varCount > 0 || disabledCount > 0 || isStrictWasm) &&
             (wasmErrorCode === 0 || isStrictWasm) &&
@@ -2054,6 +2062,109 @@ export class ModelicaFlattener {
                 }
               }
               if (secCount > 0) (dae as any).hasAlgorithmSection = true;
+            }
+            if (typeof (dae.exports as any).flattener_getWhenRecordCount === "function" && whenRecCount > 0) {
+              const exWhen = dae.exports as any;
+              let offset = 0;
+              for (let w = 0; w < whenRecCount; w++) {
+                const whenEqIdx = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                const condExprId = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                const mainEqCount = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                const bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                const equations: { kind: EqKind; lhs: number; rhs: number }[] = [];
+                for (let k = 0; k < mainEqCount; k++) {
+                  const kind = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++) as EqKind;
+                  const lhs = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                  const rhs = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                  bodyEquations.push({ kind, lhsExprId: lhs, rhsExprId: rhs });
+                  equations.push({ kind, lhs, rhs });
+                }
+                const elseWhenBranchCount = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                const elseWhenClauses: {
+                  conditionExprId: number;
+                  bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+                  equations: { kind: EqKind; lhs: number; rhs: number }[];
+                }[] = [];
+                for (let b = 0; b < elseWhenBranchCount; b++) {
+                  const elseCondId = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                  const bEqCount = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                  const bBodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  const bEquations: { kind: EqKind; lhs: number; rhs: number }[] = [];
+                  for (let k = 0; k < bEqCount; k++) {
+                    const kind = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++) as EqKind;
+                    const lhs = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                    const rhs = exWhen.flattener_getWhenRecordData(wasmFlattener, offset++);
+                    bBodyEquations.push({ kind, lhsExprId: lhs, rhsExprId: rhs });
+                    bEquations.push({ kind, lhs, rhs });
+                  }
+                  elseWhenClauses.push({
+                    conditionExprId: elseCondId,
+                    bodyEquations: bBodyEquations,
+                    equations: bEquations,
+                  });
+                }
+                dae.setWhenEquationMeta(whenEqIdx, {
+                  conditionExprId: condExprId,
+                  bodyEquations,
+                  equations,
+                  elseWhenClauses,
+                  elseEquations: [],
+                });
+              }
+            }
+            if (typeof (dae.exports as any).flattener_getIfRecordCount === "function" && ifRecCount > 0) {
+              const exIf = dae.exports as any;
+              let offset = 0;
+              for (let f = 0; f < ifRecCount; f++) {
+                const ifEqIdx = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                const condExprId = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                const thenEqCount = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                const thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                for (let k = 0; k < thenEqCount; k++) {
+                  const kind = exIf.flattener_getIfRecordData(wasmFlattener, offset++) as EqKind;
+                  const lhs = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                  const rhs = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                  thenEquations.push({ kind, lhsExprId: lhs, rhsExprId: rhs });
+                }
+                const elseIfBranchCount = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                const elseIfClauses: {
+                  conditionExprId: number;
+                  bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+                  equations: { kind: EqKind; lhs: number; rhs: number }[];
+                }[] = [];
+                for (let b = 0; b < elseIfBranchCount; b++) {
+                  const elseCondId = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                  const bEqCount = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                  const bBodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  const bEquations: { kind: EqKind; lhs: number; rhs: number }[] = [];
+                  for (let k = 0; k < bEqCount; k++) {
+                    const kind = exIf.flattener_getIfRecordData(wasmFlattener, offset++) as EqKind;
+                    const lhs = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                    const rhs = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                    bBodyEquations.push({ kind, lhsExprId: lhs, rhsExprId: rhs });
+                    bEquations.push({ kind, lhs, rhs });
+                  }
+                  elseIfClauses.push({
+                    conditionExprId: elseCondId,
+                    bodyEquations: bBodyEquations,
+                    equations: bEquations,
+                  });
+                }
+                const elseEqCount = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                const elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                for (let k = 0; k < elseEqCount; k++) {
+                  const kind = exIf.flattener_getIfRecordData(wasmFlattener, offset++) as EqKind;
+                  const lhs = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                  const rhs = exIf.flattener_getIfRecordData(wasmFlattener, offset++);
+                  elseEquations.push({ kind, lhsExprId: lhs, rhsExprId: rhs });
+                }
+                dae.setIfEquationMeta(ifEqIdx, {
+                  conditionExprId: condExprId,
+                  thenEquations,
+                  elseIfClauses,
+                  elseEquations: elseEquations.length > 0 ? elseEquations : undefined,
+                });
+              }
             }
             for (let i = 0; i < dae.eqCount; i++) {
               const rhsId = dae.getEqRhs(i);

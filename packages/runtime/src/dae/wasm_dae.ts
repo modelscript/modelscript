@@ -1858,6 +1858,10 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.whenMeta.get(eqIdx);
   }
 
+  setWhenEquationMeta(eqIdx: number, meta: WhenEquationMeta): void {
+    this.whenMeta.set(eqIdx, meta);
+  }
+
   addForEquation(indexNameId: number, rangeExprId: number): number {
     const idx = this.addEquation(EqKind.For, indexNameId, rangeExprId);
     if (this.exports?.dae_addForEquation) {
@@ -1917,6 +1921,10 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   getIfEquationMeta(eqIdx: number): IfEquationMeta | undefined {
     return this.ifMeta.get(eqIdx);
+  }
+
+  setIfEquationMeta(eqIdx: number, meta: IfEquationMeta): void {
+    this.ifMeta.set(eqIdx, meta);
   }
 
   // ── State Machines ──
