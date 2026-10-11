@@ -89,13 +89,63 @@ interface TreeNodeProps {
   selectedClassName?: string | null;
 }
 
+function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, className: string) {
+  if (typeof document === "undefined") return;
+  const ghost = document.createElement("div");
+  ghost.style.position = "fixed";
+  ghost.style.top = "-9999px";
+  ghost.style.left = "-9999px";
+  ghost.style.width = "48px";
+  ghost.style.height = "48px";
+  ghost.style.display = "flex";
+  ghost.style.alignItems = "center";
+  ghost.style.justifyContent = "center";
+  ghost.style.backgroundColor = "rgba(255, 255, 255, 0.95)";
+  ghost.style.borderRadius = "8px";
+  ghost.style.border = "1.5px solid #0969da";
+  ghost.style.boxShadow = "0 6px 16px rgba(0, 0, 0, 0.25)";
+  ghost.style.pointerEvents = "none";
+  ghost.style.zIndex = "999999";
+  ghost.style.overflow = "hidden";
+
+  if (iconSvg && iconSvg.includes("<svg")) {
+    ghost.innerHTML = iconSvg;
+    const svgEl = ghost.querySelector("svg");
+    if (svgEl) {
+      svgEl.setAttribute("width", "36");
+      svgEl.setAttribute("height", "36");
+      svgEl.style.width = "36px";
+      svgEl.style.height = "36px";
+      svgEl.style.display = "block";
+    }
+  } else {
+    const label = document.createElement("div");
+    label.style.fontSize = "10px";
+    label.style.fontWeight = "bold";
+    label.style.color = "#0969da";
+    label.style.textAlign = "center";
+    label.style.lineHeight = "1.1";
+    label.textContent = className.split(".").pop() || className;
+    ghost.appendChild(label);
+  }
+
+  document.body.appendChild(ghost);
+  try {
+    e.dataTransfer.setDragImage(ghost, 24, 24);
+  } catch {
+    // ignore if browser doesn't support setDragImage
+  }
+  setTimeout(() => {
+    if (ghost.parentNode) document.body.removeChild(ghost);
+  }, 0);
+}
+
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   const { node, uri, onSelect, onHighlight, depth, showQualifiedName, selectedClassName } = props;
   const [expanded, setExpanded] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [children, setChildren] = React.useState<TreeNodeInfo[] | null>(null);
   const [hovered, setHovered] = React.useState(false);
-  const dragImageRef = React.useRef<HTMLImageElement | null>(null);
 
   const displayName = showQualifiedName ? (node.compositeName ?? node.name) : (node.localizedName ?? node.name);
   const compositeName = node.compositeName ?? node.name;
@@ -123,15 +173,6 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
 
   const handleMouseEnter = () => {
     setHovered(true);
-    // Prepare drag image
-    const iconSvg = node.iconSvg || iconCache.get(compositeName);
-    if (!dragImageRef.current && iconSvg) {
-      const base64 = btoa(unescape(encodeURIComponent(iconSvg)));
-      const url = "data:image/svg+xml;base64," + base64;
-      const img = new Image();
-      img.src = url;
-      dragImageRef.current = img;
-    }
   };
 
   return (
@@ -174,23 +215,31 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         draggable
         onDragStart={(e) => {
           const iconSvg = node.iconSvg || iconCache.get(compositeName);
-          e.dataTransfer.setData(
-            "application/json",
-            JSON.stringify({
-              className: compositeName,
-              classKind: node.classKind,
-              iconSvg: iconSvg ?? null,
-            }),
-          );
+          const payload = {
+            className: compositeName,
+            classKind: node.classKind,
+            iconSvg: iconSvg ?? null,
+          };
+          e.dataTransfer.setData("application/json", JSON.stringify(payload));
+          e.dataTransfer.setData("text/plain", JSON.stringify(payload));
           e.dataTransfer.setData("application/vnd.modelscript.classname", compositeName);
           if (iconSvg) {
             e.dataTransfer.setData("application/vnd.modelscript.iconsvg", iconSvg);
           }
           e.dataTransfer.effectAllowed = "copy";
 
-          if (dragImageRef.current?.complete) {
-            e.dataTransfer.setDragImage(dragImageRef.current, 20, 20);
-          }
+          setDragPreview(e, iconSvg, compositeName);
+
+          // Tell diagram editor that placement/drag mode started
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).__startPlacement?.({
+            className: compositeName,
+            classKind: node.classKind ?? "class",
+            iconSvg: iconSvg ?? undefined,
+          });
+        }}
+        onDragEnd={() => {
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
         }}
       >
         <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>

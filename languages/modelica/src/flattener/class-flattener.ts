@@ -27,8 +27,6 @@ import { AnnotationEvaluator } from "../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated, validateEnumeration } from "../queries.js";
 
-export * from "./index.js";
-
 import {
   checkBalance,
   checkCyclicConstantsAndParameters,
@@ -40,28 +38,20 @@ import {
   collectInheritedTypeModifiers,
   collectProtectedNames,
   emitFunctionCallEquation,
-  escapeRegExp,
   evaluateCSTToNumber,
   expandConnectorRef,
   extractClassEquations,
-  extractCompilerOptions,
   extractDescription,
   extractStateMachines,
   findComponentDeclarationAt,
   findEquationNodeAt,
-  type FlattenerBackend,
   flattenFunction,
-  type FlatteningState,
-  type FlattenOptions,
   generateExternalObjectFunctions,
   generateFunctions,
   generateOperatorFunctions,
   generateRecordConstructorFor,
   generateRecordConstructors,
-  getElementDiagRange,
-  getFlatteningState,
   getOrCreateWasmEnv,
-  getSymbolQualifiedName,
   instantiateElements,
   isClassType,
   isComponentHidden,
@@ -70,32 +60,41 @@ import {
   isFunctionSym,
   isInsideExpandableBus,
   isStaticTrueAssert,
-  lowerCSTExpression,
-  ModelicaModificationEnv,
   patchIncremental,
   processExpandableConnectors,
   propagateImpureFunctions,
   resolveInnerOuterClass,
   resolveRedeclarationType,
-  stripComments,
   validateClassModifiers,
   validateComponentBasicAttributes,
   validateFunctionComponentDeclaration,
-} from "./index.js";
+} from "./elaboration/index.js";
+import {
+  escapeRegExp,
+  getSymbolQualifiedName,
+  lowerCSTExpression,
+  stripComments,
+  stripCommentsAndStrings,
+} from "./expressions/index.js";
+import { extractCompilerOptions } from "./support/compiler-options.js";
+import { getElementDiagRange } from "./support/range-utils.js";
+import { type FlatteningState, getFlatteningState } from "./support/state.js";
+import { ModelicaModificationEnv } from "./support/wasm-bridge.js";
+import type { FlattenerBackend, FlattenOptions } from "./types.js";
 
 export class ModelicaFlattener {
   bodySnapshot: DAEBuilder | null = null;
   public db: QueryDB;
-  private options: Required<FlattenOptions>;
-  private currentRootClassId: SymbolId = 0;
+  public options: Required<FlattenOptions>;
+  public currentRootClassId: SymbolId = 0;
   public currentClassId: SymbolId = 0;
 
   private getElementDiagRange(target: any): any {
     return getElementDiagRange(target);
   }
-  private innerOuterComponents = new Set<string>();
-  private innerDeclarations = new Map<string, Map<string, string>>();
-  private disabledComponents = new Set<string>();
+  public innerOuterComponents = new Set<string>();
+  public innerDeclarations = new Map<string, Map<string, string>>();
+  public disabledComponents = new Set<string>();
   public usedExternalObjects = new Set<SymbolId>();
   public usedRecordSymIds = new Set<SymbolId>();
   public usedRecordNames = new Set<string>();
@@ -757,7 +756,7 @@ export class ModelicaFlattener {
     return result;
   }
 
-  private lowerExpr(
+  public lowerExpr(
     node: SyntaxNode | null | undefined,
     dae: DAEBuilder,
     prefix = "",
@@ -765,18 +764,15 @@ export class ModelicaFlattener {
     tupleContext?: boolean,
     isAssignmentLhs?: boolean,
   ): number {
-    return lowerCSTExpression(
-      node,
-      dae,
+    return lowerCSTExpression(node, dae, {
       prefix,
       substitutions,
-      this.currentImports,
-      this.db,
-      this,
+      imports: this.currentImports,
+      db: this.db,
+      flattener: this,
       tupleContext,
-      false,
       isAssignmentLhs,
-    );
+    });
   }
 
   private isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
@@ -970,20 +966,6 @@ export class ModelicaFlattener {
     if (cached !== undefined) return cached;
     visited.add(classId);
 
-    // 1. Partial / Expandable / Protected checks via AST & QueryDB
-    if (this.isClassPartial(classId)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (this.isExpandableConnectorClass(classId)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (this.collectProtectedNames(classId).size > 0) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-
     const sym = this.db.symbol(classId);
     let rawText = "";
     if (sym && sym.startByte != null && sym.endByte != null) {
@@ -1002,64 +984,27 @@ export class ModelicaFlattener {
       rawText = cst?.text ?? "";
     }
 
-    // Strip comments from class text to avoid spurious keyword matches
-    const text = stripComments(rawText);
+    // Strip comments and strings from class text to avoid spurious keyword matches
+    const text = stripCommentsAndStrings(rawText);
 
-    if (/\b(inner|outer|expandable|each|import|protected|partial|final)\b/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\b(?:type|connector)\s+[a-zA-Z_]\w*\s*=/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\[\s*:\s*\]/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\b[a-zA-Z_]\w*\s*\[\s*(?!\d+\s*\])[^\]]+\]/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\[\s*\d+\s*\]\s*\(/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\b(?:Real|Integer|Boolean|String)\s+[a-zA-Z_]\w*\s*\[\s*\d+\s*,\s*\d+\s*\]/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/"[^"\r\n]*"\s*;/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
     if (
-      /(?:^|[;\n\r])\s*(?:(?:final|protected|input|output|flow|stream|discrete)\s+)*(?!parameter\b|constant\b)(?:(?:Real|Integer|Boolean|String)|[a-zA-Z_]\w*)\s+[a-zA-Z_]\w*\s*=[^;]+;/m.test(
+      /\bconnector\s+[a-zA-Z_]\w*\s*=\s*(?!(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
+        text,
+      ) ||
+      /\btype\s+[a-zA-Z_]\w*\s*=\s*(?!enumeration\b|(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
         text,
       )
     ) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
-    if (/\b(?:nominal|min|max|displayUnit|quantity|stateSelect)\s*[(=]/i.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\barray\s*\(\s*\{/.test(text)) {
-      this._unsupportedWasmCache.set(classId, true);
-      return true;
-    }
-    if (/\sif\s+[a-zA-Z0-9_.]+\s*;/m.test(text)) {
+    if (/\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text)) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
 
     const children = this.db.childrenOf(classId);
     for (const child of children) {
-      if (child.kind === "Import") {
-        this._unsupportedWasmCache.set(classId, true);
-        return true;
-      }
       if (child.kind === "Extends") {
         const baseClass =
           this.db.query<any>("resolvedBaseClass", child.id) ??
@@ -1074,8 +1019,10 @@ export class ModelicaFlattener {
         }
       }
       if (child.kind === "Class" || child.kind === "Model" || child.kind === "Block" || child.kind === "Connector") {
-        this._unsupportedWasmCache.set(classId, true);
-        return true;
+        if (this.classHasUnsupportedWasmFeatures(child.id, visited)) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
       }
       if (child.kind === "Component") {
         const compInst = this.db.query<any>("componentInstance", child.id);
@@ -1086,11 +1033,10 @@ export class ModelicaFlattener {
               ? (this.db.query<any>("resolveName", classId)?.(compInst.typeSpecifier) ??
                 this.db.query<any>("resolveSimpleName", classId)?.(compInst.typeSpecifier))
               : null) ?? this.db.byName(compInst?.typeSpecifier ?? compInst?.typeName ?? "")?.[0]);
-        if (compInst?.causality && targetClass) {
-          this._unsupportedWasmCache.set(classId, true);
-          return true;
-        }
-        if (targetClass && this.classHasUnsupportedWasmFeatures(targetClass.id, visited)) {
+        const isTypeTarget =
+          targetClass &&
+          (targetClass.kind === "Type" || String(targetClass.metadata?.classKind ?? "").toLowerCase() === "type");
+        if (targetClass && !isTypeTarget && this.classHasUnsupportedWasmFeatures(targetClass.id, visited)) {
           this._unsupportedWasmCache.set(classId, true);
           return true;
         }
@@ -1124,6 +1070,117 @@ export class ModelicaFlattener {
 
     this._unsupportedWasmCache.set(classId, false);
     return false;
+  }
+
+  public getUnsupportedWasmReasons(classId?: SymbolId | null, visited = new Set<SymbolId>()): string[] {
+    const reasons: string[] = [];
+    if (!classId || visited.has(classId)) return reasons;
+    visited.add(classId);
+
+    const sym = this.db.symbol(classId);
+    let rawText = "";
+    if (sym && sym.startByte != null && sym.endByte != null) {
+      if (typeof (this.db as any).cstText === "function") {
+        rawText = (this.db as any).cstText(sym.startByte, sym.endByte, sym) ?? "";
+      }
+      if (!rawText && sym.resourceId) {
+        const s = (this.db as any).source?.(sym.resourceId);
+        if (typeof s === "string") {
+          rawText = s.slice(sym.startByte, sym.endByte);
+        }
+      }
+    }
+    if (!rawText) {
+      const cst = this.db.cstNode(classId) as any;
+      rawText = cst?.text ?? "";
+    }
+
+    const text = stripCommentsAndStrings(rawText);
+
+    if (
+      /\bconnector\s+[a-zA-Z_]\w*\s*=\s*(?!(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
+        text,
+      ) ||
+      /\btype\s+[a-zA-Z_]\w*\s*=\s*(?!enumeration\b|(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
+        text,
+      )
+    ) {
+      reasons.push("type-or-connector-alias");
+    }
+    if (/\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text)) {
+      reasons.push("enumeration");
+    }
+
+    const children = this.db.childrenOf(classId);
+    for (const child of children) {
+      if (child.kind === "Extends") {
+        const baseClass =
+          this.db.query<any>("resolvedBaseClass", child.id) ??
+          (classId
+            ? (this.db.query<any>("resolveName", classId)?.(child.name) ??
+              this.db.query<any>("resolveSimpleName", classId)?.(child.name))
+            : null) ??
+          this.db.byName(child.name)?.[0];
+        if (baseClass) {
+          const subReasons = this.getUnsupportedWasmReasons(baseClass.id, visited);
+          if (subReasons.length > 0) {
+            reasons.push(`extends:${baseClass.name}(${subReasons[0]})`);
+          }
+        }
+      }
+      if (child.kind === "Class" || child.kind === "Model" || child.kind === "Block" || child.kind === "Connector") {
+        const subReasons = this.getUnsupportedWasmReasons(child.id, visited);
+        if (subReasons.length > 0) {
+          reasons.push(`nested-class:${child.name}(${subReasons[0]})`);
+        }
+      }
+      if (child.kind === "Component") {
+        const compInst = this.db.query<any>("componentInstance", child.id);
+        const targetClassId = compInst?.classInstance ?? compInst?.classTargetId;
+        const targetClass = targetClassId
+          ? this.db.symbol(targetClassId)
+          : ((classId && compInst?.typeSpecifier
+              ? (this.db.query<any>("resolveName", classId)?.(compInst.typeSpecifier) ??
+                this.db.query<any>("resolveSimpleName", classId)?.(compInst.typeSpecifier))
+              : null) ?? this.db.byName(compInst?.typeSpecifier ?? compInst?.typeName ?? "")?.[0]);
+        const isTypeTarget =
+          targetClass &&
+          (targetClass.kind === "Type" || String(targetClass.metadata?.classKind ?? "").toLowerCase() === "type");
+        if (targetClass && !isTypeTarget) {
+          const subReasons = this.getUnsupportedWasmReasons(targetClass.id, visited);
+          if (subReasons.length > 0) {
+            reasons.push(`child-component:${child.name}(${subReasons[0]})`);
+          }
+        }
+      }
+    }
+
+    const seenNames = new Set<string>();
+    for (const child of children) {
+      if (child.name && (child.kind === "Component" || child.kind === "Class")) {
+        if (seenNames.has(child.name)) {
+          reasons.push(`duplicate-name:${child.name}`);
+          break;
+        }
+        seenNames.add(child.name);
+      }
+    }
+    if (sym?.resourceId) {
+      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
+      const topSymbols = (allSyms as SymbolEntry[]).filter(
+        (s: any) => s.resourceId === sym.resourceId && (s.parentId === null || s.parentId === 0),
+      );
+      const topNames = new Set<string>();
+      for (const s of topSymbols) {
+        if (s.name === "Clock" || topNames.has(s.name)) {
+          reasons.push("top-clock-or-duplicate");
+          break;
+        }
+        topNames.add(s.name);
+      }
+    }
+
+    return reasons;
   }
 
   flattenClass(rootClassId: SymbolId, cachedArena?: DAEBuilder | null): DAEBuilder {
@@ -1899,7 +1956,6 @@ export class ModelicaFlattener {
         Boolean(this.options.useWasmKernel) &&
         !this.useLocalDirection &&
         !this.classHasRedeclare(rootClassId) &&
-        !this.classHasConnect(rootClassId) &&
         !this.classHasUnsupportedWasmFeatures(rootClassId));
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
@@ -1935,12 +1991,17 @@ export class ModelicaFlattener {
         const wasmFlattener = dae.exports.flattener_create(dae.ptr);
         if (wasmFlattener) {
           const varCount = dae.exports.flattener_flatten(wasmFlattener, classNodePtr, rootProgramPtr);
-          if (typeof dae.exports.flattener_getErrorCode === "function") {
-            (dae as any).wasmErrorCode = dae.exports.flattener_getErrorCode(wasmFlattener);
-          }
+          const wasmErrorCode =
+            typeof dae.exports.flattener_getErrorCode === "function"
+              ? dae.exports.flattener_getErrorCode(wasmFlattener)
+              : 0;
+          (dae as any).wasmErrorCode = wasmErrorCode;
           // In hybrid mode, if WASM flattener set a non-zero error code, fall back to TS
-          const wasmErrorCode = (dae as any).wasmErrorCode ?? 0;
-          if (varCount > 0 && (wasmErrorCode === 0 || isStrictWasm)) {
+          const disabledCount =
+            typeof (dae.exports as any)?.flattener_getDisabledCount === "function"
+              ? (dae.exports as any).flattener_getDisabledCount(wasmFlattener)
+              : 0;
+          if ((varCount > 0 || disabledCount > 0 || isStrictWasm) && (wasmErrorCode === 0 || isStrictWasm)) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
             for (let i = 0; i < dae.eqCount; i++) {
@@ -1958,6 +2019,23 @@ export class ModelicaFlattener {
                 for (const name of names) {
                   dae.registerParamEquationDep(name, i);
                 }
+              }
+            }
+            if (typeof (dae.exports as any)?.flattener_getExpandableBusCount === "function") {
+              const busCount = (dae.exports as any).flattener_getExpandableBusCount(wasmFlattener);
+              const busPrefixes: string[] = [];
+              for (let b = 0; b < busCount; b++) {
+                const id = (dae.exports as any).flattener_getExpandableBus(wasmFlattener, b);
+                const busName = id === 0 ? "" : (dae.interner.resolve(id) ?? "");
+                busPrefixes.push(busName);
+                this.expandableBuses.set(busName, 0 as any);
+              }
+              dae.extensionMetadata.expandableBuses = busPrefixes;
+            }
+            const totalVars = dae.varCount;
+            for (let v = 0; v < totalVars; v++) {
+              if ((dae.getVarFlags(v) & (1 << 9)) !== 0) {
+                dae.setVarDescription(v, "virtual variable in expandable connector");
               }
             }
           }
@@ -2118,7 +2196,9 @@ export class ModelicaFlattener {
     }
 
     // 2.6 Expandable connector dynamic augmentation, cross-bus pooling, and variable pruning
-    this.processExpandableConnectors(rootClassId, dae);
+    if (!flattenedInWasm) {
+      this.processExpandableConnectors(rootClassId, dae);
+    }
 
     // 3. Layer 3: Physical connector expansion & flow balance
     let flowThreshold = compilerOpts.flowThreshold;
@@ -2195,6 +2275,13 @@ export class ModelicaFlattener {
         const eB = node.endIndex ?? node.endByte;
         if (sB != null && eB != null && eqIdx < dae.getEqCount()) {
           dae.setEqSourceRange(eqIdx, sB, eB);
+          for (const c of node.children || []) {
+            if (c.type === "description" || c.type === "description_string" || c.type === "string_literal") {
+              const t = c.text?.trim();
+              if (t) dae.setEqDescription(eqIdx, t);
+              break;
+            }
+          }
           eqIdx++;
         }
         return;
@@ -2206,18 +2293,32 @@ export class ModelicaFlattener {
     };
     walkEqs(cst);
 
+    // Pre-resolve all variable names so interner lookup succeeds in getVarIdxByName
+    const varCount = dae.varCount;
+    for (let i = 0; i < varCount; i++) {
+      dae.getVarName(i);
+    }
+
     const walkVars = (node: any): void => {
       if (!node) return;
-      if (node.type === "declaration" || node.type === "component_declaration1") {
-        const idChild = (node.children || []).find((c: any) => c.type === "identifier");
-        const name = idChild ? idChild.text?.trim() : node.text?.trim()?.split(/\s|=|\[|\(/)[0];
+      if (
+        node.type === "component_declaration" ||
+        node.type === "component_declaration1" ||
+        node.type === "declaration"
+      ) {
+        const declNode =
+          node.type === "component_declaration"
+            ? ((node.children || []).find((c: any) => c.type === "declaration") ?? node)
+            : node;
+        const idChild = (declNode.children || []).find((c: any) => c.type === "identifier");
+        const name = idChild ? idChild.text?.trim() : declNode.text?.trim()?.split(/\s|=|\[|\(/)[0];
         if (name) {
           let varIdx = dae.getVarIdxByName(name);
           if (varIdx < 0) {
             varIdx = dae.getVarIdxByName(`${name}[1]`);
           }
-          const sB = node.startIndex ?? node.startByte;
-          const eB = node.endIndex ?? node.endByte;
+          const sB = declNode.startIndex ?? declNode.startByte;
+          const eB = declNode.endIndex ?? declNode.endByte;
           if (varIdx >= 0 && sB != null && eB != null) {
             dae.setVarSourceRange(varIdx, sB, eB);
             const arrayIndices = dae.getArrayElementIndices(name);
@@ -2225,6 +2326,57 @@ export class ModelicaFlattener {
               dae.setVarSourceRange(idx, sB, eB);
             }
           }
+          const desc = extractDescription(node);
+          if (desc && varIdx >= 0) {
+            dae.setVarDescription(varIdx, desc);
+            const arrayIndices = dae.getArrayElementIndices(name);
+            for (const idx of arrayIndices) {
+              dae.setVarDescription(idx, desc);
+            }
+          }
+          if (varIdx >= 0) {
+            let p = node.parent;
+            while (p && p.type !== "element" && p.type !== "composition") {
+              p = p.parent;
+            }
+            if (p && p.type === "element" && /\bfinal\b/.test(p.text ?? "")) {
+              dae.setVarFinal(varIdx, true);
+              const arrayIndices = dae.getArrayElementIndices(name);
+              for (const idx of arrayIndices) {
+                dae.setVarFinal(idx, true);
+              }
+            }
+
+            const rawText = declNode.text ?? node.text ?? "";
+            const qMatch = rawText.match(/\bquantity\s*=\s*("([^"\\]|\\.)*")/);
+            if (qMatch) {
+              try {
+                const qStr = JSON.parse(qMatch[1]);
+                const qId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(qStr));
+                dae.setVarAttr(varIdx, "quantity", qId);
+                const arrayIndices = dae.getArrayElementIndices(name);
+                for (const idx of arrayIndices) {
+                  dae.setVarAttr(idx, "quantity", qId);
+                }
+              } catch {}
+            }
+            const ssMatch = rawText.match(/\bstateSelect\s*=\s*(?:StateSelect\.)?([a-zA-Z]+)/);
+            if (ssMatch) {
+              const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
+              const ssIdx = ssLiterals.indexOf(ssMatch[1]);
+              if (ssIdx >= 0) {
+                const enumExprId = dae.addEnumLiteral(ssIdx + 1, `StateSelect.${ssMatch[1]}`);
+                dae.setVarAttr(varIdx, "stateSelect", enumExprId);
+                const arrayIndices = dae.getArrayElementIndices(name);
+                for (const idx of arrayIndices) {
+                  dae.setVarAttr(idx, "stateSelect", enumExprId);
+                }
+              }
+            }
+          }
+        }
+        if (node.type === "component_declaration" || node.type === "component_declaration1") {
+          return;
         }
       }
       for (const child of node.children || []) {

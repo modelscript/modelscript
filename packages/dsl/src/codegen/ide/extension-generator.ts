@@ -336,9 +336,21 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       category: "ModelScript Co-Simulation",
       icon: "$(play)",
     },
+    {
+      command: "modelscript.openDroneReachabilityDemo",
+      title: "ModelScript: Verify Reachability Flowpipes (Zonotopes vs Intervals)",
+      category: "ModelScript Verification",
+      icon: "$(shield)",
+    },
   ];
 
-  const editorTitleMenus: any[] = [];
+  const editorTitleMenus: any[] = [
+    {
+      command: "modelscript.openDroneReachabilityDemo",
+      when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml",
+      group: "navigation@0",
+    },
+  ];
   const editorContextMenus: any[] = [];
   const explorerContextMenus: any[] = [];
 

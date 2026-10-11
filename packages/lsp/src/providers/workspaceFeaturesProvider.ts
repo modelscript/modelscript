@@ -352,7 +352,7 @@ export function registerWorkspaceFeaturesProvider(
         continue;
       }
 
-      if (diagnostic.source !== "modelscript") continue;
+      if (diagnostic.source !== "modelscript" && diagnostic.source !== "modelica") continue;
 
       // Suggest adding import for unresolved references
       if (diagnostic.message.includes("not found") || diagnostic.message.includes("unresolved")) {
@@ -384,6 +384,7 @@ export function registerWorkspaceFeaturesProvider(
       // Suggest homotopy operator wrapping for steep nonlinearities
       if (
         diagnostic.code === 5010 ||
+        diagnostic.code === 5040 ||
         diagnostic.code === "homotopyRecommended" ||
         (diagnostic.message && diagnostic.message.includes("without homotopy"))
       ) {

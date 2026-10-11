@@ -55,10 +55,45 @@ import {
 } from "../expressions/index.js";
 import { getElementDiagRange } from "../support/range-utils.js";
 import { ModelicaModificationEnv } from "../support/wasm-bridge.js";
-import { type ComponentInstanceData } from "../types.js";
+import { type ComponentInstanceData, type FlattenOptions } from "../types.js";
 
 export interface ComponentFlattener {
   db: QueryDB;
+  options: Required<FlattenOptions>;
+  currentRootClassId?: SymbolId;
+  currentClassId?: SymbolId;
+  currentImports?: Map<string, string>;
+  currentParentMods?: any;
+  currentBindingCompName?: string;
+  innerDeclarations?: Map<string, Map<string, string>>;
+  innerOuterComponents?: Set<string>;
+  disabledComponents?: Set<string>;
+  expandableBuses?: Map<string, SymbolId>;
+  usedExternalObjects?: Set<SymbolId>;
+  usedRecordSymIds?: Set<SymbolId>;
+  usedRecordNames?: Set<string>;
+  failedFunctionIds?: Set<SymbolId>;
+  invalidInterfaceFunctionIds?: Set<SymbolId>;
+  calledFunctionSymIds?: Set<SymbolId>;
+  activeLoopVars?: Set<string>;
+  usedOperatorFunctions?: Map<string, SymbolId>;
+  evaluatedConstantArrays?: Map<string, any>;
+  varConditionDeps?: Map<string, string[]>;
+  useLocalDirection?: boolean;
+  lowerExpr?: (
+    node: any,
+    dae: DAEBuilder,
+    prefix?: string,
+    substitutions?: any,
+    tupleContext?: boolean,
+    isAssignmentLhs?: boolean,
+  ) => number;
+  pushLoopVar?: (name: string) => void;
+  popLoopVar?: (name: string) => void;
+  isClassPartial?: (classId?: SymbolId | null) => boolean;
+  isExternalObject?: (classId: SymbolId | null | undefined, visited?: Set<SymbolId>) => boolean;
+  isOperatorRecordSym?: (sym: any) => boolean;
+  generateRecordConstructorFor?: (sym: any, dae: DAEBuilder, rootClassId?: SymbolId) => DAEBuilder | null;
   [key: string]: any;
 }
 

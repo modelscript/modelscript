@@ -102,10 +102,12 @@
   },
   "dependencies": {
     "@modelscript/cad": "*",
+    "@modelscript/cfd": "*",
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
+    "@modelscript/fea": "*",
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",
     "@modelscript/owl2": "*",

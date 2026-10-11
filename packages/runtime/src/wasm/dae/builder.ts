@@ -11,7 +11,7 @@ export {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM,
-  FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED,
+  FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
   FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
@@ -29,7 +29,7 @@ export {
 import {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
-  FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_REMOVED,
+  FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
@@ -767,6 +767,26 @@ export class DaeBuilder {
   isVarFlow(varIdx: u32): boolean {
     if (varIdx >= this.varCount) return false;
     return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_FLOW) != 0;
+  }
+
+  @inline
+  setVarFlow(varIdx: u32, isFlow: bool): void {
+    if (varIdx >= this.varCount) return;
+    let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
+    let flags = this.getVarData().get(offset);
+    if (isFlow) {
+      this.getVarData().set(offset, flags | FLAG_VAR_FLOW);
+    } else {
+      this.getVarData().set(offset, flags & ~FLAG_VAR_FLOW);
+    }
+  }
+
+  @inline
+  removeVariable(varIdx: u32): void {
+    if (varIdx >= this.varCount) return;
+    let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
+    let flags = this.getVarData().get(offset);
+    this.getVarData().set(offset, flags | FLAG_VAR_REMOVED);
   }
 
   /**

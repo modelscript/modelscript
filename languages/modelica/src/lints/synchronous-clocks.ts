@@ -117,7 +117,18 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
         }
       }
       if (initCount > 1) {
-        db.diagnostic(node);
+        let targetNode = node;
+        for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
+          const nameId = db.ast.getChildByFieldId(spec, "name");
+          if (nameId != 0) targetNode = nameId;
+          break;
+        }
+        for (const spec of db.ast.getDescendants(node, $.short_class_specifier)) {
+          const nameId = db.ast.getChildByFieldId(spec, "name");
+          if (nameId != 0) targetNode = nameId;
+          break;
+        }
+        db.diagnostic(targetNode);
       }
     },
   },

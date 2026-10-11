@@ -514,13 +514,12 @@ export class WasmQueryEngine {
       }
     }
 
-    if (structuralChangedIds) {
-      for (const id of structuralChangedIds) {
-        const dependentKeys = this.inputReverseDependencies.get(id);
-        if (dependentKeys) {
-          for (const key of dependentKeys) {
-            this.memos.delete(key);
-          }
+    const symbolsToClearMemos = structuralChangedIds ? new Set([...structuralChangedIds, ...ids]) : ids;
+    for (const id of symbolsToClearMemos) {
+      const dependentKeys = this.inputReverseDependencies.get(id);
+      if (dependentKeys) {
+        for (const key of dependentKeys) {
+          this.memos.delete(key);
         }
       }
     }
@@ -617,10 +616,16 @@ export class WasmQueryEngine {
     for (const [id, entry] of symbolsToCheck) {
       if (resourceId && entry.resourceId !== resourceId) continue;
       for (const { lintName, result } of this.runLints(id)) {
-        let startByte = result.startByte ?? entry.startByte;
-        let endByte = result.endByte ?? entry.endByte;
-        let startOffset = result.startOffset ?? entry.startOffset ?? startByte;
-        let endOffset = result.endOffset ?? entry.endOffset ?? endByte;
+        let startByte = result.startByte ?? (result.startOffset !== undefined ? result.startOffset : entry.startByte);
+        let endByte = result.endByte ?? (result.endOffset !== undefined ? result.endOffset : entry.endByte);
+        let startOffset =
+          result.startOffset ??
+          (result as any).startCharOffset ??
+          result.startByte ??
+          entry.startOffset ??
+          entry.startByte;
+        let endOffset =
+          result.endOffset ?? (result as any).endCharOffset ?? result.endByte ?? entry.endOffset ?? entry.endByte;
         if (result.field && !result.startByte && !result.endByte) {
           const fieldRange = entry.fieldRanges?.[result.field];
           if (fieldRange) {
@@ -702,10 +707,22 @@ export class WasmQueryEngine {
       }
       const diags: LintDiagnostic[] = [];
       for (const { lintName, result } of this.runLints(id)) {
-        let startByte = result.startByte ?? entry.startByte;
-        let endByte = result.endByte ?? entry.endByte;
-        let startOffset = result.startOffset ?? (result as any).startOffset ?? entry.startOffset ?? startByte;
-        let endOffset = result.endOffset ?? (result as any).endOffset ?? entry.endOffset ?? endByte;
+        let startByte = result.startByte ?? (result.startOffset !== undefined ? result.startOffset : entry.startByte);
+        let endByte = result.endByte ?? (result.endOffset !== undefined ? result.endOffset : entry.endByte);
+        let startOffset =
+          result.startOffset ??
+          (result as any).startCharOffset ??
+          (result as any).startOffset ??
+          result.startByte ??
+          entry.startOffset ??
+          entry.startByte;
+        let endOffset =
+          result.endOffset ??
+          (result as any).endCharOffset ??
+          (result as any).endOffset ??
+          result.endByte ??
+          entry.endOffset ??
+          entry.endByte;
         if (result.field && !result.startByte && !result.endByte) {
           const fieldRange = entry.fieldRanges?.[result.field];
           if (fieldRange) {
@@ -744,6 +761,25 @@ export class WasmQueryEngine {
   public disposeDocument(resourceId: string): void {
     this.lintCache.delete(resourceId);
     this.dirtyLintSymbols.delete(resourceId);
+    const norm = (u: string) => u.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+    const targetNorm = norm(resourceId);
+    this.lintCache.delete(targetNorm);
+    this.dirtyLintSymbols.delete(targetNorm);
+
+    for (const [id, entry] of this.index.symbols) {
+      if (entry.resourceId && norm(entry.resourceId) === targetNorm) {
+        this.inputRevisions.set(id, ++this.currentRevision);
+        const dependentKeys = this.inputReverseDependencies.get(id);
+        if (dependentKeys) {
+          for (const key of dependentKeys) {
+            this.memos.delete(key);
+          }
+        }
+        for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+          cacheDirtySet.add(id);
+        }
+      }
+    }
   }
 
   /**
@@ -1100,14 +1136,17 @@ export class WasmQueryEngine {
       },
 
       cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
+        if (tracker && entry) tracker.recordInput(entry.id);
         return engine.getCstText(startByte, endByte, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
+        if (tracker) tracker.recordInput(id);
         return engine.getCstNode(id);
       },
 
       cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
+        if (tracker && entry) tracker.recordInput(entry.id);
         return engine.getCstNodeRange(startByte, endByte, entry);
       },
 

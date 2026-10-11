@@ -489,14 +489,14 @@ export function flattenFunction(
       (fn as any).isEarlyInline = true;
     }
 
-    let pureDeclared = false;
+    let _pureDeclared = false;
     let impureDeclared = false;
     if (cst) {
       for (const child of cst.children || []) {
         if (child.type === "class_prefixes") {
           const pfx = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
           const words = pfx.split(/\s+/).filter(Boolean);
-          if (words.includes("pure")) pureDeclared = true;
+          if (words.includes("pure")) _pureDeclared = true;
           if (words.includes("impure")) impureDeclared = true;
         }
       }

@@ -49,6 +49,69 @@ export const scadLanguage = language({
       title: "Preview 3D CSG Model",
       description: "Evaluates constructive solid geometry boolean trees and renders 3D polygonal meshes.",
       category: "geometry",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.documentManager) {
+          source = ctx.documentManager.documentTrees?.get(ctx.uri)?.text;
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No OpenSCAD source code found to evaluate.");
+        }
+
+        let rootNode: any = ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode;
+        if (!rootNode && ctx.parserService) {
+          try {
+            const parser = await ctx.parserService.getParser("scad");
+            if (parser) {
+              const tree = parser.parse(source);
+              rootNode = tree?.rootNode;
+            }
+          } catch {}
+        }
+        if (!rootNode) {
+          try {
+            const { getScadParser } = await import("./index.js");
+            const parser = await getScadParser();
+            const tree = parser.parse(source);
+            rootNode = tree?.rootNode;
+          } catch {}
+        }
+
+        let solid: any = null;
+        if (rootNode) {
+          const { ScadEvaluator } = await import("./evaluator.js");
+          const evaluator = new ScadEvaluator();
+          solid = evaluator.evaluate(rootNode);
+        } else {
+          const { compileScadToSolid } = await import("./index.js");
+          solid = await compileScadToSolid(source);
+        }
+
+        if (!solid) {
+          throw new Error("Failed to evaluate OpenSCAD CSG solid geometry.");
+        }
+
+        const { compileToStep } = await import("@modelscript/cad");
+        const step = compileToStep(solid);
+        const filename = ctx.uri ? ctx.uri.split("/").pop() || "model" : "model";
+        const name = filename.replace(/\.[^/.]+$/, "");
+
+        return {
+          success: true,
+          name,
+          step,
+          solid,
+          uri: ctx.uri,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(package)",
@@ -69,6 +132,66 @@ export const scadLanguage = language({
       title: "Export Shape to STEP CAD (.step)",
       description: "Converts OpenSCAD boundary representations into standard ISO 10303 STEP solid bodies.",
       category: "export",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.documentManager) {
+          source = ctx.documentManager.documentTrees?.get(ctx.uri)?.text;
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No OpenSCAD source code found to export.");
+        }
+
+        let rootNode: any = ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode;
+        if (!rootNode && ctx.parserService) {
+          try {
+            const parser = await ctx.parserService.getParser("scad");
+            if (parser) {
+              const tree = parser.parse(source);
+              rootNode = tree?.rootNode;
+            }
+          } catch {}
+        }
+        if (!rootNode) {
+          try {
+            const { getScadParser } = await import("./index.js");
+            const parser = await getScadParser();
+            const tree = parser.parse(source);
+            rootNode = tree?.rootNode;
+          } catch {}
+        }
+
+        let solid: any = null;
+        if (rootNode) {
+          const { ScadEvaluator } = await import("./evaluator.js");
+          const evaluator = new ScadEvaluator();
+          solid = evaluator.evaluate(rootNode);
+        } else {
+          const { compileScadToSolid } = await import("./index.js");
+          solid = await compileScadToSolid(source);
+        }
+
+        if (!solid) {
+          throw new Error("Failed to compile OpenSCAD to solid geometry.");
+        }
+
+        const { compileToStep } = await import("@modelscript/cad");
+        const step = compileToStep(solid);
+        const filename = ctx.uri ? ctx.uri.split("/").pop() || "model" : "model";
+        const name = filename.replace(/\.[^/.]+$/, "");
+
+        return {
+          step,
+          name,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(export)",
@@ -99,6 +222,24 @@ export const scadLanguage = language({
         source: ($, v) => $.ModuleDeclaration({ name: v("modName") }),
         target: ($, v) => $.PartDefinition({ declaredName: v("modName") }),
         where: (v) => [tggEq(v("modName"), v("modName")), tggComplement(["parameters", "body"])],
+      }),
+      tggRule({
+        name: "ScadProjectedAreaToModelicaParam",
+        sourceLang: "scad",
+        targetLang: "modelica",
+        priority: 15,
+        source: ($, v) => $.TagPortOp({ args: v("portName") }),
+        target: ($, v) => $.ComponentClause({ name: "A", defaultValue: v("area") }),
+        where: (v) => [tggEq(v("portName"), v("portName")), tggComplement(["area"])],
+      }),
+      tggRule({
+        name: "ScadProjectedAreaToSysmlAttribute",
+        sourceLang: "scad",
+        targetLang: "sysml2",
+        priority: 15,
+        source: ($, v) => $.TagPortOp({ args: v("portName") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: "totalFrontalArea", defaultValue: v("area") }),
+        where: (v) => [tggEq(v("portName"), v("portName")), tggComplement(["area"])],
       }),
       tggRule({
         name: "ScadTagPortToSysmlPort",

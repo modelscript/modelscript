@@ -23,7 +23,7 @@ import {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM,
-  FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED,
+  FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_PROTECTED, FLAG_VAR_VIRTUAL,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
@@ -118,6 +118,8 @@ export class VarAccessor {
   @inline get isStateDer(): bool { return (this.flags & FLAG_VAR_STATE_DER) != 0; }
   @inline get isFixed(): bool { return (this.flags & FLAG_VAR_FIXED) != 0; }
   @inline get isRemoved(): bool { return (this.flags & FLAG_VAR_REMOVED) != 0; }
+  @inline get isProtected(): bool { return (this.flags & FLAG_VAR_PROTECTED) != 0; }
+  @inline get isVirtual(): bool { return (this.flags & FLAG_VAR_VIRTUAL) != 0; }
 
   @inline get isParameter(): bool { return this.variability == Variability.Parameter; }
   @inline get isConstant(): bool { return this.variability == Variability.Constant; }

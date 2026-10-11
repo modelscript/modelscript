@@ -19,6 +19,7 @@ type Selection = any;
 type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+import { dropComponentGhost, ensureDiagramStyles, type DropPlaceholderOptions } from "./drop-placeholder.js";
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import {
   computeFilletedOrthogonalPath,
@@ -37,6 +38,7 @@ import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout } from "./swimlane-layout.js";
 import { animateCells } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
+export { dropComponentGhost, ensureDiagramStyles, type DropPlaceholderOptions };
 
 if (typeof Graph.registerRouter === "function") {
   try {
@@ -229,6 +231,7 @@ function getConnectedEdges(
 }
 
 export function initGraph(isDark: boolean): Graph | null {
+  ensureDiagramStyles();
   const container = currentOptions?.container;
   if (!container) {
     if (graph) return graph;
@@ -431,24 +434,30 @@ export function initGraph(isDark: boolean): Graph | null {
   let placementGhost: any = null;
 
   const startPlacement = (data: { className: string; classKind: string; iconSvg?: string }) => {
+    ensureDiagramStyles();
     placementData = data;
     const center = g.pageToLocal(window.innerWidth / 2, window.innerHeight / 2);
     const strokeColor = isDark ? "#cccccc" : "#333333";
-    const fillColor = isDark ? "rgba(204, 204, 204, 0.1)" : "rgba(51, 51, 51, 0.1)";
+    const fillColor = isDark ? "rgba(204, 204, 204, 0.15)" : "rgba(51, 51, 51, 0.08)";
+
+    if (placementGhost) {
+      placementGhost.remove();
+      placementGhost = null;
+    }
 
     if (data.iconSvg) {
       placementGhost = g.addNode({
         id: "placement-ghost",
         shape: "image",
-        x: center.x - 10,
-        y: center.y - 10,
-        width: 20,
-        height: 20,
+        x: center.x - 20,
+        y: center.y - 20,
+        width: 40,
+        height: 40,
         imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(data.iconSvg)}`,
         attrs: {
           image: {
             preserveAspectRatio: "xMidYMid meet",
-            style: "pointer-events: none;",
+            style: "pointer-events: none; opacity: 0.85;",
           },
         },
       });
@@ -456,23 +465,27 @@ export function initGraph(isDark: boolean): Graph | null {
       placementGhost = g.addNode({
         id: "placement-ghost",
         shape: "rect",
-        x: center.x - 10,
-        y: center.y - 10,
-        width: 20,
-        height: 20,
+        x: center.x - 20,
+        y: center.y - 20,
+        width: 40,
+        height: 40,
         attrs: {
           body: {
             fill: fillColor,
             stroke: strokeColor,
-            strokeDasharray: "5 5",
+            strokeDasharray: "4 2",
             strokeWidth: 2,
-            opacity: 0.5,
+            rx: 6,
+            ry: 6,
+            opacity: 0.85,
             pointerEvents: "none",
           },
           text: {
             text: data.className.split(".").pop(),
             fill: strokeColor,
             pointerEvents: "none",
+            fontSize: 10,
+            fontWeight: "600",
           },
         },
       });
@@ -481,24 +494,20 @@ export function initGraph(isDark: boolean): Graph | null {
 
   const handlePointerMove = (x: number, y: number) => {
     if (placementGhost) {
-      placementGhost.position(x - 10, y - 10);
+      placementGhost.position(x - 20, y - 20);
     }
   };
   g.on("blank:pointermove", ({ x, y }: { x: number; y: number }) => handlePointerMove(x, y));
   g.on("cell:pointermove", ({ x, y }: { x: number; y: number }) => handlePointerMove(x, y));
 
   const handlePlacementClick = (x: number, y: number) => {
-    console.log("[diagram-core] handlePlacementClick", { x, y, placementData });
     if (placementData) {
-      console.log("[diagram-core] enqueuing diagram action from handlePlacementClick");
+      // Trigger the bounce animation placeholder while the action is processed
+      dropComponentGhost(g, x, y, placementData.className, placementData.iconSvg, isDark);
       enqueueDiagramAction({ type: "addComponent", className: placementData.className, x, y });
       if (placementGhost) {
-        placementGhost.attr("image/style", "opacity: 0.5; pointer-events: none;");
-        if (placementGhost.shape === "rect") {
-          placementGhost.attr("body/strokeDasharray", null);
-          placementGhost.attr("body/opacity", 0.5);
-        }
-        placementGhost = null; // Detach from mouse movement
+        placementGhost.remove();
+        placementGhost = null;
       }
       placementData = null;
     }
@@ -1092,6 +1101,12 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   const g = initGraph(isDark);
   if (!g) return;
 
+  // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives
+  const placeholder = g.getCellById("__drop_placeholder__");
+  if (placeholder) g.removeCell(placeholder);
+  const ghost = g.getCellById("placement-ghost");
+  if (ghost) g.removeCell(ghost);
+
   // Build nodes from diagram data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodes: any[] = [];
@@ -1471,7 +1486,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       id === "__diagram_background__" ||
       id.startsWith("solder_dot_") ||
       id.startsWith("__seq_stem_") ||
-      id === "placement-ghost";
+      id === "placement-ghost" ||
+      id === "__drop_placeholder__";
 
     const existingNodeIds = new Set<string>();
     const existingEdgeIds = new Set<string>();
@@ -1993,64 +2009,6 @@ export function updateParameterText(nodeId: string, paramName: string, oldValue:
     if (oldValue && content.includes(oldValue)) {
       textEl.textContent = content.replace(oldValue, newValue);
     }
-  }
-}
-
-export function dropComponentGhost(
-  g: Graph,
-  x: number,
-  y: number,
-  className: string,
-  iconSvg?: string | null,
-  isDark?: boolean,
-) {
-  const strokeColor = isDark ? "#cccccc" : "#333333";
-  const fillColor = isDark ? "rgba(204, 204, 204, 0.1)" : "rgba(51, 51, 51, 0.1)";
-
-  // Remove any previous placeholder
-  const existing = g.getCellById("__drop_placeholder__");
-  if (existing) g.removeCell(existing);
-
-  if (iconSvg) {
-    g.addNode({
-      id: "__drop_placeholder__",
-      shape: "image",
-      x: x - 10,
-      y: y - 10,
-      width: 20,
-      height: 20,
-      imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`,
-      attrs: {
-        image: {
-          preserveAspectRatio: "xMidYMid meet",
-          style:
-            "pointer-events: none; animation: drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;",
-        },
-      },
-    });
-  } else {
-    g.addNode({
-      id: "__drop_placeholder__",
-      shape: "rect",
-      x: x - 10,
-      y: y - 10,
-      width: 20,
-      height: 20,
-      attrs: {
-        body: {
-          fill: fillColor,
-          stroke: strokeColor,
-          strokeWidth: 2,
-          pointerEvents: "none",
-          style: "animation: drop-placeholder-pulse 1.2s ease-in-out infinite, drop-placeholder-appear 0.2s ease-out;",
-        },
-        text: {
-          text: className.split(".").pop(),
-          fill: strokeColor,
-          pointerEvents: "none",
-        },
-      },
-    });
   }
 }
 

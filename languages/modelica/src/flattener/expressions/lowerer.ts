@@ -34,7 +34,7 @@ import { ModelicaErrorCode } from "../../errors.js";
 import { isScopeEncapsulated } from "../../queries.js";
 import { getElementDiagRange } from "../support/range-utils.js";
 import { getFlatteningState, popLoopVar, pushLoopVar } from "../support/state.js";
-import type { ComponentInstanceData } from "../types.js";
+import type { ComponentInstanceData, LoweringContext } from "../types.js";
 import {
   addArrayBinaryExpr,
   areExpressionsEqual,
@@ -95,10 +95,11 @@ import {
   vectorizeFunctionCall,
 } from "./functions.js";
 
+export function lowerCSTExpression(node: SyntaxNode | null | undefined, dae: DAEBuilder, ctx: LoweringContext): number;
 export function lowerCSTExpression(
   node: SyntaxNode | null | undefined,
   dae: DAEBuilder,
-  prefix = "",
+  prefix?: string,
   substitutions?: Map<string, number | string>,
   imports?: Map<string, string>,
   db?: QueryDB,
@@ -106,8 +107,60 @@ export function lowerCSTExpression(
   tupleContext?: boolean,
   noArrayExpand?: boolean,
   isAssignmentLhs?: boolean,
+): number;
+export function lowerCSTExpression(
+  node: SyntaxNode | null | undefined,
+  dae: DAEBuilder,
+  ctxOrPrefix?: LoweringContext | string,
+  posSubstitutions?: Map<string, number | string>,
+  posImports?: Map<string, string>,
+  posDb?: QueryDB,
+  posFlattener?: any,
+  posTupleContext?: boolean,
+  posNoArrayExpand?: boolean,
+  posIsAssignmentLhs?: boolean,
 ): number {
   if (!node) return -1;
+  let prefix = "";
+  let substitutions: Map<string, number | string> | undefined;
+  let imports: Map<string, string> | undefined;
+  let db: QueryDB | undefined;
+  let flattener: any;
+  let tupleContext: boolean | undefined;
+  let noArrayExpand: boolean | undefined;
+  let isAssignmentLhs: boolean | undefined;
+
+  if (typeof ctxOrPrefix === "object" && ctxOrPrefix !== null) {
+    prefix = ctxOrPrefix.prefix ?? "";
+    substitutions = ctxOrPrefix.substitutions;
+    imports = ctxOrPrefix.imports;
+    db = ctxOrPrefix.db;
+    flattener = ctxOrPrefix.flattener;
+    tupleContext = ctxOrPrefix.tupleContext;
+    noArrayExpand = ctxOrPrefix.noArrayExpand;
+    isAssignmentLhs = ctxOrPrefix.isAssignmentLhs;
+  } else {
+    prefix = typeof ctxOrPrefix === "string" ? ctxOrPrefix : "";
+    substitutions = posSubstitutions;
+    imports = posImports;
+    db = posDb;
+    flattener = posFlattener;
+    tupleContext = posTupleContext;
+    noArrayExpand = posNoArrayExpand;
+    isAssignmentLhs = posIsAssignmentLhs;
+  }
+
+  const ctx: LoweringContext = {
+    prefix,
+    substitutions,
+    imports,
+    db,
+    flattener,
+    tupleContext,
+    noArrayExpand,
+    isAssignmentLhs,
+  };
+
   const type = node.type;
 
   // Single-child unwrap for wrappers
@@ -126,34 +179,12 @@ export function lowerCSTExpression(
       type === "ExpressionList") &&
     node.childCount === 1
   ) {
-    return lowerCSTExpression(
-      node.child(0),
-      dae,
-      prefix,
-      substitutions,
-      imports,
-      db,
-      flattener,
-      tupleContext,
-      noArrayExpand,
-      isAssignmentLhs,
-    );
+    return lowerCSTExpression(node.child(0), dae, ctx);
   }
 
   // Parenthesized expression: "(" expr ")"
   if (node.childCount === 3 && Cst.kind(node.child(0)) === "(" && Cst.kind(node.child(2)) === ")") {
-    return lowerCSTExpression(
-      node.child(1),
-      dae,
-      prefix,
-      substitutions,
-      imports,
-      db,
-      flattener,
-      tupleContext,
-      noArrayExpand,
-      isAssignmentLhs,
-    );
+    return lowerCSTExpression(node.child(1), dae, ctx);
   }
 
   // Real or Integer literal

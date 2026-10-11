@@ -450,13 +450,13 @@ export class ArenaSimulator {
       if (funcName !== "assert") continue;
 
       // assert(condition, message): first arg = condition, second = message
-      const firstArg = callExprId + 1; // condition ExprId
-      const secondArg = callExprId + 2; // message ExprId (may not exist)
       const argCount = this.arena.getExprRight(callExprId);
+      const firstArg = this.arena.getExprLeft(callExprId); // condition ExprId
+      const secondArg = argCount >= 2 ? this.arena.getExprLeft(callExprId + 1) : -1; // message ExprId
 
       this.assertions.push({
         conditionExprId: firstArg,
-        messageExprId: argCount >= 2 ? secondArg : -1,
+        messageExprId: secondArg,
       });
     }
   }

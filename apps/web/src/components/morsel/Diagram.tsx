@@ -181,11 +181,31 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
+          const g = getGraph();
+          if (g && containerRef.current) {
+            const p = g.clientToLocal(e.clientX, e.clientY);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (window as any).__movePlacementGhost?.(p.x, p.y);
+          }
         }}
         onDrop={(e) => {
           e.preventDefault();
-          const className = e.dataTransfer.getData("application/vnd.modelscript.classname");
-          const iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconsvg");
+          let className = e.dataTransfer.getData("application/vnd.modelscript.classname");
+          let iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconsvg");
+          if (!className) {
+            try {
+              const json = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+              if (json) {
+                const parsed = JSON.parse(json);
+                if (parsed.className) {
+                  className = parsed.className;
+                  if (parsed.iconSvg) iconSvg = parsed.iconSvg;
+                }
+              }
+            } catch {
+              // ignore json parse error
+            }
+          }
 
           if (className && containerRef.current) {
             syncDiagramOptions();
@@ -193,7 +213,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             if (!g) return;
             const p = g.clientToLocal(e.clientX, e.clientY);
 
-            // Render the pop animation placeholder while the action queues
+            // Render the pop & bounce animation placeholder while the action queues
             dropComponentGhost(g, p.x, p.y, className, iconSvg, props.theme === "vs-dark");
 
             if (props.onDrop) {

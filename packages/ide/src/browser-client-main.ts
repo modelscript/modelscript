@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { simulateDroneReachability } from "@modelscript/runtime";
 
 import * as vscode from "vscode";
 import { Uri, commands, workspace } from "vscode";
@@ -50,7 +51,7 @@ import { InpEditorProvider } from "./inp-editor-provider";
 import { OptimizationPanel } from "./optimization-panel";
 import { PacemakerProgrammerPanel } from "./pacemaker-programmer-panel";
 import { SimulationViewPanel } from "./physics-setup-editor-provider";
-import { SimulationPanel } from "./simulation-panel";
+import { FlowpipeEnvelope, SimulationPanel } from "./simulation-panel";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./ssp-document-provider";
 import { StepEditorProvider } from "./step-editor-provider";
 import { SurrogatePanel } from "./surrogate-panel";
@@ -396,6 +397,9 @@ export async function activate(context: vscode.ExtensionContext) {
     "modelscript.action.flatten",
     "modelscript.flatten",
     "modelscript.runSimulation",
+    "modelscript.scad.preview_csg",
+    "modelscript.scad.export_step",
+    "modelscript.previewCsg",
   ]);
 
   async function getProjectDependencies() {
@@ -582,7 +586,28 @@ export async function activate(context: vscode.ExtensionContext) {
     (context.extension?.packageJSON?.contributes?.languages as { id: string; extensions?: string[] }[] | undefined) ||
     [];
   const dynamicLanguageSelectors: ({ language: string } | { pattern: string })[] = [];
-  const allExts: string[] = ["mo", "mos", "sysml", "sysml2", "step", "stp", "p21", "owl", "ttl", "ofn", "csv", "scad"];
+  const allExts: string[] = [
+    "mo",
+    "mos",
+    "sysml",
+    "sysml2",
+    "step",
+    "stp",
+    "p21",
+    "owl",
+    "ttl",
+    "ofn",
+    "csv",
+    "scad",
+    "cfg",
+    "cfd",
+    "cfgt",
+    "su2",
+    "inp",
+    "fea",
+    "inpt",
+    "bdf",
+  ];
 
   if (contributedLanguages.length > 0) {
     for (const lang of contributedLanguages) {
@@ -603,6 +628,8 @@ export async function activate(context: vscode.ExtensionContext) {
       { language: "owl2" },
       { language: "csv" },
       { language: "scad" },
+      { language: "cfd" },
+      { language: "fea" },
     );
   }
 
@@ -661,6 +688,9 @@ export async function activate(context: vscode.ExtensionContext) {
               if (action.id === "open_cad_viewer") {
                 return await vscode.commands.executeCommand("modelscript.openStepViewer", args);
               }
+              if (action.id === "preview_csg" || action.id === "scad_preview_csg") {
+                return await vscode.commands.executeCommand("modelscript.previewCsg", args);
+              }
               if (action.id === "open_requirements_matrix") {
                 return await vscode.commands.executeCommand("modelscript.openRequirements", args);
               }
@@ -688,7 +718,11 @@ export async function activate(context: vscode.ExtensionContext) {
               if (action.id === "create_cfd_setup") {
                 return await vscode.commands.executeCommand("modelscript.createCfdSetup", args);
               }
-              if (action.id === "export_step") {
+              if (action.id === "export_step" || action.id === "scad_export_step") {
+                const isScad = targetUri?.endsWith(".scad") || activeDoc?.languageId === "scad";
+                if (isScad) {
+                  return await vscode.commands.executeCommand("modelscript.scad.exportStep", args);
+                }
                 return await vscode.commands.executeCommand("modelscript.exportShapeToStep", args);
               }
               if (action.id === "materialize_deck") {
@@ -1278,6 +1312,117 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage("No STEP CAD file found in the workspace.");
       }
     }),
+    commands.registerCommand("modelscript.previewCsg", async (args?: any) => {
+      let targetUri: vscode.Uri | undefined;
+      if (args instanceof vscode.Uri) {
+        targetUri = args;
+      } else if (args?.uri) {
+        targetUri = typeof args.uri === "string" ? vscode.Uri.parse(args.uri) : args.uri;
+      } else {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor?.document && /\.scad$/i.test(activeEditor.document.uri.path)) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+      if (!targetUri) {
+        const scadFiles = await vscode.workspace.findFiles("**/*.scad", undefined, 1);
+        if (scadFiles.length > 0) {
+          targetUri = scadFiles[0];
+        }
+      }
+      if (!targetUri) {
+        vscode.window.showInformationMessage("No OpenSCAD (.scad) file found in the workspace.");
+        return;
+      }
+
+      try {
+        let docText: string | undefined;
+        for (const doc of vscode.workspace.textDocuments) {
+          if (doc.uri.toString() === targetUri.toString()) {
+            docText = doc.getText();
+            break;
+          }
+        }
+        if (!docText) {
+          const raw = await vscode.workspace.fs.readFile(targetUri);
+          docText = new TextDecoder().decode(raw);
+        }
+
+        const res = await client?.sendRequest<any>("modelscript/executeAction", {
+          actionId: "preview_csg",
+          uri: targetUri.toString(),
+          languageId: "scad",
+          inputs: { documentText: docText },
+        });
+
+        if (res && res.step) {
+          const stepUri = targetUri.with({ path: targetUri.path.replace(/\.scad$/i, ".step") });
+          await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(res.step));
+          await vscode.commands.executeCommand(
+            "vscode.openWith",
+            stepUri,
+            StepEditorProvider.viewType,
+            vscode.ViewColumn.Beside,
+          );
+        } else {
+          vscode.window.showWarningMessage("OpenSCAD model evaluated, but produced no 3D solid geometry.");
+        }
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to preview OpenSCAD 3D model: ${err?.message ?? err}`);
+      }
+    }),
+    commands.registerCommand("modelscript.scad.preview_csg", (args?: any) =>
+      vscode.commands.executeCommand("modelscript.previewCsg", args),
+    ),
+    commands.registerCommand("modelscript.scad.exportStep", async (args?: any) => {
+      let targetUri: vscode.Uri | undefined;
+      if (args instanceof vscode.Uri) {
+        targetUri = args;
+      } else if (args?.uri) {
+        targetUri = typeof args.uri === "string" ? vscode.Uri.parse(args.uri) : args.uri;
+      } else {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor?.document && /\.scad$/i.test(activeEditor.document.uri.path)) {
+          targetUri = activeEditor.document.uri;
+        }
+      }
+      if (!targetUri) return;
+      try {
+        let docText: string | undefined;
+        for (const doc of vscode.workspace.textDocuments) {
+          if (doc.uri.toString() === targetUri.toString()) {
+            docText = doc.getText();
+            break;
+          }
+        }
+        if (!docText) {
+          const raw = await vscode.workspace.fs.readFile(targetUri);
+          docText = new TextDecoder().decode(raw);
+        }
+        const res = await client?.sendRequest<any>("modelscript/executeAction", {
+          actionId: "export_step",
+          uri: targetUri.toString(),
+          languageId: "scad",
+          inputs: { documentText: docText },
+        });
+        if (res && res.step) {
+          const stepUri = targetUri.with({ path: targetUri.path.replace(/\.scad$/i, ".step") });
+          await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(res.step));
+          vscode.window.showInformationMessage(`Exported ${stepUri.path.split("/").pop()} to workspace`);
+          await vscode.commands.executeCommand(
+            "vscode.openWith",
+            stepUri,
+            StepEditorProvider.viewType,
+            vscode.ViewColumn.Beside,
+          );
+        }
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Failed to export STEP CAD: ${err?.message ?? err}`);
+      }
+    }),
+    commands.registerCommand("modelscript.scad.export_step", (args?: any) =>
+      vscode.commands.executeCommand("modelscript.scad.exportStep", args),
+    ),
     commands.registerCommand("modelscript.openGCodeViewer", () => {
       vscode.window.showInformationMessage(
         "Clicking on a .gcode file in the explorer now opens the Toolpath Viewer directly.",
@@ -2361,6 +2506,118 @@ END-ISO-10303-21;`;
       if (!targetUri) return;
       VerificationPanel.createOrShow(context.extensionUri, client);
       await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { decisions: true } });
+    }),
+
+    commands.registerCommand("modelscript.openDroneReachabilityDemo", async () => {
+      let m = 1.2;
+      let A = 0.03;
+      let Cd = 0.8;
+      let z_target = 11.0;
+      let kz = 3.1;
+      let kv = 1.35;
+      let w_max = 0.5;
+      let v_limit = 12.0;
+
+      const doc = vscode.window.activeTextEditor?.document;
+      if (doc) {
+        const text = doc.getText();
+        const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
+        if (mMatch) m = parseFloat(mMatch[1]);
+        const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
+        if (aMatch) A = parseFloat(aMatch[1]);
+        const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
+        if (cdMatch) Cd = parseFloat(cdMatch[1]);
+        const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
+        if (zMatch) z_target = parseFloat(zMatch[1]);
+        const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
+        if (kzMatch) kz = parseFloat(kzMatch[1]);
+        const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
+        if (kvMatch) kv = parseFloat(kvMatch[1]);
+        const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
+        if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]);
+      }
+
+      const res = simulateDroneReachability({
+        m,
+        A,
+        Cd,
+        rho: 1.225,
+        z_target,
+        kz,
+        kv,
+        w_max,
+        v_limit,
+      });
+
+      if (client) {
+        await SimulationPanel.createOrShow(context.extensionUri, client);
+      }
+
+      const envelopes: FlowpipeEnvelope[] = [
+        {
+          name: "Interval Arithmetic (Moore 1966)",
+          kind: "interval",
+          color: "#ef4444",
+          fillColor: "rgba(239, 68, 68, 0.12)",
+          borderDash: [5, 4],
+          lo: res.intervalLo,
+          hi: res.intervalHi,
+          peakVal: res.intervalMaxVelocity,
+          breachTime: res.intervalBreachTime,
+          isViolation: true,
+        },
+        {
+          name: "Octagon DBM Drift",
+          kind: "octagon",
+          color: "#f59e0b",
+          fillColor: "rgba(245, 158, 11, 0.15)",
+          borderDash: [4, 4],
+          lo: res.octagonLo,
+          hi: res.octagonHi,
+        },
+        {
+          name: "Affine Form Noise Symbols",
+          kind: "affine",
+          color: "#0ea5e9",
+          fillColor: "rgba(14, 165, 233, 0.18)",
+          lo: res.affineLo,
+          hi: res.affineHi,
+        },
+        {
+          name: "WASM Zonotopes (Girard Reduction)",
+          kind: "zonotope",
+          color: "#22c55e",
+          fillColor: "rgba(34, 197, 94, 0.28)",
+          lo: res.zonotopeLo,
+          hi: res.zonotopeHi,
+          peakVal: res.zonotopeMaxVelocity,
+        },
+      ];
+
+      SimulationPanel.postReachabilityData({
+        t: res.time,
+        variable: "v",
+        nominalTrajectory: res.nominal,
+        envelopes,
+        requirementLimit: 12.0,
+        requirementLabel: "SysML v2 FlightCeiling: v(t) <= 12.0 m/s",
+        isCertifiedSafe: res.isCertifiedSafe,
+        statusBadges: [
+          { text: `Zonotope Proves SAT (Peak v = ${res.zonotopeMaxVelocity} <= ${v_limit} m/s)`, kind: "pass" },
+          { text: `Interval Wrapping Blowup (Spurious Breach @ t = ${res.intervalBreachTime}s)`, kind: "warn" },
+        ],
+        yRange: [-6.0, 15.5],
+      });
+
+      if (res.isCertifiedSafe) {
+        vscode.window.showInformationMessage(
+          `✔ Reachability Verified Safe: Zonotope Peak v = ${res.zonotopeMaxVelocity} m/s <= ${v_limit} m/s (< 3ms)`,
+        );
+      } else {
+        vscode.window.showWarningMessage(
+          `⚠ Reachability Violated: Peak v = ${res.zonotopeMaxVelocity} m/s > ${v_limit} m/s!`,
+        );
+      }
     }),
     commands.registerCommand("modelscript.runReachabilityFlowpipe", async (uri?: string) => {
       if (!client) return;

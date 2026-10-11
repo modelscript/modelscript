@@ -629,10 +629,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       0%, 100% { opacity: 0.6; transform: scale(1); }
       50% { opacity: 0.9; transform: scale(1.04); }
     }
+    @keyframes drop-placeholder-bounce {
+      0% { opacity: 0; transform: scale(0.2); }
+      40% { opacity: 1; transform: scale(1.18); }
+      65% { transform: scale(0.92); }
+      85% { transform: scale(1.04); }
+      100% { opacity: 1; transform: scale(1); }
+    }
     @keyframes drop-placeholder-appear {
-      0% { opacity: 0; transform: scale(0.3); }
-      50% { opacity: 1; transform: scale(1.15); }
-      70% { transform: scale(0.92); }
+      0% { opacity: 0; transform: scale(0.2); }
+      40% { opacity: 1; transform: scale(1.18); }
+      65% { transform: scale(0.92); }
+      85% { transform: scale(1.04); }
       100% { opacity: 1; transform: scale(1); }
     }
 

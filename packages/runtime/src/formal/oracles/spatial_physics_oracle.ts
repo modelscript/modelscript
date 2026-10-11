@@ -41,6 +41,14 @@ export interface FsiEquilibriumSpec {
   tolerance?: number; // N (residual tolerance)
 }
 
+export interface DroneSlicingProperties {
+  mass: number;
+  maxVonMisesPa: number;
+  yieldStrengthPa: number;
+  frontalAreaM2: number;
+  dragCoeff: number;
+}
+
 export interface SolidGeometrySpec {
   solidName: string;
   isWatertight: boolean;
@@ -61,6 +69,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   private deflectionSpecs = new Map<string, DeflectionMeasurementSpec>();
   private fsiSpecs = new Map<string, FsiEquilibriumSpec>();
   private solidSpecs = new Map<string, SolidGeometrySpec>();
+  private droneProps?: DroneSlicingProperties;
   private externalBounds = new Map<string, [number, number]>();
 
   private assertedLiterals = new Map<number, TheoryLiteral>();
@@ -82,11 +91,21 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.reset();
   }
 
+  public assertDroneSlicingProperties(props: DroneSlicingProperties): void {
+    this.assertLiteral({
+      id: this.nextLiteralId++,
+      predicate: "droneSlicing",
+      args: [props],
+      domain: this.domain,
+    });
+  }
+
   public reset(): void {
     this.stressSpecs.clear();
     this.deflectionSpecs.clear();
     this.fsiSpecs.clear();
     this.solidSpecs.clear();
+    this.droneProps = undefined;
     this.externalBounds.clear();
     this.externalBoundJustifications.clear();
     this.assertedLiterals.clear();
@@ -172,6 +191,13 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     const { predicate, args } = lit;
 
     switch (predicate) {
+      case "droneSlicing": {
+        const props = args[0] as DroneSlicingProperties;
+        if (props) {
+          this.droneProps = { ...props };
+        }
+        break;
+      }
       case "stressMeasurement":
       case "feaStress": {
         if (args[0] && typeof args[0] === "object" && "partName" in args[0]) {
@@ -296,6 +322,19 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+    // 0. Drone Multi-Physics Slicing Stress Verification
+    if (this.droneProps && this.droneProps.maxVonMisesPa > this.droneProps.yieldStrengthPa) {
+      return {
+        isSat: false,
+        conflict: {
+          literals: Array.from(this.assertedLiterals.values()).filter((l) => l.predicate === "droneSlicing"),
+          explanation: `Drone arm structural yield failure: maximum stress ${(this.droneProps.maxVonMisesPa / 1e6).toFixed(1)} MPa exceeds yield limit ${(this.droneProps.yieldStrengthPa / 1e6).toFixed(1)} MPa.`,
+          culpritEntities: ["DroneArm"],
+          theoryName: this.name,
+        },
+      };
+    }
+
     // 1. Material Yield & Ultimate Stress Verification (FEA)
     for (const [partName, spec] of this.stressSpecs.entries()) {
       const sf = spec.safetyFactor && spec.safetyFactor > 0 ? spec.safetyFactor : 1.0;
@@ -527,6 +566,33 @@ export class SpatialPhysicsOracle implements TheoryOracle {
           sourceOracle: this.name,
         });
       }
+    }
+
+    if (this.droneProps) {
+      equalities.push({
+        varA: "DroneSimulation.m",
+        varB: "DroneSimulation.m",
+        domain: "interval",
+        bounds: [this.droneProps.mass, this.droneProps.mass],
+        explanation: `FEA structural sizing derived mass m = ${this.droneProps.mass} kg`,
+        sourceOracle: this.name,
+      });
+      equalities.push({
+        varA: "DroneSimulation.A",
+        varB: "DroneSimulation.A",
+        domain: "interval",
+        bounds: [this.droneProps.frontalAreaM2, this.droneProps.frontalAreaM2],
+        explanation: `CAD projected frontal area A = ${this.droneProps.frontalAreaM2} m²`,
+        sourceOracle: this.name,
+      });
+      equalities.push({
+        varA: "DroneSimulation.Cd",
+        varB: "DroneSimulation.Cd",
+        domain: "interval",
+        bounds: [this.droneProps.dragCoeff, this.droneProps.dragCoeff],
+        explanation: `CFD aerodynamic drag polar Cd = ${this.droneProps.dragCoeff}`,
+        sourceOracle: this.name,
+      });
     }
 
     return equalities;

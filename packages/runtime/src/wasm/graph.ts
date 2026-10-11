@@ -1170,6 +1170,18 @@ class ScopeAPI {
   @inline getSuffixAfterPrefix(id: u32, prefixId: u32): u32 {
     return this.pool.getSuffixAfterPrefix(id, prefixId);
   }
+
+  @inline isTime(id: u32): boolean {
+    return this.pool.isTime(id);
+  }
+
+  @inline hasDot(id: u32): boolean {
+    return this.pool.hasDot(id);
+  }
+
+  @inline getParentPrefix(id: u32): u32 {
+    return this.pool.getParentPrefix(id);
+  }
 }
 
 

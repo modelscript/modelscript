@@ -109,6 +109,10 @@ export const FLAG_VAR_STREAM: number = 1 << 2;
 export const FLAG_VAR_STATE: number = 1 << 3;
 export const FLAG_VAR_STATE_DER: number = 1 << 4;
 export const FLAG_VAR_FIXED: number = 1 << 5;
+export const FLAG_VAR_REMOVED: number = 1 << 6;
+export const FLAG_VAR_PROTECTED: number = 1 << 7;
+export const FLAG_VAR_FINAL: number = 1 << 8;
+export const FLAG_VAR_VIRTUAL: number = 1 << 9;
 
 export const FLAG_EQ_INITIAL: number = 1 << 0;
 export const FLAG_EQ_OVERCONSTRAINED: number = 1 << 1;
@@ -176,16 +180,16 @@ export function createSet64(): UnmanagedSet64 {
   };
 }
 
-export function getNodeFirstChild(nodePtr: number): number {
+export function getNodeFirstChild(_nodePtr: number): number {
   return 0;
 }
-export function getNodeNextSibling(nodePtr: number): number {
+export function getNodeNextSibling(_nodePtr: number): number {
   return 0;
 }
-export function getNodeType(nodePtr: number): number {
+export function getNodeType(_nodePtr: number): number {
   return 0;
 }
-export function atomicChunkAlloc(bytes: number): number {
+export function atomicChunkAlloc(_bytes: number): number {
   return 0;
 }
 

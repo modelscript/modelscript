@@ -269,3 +269,28 @@ export function applyBoundaryActionToConfig(
 
   return `${configText}\n${directive}\n`;
 }
+
+export interface CfdSlicingProperties {
+  cd: number;
+  refArea: number;
+  density: number;
+  freeStreamVelocity: number;
+}
+
+/**
+ * Evaluates an SU2/OpenFOAM CFD configuration to extract aerodynamic drag
+ * parameters for theory slicing into 1D continuous DAE flight models.
+ */
+export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperties {
+  const cdMatch = cfgText.match(/\bCd_total\s*=\s*([\d.]+)/i) || cfgText.match(/\bCD\s*=\s*([\d.]+)/i);
+  const areaMatch = cfgText.match(/REF_AREA\s*=\s*([\d.]+)/i);
+  const rhoMatch = cfgText.match(/INC_DENSITY_INIT\s*=\s*([\d.]+)/i);
+  const velMatch = cfgText.match(/INC_VELOCITY_INIT\s*=\s*\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i);
+
+  const cd = cdMatch ? parseFloat(cdMatch[1]) : 0.8;
+  const refArea = areaMatch ? parseFloat(areaMatch[1]) : 0.03;
+  const density = rhoMatch ? parseFloat(rhoMatch[1]) : 1.225;
+  const freeStreamVelocity = velMatch ? parseFloat(velMatch[1]) : 10.0;
+
+  return { cd, refArea, density, freeStreamVelocity };
+}

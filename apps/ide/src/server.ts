@@ -105,6 +105,14 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
       "security.workspace.trust.banner": "never",
+      "files.associations": {
+        "*.cfg": "cfd",
+        "*.cfgt": "cfd",
+        "*.su2": "cfd",
+        "*.inp": "fea",
+        "*.inpt": "fea",
+        "*.bdf": "fea",
+      },
     },
   };
 
@@ -171,6 +179,14 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   config.configurationDefaults["security.workspace.trust.enabled"] = false;
   config.configurationDefaults["security.workspace.trust.startupPrompt"] = "never";
   config.configurationDefaults["security.workspace.trust.banner"] = "never";
+  config.configurationDefaults["files.associations"] = {
+    "*.cfg": "cfd",
+    "*.cfgt": "cfd",
+    "*.su2": "cfd",
+    "*.inp": "fea",
+    "*.inpt": "fea",
+    "*.bdf": "fea"
+  };
   
   var builtinEl = document.getElementById('vscode-workbench-builtin-extensions');
   if (builtinEl) {
@@ -290,7 +306,14 @@ app.use((req, _res, next) => {
 app.use("/vscode-static", express.static(VSCODE_WEB_DIR, { dotfiles: "allow" }));
 
 // ModelScript extension
-app.use("/static/devextensions", express.static(MODELSCRIPT_EXT_DIR, { dotfiles: "allow" }));
+app.use(
+  "/static/devextensions",
+  (req, res, next) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    next();
+  },
+  express.static(MODELSCRIPT_EXT_DIR, { dotfiles: "allow" }),
+);
 
 // GitHub FS extension
 app.use("/static/extensions/github-fs", express.static(GITHUB_FS_EXT_DIR, { dotfiles: "allow" }));
@@ -499,6 +522,15 @@ app.get("/", (_req, res) => {
     border-color: rgba(56, 189, 248, 0.85);
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(56, 189, 248, 0.25);
   }
+  .workspace-tile.drone-tile {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 182, 212, 0.1) 100%);
+    border-color: rgba(16, 185, 129, 0.45);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(16, 185, 129, 0.12);
+  }
+  .workspace-tile.drone-tile:hover {
+    border-color: rgba(16, 185, 129, 0.9);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(16, 185, 129, 0.28);
+  }
   .workspace-tile.bouncing-ball-tile {
     background: linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.1) 100%);
     border-color: rgba(236, 72, 153, 0.4);
@@ -527,6 +559,15 @@ app.get("/", (_req, res) => {
     letter-spacing: 0.05em;
     text-transform: uppercase;
     padding: 3px 10px;
+  }
+  .workspace-badge.drone-badge {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.35);
+  }
+  .badge-dot.drone-dot {
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
   }
   .workspace-badge.ball-badge {
     background: rgba(236, 72, 153, 0.15);
@@ -567,6 +608,11 @@ app.get("/", (_req, res) => {
     border-radius: 12px;
     color: #38bdf8;
   }
+  .workspace-icon.drone-icon {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #10b981;
+  }
   .workspace-icon.ball-icon {
     background: rgba(236, 72, 153, 0.1);
     border-color: rgba(236, 72, 153, 0.25);
@@ -599,6 +645,10 @@ app.get("/", (_req, res) => {
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
     transition: opacity 0.2s;
+  }
+  .workspace-btn.drone-btn {
+    background: linear-gradient(135deg, #059669, #0284c7);
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.35);
   }
   .workspace-btn.ball-btn {
     background: linear-gradient(135deg, #e11d48, #9333ea);
@@ -730,6 +780,36 @@ app.get("/", (_req, res) => {
       </div>
       <div class="workspace-footer">
         <span class="workspace-btn">Launch Blank Workspace &rarr;</span>
+      </div>
+    </a>
+
+    <a href="/vscode/workbench/#memfs:drone-reachability" class="workspace-tile drone-tile">
+      <div class="workspace-header">
+        <span class="workspace-badge drone-badge"><span class="badge-dot drone-dot"></span> Polyglot Reachability</span>
+        <span class="workspace-tag">OpenSCAD &bull; FEA/CFD &bull; SysML v2 &bull; WASM Zonotopes</span>
+      </div>
+      <div class="workspace-body">
+        <div class="workspace-icon drone-icon">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 9v6M9 12h6"></path>
+            <circle cx="12" cy="12" r="2.5"></circle>
+            <line x1="5" y1="5" x2="10" y2="10"></line>
+            <line x1="19" y1="5" x2="14" y2="10"></line>
+            <line x1="5" y1="19" x2="10" y2="14"></line>
+            <line x1="19" y1="19" x2="14" y2="14"></line>
+            <circle cx="4" cy="4" r="2"></circle>
+            <circle cx="20" cy="4" r="2"></circle>
+            <circle cx="4" cy="20" r="2"></circle>
+            <circle cx="20" cy="20" r="2"></circle>
+          </svg>
+        </div>
+        <div class="workspace-text">
+          <div class="workspace-title">Polyglot Drone Reachability Workspace</div>
+          <div class="workspace-desc">End-to-end multi-physics verification linking OpenSCAD 3D airframe, FEA stress &amp; CFD drag polar slicing, SysML v2 safety contracts, and Modelica DAE with Nelson-Oppen theory coordination and WebAssembly zonotope reachability.</div>
+        </div>
+      </div>
+      <div class="workspace-footer">
+        <span class="workspace-btn drone-btn">Launch Drone Reachability &rarr;</span>
       </div>
     </a>
 

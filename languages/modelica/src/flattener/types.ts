@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { QueryDB, SymbolId } from "@modelscript/runtime";
 
-import type { SymbolId } from "@modelscript/runtime";
+export interface LoweringContext {
+  prefix?: string;
+  substitutions?: Map<string, number | string>;
+  imports?: Map<string, string>;
+  db?: QueryDB;
+  flattener?: any;
+  tupleContext?: boolean;
+  noArrayExpand?: boolean;
+  isAssignmentLhs?: boolean;
+}
 
 export type FlattenerBackend = "ts" | "wasm" | "hybrid" | "diff";
 

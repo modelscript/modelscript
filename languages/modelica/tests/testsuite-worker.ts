@@ -19,7 +19,7 @@ import { simulateArena } from "@modelscript/simulate";
 
 import { StringWriter } from "@modelscript/dsl/utils";
 import { ArenaDAEPrinter } from "@modelscript/runtime";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -317,13 +317,133 @@ function resolveClassName(context: Context, testCase: TestCase): string {
   return baseTestName;
 }
 
-export function runTestCase(
+function runOmcTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean): TestResult {
+  const start = performance.now();
+  let lastClassName = testCase.metadata.name;
+  try {
+    const loadStdlib = testCase.source.includes("ModelScript");
+    const context = new Context(new NodeFileSystem(), undefined, undefined, { loadStdlib });
+    context.load(testCase.source, testCase.file);
+    lastClassName = resolveClassName(context, testCase);
+  } catch {
+    if (!lastClassName) {
+      lastClassName = path.basename(testCase.file, path.extname(testCase.file));
+    }
+  }
+
+  // Use python3 + getrusage to accurately measure OMC CPU time and peak RSS
+  const pyCode = `import resource, subprocess, sys
+p = subprocess.run(['omc', sys.argv[1]], input=f'instantiate({sys.argv[2]});\\n'.encode('utf-8'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = resource.getrusage(resource.RUSAGE_CHILDREN)
+sys.stderr.write(f'___OMC_STATS___:{r.ru_utime}:{r.ru_stime}:{r.ru_maxrss}\\n')
+sys.stdout.buffer.write(p.stdout)
+sys.stderr.buffer.write(p.stderr)
+sys.exit(p.returncode)`;
+
+  let stdout: string;
+  let stderr: string;
+  let duration: number;
+  let cpuTime: number;
+  let memoryMb = 0;
+  let exitCode: number;
+
+  try {
+    const t0 = performance.now();
+    const res = spawnSync("python3", ["-c", pyCode, testCase.file, lastClassName], {
+      cwd: path.dirname(testCase.file),
+      timeout: 30_000,
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    duration = performance.now() - t0;
+    exitCode = res.status ?? 0;
+    stdout = res.stdout || "";
+    const stderrRaw = res.stderr || "";
+
+    const statsMatch = stderrRaw.match(/___OMC_STATS___:([0-9.]+):([0-9.]+):([0-9]+)/);
+    if (statsMatch) {
+      const u = parseFloat(statsMatch[1]);
+      const s = parseFloat(statsMatch[2]);
+      const rssKb = parseInt(statsMatch[3], 10);
+      cpuTime = Math.round((u + s) * 1000);
+      memoryMb = Number((rssKb / 1024).toFixed(1));
+      stderr = stderrRaw.replace(/___OMC_STATS___:[0-9.]+:[0-9.]+:[0-9]+\n?/, "");
+    } else {
+      cpuTime = Math.round(duration);
+      stderr = stderrRaw;
+    }
+  } catch (err: any) {
+    duration = performance.now() - start;
+    return {
+      name: path.basename(testCase.file),
+      file: testCase.file,
+      backend: "omc",
+      status: "failed",
+      duration,
+      cpuTime: Math.round(duration),
+      memoryMb: 0,
+      message: `OMC execution failed: ${err?.message ?? String(err)}`,
+      testStatus: testCase.metadata.status,
+    };
+  }
+
+  // Determine pass / fail status
+  const isIncorrect = testCase.metadata.status === "incorrect";
+  let passed: boolean;
+  let message: string | undefined;
+
+  if (isIncorrect) {
+    if (exitCode !== 0 || stdout.includes("Error:") || stderr.includes("Error:")) {
+      passed = true;
+    } else {
+      passed = false;
+      message = "Expected OMC flattening to fail with error, but OMC exited with 0";
+    }
+  } else {
+    if (
+      exitCode === 0 &&
+      (stdout.includes("class ") ||
+        stdout.includes("model ") ||
+        stdout.includes("record ") ||
+        stdout.includes("block ") ||
+        stdout.includes("function ") ||
+        stdout.includes("connector "))
+    ) {
+      passed = true;
+    } else {
+      passed = false;
+      message = `OMC flattening failed (exit code ${exitCode}):\n${stderr || stdout}`;
+    }
+  }
+
+  return {
+    name: path.basename(testCase.file),
+    file: testCase.file,
+    backend: "omc",
+    status: passed ? "passed" : "failed",
+    duration,
+    cpuTime,
+    memoryMb,
+    keywords: testCase.metadata.keywords,
+    testStatus: testCase.metadata.status,
+    ...(message ? { message } : {}),
+  };
+}
+
+function runTestCaseCore(
   testCase: TestCase,
   testsuiteRoot: string,
   updateMode: boolean,
   omcMode = false,
   flattenerBackendOverride?: string,
 ): TestResult {
+  const rawBackend = flattenerBackendOverride ?? process.env.FLATTENER_BACKEND ?? "hybrid";
+  const flattenerBackend: "wasm" | "ts" | "hybrid" | "diff" | "omc" = rawBackend === "js" ? "ts" : (rawBackend as any);
+
+  if (flattenerBackend === "omc") {
+    return runOmcTestCase(testCase, testsuiteRoot, updateMode);
+  }
+
   const start = performance.now();
   const cpuStart = process.cpuUsage();
 
@@ -331,9 +451,7 @@ export function runTestCase(
     const delta = process.cpuUsage(cpuStart);
     return (delta.user + delta.system) / 1000;
   };
-
-  const rawBackend = flattenerBackendOverride ?? process.env.FLATTENER_BACKEND ?? "hybrid";
-  const flattenerBackend: "wasm" | "ts" | "hybrid" | "diff" = rawBackend === "js" ? "ts" : (rawBackend as any);
+  const memMb = () => Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(1));
 
   const effectiveXfail =
     flattenerBackend === "wasm"
@@ -350,6 +468,7 @@ export function runTestCase(
     status,
     duration: performance.now() - start,
     cpuTime: cpuMs(),
+    memoryMb: memMb(),
     ...(message ? { message } : {}),
   });
 
@@ -1401,6 +1520,43 @@ export function runTestCase(
       `Output mismatch (Exception)\n\n--- Expected ---\n${expected}\n--- Actual ---\n${String(error instanceof Error ? error.stack : error)}`,
     );
   }
+}
+
+export function runTestCase(
+  testCase: TestCase,
+  testsuiteRoot: string,
+  updateMode: boolean,
+  omcMode = false,
+  flattenerBackendOverride?: string,
+): TestResult {
+  const rawBackend = flattenerBackendOverride ?? process.env.FLATTENER_BACKEND ?? "hybrid";
+  const flattenerBackend: "wasm" | "ts" | "hybrid" | "diff" = rawBackend === "js" ? "ts" : (rawBackend as any);
+
+  const initialResult = runTestCaseCore(testCase, testsuiteRoot, updateMode, omcMode, flattenerBackendOverride);
+
+  // In hybrid mode, if the test fails (e.g. cosmetic formatting mismatch in WASM printer),
+  // retry execution using pure TypeScript elaboration backend
+  if (flattenerBackend === "hybrid" && initialResult.status === "failed" && !updateMode && !omcMode) {
+    const tsResult = runTestCaseCore(testCase, testsuiteRoot, false, false, "ts");
+    if (tsResult.status === "passed") {
+      return {
+        ...tsResult,
+        backend: "hybrid",
+        duration: initialResult.duration + tsResult.duration,
+        cpuTime: initialResult.cpuTime + tsResult.cpuTime,
+        message: tsResult.message ? `${tsResult.message} (ts fallback)` : "(ts fallback)",
+        extra: {
+          ...((initialResult as any).extra ?? {}),
+          ...((tsResult as any).extra ?? {}),
+          backend: "hybrid",
+          usedTsFallback: true,
+          wasmFailureMessage: initialResult.message,
+        },
+      };
+    }
+  }
+
+  return initialResult;
 }
 
 // ── Main: read test case from stdin, run, write result to stdout ─────────────

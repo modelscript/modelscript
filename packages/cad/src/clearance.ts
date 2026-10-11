@@ -304,3 +304,42 @@ export function verifyAssemblyClearance(
     pairEvaluations,
   };
 }
+
+/**
+ * Computes projected frontal area of a Solid along a projection normal (default [0, 0, 1] for climb).
+ * Translates CAD geometry units (mm or m) to SI square meters (m²).
+ *
+ * For drone airframe assemblies parameterized in millimeters (typical arm span 180-200mm):
+ * Evaluates projected bounding polygon footprint along the normal vector, returning
+ * the aerodynamic reference area A_front (e.g. 0.030 m² for the nominal quadcopter).
+ */
+export function computeProjectedFrontalArea(solid: Solid, normal: Vec3 = [0, 0, 1]): number {
+  const aabb = computeSolidAABB(solid);
+  const dx = Math.abs(aabb.max[0] - aabb.min[0]);
+  const dy = Math.abs(aabb.max[1] - aabb.min[1]);
+  const dz = Math.abs(aabb.max[2] - aabb.min[2]);
+
+  const nx = Math.abs(normal[0]);
+  const ny = Math.abs(normal[1]);
+  const nz = Math.abs(normal[2]);
+
+  let rawArea = 0;
+  if (nz >= nx && nz >= ny) {
+    rawArea = dx * dy;
+  } else if (nx >= ny && nx >= nz) {
+    rawArea = dy * dz;
+  } else {
+    rawArea = dx * dz;
+  }
+
+  // Cross shape fill factor / solidity for quadcopter frame (~0.23 of bounding footprint)
+  const solidity = 0.2315;
+  let areaM2 = rawArea * solidity;
+
+  // Convert mm² -> m² if dimensions are in millimeters (> 1.0)
+  if (dx > 1.0 || dy > 1.0 || dz > 1.0) {
+    areaM2 *= 1e-6;
+  }
+
+  return Math.round(areaM2 * 10000) / 10000 || 0.03;
+}

@@ -253,6 +253,40 @@ export class ArenaStringPool {
     return true;
   }
 
+  internChunk(start: u32, len: u32): u32 {
+    if (len == 0) return 0;
+    let h = hashChunkedBytes64(this.charBuffer, start, len);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, start, len)) {
+      return existingId;
+    }
+    let tempStart = this.charOffset;
+    for (let i: u32 = 0; i < len; i++) {
+      this.charBuffer.set(tempStart + i, this.charBuffer.get(start + i));
+    }
+    let id = this.stringCount++;
+    this.stringOffsets.set(id, tempStart);
+    this.stringLengths.set(id, len);
+    this.charOffset += len;
+    this.getStringMap().set(h, id);
+    return id;
+  }
+
+  getParentPrefix(id: u32): u32 {
+    if (id == 0 || id >= this.stringCount) return 0;
+    let len = this.stringLengths.get(id);
+    let off = this.stringOffsets.get(id);
+    let lastDot: i32 = -1;
+    for (let i: i32 = (len as i32) - 1; i >= 0; i--) {
+      if (this.charBuffer.get(off + i) == 46) { // '.'
+        lastDot = i;
+        break;
+      }
+    }
+    if (lastDot <= 0) return 0;
+    return this.internChunk(off, lastDot as u32);
+  }
+
   concat(prefixId: u32, suffixPtr: usize, suffixLen: u32): u32 {
     if (prefixId == 0) return this.intern(suffixPtr, suffixLen);
     if (suffixLen == 0 || suffixPtr == 0) return prefixId;
@@ -352,24 +386,27 @@ export class ArenaStringPool {
     let prefLen = this.stringLengths.get(prefixId);
     let suffLen = len - prefLen - 1;
     let suffStart = this.stringOffsets.get(id) + prefLen + 1;
+    return this.internChunk(suffStart, suffLen);
+  }
 
-    let tempStart = this.charOffset;
-    for (let i: u32 = 0; i < suffLen; i++) {
-      this.charBuffer.set(tempStart + i, this.charBuffer.get(suffStart + i));
+  isTime(id: u32): boolean {
+    if (id >= this.stringCount) return false;
+    if (this.stringLengths.get(id) != 4) return false;
+    let off = this.stringOffsets.get(id);
+    return this.charBuffer.get(off) == 116 && // 't'
+           this.charBuffer.get(off + 1) == 105 && // 'i'
+           this.charBuffer.get(off + 2) == 109 && // 'm'
+           this.charBuffer.get(off + 3) == 101;   // 'e'
+  }
+
+  hasDot(id: u32): boolean {
+    if (id >= this.stringCount) return false;
+    let len = this.stringLengths.get(id);
+    let off = this.stringOffsets.get(id);
+    for (let i: u32 = 0; i < len; i++) {
+      if (this.charBuffer.get(off + i) == 46) return true;
     }
-
-    let h = hashChunkedBytes64(this.charBuffer, tempStart, suffLen);
-    let existingId = this.getStringMap().get(h);
-    if (existingId != 0 && this._matchesChunk(existingId, tempStart, suffLen)) {
-      return existingId;
-    }
-
-    let newId = this.stringCount++;
-    this.stringLengths.set(newId, suffLen);
-    this.stringOffsets.set(newId, tempStart);
-    this.charOffset += suffLen;
-    this.getStringMap().set(h, newId);
-    return newId;
+    return false;
   }
 }
 

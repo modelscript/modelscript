@@ -955,7 +955,11 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       let eqCount = 0;
       for (const clause of db.ast.getDescendants(node, $.component_clause)) {
         if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
-        if (hasTypePrefix(db, clause, "parameter", $) || hasTypePrefix(db, clause, "constant", $)) {
+        if (
+          hasTypePrefix(db, clause, "parameter", $) ||
+          hasTypePrefix(db, clause, "constant", $) ||
+          hasTypePrefix(db, clause, "input", $)
+        ) {
           continue;
         }
         for (const elem of db.ast.getDescendants(clause, $.component_declaration)) {
@@ -1018,7 +1022,12 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       if ($.component_clause1 != 0) {
         for (const clause of db.ast.getDescendants(node, $.component_clause1)) {
           if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
-          if (hasTypePrefix(db, clause, "parameter", $) || hasTypePrefix(db, clause, "constant", $)) continue;
+          if (
+            hasTypePrefix(db, clause, "parameter", $) ||
+            hasTypePrefix(db, clause, "constant", $) ||
+            hasTypePrefix(db, clause, "input", $)
+          )
+            continue;
           varCount++;
         }
       }

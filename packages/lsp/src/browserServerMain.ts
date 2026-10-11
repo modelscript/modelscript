@@ -258,6 +258,8 @@ const stepWsIndex = new StepWorkspaceIndex();
 workspaceManager.setWorkspaceIndex("step", stepWsIndex);
 workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { priority: 2, name: "step" });
 
+import { cfdLanguage } from "@modelscript/cfd";
+import { feaLanguage } from "@modelscript/fea";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import scadLangFallback from "@modelscript/scad/language";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
@@ -572,6 +574,20 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       },
       languageDef: scadLangFallback,
     });
+
+    globalLanguageRegistry.register({
+      id: "cfd",
+      name: "CFD",
+      extensions: [".cfd", ".cfg", ".cfgt", ".su2"],
+      languageDef: cfdLanguage,
+    });
+
+    globalLanguageRegistry.register({
+      id: "fea",
+      name: "FEA",
+      extensions: [".fea", ".inp", ".inpt", ".bdf"],
+      languageDef: feaLanguage,
+    });
     connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
   };
 
@@ -784,6 +800,18 @@ documents.onDidChangeContent((change) => {
 
   // === TIER 1: Keystroke (0ms) — Fast WASM GLR Incremental Parse + Syntax Errors ===
   const plugin = globalLanguageRegistry.getPluginForUri(uri);
+  const isCfd = plugin?.id === "cfd" || /\.(cfg|cfgt|su2|cfd)$/i.test(uri);
+  const isFea = plugin?.id === "fea" || /\.(inp|inpt|bdf|fea)$/i.test(uri);
+  if (isCfd || isFea) {
+    activeSyntaxDebounceTimers.set(
+      uri,
+      setTimeout(async () => {
+        activeSyntaxDebounceTimers.delete(uri);
+        await validationService.validateTextDocument(change.document);
+      }, 100),
+    );
+    return;
+  }
   const parser =
     plugin?.parser ??
     parserService.getParserForUri(uri) ??

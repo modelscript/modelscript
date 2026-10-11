@@ -268,12 +268,13 @@ export class ParserService {
       getText: (startByte: number, endByte: number, entry?: any): string | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
-        const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+        const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+        const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
         const docTrees =
           this.documentManager?.documentTrees ??
           (this.workspaceManager as any)?.documentManager?.documentTrees ??
           (this.documentManager as any)?.documentManager?.documentTrees;
-        const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri);
+        const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri) ?? docTrees?.get(oneSlashUri);
         if (docTree && docTree.tree && docTree.text) return docTree.text.substring(startByte, endByte);
 
         const lazyLibTrees =
@@ -319,12 +320,13 @@ export class ParserService {
       getNode: (startByte: number, endByte: number, entry?: any): any | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
-        const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+        const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+        const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
         const docTrees =
           this.documentManager?.documentTrees ??
           (this.workspaceManager as any)?.documentManager?.documentTrees ??
           (this.documentManager as any)?.documentManager?.documentTrees;
-        const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri);
+        const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri) ?? docTrees?.get(oneSlashUri);
         if (docTree && docTree.tree) {
           let n = docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
           if (n && n.type === "source_file") {

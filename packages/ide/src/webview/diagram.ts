@@ -93,27 +93,60 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  window.addEventListener("mousemove", (e) => {
+  const handleDropOrPlace = (clientX: number, clientY: number, dataTransfer?: DataTransfer | null) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const getPlacementData = (window as any).__getPlacementData;
-    if (getPlacementData) {
-      const placementData = getPlacementData();
-      if (placementData && placementData.className) {
-        const g = initGraph(isDark);
-        if (g) {
-          const p = g.clientToLocal(e.clientX, e.clientY);
-          dropComponentGhost(g, p.x, p.y, placementData.className, placementData.iconSvg, isDark);
-          enqueueDiagramAction({
-            type: "addComponent",
-            className: placementData.className,
-            x: p.x,
-            y: p.y,
-          });
-          // Dispatch Escape to clear the placement state inside diagram-core
-          window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    let placementData = getPlacementData ? getPlacementData() : null;
+
+    if (!placementData && dataTransfer) {
+      try {
+        const json = dataTransfer.getData("application/json") || dataTransfer.getData("text/plain");
+        if (json) {
+          const parsed = JSON.parse(json);
+          if (parsed && parsed.className) {
+            placementData = parsed;
+          }
+        }
+      } catch {
+        // ignore parse error
+      }
+      if (!placementData) {
+        const className = dataTransfer.getData("application/vnd.modelscript.classname");
+        const iconSvg = dataTransfer.getData("application/vnd.modelscript.iconsvg");
+        if (className) {
+          placementData = { className, iconSvg };
         }
       }
     }
+
+    if (placementData && placementData.className) {
+      const g = initGraph(isDark);
+      if (g) {
+        const p = g.clientToLocal(clientX, clientY);
+        dropComponentGhost(g, p.x, p.y, placementData.className, placementData.iconSvg, isDark);
+        enqueueDiagramAction({
+          type: "addComponent",
+          className: placementData.className,
+          x: p.x,
+          y: p.y,
+        });
+        // Dispatch Escape to clear the placement state inside diagram-core
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      }
+    }
+  };
+
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    handleDropOrPlace(e.clientX, e.clientY, e.dataTransfer);
+  });
+
+  window.addEventListener("mouseup", (e) => {
+    handleDropOrPlace(e.clientX, e.clientY);
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    handleDropOrPlace(e.clientX, e.clientY);
   });
 
   setDiagramOptions({

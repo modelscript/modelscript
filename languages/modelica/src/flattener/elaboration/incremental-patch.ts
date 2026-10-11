@@ -239,18 +239,15 @@ export function patchIncremental(
     tupleContext?: boolean,
     isAssignmentLhs?: boolean,
   ): number => {
-    return lowerCSTExpression(
-      node,
-      targetDae,
+    return lowerCSTExpression(node, targetDae, {
       prefix,
       substitutions,
-      flattener.currentImports,
+      imports: flattener.currentImports,
       db,
       flattener,
       tupleContext,
-      false,
       isAssignmentLhs,
-    );
+    });
   };
 
   // Check for symbol-table variable rename across the model (e.g. Condition 6)

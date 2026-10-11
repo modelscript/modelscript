@@ -65,6 +65,38 @@ export function stripComments(s: string): string {
   return result;
 }
 
+export function stripCommentsAndStrings(s: string): string {
+  let result = "";
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === "/" && s[i + 1] === "/") {
+      const nl = s.indexOf("\n", i + 2);
+      i = nl === -1 ? s.length : nl + 1;
+    } else if (s[i] === "/" && s[i + 1] === "*") {
+      const end = s.indexOf("*/", i + 2);
+      i = end === -1 ? s.length : end + 2;
+    } else if (s[i] === '"') {
+      let j = i + 1;
+      while (j < s.length) {
+        if (s[j] === "\\") {
+          j += 2;
+        } else if (s[j] === '"') {
+          j++;
+          break;
+        } else {
+          j++;
+        }
+      }
+      i = j;
+      result += " ";
+    } else {
+      result += s[i];
+      i++;
+    }
+  }
+  return result;
+}
+
 export function checkIfExprTypeMismatch(
   dae: DAEBuilder,
   exprId: number,

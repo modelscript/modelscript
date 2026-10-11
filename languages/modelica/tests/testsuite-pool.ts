@@ -31,11 +31,13 @@ export interface TestResult {
   status: "passed" | "failed" | "skipped";
   duration: number;
   cpuTime: number;
-  backend?: "wasm" | "ts" | "hybrid" | "diff";
+  memoryMb?: number;
+  backend?: "wasm" | "ts" | "hybrid" | "diff" | "omc";
   message?: string;
   keywords?: string;
   testStatus?: string;
   xfail?: boolean | string;
+  extra?: Record<string, unknown>;
 }
 
 export interface PoolOptions {
@@ -53,7 +55,7 @@ export interface PoolOptions {
 
 interface QueuedTask {
   testCase: TestCase;
-  backend?: "wasm" | "ts" | "hybrid" | "diff";
+  backend?: "wasm" | "ts" | "hybrid" | "diff" | "omc";
   resolve: (res: TestResult) => void;
 }
 

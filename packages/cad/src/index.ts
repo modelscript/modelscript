@@ -92,6 +92,7 @@ export { RomLoadPipeline, type FeaBoundaryCondition, type TransientPeakLoad } fr
 export {
   computeAABBClosestPoints,
   computeAABBDistance,
+  computeProjectedFrontalArea,
   computeSolidAABB,
   transformAABB,
   unionAABB,

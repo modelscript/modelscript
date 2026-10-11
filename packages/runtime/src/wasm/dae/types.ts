@@ -48,6 +48,9 @@ export const FLAG_VAR_STATE: i32 = 1 << 3;
 export const FLAG_VAR_STATE_DER: i32 = 1 << 4;
 export const FLAG_VAR_FIXED: i32 = 1 << 5;
 export const FLAG_VAR_REMOVED: i32 = 1 << 6;
+export const FLAG_VAR_PROTECTED: i32 = 1 << 7;
+export const FLAG_VAR_FINAL: i32 = 1 << 8;
+export const FLAG_VAR_VIRTUAL: i32 = 1 << 9;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Equation SoA Layout
@@ -233,4 +236,5 @@ export enum VarAttrKind {
   Nominal = 4,
   Start = 5,
   Fixed = 6,
+  Binding = 7,
 }

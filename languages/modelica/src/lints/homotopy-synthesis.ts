@@ -4,6 +4,8 @@ export interface NonlinearTermInfo {
   termText: string;
   startByte: number;
   endByte: number;
+  startOffset?: number;
+  endOffset?: number;
   eqStartByte: number;
   eqEndByte: number;
   kind: "power" | "quadratic_drag" | "exp" | "sqrt" | "log";
@@ -85,18 +87,31 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
     ) {
       const text = node.text || "";
       // If already wrapped in homotopy, skip
-      if (text.includes("homotopy(") || text.includes("homotopy (")) {
+      if (text.includes("homotopy(") || text.includes("homotopy (") || /homotopy\s*\(/.test(text)) {
         return;
       }
 
+      const isAlreadyInHomotopy = (idx: number) => {
+        const prefix = text.slice(0, idx).trimEnd();
+        return /homotopy\s*\(\s*$/.test(prefix);
+      };
+
       // Check for nonlinear patterns in equation text
-      const eqStart = node.startIndex ?? 0;
-      const eqEnd = node.endIndex ?? eqStart + text.length;
+      let eqStart = node.startIndex ?? node.startOffset ?? node.startByte ?? node.from ?? 0;
+      if (eqStart === 0 && cst.text && text) {
+        const posInCst = cst.text.indexOf(text);
+        if (posInCst >= 0) {
+          const cstStart = cst.startIndex ?? cst.startOffset ?? cst.startByte ?? cst.from ?? 0;
+          eqStart = cstStart + posInCst;
+        }
+      }
+      const eqEnd = node.endIndex ?? node.endOffset ?? node.endByte ?? node.to ?? eqStart + text.length;
 
       // 1. Power expressions: e.g. T ^ 4, v ^ 2, x ^ 3
       const powRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)/g;
       let match: RegExpExecArray | null;
       while ((match = powRegex.exec(text)) !== null) {
+        if (isAlreadyInHomotopy(match.index)) continue;
         const fullMatch = match[0];
         const varName = match[1];
         const power = parseFloat(match[2]);
@@ -108,6 +123,8 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
             termText: fullMatch,
             startByte,
             endByte,
+            startOffset: startByte,
+            endOffset: endByte,
             eqStartByte: eqStart,
             eqEndByte: eqEnd,
             kind: "power",
@@ -126,6 +143,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       const dragRegex =
         /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)|\babs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*\*\s*\2/g;
       while ((match = dragRegex.exec(text)) !== null) {
+        if (isAlreadyInHomotopy(match.index)) continue;
         const fullMatch = match[0];
         const varName = match[1] || match[2];
         const startByte = eqStart + match.index;
@@ -135,6 +153,8 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
           termText: fullMatch,
           startByte,
           endByte,
+          startOffset: startByte,
+          endOffset: endByte,
           eqStartByte: eqStart,
           eqEndByte: eqEnd,
           kind: "quadratic_drag",
@@ -151,6 +171,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       // 3. Exponentials: exp(...)
       const expRegex = /\bexp\(([^()]+)\)/g;
       while ((match = expRegex.exec(text)) !== null) {
+        if (isAlreadyInHomotopy(match.index)) continue;
         const fullMatch = match[0];
         const arg = match[1].trim();
         // Skip trivial constants e.g. exp(1) or exp(0)
@@ -163,6 +184,8 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
             termText: fullMatch,
             startByte,
             endByte,
+            startOffset: startByte,
+            endOffset: endByte,
             eqStartByte: eqStart,
             eqEndByte: eqEnd,
             kind: "exp",
@@ -180,6 +203,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       // 4. Square roots: sqrt(...)
       const sqrtRegex = /\bsqrt\(([^()]+)\)/g;
       while ((match = sqrtRegex.exec(text)) !== null) {
+        if (isAlreadyInHomotopy(match.index)) continue;
         const fullMatch = match[0];
         const arg = match[1].trim();
         if (!/^[0-9.-]+$/.test(arg)) {
@@ -191,6 +215,8 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
             termText: fullMatch,
             startByte,
             endByte,
+            startOffset: startByte,
+            endOffset: endByte,
             eqStartByte: eqStart,
             eqEndByte: eqEnd,
             kind: "sqrt",
@@ -208,7 +234,11 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       return; // Do not recurse deeper into simple_equation children once handled
     }
 
-    if (node.children && Array.isArray(node.children)) {
+    if (typeof node.childCount === "number") {
+      for (let i = 0; i < node.childCount; i++) {
+        walk(node.child(i));
+      }
+    } else if (node.children && Array.isArray(node.children)) {
       for (const child of node.children) {
         walk(child);
       }

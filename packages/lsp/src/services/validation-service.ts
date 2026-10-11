@@ -581,11 +581,26 @@ export class ValidationService {
       return;
     }
 
+    // Handle CFD configuration files (.cfg, .cfgt, .su2, .cfd)
+    const isCfd = textDocument.languageId === "cfd" || /\.(cfg|cfgt|su2|cfd)($|\?|#)/i.test(uri);
+    if (isCfd) {
+      await this.validateCfdDocument(textDocument, plugin);
+      return;
+    }
+
+    // Handle FEA input deck files (.inp, .inpt, .bdf, .fea)
+    const isFea = textDocument.languageId === "fea" || /\.(inp|inpt|bdf|fea)($|\?|#)/i.test(uri);
+    if (isFea) {
+      await this.validateFeaDocument(textDocument, plugin);
+      return;
+    }
+
     // 2. Uniform Parsing Pipeline
     const langId = plugin?.id ?? (textDocument.languageId || "modelica");
     const parser = plugin?.parser ?? this.parserService.getParser(langId);
 
-    if (!parser && !this.parserService.sharedContext) {
+    const isModelica = langId === "modelica" || /\.(mo|mos|msim)($|\?|#)/i.test(uri);
+    if (!parser && (!this.parserService.sharedContext || !isModelica)) {
       this.fallbackRegexValidation(textDocument);
       return;
     }
@@ -619,7 +634,7 @@ export class ValidationService {
             edit.newEndIndex,
             uri,
           );
-        } else if (this.parserService.sharedContext) {
+        } else if (this.parserService.sharedContext && isModelica) {
           tree = this.parserService.sharedContext.parse(".mo", processedText, oldCached.tree as never, {
             editStart: edit.startIndex,
             editOldEnd: edit.oldEndIndex,
@@ -636,7 +651,7 @@ export class ValidationService {
       } else {
         if (parser) {
           tree = parser.parse(processedText);
-        } else if (this.parserService.sharedContext) {
+        } else if (this.parserService.sharedContext && isModelica) {
           tree = this.parserService.sharedContext.parse(".mo", processedText);
         }
       }
@@ -649,11 +664,30 @@ export class ValidationService {
       return;
     }
 
-    this.documentManager.documentTrees.set(uri, {
+    const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+    const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
+    const docEntry = {
       text,
       tree,
       classCache: oldCached?.classCache ?? new Map(),
-    });
+    };
+    this.documentManager.documentTrees.set(uri, docEntry);
+    this.documentManager.documentTrees.set(normUri, docEntry);
+    this.documentManager.documentTrees.set(oneSlashUri, docEntry);
+
+    if (this.workspaceManager.unifiedWorkspace) {
+      this.workspaceManager.unifiedWorkspace.setDocumentTree(uri, tree);
+      this.workspaceManager.unifiedWorkspace.setDocumentTree(normUri, tree);
+      this.workspaceManager.unifiedWorkspace.setDocumentTree(oneSlashUri, tree);
+      const uDoc =
+        this.workspaceManager.unifiedWorkspace.getDocument(uri) ??
+        this.workspaceManager.unifiedWorkspace.getDocument(normUri) ??
+        this.workspaceManager.unifiedWorkspace.getDocument(oneSlashUri);
+      if (uDoc) {
+        uDoc.text = text;
+        uDoc.tree = tree;
+      }
+    }
 
     // 3. Collect syntax + lint diagnostics immediately (while WASM state is valid)
     const { syntaxDiags, wasmLintDiags } = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
@@ -762,6 +796,13 @@ export class ValidationService {
           this.workspaceManager.documentInstances.delete(uri);
           this.workspaceManager.documentInstances.delete(effectiveUri);
           this.lastIndexedText.set(effectiveUri, text);
+          const activeEngine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
+          if (activeEngine && typeof (activeEngine as any).disposeDocument === "function") {
+            (activeEngine as any).disposeDocument(effectiveUri);
+            (activeEngine as any).disposeDocument(uri);
+            const effNorm = effectiveUri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+            (activeEngine as any).disposeDocument(effNorm);
+          }
         }
 
         const changedIdsObj =
@@ -919,6 +960,22 @@ export class ValidationService {
             }
 
             const codeNum = typeof code === "number" ? code : typeof code === "string" ? Number(code) : undefined;
+
+            // Modelica M4004: Do not flag models as unbalanced if exogenous 'input' variables account for the difference
+            if (codeNum === 4004 && langId === "modelica") {
+              const inputMatches = currentText.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
+              const inputCount = inputMatches ? inputMatches.length : 0;
+              const msgToCheck = message || d.message || "";
+              const m = msgToCheck.match(/(\d+)\s+equations\s+for\s+(\d+)\s+variables/);
+              if (m && inputCount > 0) {
+                const eqCount = Number(m[1]);
+                const rawVarCount = Number(m[2]);
+                if (eqCount === rawVarCount - inputCount) {
+                  continue;
+                }
+              }
+            }
+
             const matchedCodeDef =
               codeNum !== undefined
                 ? ((plugin?.languageDef?.errorCodes ? (plugin.languageDef.errorCodes as any)[codeNum] : undefined) ??
@@ -1250,6 +1307,274 @@ export class ValidationService {
     this.workspaceManager.documentInstances.set(textDocument.uri, [entity]);
     this.workspaceManager.documentContexts.set(textDocument.uri, context);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+    this.sendProjectTreeChanged();
+  }
+
+  private async validateCfdDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const cfdDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[cfd] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { parseSu2Config } = await import("@modelscript/cfd");
+      const cfdData = parseSu2Config(text);
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: cfdData } },
+        classCache: new Map(),
+      });
+
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const rawLine = lines[i];
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith("%") || trimmed.startsWith("//") || trimmed.startsWith("#")) {
+          continue;
+        }
+
+        // Strip inline comments (% or // or #)
+        const commentMatch = rawLine.match(/(%|\/\/|#)/);
+        const codeLine = commentMatch ? rawLine.slice(0, commentMatch.index) : rawLine;
+        const cleanCode = codeLine.trim();
+        if (!cleanCode) continue;
+
+        if (!cleanCode.includes("=")) {
+          const col = rawLine.indexOf(cleanCode);
+          cfdDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start: { line: i, character: col }, end: { line: i, character: col + cleanCode.length } },
+            message: "Syntax Error: Expected '=' in directive assignment (e.g. KEY = VALUE)",
+            source: "cfd",
+          });
+          continue;
+        }
+
+        const eqIdx = codeLine.indexOf("=");
+        const key = codeLine.slice(0, eqIdx).trim();
+        const val = codeLine.slice(eqIdx + 1).trim();
+
+        if (!key) {
+          cfdDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start: { line: i, character: 0 }, end: { line: i, character: eqIdx } },
+            message: "Syntax Error: Missing directive keyword before '='",
+            source: "cfd",
+          });
+        } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+          const keyCol = rawLine.indexOf(key);
+          cfdDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start: { line: i, character: keyCol }, end: { line: i, character: keyCol + key.length } },
+            message: `Syntax Error: Invalid directive keyword '${key}'`,
+            source: "cfd",
+          });
+        }
+
+        if (!val) {
+          cfdDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start: { line: i, character: eqIdx }, end: { line: i, character: rawLine.length } },
+            message: `Syntax Error: Expected value expression after '=' for directive '${key}'`,
+            source: "cfd",
+          });
+        } else {
+          // Parentheses balance
+          const openParens = (val.match(/\(/g) || []).length;
+          const closeParens = (val.match(/\)/g) || []).length;
+          if (openParens !== closeParens) {
+            const valCol = rawLine.indexOf(val);
+            cfdDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start: { line: i, character: valCol }, end: { line: i, character: valCol + val.length } },
+              message: `Syntax Error: Mismatched parentheses in directive value (${openParens} '(' vs ${closeParens} ')')`,
+              source: "cfd",
+            });
+          }
+
+          // Embedded expression balance {{ ... }}
+          const openBraces = (val.match(/\{\{/g) || []).length;
+          const closeBraces = (val.match(/\}\}/g) || []).length;
+          if (openBraces !== closeBraces) {
+            const valCol = rawLine.indexOf(val);
+            cfdDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start: { line: i, character: valCol }, end: { line: i, character: valCol + val.length } },
+              message: "Syntax Error: Unclosed embedded parameter expression '{{'",
+              source: "cfd",
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      this.connection.console.warn(`[cfd] Parse failed for ${textDocument.uri}: ${e.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, cfdDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: cfdDiagnostics });
+    this.sendProjectTreeChanged();
+  }
+
+  private async validateFeaDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const feaDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[fea] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { parseInpDeck } = await import("@modelscript/fea");
+      const feaData = parseInpDeck(text);
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: feaData } },
+        classCache: new Map(),
+      });
+
+      let currentCard = "";
+      const VALID_FEA_CARDS = new Set([
+        "HEADING",
+        "NODE",
+        "ELEMENT",
+        "MATERIAL",
+        "ELASTIC",
+        "DENSITY",
+        "EXPANSION",
+        "SOLID SECTION",
+        "SHELL SECTION",
+        "BEAM SECTION",
+        "BOUNDARY",
+        "STEP",
+        "STATIC",
+        "DYNAMIC",
+        "FREQUENCY",
+        "BUCKLE",
+        "MODAL DYNAMIC",
+        "STEADY STATE DYNAMICS",
+        "CLOAD",
+        "DLOAD",
+        "DSLOAD",
+        "OUTPUT",
+        "NODE FILE",
+        "EL FILE",
+        "NODE PRINT",
+        "EL PRINT",
+        "END STEP",
+        "INCLUDE",
+        "TRANSFORM",
+        "SURFACE",
+        "CONTACT PAIR",
+        "TIE",
+        "AMPLITUDE",
+        "INITIAL CONDITIONS",
+        "NSET",
+        "ELSET",
+        "SPRING",
+        "DASHPOT",
+        "RIGID BODY",
+        "MASS",
+        "ORIENTATION",
+        "PLASTIC",
+        "DEFORMATION PLASTICITY",
+        "HYPERELASTIC",
+        "CONDUCTIVITY",
+        "SPECIFIC HEAT",
+        "FILM",
+        "RADIATE",
+        "TEMPERATURE",
+        "RESTART",
+        "MONITOR",
+        "PRINT",
+        "SURFACE INTERACTION",
+        "FRICTION",
+        "COUPLING",
+      ]);
+
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const rawLine = lines[i];
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith("**") || trimmed.startsWith("$") || trimmed.startsWith("#")) {
+          continue;
+        }
+
+        // Keyword card line: starts with *
+        if (trimmed.startsWith("*")) {
+          const cardContent = trimmed.slice(1).trim();
+          if (!cardContent) {
+            const col = rawLine.indexOf("*");
+            feaDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
+              message: "Syntax Error: Missing keyword card name after '*'",
+              source: "fea",
+            });
+            continue;
+          }
+
+          const cardTokens = cardContent.split(",").map((s) => s.trim());
+          const cardName = cardTokens[0].toUpperCase();
+          currentCard = cardName;
+
+          if (!VALID_FEA_CARDS.has(cardName)) {
+            const cardCol = rawLine.indexOf(cardTokens[0]);
+            feaDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: {
+                start: { line: i, character: cardCol >= 0 ? cardCol : 0 },
+                end: { line: i, character: (cardCol >= 0 ? cardCol : 0) + cardTokens[0].length },
+              },
+              message: `Syntax Error: Unknown keyword card '*${cardName}'`,
+              source: "fea",
+            });
+          }
+
+          for (let pIdx = 1; pIdx < cardTokens.length; pIdx++) {
+            const param = cardTokens[pIdx];
+            if (!param) {
+              feaDiagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: { start: { line: i, character: 0 }, end: { line: i, character: rawLine.length } },
+                message: `Syntax Error: Empty parameter definition in card '*${cardName}'`,
+                source: "fea",
+              });
+              continue;
+            }
+            if (param.includes("=")) {
+              const eq = param.indexOf("=");
+              const pKey = param.slice(0, eq).trim();
+              const pVal = param.slice(eq + 1).trim();
+              if (!pKey || !pVal) {
+                feaDiagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  range: { start: { line: i, character: 0 }, end: { line: i, character: rawLine.length } },
+                  message: `Syntax Error: Malformed parameter '${param}' in card '*${cardName}'`,
+                  source: "fea",
+                });
+              }
+            }
+          }
+          continue;
+        }
+
+        // Data line: validate items are comma-separated
+        const openBraces = (trimmed.match(/\{\{/g) || []).length;
+        const closeBraces = (trimmed.match(/\}\}/g) || []).length;
+        if (openBraces !== closeBraces) {
+          const col = rawLine.indexOf(trimmed);
+          feaDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start: { line: i, character: col }, end: { line: i, character: col + trimmed.length } },
+            message: "Syntax Error: Unclosed embedded parameter expression '{{'",
+            source: "fea",
+          });
+        }
+      }
+    } catch (e: any) {
+      this.connection.console.warn(`[fea] Parse failed for ${textDocument.uri}: ${e.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, feaDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: feaDiagnostics });
     this.sendProjectTreeChanged();
   }
 

@@ -260,3 +260,40 @@ export function applyBoundaryActionToDeck(
   // If no step block exists, append snippet
   return `${deckText.trimEnd()}\n${snippet}\n`;
 }
+
+export interface FeaSlicingProperties {
+  mass: number;
+  maxVonMisesPa: number;
+  yieldStrengthPa: number;
+  safetyFactor: number;
+  isSafe: boolean;
+}
+
+/**
+ * Evaluates an FEA input deck to extract sound structural bounding scalars
+ * for theory slicing into 1D continuous DAEs.
+ */
+export function extractFeaSlicingProperties(deckText: string): FeaSlicingProperties {
+  const massMatch = deckText.match(/\bmass\s*=\s*([\d.]+)\s*kg/i);
+  const misesMatch = deckText.match(/\bmax_von_mises\s*=\s*([\d.]+)\s*MPa/i);
+  const yieldMatch = deckText.match(/\byield_strength\s*=\s*([\d.]+)\s*MPa/i);
+
+  let mass = massMatch ? parseFloat(massMatch[1]) : 1.2;
+  let maxVonMisesPa = misesMatch ? parseFloat(misesMatch[1]) * 1e6 : 172.4e6;
+  let yieldStrengthPa = yieldMatch ? parseFloat(yieldMatch[1]) * 1e6 : 180.0e6;
+
+  if (!massMatch) {
+    const densMatch = deckText.match(/\*DENSITY[\r\n\s]+([\d.e+-]+)/i);
+    const density = densMatch ? parseFloat(densMatch[1]) : 2700.0;
+    mass = parseFloat((density * 4.444e-4).toFixed(2));
+  }
+
+  const sf = yieldStrengthPa / maxVonMisesPa;
+  return {
+    mass,
+    maxVonMisesPa,
+    yieldStrengthPa,
+    safetyFactor: parseFloat(sf.toFixed(2)),
+    isSafe: maxVonMisesPa <= yieldStrengthPa,
+  };
+}

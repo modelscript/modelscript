@@ -1,0 +1,27 @@
+{
+  "name": "@modelscript/example-drone-reachability",
+  "version": "1.0.0",
+  "title": "Polyglot Drone Reachability Verification",
+  "description": "Native zero-glue reachability verification linking OpenSCAD, CalculiX FEA, SU2 CFD, SysML v2, and continuous Modelica DAE with Nelson-Oppen theory coordination and WebAssembly zonotope reachability.",
+  "license": "AGPL-3.0-or-later",
+  "workspace": {
+    "cad": "cad/drone.scad",
+    "fea": "cae/drone_chassis.inp",
+    "cfd": "cae/drone_aero.cfg",
+    "sysml": "sysml/drone_specs.sysml",
+    "modelica": "modelica/DroneSimulation.mo"
+  },
+  "theoryCoordinator": {
+    "oracles": ["SpatialPhysicsOracle", "CaeContractOracle", "ContinuousSafetyOracle"],
+    "verification": {
+      "reachability": {
+        "engine": "wasm_zonotope_reach",
+        "timeHorizon": 5,
+        "stepSize": 0.02,
+        "disturbanceInterval": [-120, 120],
+        "targetState": "v",
+        "requirementLimit": 12
+      }
+    }
+  }
+}

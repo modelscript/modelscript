@@ -1748,14 +1748,25 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
     startByte += leadingWs;
   }
 
+  const getLitRange = (litName: string) => {
+    if (cstText && litName) {
+      const idx = cstText.indexOf(litName);
+      if (idx >= 0) {
+        const s = (sym?.startByte ?? cstNode?.startIndex ?? 0) + idx;
+        return { startByte: s, endByte: s + litName.length, startOffset: s, endOffset: s + litName.length };
+      }
+    }
+    return { startByte, endByte, startOffset: startByte, endOffset: endByte };
+  };
+
   // 1. Reserved attribute names
   for (const lit of literals) {
     if (reservedAttributes.has(lit)) {
+      const range = getLitRange(lit);
       return {
         code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
         message: ModelicaErrorCode.DUPLICATE_ELEMENT.message(lit),
-        startByte,
-        endByte,
+        ...range,
       };
     }
   }
@@ -1765,11 +1776,11 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   for (const lit of literals) {
     if (seen.has(lit)) {
       const listStr = literals.join(",");
+      const range = getLitRange(lit);
       return {
         code: ModelicaErrorCode.ENUM_DUPLICATE_LITERAL.code,
         message: ModelicaErrorCode.ENUM_DUPLICATE_LITERAL.message(lit, listStr),
-        startByte,
-        endByte,
+        ...range,
       };
     }
     seen.add(lit);
@@ -1825,6 +1836,10 @@ export const classDefinitionQueries: Record<string, any> = {
     if (!nonlinear || nonlinear.length === 0) return null;
     return nonlinear.map((item) =>
       info(ModelicaErrorCode.HOMOTOPY_RECOMMENDED.message(item.termText), {
+        startOffset: item.startOffset ?? item.startByte,
+        endOffset: item.endOffset ?? item.endByte,
+        startCharOffset: item.startOffset ?? item.startByte,
+        endCharOffset: item.endOffset ?? item.endByte,
         startByte: item.startByte,
         endByte: item.endByte,
         code: ModelicaErrorCode.HOMOTOPY_RECOMMENDED.code,
@@ -1997,8 +2012,10 @@ export const classDefinitionQueries: Record<string, any> = {
                     error(
                       `Function ${fnQName} returns an external object, but the only function allowed to return this object is ${extObjQName}.constructor.`,
                       {
-                        startByte: self.startByte,
-                        endByte: self.endByte,
+                        startByte: child.startByte,
+                        endByte: child.endByte,
+                        startOffset: child.startOffset ?? child.startByte,
+                        endOffset: child.endOffset ?? child.endByte,
                         code: ModelicaErrorCode.EXTERNAL_OBJECT_RETURN_RESTRICTION.code,
                       },
                     ),
@@ -4838,7 +4855,7 @@ export const connectEquationQueries: Record<string, any> = {
       const endByte = node?.endIndex ?? node?.endByte ?? self.endByte;
       const startOffset = node?.startOffset ?? startByte;
       const endOffset = node?.endOffset ?? endByte;
-      return { startByte, endByte, startCharOffset: startOffset, endCharOffset: endOffset };
+      return { startByte, endByte, startOffset, endOffset, startCharOffset: startOffset, endCharOffset: endOffset };
     };
 
     // 1. Check if endpoints resolve (M2002)

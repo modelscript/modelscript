@@ -31,6 +31,7 @@ export class StepEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.webview.postMessage({ type: "setLoading", data: true });
         const stepMeshes = await this._client.sendRequest<unknown[]>("modelscript/getStepMeshes", {
           uri: document.uri.toString(),
+          documentText: document.getText(),
         });
 
         if (!disposed) {

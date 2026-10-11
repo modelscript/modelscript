@@ -1,4 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+
+export interface FlowpipeEnvelope {
+  name: string;
+  kind: "zonotope" | "interval" | "octagon" | "affine";
+  color: string;
+  fillColor?: string;
+  borderDash?: number[];
+  lineWidth?: number;
+  lo: number[];
+  hi: number[];
+  peakVal?: number;
+  breachTime?: number;
+  isViolation?: boolean;
+}
+
+export interface ReachabilityData {
+  t: number[];
+  variable: string;
+  nominalTrajectory: number[];
+  envelopes: FlowpipeEnvelope[];
+  requirementLimit: number;
+  requirementLabel: string;
+  isCertifiedSafe: boolean;
+  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
+  yRange?: [number, number];
+}
+// SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Manages the simulation results webview panel lifecycle.
 // Sends simulation requests to the LSP server and displays results as a chart.
@@ -438,6 +465,24 @@ export class SimulationPanel {
         type: "monteCarloData",
         data,
         isDark,
+      });
+    }
+  }
+
+  /**
+   * Forward reachability flowpipe envelopes to the simulation chart for multi-envelope ribbon rendering.
+   * Renders Zonotope, Octagon, Affine, and Interval enclosures against requirements.
+   */
+  static postReachabilityData(data: ReachabilityData, isDark?: boolean): void {
+    if (SimulationPanel.currentPanel) {
+      const dark =
+        isDark ??
+        (vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+          vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast);
+      SimulationPanel.currentPanel.panel.webview.postMessage({
+        type: "reachabilityData",
+        data,
+        isDark: dark,
       });
     }
   }

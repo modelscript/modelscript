@@ -1,0 +1,10 @@
+{
+  "files.associations": {
+    "*.cfg": "cfd",
+    "*.cfgt": "cfd",
+    "*.su2": "cfd",
+    "*.inp": "fea",
+    "*.inpt": "fea",
+    "*.bdf": "fea"
+  }
+}

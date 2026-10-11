@@ -33,8 +33,8 @@ export const cfdLanguage = language({
   lsp: {
     fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2"],
     icons: {
-      light: "./assets/icon-light.png",
-      dark: "./assets/icon-dark.png",
+      light: "./assets/cfd/icon-light.png",
+      dark: "./assets/cfd/icon-dark.png",
     },
   },
 
@@ -44,6 +44,32 @@ export const cfdLanguage = language({
       title: "Open 3D Aerodynamics Viewer",
       description: "Opens the 3D surface mesh and boundary marker viewer for SU2 aerodynamic configurations.",
       category: "query",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No CFD configuration found to view.");
+        }
+        const { getCfdDialect } = await import("./dialects/index.js");
+        const dialect = getCfdDialect(ctx.uri || "cfg");
+        const modelData = dialect.parse(source);
+        const { extractCfdSlicingProperties } = await import("./materializer.js");
+        const slicing = extractCfdSlicingProperties(source);
+        return {
+          success: true,
+          uri: ctx.uri,
+          markers: Array.from(modelData.markers.keys()),
+          meshFilename: modelData.meshFilename,
+          slicing,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(package)",
@@ -64,6 +90,27 @@ export const cfdLanguage = language({
       title: "Materialize CFD Config (.cfgt -> .cfg)",
       description: "Evaluates embedded parameter expressions to generate a concrete SU2 configuration file.",
       category: "transform",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string; options?: any }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No CFD config template found to materialize.");
+        }
+        const { materializeCfdConfig } = await import("./materializer.js");
+        const materialized = materializeCfdConfig(source, params?.options);
+        return {
+          success: true,
+          uri: ctx.uri,
+          materialized,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(file-code)",
@@ -88,6 +135,24 @@ export const cfdLanguage = language({
   polyglot: {
     languages: ["modelica", "sysml2"],
     rules: [
+      tggRule({
+        name: "CfdDragPolarToModelicaParam",
+        sourceLang: "cfd",
+        targetLang: "modelica",
+        priority: 15,
+        source: ($, v) => $.Directive({ key: "REF_AREA", value: v("refArea") }),
+        target: ($, v) => $.ComponentClause({ name: "Cd", defaultValue: v("cd") }),
+        where: (v) => [tggEq(v("refArea"), v("refArea")), tggComplement(["cd"])],
+      }),
+      tggRule({
+        name: "CfdDragPolarToSysmlAttribute",
+        sourceLang: "cfd",
+        targetLang: "sysml2",
+        priority: 15,
+        source: ($, v) => $.Directive({ key: "REF_AREA", value: v("refArea") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: "aeroDragCoeff", defaultValue: v("cd") }),
+        where: (v) => [tggEq(v("refArea"), v("refArea")), tggComplement(["cd"])],
+      }),
       tggRule({
         name: "CfdInletToModelicaFluidPort",
         sourceLang: "cfd",

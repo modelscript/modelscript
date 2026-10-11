@@ -52,6 +52,35 @@ const COLORS = [
 
 let currentData: SimulationData | null = null;
 let currentMCData: MonteCarloData | null = null;
+
+interface FlowpipeEnvelope {
+  name: string;
+  kind: "zonotope" | "interval" | "octagon" | "affine";
+  color: string;
+  fillColor?: string;
+  borderDash?: number[];
+  lineWidth?: number;
+  lo: number[];
+  hi: number[];
+  peakVal?: number;
+  breachTime?: number;
+  isViolation?: boolean;
+}
+
+interface ReachabilityData {
+  t: number[];
+  variable: string;
+  nominalTrajectory: number[];
+  envelopes: FlowpipeEnvelope[];
+  requirementLimit: number;
+  requirementLabel: string;
+  isCertifiedSafe: boolean;
+  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
+  yRange?: [number, number];
+}
+
+let currentReachabilityData: ReachabilityData | null = null;
+
 let isDark = true;
 const hiddenVars = new Set<string>();
 const seenVars = new Set<string>();
@@ -814,6 +843,61 @@ window.addEventListener("message", (event) => {
       const progressBar = document.getElementById("surrogate-progress-bar");
       if (progressBar) progressBar.style.background = "var(--vscode-testing-iconFailed)";
     }
+  } else if (msg.type === "reachabilityData") {
+    isLiveMode = false;
+    isDark = msg.isDark;
+    const reach = msg.data as ReachabilityData;
+    currentReachabilityData = reach;
+
+    const varName = reach.variable || "v";
+    const nT = reach.t.length;
+    const yMatrix: number[][] = new Array(nT);
+    for (let i = 0; i < nT; i++) {
+      yMatrix[i] = [reach.nominalTrajectory[i] ?? 0];
+    }
+
+    currentData = {
+      t: reach.t,
+      y: yMatrix,
+      states: [varName],
+    };
+
+    hiddenVars.clear();
+    seenVars.add(varName);
+
+    if (reach.yRange) {
+      customBounds = {
+        tMin: reach.t[0] ?? 0,
+        tMax: reach.t[reach.t.length - 1] ?? 5,
+        yMin: reach.yRange[0],
+        yMax: reach.yRange[1],
+      };
+    } else {
+      customBounds = {
+        tMin: reach.t[0] ?? 0,
+        tMax: reach.t[reach.t.length - 1] ?? 5,
+        yMin: -6.0,
+        yMax: 15.5,
+      };
+    }
+
+    currentLimits = [
+      {
+        variable: varName,
+        value: reach.requirementLimit,
+        label: reach.requirementLabel || `SysML v2 Limit: ${reach.requirementLimit} m/s`,
+        violated: !reach.isCertifiedSafe,
+      },
+    ];
+
+    placeholderEl.style.display = "none";
+    containerEl.style.display = "flex";
+    toolbarEl.classList.add("visible");
+    toolbarEl.classList.remove("live-mode");
+    stopLiveLoop();
+    buildTreeView([varName]);
+
+    draw();
   } else if (msg.type === "monteCarloData") {
     // Monte Carlo uncertainty results → fan chart
     isLiveMode = false;
@@ -2303,6 +2387,91 @@ function draw() {
   ctx.rect(margin.left, margin.top, plotW, plotH);
   ctx.clip();
 
+  // ── Multi-Domain Reachability Flowpipe Bands ──
+  if (currentReachabilityData && currentReachabilityData.t.length > 0) {
+    const reachT = currentReachabilityData.t;
+
+    const sortedEnvelopes = [...currentReachabilityData.envelopes].sort((a, b) => {
+      const order: Record<string, number> = { interval: 0, octagon: 1, affine: 2, zonotope: 3 };
+      return (order[a.kind] ?? 0) - (order[b.kind] ?? 0);
+    });
+
+    for (const env of sortedEnvelopes) {
+      const fill = env.fillColor || (isDark ? "rgba(34, 197, 94, 0.2)" : "rgba(34, 197, 94, 0.15)");
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+
+      let started = false;
+      for (let i = 0; i < reachT.length; i++) {
+        const hi = env.hi[i];
+        if (hi === undefined || !isFinite(hi)) continue;
+        const x = xScale(reachT[i]);
+        const y = yScaleLeft(hi);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      for (let i = reachT.length - 1; i >= 0; i--) {
+        const lo = env.lo[i];
+        if (lo === undefined || !isFinite(lo)) continue;
+        ctx.lineTo(xScale(reachT[i]), yScaleLeft(lo));
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = env.color;
+      ctx.lineWidth = env.lineWidth ?? 1.2;
+      if (env.borderDash) ctx.setLineDash(env.borderDash);
+      else ctx.setLineDash([]);
+
+      ctx.beginPath();
+      started = false;
+      for (let i = 0; i < reachT.length; i++) {
+        const hi = env.hi[i];
+        if (hi === undefined || !isFinite(hi)) continue;
+        const x = xScale(reachT[i]);
+        const y = yScaleLeft(hi);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      ctx.beginPath();
+      started = false;
+      for (let i = 0; i < reachT.length; i++) {
+        const lo = env.lo[i];
+        if (lo === undefined || !isFinite(lo)) continue;
+        const x = xScale(reachT[i]);
+        const y = yScaleLeft(lo);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    const zeroY = yScaleLeft(0.0);
+    if (zeroY >= margin.top && zeroY <= margin.top + plotH) {
+      ctx.strokeStyle = isDark ? "rgba(255, 255, 255, 0.25)" : "rgba(0, 0, 0, 0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(margin.left, zeroY);
+      ctx.lineTo(margin.left + plotW, zeroY);
+      ctx.stroke();
+    }
+  }
+
   // ── Fan-chart bands (Monte Carlo percentile shading) ──
   if (currentMCData && currentMCData.t.length > 0) {
     const mcT = currentMCData.t;
@@ -2497,6 +2666,44 @@ function draw() {
     }
 
     ctx.restore();
+  }
+
+  // Draw Reachability Status Callouts
+  if (currentReachabilityData && currentReachabilityData.statusBadges) {
+    let badgeY = margin.top + 16;
+    for (const badge of currentReachabilityData.statusBadges) {
+      ctx.save();
+      ctx.font = "bold 11px var(--vscode-editor-font-family, monospace)";
+      const textWidth = ctx.measureText(badge.text).width;
+      const padX = 8;
+      const badgeX = margin.left + 16;
+
+      ctx.fillStyle =
+        badge.kind === "pass"
+          ? "rgba(34, 197, 94, 0.18)"
+          : badge.kind === "warn"
+            ? "rgba(245, 158, 11, 0.18)"
+            : "rgba(239, 68, 68, 0.18)";
+      ctx.strokeStyle = badge.kind === "pass" ? "#22c55e" : badge.kind === "warn" ? "#f59e0b" : "#ef4444";
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(badgeX, badgeY - 12, textWidth + padX * 2, 22, 4);
+      } else {
+        ctx.rect(badgeX, badgeY - 12, textWidth + padX * 2, 22);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = badge.kind === "pass" ? "#22c55e" : badge.kind === "warn" ? "#f59e0b" : "#ef4444";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(badge.text, badgeX + padX, badgeY - 1);
+      ctx.restore();
+
+      badgeY += 28;
+    }
   }
 
   // Draw hover tracer

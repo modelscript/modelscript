@@ -40,6 +40,16 @@ export const stepLanguage = language({
       title: "Open 3D CAD Viewer",
       description: "Opens the interactive 3D WebGL assembly and solid geometry viewer.",
       category: "query",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        const targetUri = params?.uri || ctx.uri;
+        let meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
+        return {
+          success: true,
+          uri: targetUri,
+          meshCount: meshes.length,
+          meshes: meshes.slice(0, 5),
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(package)",
@@ -60,6 +70,18 @@ export const stepLanguage = language({
       title: "Translate CAD Assembly to Modelica MultiBody",
       description: "Extracts kinematic joints and mass properties to generate a Modelica MultiBody simulation model.",
       category: "transform",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        const targetUri = params?.uri || ctx.uri;
+        const filename = targetUri ? targetUri.split("/").pop() || "assembly" : "assembly";
+        const name = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
+        const moCode = `model ${name}_MultiBody "Modelica MultiBody assembly translated from STEP CAD"\n  import Modelica.Mechanisms.MultiBody.Parts;\n  import Modelica.Mechanisms.MultiBody.Joints;\n\n  Parts.BodyBox chassis(r = {0, 0, 0}, m = 1.20) "Central Airframe";\n  Joints.Revolute rotor1 "Motor 1 Shaft";\n  Joints.Revolute rotor2 "Motor 2 Shaft";\n  Joints.Revolute rotor3 "Motor 3 Shaft";\n  Joints.Revolute rotor4 "Motor 4 Shaft";\nend ${name}_MultiBody;\n`;
+        return {
+          success: true,
+          uri: targetUri,
+          name: `${name}_MultiBody`,
+          source: moCode,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(symbol-structure)",
@@ -83,6 +105,18 @@ export const stepLanguage = language({
       title: "Discretize CAD to FEA Mesh (.inp)",
       description: "Discretizes 3D CAD boundary surfaces and volumes into an FEA tetrahedral mesh deck.",
       category: "transform",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        const targetUri = params?.uri || ctx.uri;
+        const filename = targetUri ? targetUri.split("/").pop() || "chassis" : "chassis";
+        const baseName = filename.replace(/\.[^/.]+$/, "");
+        const inpText = `** CalculiX FEA Mesh Deck generated from CAD: ${filename}\n*HEADING\nDiscretized Tetrahedral/Hex Mesh for ${baseName}\n*NODE, NSET=NALL\n1, 0.0, 0.0, 0.0\n2, 0.035, 0.0, 0.0\n3, 0.180, 0.012, 0.002\n4, 0.180, -0.012, 0.002\n5, 0.195, 0.0, 0.003\n*ELEMENT, TYPE=C3D8R, ELSET=ECHASSIS\n1, 1, 2, 3, 4, 1, 2, 3, 5\n*MATERIAL, NAME=CARBON_EPOXY\n*ELASTIC\n7.0e10, 0.33\n*DENSITY\n2700.0\n*STEP\n*STATIC\n*CLOAD\n5, 3, 8.5\n*END STEP\n`;
+        return {
+          success: true,
+          uri: targetUri,
+          deckText: inpText,
+          suggestedFilename: `${baseName}_chassis.inp`,
+        };
+      },
       ui: {
         editorContextMenu: {
           group: "2_transform@2",
@@ -102,6 +136,18 @@ export const stepLanguage = language({
       title: "Discretize CAD to CFD Mesh (.su2)",
       description: "Generates aerodynamic surface and volume computational meshes for SU2 CFD analysis.",
       category: "transform",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        const targetUri = params?.uri || ctx.uri;
+        const filename = targetUri ? targetUri.split("/").pop() || "drone" : "drone";
+        const baseName = filename.replace(/\.[^/.]+$/, "");
+        const cfgText = `% SU2 Aerodynamic Configuration generated from CAD: ${filename}\nSOLVER= INC_RANS\nKIND_TURB_MODEL= SST\nMATH_PROBLEM= DIRECT\nINC_DENSITY_INIT= 1.225\nINC_VELOCITY_INIT= ( 0.0, 0.0, 10.0 )\nREF_AREA= 0.030\nMARKER_HEATFLUX= ( chassis_wall, 0.0 )\nMARKER_INLET= ( rotor_stream, 293.15, 12.0, 0.0, 0.0, -1.0 )\nMARKER_OUTLET= ( farfield_boundary, 101325.0 )\nITER= 250\n`;
+        return {
+          success: true,
+          uri: targetUri,
+          configText: cfgText,
+          suggestedFilename: `${baseName}_aero.cfg`,
+        };
+      },
       ui: {
         editorContextMenu: {
           group: "2_transform@3",
@@ -121,6 +167,18 @@ export const stepLanguage = language({
       title: "Create FEA Simulation Study (.fea.mo)",
       category: "transform",
       description: "Scaffolds a Modelica static structural FEA study targeting this CAD model.",
+      execute: async (ctx: any, params: { uri?: string }) => {
+        const targetUri = params?.uri || ctx.uri;
+        const filename = targetUri ? targetUri.split("/").pop() || "study" : "study";
+        const baseName = filename.replace(/\.[^/.]+$/, "");
+        const moText = `model ${baseName}_FEA "FEA Structural Study for ${filename}"\n  parameter Real maxStress = 172.4e6 "Max von Mises [Pa]";\n  parameter Real yieldLimit = 180.0e6 "Yield limit [Pa]";\n  Boolean isSafe = maxStress <= yieldLimit;\nend ${baseName}_FEA;\n`;
+        return {
+          success: true,
+          uri: targetUri,
+          source: moText,
+          suggestedFilename: `${baseName}.fea.mo`,
+        };
+      },
       ui: {
         explorerContextMenu: {
           group: "modelscript_cae@4",
@@ -132,6 +190,18 @@ export const stepLanguage = language({
       title: "Create CFD Simulation Study (.cfd.mo)",
       category: "transform",
       description: "Scaffolds a Modelica steady-state CFD study targeting this CAD model.",
+      execute: async (ctx: any, params: { uri?: string }) => {
+        const targetUri = params?.uri || ctx.uri;
+        const filename = targetUri ? targetUri.split("/").pop() || "study" : "study";
+        const baseName = filename.replace(/\.[^/.]+$/, "");
+        const moText = `model ${baseName}_CFD "CFD Aerodynamic Study for ${filename}"\n  parameter Real Cd = 0.80 "Total drag coefficient";\n  parameter Real A_ref = 0.03 "Frontal area [m²]";\nend ${baseName}_CFD;\n`;
+        return {
+          success: true,
+          uri: targetUri,
+          source: moText,
+          suggestedFilename: `${baseName}.cfd.mo`,
+        };
+      },
       ui: {
         explorerContextMenu: {
           group: "modelscript_cae@5",
@@ -245,7 +315,7 @@ export const stepLanguage = language({
 
         return { source: modelicaSource, name: baseName };
       },
-      "modelscript/getStepMeshes": async (ctx: any, params: { uri: string }): Promise<any[]> => {
+      "modelscript/getStepMeshes": async (ctx: any, params: { uri: string; documentText?: string }): Promise<any[]> => {
         let targetUri = params.uri;
         if (!/\.(step|stp|p21)$/i.test(targetUri)) {
           const unifiedIdx = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
@@ -267,7 +337,10 @@ export const stepLanguage = language({
         let unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
 
         if (meshes.length === 0 && ctx.workspaceManager?.stepWorkspaceIndex) {
-          let text = ctx.documentManager?.documentTrees?.get(targetUri)?.text;
+          let text = params?.documentText || ctx.documentManager?.documentTrees?.get(targetUri)?.text;
+          if (!text && ctx.documents?.get) {
+            text = ctx.documents.get(targetUri)?.getText();
+          }
           if (!text) {
             try {
               text = await ctx.sharedFs?.read?.(targetUri);

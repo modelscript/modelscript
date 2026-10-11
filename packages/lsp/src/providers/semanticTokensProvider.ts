@@ -33,6 +33,263 @@ const legend: SemanticTokensLegend = { tokenTypes, tokenModifiers };
 
 export { legend };
 
+function computeCfdSemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  const lines = text.split(/\r?\n/);
+  const keywordIdx = tokenTypes.indexOf("keyword");
+  const typeIdx = tokenTypes.indexOf("type");
+  const commentIdx = tokenTypes.indexOf("comment");
+  const numberIdx = tokenTypes.indexOf("number");
+  const stringIdx = tokenTypes.indexOf("string");
+  const operatorIdx = tokenTypes.indexOf("operator");
+  const variableIdx = tokenTypes.indexOf("variable");
+  const parameterIdx = tokenTypes.indexOf("parameter");
+
+  const knownConstants = new Set([
+    "INC_RANS",
+    "RANS",
+    "EULER",
+    "NAVIER_STOKES",
+    "SST",
+    "SPALART_ALLMARAS",
+    "DIRECT",
+    "ADJOINT",
+    "CONSTANT",
+    "CONSTANT_VISCOSITY",
+    "SUTHERLAND",
+    "RMS_PRESSURE",
+    "RMS_DENSITY",
+    "RMS_ENERGY",
+    "DRAG",
+    "LIFT",
+    "YES",
+    "NO",
+    "TRUE",
+    "FALSE",
+  ]);
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+    if (!line.trim()) continue;
+
+    // 1. Check for comment start
+    const commentMatch = line.match(/(%|#|\/\/)/);
+    let codePart = line;
+    let commentStart = -1;
+
+    if (commentMatch && commentMatch.index !== undefined) {
+      commentStart = commentMatch.index;
+      codePart = line.slice(0, commentStart);
+      const commentPart = line.slice(commentStart);
+      rawTokens.push({
+        line: lineIdx,
+        char: commentStart,
+        length: commentPart.length,
+        typeIndex: commentIdx,
+        modifier: 0,
+      });
+    }
+
+    if (!codePart.trim()) continue;
+
+    // 2. Tokenize directive keyword before '=', then '=' operator, then value tokens
+    const eqIdx = codePart.indexOf("=");
+    if (eqIdx !== -1) {
+      const keyPart = codePart.slice(0, eqIdx);
+      const valPart = codePart.slice(eqIdx + 1);
+
+      const keyMatch = keyPart.match(/([A-Za-z_][A-Za-z0-9_]*)/);
+      if (keyMatch && keyMatch.index !== undefined) {
+        rawTokens.push({
+          line: lineIdx,
+          char: keyMatch.index,
+          length: keyMatch[0].length,
+          typeIndex: keywordIdx,
+          modifier: 0,
+        });
+      }
+
+      rawTokens.push({
+        line: lineIdx,
+        char: eqIdx,
+        length: 1,
+        typeIndex: operatorIdx,
+        modifier: 0,
+      });
+
+      const valOffset = eqIdx + 1;
+      const valPattern =
+        /(?:\{\{[\s\S]*?\}\})|(?:"[^"]*")|(?:'[^']*')|(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)|(?:[A-Za-z_][A-Za-z0-9_]*)|(?:[=,()+\-*/^])/g;
+      let m: RegExpExecArray | null;
+      while ((m = valPattern.exec(valPart)) !== null) {
+        const tok = m[0];
+        const col = valOffset + m.index;
+        let tIdx = -1;
+        if (tok.startsWith("{{")) {
+          tIdx = variableIdx;
+        } else if (tok.startsWith('"') || tok.startsWith("'")) {
+          tIdx = stringIdx;
+        } else if (/^[+-]?(?:\d+\.?\d*|\.\d+)/.test(tok)) {
+          tIdx = numberIdx;
+        } else if (knownConstants.has(tok.toUpperCase())) {
+          tIdx = typeIdx;
+        } else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(tok)) {
+          tIdx = parameterIdx;
+        } else {
+          tIdx = operatorIdx;
+        }
+        if (tIdx >= 0) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: tIdx, modifier: 0 });
+        }
+      }
+    } else {
+      const tokenPattern = /(?:[A-Za-z_][A-Za-z0-9_]*)|(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
+      let m: RegExpExecArray | null;
+      while ((m = tokenPattern.exec(codePart)) !== null) {
+        const tok = m[0];
+        const col = m.index;
+        const tIdx = /^[0-9+-]/.test(tok) ? numberIdx : keywordIdx;
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: tIdx, modifier: 0 });
+      }
+    }
+  }
+
+  rawTokens.sort((a, b) => (a.line === b.line ? a.char - b.char : a.line - b.line));
+  for (const token of rawTokens) {
+    builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+  }
+  return builder.build();
+}
+
+function computeFeaSemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  const lines = text.split(/\r?\n/);
+  const keywordIdx = tokenTypes.indexOf("keyword");
+  const typeIdx = tokenTypes.indexOf("type");
+  const commentIdx = tokenTypes.indexOf("comment");
+  const numberIdx = tokenTypes.indexOf("number");
+  const stringIdx = tokenTypes.indexOf("string");
+  const operatorIdx = tokenTypes.indexOf("operator");
+  const variableIdx = tokenTypes.indexOf("variable");
+  const parameterIdx = tokenTypes.indexOf("parameter");
+
+  const knownConstants = new Set([
+    "C3D8",
+    "C3D8R",
+    "C3D20",
+    "C3D20R",
+    "C3D4",
+    "C3D10",
+    "S4",
+    "S4R",
+    "S3",
+    "B31",
+    "B32",
+    "T3D2",
+    "STATIC",
+    "DYNAMIC",
+    "FREQUENCY",
+    "BUCKLE",
+    "MODAL",
+  ]);
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Comment line
+    if (trimmed.startsWith("**") || trimmed.startsWith("$") || trimmed.startsWith("#")) {
+      const col = line.indexOf(trimmed);
+      rawTokens.push({
+        line: lineIdx,
+        char: col,
+        length: line.length - col,
+        typeIndex: commentIdx,
+        modifier: 0,
+      });
+      continue;
+    }
+
+    // Keyword card line
+    if (trimmed.startsWith("*")) {
+      const cardPattern =
+        /(?:\{\{[\s\S]*?\}\})|(?:"[^"]*")|(?:'[^']*')|(?:\*[A-Za-z_][A-Za-z0-9_ ]*)|(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)|(?:[A-Za-z_][A-Za-z0-9_]*)|(?:[=,()+\-*/^])/g;
+      let m: RegExpExecArray | null;
+      let isFirst = true;
+      while ((m = cardPattern.exec(line)) !== null) {
+        const tok = m[0];
+        const col = m.index;
+        let tIdx = -1;
+        if (isFirst && tok.startsWith("*")) {
+          tIdx = keywordIdx;
+          isFirst = false;
+        } else if (tok.startsWith("{{")) {
+          tIdx = variableIdx;
+        } else if (tok.startsWith('"') || tok.startsWith("'")) {
+          tIdx = stringIdx;
+        } else if (/^[+-]?(?:\d+\.?\d*|\.\d+)/.test(tok)) {
+          tIdx = numberIdx;
+        } else if (knownConstants.has(tok.toUpperCase())) {
+          tIdx = typeIdx;
+        } else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(tok)) {
+          tIdx = parameterIdx;
+        } else {
+          tIdx = operatorIdx;
+        }
+        if (tIdx >= 0) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: tIdx, modifier: 0 });
+        }
+      }
+      continue;
+    }
+
+    // Data line
+    const dataPattern =
+      /(?:\{\{[\s\S]*?\}\})|(?:"[^"]*")|(?:'[^']*')|(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)|(?:[A-Za-z_][A-Za-z0-9_]*)|(?:[=,()+\-*/^])/g;
+    let m: RegExpExecArray | null;
+    while ((m = dataPattern.exec(line)) !== null) {
+      const tok = m[0];
+      const col = m.index;
+      let tIdx = -1;
+      if (tok.startsWith("{{")) {
+        tIdx = variableIdx;
+      } else if (tok.startsWith('"') || tok.startsWith("'")) {
+        tIdx = stringIdx;
+      } else if (/^[+-]?(?:\d+\.?\d*|\.\d+)/.test(tok)) {
+        tIdx = numberIdx;
+      } else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(tok)) {
+        tIdx = variableIdx;
+      } else {
+        tIdx = operatorIdx;
+      }
+      if (tIdx >= 0) {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: tIdx, modifier: 0 });
+      }
+    }
+  }
+
+  rawTokens.sort((a, b) => (a.line === b.line ? a.char - b.char : a.line - b.line));
+  for (const token of rawTokens) {
+    builder.push(token.line, token.char, token.length, token.typeIndex, token.modifier);
+  }
+  return builder.build();
+}
+
 function computeStepSemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
   const rawTokens: {
     line: number;
@@ -425,6 +682,16 @@ export function registerSemanticTokensProvider(
     // STEP files use regex-based semantic tokens
     if (textDocument.uri.match(/\.(step|stp|p21)$/i)) {
       return computeStepSemanticTokens(builder, text);
+    }
+
+    // CFD configuration files use dedicated semantic tokens
+    if (textDocument.uri.match(/\.(cfg|cfgt|su2|cfd)($|\?|#)/i) || textDocument.languageId === "cfd") {
+      return computeCfdSemanticTokens(builder, text);
+    }
+
+    // FEA input deck files use dedicated semantic tokens
+    if (textDocument.uri.match(/\.(inp|inpt|bdf|fea)($|\?|#)/i) || textDocument.languageId === "fea") {
+      return computeFeaSemanticTokens(builder, text);
     }
 
     // SysML2 files use a separate parser and node-type classification

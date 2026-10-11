@@ -65,6 +65,7 @@ export enum VarAttrKind {
   Nominal = 4,
   Start = 5,
   Fixed = 6,
+  Binding = 7,
 }
 
 // ── State Machine Types ──
@@ -265,6 +266,7 @@ export const FLAG_VAR_FIXED = 1 << 5;
 export const FLAG_VAR_REMOVED = 1 << 6;
 export const FLAG_VAR_PROTECTED = 1 << 7;
 export const FLAG_VAR_FINAL = 1 << 8;
+export const FLAG_VAR_VIRTUAL = 1 << 9;
 
 export const FLAG_EQ_INITIAL = 1 << 0;
 export const FLAG_EQ_OVERCONSTRAINED = 1 << 1;
@@ -807,6 +809,10 @@ export class WasmDaeBridge implements IDaeBuilder {
     const expr = this.varExpressions.get(varIdx);
     if (expr !== undefined) return expr;
     if (this.exports?.dae_getVarAttrExpr) {
+      const binding = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, VarAttrKind.Binding);
+      if (binding !== 0xffffffff && binding >= 0) {
+        return binding;
+      }
       const attr = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, VarAttrKind.Start);
       if (attr !== 0xffffffff && attr >= 0) {
         const v = this.getVarVariability(varIdx);
@@ -828,11 +834,21 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   setVarExpression(varIdx: number, exprId: number): void {
     this.varExpressions.set(varIdx, exprId);
+    this.setVarAttrExpr(varIdx, VarAttrKind.Binding, exprId);
     this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
   }
 
   getVarDescription(varIdx: number): string | undefined {
-    return this.varDescriptions.get(varIdx);
+    const desc = this.varDescriptions.get(varIdx);
+    if (desc !== undefined) return desc;
+    if ((this.getVarFlags(varIdx) & FLAG_VAR_VIRTUAL) !== 0) {
+      return "virtual variable in expandable connector";
+    }
+    return undefined;
+  }
+
+  isVarVirtual(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_VIRTUAL) !== 0;
   }
 
   setVarDescription(varIdx: number, desc: string): void {

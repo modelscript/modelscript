@@ -352,6 +352,102 @@ export function registerHoverProvider(
       return null; // STEP file but nothing to hover on — don't fall through
     }
 
+    // ── CFD (SU2) and FEA (CalculiX) Domain Hovers ──
+    const targetUri = params.textDocument.uri;
+    if (/\.(cfg|cfgt|su2|cfd)$/i.test(targetUri)) {
+      let tokenStart = offset;
+      while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
+      let tokenEnd = offset;
+      while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
+      const word = text.slice(tokenStart, tokenEnd).trim().toUpperCase();
+      const cfdDocs: Record<string, string> = {
+        SOLVER:
+          "**SU2 Solver Selection**\n\nSpecifies the governing physical equations solver:\n- `INC_RANS`: Incompressible Reynolds-Averaged Navier-Stokes\n- `EULER`: Compressible Inviscid Euler equations\n- `NAVIER_STOKES`: Compressible Laminar Navier-Stokes\n- `RANS`: Compressible Reynolds-Averaged Navier-Stokes",
+        KIND_TURB_MODEL:
+          "**Turbulence Closure Model**\n\nTurbulence eddy-viscosity closure model:\n- `SST`: Menter Shear Stress Transport k-omega\n- `SA`: Spalart-Allmaras 1-equation model\n- `SA_NEG`: Negative Spalart-Allmaras for unstructured grids",
+        MATH_PROBLEM:
+          "**Mathematical Problem Formulation**\n\n- `DIRECT`: Forward primal flow simulation\n- `ADJOINT`: Discrete/continuous adjoint sensitivity analysis",
+        INC_DENSITY_MODEL:
+          "**Fluid Density Model**\n\n- `CONSTANT`: Constant density incompressible fluid\n- `VARIABLE`: Temperature/pressure dependent density",
+        INC_DENSITY_INIT:
+          "**Reference Fluid Density**\n\nInitial fluid density rho_0 in kg/m^3 (e.g. 1.225 for sea-level air).",
+        INC_VELOCITY_INIT:
+          "**Free-Stream Velocity Vector**\n\nInitial velocity vector (v_x, v_y, v_z) in m/s. Parameterizes vertical climb or forward cruise.",
+        INC_TEMPERATURE_INIT:
+          "**Reference Fluid Temperature**\n\nInitial fluid temperature in Kelvin (e.g. 288.15 K standard atmospheric temperature).",
+        VISCOSITY_MODEL:
+          "**Fluid Dynamic Viscosity Model**\n\n- `CONSTANT_VISCOSITY`: Fixed dynamic viscosity (Newtonian fluid)\n- `SUTHERLAND`: Sutherland law temperature-dependent viscosity",
+        MU_CONSTANT:
+          "**Constant Dynamic Viscosity**\n\nMolecular dynamic viscosity mu in Pa*s (e.g. 1.81e-5 Pa*s for air at 15 deg C).",
+        REF_AREA:
+          "**Aerodynamic Reference Projected Area**\n\nReference frontal area A_ref in m^2 used to non-dimensionalize aerodynamic forces into drag/lift coefficients (C_d, C_l). Evaluated geometrically from CAD projection.",
+        REF_LENGTH:
+          "**Reference Characteristic Length**\n\nCharacteristic aerodynamic length L_ref in meters (e.g. rotor diameter or mean aerodynamic chord).",
+        MARKER_INLET:
+          "**Inlet Boundary Condition**\n\nPrescribes velocity or total pressure inlet on a CAD tagged surface mesh patch.",
+        MARKER_OUTLET:
+          "**Outlet Boundary Condition**\n\nPrescribes static pressure outlet on a computational boundary patch.",
+        MARKER_HEATFLUX:
+          "**Thermal Wall Boundary Condition**\n\nPrescribes wall heat flux q'' in W/m^2 on specified boundary surface markers.",
+        MARKER_MONITORING:
+          "**Aerodynamic Surface Monitor**\n\nSurfaces included in integrated aerodynamic force coefficient calculations (C_d, C_l, C_m).",
+        MARKER_DESIGNING:
+          "**Aerodynamic Shape Optimization Surface**\n\nSurface patches parameterized for aerodynamic shape sensitivity and mesh deformation.",
+        ITER: "**Maximum Iteration Count**\n\nSpecifies the maximum non-linear iteration cutoff for solver convergence.",
+        CONV_FIELD:
+          "**Convergence Monitoring Residual Field**\n\nSpecifies which residual field is monitored for numerical convergence (e.g. `RMS_PRESSURE`, `RMS_DENSITY`).",
+      };
+      if (cfdDocs[word]) {
+        return {
+          contents: { kind: "markdown", value: cfdDocs[word] },
+          range: {
+            start: document.positionAt(tokenStart),
+            end: document.positionAt(tokenEnd),
+          },
+        };
+      }
+    }
+
+    if (/\.(inp|inpt|bdf|fea)$/i.test(targetUri)) {
+      let tokenStart = offset;
+      while (tokenStart > 0 && /[a-zA-Z0-9_*]/.test(text[tokenStart - 1]!)) tokenStart--;
+      let tokenEnd = offset;
+      while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
+      const word = text.slice(tokenStart, tokenEnd).trim().toUpperCase().replace(/^\*/, "");
+      const feaDocs: Record<string, string> = {
+        NODE: "**CalculiX / Abaqus *NODE**\n\nDefines nodal coordinate grid (X, Y, Z) for finite element discretization.",
+        ELEMENT:
+          "**CalculiX / Abaqus *ELEMENT**\n\nDefines element topology and connectivity:\n- `TYPE=C3D10`: 10-node quadratic tetrahedral solid (prevents shear locking)\n- `TYPE=C3D4`: 4-node linear tetrahedral solid\n- `TYPE=C3D8R`: 8-node reduced integration brick",
+        MATERIAL:
+          "**CalculiX / Abaqus *MATERIAL**\n\nDefines constitutive material model definition for structural parts.",
+        ELASTIC:
+          "**Isotropic Elastic Modulus**\n\nSpecifies Young's modulus E in Pa and Poisson's ratio nu (e.g. 70 GPa, 0.33 for structural aluminum/composite).",
+        DENSITY:
+          "**Material Mass Density**\n\nMass density rho in kg/m^3 (e.g. 2700 kg/m^3). Used for mass matrix and lumped mass calculation.",
+        SOLID_SECTION:
+          "**Solid Section Assignment**\n\nAssigns element set (`ELSET`) to material definition and coordinate orientation.",
+        BOUNDARY:
+          "**Kinematic Boundary Constraint (Fixity)**\n\nEnforces zero-displacement constraints on specified node sets (degrees of freedom 1, 2, 3).",
+        CLOAD:
+          "**Concentrated Nodal Load**\n\nApplies external concentrated force F in Newtons along specified degree of freedom.",
+        STEP: "**Analysis Step Definition**\n\nBegins a structural loading step (`*STATIC` stress/strain analysis).",
+        END_STEP: "**End of Analysis Step**\n\nTerminates the active structural loading step.",
+        NODE_FILE:
+          "**Nodal Output Request**\n\nRequests nodal results (e.g. `U` displacement vector) to be written to output file.",
+        EL_FILE:
+          "**Element Output Request**\n\nRequests integration point results (e.g. `S` stress tensor) to be written to output file.",
+      };
+      if (feaDocs[word]) {
+        return {
+          contents: { kind: "markdown", value: feaDocs[word] },
+          range: {
+            start: document.positionAt(tokenStart),
+            end: document.positionAt(tokenEnd),
+          },
+        };
+      }
+    }
+
     // ── Standard polyglot hover (Modelica/SysML/OWL2 — requires bridge) ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
     if (!bridge) {

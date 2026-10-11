@@ -11,7 +11,7 @@ import type { QueryDB, SymbolEntry } from "./types.js";
 export type ASTQueryFunction<
   RuleName extends string = string,
   FieldName extends string = string,
-  QueryName extends string = string,
+  _QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
 > = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean | void;
@@ -19,7 +19,7 @@ export type ASTQueryFunction<
 export type ASTLintFunction<
   RuleName extends string = string,
   FieldName extends string = string,
-  QueryName extends string = string,
+  _QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > = (
   graph: CodeGraph<ModelAttrs, RuleName, FieldName>,
@@ -46,7 +46,7 @@ export interface DiagnosticContext<FieldName extends string = string> {
   [field: string]: any;
 }
 
-export interface CompilerLintFix<RuleName extends string = string, FieldName extends string = string> {
+export interface CompilerLintFix<_RuleName extends string = string, FieldName extends string = string> {
   title: string | ((target: DiagnosticContext<FieldName>) => string);
   kind?: "quickfix" | "refactor";
   isPreferred?: boolean;
@@ -100,6 +100,8 @@ export interface CompilationPipeline<
 
 export interface LintRangeOptions {
   field?: string;
+  startOffset?: number;
+  endOffset?: number;
   startCharOffset?: number;
   endCharOffset?: number;
   startByte?: number;
@@ -111,6 +113,8 @@ export interface LintResult {
   message: string;
   severity: "error" | "warning" | "info" | "hint";
   field?: string;
+  startOffset?: number;
+  endOffset?: number;
   startCharOffset?: number;
   endCharOffset?: number;
   startByte?: number;

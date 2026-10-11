@@ -362,7 +362,9 @@ function printResult(result: TestResult, showBackend = false): void {
           ? `${YELLOW}○${RESET}`
           : `${RED}✗ [REGRESSION]${RESET}`;
 
-  const duration = `${DIM}(${result.duration.toFixed(0)}ms, cpu ${result.cpuTime.toFixed(0)}ms)${RESET}`;
+  const memStr =
+    typeof result.memoryMb === "number" && result.memoryMb > 0 ? `, mem ${result.memoryMb.toFixed(1)}MB` : "";
+  const duration = `${DIM}(${result.duration.toFixed(0)}ms, cpu ${result.cpuTime.toFixed(0)}ms${memStr})${RESET}`;
   const xfailReason = typeof result.xfail === "string" ? ` ${DIM}(reason: ${result.xfail})${RESET}` : "";
   const backendLabel =
     showBackend && result.backend ? `${DIM}[${result.backend === "ts" ? "js" : result.backend}]${RESET} ` : "";
@@ -398,7 +400,13 @@ function printSummary(results: TestResult[], suiteLabel: string): void {
     passedStr += `, ${YELLOW}${xpass} unexpected passes (xpass)${RESET}`;
   }
 
-  console.log(`  Tests: ${passedStr}, ${failedStr}, ${YELLOW}${skipped} skipped${RESET}, ${total} total`);
+  const tsFallbackCount = results.filter((r) => r.status === "passed" && (r.extra as any)?.usedTsFallback).length;
+  const fallbackStr =
+    tsFallbackCount > 0
+      ? ` ${DIM}(${passed - tsFallbackCount} direct wasm, ${tsFallbackCount} ts fallback)${RESET}`
+      : "";
+
+  console.log(`  Tests: ${passedStr}${fallbackStr}, ${failedStr}, ${YELLOW}${skipped} skipped${RESET}, ${total} total`);
 
   if (regressions > 0) {
     console.log(`  ${RED}${BOLD}✗ ${regressions} unexpected regression(s) detected!${RESET}`);
@@ -444,6 +452,9 @@ function generateCtrfReport(
         start: Math.floor(startTime),
         stop: Math.floor(stopTime),
         cpuTime: Math.floor(results.reduce((sum, r) => sum + r.cpuTime, 0)),
+        extra: {
+          peakMemoryMb: Number(Math.max(0, ...results.map((r) => r.memoryMb ?? 0)).toFixed(1)),
+        },
       },
       tests: results.map((r) => {
         const b = r.backend === "ts" ? "js" : r.backend;
@@ -452,6 +463,7 @@ function generateCtrfReport(
           name: testName,
           duration: Math.floor(r.duration),
           cpuTime: Math.floor(r.cpuTime),
+          ...(r.memoryMb !== undefined ? { memoryMb: r.memoryMb } : {}),
           status: r.status === "skipped" ? "pending" : r.status,
           rawStatus: r.xfail ? (r.status === "failed" ? "xfail" : "xpass") : r.status,
           type: "unit",
@@ -462,7 +474,11 @@ function generateCtrfReport(
             isCombined && b ? `${path.basename(path.dirname(r.file))} (${b})` : path.basename(path.dirname(r.file)),
           extra: {
             ...(b ? { backend: b } : {}),
+            baseName: r.name,
+            baseSuite: path.basename(path.dirname(r.file)),
             ...(r.xfail !== undefined ? { xfail: r.xfail } : {}),
+            ...(r.memoryMb !== undefined ? { memoryMb: r.memoryMb } : {}),
+            ...(r.extra ?? {}),
           },
           ...(r.message ? { message: stripAnsi(r.message) } : {}),
           ...(r.keywords ? { keywords: r.keywords } : {}),
@@ -572,11 +588,19 @@ async function main(): Promise<void> {
   const flattenerArg = rawArgs.find((a) => a.startsWith("--flattener=") || a.startsWith("--backend="));
   const rawFlattener = flattenerArg ? flattenerArg.split("=")[1]?.trim() : process.env.FLATTENER_BACKEND || "hybrid";
 
-  let backendsToRun: ("wasm" | "ts" | "hybrid" | "diff")[];
+  let backendsToRun: ("wasm" | "ts" | "hybrid" | "diff" | "omc")[];
   if (
+    rawFlattener === "all" ||
+    rawFlattener === "tri" ||
+    rawArgs.includes("--all-backends") ||
+    rawArgs.includes("--with-omc") ||
+    rawArgs.includes("--omc-bench") ||
+    (rawArgs.includes("--omc") && (rawArgs.includes("--both") || rawFlattener === "both" || rawFlattener === "dual"))
+  ) {
+    backendsToRun = ["wasm", "ts", "omc"];
+  } else if (
     rawFlattener === "both" ||
     rawFlattener === "dual" ||
-    rawFlattener === "all" ||
     rawArgs.includes("--dual") ||
     rawArgs.includes("--both")
   ) {
@@ -587,13 +611,17 @@ async function main(): Promise<void> {
     const single = rawFlattener === "js" ? "ts" : (rawFlattener as any);
     backendsToRun = [single];
   }
-  const isDualBackend = backendsToRun.length > 1;
-  process.env.FLATTENER_BACKEND = isDualBackend ? "both" : backendsToRun[0];
+  const isMultiBackend = backendsToRun.length > 1;
+  process.env.FLATTENER_BACKEND = isMultiBackend ? "both" : backendsToRun[0];
 
   const args = rawArgs.filter(
     (a) =>
       a !== "--update" &&
       a !== "--omc" &&
+      a !== "--with-omc" &&
+      a !== "--omc-bench" &&
+      a !== "--all-backends" &&
+      a !== "--tri" &&
       a !== "--allow-failures" &&
       a !== "--allow-wasm-failures" &&
       a !== "--fresh-process" &&
@@ -607,8 +635,8 @@ async function main(): Promise<void> {
   );
 
   const modeStr = freshProcess ? "isolated processes" : "persistent worker pool";
-  const backendDesc = isDualBackend
-    ? `dual [${backendsToRun.map((b) => (b === "ts" ? "js" : b)).join(", ")}]`
+  const backendDesc = isMultiBackend
+    ? `multi [${backendsToRun.map((b) => (b === "ts" ? "js" : b)).join(", ")}]`
     : backendsToRun[0];
   console.log(
     `${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, flattener=${backendDesc}, mode=${modeStr})`,
@@ -805,7 +833,7 @@ async function main(): Promise<void> {
         const q = allQueued.find((x) => x.testCase.file === r.file && x.backend === r.backend);
         const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
         const backendStr =
-          isDualBackend && r.backend ? `${DIM}[${r.backend === "ts" ? "js" : r.backend}]${RESET} ` : "";
+          isMultiBackend && r.backend ? `${DIM}[${r.backend === "ts" ? "js" : r.backend}]${RESET} ` : "";
         const tag = r.xfail ? `${YELLOW}✗ [XFAIL]${RESET}` : `${RED}✗ [REGRESSION]${RESET}`;
         console.log(`  ${tag} ${suiteStr}${backendStr}${r.name}`);
         if (r.message) {
@@ -850,7 +878,7 @@ async function main(): Promise<void> {
     console.log();
     console.log(`${BOLD}Suite: ${suiteName}${RESET} (${results.length} files)`);
     for (const result of results) {
-      printResult(result, isDualBackend);
+      printResult(result, isMultiBackend);
     }
     printSummary(results, `Summary: ${suiteName}`);
     allResults.push(...results);
@@ -870,70 +898,57 @@ async function main(): Promise<void> {
     const ctrfDir = path.resolve(import.meta.dirname ?? __dirname, "../ctrf");
     fs.mkdirSync(ctrfDir, { recursive: true });
 
-    if (isDualBackend) {
-      const wasmResults = allResults.filter((r) => r.backend === "wasm");
-      const jsResults = allResults.filter((r) => r.backend === "ts" || r.backend === "hybrid");
+    if (isMultiBackend) {
+      console.log(`\n${DIM}CTRF reports written:${RESET}`);
+      for (const b of backendsToRun) {
+        const bLabel = b === "ts" ? "js" : b;
+        const bResults = allResults.filter((r) => r.backend === b || (b === "ts" && r.backend === "hybrid"));
+        const bCtrfPath = path.join(ctrfDir, `ctrf-testsuite-report-${bLabel}.json`);
+        const bReport = generateCtrfReport(bResults, globalStart, globalStop, bLabel);
+        fs.writeFileSync(bCtrfPath, JSON.stringify(bReport, null, 2) + "\n");
+        const bHtmlPath = path.join(ctrfDir, `ctrf-testsuite-report-${bLabel}.html`);
+        generateHtmlReport(bCtrfPath, bHtmlPath);
+        console.log(`  - ${bLabel.toUpperCase()}: ${bCtrfPath} & ${bHtmlPath}`);
+      }
 
-      // 1. Separate WASM CTRF report
-      const wasmCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report-wasm.json");
-      const wasmReport = generateCtrfReport(wasmResults, globalStart, globalStop, "wasm");
-      fs.writeFileSync(wasmCtrfPath, JSON.stringify(wasmReport, null, 2) + "\n");
-      const wasmHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report-wasm.html");
-      generateHtmlReport(wasmCtrfPath, wasmHtmlPath);
-
-      // 2. Separate JS CTRF report
-      const jsCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report-js.json");
-      const jsReport = generateCtrfReport(jsResults, globalStart, globalStop, "js");
-      fs.writeFileSync(jsCtrfPath, JSON.stringify(jsReport, null, 2) + "\n");
-      const jsHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report-js.html");
-      generateHtmlReport(jsCtrfPath, jsHtmlPath);
-
-      // 3. Combined CTRF report
+      // Combined CTRF report
       const combinedCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
       const combinedReport = generateCtrfReport(allResults, globalStart, globalStop, undefined, true);
       fs.writeFileSync(combinedCtrfPath, JSON.stringify(combinedReport, null, 2) + "\n");
       const combinedHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
       generateHtmlReport(combinedCtrfPath, combinedHtmlPath);
+      console.log(`  - Combined: ${combinedCtrfPath} & ${combinedHtmlPath}`);
 
-      console.log(`\n${DIM}CTRF reports written:${RESET}`);
-      console.log(`  - WASM: ${wasmCtrfPath} & ${wasmHtmlPath}`);
-      console.log(`  - JS:   ${jsCtrfPath} & ${jsHtmlPath}`);
-      console.log(`  - Both: ${combinedCtrfPath} & ${combinedHtmlPath}`);
-
-      // Detailed dual breakdown
+      // Detailed multi-backend breakdown
       console.log();
       console.log(`${BOLD}══════════════════════════════════════════════════════════════${RESET}`);
       console.log(`${BOLD}Implementation Comparison Breakdown${RESET}`);
       console.log(`${BOLD}══════════════════════════════════════════════════════════════${RESET}`);
-      printSummary(wasmResults, "WASM Implementation");
-      printSummary(jsResults, "JS/TS Implementation");
-
-      const uniqueFiles = new Set(allResults.map((r) => r.file));
-      let bothPassed = 0;
-      let bothFailed = 0;
-      let jsOnlyPassed = 0;
-      let wasmOnlyPassed = 0;
-
-      for (const file of uniqueFiles) {
-        const w = wasmResults.find((r) => r.file === file);
-        const j = jsResults.find((r) => r.file === file);
-        if (w && j) {
-          const wPass = w.status === "passed";
-          const jPass = j.status === "passed";
-          if (wPass && jPass) bothPassed++;
-          else if (!wPass && !jPass) bothFailed++;
-          else if (jPass && !wPass) jsOnlyPassed++;
-          else if (wPass && !jPass) wasmOnlyPassed++;
-        }
+      for (const b of backendsToRun) {
+        const bLabel = b === "ts" ? "JS/TS" : b.toUpperCase();
+        const bResults = allResults.filter((r) => r.backend === b || (b === "ts" && r.backend === "hybrid"));
+        printSummary(bResults, `${bLabel} Implementation`);
       }
 
       console.log();
-      console.log(`  Unique models evaluated: ${uniqueFiles.size}`);
-      console.log(`  ${GREEN}✓ Passed in both (parity):  ${bothPassed}${RESET}`);
-      console.log(`  ${RED}✗ Failed in both:          ${bothFailed}${RESET}`);
-      console.log(`  ${YELLOW}▶ JS passed, WASM failed:   ${jsOnlyPassed}${RESET}`);
-      console.log(`  ${YELLOW}▶ WASM passed, JS failed:   ${wasmOnlyPassed}${RESET}`);
-      console.log(`${BOLD}══════════════════════════════════════════════════════════════${RESET}`);
+      console.log(`${BOLD}Backend Performance & Resource Comparison${RESET}`);
+      console.log(`--------------------------------------------------------------------------------`);
+      console.log(`Backend     Passed / Total      Pass %     Total CPU     Avg Dur     Peak RSS`);
+      console.log(`--------------------------------------------------------------------------------`);
+      for (const b of backendsToRun) {
+        const bLabel = (b === "ts" ? "JS/TS" : b.toUpperCase()).padEnd(11);
+        const bResults = allResults.filter((r) => r.backend === b || (b === "ts" && r.backend === "hybrid"));
+        const p = bResults.filter((r) => r.status === "passed").length;
+        const tot = bResults.length;
+        const pct = tot > 0 ? ((p / tot) * 100).toFixed(1) + "%" : "0.0%";
+        const totalCpu = (bResults.reduce((sum, r) => sum + r.cpuTime, 0) / 1000).toFixed(2) + "s";
+        const avgDur = tot > 0 ? (bResults.reduce((sum, r) => sum + r.duration, 0) / tot).toFixed(0) + "ms" : "0ms";
+        const peakMem = Number(Math.max(0, ...bResults.map((r) => r.memoryMb ?? 0)).toFixed(1)) + " MB";
+        console.log(
+          `${bLabel} ${`${p} / ${tot}`.padEnd(19)} ${pct.padEnd(10)} ${totalCpu.padEnd(13)} ${avgDur.padEnd(11)} ${peakMem}`,
+        );
+      }
+      console.log(`--------------------------------------------------------------------------------`);
     } else {
       const activeBackend = backendsToRun[0] === "wasm" ? "wasm" : "js";
       const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");

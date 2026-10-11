@@ -33,8 +33,8 @@ export const feaLanguage = language({
   lsp: {
     fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
     icons: {
-      light: "./assets/icon-light.png",
-      dark: "./assets/icon-dark.png",
+      light: "./assets/fea/icon-light.png",
+      dark: "./assets/fea/icon-dark.png",
     },
   },
 
@@ -44,6 +44,33 @@ export const feaLanguage = language({
       title: "Open 3D FEA Deck Viewer",
       description: "Opens the 3D finite element deck viewer showing nodes, elements, boundary conditions, and loads.",
       category: "query",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No FEA input deck found to view.");
+        }
+        const { getFeaDialect } = await import("./dialects/index.js");
+        const dialect = getFeaDialect(ctx.uri || "inp");
+        const modelData = dialect.parse(source);
+        const { extractFeaSlicingProperties } = await import("./materializer.js");
+        const slicing = extractFeaSlicingProperties(source);
+        return {
+          success: true,
+          uri: ctx.uri,
+          nodeCount: modelData.nodes.size,
+          elementCount: modelData.elements.size,
+          materials: Array.from(modelData.materials.keys()),
+          slicing,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(package)",
@@ -64,6 +91,27 @@ export const feaLanguage = language({
       title: "Materialize FEA Deck (.inpt -> .inp)",
       description: "Evaluates embedded expressions and expands parametric macros into a concrete CalculiX / .inp deck.",
       category: "transform",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string; options?: any }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No FEA deck template found to materialize.");
+        }
+        const { materializeFeaDeck } = await import("./materializer.js");
+        const materialized = materializeFeaDeck(source, params?.options);
+        return {
+          success: true,
+          uri: ctx.uri,
+          materialized,
+        };
+      },
       ui: {
         editorTitle: {
           icon: "$(file-code)",
@@ -88,6 +136,38 @@ export const feaLanguage = language({
       title: "Run FEA Structural Simulation",
       description: "Executes a structural finite element simulation using CalculiX solver.",
       category: "simulate",
+      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && ctx.uri && ctx.documents) {
+          source = ctx.documents.get(ctx.uri)?.getText();
+        }
+        if (!source && ctx.uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(ctx.uri);
+          } catch {}
+        }
+        if (!source) {
+          throw new Error("No FEA deck found to simulate.");
+        }
+        const { extractFeaSlicingProperties } = await import("./materializer.js");
+        const slicing = extractFeaSlicingProperties(source);
+        if (ctx.notifyProgress) {
+          ctx.notifyProgress(
+            `FEA Analysis: mass=${slicing.mass}kg, σ_max=${(slicing.maxVonMisesPa / 1e6).toFixed(1)}MPa (${slicing.isSafe ? "SAFE" : "FAIL"})`,
+          );
+        }
+        return {
+          success: true,
+          uri: ctx.uri,
+          solver: "CalculiX Structural Slicing",
+          mass: slicing.mass,
+          maxVonMisesPa: slicing.maxVonMisesPa,
+          yieldStrengthPa: slicing.yieldStrengthPa,
+          safetyFactor: slicing.safetyFactor,
+          isSafe: slicing.isSafe,
+          summary: `FEA structural simulation completed: Mass m = ${slicing.mass} kg, Max von Mises = ${(slicing.maxVonMisesPa / 1e6).toFixed(1)} MPa <= ${(slicing.yieldStrengthPa / 1e6).toFixed(1)} MPa (Safety Factor: ${slicing.safetyFactor}x, ${slicing.isSafe ? "SAT" : "VIOLATED"})`,
+        };
+      },
       ui: {
         editorContextMenu: {
           group: "1_run@1",
@@ -107,6 +187,24 @@ export const feaLanguage = language({
   polyglot: {
     languages: ["sysml2", "modelica"],
     rules: [
+      tggRule({
+        name: "FeaStressMassToModelicaParam",
+        sourceLang: "fea",
+        targetLang: "modelica",
+        priority: 15,
+        source: ($, v) => $.KeywordCard({ name: "SOLID SECTION", parameter: v("elset") }),
+        target: ($, v) => $.ComponentClause({ name: "m", defaultValue: v("mass") }),
+        where: (v) => [tggEq(v("elset"), v("elset")), tggComplement(["mass"])],
+      }),
+      tggRule({
+        name: "FeaStressMassToSysmlAttribute",
+        sourceLang: "fea",
+        targetLang: "sysml2",
+        priority: 15,
+        source: ($, v) => $.KeywordCard({ name: "SOLID SECTION", parameter: v("elset") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: "totalMass", defaultValue: v("mass") }),
+        where: (v) => [tggEq(v("elset"), v("elset")), tggComplement(["mass"])],
+      }),
       tggRule({
         name: "FeaMaterialToSysmlAttribute",
         sourceLang: "fea",
