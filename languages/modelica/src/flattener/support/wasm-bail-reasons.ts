@@ -10,6 +10,8 @@
 export const WasmBailReason = {
   /** Host-only: the kernel trapped/threw instead of reporting a reason. */
   KernelTrap: -1,
+  /** Host-only: hybrid mode routes models with algorithm sections to TS until parity is proven. */
+  HybridAlgorithmGate: -2,
   None: 0,
   WhenOrIfEquation: 3290,
   ForEquationNoIndex: 3291,
@@ -22,7 +24,6 @@ export const WasmBailReason = {
   EquationLhsUnresolved: 3370,
   EquationRhsUnresolved: 3377,
   ConnectRefExpr: 3425,
-  AlgorithmSectionInstantiate: 3474,
   ClauseDimensions: 3570,
   DeclarationDimensions: 3609,
   BindingExpr: 3625,
@@ -32,13 +33,16 @@ export const WasmBailReason = {
   IfExprArraySize: 3760,
   IfExprArrayNesting: 3770,
   IfExprArrayScalarMix: 3775,
-  AlgorithmSectionEquations: 3792,
+  AlgorithmStatementUnsupported: 3800,
+  AlgorithmReinit: 3801,
+  ForStatementImplicitRange: 3802,
 } as const;
 
 export type WasmBailReasonName = keyof typeof WasmBailReason;
 
 const DESCRIPTIONS: Record<number, string> = {
   [WasmBailReason.KernelTrap]: "kernel trapped or threw",
+  [WasmBailReason.HybridAlgorithmGate]: "algorithm section (hybrid routes to TS)",
   [WasmBailReason.WhenOrIfEquation]: "when/if equation",
   [WasmBailReason.ForEquationNoIndex]: "for-equation without index",
   [WasmBailReason.ForEquationRange]: "for-equation range not evaluable",
@@ -50,7 +54,6 @@ const DESCRIPTIONS: Record<number, string> = {
   [WasmBailReason.EquationLhsUnresolved]: "unresolved name on equation left-hand side",
   [WasmBailReason.EquationRhsUnresolved]: "unresolved name on equation right-hand side",
   [WasmBailReason.ConnectRefExpr]: "connect reference not lowerable",
-  [WasmBailReason.AlgorithmSectionInstantiate]: "algorithm section",
   [WasmBailReason.ClauseDimensions]: "component clause dimensions not evaluable",
   [WasmBailReason.DeclarationDimensions]: "declaration dimensions not evaluable",
   [WasmBailReason.BindingExpr]: "binding expression not lowerable",
@@ -60,7 +63,9 @@ const DESCRIPTIONS: Record<number, string> = {
   [WasmBailReason.IfExprArraySize]: "if-expression array size mismatch",
   [WasmBailReason.IfExprArrayNesting]: "if-expression array nesting mismatch",
   [WasmBailReason.IfExprArrayScalarMix]: "if-expression mixing array and scalar",
-  [WasmBailReason.AlgorithmSectionEquations]: "algorithm section",
+  [WasmBailReason.AlgorithmStatementUnsupported]: "algorithm statement not lowerable",
+  [WasmBailReason.AlgorithmReinit]: "reinit in algorithm section",
+  [WasmBailReason.ForStatementImplicitRange]: "for-statement with implicit range",
 };
 
 const NAMES: Record<number, WasmBailReasonName> = Object.fromEntries(
@@ -71,7 +76,7 @@ const NAMES: Record<number, WasmBailReasonName> = Object.fromEntries(
 export interface WasmBailInfo {
   /** Numeric `WasmBailReason` code (0 when the kernel completed). */
   code: number;
-  /** Symbolic reason name, e.g. `AlgorithmSectionInstantiate`. */
+  /** Symbolic reason name, e.g. `AlgorithmStatementUnsupported`. */
   reason: WasmBailReasonName | "Unknown";
   /** Human-readable description of the unsupported construct. */
   description: string;
@@ -113,7 +118,7 @@ export function inputEncodingUnitSize(encoding: number | undefined): number {
   return 1;
 }
 
-/** One-line summary, e.g. `AlgorithmSectionInstantiate (algorithm section)`. */
+/** One-line summary, e.g. `AlgorithmReinit (reinit in algorithm section)`. */
 export function formatWasmBail(info: WasmBailInfo): string {
   return `${info.reason} (${info.description})`;
 }

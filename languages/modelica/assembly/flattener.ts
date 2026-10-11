@@ -87,7 +87,6 @@ const enum WasmBailReason {
   EquationLhsUnresolved = 3370,
   EquationRhsUnresolved = 3377,
   ConnectRefExpr = 3425,
-  AlgorithmSectionInstantiate = 3474,
   ClauseDimensions = 3570,
   DeclarationDimensions = 3609,
   BindingExpr = 3625,
@@ -97,7 +96,9 @@ const enum WasmBailReason {
   IfExprArraySize = 3760,
   IfExprArrayNesting = 3770,
   IfExprArrayScalarMix = 3775,
-  AlgorithmSectionEquations = 3792,
+  AlgorithmStatementUnsupported = 3800,
+  AlgorithmReinit = 3801,
+  ForStatementImplicitRange = 3802,
 }
 
 
@@ -2204,6 +2205,12 @@ export class WasmExprVisitor {
   subLoc1: u64;
   subLoc2: u64;
   subLoc3: u64;
+  // Algorithm-section mode: keep non-constant subscripts symbolic (`x[i]`) rather
+  // than constant-folding them to a scalar element name.
+  symbolicSubscripts: boolean;
+  // Keep `a:b` / `a:s:b` as Range nodes instead of expanding them to array
+  // constructors (used for `for`-statement ranges, which OMC prints verbatim).
+  keepRanges: boolean;
 
   @inline get dae(): DaeBuilder {
     return changetype<DaeBuilder>(this.daePtr);
@@ -2236,6 +2243,8 @@ export class WasmExprVisitor {
     this.subLoc1 = 0;
     this.subLoc2 = 0;
     this.subLoc3 = 0;
+    this.symbolicSubscripts = false;
+    this.keepRanges = false;
   }
 
   @inline resolveVarName(nameId: u32): u32 {
@@ -2299,6 +2308,9 @@ export class WasmExprVisitor {
         return this.isRealExpr(getArrayCtorElement(this.dae, exprId, 0));
       }
     }
+    if (kind == ExprKind.Subscript) {
+      return this.isRealArrayName(this.dae.getExprData1(exprId));
+    }
     if (kind == ExprKind.IfElse) {
       return this.isRealExpr(this.dae.getExprLeft(exprId)) || this.isRealExpr(this.dae.getExprRight(exprId));
     }
@@ -2317,6 +2329,130 @@ export class WasmExprVisitor {
       }
     }
     return false;
+  }
+
+  /** True when `nameExprId` is a Name whose scalar or first array element is Real-typed. */
+  isRealArrayName(nameExprId: u32): boolean {
+    if (nameExprId >= this.dae.exprCount) return false;
+    if (this.dae.getExprKind(nameExprId) != ExprKind.Name) return false;
+    let pool = this.dae.getStringPool();
+    let nameId = this.resolveVarName(this.dae.getExprData1(nameExprId));
+    let v = this.dae.lookupVariableByName(nameId);
+    if (v < 0) v = this.dae.lookupVariableByName(concatArrayIndex1D(pool, nameId, 1));
+    if (v < 0) v = this.dae.lookupVariableByName(concatArrayIndex2D(pool, nameId, 1, 1));
+    if (v < 0) return false;
+    return this.dae.getVarType(v as u32) == (VarType.Real as i32);
+  }
+
+  /** Subscript expressions that the scalar-element path can evaluate on its own. */
+  isConstIndexExpr(exprId: u32): boolean {
+    if (exprId >= this.dae.exprCount) return false;
+    let k = this.dae.getExprKind(exprId);
+    if (k == ExprKind.IntLiteral || k == ExprKind.Colon || k == ExprKind.BoolLiteral || k == ExprKind.EnumLiteral) {
+      return true;
+    }
+    if (k == ExprKind.ArrayCtor) {
+      let count = this.dae.getExprData1(exprId);
+      for (let i: u32 = 0; i < count; i++) {
+        if (!this.isConstIndexExpr(getArrayCtorElement(this.dae, exprId, i))) return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Lowers `base[s1, ..., sn]` to an `ExprKind.Subscript` node when at least one
+   * subscript is not a compile-time constant (e.g. a `for`-statement iterator).
+   * Only a trailing subscript group is supported (`a.b[i]`, not `a[i].b`).
+   * Returns 0xffffffff when the scalar-element path should handle the reference.
+   */
+  tryLowerSymbolicRef(refLoc: u64, subLoc: u64, pool: ArenaStringPool): u32 {
+    if (locOffset(subLoc) + locLen(subLoc) != locOffset(refLoc) + locLen(refLoc)) return 0xffffffff;
+    let baseId = this.symbolicRefBaseName(refLoc, subLoc, pool, 0);
+    if (baseId == 0 || baseId == 0xffffffff) return 0xffffffff;
+    let prefixId = this.scopeStackPtr != 0 ? changetype<ScopeStack>(this.scopeStackPtr).currentPrefixPathId : 0;
+    let fullBaseId = prefixId != 0 ? pool.concatIds(prefixId, baseId) : baseId;
+    fullBaseId = this.resolveVarName(fullBaseId);
+    if (prefixId != 0 && !this.nameExistsAsVarOrArray(fullBaseId)) {
+      let unprefixed = this.resolveVarName(baseId);
+      if (this.nameExistsAsVarOrArray(unprefixed)) fullBaseId = unprefixed;
+    }
+
+    let subStart = this.tempBuffer.length;
+    this.collectSymbolicSubscripts(subLoc, fullBaseId, subStart);
+    let subCount = this.tempBuffer.length - subStart;
+    let symbolic = false;
+    for (let i: u32 = 0; i < subCount; i++) {
+      let sid = this.tempBuffer.get(subStart + i);
+      if (sid == 0xffffffff) {
+        this.tempBuffer.length = subStart;
+        return 0xffffffff;
+      }
+      if (!this.isConstIndexExpr(sid)) symbolic = true;
+    }
+    if (!symbolic || subCount == 0) {
+      this.tempBuffer.length = subStart;
+      return 0xffffffff;
+    }
+    let baseExpr = this.dae.addExpression(ExprKind.Name, fullBaseId);
+    let first = this.dae.addExpression(ExprKind.Subscript, baseExpr, this.tempBuffer.get(subStart), subCount);
+    for (let i: u32 = 1; i < subCount; i++) {
+      this.dae.addExpression(ExprKind.Tuple, 0, this.tempBuffer.get(subStart + i), 0);
+    }
+    this.tempBuffer.length = subStart;
+    return first;
+  }
+
+  /**
+   * Dotted name of `refLoc` excluding its trailing subscript group `targetSubLoc`.
+   * Returns 0xffffffff when another (non-trailing) subscript group is present.
+   */
+  private symbolicRefBaseName(nodeLoc: u64, targetSubLoc: u64, pool: ArenaStringPool, acc: u32): u32 {
+    let ch = locFirstChild(nodeLoc);
+    while (!locIsNull(ch)) {
+      let ct = locType(ch);
+      if (ct == SyntaxType.ARRAY_SUBSCRIPTS) {
+        if (ch != targetSubLoc && locLen(ch) > 0) return 0xffffffff;
+      } else if (ct == SyntaxType.IDENTIFIER || ct == SyntaxType.TOKEN_IDENTIFIER_ALT) {
+        let partId = locIntern(pool, ch);
+        acc = acc == 0 ? partId : pool.concatIds(acc, partId);
+      } else if (locChildCount(ch) > 0) {
+        acc = this.symbolicRefBaseName(ch, targetSubLoc, pool, acc);
+        if (acc == 0xffffffff) return acc;
+      }
+      ch = locNextSibling(ch);
+    }
+    return acc;
+  }
+
+  private nameExistsAsVarOrArray(nameId: u32): boolean {
+    if (this.dae.lookupVariableByName(nameId) >= 0) return true;
+    let pool = this.dae.getStringPool();
+    if (this.dae.lookupVariableByName(concatArrayIndex1D(pool, nameId, 1)) >= 0) return true;
+    return this.dae.lookupVariableByName(concatArrayIndex2D(pool, nameId, 1, 1)) >= 0;
+  }
+
+  private collectSymbolicSubscripts(nodeLoc: u64, baseNameId: u32, subStart: u32): void {
+    let ch = locFirstChild(nodeLoc);
+    while (!locIsNull(ch)) {
+      if (locType(ch) == SyntaxType.SUBSCRIPT) {
+        let onlyCh = locFirstNonEmptyChild(ch);
+        if (locMatches(ch, ":") || (!locIsNull(onlyCh) && locMatches(onlyCh, ":") && locIsNull(locNextNonEmptySibling(onlyCh)))) {
+          this.tempBuffer.push(this.dae.addExpression(ExprKind.Colon, 0, 0xffffffff, 0xffffffff));
+        } else {
+          let dimIdx = this.tempBuffer.length - subStart + 1;
+          let prevEnd = this.currentDimEnd;
+          this.currentDimEnd = this.getArrayShapeDim(baseNameId, dimIdx) as i32;
+          let sid = this.visitLoc(ch);
+          this.currentDimEnd = prevEnd;
+          this.tempBuffer.push(sid);
+        }
+      } else if (locChildCount(ch) > 0) {
+        this.collectSymbolicSubscripts(ch, baseNameId, subStart);
+      }
+      ch = locNextSibling(ch);
+    }
   }
 
   castToReal(exprId: u32): u32 {
@@ -4417,6 +4553,10 @@ export class WasmExprVisitor {
 
       let subLoc = locFindDescendant(loc, SyntaxType.ARRAY_SUBSCRIPTS);
       if (!locIsNull(subLoc)) {
+        if (this.symbolicSubscripts) {
+          let symId = this.tryLowerSymbolicRef(loc, subLoc, pool);
+          if (symId != 0xffffffff) return symId;
+        }
         if (this.hasSliceSubscript(subLoc)) {
           let sliceExprId = this.lowerArraySlice(loc, subLoc, pool);
           if (sliceExprId != 0xffffffff) return sliceExprId;
@@ -4527,11 +4667,13 @@ export class WasmExprVisitor {
               let stepId = this.visitLoc(u0_2);
               let stopId = right;
               let rangeId = this.dae.addExpression(ExprKind.Range, startId, stepId, stopId);
+              if (this.keepRanges) return rangeId;
               let expId = expandColonToArrayCtor(this.dae, rangeId, this.tempBuffer);
               return expId != 0xffffffff ? expId : rangeId;
             }
           }
           let rangeId = this.dae.addExpression(ExprKind.Range, left, 0xffffffff, right);
+          if (this.keepRanges) return rangeId;
           let expId = expandColonToArrayCtor(this.dae, rangeId, this.tempBuffer);
           return expId != 0xffffffff ? expId : rangeId;
         }
@@ -4826,6 +4968,14 @@ export class ModelicaFlattener {
   // bail-outs raised from expression-level helpers such as emitExpandedEquation.
   curEqLoc: u64;
 
+  // Algorithm sections emitted into the DAE statement arena: [start, count, isInitial] stride = 3
+  algSections: ChunkedUint32Array;
+  algSectionCount: u32;
+  // Stack-disciplined scratch buffers used while walking statements:
+  // stmtItems holds CST locs as (lo, hi) u32 pairs, stmtAux holds per-construct records.
+  stmtItems: ChunkedUint32Array;
+  stmtAux: ChunkedUint32Array;
+
   @inline static create(dae: DaeBuilder): ModelicaFlattener {
     let ptr = atomicChunkAlloc(offsetof<ModelicaFlattener>());
     let obj = changetype<ModelicaFlattener>(ptr);
@@ -4931,6 +5081,11 @@ export class ModelicaFlattener {
 
     this.disabledNames = createChunkedUint32Array(256);
     this.disabledCount = 0;
+
+    this.algSections = createChunkedUint32Array(16 * 3);
+    this.algSectionCount = 0;
+    this.stmtItems = createChunkedUint32Array(256);
+    this.stmtAux = createChunkedUint32Array(64);
   }
 
   registerArrayShape(nameId: u32, d1: u32, d2: u32 = 0, d3: u32 = 0): void {
@@ -6339,7 +6494,7 @@ export class ModelicaFlattener {
     }
 
     if (t == SyntaxType.ALGORITHM_SECTION) {
-      this.setErrorAt(WasmBailReason.AlgorithmSectionInstantiate, elementLoc);
+      // Statements are lowered together with equations (lowerElementEquationsLoc).
       return 0;
     }
 
@@ -7445,10 +7600,11 @@ export class ModelicaFlattener {
   }
 
   lowerCompositionEquations(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool): void {
-    // Pass 1: Equation sections (matching OpenModelica composition equation priority)
+    // Pass 1: Equation and algorithm sections (matching OpenModelica composition equation priority)
     let ch = locFirstChild(parentLoc);
     while (!locIsNull(ch)) {
-      if (locType(ch) == SyntaxType.EQUATION_SECTION) {
+      let ct = locType(ch);
+      if (ct == SyntaxType.EQUATION_SECTION || ct == SyntaxType.ALGORITHM_SECTION) {
         this.lowerElementEquationsLoc(ch, prefixPathId, pool);
       }
       ch = locNextSibling(ch);
@@ -7456,7 +7612,8 @@ export class ModelicaFlattener {
     // Pass 2: Other elements (sub-components, extends clauses, etc.)
     ch = locFirstChild(parentLoc);
     while (!locIsNull(ch)) {
-      if (locType(ch) != SyntaxType.EQUATION_SECTION) {
+      let ct = locType(ch);
+      if (ct != SyntaxType.EQUATION_SECTION && ct != SyntaxType.ALGORITHM_SECTION) {
         this.lowerElementEquationsLoc(ch, prefixPathId, pool);
       }
       ch = locNextSibling(ch);
@@ -7469,8 +7626,7 @@ export class ModelicaFlattener {
     let ct = locType(elementLoc);
 
     if (ct == SyntaxType.ALGORITHM_SECTION) {
-      this.setErrorAt(WasmBailReason.AlgorithmSectionEquations, elementLoc);
-      return 0;
+      return this.lowerAlgorithmSectionLoc(elementLoc, prefixPathId);
     }
 
     if (ct == SyntaxType.EQUATION_SECTION) {
@@ -7601,6 +7757,643 @@ export class ModelicaFlattener {
     return count;
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Algorithm sections
+  //
+  // Statements are written to the DAE statement arena in pre-order; compound
+  // statements carry the number of their direct children (see wasm_dae_printer).
+  // Every lower*Stmt method returns the number of top-level statements emitted,
+  // which can be 0 (e.g. `assert(true, ...)`) or > 1 (statically selected `if`).
+  // ───────────────────────────────────────────────────────────────────────────
+
+  lowerAlgorithmSectionLoc(sectionLoc: u64, prefixPathId: u32): u32 {
+    if (this.hasError) return 0;
+    let isInit = false;
+    let firstCh = locFirstNonEmptyChild(sectionLoc);
+    if (!locIsNull(firstCh) && locMatches(firstCh, "initial")) isInit = true;
+
+    let ev = this.exprVisitor;
+    let prevSymbolic = ev.symbolicSubscripts;
+    ev.symbolicSubscripts = true;
+    this.scopeStack.push(0, 0, prefixPathId, 0);
+
+    let secStart = this.dae.stmtCount;
+    let start = this.stmtItems.length;
+    this.collectStmtItems(sectionLoc);
+    let end = this.stmtItems.length;
+    for (let i = start; i < end; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locType(it) == SyntaxType.STATEMENT) {
+        this.lowerStatementLoc(it);
+        if (this.hasError) break;
+      }
+    }
+    this.stmtItems.length = start;
+
+    this.scopeStack.pop();
+    ev.symbolicSubscripts = prevSymbolic;
+    if (this.hasError) return 0;
+
+    this.algSections.push(secStart);
+    this.algSections.push(this.dae.stmtCount - secStart);
+    this.algSections.push(isInit ? 1 : 0);
+    this.algSectionCount++;
+    return 0;
+  }
+
+  @inline stmtItemAt(i: u32): u64 {
+    return (this.stmtItems.get(i) as u64) | ((this.stmtItems.get(i + 1) as u64) << 32);
+  }
+
+  /** CST node types that the statement walker treats as opaque items. */
+  isStmtAtom(t: u16): boolean {
+    return t == SyntaxType.STATEMENT || t == SyntaxType.EXPRESSION || t == SyntaxType.FOR_INDICES ||
+      t == SyntaxType.FOR_INDEX || t == SyntaxType.COMPONENT_REFERENCE || t == SyntaxType.FUNCTION_CALL ||
+      t == SyntaxType.OUTPUT_EXPRESSION_LIST || t == SyntaxType.ASSIGNMENT_STATEMENT ||
+      t == SyntaxType.IF_STATEMENT || t == SyntaxType.FOR_STATEMENT || t == SyntaxType.WHILE_STATEMENT ||
+      t == SyntaxType.WHEN_STATEMENT || t == SyntaxType.DESCRIPTION || t == SyntaxType.ANNOTATION_CLAUSE ||
+      t == SyntaxType.IDENTIFIER;
+  }
+
+  /**
+   * Pushes the meaningful children of `nodeLoc` onto `stmtItems`, looking through
+   * hidden grammar nodes (repeat/seq/choice wrappers). Zero-length nodes are skipped.
+   */
+  collectStmtItems(nodeLoc: u64): void {
+    let ch = locFirstChild(nodeLoc);
+    while (!locIsNull(ch)) {
+      if (locLen(ch) > 0) {
+        if (this.isStmtAtom(locType(ch)) || locChildCount(ch) == 0) {
+          this.stmtItems.push((ch & 0xffffffff) as u32);
+          this.stmtItems.push((ch >> 32) as u32);
+        } else {
+          this.collectStmtItems(ch);
+        }
+      }
+      ch = locNextSibling(ch);
+    }
+  }
+
+  lowerStatementLoc(loc: u64): u32 {
+    if (this.hasError || locIsNull(loc)) return 0;
+    let t = locType(loc);
+    if (t == SyntaxType.STATEMENT) {
+      let start = this.stmtItems.length;
+      this.collectStmtItems(loc);
+      let end = this.stmtItems.length;
+      let oelLoc: u64 = 0;
+      let callLoc: u64 = 0;
+      for (let i = start; i < end; i += 2) {
+        let it = this.stmtItemAt(i);
+        let tt = locType(it);
+        if (tt == SyntaxType.OUTPUT_EXPRESSION_LIST) oelLoc = it;
+        else if (tt == SyntaxType.FUNCTION_CALL) callLoc = it;
+      }
+      let count: u32 = 0;
+      if (oelLoc != 0 && callLoc != 0) {
+        count = this.lowerTupleAssignmentStmt(loc, oelLoc, callLoc);
+      } else {
+        for (let i = start; i < end; i += 2) {
+          let it = this.stmtItemAt(i);
+          let tt = locType(it);
+          if (tt == SyntaxType.DESCRIPTION || tt == SyntaxType.ANNOTATION_CLAUSE || locMatches(it, ";")) continue;
+          count += this.lowerStatementLoc(it);
+          if (this.hasError) break;
+        }
+      }
+      this.stmtItems.length = start;
+      return count;
+    }
+    if (t == SyntaxType.ASSIGNMENT_STATEMENT) return this.lowerAssignmentStmt(loc);
+    if (t == SyntaxType.FUNCTION_CALL) return this.lowerCallStmt(loc);
+    if (t == SyntaxType.IF_STATEMENT) return this.lowerIfStmt(loc);
+    if (t == SyntaxType.FOR_STATEMENT) return this.lowerForStmt(loc);
+    if (t == SyntaxType.WHILE_STATEMENT) return this.lowerWhileStmt(loc);
+    if (t == SyntaxType.WHEN_STATEMENT) return this.lowerWhenStmt(loc);
+    if (locMatches(loc, "break")) {
+      this.dae.addStatement(StmtKind.Break as i32, 0);
+      return 1;
+    }
+    if (locMatches(loc, "return")) {
+      this.dae.addStatement(StmtKind.Return as i32, 0);
+      return 1;
+    }
+    this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+    return 0;
+  }
+
+  /** Lowers every STATEMENT item in stmtItems[from, to) and returns the emitted count. */
+  lowerStmtItemRange(from: u32, to: u32): u32 {
+    let count: u32 = 0;
+    for (let i = from; i < to; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locType(it) == SyntaxType.STATEMENT) {
+        count += this.lowerStatementLoc(it);
+        if (this.hasError) return 0;
+      }
+    }
+    return count;
+  }
+
+  @inline patchStmt(stmtIdx: u32, field: u32, value: u32): void {
+    this.dae.getStmtData().set(stmtIdx * 4 + field, value as i32);
+  }
+
+  /** Returns the variable index of an assignment target expression, or -1. */
+  stmtTargetVar(targetId: u32): i32 {
+    if (targetId >= this.dae.exprCount) return -1;
+    let k = this.dae.getExprKind(targetId);
+    let nameExpr = targetId;
+    if (k == ExprKind.Subscript) nameExpr = this.dae.getExprData1(targetId);
+    if (nameExpr >= this.dae.exprCount || this.dae.getExprKind(nameExpr) != ExprKind.Name) return -1;
+    let pool = this.dae.getStringPool();
+    let nameId = this.exprVisitor.resolveVarName(this.dae.getExprData1(nameExpr));
+    let v = this.dae.lookupVariableByName(nameId);
+    if (v < 0) v = this.dae.lookupVariableByName(concatArrayIndex1D(pool, nameId, 1));
+    if (v < 0) v = this.dae.lookupVariableByName(concatArrayIndex2D(pool, nameId, 1, 1));
+    return v;
+  }
+
+  /** True when assigning to the target would produce an assignment diagnostic in the TS path. */
+  isNonAssignableTarget(targetId: u32): boolean {
+    let v = this.stmtTargetVar(targetId);
+    if (v < 0) return false;
+    let vari = VarAccessor.at(this.dae.getVarData(), v as u32).variability;
+    return vari == Variability.Parameter || vari == Variability.Constant;
+  }
+
+  lowerAssignmentStmt(loc: u64): u32 {
+    let start = this.stmtItems.length;
+    this.collectStmtItems(loc);
+    let end = this.stmtItems.length;
+    let targetLoc: u64 = 0;
+    let valueLoc: u64 = 0;
+    let isDer = false;
+    let seenAssign = false;
+    for (let i = start; i < end; i += 2) {
+      let it = this.stmtItemAt(i);
+      let tt = locType(it);
+      if (locMatches(it, "der")) isDer = true;
+      else if (locMatches(it, ":=")) seenAssign = true;
+      else if (!seenAssign && tt == SyntaxType.COMPONENT_REFERENCE) targetLoc = it;
+      else if (seenAssign && valueLoc == 0) valueLoc = it;
+    }
+    this.stmtItems.length = start;
+    if (isDer || targetLoc == 0 || valueLoc == 0) {
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+    let ev = this.exprVisitor;
+    let pool = this.dae.getStringPool();
+    // Assignment to a for-loop iterator is a diagnostic in the TS path.
+    let baseLoc = locFindDescendant(targetLoc, SyntaxType.IDENTIFIER);
+    if (!locIsNull(baseLoc) && ev.getLoopVar(locIntern(pool, baseLoc)) != 0xffffffff) {
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+    let targetId = ev.visitLoc(targetLoc);
+    let valId = ev.visitLoc(valueLoc);
+    if (targetId == 0xffffffff || valId == 0xffffffff || this.isNonAssignableTarget(targetId)) {
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+    let targetIsReal = ev.isRealExpr(targetId) || ev.isRealArrayName(targetId);
+    let v = this.stmtTargetVar(targetId);
+    if (v >= 0 && this.dae.getVarType(v as u32) == (VarType.Integer as i32) && ev.isRealExpr(valId)) {
+      // Integer := Real is a type error reported by the TS path.
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+    if (targetIsReal && !ev.isRealExpr(valId)) valId = this.algCastToReal(valId);
+    this.dae.addStatement(StmtKind.Assignment as i32, targetId, valId);
+    return 1;
+  }
+
+  /** Mirrors the TS `castToRealExpr` for scalar statement values. */
+  algCastToReal(valId: u32): u32 {
+    if (valId >= this.dae.exprCount) return valId;
+    let ev = this.exprVisitor;
+    let k = this.dae.getExprKind(valId);
+    if (k == ExprKind.IntLiteral || k == ExprKind.ArrayCtor || k == ExprKind.IfElse) return ev.castToReal(valId);
+    if (k == ExprKind.Negate) {
+      let operand = this.dae.getExprLeft(valId);
+      if (operand < this.dae.exprCount && this.dae.getExprKind(operand) == ExprKind.IntLiteral) {
+        return this.dae.addExpression(ExprKind.Negate, 0, ev.castToReal(operand));
+      }
+    }
+    if (this.isScalarIntExpr(valId)) {
+      let castId = internStaticString(this.dae.getStringPool(), "/*Real*/");
+      return this.dae.addExpression(ExprKind.Call, castId, valId, 1);
+    }
+    return valId;
+  }
+
+  isScalarIntExpr(id: u32): boolean {
+    if (id >= this.dae.exprCount) return false;
+    let k = this.dae.getExprKind(id);
+    if (k == ExprKind.IntLiteral) return true;
+    if (k == ExprKind.Name) {
+      let nameId = this.dae.getExprData1(id);
+      if (this.exprVisitor.getLoopVar(nameId) != 0xffffffff) return true;
+      let v = this.dae.lookupVariableByName(this.exprVisitor.resolveVarName(nameId));
+      return v >= 0 && this.dae.getVarType(v as u32) == (VarType.Integer as i32);
+    }
+    if (k == ExprKind.Subscript) {
+      let count = this.dae.getExprRight(id);
+      for (let i: u32 = 0; i < count; i++) {
+        let sub = i == 0 ? this.dae.getExprLeft(id) : this.dae.getExprLeft(id + i);
+        if (!this.isScalarIntExpr(sub)) return false;
+      }
+      let v = this.stmtTargetVar(id);
+      return v >= 0 && this.dae.getVarType(v as u32) == (VarType.Integer as i32);
+    }
+    if (k == ExprKind.Binary) {
+      let op = this.dae.getExprData1(id) as u16;
+      if (op != (BinOp.Add as u16) && op != (BinOp.Sub as u16) && op != (BinOp.Mul as u16)) return false;
+      return this.isScalarIntExpr(this.dae.getExprLeft(id)) && this.isScalarIntExpr(this.dae.getExprRight(id));
+    }
+    if (k == ExprKind.Negate || k == ExprKind.Unary) {
+      return this.isScalarIntExpr(this.dae.getExprLeft(id));
+    }
+    return false;
+  }
+
+  lowerCallStmt(loc: u64): u32 {
+    let pool = this.dae.getStringPool();
+    let nameLoc = locFindChild(loc, SyntaxType.COMPONENT_REFERENCE);
+    if (locIsNull(nameLoc)) nameLoc = locFindDescendant(loc, SyntaxType.COMPONENT_REFERENCE);
+    if (!locIsNull(nameLoc) && locMatches(nameLoc, "reinit")) {
+      this.setErrorAt(WasmBailReason.AlgorithmReinit, loc);
+      return 0;
+    }
+    let callId = this.exprVisitor.visitLoc(loc);
+    if (callId == 0xffffffff || callId >= this.dae.exprCount || this.dae.getExprKind(callId) != ExprKind.Call) {
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+    if (poolMatchesSimple(pool, this.dae.getExprData1(callId), "assert")) {
+      let firstArg = this.dae.getExprLeft(callId);
+      if (firstArg < this.dae.exprCount && this.dae.getExprKind(firstArg) == ExprKind.BoolLiteral &&
+          this.dae.getExprData1(firstArg) == 1) {
+        return 0;
+      }
+    }
+    this.dae.addStatement(StmtKind.ProcedureCall as i32, callId);
+    return 1;
+  }
+
+  lowerTupleAssignmentStmt(stmtLoc: u64, oelLoc: u64, callLoc: u64): u32 {
+    let ev = this.exprVisitor;
+    let start = this.stmtItems.length;
+    this.collectStmtItems(oelLoc);
+    let end = this.stmtItems.length;
+    // Targets are recorded as (lo, hi) loc pairs in stmtAux; 0/0 marks an empty slot.
+    let auxStart = this.stmtAux.length;
+    let cur: u64 = 0;
+    for (let i = start; i < end; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locMatches(it, ",")) {
+        this.stmtAux.push((cur & 0xffffffff) as u32);
+        this.stmtAux.push((cur >> 32) as u32);
+        cur = 0;
+      } else if (locType(it) == SyntaxType.EXPRESSION || locType(it) == SyntaxType.COMPONENT_REFERENCE) {
+        cur = it;
+      }
+    }
+    this.stmtAux.push((cur & 0xffffffff) as u32);
+    this.stmtAux.push((cur >> 32) as u32);
+    this.stmtItems.length = start;
+    let auxEnd = this.stmtAux.length;
+    let n = (auxEnd - auxStart) / 2;
+
+    let callId = ev.visitLoc(callLoc);
+    if (callId == 0xffffffff) {
+      this.stmtAux.length = auxStart;
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, stmtLoc);
+      return 0;
+    }
+    // Lower targets first so non-assignable ones can bail before anything is emitted.
+    for (let i = auxStart; i < auxEnd; i += 2) {
+      let tLoc = (this.stmtAux.get(i) as u64) | ((this.stmtAux.get(i + 1) as u64) << 32);
+      let tid: u32 = 0xffffffff;
+      if (tLoc != 0) {
+        tid = ev.visitLoc(tLoc);
+        if (tid == 0xffffffff || this.isNonAssignableTarget(tid)) {
+          this.stmtAux.length = auxStart;
+          this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, stmtLoc);
+          return 0;
+        }
+      }
+      this.stmtAux.set(i, tid);
+    }
+    this.dae.addStatement(StmtKind.ComplexAssignment as i32, n, callId);
+    for (let i = auxStart; i < auxEnd; i += 2) {
+      this.dae.addStatement(StmtKind.Assignment as i32, this.stmtAux.get(i));
+    }
+    this.stmtAux.length = auxStart;
+    return 1;
+  }
+
+  /**
+   * Splits an if/when statement into branches. For each branch, pushes
+   * [condItemIdx | 0xffffffff for else, bodyFrom, bodyTo, condExpr] onto stmtAux.
+   */
+  collectStmtBranches(start: u32, end: u32, openKw: string, elseIfKw: string, endKw: string): void {
+    let inCond = false;
+    let cur: i32 = -1;
+    for (let i = start; i < end; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locMatches(it, openKw) || locMatches(it, elseIfKw)) {
+        if (cur >= 0) this.stmtAux.set((cur as u32) + 2, i);
+        cur = this.stmtAux.length as i32;
+        this.stmtAux.push(0xffffffff);
+        this.stmtAux.push(i + 2);
+        this.stmtAux.push(end);
+        this.stmtAux.push(0xffffffff);
+        inCond = true;
+      } else if (locMatches(it, "else")) {
+        if (cur >= 0) this.stmtAux.set((cur as u32) + 2, i);
+        cur = this.stmtAux.length as i32;
+        this.stmtAux.push(0xffffffff);
+        this.stmtAux.push(i + 2);
+        this.stmtAux.push(end);
+        this.stmtAux.push(0xffffffff);
+        inCond = false;
+      } else if (locMatches(it, "then")) {
+        if (cur >= 0) this.stmtAux.set((cur as u32) + 1, i + 2);
+        inCond = false;
+      } else if (locMatches(it, endKw) || locMatches(it, "end")) {
+        if (cur >= 0) this.stmtAux.set((cur as u32) + 2, i);
+        return;
+      } else if (inCond && cur >= 0 && locType(it) == SyntaxType.EXPRESSION) {
+        this.stmtAux.set(cur as u32, i);
+      }
+    }
+  }
+
+  lowerIfStmt(loc: u64): u32 {
+    let ev = this.exprVisitor;
+    let start = this.stmtItems.length;
+    this.collectStmtItems(loc);
+    let end = this.stmtItems.length;
+    let auxStart = this.stmtAux.length;
+    this.collectStmtBranches(start, end, "if", "elseif", "end if");
+    let auxEnd = this.stmtAux.length;
+
+    // Lower all conditions up front; 0/1 = statically false/true, 2 = dynamic.
+    for (let b = auxStart; b < auxEnd; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx == 0xffffffff) continue;
+      let condId = ev.visitLoc(this.stmtItemAt(condIdx));
+      if (condId == 0xffffffff) {
+        this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, this.stmtItemAt(condIdx));
+        this.stmtAux.length = auxStart;
+        this.stmtItems.length = start;
+        return 0;
+      }
+      this.stmtAux.set(b + 3, condId);
+    }
+
+    let count: u32 = 0;
+    let root: u32 = 0xffffffff;
+    for (let b = auxStart; b < auxEnd; b += 4) {
+      if (this.stmtCondState(b) != 0) {
+        root = b;
+        break;
+      }
+    }
+    if (root != 0xffffffff) {
+      let rootState = this.stmtCondState(root);
+      if (rootState != 2) {
+        // Statically true condition or unconditional else: inline the branch body.
+        count = this.lowerStmtItemRange(this.stmtAux.get(root + 1), this.stmtAux.get(root + 2));
+      } else {
+        let header = this.dae.addStatement(StmtKind.If as i32, this.stmtAux.get(root + 3), 0, 0);
+        let thenCount = this.lowerStmtItemRange(this.stmtAux.get(root + 1), this.stmtAux.get(root + 2));
+        let active: u32 = 0;
+        for (let b = root + 4; b < auxEnd && !this.hasError; b += 4) {
+          let st = this.stmtCondState(b);
+          if (st == 0) continue;
+          let blk = this.dae.addStatement(StmtKind.Block as i32, st == 2 ? this.stmtAux.get(b + 3) : 0xffffffff, 0);
+          let n = this.lowerStmtItemRange(this.stmtAux.get(b + 1), this.stmtAux.get(b + 2));
+          this.patchStmt(blk, 2, n);
+          active++;
+          if (st != 2) break;
+        }
+        this.patchStmt(header, 2, thenCount);
+        this.patchStmt(header, 3, active);
+        count = 1;
+      }
+    }
+    this.stmtAux.length = auxStart;
+    this.stmtItems.length = start;
+    return this.hasError ? 0 : count;
+  }
+
+  /** Branch condition state for an if-branch record: 0 = false, 1 = true/else, 2 = dynamic. */
+  stmtCondState(b: u32): u32 {
+    if (this.stmtAux.get(b) == 0xffffffff) return 1;
+    let condId = this.stmtAux.get(b + 3);
+    if (condId < this.dae.exprCount && this.dae.getExprKind(condId) == ExprKind.BoolLiteral) {
+      return this.dae.getExprData1(condId) != 0 ? 1 : 0;
+    }
+    return 2;
+  }
+
+  lowerWhileStmt(loc: u64): u32 {
+    let start = this.stmtItems.length;
+    this.collectStmtItems(loc);
+    let end = this.stmtItems.length;
+    let condLoc: u64 = 0;
+    let bodyFrom: u32 = end;
+    let bodyTo: u32 = end;
+    for (let i = start; i < end; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locMatches(it, "loop")) bodyFrom = i + 2;
+      else if (locMatches(it, "end while") || locMatches(it, "end")) { bodyTo = i; break; }
+      else if (condLoc == 0 && locType(it) == SyntaxType.EXPRESSION) condLoc = it;
+    }
+    let condId: u32 = condLoc != 0 ? this.exprVisitor.visitLoc(condLoc) : 0xffffffff;
+    if (condId == 0xffffffff) {
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+    let header = this.dae.addStatement(StmtKind.While as i32, condId, 0);
+    let n = this.lowerStmtItemRange(bodyFrom, bodyTo);
+    this.patchStmt(header, 2, n);
+    this.stmtItems.length = start;
+    return this.hasError ? 0 : 1;
+  }
+
+  lowerForStmt(loc: u64): u32 {
+    let ev = this.exprVisitor;
+    let pool = this.dae.getStringPool();
+    let start = this.stmtItems.length;
+    this.collectStmtItems(loc);
+    let end = this.stmtItems.length;
+    let indicesLoc: u64 = 0;
+    let bodyFrom: u32 = end;
+    let bodyTo: u32 = end;
+    for (let i = start; i < end; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locType(it) == SyntaxType.FOR_INDICES && indicesLoc == 0) indicesLoc = it;
+      else if (locMatches(it, "loop")) bodyFrom = i + 2;
+      else if (locMatches(it, "end for") || locMatches(it, "end")) { bodyTo = i; break; }
+    }
+    if (indicesLoc == 0) {
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+
+    let idxStart = this.stmtItems.length;
+    this.collectStmtItems(indicesLoc);
+    let idxEnd = this.stmtItems.length;
+    // Per index: [headerStmt, iterNameId, previousBinding] on stmtAux.
+    let auxStart = this.stmtAux.length;
+    let ok = true;
+    for (let i = idxStart; i < idxEnd; i += 2) {
+      let fi = this.stmtItemAt(i);
+      if (locType(fi) != SyntaxType.FOR_INDEX) continue;
+      let idLoc = locFindDescendant(fi, SyntaxType.IDENTIFIER);
+      let rangeLoc = locFindChild(fi, SyntaxType.EXPRESSION);
+      if (locIsNull(rangeLoc)) rangeLoc = locFindDescendant(fi, SyntaxType.EXPRESSION);
+      if (locIsNull(idLoc) || locIsNull(rangeLoc)) {
+        this.setErrorAt(WasmBailReason.ForStatementImplicitRange, fi);
+        ok = false;
+        break;
+      }
+      let nameId = locIntern(pool, idLoc);
+      let prevKeep = ev.keepRanges;
+      ev.keepRanges = true;
+      let rangeId = ev.visitLoc(rangeLoc);
+      ev.keepRanges = prevKeep;
+      if (rangeId == 0xffffffff) {
+        this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, rangeLoc);
+        ok = false;
+        break;
+      }
+      let header = this.dae.addStatement(StmtKind.For as i32, nameId, rangeId, 1);
+      this.stmtAux.push(header);
+      this.stmtAux.push(nameId);
+      this.stmtAux.push(ev.getLoopVar(nameId));
+      ev.setLoopVar(nameId, this.dae.addExpression(ExprKind.Name, nameId));
+    }
+    let auxEnd = this.stmtAux.length;
+    if (ok && auxEnd > auxStart) {
+      let n = this.lowerStmtItemRange(bodyFrom, bodyTo);
+      this.patchStmt(this.stmtAux.get(auxEnd - 3), 3, n);
+    }
+    // Restore iterator bindings innermost-first.
+    let b = auxEnd;
+    while (b > auxStart) {
+      b -= 3;
+      let nameId = this.stmtAux.get(b + 1);
+      let prev = this.stmtAux.get(b + 2);
+      if (prev == 0xffffffff) ev.removeLoopVar(nameId);
+      else ev.setLoopVar(nameId, prev);
+    }
+    this.stmtAux.length = auxStart;
+    this.stmtItems.length = start;
+    if (!ok && !this.hasError) this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+    return this.hasError || auxEnd == auxStart ? 0 : 1;
+  }
+
+  /** Interned target names of the direct assignment statements in stmtItems[from, to), pushed onto stmtAux. */
+  collectWhenTargets(from: u32, to: u32): void {
+    let pool = this.dae.getStringPool();
+    for (let i = from; i < to; i += 2) {
+      let it = this.stmtItemAt(i);
+      if (locType(it) != SyntaxType.STATEMENT) continue;
+      let asg = locFindDescendant(it, SyntaxType.ASSIGNMENT_STATEMENT);
+      let nested = locFindDescendant(it, SyntaxType.IF_STATEMENT);
+      if (locIsNull(nested)) nested = locFindDescendant(it, SyntaxType.FOR_STATEMENT);
+      if (locIsNull(nested)) nested = locFindDescendant(it, SyntaxType.WHILE_STATEMENT);
+      if (locIsNull(nested)) nested = locFindDescendant(it, SyntaxType.WHEN_STATEMENT);
+      if (locIsNull(asg) || !locIsNull(nested)) continue;
+      let tgt = locFindDescendant(asg, SyntaxType.COMPONENT_REFERENCE);
+      if (locIsNull(tgt)) continue;
+      let id = locIntern(pool, tgt);
+      let dup = false;
+      for (let k = this.stmtAux.length; k > 0; k--) {
+        if (this.stmtAux.get(k - 1) == 0xffffffff) break;
+        if (this.stmtAux.get(k - 1) == id) { dup = true; break; }
+      }
+      if (!dup) this.stmtAux.push(id);
+    }
+  }
+
+  /** True when every elsewhen branch assigns the same set of variables as the when branch. */
+  whenTargetsMatch(auxStart: u32, auxEnd: u32): boolean {
+    let setsStart = this.stmtAux.length;
+    // Then-branch targets, delimited by a 0xffffffff sentinel.
+    this.stmtAux.push(0xffffffff);
+    let thenFrom = this.stmtAux.length;
+    this.collectWhenTargets(this.stmtAux.get(auxStart + 1), this.stmtAux.get(auxStart + 2));
+    let thenTo = this.stmtAux.length;
+    let match = true;
+    for (let b = auxStart + 4; b < auxEnd && match; b += 4) {
+      this.stmtAux.push(0xffffffff);
+      let ewFrom = this.stmtAux.length;
+      this.collectWhenTargets(this.stmtAux.get(b + 1), this.stmtAux.get(b + 2));
+      let ewTo = this.stmtAux.length;
+      if (ewTo - ewFrom != thenTo - thenFrom) match = false;
+      for (let i = thenFrom; i < thenTo && match; i++) {
+        let found = false;
+        for (let j = ewFrom; j < ewTo; j++) {
+          if (this.stmtAux.get(j) == this.stmtAux.get(i)) { found = true; break; }
+        }
+        if (!found) match = false;
+      }
+      this.stmtAux.length = ewFrom - 1;
+    }
+    this.stmtAux.length = setsStart;
+    return match;
+  }
+
+  lowerWhenStmt(loc: u64): u32 {
+    let ev = this.exprVisitor;
+    let start = this.stmtItems.length;
+    this.collectStmtItems(loc);
+    let end = this.stmtItems.length;
+    let auxStart = this.stmtAux.length;
+    this.collectStmtBranches(start, end, "when", "elsewhen", "end when");
+    let auxEnd = this.stmtAux.length;
+    let bail = auxEnd == auxStart;
+
+    for (let b = auxStart; b < auxEnd && !bail; b += 4) {
+      let condIdx = this.stmtAux.get(b);
+      if (condIdx == 0xffffffff) { bail = true; break; }
+      let condLoc = this.stmtItemAt(condIdx);
+      // Non-discrete / clocked conditions are diagnostics in the TS path.
+      if (!locIsNull(locFindMatchingDescendant(condLoc, "noEvent")) ||
+          !locIsNull(locFindMatchingDescendant(condLoc, "Clock"))) { bail = true; break; }
+      let condId = ev.visitLoc(condLoc);
+      if (condId == 0xffffffff) { bail = true; break; }
+      this.stmtAux.set(b + 3, condId);
+    }
+    if (!bail && auxEnd - auxStart > 4 && !this.whenTargetsMatch(auxStart, auxEnd)) bail = true;
+    if (bail) {
+      this.stmtAux.length = auxStart;
+      this.stmtItems.length = start;
+      this.setErrorAt(WasmBailReason.AlgorithmStatementUnsupported, loc);
+      return 0;
+    }
+
+    let header = this.dae.addStatement(StmtKind.When as i32, this.stmtAux.get(auxStart + 3), 0, (auxEnd - auxStart) / 4 - 1);
+    let thenCount = this.lowerStmtItemRange(this.stmtAux.get(auxStart + 1), this.stmtAux.get(auxStart + 2));
+    this.patchStmt(header, 2, thenCount);
+    for (let b = auxStart + 4; b < auxEnd && !this.hasError; b += 4) {
+      let blk = this.dae.addStatement(StmtKind.Block as i32, this.stmtAux.get(b + 3), 0);
+      let n = this.lowerStmtItemRange(this.stmtAux.get(b + 1), this.stmtAux.get(b + 2));
+      this.patchStmt(blk, 2, n);
+    }
+    this.stmtAux.length = auxStart;
+    this.stmtItems.length = start;
+    return this.hasError ? 0 : 1;
+  }
+
   flatten(rootClassNodePtr: u32, programRootNodePtr: u32): u32 {
     if (rootClassNodePtr == 0) return 0;
 
@@ -7635,6 +8428,8 @@ export class ModelicaFlattener {
     this.expandableBusCount = 0;
     this.busRefSignalCount = 0;
     this.pendingArrayCount = 0;
+    this.algSections.length = 0;
+    this.algSectionCount = 0;
 
     let pool = this.dae.getStringPool();
     let varsBefore = this.dae.varCount;
@@ -7925,6 +8720,26 @@ export function flattener_getErrorStartByte(flattenerPtr: u32): u32 {
 export function flattener_getErrorEndByte(flattenerPtr: u32): u32 {
   if (flattenerPtr == 0) return 0xffffffff;
   return changetype<ModelicaFlattener>(flattenerPtr).errorEndByte;
+}
+
+export function flattener_getAlgorithmSectionCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).algSectionCount;
+}
+
+export function flattener_getAlgorithmSectionStart(flattenerPtr: u32, index: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).algSections.get(index * 3);
+}
+
+export function flattener_getAlgorithmSectionLength(flattenerPtr: u32, index: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).algSections.get(index * 3 + 1);
+}
+
+export function flattener_getAlgorithmSectionIsInitial(flattenerPtr: u32, index: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).algSections.get(index * 3 + 2);
 }
 
 export function flattener_getExpandableBusCount(flattenerPtr: u32): u32 {

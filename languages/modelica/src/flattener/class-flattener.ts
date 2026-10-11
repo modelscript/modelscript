@@ -2024,9 +2024,37 @@ export class ModelicaFlattener {
               ),
             );
           }
-          if ((varCount > 0 || disabledCount > 0 || isStrictWasm) && (wasmErrorCode === 0 || isStrictWasm)) {
+          const algSectionCount: number =
+            typeof (dae.exports as any).flattener_getAlgorithmSectionCount === "function"
+              ? (dae.exports as any).flattener_getAlgorithmSectionCount(wasmFlattener)
+              : 0;
+          const hybridAlgorithmGate = !isStrictWasm && wasmErrorCode === 0 && algSectionCount > 0;
+          if (hybridAlgorithmGate) {
+            wasmBail = describeWasmBail(WasmBailReason.HybridAlgorithmGate, undefined, undefined, "ts-fallback");
+          }
+          if (
+            (varCount > 0 || disabledCount > 0 || isStrictWasm) &&
+            (wasmErrorCode === 0 || isStrictWasm) &&
+            !hybridAlgorithmGate
+          ) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
+            const exAlg = dae.exports as any;
+            if (typeof exAlg.flattener_getAlgorithmSectionCount === "function") {
+              const secCount: number = exAlg.flattener_getAlgorithmSectionCount(wasmFlattener);
+              for (let s = 0; s < secCount; s++) {
+                const section = {
+                  start: exAlg.flattener_getAlgorithmSectionStart(wasmFlattener, s) as number,
+                  count: exAlg.flattener_getAlgorithmSectionLength(wasmFlattener, s) as number,
+                };
+                if (exAlg.flattener_getAlgorithmSectionIsInitial(wasmFlattener, s)) {
+                  dae.initialAlgorithmSections.push(section);
+                } else {
+                  dae.algorithmSections.push(section);
+                }
+              }
+              if (secCount > 0) (dae as any).hasAlgorithmSection = true;
+            }
             for (let i = 0; i < dae.eqCount; i++) {
               const rhsId = dae.getEqRhs(i);
               dae.setOrigEqRhs(i, rhsId);
