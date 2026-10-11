@@ -1979,6 +1979,7 @@ export class ModelicaFlattener {
         testDae = new DAEBuilder(wasmExports, rootName, "");
         wf = testDae.exports.flattener_create ? testDae.exports.flattener_create(testDae.ptr) : 0;
         if (wf) {
+          this.populateWasmScopeResolutions(wf, rootClassId, testDae);
           const vc = testDae.exports.flattener_flatten(wf, classNodePtr, rootProgramPtr);
           wasmDiffStats = { varCount: vc, eqCount: testDae.eqCount };
         }
@@ -2003,6 +2004,7 @@ export class ModelicaFlattener {
       try {
         const wasmFlattener = dae.exports.flattener_create(dae.ptr);
         if (wasmFlattener) {
+          this.populateWasmScopeResolutions(wasmFlattener, rootClassId, dae);
           const varCount = dae.exports.flattener_flatten(wasmFlattener, classNodePtr, rootProgramPtr);
           const wasmErrorCode =
             typeof dae.exports.flattener_getErrorCode === "function"
@@ -2564,6 +2566,145 @@ export class ModelicaFlattener {
       }
     };
     walkVars(cst);
+  }
+
+  private populateWasmScopeResolutions(wasmFlattener: number, rootClassId: SymbolId, dae: DAEBuilder): void {
+    if (typeof (dae.exports as any)?.flattener_registerScopeResolution !== "function") return;
+    const register = (dae.exports as any).flattener_registerScopeResolution;
+    const encoding =
+      typeof (dae.exports as any)?.lsp_getInputEncoding === "function"
+        ? (dae.exports as any).lsp_getInputEncoding()
+        : undefined;
+    const unitSize = inputEncodingUnitSize(encoding);
+    const visited = new Set<SymbolId>();
+    const queue: SymbolId[] = [rootClassId];
+
+    while (queue.length > 0) {
+      const classId = queue.pop()!;
+      if (visited.has(classId)) continue;
+      visited.add(classId);
+
+      const classCst = this.db.cstNode(classId) as any;
+      const scopePtr: number = classCst?.ptr ?? 0;
+
+      // Check if this class definition is a short class specifier (e.g. model E = B.C(x=6))
+      const findShortSpec = (node: any): any => {
+        if (!node) return null;
+        if (node.type === "short_class_specifier") return node;
+        for (const ch of node.children || []) {
+          const found = findShortSpec(ch);
+          if (found) return found;
+        }
+        return null;
+      };
+      const shortSpecNode = findShortSpec(classCst);
+      if (shortSpecNode) {
+        const typeSpecNode = shortSpecNode.children?.find((c: any) => c.type === "type_specifier" || c.type === "name");
+        const typeName: string = typeSpecNode?.text?.trim();
+        if (typeName) {
+          const resolved =
+            this.db.query<(n: string) => any>("resolveName", classId)?.(typeName) ??
+            this.db.query<(n: string) => any>("resolveSimpleName", classId)?.(typeName);
+          if (resolved && resolved.id) {
+            const targetCst = this.db.cstNode(resolved.id) as any;
+            if (targetCst?.ptr) {
+              const nameId = dae.interner.intern(typeName);
+              const targetOffset =
+                targetCst._startOffset !== undefined
+                  ? targetCst._startOffset
+                  : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+              register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
+            }
+            queue.push(resolved.id);
+          }
+        }
+      }
+
+      const children = this.db.childrenOf(classId);
+
+      for (const child of children) {
+        if (child.kind === "Extends") {
+          const extCst = this.db.cstNode(child.id) as any;
+          const typeSpecNode = extCst?.children?.find((c: any) => c.type === "type_specifier" || c.type === "name");
+          const extName: string = typeSpecNode?.text?.trim() ?? child.name;
+          if (extName) {
+            const resolved =
+              this.db.query<(n: string) => any>("resolveName", classId)?.(extName) ??
+              this.db.query<(n: string) => any>("resolveSimpleName", classId)?.(extName) ??
+              this.db.query<any>("resolvedBaseClass", classId);
+            if (resolved && resolved.id) {
+              const targetCst = this.db.cstNode(resolved.id) as any;
+              if (targetCst?.ptr) {
+                const nameId = dae.interner.intern(extName);
+                const targetOffset =
+                  targetCst._startOffset !== undefined
+                    ? targetCst._startOffset
+                    : (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startByte ?? 0) * unitSize;
+                register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
+                register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
+              }
+              queue.push(resolved.id);
+            }
+          }
+        } else if (child.kind === "Component") {
+          const compInst = this.db.query<any>("componentInstance", child.id);
+          const typeSpec: string | undefined = compInst?.typeSpecifier;
+          if (
+            typeSpec &&
+            typeSpec !== "Real" &&
+            typeSpec !== "Integer" &&
+            typeSpec !== "Boolean" &&
+            typeSpec !== "String"
+          ) {
+            let targetId = compInst.classInstance;
+            if (!targetId) {
+              const resolved =
+                this.db.query<(n: string) => any>("resolveName", classId)?.(typeSpec) ??
+                this.db.query<(n: string) => any>("resolveSimpleName", classId)?.(typeSpec);
+              if (resolved) targetId = resolved.id;
+            }
+            if (targetId) {
+              const targetCst = this.db.cstNode(targetId) as any;
+              if (targetCst?.ptr) {
+                const nameId = dae.interner.intern(typeSpec);
+                const targetOffset =
+                  targetCst._startOffset !== undefined
+                    ? targetCst._startOffset
+                    : (targetCst.startIndex ??
+                        targetCst.startOffset ??
+                        (this.db.symbol(targetId) as any)?.startByte ??
+                        0) * unitSize;
+                register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
+                register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
+              }
+              queue.push(targetId);
+            }
+          }
+        } else if (child.kind === "Class") {
+          queue.push(child.id);
+          const childCst = this.db.cstNode(child.id) as any;
+          const aliasTarget = (child.metadata as any)?.aliasTarget ?? (child.metadata as any)?.baseClass;
+          if (aliasTarget) {
+            const resolved =
+              this.db.query<(n: string) => any>("resolveName", classId)?.(aliasTarget) ??
+              this.db.query<(n: string) => any>("resolveSimpleName", classId)?.(aliasTarget);
+            if (resolved) {
+              const targetCst = this.db.cstNode(resolved.id) as any;
+              if (targetCst?.ptr) {
+                const nameId = dae.interner.intern(child.name);
+                const targetOffset =
+                  targetCst._startOffset !== undefined
+                    ? targetCst._startOffset
+                    : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
+                register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
+              }
+              queue.push(resolved.id);
+            }
+          }
+        }
+      }
+    }
   }
 
   patch(

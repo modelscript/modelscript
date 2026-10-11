@@ -55,7 +55,7 @@ import {
   createChunkedUint8Array,
   SourceTextView,
 } from "./array";
-import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64 } from "./hashmap";
+import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 import { ArenaStringPool } from "./string_pool";
 import { SyntaxType, FieldId } from "./types";
 
@@ -1630,11 +1630,15 @@ function findBindingExpressionLoc(modLoc: u64): u64 {
 
 function findClassModificationLoc(modLoc: u64): u64 {
   if (locIsNull(modLoc)) return 0;
-  if (locType(modLoc) == SyntaxType.CLASS_MODIFICATION) return modLoc;
-  return locFindDescendant(modLoc, SyntaxType.CLASS_MODIFICATION);
+  let t = locType(modLoc);
+  if (t == SyntaxType.CLASS_MODIFICATION || t == SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION) return modLoc;
+  let res = locFindDescendant(modLoc, SyntaxType.CLASS_MODIFICATION);
+  if (locIsNull(res)) res = locFindDescendant(modLoc, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
+  return res;
 }
 
-function populateEnvRecursive(env: ModificationEnvironment, modLoc: u64, pool: ArenaStringPool, exprVisitor: WasmExprVisitor): void {
+
+function populateEnvRecursive(env: ModificationEnvironment, modLoc: u64, pool: ArenaStringPool, exprVisitor: WasmExprVisitor, isInherited: boolean = false): void {
   let ch = locFirstChild(modLoc);
   while (!locIsNull(ch)) {
     let t = locType(ch);
@@ -1657,9 +1661,19 @@ function populateEnvRecursive(env: ModificationEnvironment, modLoc: u64, pool: A
 
       if (!locIsNull(nameCur)) {
         let keyNameId = locIntern(pool, nameCur);
+        let overridden = false;
+        if (isInherited) {
+          if (env.parentEnvPtr != 0) {
+            let existing = changetype<ModificationEnvironment>(env.parentEnvPtr).lookupPath(pool, keyNameId);
+            if (existing != 0xffffffff) overridden = true;
+          } else if (exprVisitor.scopeStackPtr != 0) {
+            let existing = changetype<ScopeStack>(exprVisitor.scopeStackPtr).lookupPath(pool, keyNameId);
+            if (existing != 0xffffffff) overridden = true;
+          }
+        }
         let exprLoc = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
         if (locIsNull(exprLoc)) exprLoc = locFindDescendant(ch, SyntaxType.EXPRESSION);
-        if (!locIsNull(exprLoc)) {
+        if (!locIsNull(exprLoc) && !overridden) {
           let valExprId = exprVisitor.visitLoc(exprLoc);
           if (valExprId != 0xffffffff) {
             env.bindPath(pool, keyNameId, valExprId, isFinalMod, isEachMod);
@@ -1669,24 +1683,28 @@ function populateEnvRecursive(env: ModificationEnvironment, modLoc: u64, pool: A
         if (!locIsNull(subModLoc)) {
           let childEnvPtr = env.lookupNested(keyNameId);
           if (childEnvPtr == 0) {
-            childEnvPtr = ModificationEnvironment.create(changetype<usize>(env) as u32);
+            let parentChildPtr: u32 = 0;
+            if (env.parentEnvPtr != 0) {
+              parentChildPtr = changetype<ModificationEnvironment>(env.parentEnvPtr).lookupNested(keyNameId);
+            }
+            childEnvPtr = ModificationEnvironment.create(parentChildPtr);
             env.bindNested(keyNameId, childEnvPtr, isFinalMod, isEachMod);
           }
-          populateEnvRecursive(changetype<ModificationEnvironment>(childEnvPtr), subModLoc, pool, exprVisitor);
+          populateEnvRecursive(changetype<ModificationEnvironment>(childEnvPtr), subModLoc, pool, exprVisitor, isInherited);
         }
       }
       ch = locNextSibling(ch);
       continue;
     }
-    populateEnvRecursive(env, ch, pool, exprVisitor);
+    populateEnvRecursive(env, ch, pool, exprVisitor, isInherited);
     ch = locNextSibling(ch);
   }
 }
 
-function populateEnvFromClassModLoc(envPtr: u32, modLoc: u64, pool: ArenaStringPool, exprVisitor: WasmExprVisitor): void {
+function populateEnvFromClassModLoc(envPtr: u32, modLoc: u64, pool: ArenaStringPool, exprVisitor: WasmExprVisitor, isInherited: boolean = false): void {
   if (envPtr == 0 || locIsNull(modLoc)) return;
   let env = changetype<ModificationEnvironment>(envPtr);
-  populateEnvRecursive(env, modLoc, pool, exprVisitor);
+  populateEnvRecursive(env, modLoc, pool, exprVisitor, isInherited);
 }
 
 function extractModAttr(modLoc: u64, attrName: string, exprVisitor: WasmExprVisitor): u32 {
@@ -4513,13 +4531,7 @@ export class WasmExprVisitor {
         let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
         let pkgId = pool.getParentPrefix(baseNameId);
         let compId = getPathLastPart(pool, baseNameId);
-        let pkgLoc: u64 = 0;
-        if (!locIsNull(flattener.currentClassLoc)) {
-          pkgLoc = findClassDefinitionLoc(flattener.currentClassLoc, pkgId, pool);
-        }
-        if (locIsNull(pkgLoc) && !locIsNull(flattener.rootProgramLoc)) {
-          pkgLoc = findClassDefinitionLoc(flattener.rootProgramLoc, pkgId, pool);
-        }
+        let pkgLoc: u64 = flattener.findClassLoc(flattener.currentClassLoc, pkgId, pool);
         if (!locIsNull(pkgLoc)) {
           let compDecl = findComponentDeclInClass(pkgLoc, compId, pool);
           if (!locIsNull(compDecl)) {
@@ -5382,6 +5394,7 @@ export class ModelicaFlattener {
   // stmtItems holds CST locs as (lo, hi) u32 pairs, stmtAux holds per-construct records.
   stmtItems: ChunkedUint32Array;
   stmtAux: ChunkedUint32Array;
+  scopeResolutionsPtr: usize;
 
   @inline static create(dae: DaeBuilder): ModelicaFlattener {
     let ptr = atomicChunkAlloc(offsetof<ModelicaFlattener>());
@@ -5497,6 +5510,61 @@ export class ModelicaFlattener {
     this.ifRecordCount = 0;
     this.stmtItems = createChunkedUint32Array(256);
     this.stmtAux = createChunkedUint32Array(64);
+    this.scopeResolutionsPtr = changetype<usize>(createMap64To64());
+  }
+
+  registerScopeResolution(scopeClassNodePtr: u32, nameId: u32, targetClassNodePtr: u32, targetOffset: u32): void {
+    if (this.scopeResolutionsPtr == 0 || nameId == 0 || targetClassNodePtr == 0) return;
+    let map = changetype<UnmanagedMap64To64>(this.scopeResolutionsPtr);
+    let key: u64 = ((scopeClassNodePtr as u64) << 32) | (nameId as u64);
+    let val: u64 = targetOffset != 0 ? locMake(targetClassNodePtr, targetOffset) : (targetClassNodePtr as u64);
+    map.set(key, val);
+  }
+
+  clearScopeResolutions(): void {
+    if (this.scopeResolutionsPtr != 0) {
+      changetype<UnmanagedMap64To64>(this.scopeResolutionsPtr).clear();
+    }
+  }
+
+  resolveScopeClass(scopeClassLoc: u64, nameId: u32): u64 {
+    if (this.scopeResolutionsPtr == 0 || nameId == 0) return 0;
+    let map = changetype<UnmanagedMap64To64>(this.scopeResolutionsPtr);
+    let scopePtr = locPtr(scopeClassLoc);
+    let targetLoc: u64 = 0;
+    if (scopePtr != 0) {
+      let key: u64 = ((scopePtr as u64) << 32) | (nameId as u64);
+      if (map.has(key)) {
+        targetLoc = map.get(key);
+      }
+    }
+    if (targetLoc == 0 && map.has(nameId as u64)) {
+      targetLoc = map.get(nameId as u64);
+    }
+    if (targetLoc != 0) {
+      if (locOffset(targetLoc) != 0) return targetLoc;
+      let targetPtr = locPtr(targetLoc);
+      if (!locIsNull(this.rootProgramLoc)) {
+        let found = findClassByPtr(this.rootProgramLoc, targetPtr);
+        if (!locIsNull(found)) return found;
+      }
+      return locMakeRoot(targetPtr);
+    }
+    return 0;
+  }
+
+  findClassLoc(scopeLoc: u64, targetNameId: u32, pool: ArenaStringPool): u64 {
+    let resolved = this.resolveScopeClass(scopeLoc, targetNameId);
+    if (!locIsNull(resolved)) return resolved;
+    if (!locIsNull(scopeLoc)) {
+      resolved = findClassDefinitionLoc(scopeLoc, targetNameId, pool);
+      if (!locIsNull(resolved)) return resolved;
+    }
+    if (!locIsNull(this.rootProgramLoc) && scopeLoc != this.rootProgramLoc) {
+      resolved = findClassDefinitionLoc(this.rootProgramLoc, targetNameId, pool);
+      if (!locIsNull(resolved)) return resolved;
+    }
+    return 0;
   }
 
   registerArrayShape(nameId: u32, d1: u32, d2: u32 = 0, d3: u32 = 0): void {
@@ -7391,39 +7459,53 @@ export class ModelicaFlattener {
   instantiateClassLoc(classLoc: u64, prefixPathId: u32, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, isBaseProtected: boolean = false): u32 {
     if (locIsNull(classLoc)) return 0;
     let pool = this.dae.getStringPool();
+    let prevClassLoc = this.currentClassLoc;
+    this.currentClassLoc = classLoc;
+
     let compLoc = findCompositionLoc(classLoc);
     if (locIsNull(compLoc)) {
       let shortSpec = this.findShortClassSpecifier(classLoc);
       if (!locIsNull(shortSpec)) {
         let baseTypeSpec = locFindDescendant(shortSpec, SyntaxType.TYPE_SPECIFIER);
         if (!locIsNull(baseTypeSpec)) {
-          let baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.IDENTIFIER);
-          if (locIsNull(baseIdLoc)) baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.TOKEN_IDENTIFIER_ALT);
-          if (locIsNull(baseIdLoc)) baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.NAME);
-          if (locIsNull(baseIdLoc)) baseIdLoc = baseTypeSpec;
-          let targetId = locIntern(pool, baseIdLoc);
-          let targetClassLoc: u64 = 0;
-          if (!locIsNull(this.currentClassLoc)) {
-            targetClassLoc = findClassDefinitionLoc(this.currentClassLoc, targetId, pool);
-          }
+          let targetId = locIntern(pool, baseTypeSpec);
+          let targetClassLoc: u64 = this.findClassLoc(this.currentClassLoc, targetId, pool);
           if (locIsNull(targetClassLoc)) {
-            targetClassLoc = findClassDefinitionLoc(this.rootProgramLoc, targetId, pool);
+            let baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.IDENTIFIER);
+            if (locIsNull(baseIdLoc)) baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.TOKEN_IDENTIFIER_ALT);
+            if (locIsNull(baseIdLoc)) baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.NAME);
+            if (!locIsNull(baseIdLoc)) {
+              targetId = locIntern(pool, baseIdLoc);
+              targetClassLoc = this.findClassLoc(this.currentClassLoc, targetId, pool);
+            }
           }
           if (!locIsNull(targetClassLoc) && targetClassLoc != classLoc) {
-            return this.instantiateClassLoc(targetClassLoc, prefixPathId, isTopLevelInterface, parentCausality, isBaseProtected);
+            let shortEnvPtr: u32 = 0;
+            let shortMod = locFindDescendant(shortSpec, SyntaxType.CLASS_MODIFICATION);
+            if (locIsNull(shortMod)) shortMod = locFindDescendant(shortSpec, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
+            if (!locIsNull(shortMod)) {
+              shortEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+              populateEnvFromClassModLoc(shortEnvPtr, shortMod, pool, this.exprVisitor);
+            }
+            this.scopeStack.push(0, shortEnvPtr, prefixPathId, 0);
+            let added = this.instantiateClassLoc(targetClassLoc, prefixPathId, isTopLevelInterface, parentCausality, isBaseProtected);
+            this.scopeStack.pop();
+            this.currentClassLoc = prevClassLoc;
+            return added;
           }
         }
       }
+
+      this.currentClassLoc = prevClassLoc;
       return 0;
     }
 
-    let prevClassLoc = this.currentClassLoc;
-    this.currentClassLoc = classLoc;
     let varCountBefore = this.dae.varCount;
     this.instantiateCompositionElements(compLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isBaseProtected);
     this.currentClassLoc = prevClassLoc;
     return this.dae.varCount - varCountBefore;
   }
+
 
   instantiateCompositionElements(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, isBaseProtected: boolean = false): u32 {
     let count: u32 = 0;
@@ -7539,20 +7621,18 @@ export class ModelicaFlattener {
     if (locIsNull(baseNameNode)) baseNameNode = ext.findDescendantLoc(SyntaxType.NAME);
     if (!locIsNull(baseNameNode)) {
       let baseNameId = locIntern(pool, baseNameNode);
-      let baseClassLoc: u64 = 0;
-      if (!locIsNull(this.currentClassLoc)) {
-        baseClassLoc = findClassDefinitionLoc(this.currentClassLoc, baseNameId, pool);
-      }
-      if (locIsNull(baseClassLoc)) {
-        baseClassLoc = findClassDefinitionLoc(this.rootProgramLoc, baseNameId, pool);
-      }
+      let baseClassLoc: u64 = this.findClassLoc(this.currentClassLoc, baseNameId, pool);
       if (!locIsNull(baseClassLoc)) {
         let extEnvPtr: u32 = 0;
         let extModCur = ext.findDescendantLoc(SyntaxType.CLASS_MODIFICATION);
+        if (locIsNull(extModCur)) {
+          extModCur = ext.findDescendantLoc(SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
+        }
         if (!locIsNull(extModCur)) {
           extEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
-          populateEnvFromClassModLoc(extEnvPtr, extModCur, pool, this.exprVisitor);
+          populateEnvFromClassModLoc(extEnvPtr, extModCur, pool, this.exprVisitor, true);
         }
+
         this.scopeStack.push(0, extEnvPtr, prefixPathId, 0);
         let added = this.instantiateClassLoc(baseClassLoc, prefixPathId, isTopLevelInterface, parentCausality, isSectionProtected);
         this.scopeStack.pop();
@@ -7678,18 +7758,12 @@ export class ModelicaFlattener {
         isPrimitive = true;
       } else {
         // Resolve type alias / short class definition (e.g. type Angle = Real(unit="rad"), type Color = Modelica.Icons.TypeInteger[3])
-        let defLoc: u64 = 0;
-        if (!locIsNull(this.currentClassLoc)) {
-          defLoc = findClassDefinitionLoc(this.currentClassLoc, typeNameId, pool);
-        }
-        if (locIsNull(defLoc)) {
-          defLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
-        }
+        let defLoc: u64 = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
         let firstIdLoc = locFindDescendant(typeSpecLoc, SyntaxType.IDENTIFIER);
         if (locIsNull(defLoc) && !locIsNull(firstIdLoc)) {
           let firstId = locIntern(pool, firstIdLoc);
           if (firstId != typeNameId) {
-            defLoc = findClassDefinitionLoc(this.rootProgramLoc, firstId, pool);
+            defLoc = this.findClassLoc(this.currentClassLoc, firstId, pool);
           }
         }
         let curDefLoc: u64 = defLoc;
@@ -7721,18 +7795,14 @@ export class ModelicaFlattener {
                 } else if (isTypeClassLoc(curDefLoc)) {
                   // Follow extends alias chain
                   let nextExtId = locIntern(pool, extNameLoc);
-                  curDefLoc = 0;
-                  if (!locIsNull(this.currentClassLoc)) {
-                    curDefLoc = findClassDefinitionLoc(this.currentClassLoc, nextExtId, pool);
-                  }
-                  if (locIsNull(curDefLoc)) {
-                    curDefLoc = findClassDefinitionLoc(this.rootProgramLoc, nextExtId, pool);
-                  }
+                  curDefLoc = this.findClassLoc(this.currentClassLoc, nextExtId, pool);
                   continue;
                 }
                 if (isPrimitive) {
                   let extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_MODIFICATION);
+                  if (locIsNull(extModLoc)) extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
                   if (!locIsNull(extModLoc)) {
+
                     let uid = extractModUnit(extModLoc, this.exprVisitor);
                     if (uid != 0xffffffff && subtypeUnitId == 0xffffffff) subtypeUnitId = uid;
                     let sid = extractModStart(extModLoc, this.exprVisitor);
@@ -7780,15 +7850,15 @@ export class ModelicaFlattener {
               isPrimitive = true;
             } else {
               // Follow alias chain
-              let nextTargetId = locIntern(pool, baseIdLoc);
-              curDefLoc = 0;
-              if (!locIsNull(this.currentClassLoc)) {
-                curDefLoc = findClassDefinitionLoc(this.currentClassLoc, nextTargetId, pool);
+              let nextTargetId = locIntern(pool, baseTypeSpec);
+              let nextDefLoc = this.findClassLoc(curDefLoc, nextTargetId, pool);
+              if (locIsNull(nextDefLoc)) {
+                let baseId = locIntern(pool, baseIdLoc);
+                nextDefLoc = this.findClassLoc(curDefLoc, baseId, pool);
               }
-              if (locIsNull(curDefLoc)) {
-                curDefLoc = findClassDefinitionLoc(this.rootProgramLoc, nextTargetId, pool);
-              }
+              curDefLoc = nextDefLoc;
             }
+
           } else if (locMatches(shortSpec, "enumeration") || !locIsNull(locFindDescendant(shortSpec, SyntaxType.ENUM_LIST))) {
             varType = VarType.Integer;
             isPrimitive = true;
@@ -7873,7 +7943,16 @@ export class ModelicaFlattener {
             }
           }
         }
-        if (!isPrimitive && !locIsNull(curDefLoc) && curDefLoc != defLoc) {
+        let hasOwnMod = false;
+        let defShortSpec = this.findShortClassSpecifier(defLoc);
+        if (!locIsNull(defShortSpec)) {
+          hasOwnMod = !locIsNull(locFindDescendant(defShortSpec, SyntaxType.CLASS_MODIFICATION)) ||
+                      !locIsNull(locFindDescendant(defShortSpec, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION));
+        } else {
+          hasOwnMod = !locIsNull(locFindDescendant(defLoc, SyntaxType.CLASS_MODIFICATION)) ||
+                      !locIsNull(locFindDescendant(defLoc, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION));
+        }
+        if (!isPrimitive && !locIsNull(curDefLoc) && curDefLoc != defLoc && !hasOwnMod) {
           let resolvedTargetId = getClassNameIdLoc(pool, curDefLoc);
           if (resolvedTargetId != 0) typeNameId = resolvedTargetId;
         }
@@ -8475,13 +8554,7 @@ export class ModelicaFlattener {
         this.pendingArrayRhs.set(pIdx, valExprId);
       }
     } else if (typeNameId != 0) {
-      let subClassLoc: u64 = 0;
-      if (!locIsNull(this.currentClassLoc)) {
-        subClassLoc = findClassDefinitionLoc(this.currentClassLoc, typeNameId, pool);
-      }
-      if (locIsNull(subClassLoc)) {
-        subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
-      }
+      let subClassLoc: u64 = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
       if (!locIsNull(subClassLoc)) {
         let isConn = isConnectorClassLoc(subClassLoc);
         let isRec = isRecordClassLoc(subClassLoc);
@@ -8645,13 +8718,7 @@ export class ModelicaFlattener {
       if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(elementLoc, SyntaxType.NAME);
       if (!locIsNull(baseNameNode)) {
         let baseNameId = locIntern(pool, baseNameNode);
-        let baseClassLoc: u64 = 0;
-        if (!locIsNull(this.currentClassLoc)) {
-          baseClassLoc = findClassDefinitionLoc(this.currentClassLoc, baseNameId, pool);
-        }
-        if (locIsNull(baseClassLoc)) {
-          baseClassLoc = findClassDefinitionLoc(this.rootProgramLoc, baseNameId, pool);
-        }
+        let baseClassLoc: u64 = this.findClassLoc(this.currentClassLoc, baseNameId, pool);
         if (!locIsNull(baseClassLoc)) {
           return this.lowerAllClassEquationsLoc(baseClassLoc, prefixPathId);
         }
@@ -8701,13 +8768,7 @@ export class ModelicaFlattener {
     }
 
     let typeNameId = locIntern(pool, typeSpecLoc);
-    let subClassLoc: u64 = 0;
-    if (!locIsNull(this.currentClassLoc)) {
-      subClassLoc = findClassDefinitionLoc(this.currentClassLoc, typeNameId, pool);
-    }
-    if (locIsNull(subClassLoc)) {
-      subClassLoc = findClassDefinitionLoc(this.rootProgramLoc, typeNameId, pool);
-    }
+    let subClassLoc: u64 = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
     if (locIsNull(subClassLoc)) return 0;
 
     return this.lowerComponentEquationsDeclarations(clauseLoc, subClassLoc, prefixPathId, pool);
@@ -9794,6 +9855,16 @@ export function flattener_getIfRecordLength(flattenerPtr: u32): u32 {
 export function flattener_getIfRecordData(flattenerPtr: u32, idx: u32): i32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ModelicaFlattener>(flattenerPtr).ifRecords.get(idx);
+}
+
+export function flattener_registerScopeResolution(flattenerPtr: u32, scopeClassNodePtr: u32, nameId: u32, targetClassNodePtr: u32, targetOffset: u32): void {
+  if (flattenerPtr == 0) return;
+  changetype<ModelicaFlattener>(flattenerPtr).registerScopeResolution(scopeClassNodePtr, nameId, targetClassNodePtr, targetOffset);
+}
+
+export function flattener_clearScopeResolutions(flattenerPtr: u32): void {
+  if (flattenerPtr == 0) return;
+  changetype<ModelicaFlattener>(flattenerPtr).clearScopeResolutions();
 }
 
 
