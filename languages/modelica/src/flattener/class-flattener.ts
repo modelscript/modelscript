@@ -20,6 +20,7 @@ import {
   type SymbolEntry,
   type SymbolId,
   Variability,
+  VarType,
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
 import { ModelicaPortBalancer } from "../connections.js";
@@ -71,6 +72,7 @@ import {
 } from "./elaboration/index.js";
 import {
   escapeRegExp,
+  extractEnumLiteralsFromCst,
   getSymbolQualifiedName,
   lowerCSTExpression,
   stripComments,
@@ -142,6 +144,7 @@ export class ModelicaFlattener {
   public varConditionDeps = new Map<string, string[]>();
   public currentParentMods?: any;
   public currentBindingCompName?: string;
+  public enumTypeMap = new Map<string, string[]>();
   private nodeProtectionCache = new WeakMap<any, boolean>();
   public useLocalDirection = false;
 
@@ -1970,6 +1973,13 @@ export class ModelicaFlattener {
         !this.useLocalDirection &&
         !this.classHasRedeclare(rootClassId) &&
         !this.classHasUnsupportedWasmFeatures(rootClassId));
+    console.log("DEBUG FLATTENER:", {
+      hasWasmFlattener,
+      isStrictWasm,
+      allowWasm,
+      classNodePtr,
+      backend: this.options.backend,
+    });
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -1979,6 +1989,12 @@ export class ModelicaFlattener {
         testDae = new DAEBuilder(wasmExports, rootName, "");
         wf = testDae.exports.flattener_create ? testDae.exports.flattener_create(testDae.ptr) : 0;
         if (wf) {
+          if (
+            this.options.omcCompatibility &&
+            typeof (testDae.exports as any)?.flattener_setOmcCompatibility === "function"
+          ) {
+            (testDae.exports as any).flattener_setOmcCompatibility(wf, 1);
+          }
           this.populateWasmScopeResolutions(wf, rootClassId, testDae);
           const vc = testDae.exports.flattener_flatten(wf, classNodePtr, rootProgramPtr);
           wasmDiffStats = { varCount: vc, eqCount: testDae.eqCount };
@@ -2004,6 +2020,12 @@ export class ModelicaFlattener {
       try {
         const wasmFlattener = dae.exports.flattener_create(dae.ptr);
         if (wasmFlattener) {
+          if (
+            this.options.omcCompatibility &&
+            typeof (dae.exports as any)?.flattener_setOmcCompatibility === "function"
+          ) {
+            (dae.exports as any).flattener_setOmcCompatibility(wasmFlattener, 1);
+          }
           this.populateWasmScopeResolutions(wasmFlattener, rootClassId, dae);
           const varCount = dae.exports.flattener_flatten(wasmFlattener, classNodePtr, rootProgramPtr);
           const wasmErrorCode =
@@ -2202,6 +2224,25 @@ export class ModelicaFlattener {
               }
               dae.extensionMetadata.expandableBuses = busPrefixes;
             }
+            if (typeof (dae.exports as any)?.flattener_getArrayCount === "function") {
+              const exArr = dae.exports as any;
+              const aCount = exArr.flattener_getArrayCount(wasmFlattener);
+              for (let a = 0; a < aCount; a++) {
+                const nameId = exArr.flattener_getArrayName(wasmFlattener, a);
+                const name = dae.interner.resolve(nameId);
+                if (name) {
+                  const nDims = exArr.flattener_getArrayNDims(wasmFlattener, a);
+                  const d1 = exArr.flattener_getArrayDim1(wasmFlattener, a);
+                  const d2 = exArr.flattener_getArrayDim2(wasmFlattener, a);
+                  const d3 = exArr.flattener_getArrayDim3(wasmFlattener, a);
+                  const shape: number[] = [];
+                  if (nDims >= 1) shape.push(d1);
+                  if (nDims >= 2) shape.push(d2);
+                  if (nDims >= 3) shape.push(d3);
+                  dae.setNamedArrayShape(name, shape);
+                }
+              }
+            }
             const totalVars = dae.varCount;
             for (let v = 0; v < totalVars; v++) {
               if ((dae.getVarFlags(v) & (1 << 9)) !== 0) {
@@ -2346,6 +2387,38 @@ export class ModelicaFlattener {
     // 2.5 Fold constants on initial DAE so parameters, dimensions, and expressions are resolved
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
 
+    const expandArrayConnectEquations = (builder: DAEBuilder) => {
+      const origEqCount = builder.eqCount;
+      for (let i = 0; i < origEqCount; i++) {
+        if (builder.getEqKind(i) === EqKind.Connect) {
+          const l = builder.getEqLhs(i);
+          const r = builder.getEqRhs(i);
+          const flags = builder.getEqAux(i);
+          if (builder.getExprKind(l) === ExprKind.Name && builder.getExprKind(r) === ExprKind.Name) {
+            const lName = builder.interner.resolve(builder.getExprData1(l));
+            const rName = builder.interner.resolve(builder.getExprData1(r));
+            if (lName && rName) {
+              const lExp = this.expandConnectorRef(lName, builder);
+              const rExp = this.expandConnectorRef(rName, builder);
+              if (lExp.length > 1 && lExp.length === rExp.length) {
+                const l0 = builder.addName(builder.interner.intern(lExp[0]!));
+                const r0 = builder.addName(builder.interner.intern(rExp[0]!));
+                builder.setEqLhs(i, l0);
+                builder.setEqRhs(i, r0);
+                for (let k = 1; k < lExp.length; k++) {
+                  const lk = builder.addName(builder.interner.intern(lExp[k]!));
+                  const rk = builder.addName(builder.interner.intern(rExp[k]!));
+                  builder.addEquation(EqKind.Connect, lk, rk, flags);
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+
+    expandArrayConnectEquations(dae);
+
     const hasArrayConnect = (builder: DAEBuilder) => {
       for (let i = 0; i < builder.eqCount; i++) {
         if (builder.getEqKind(i) === EqKind.Connect) {
@@ -2355,6 +2428,8 @@ export class ModelicaFlattener {
           const lName = builder.interner.resolve(builder.getExprData1(l));
           const rName = builder.interner.resolve(builder.getExprData1(r));
           if (builder.hasArrayElements(lName) || builder.hasArrayElements(rName)) return true;
+          if (this.expandConnectorRef(lName, builder).length > 1 || this.expandConnectorRef(rName, builder).length > 1)
+            return true;
         }
       }
       return false;
@@ -2488,70 +2563,102 @@ export class ModelicaFlattener {
         node.type === "component_declaration1" ||
         node.type === "declaration"
       ) {
-        const declNode =
-          node.type === "component_declaration"
-            ? ((node.children || []).find((c: any) => c.type === "declaration") ?? node)
-            : node;
-        const idChild = (declNode.children || []).find((c: any) => c.type === "identifier");
-        const name = idChild ? idChild.text?.trim() : declNode.text?.trim()?.split(/\s|=|\[|\(/)[0];
-        if (name) {
-          let varIdx = dae.getVarIdxByName(name);
-          if (varIdx < 0) {
-            varIdx = dae.getVarIdxByName(`${name}[1]`);
-          }
-          const sB = declNode.startIndex ?? declNode.startByte;
-          const eB = declNode.endIndex ?? declNode.endByte;
-          if (varIdx >= 0 && sB != null && eB != null) {
-            dae.setVarSourceRange(varIdx, sB, eB);
-            const arrayIndices = dae.getArrayElementIndices(name);
-            for (const idx of arrayIndices) {
-              dae.setVarSourceRange(idx, sB, eB);
+        const declNodes: any[] =
+          node.type === "component_declaration" || node.type === "component_declaration1"
+            ? (node.children || []).filter((c: any) => c.type === "declaration")
+            : [node];
+        if (declNodes.length === 0) declNodes.push(node);
+
+        let typeSpecNode: any = null;
+        let pNode = node;
+        while (pNode && pNode.type !== "composition") {
+          typeSpecNode = (pNode.children || []).find((c: any) => c.type === "type_specifier" || c.type === "name");
+          if (typeSpecNode) break;
+          pNode = pNode.parent;
+        }
+        const rawTypeName = typeSpecNode?.text?.trim();
+        const leafTypeName = rawTypeName ? rawTypeName.split(".").pop() : undefined;
+
+        for (const declNode of declNodes) {
+          const idChild = (declNode.children || []).find((c: any) => c.type === "identifier");
+          const name = idChild ? idChild.text?.trim() : declNode.text?.trim()?.split(/\s|=|\[|\(/)[0];
+          if (name) {
+            let varIdx = dae.getVarIdxByName(name);
+            if (varIdx < 0) {
+              varIdx = dae.getVarIdxByName(`${name}[1]`);
             }
-          }
-          const desc = extractDescription(node);
-          if (desc && varIdx >= 0) {
-            dae.setVarDescription(varIdx, desc);
-            const arrayIndices = dae.getArrayElementIndices(name);
-            for (const idx of arrayIndices) {
-              dae.setVarDescription(idx, desc);
-            }
-          }
-          if (varIdx >= 0) {
-            let p = node.parent;
-            while (p && p.type !== "element" && p.type !== "composition") {
-              p = p.parent;
-            }
-            if (p && p.type === "element" && /\bfinal\b/.test(p.text ?? "")) {
-              dae.setVarFinal(varIdx, true);
+            const sB = declNode.startIndex ?? declNode.startByte;
+            const eB = declNode.endIndex ?? declNode.endByte;
+            if (varIdx >= 0 && sB != null && eB != null) {
+              dae.setVarSourceRange(varIdx, sB, eB);
               const arrayIndices = dae.getArrayElementIndices(name);
               for (const idx of arrayIndices) {
-                dae.setVarFinal(idx, true);
+                dae.setVarSourceRange(idx, sB, eB);
               }
             }
-
-            const rawText = declNode.text ?? node.text ?? "";
-            const qMatch = rawText.match(/\bquantity\s*=\s*("([^"\\]|\\.)*")/);
-            if (qMatch) {
-              try {
-                const qStr = JSON.parse(qMatch[1]);
-                const qId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(qStr));
-                dae.setVarAttr(varIdx, "quantity", qId);
-                const arrayIndices = dae.getArrayElementIndices(name);
-                for (const idx of arrayIndices) {
-                  dae.setVarAttr(idx, "quantity", qId);
-                }
-              } catch {}
+            const desc = extractDescription(node);
+            if (desc && varIdx >= 0) {
+              dae.setVarDescription(varIdx, desc);
+              const arrayIndices = dae.getArrayElementIndices(name);
+              for (const idx of arrayIndices) {
+                dae.setVarDescription(idx, desc);
+              }
             }
-            const ssMatch = rawText.match(/\bstateSelect\s*=\s*(?:StateSelect\.)?([a-zA-Z]+)/);
-            if (ssMatch) {
-              const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
-              const ssIdx = ssLiterals.indexOf(ssMatch[1]);
-              if (ssIdx >= 0) {
-                const enumExprId = dae.addEnumLiteral(ssIdx + 1, `StateSelect.${ssMatch[1]}`);
-                dae.setVarAttr(varIdx, "stateSelect", enumExprId);
+            if (varIdx >= 0) {
+              let p = node.parent;
+              while (p && p.type !== "element" && p.type !== "composition") {
+                p = p.parent;
+              }
+              if (p && p.type === "element" && /\bfinal\b/.test(p.text ?? "")) {
+                dae.setVarFinal(varIdx, true);
                 const arrayIndices = dae.getArrayElementIndices(name);
                 for (const idx of arrayIndices) {
-                  dae.setVarAttr(idx, "stateSelect", enumExprId);
+                  dae.setVarFinal(idx, true);
+                }
+              }
+
+              const rawText = declNode.text ?? node.text ?? "";
+              const qMatch = rawText.match(/\bquantity\s*=\s*("([^"\\]|\\.)*")/);
+              if (qMatch) {
+                try {
+                  const qStr = JSON.parse(qMatch[1]);
+                  const qId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(qStr));
+                  dae.setVarAttr(varIdx, "quantity", qId);
+                  const arrayIndices = dae.getArrayElementIndices(name);
+                  for (const idx of arrayIndices) {
+                    dae.setVarAttr(idx, "quantity", qId);
+                  }
+                } catch {}
+              }
+              const ssMatch = rawText.match(/\bstateSelect\s*=\s*(?:StateSelect\.)?([a-zA-Z]+)/);
+              if (ssMatch) {
+                const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
+                const ssIdx = ssLiterals.indexOf(ssMatch[1]);
+                if (ssIdx >= 0) {
+                  const enumExprId = dae.addEnumLiteral(ssIdx + 1, `StateSelect.${ssMatch[1]}`);
+                  dae.setVarAttr(varIdx, "stateSelect", enumExprId);
+                  const arrayIndices = dae.getArrayElementIndices(name);
+                  for (const idx of arrayIndices) {
+                    dae.setVarAttr(idx, "stateSelect", enumExprId);
+                  }
+                }
+              }
+
+              const isEnumVar =
+                dae.getVarType(varIdx) === VarType.Enumeration ||
+                (rawTypeName && this.enumTypeMap.has(rawTypeName)) ||
+                (leafTypeName && this.enumTypeMap.has(leafTypeName));
+              if (isEnumVar) {
+                const lits =
+                  (rawTypeName ? this.enumTypeMap.get(rawTypeName) : undefined) ??
+                  (leafTypeName ? this.enumTypeMap.get(leafTypeName) : undefined);
+                if (lits && lits.length > 0) {
+                  const formatted = lits.map((s: string) => ({ stringValue: s }));
+                  dae.setVarEnumerationLiterals(varIdx, formatted);
+                  const arrayIndices = dae.getArrayElementIndices(name);
+                  for (const idx of arrayIndices) {
+                    dae.setVarEnumerationLiterals(idx, formatted);
+                  }
                 }
               }
             }
@@ -2571,6 +2678,7 @@ export class ModelicaFlattener {
   private populateWasmScopeResolutions(wasmFlattener: number, rootClassId: SymbolId, dae: DAEBuilder): void {
     if (typeof (dae.exports as any)?.flattener_registerScopeResolution !== "function") return;
     const register = (dae.exports as any).flattener_registerScopeResolution;
+    const registerEnum = (dae.exports as any)?.flattener_registerEnumLiteral;
     const encoding =
       typeof (dae.exports as any)?.lsp_getInputEncoding === "function"
         ? (dae.exports as any).lsp_getInputEncoding()
@@ -2578,14 +2686,42 @@ export class ModelicaFlattener {
     const unitSize = inputEncodingUnitSize(encoding);
     const visited = new Set<SymbolId>();
     const queue: SymbolId[] = [rootClassId];
+    this.enumTypeMap.clear();
 
     while (queue.length > 0) {
       const classId = queue.pop()!;
       if (visited.has(classId)) continue;
       visited.add(classId);
 
+      const classEntry = this.db.symbol(classId);
       const classCst = this.db.cstNode(classId) as any;
       const scopePtr: number = classCst?.ptr ?? 0;
+
+      // Check if this class definition is an enumeration
+      const isEnum = (classEntry?.metadata as any)?.isEnumeration || Boolean(classCst?.text?.includes("enumeration("));
+      if (isEnum && classEntry) {
+        const lits = extractEnumLiteralsFromCst(classCst, classEntry.metadata);
+        if (lits && lits.length > 0) {
+          const qName = getSymbolQualifiedName(this.db, classId);
+          this.enumTypeMap.set(classEntry.name, lits);
+          if (qName) this.enumTypeMap.set(qName, lits);
+
+          if (typeof registerEnum === "function") {
+            for (let i = 0; i < lits.length; i++) {
+              const lit = lits[i];
+              const ordinal = i + 1;
+              const fullPath = qName ? `${qName}.${lit}` : `${classEntry.name}.${lit}`;
+              const fullPathId = dae.interner.intern(fullPath);
+              const shortRefId = dae.interner.intern(`${classEntry.name}.${lit}`);
+              registerEnum(wasmFlattener, shortRefId, ordinal, fullPathId);
+              if (qName) {
+                const qRefId = dae.interner.intern(`${qName}.${lit}`);
+                registerEnum(wasmFlattener, qRefId, ordinal, fullPathId);
+              }
+            }
+          }
+        }
+      }
 
       // Check if this class definition is a short class specifier (e.g. model E = B.C(x=6))
       const findShortSpec = (node: any): any => {
@@ -2617,6 +2753,28 @@ export class ModelicaFlattener {
             }
             queue.push(resolved.id);
           }
+        }
+      }
+
+      // Collect imports for this class and register with WASM flattener
+      const classImports = this.collectClassImports(classId);
+      for (const [shortName, fullPkg] of classImports) {
+        const resolved =
+          this.db.query<(n: string) => any>("resolveName", classId)?.(fullPkg) ??
+          this.db.query<(n: string) => any>("resolveSimpleName", classId)?.(fullPkg) ??
+          this.db.byName(fullPkg.split(".").pop() ?? "").find((e) => e.kind === "Class" || e.kind === "Package");
+        if (resolved && resolved.id) {
+          const targetCst = this.db.cstNode(resolved.id) as any;
+          if (targetCst?.ptr) {
+            const nameId = dae.interner.intern(shortName);
+            const targetOffset =
+              targetCst._startOffset !== undefined
+                ? targetCst._startOffset
+                : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+            register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
+            register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
+          }
+          queue.push(resolved.id);
         }
       }
 
@@ -2683,6 +2841,31 @@ export class ModelicaFlattener {
         } else if (child.kind === "Class") {
           queue.push(child.id);
           const childCst = this.db.cstNode(child.id) as any;
+          const isChildEnum =
+            (child.metadata as any)?.isEnumeration || Boolean(childCst?.text?.includes("enumeration("));
+          if (isChildEnum) {
+            const lits = extractEnumLiteralsFromCst(childCst, child.metadata);
+            if (lits && lits.length > 0) {
+              const qName = getSymbolQualifiedName(this.db, child.id);
+              this.enumTypeMap.set(child.name, lits);
+              if (qName) this.enumTypeMap.set(qName, lits);
+
+              if (typeof registerEnum === "function") {
+                for (let i = 0; i < lits.length; i++) {
+                  const lit = lits[i];
+                  const ordinal = i + 1;
+                  const fullPath = qName ? `${qName}.${lit}` : `${child.name}.${lit}`;
+                  const fullPathId = dae.interner.intern(fullPath);
+                  const shortRefId = dae.interner.intern(`${child.name}.${lit}`);
+                  registerEnum(wasmFlattener, shortRefId, ordinal, fullPathId);
+                  if (qName) {
+                    const qRefId = dae.interner.intern(`${qName}.${lit}`);
+                    registerEnum(wasmFlattener, qRefId, ordinal, fullPathId);
+                  }
+                }
+              }
+            }
+          }
           const aliasTarget = (child.metadata as any)?.aliasTarget ?? (child.metadata as any)?.baseClass;
           if (aliasTarget) {
             const resolved =

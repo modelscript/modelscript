@@ -745,7 +745,10 @@ export function evaluateConstantArenaExpression(
           }
           let cur = arrArg;
           for (let d = 1; d < dim; d++) {
-            if (arena.getExprKind(cur) === ExprKind.ArrayCtor && arena.getExprData1(cur) > 0) {
+            if (
+              arena.getExprKind(cur) === ExprKind.ArrayCtor &&
+              (arena.getExprData1(cur) > 0 || (arena.getExprLeft(cur) !== 0xffffffff && arena.getExprLeft(cur) !== -1))
+            ) {
               cur = arena.getExprLeft(cur);
             } else {
               break;
@@ -759,13 +762,13 @@ export function evaluateConstantArenaExpression(
           const name = arena.interner.resolve(arena.getExprData1(arrArg));
           if (name) {
             const namedShape = (arena as any).getNamedArrayShape?.(name) ?? (arena as any).namedArrayShapes?.get(name);
-            if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! > 0) {
+            if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
               return namedShape[dim - 1]!;
             }
             const vIdx = nameToIdx ? nameToIdx.get(name) : arena.getVarIdxByName(name);
             if (vIdx !== undefined && vIdx >= 0) {
               const shape = arena.getVarShape(vIdx);
-              if (shape && shape.length >= dim && shape[dim - 1]! > 0) {
+              if (shape && shape.length >= dim && shape[dim - 1]! >= 0) {
                 return shape[dim - 1]!;
               }
             }

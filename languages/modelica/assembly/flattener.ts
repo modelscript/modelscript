@@ -1273,11 +1273,9 @@ function getExprDimensions(dae: DaeBuilder, exprId: u32): u64 {
   if (kind == ExprKind.ArrayCtor) {
     let d1 = dae.getExprData1(exprId);
     let d2: u32 = 0;
-    if (d1 > 0) {
-      let firstElem = getArrayCtorElement(dae, exprId, 0);
-      if (firstElem != 0xffffffff && dae.getExprKind(firstElem) == ExprKind.ArrayCtor) {
-        d2 = dae.getExprData1(firstElem);
-      }
+    let firstElem = d1 > 0 ? getArrayCtorElement(dae, exprId, 0) : dae.getExprLeft(exprId);
+    if (firstElem != 0xffffffff && dae.getExprKind(firstElem) == ExprKind.ArrayCtor) {
+      d2 = dae.getExprData1(firstElem);
     }
     return ((d1 as u64) << 32) | (d2 as u64);
   }
@@ -2428,6 +2426,13 @@ export class WasmExprVisitor {
     return 0;
   }
 
+  @inline hasArrayShape(nameId: u32): boolean {
+    if (this.flattenerPtr != 0) {
+      return changetype<ModelicaFlattener>(this.flattenerPtr).hasArrayShape(nameId);
+    }
+    return false;
+  }
+
   setLoopVar(nameHash: u32, exprId: u32): void {
     this.loopVars.set(nameHash as u64, (exprId + 1) as u32);
   }
@@ -2447,7 +2452,11 @@ export class WasmExprVisitor {
     let kind = this.dae.getExprKind(exprId);
     if (kind == ExprKind.RealLiteral) return true;
     if (kind == ExprKind.Name) {
-      let nameId = this.resolveVarName(this.dae.getExprData1(exprId));
+      let rawNameId = this.dae.getExprData1(exprId);
+      let pool = this.dae.getStringPool();
+      if (poolMatchesSimple(pool, rawNameId, "time")) return true;
+      let nameId = this.resolveVarName(rawNameId);
+      if (poolMatchesSimple(pool, nameId, "time")) return true;
       let v = this.dae.lookupVariableByName(nameId);
       if (v >= 0) return this.dae.getVarType(v as u32) == (VarType.Real as i32);
     }
@@ -3406,7 +3415,6 @@ export class WasmExprVisitor {
               }
             }
           }
-          if (!this.isRealExpr(acc)) acc = this.castToReal(acc);
           this.tempBuffer.length = leafStart;
           return acc;
         }
@@ -3533,6 +3541,13 @@ export class WasmExprVisitor {
           }
         } else if (this.dae.getExprKind(arrId) == ExprKind.Name) {
           let nameId = this.resolveVarName(this.dae.getExprData1(arrId));
+          if (this.hasArrayShape(nameId)) {
+            let n = this.getArrayNDims(nameId);
+            if (dim <= n) {
+              let s = this.getArrayShapeDim(nameId, dim);
+              return this.dae.addIntLiteral(s as i32);
+            }
+          }
           let s = this.getArrayShapeDim(nameId, dim);
           if (s == 0) {
             let vIdx = this.dae.lookupVariableByName(nameId);
@@ -3653,7 +3668,7 @@ export class WasmExprVisitor {
             let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, zStart, d2);
             this.tempBuffer.length = zStart;
             for (let i: u32 = 0; i < d1; i++) this.tempBuffer.push(rowCtorId);
-            let matCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, zStart, d1);
+            let matCtorId = d1 == 0 ? this.dae.addExpression(ExprKind.ArrayCtor, 0, rowCtorId, 0xffffffff) : addArrayCtorFromChunked(this.dae, this.tempBuffer, zStart, d1);
             this.tempBuffer.length = zStart;
             return matCtorId;
           }
@@ -3700,7 +3715,7 @@ export class WasmExprVisitor {
             let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, oStart, d2);
             this.tempBuffer.length = oStart;
             for (let i: u32 = 0; i < d1; i++) this.tempBuffer.push(rowCtorId);
-            let matCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, oStart, d1);
+            let matCtorId = d1 == 0 ? this.dae.addExpression(ExprKind.ArrayCtor, 0, rowCtorId, 0xffffffff) : addArrayCtorFromChunked(this.dae, this.tempBuffer, oStart, d1);
             this.tempBuffer.length = oStart;
             return matCtorId;
           }
@@ -3731,7 +3746,7 @@ export class WasmExprVisitor {
             let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, fStart, d2);
             this.tempBuffer.length = fStart;
             for (let i: u32 = 0; i < d1; i++) this.tempBuffer.push(rowCtorId);
-            let matCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, fStart, d1);
+            let matCtorId = d1 == 0 ? this.dae.addExpression(ExprKind.ArrayCtor, 0, rowCtorId, 0xffffffff) : addArrayCtorFromChunked(this.dae, this.tempBuffer, fStart, d1);
             this.tempBuffer.length = fStart;
             return matCtorId;
           }
@@ -4185,12 +4200,10 @@ export class WasmExprVisitor {
       for (let i: u32 = 1; i < elemCount; i++) {
         acc = this.lowerBinary(BinOp.Add as u16, acc, this.tempBuffer.get(elemStart + i));
       }
-      if (!this.isRealExpr(acc)) acc = this.castToReal(acc);
     } else if (isProd) {
       for (let i: u32 = 1; i < elemCount; i++) {
         acc = this.lowerBinary(BinOp.Mul as u16, acc, this.tempBuffer.get(elemStart + i));
       }
-      if (!this.isRealExpr(acc)) acc = this.castToReal(acc);
     } else {
       this.tempBuffer.length = elemStart;
       return 0xffffffff;
@@ -4873,13 +4886,24 @@ export class WasmExprVisitor {
       for (let b: i32 = (branchCount as i32) - 1; b >= 0; b--) {
         let condId = this.tempBuffer.get(branchStart + (b as u32) * 2);
         let thenId = this.tempBuffer.get(branchStart + (b as u32) * 2 + 1);
+        let isEvaluated = false;
         if (this.dae.getExprKind(condId) == ExprKind.BoolLiteral) {
           let condVal = this.dae.getExprData1(condId);
           if (condVal != 0) {
             currElseId = thenId;
           }
-          continue;
+          isEvaluated = true;
+        } else if (this.flattenerPtr != 0) {
+          let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
+          let st = flattener.evalCondExpr(condId);
+          if (st == 1) {
+            currElseId = thenId;
+            isEvaluated = true;
+          } else if (st == 0) {
+            isEvaluated = true;
+          }
         }
+        if (isEvaluated) continue;
         if (this.isRealExpr(thenId) && !this.isRealExpr(currElseId)) {
           currElseId = this.castToReal(currElseId);
         } else if (!this.isRealExpr(thenId) && this.isRealExpr(currElseId)) {
@@ -4981,6 +5005,22 @@ export class WasmExprVisitor {
       let nameId = locIntern(pool, loc);
       let loopVal = this.getLoopVar(nameId);
       if (loopVal != 0xffffffff) return loopVal;
+      if (this.flattenerPtr != 0) {
+        let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
+        let enumVal = flattener.lookupEnumLiteral(nameId);
+        if (enumVal == 0 && this.scopeStackPtr != 0) {
+          let prefixId = changetype<ScopeStack>(this.scopeStackPtr).currentPrefixPathId;
+          if (prefixId != 0) {
+            let prefixedId = pool.concatIds(prefixId, nameId);
+            enumVal = flattener.lookupEnumLiteral(prefixedId);
+          }
+        }
+        if (enumVal != 0) {
+          let ordinal = (enumVal >> 32) as u32;
+          let fullPathId = (enumVal & 0xffffffff) as u32;
+          return this.dae.addExpression(ExprKind.EnumLiteral, ordinal, fullPathId);
+        }
+      }
       if (this.envPtr != 0) {
         let modExpr = changetype<ModificationEnvironment>(this.envPtr).lookupPath(pool, nameId);
         if (modExpr != 0xffffffff) return modExpr;
@@ -5008,6 +5048,7 @@ export class WasmExprVisitor {
               if (vt == VarType.Real) return this.dae.addRealLiteral(varAcc.startValue);
               if (vt == VarType.Integer) return this.dae.addIntLiteral(varAcc.startValue as i32);
               if (vt == VarType.Boolean) return this.dae.addExpression(ExprKind.BoolLiteral, varAcc.startValue != 0.0 ? 1 : 0);
+              if (vt == VarType.Enumeration) return this.dae.addExpression(ExprKind.EnumLiteral, varAcc.startValue as i32, 0);
             }
             return this.dae.addExpression(ExprKind.Name, prefixedId);
           }
@@ -5029,6 +5070,7 @@ export class WasmExprVisitor {
           if (vt == VarType.Real) return this.dae.addRealLiteral(varAcc.startValue);
           if (vt == VarType.Integer) return this.dae.addIntLiteral(varAcc.startValue as i32);
           if (vt == VarType.Boolean) return this.dae.addExpression(ExprKind.BoolLiteral, varAcc.startValue != 0.0 ? 1 : 0);
+          if (vt == VarType.Enumeration) return this.dae.addExpression(ExprKind.EnumLiteral, varAcc.startValue as i32, 0);
         }
         return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
       }
@@ -5409,6 +5451,7 @@ export class ModelicaFlattener {
   arrayDim1: ChunkedUint32Array;
   arrayDim2: ChunkedUint32Array;
   arrayDim3: ChunkedUint32Array;
+  arrayNDims: ChunkedUint32Array;
   arrayCount: u32;
 
   // Pending Array Equation Bindings: [lhsExprId, rhsExprId]
@@ -5466,6 +5509,8 @@ export class ModelicaFlattener {
   stmtItems: ChunkedUint32Array;
   stmtAux: ChunkedUint32Array;
   scopeResolutionsPtr: usize;
+  enumLiteralsPtr: usize;
+  isOmcCompatibility: bool;
 
   @inline static create(dae: DaeBuilder): ModelicaFlattener {
     let ptr = atomicChunkAlloc(offsetof<ModelicaFlattener>());
@@ -5565,6 +5610,7 @@ export class ModelicaFlattener {
     this.arrayDim1 = createChunkedUint32Array(256);
     this.arrayDim2 = createChunkedUint32Array(256);
     this.arrayDim3 = createChunkedUint32Array(256);
+    this.arrayNDims = createChunkedUint32Array(256);
     this.arrayCount = 0;
 
     this.pendingArrayLhs = createChunkedUint32Array(256);
@@ -5583,6 +5629,8 @@ export class ModelicaFlattener {
     this.stmtItems = createChunkedUint32Array(256);
     this.stmtAux = createChunkedUint32Array(64);
     this.scopeResolutionsPtr = changetype<usize>(createMap64To64());
+    this.enumLiteralsPtr = changetype<usize>(createMap64To64());
+    this.isOmcCompatibility = false;
   }
 
   registerScopeResolution(scopeClassNodePtr: u32, nameId: u32, targetClassNodePtr: u32, targetOffset: u32): void {
@@ -5597,6 +5645,28 @@ export class ModelicaFlattener {
     if (this.scopeResolutionsPtr != 0) {
       changetype<UnmanagedMap64To64>(this.scopeResolutionsPtr).clear();
     }
+  }
+
+  registerEnumLiteral(nameId: u32, ordinal: u32, fullPathId: u32): void {
+    if (this.enumLiteralsPtr == 0 || nameId == 0) return;
+    let map = changetype<UnmanagedMap64To64>(this.enumLiteralsPtr);
+    let val: u64 = ((ordinal as u64) << 32) | (fullPathId as u64);
+    map.set(nameId as u64, val);
+  }
+
+  clearEnumLiterals(): void {
+    if (this.enumLiteralsPtr != 0) {
+      changetype<UnmanagedMap64To64>(this.enumLiteralsPtr).clear();
+    }
+  }
+
+  lookupEnumLiteral(nameId: u32): u64 {
+    if (this.enumLiteralsPtr == 0 || nameId == 0) return 0;
+    let map = changetype<UnmanagedMap64To64>(this.enumLiteralsPtr);
+    if (map.has(nameId as u64)) {
+      return map.get(nameId as u64);
+    }
+    return 0;
   }
 
   resolveScopeClass(scopeClassLoc: u64, nameId: u32): u64 {
@@ -5639,13 +5709,20 @@ export class ModelicaFlattener {
     return 0;
   }
 
-  registerArrayShape(nameId: u32, d1: u32, d2: u32 = 0, d3: u32 = 0): void {
-    if (nameId == 0 || d1 == 0) return;
+  registerArrayShape(nameId: u32, d1: u32, d2: u32 = 0, d3: u32 = 0, nDims: u32 = 0): void {
+    if (nameId == 0) return;
+    if (nDims == 0) {
+      if (d3 > 0) nDims = 3;
+      else if (d2 > 0) nDims = 2;
+      else if (d1 > 0) nDims = 1;
+      else return;
+    }
     for (let i: u32 = 0; i < this.arrayCount; i++) {
       if (this.arrayNames.get(i) == nameId) {
         this.arrayDim1.set(i, d1);
         this.arrayDim2.set(i, d2);
         this.arrayDim3.set(i, d3);
+        this.arrayNDims.set(i, nDims);
         return;
       }
     }
@@ -5654,12 +5731,25 @@ export class ModelicaFlattener {
     this.arrayDim1.set(idx, d1);
     this.arrayDim2.set(idx, d2);
     this.arrayDim3.set(idx, d3);
+    this.arrayNDims.set(idx, nDims);
+  }
+
+  hasArrayShape(nameId: u32): boolean {
+    if (nameId == 0) return false;
+    for (let i: u32 = 0; i < this.arrayCount; i++) {
+      if (this.arrayNames.get(i) == nameId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   getArrayShapeDim(nameId: u32, dim: u32): u32 {
     if (nameId == 0) return 0;
     for (let i: u32 = 0; i < this.arrayCount; i++) {
       if (this.arrayNames.get(i) == nameId) {
+        let n = this.arrayNDims.get(i);
+        if (dim > n) return 0;
         if (dim == 1) return this.arrayDim1.get(i);
         if (dim == 2) return this.arrayDim2.get(i);
         if (dim == 3) return this.arrayDim3.get(i);
@@ -5673,10 +5763,7 @@ export class ModelicaFlattener {
     if (nameId == 0) return 0;
     for (let i: u32 = 0; i < this.arrayCount; i++) {
       if (this.arrayNames.get(i) == nameId) {
-        if (this.arrayDim3.get(i) > 0) return 3;
-        if (this.arrayDim2.get(i) > 0) return 2;
-        if (this.arrayDim1.get(i) > 0) return 1;
-        return 0;
+        return this.arrayNDims.get(i);
       }
     }
     return 0;
@@ -5710,8 +5797,21 @@ export class ModelicaFlattener {
     this.targetInnerPaths.set(idx, targetInnerPrefixId);
   }
 
+  removeOuterMapping(outerPrefixId: u32): void {
+    for (let i: u32 = 0; i < this.outerMapCount; i++) {
+      if (this.outerPaths.get(i) == outerPrefixId) {
+        for (let j: u32 = i; j < this.outerMapCount - 1; j++) {
+          this.outerPaths.set(j, this.outerPaths.get(j + 1));
+          this.targetInnerPaths.set(j, this.targetInnerPaths.get(j + 1));
+        }
+        this.outerMapCount--;
+        return;
+      }
+    }
+  }
+
   findMatchingInner(pool: ArenaStringPool, currentPrefixId: u32, compNameId: u32): u32 {
-    let searchPrefixId = currentPrefixId;
+    let searchPrefixId = pool.getParentPrefix(currentPrefixId);
     while (true) {
       for (let i: i32 = this.innerRegCount - 1; i >= 0; i--) {
         if (this.innerNames.get(i) == compNameId && this.innerScopePrefixes.get(i) == searchPrefixId) {
@@ -5940,31 +6040,33 @@ export class ModelicaFlattener {
     return -1;
   }
 
-  preScanInnerDeclarations(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool, maxDepth: i32 = 10): void {
+  preScanInnerDeclarations(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isInner: boolean = false, maxDepth: i32 = 120): void {
     if (locIsNull(parentLoc) || maxDepth <= 0) return;
+    let t = locType(parentLoc);
+    if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+      let isClauseInner = isInner;
+      if (!isClauseInner) {
+        let tp = locFindDescendant(parentLoc, SyntaxType.TYPE_PREFIX);
+        if (!locIsNull(tp) && (locMatches(tp, "inner") || !locIsNull(locFindDescendant(tp, SyntaxType.TOKEN_INNER)))) {
+          isClauseInner = true;
+        }
+      }
+      if (isClauseInner) {
+        this.registerInnersFromClause(parentLoc, prefixPathId, pool);
+      }
+      return;
+    }
+    if (t == SyntaxType.CLASS_DEFINITION || t == SyntaxType.EQUATION_SECTION || t == SyntaxType.ALGORITHM_SECTION) {
+      return;
+    }
     let ch = locFirstChild(parentLoc);
+    let curInner = isInner;
     while (!locIsNull(ch)) {
-      let t = locType(ch);
-      if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
-        // leaf component clause
-      } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
-        let isInner = false;
-        let clauseLoc: u64 = 0;
-        let sub = locFirstChild(ch);
-        while (!locIsNull(sub)) {
-          let st = locType(sub);
-          if (locMatches(sub, "inner") || (st == SyntaxType.TOKEN_INNER && locLen(sub) > 0)) {
-            isInner = true;
-          } else if (st == SyntaxType.COMPONENT_CLAUSE || st == SyntaxType.COMPONENT_CLAUSE1) {
-            clauseLoc = sub;
-          }
-          sub = locNextSibling(sub);
-        }
-        if (isInner && !locIsNull(clauseLoc)) {
-          this.registerInnersFromClause(clauseLoc, prefixPathId, pool);
-        } else {
-          this.preScanInnerDeclarations(ch, prefixPathId, pool, maxDepth - 1);
-        }
+      let st = locType(ch);
+      if (locMatches(ch, "inner") || (st == SyntaxType.TOKEN_INNER && locLen(ch) > 0)) {
+        curInner = true;
+      } else {
+        this.preScanInnerDeclarations(ch, prefixPathId, pool, curInner, maxDepth - 1);
       }
       ch = locNextSibling(ch);
     }
@@ -6950,7 +7052,7 @@ export class ModelicaFlattener {
       }
     }
 
-    let isLhsLit = (lKind == ExprKind.IntLiteral || lKind == ExprKind.RealLiteral || lKind == ExprKind.BoolLiteral);
+    let isLhsLit = (lKind == ExprKind.IntLiteral || lKind == ExprKind.RealLiteral || lKind == ExprKind.BoolLiteral || lKind == ExprKind.EnumLiteral);
     let isRhsVar = (rKind == ExprKind.Name);
     if (isLhsLit && isRhsVar) {
       let tmp = lhs;
@@ -6987,6 +7089,10 @@ export class ModelicaFlattener {
       out[0] = this.dae.getExprData1(exprId) != 0 ? 1.0 : 0.0;
       return true;
     }
+    if (k == ExprKind.EnumLiteral) {
+      out[0] = (this.dae.getExprData1(exprId) as i32) as f64;
+      return true;
+    }
     if (k == ExprKind.Name) {
       let nameId = this.dae.getExprData1(exprId);
       let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
@@ -6996,12 +7102,15 @@ export class ModelicaFlattener {
         let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
         let vVar = varAcc.variability;
         if (vVar == Variability.Constant || vVar == Variability.Parameter) {
+          if (this.isOmcCompatibility && vVar == Variability.Parameter) {
+            varAcc.setFlag(FLAG_VAR_FINAL);
+          }
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0 && bExpr != 0xffffffff && bExpr != exprId) {
             if (this.evalConstScalar(bExpr, out, depth + 1)) return true;
           }
           let vt = varAcc.varType;
-          if (vt == VarType.Real || vt == VarType.Integer || vt == VarType.Boolean) {
+          if (vt == VarType.Real || vt == VarType.Integer || vt == VarType.Boolean || vt == VarType.Enumeration) {
             out[0] = varAcc.startValue;
             return true;
           }
@@ -7060,6 +7169,9 @@ export class ModelicaFlattener {
         let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
         let vVar = varAcc.variability;
         if (vVar == Variability.Constant || vVar == Variability.Parameter) {
+          if (this.isOmcCompatibility && vVar == Variability.Parameter) {
+            varAcc.setFlag(FLAG_VAR_FINAL);
+          }
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0 && bExpr != 0xffffffff && bExpr != exprId) {
             let res = this.evalCondExpr(bExpr, depth + 1);
@@ -7920,6 +8032,9 @@ export class ModelicaFlattener {
       } else if (locMatches(idLoc, "String") || locMatches(idLoc, "TypeString")) {
         varType = VarType.String;
         isPrimitive = true;
+      } else if (locMatches(idLoc, "enumeration") || locMatches(typeSpecLoc, "enumeration") || !locIsNull(locFindDescendant(typeSpecLoc, SyntaxType.ENUM_LIST))) {
+        varType = VarType.Enumeration;
+        isPrimitive = true;
       } else {
         // Resolve type alias / short class definition (e.g. type Angle = Real(unit="rad"), type Color = Modelica.Icons.TypeInteger[3])
         let fullTypeId = locIntern(pool, typeSpecLoc);
@@ -8032,7 +8147,7 @@ export class ModelicaFlattener {
             }
 
           } else if (locMatches(shortSpec, "enumeration") || !locIsNull(locFindDescendant(shortSpec, SyntaxType.ENUM_LIST))) {
-            varType = VarType.Integer;
+            varType = VarType.Enumeration;
             isPrimitive = true;
             break;
           } else {
@@ -8272,7 +8387,8 @@ export class ModelicaFlattener {
       }
     }
 
-    if (isInner) {
+    let isSimultaneousInnerOuter = isInner && isOuter;
+    if (isInner && !isOuter) {
       this.registerInnerDeclaration(prefixPathId, compNameId, fullVarNameId);
     }
 
@@ -8280,11 +8396,12 @@ export class ModelicaFlattener {
       let targetInner = this.findMatchingInner(pool, prefixPathId, compNameId);
       if (targetInner != 0xffffffff) {
         this.registerOuterMapping(fullVarNameId, targetInner);
-        if (isInner) {
-          this.registerInnerDeclaration(prefixPathId, compNameId, targetInner);
+        if (!isInner) {
+          return 0;
         }
+      } else if (!isInner) {
+        return 0;
       }
-      return 0;
     }
 
     let declSubscripts = locFindDescendant(declLoc, SyntaxType.ARRAY_SUBSCRIPTS);
@@ -8333,6 +8450,11 @@ export class ModelicaFlattener {
       if (varType == VarType.Real && !this.exprVisitor.isRealExpr(valExprId)) {
         valExprId = this.exprVisitor.castToReal(valExprId);
       }
+    }
+
+    if (isSimultaneousInnerOuter) {
+      this.removeOuterMapping(fullVarNameId);
+      this.registerInnerDeclaration(prefixPathId, compNameId, fullVarNameId);
     }
 
     let declModLoc = findClassModificationLoc(modLoc);
@@ -8440,28 +8562,40 @@ export class ModelicaFlattener {
     let ctorCount: u32 = isArrayCtor ? getArrayCtorCount(this.dae, valExprId) : 0;
 
     if (hasSubscripts) {
-      if (isExplicitZero || (isArrayCtor && ctorCount == 0)) {
-        return 0;
-      }
       if ((dim1 == 0 || dim2 == 0) && valExprId != 0xffffffff) {
         let inferred = getExprDimensions(this.dae, valExprId);
         let infD1 = (inferred >> 32) as u32;
         let infD2 = (inferred & 0xffffffff) as u32;
-        if (dim1 == 0 && infD1 > 0) dim1 = infD1;
-        if (dim2 == 0 && infD2 > 0) dim2 = infD2;
-        if (dim1 > 0) {
-          this.registerArrayShape(fullVarNameId, dim1, dim2, dim3);
-          if (prefixPathId != 0) {
-            this.registerArrayShape(compNameId, dim1, dim2, dim3);
-          }
-        }
+        if (dim1 == 0 && (infD1 > 0 || isArrayCtor)) dim1 = infD1;
+        if (dim2 == 0 && (infD2 > 0 || (isArrayCtor && ctorCount > 0))) dim2 = infD2;
       }
-      if (dim1 == 0 && !isExplicitZero) {
+      let nDims: u32 = 0;
+      if (dim3 > 0) {
+        nDims = 3;
+      } else if (dim2 > 0 || clauseDim2 > 0) {
+        nDims = 2;
+      } else if (!locIsNull(declSubscripts)) {
+        let commaLoc = locFindMatchingDescendant(declSubscripts, ",");
+        nDims = !locIsNull(commaLoc) ? 2 : 1;
+      } else {
+        nDims = 1;
+      }
+      this.registerArrayShape(fullVarNameId, dim1, dim2, dim3, nDims);
+      if (prefixPathId != 0) {
+        this.registerArrayShape(compNameId, dim1, dim2, dim3, nDims);
+      }
+
+      let totalElements: u32 = dim1;
+      if (nDims == 2) totalElements = dim1 * dim2;
+      else if (nDims == 3) totalElements = dim1 * dim2 * dim3;
+
+      if (isExplicitZero || totalElements == 0) {
+        return 0;
+      }
+      if (dim1 == 0) {
         dim1 = 1;
       }
-    }
-
-    if (dim1 > 0) {
+    } else if (dim1 > 0) {
       this.registerArrayShape(fullVarNameId, dim1, dim2, dim3);
       if (prefixPathId != 0) {
         this.registerArrayShape(compNameId, dim1, dim2, dim3);
@@ -8485,7 +8619,7 @@ export class ModelicaFlattener {
       let firstElemId = getArrayCtorElement(this.dae, valExprId, 0);
       if (firstElemId != 0xffffffff) {
         let firstKind = this.dae.getExprKind(firstElemId);
-        if (varType == VarType.Real || varType == VarType.Integer) {
+        if (varType == VarType.Real || varType == VarType.Integer || varType == VarType.Enumeration) {
           if (firstKind == ExprKind.StringLiteral) {
             this.setErrorAt(WasmBailReason.ArrayBindingShape, declLoc);
             return 0;
@@ -10142,5 +10276,96 @@ export function flattener_clearScopeResolutions(flattenerPtr: u32): void {
   if (flattenerPtr == 0) return;
   changetype<ModelicaFlattener>(flattenerPtr).clearScopeResolutions();
 }
+
+export function flattener_registerEnumLiteral(flattenerPtr: u32, nameId: u32, ordinal: u32, fullPathId: u32): void {
+  if (flattenerPtr == 0) return;
+  changetype<ModelicaFlattener>(flattenerPtr).registerEnumLiteral(nameId, ordinal, fullPathId);
+}
+
+export function flattener_clearEnumLiterals(flattenerPtr: u32): void {
+  if (flattenerPtr == 0) return;
+  changetype<ModelicaFlattener>(flattenerPtr).clearEnumLiterals();
+}
+
+export function flattener_setOmcCompatibility(flattenerPtr: u32, omc: u32): void {
+  if (flattenerPtr == 0) return;
+  changetype<ModelicaFlattener>(flattenerPtr).isOmcCompatibility = (omc != 0);
+}
+
+export function flattener_getArrayCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).arrayCount;
+}
+
+export function flattener_getArrayName(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let f = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx >= f.arrayCount) return 0;
+  return f.arrayNames.get(idx);
+}
+
+export function flattener_getArrayDim1(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let f = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx >= f.arrayCount) return 0;
+  return f.arrayDim1.get(idx);
+}
+
+export function flattener_getArrayDim2(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let f = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx >= f.arrayCount) return 0;
+  return f.arrayDim2.get(idx);
+}
+
+export function flattener_getArrayDim3(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let f = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx >= f.arrayCount) return 0;
+  return f.arrayDim3.get(idx);
+}
+
+export function flattener_getArrayNDims(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let f = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx >= f.arrayCount) return 0;
+  return f.arrayNDims.get(idx);
+}
+
+export function flattener_getInnerRegCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).innerRegCount;
+}
+
+export function flattener_getOuterMapCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).outerMapCount;
+}
+
+export function flattener_getOuterPath(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).outerPaths.get(idx);
+}
+
+export function flattener_getTargetInnerPath(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).targetInnerPaths.get(idx);
+}
+
+export function flattener_getInnerName(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).innerNames.get(idx);
+}
+
+export function flattener_getInnerScope(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).innerScopePrefixes.get(idx);
+}
+
+export function flattener_getInnerFullPath(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).innerFullPaths.get(idx);
+}
+
 
 
