@@ -748,12 +748,18 @@ function formatUintDigits(buf: ChunkedUint8Array, offset: u32, val: u32): u32 {
 function concatArrayIndex1D(pool: ArenaStringPool, baseNameId: u32, idx1: u32): u32 {
   let baseLen = baseNameId < pool.stringCount ? pool.stringLengths.get(baseNameId) : 0;
   let baseStart = baseNameId < pool.stringCount ? pool.stringOffsets.get(baseNameId) : 0;
+  let hasTrailingBracket = baseLen > 1 && pool.charBuffer.get(baseStart + baseLen - 1) == 93;
+  let copyLen = hasTrailingBracket ? baseLen - 1 : baseLen;
   let tempStart = pool.charOffset;
-  for (let i: u32 = 0; i < baseLen; i++) {
+  for (let i: u32 = 0; i < copyLen; i++) {
     pool.charBuffer.set(tempStart + i, pool.charBuffer.get(baseStart + i));
   }
-  let curr = tempStart + baseLen;
-  pool.charBuffer.set(curr++, 91); // '['
+  let curr = tempStart + copyLen;
+  if (hasTrailingBracket) {
+    pool.charBuffer.set(curr++, 44); // ','
+  } else {
+    pool.charBuffer.set(curr++, 91); // '['
+  }
   curr += formatUintDigits(pool.charBuffer, curr, idx1);
   pool.charBuffer.set(curr++, 93); // ']'
   let totalLen = curr - tempStart;
@@ -774,12 +780,18 @@ function concatArrayIndex1D(pool: ArenaStringPool, baseNameId: u32, idx1: u32): 
 function concatArrayIndex2D(pool: ArenaStringPool, baseNameId: u32, idx1: u32, idx2: u32): u32 {
   let baseLen = baseNameId < pool.stringCount ? pool.stringLengths.get(baseNameId) : 0;
   let baseStart = baseNameId < pool.stringCount ? pool.stringOffsets.get(baseNameId) : 0;
+  let hasTrailingBracket = baseLen > 1 && pool.charBuffer.get(baseStart + baseLen - 1) == 93;
+  let copyLen = hasTrailingBracket ? baseLen - 1 : baseLen;
   let tempStart = pool.charOffset;
-  for (let i: u32 = 0; i < baseLen; i++) {
+  for (let i: u32 = 0; i < copyLen; i++) {
     pool.charBuffer.set(tempStart + i, pool.charBuffer.get(baseStart + i));
   }
-  let curr = tempStart + baseLen;
-  pool.charBuffer.set(curr++, 91); // '['
+  let curr = tempStart + copyLen;
+  if (hasTrailingBracket) {
+    pool.charBuffer.set(curr++, 44); // ','
+  } else {
+    pool.charBuffer.set(curr++, 91); // '['
+  }
   curr += formatUintDigits(pool.charBuffer, curr, idx1);
   pool.charBuffer.set(curr++, 44); // ','
   curr += formatUintDigits(pool.charBuffer, curr, idx2);
@@ -802,12 +814,18 @@ function concatArrayIndex2D(pool: ArenaStringPool, baseNameId: u32, idx1: u32, i
 function concatArrayIndex3D(pool: ArenaStringPool, baseNameId: u32, idx1: u32, idx2: u32, idx3: u32): u32 {
   let baseLen = baseNameId < pool.stringCount ? pool.stringLengths.get(baseNameId) : 0;
   let baseStart = baseNameId < pool.stringCount ? pool.stringOffsets.get(baseNameId) : 0;
+  let hasTrailingBracket = baseLen > 1 && pool.charBuffer.get(baseStart + baseLen - 1) == 93;
+  let copyLen = hasTrailingBracket ? baseLen - 1 : baseLen;
   let tempStart = pool.charOffset;
-  for (let i: u32 = 0; i < baseLen; i++) {
+  for (let i: u32 = 0; i < copyLen; i++) {
     pool.charBuffer.set(tempStart + i, pool.charBuffer.get(baseStart + i));
   }
-  let curr = tempStart + baseLen;
-  pool.charBuffer.set(curr++, 91); // '['
+  let curr = tempStart + copyLen;
+  if (hasTrailingBracket) {
+    pool.charBuffer.set(curr++, 44); // ','
+  } else {
+    pool.charBuffer.set(curr++, 91); // '['
+  }
   curr += formatUintDigits(pool.charBuffer, curr, idx1);
   pool.charBuffer.set(curr++, 44); // ','
   curr += formatUintDigits(pool.charBuffer, curr, idx2);
@@ -1535,7 +1553,6 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
       }
     }
   }
-  if (!inFound) return 0;
 
   let varNameId: u32 = 0;
   let idDesc = locFindDescendant(fiLoc, SyntaxType.IDENTIFIER);
@@ -1545,7 +1562,7 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
     varNameId = locIntern(pool, idDesc);
   } else {
     let varStart: u32 = 0;
-    let varEnd = inPos - 2;
+    let varEnd = inFound ? inPos - 2 : charCount;
     while (varStart < varEnd) {
       let b = text.charAt(varStart);
       if (b != 32 && b != 9 && b != 10 && b != 13) break;
@@ -1559,6 +1576,17 @@ function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, 
     let pBytes = text.byteOffset(varStart);
     let pLen = text.byteLength(varEnd - varStart);
     varNameId = text.isUtf16 ? pool.internUtf16(pBytes, pLen) : pool.intern(pBytes, pLen);
+  }
+
+  if (!inFound) {
+    if (varNameId != 0) {
+      outVals.push(varNameId as i32);
+      outVals.push(1);
+      outVals.push(1);
+      outVals.push(0);
+      return 2;
+    }
+    return 0;
   }
 
   let colon1: u32 = 0;
@@ -1671,8 +1699,7 @@ function populateEnvRecursive(env: ModificationEnvironment, modLoc: u64, pool: A
             if (existing != 0xffffffff) overridden = true;
           }
         }
-        let exprLoc = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
-        if (locIsNull(exprLoc)) exprLoc = locFindDescendant(ch, SyntaxType.EXPRESSION);
+        let exprLoc = findBindingExpressionLoc(ch);
         if (!locIsNull(exprLoc) && !overridden) {
           let valExprId = exprVisitor.visitLoc(exprLoc);
           if (valExprId != 0xffffffff) {
@@ -1721,8 +1748,7 @@ function extractModAttr(modLoc: u64, attrName: string, exprVisitor: WasmExprVisi
       if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.TOKEN_IDENTIFIER_ALT);
       if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.NAME);
       if (!locIsNull(nameCur) && locMatches(nameCur, attrName)) {
-        let exprLoc = locFindDescendant(ch, SyntaxType.MODIFICATION_EXPRESSION);
-        if (locIsNull(exprLoc)) exprLoc = locFindDescendant(ch, SyntaxType.EXPRESSION);
+        let exprLoc = findBindingExpressionLoc(ch);
         if (!locIsNull(exprLoc)) {
           let uid = exprVisitor.visitLoc(exprLoc);
           if (uid != 0xffffffff) return uid;
@@ -1898,13 +1924,13 @@ export class ModificationEnvironment {
     let idx = this.count++;
     let entry = this.getEntry(idx);
     entry.keyHash = keyHash;
-    entry.valExprId = 0;
+    entry.valExprId = 0xffffffff;
     entry.childEnvPtr = childEnvPtr;
     entry.redeclareTypeHash = 0;
     entry.flags = f;
   }
 
-  bindRedeclare(keyHash: u32, newTypeHash: u32, valExprId: u32 = 0, isFinal: boolean = false, isEach: boolean = false): void {
+  bindRedeclare(keyHash: u32, newTypeHash: u32, valExprId: u32 = 0xffffffff, isFinal: boolean = false, isEach: boolean = false): void {
     let f: u32 = FLAG_MOD_REDECLARE;
     if (isFinal) f |= FLAG_MOD_FINAL;
     if (isEach) f |= FLAG_MOD_EACH;
@@ -1930,6 +1956,29 @@ export class ModificationEnvironment {
     entry.childEnvPtr = 0;
     entry.redeclareTypeHash = newTypeHash;
     entry.flags = f;
+  }
+
+  mergeFrom(other: ModificationEnvironment): void {
+    for (let i: u32 = 0; i < other.count; i++) {
+      let entry = other.getEntry(i);
+      let isFinal = entry.isFinal;
+      let isEach = entry.isEach;
+      let keyHash = entry.keyHash;
+      if (entry.valExprId != 0xffffffff) {
+        this.bind(keyHash, entry.valExprId, isFinal, isEach);
+      }
+      if (entry.childEnvPtr != 0) {
+        let existingChildPtr = this.lookupNested(keyHash);
+        if (existingChildPtr != 0) {
+          changetype<ModificationEnvironment>(existingChildPtr).mergeFrom(changetype<ModificationEnvironment>(entry.childEnvPtr));
+        } else {
+          this.bindNested(keyHash, entry.childEnvPtr, isFinal, isEach);
+        }
+      }
+      if (entry.isRedeclare) {
+        this.bindRedeclare(keyHash, entry.redeclareTypeHash, entry.valExprId, isFinal, isEach);
+      }
+    }
   }
 
   bindPath(pool: ArenaStringPool, pathId: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
@@ -1985,7 +2034,9 @@ export class ModificationEnvironment {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       let entry = this.getEntry(i as u32);
       if (entry.keyHash == keyHash) {
-        return entry.valExprId;
+        if (entry.valExprId != 0xffffffff) {
+          return entry.valExprId;
+        }
       }
     }
     if (this.parentEnvPtr != 0) {
@@ -1998,7 +2049,9 @@ export class ModificationEnvironment {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       let entry = this.getEntry(i as u32);
       if (entry.keyHash == keyHash) {
-        return entry.childEnvPtr;
+        if (entry.childEnvPtr != 0) {
+          return entry.childEnvPtr;
+        }
       }
     }
     if (this.parentEnvPtr != 0) {
@@ -2011,7 +2064,9 @@ export class ModificationEnvironment {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       let entry = this.getEntry(i as u32);
       if (entry.keyHash == keyHash) {
-        return entry.redeclareTypeHash;
+        if (entry.redeclareTypeHash != 0) {
+          return entry.redeclareTypeHash;
+        }
       }
     }
     if (this.parentEnvPtr != 0) {
@@ -2246,6 +2301,17 @@ export class ScopeStack {
       let envPtr = this.envPtrs.get(i);
       if (envPtr != 0) {
         let child = changetype<ModificationEnvironment>(envPtr).lookupNested(keyHash);
+        if (child != 0) return child;
+      }
+    }
+    return 0;
+  }
+
+  lookupNestedPath(pool: ArenaStringPool, pathId: u32): u32 {
+    for (let i: i32 = this.depth - 1; i >= 0; i--) {
+      let envPtr = this.envPtrs.get(i);
+      if (envPtr != 0) {
+        let child = changetype<ModificationEnvironment>(envPtr).lookupNestedPath(pool, pathId);
         if (child != 0) return child;
       }
     }
@@ -6598,6 +6664,92 @@ export class ModelicaFlattener {
     return 0;
   }
 
+  private searchImplicitArrayDim(nodeLoc: u64, iterVarNameId: u32, prefixPathId: u32): u32 {
+    if (locIsNull(nodeLoc)) return 0;
+    let pool = this.dae.getStringPool();
+    let t = locType(nodeLoc);
+    if (t == SyntaxType.COMPONENT_REFERENCE) {
+      let arrSubLoc = locFindDescendant(nodeLoc, SyntaxType.ARRAY_SUBSCRIPTS);
+      if (!locIsNull(arrSubLoc)) {
+        let baseNameId: u32 = 0;
+        let baseIdLoc = locFindDescendant(nodeLoc, SyntaxType.IDENTIFIER);
+        if (locIsNull(baseIdLoc)) baseIdLoc = locFindDescendant(nodeLoc, SyntaxType.TOKEN_IDENTIFIER_ALT);
+        if (locIsNull(baseIdLoc)) baseIdLoc = locFindDescendant(nodeLoc, SyntaxType.NAME);
+        if (!locIsNull(baseIdLoc)) {
+          baseNameId = locIntern(pool, baseIdLoc);
+        }
+        if (baseNameId != 0) {
+          let sCh = locFirstChild(arrSubLoc);
+          let dimIdx: u32 = 1;
+          while (!locIsNull(sCh)) {
+            if (locType(sCh) == SyntaxType.SUBSCRIPT) {
+              let idLoc = locFindDescendant(sCh, SyntaxType.IDENTIFIER);
+              if (locIsNull(idLoc)) idLoc = locFindDescendant(sCh, SyntaxType.TOKEN_IDENTIFIER_ALT);
+              if (locIsNull(idLoc)) idLoc = locFindDescendant(sCh, SyntaxType.NAME);
+              if (!locIsNull(idLoc)) {
+                let subId = locIntern(pool, idLoc);
+                if (subId == iterVarNameId) {
+                  let fullNameId = baseNameId;
+                  if (prefixPathId != 0) {
+                    fullNameId = pool.concatIds(prefixPathId, baseNameId);
+                  }
+                  let dSize = this.getArrayShapeDim(fullNameId, dimIdx);
+                  if (dSize == 0) dSize = this.getArrayShapeDim(baseNameId, dimIdx);
+                  if (dSize == 0) {
+                    if (this.dae.lookupVariableByName(concatArrayIndex2D(pool, fullNameId, 1, 1)) >= 0) {
+                      if (dimIdx == 1) {
+                        while (this.dae.lookupVariableByName(concatArrayIndex2D(pool, fullNameId, dSize + 1, 1)) >= 0) dSize++;
+                      } else if (dimIdx == 2) {
+                        while (this.dae.lookupVariableByName(concatArrayIndex2D(pool, fullNameId, 1, dSize + 1)) >= 0) dSize++;
+                      }
+                    } else if (this.dae.lookupVariableByName(concatArrayIndex1D(pool, fullNameId, 1)) >= 0) {
+                      while (this.dae.lookupVariableByName(concatArrayIndex1D(pool, fullNameId, dSize + 1)) >= 0) dSize++;
+                    }
+                    if (dSize == 0 && prefixPathId != 0) {
+                      if (this.dae.lookupVariableByName(concatArrayIndex2D(pool, baseNameId, 1, 1)) >= 0) {
+                        if (dimIdx == 1) {
+                          while (this.dae.lookupVariableByName(concatArrayIndex2D(pool, baseNameId, dSize + 1, 1)) >= 0) dSize++;
+                        } else if (dimIdx == 2) {
+                          while (this.dae.lookupVariableByName(concatArrayIndex2D(pool, baseNameId, 1, dSize + 1)) >= 0) dSize++;
+                        }
+                      } else if (this.dae.lookupVariableByName(concatArrayIndex1D(pool, baseNameId, 1)) >= 0) {
+                        while (this.dae.lookupVariableByName(concatArrayIndex1D(pool, baseNameId, dSize + 1)) >= 0) dSize++;
+                      }
+                    }
+                  }
+                  if (dSize > 0) return dSize;
+                }
+              }
+              dimIdx++;
+            }
+            sCh = locNextSibling(sCh);
+          }
+        }
+      }
+    }
+
+    let sub = locFirstChild(nodeLoc);
+    while (!locIsNull(sub)) {
+      let d = this.searchImplicitArrayDim(sub, iterVarNameId, prefixPathId);
+      if (d > 0) return d;
+      sub = locNextSibling(sub);
+    }
+    return 0;
+  }
+
+  private findImplicitArrayDim(loopLoc: u64, iterVarNameId: u32, prefixPathId: u32): u32 {
+    let bodyCh = locNextSibling(loopLoc);
+    while (!locIsNull(bodyCh)) {
+      if (locMatches(bodyCh, "end") || locMatches(bodyCh, "end for")) break;
+      if (!locMatches(bodyCh, ";") && locLen(bodyCh) > 0) {
+        let dim = this.searchImplicitArrayDim(bodyCh, iterVarNameId, prefixPathId);
+        if (dim > 0) return dim;
+      }
+      bodyCh = locNextSibling(bodyCh);
+    }
+    return 0;
+  }
+
   lowerForEquation(forLoc: u64, isInitial: boolean): u32 {
     let fiLoc = locFindDescendant(forLoc, SyntaxType.FOR_INDEX);
     if (locIsNull(fiLoc)) fiLoc = locFindDescendant(forLoc, SyntaxType.FOR_INDICES);
@@ -6633,6 +6785,16 @@ export class ModelicaFlattener {
     if (locIsNull(loopLoc)) {
       this.setErrorAt(WasmBailReason.ForEquationNoBody, forLoc);
       return 0;
+    }
+
+    if (ok == 2) {
+      let inferredDim = this.findImplicitArrayDim(loopLoc, varNameId, prefixPathId);
+      if (inferredDim > 0) {
+        endVal = inferredDim as i32;
+      } else {
+        this.setErrorAt(WasmBailReason.ForEquationRange, fiLoc);
+        return 0;
+      }
     }
 
     let count: u32 = 0;
@@ -8299,6 +8461,13 @@ export class ModelicaFlattener {
       }
     }
 
+    if (dim1 > 0) {
+      this.registerArrayShape(fullVarNameId, dim1, dim2, dim3);
+      if (prefixPathId != 0) {
+        this.registerArrayShape(compNameId, dim1, dim2, dim3);
+      }
+    }
+
     // Scalar variable with ArrayCtor binding is invalid
     if (!hasSubscripts && isArrayCtor) {
       this.setErrorAt(WasmBailReason.ArrayBindingShape, declLoc);
@@ -8677,6 +8846,28 @@ export class ModelicaFlattener {
         if (!locIsNull(classModLoc)) {
           subEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
           populateEnvFromClassModLoc(subEnvPtr, classModLoc, pool, this.exprVisitor);
+        }
+        if (this.scopeStackPtr != 0) {
+          let typeEnv = changetype<ScopeStack>(this.scopeStackPtr).lookupNested(typeNameId);
+          if (typeEnv == 0) {
+            typeEnv = changetype<ScopeStack>(this.scopeStackPtr).lookupNestedPath(pool, typeNameId);
+          }
+          if (typeEnv != 0) {
+            if (subEnvPtr == 0) {
+              subEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+            }
+            changetype<ModificationEnvironment>(subEnvPtr).mergeFrom(changetype<ModificationEnvironment>(typeEnv));
+          }
+          let outerChildEnv = changetype<ScopeStack>(this.scopeStackPtr).lookupNested(compNameId);
+          if (outerChildEnv == 0 && prefixPathId != 0) {
+            outerChildEnv = changetype<ScopeStack>(this.scopeStackPtr).lookupNestedPath(pool, fullVarNameId);
+          }
+          if (outerChildEnv != 0) {
+            if (subEnvPtr == 0) {
+              subEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+            }
+            changetype<ModificationEnvironment>(subEnvPtr).mergeFrom(changetype<ModificationEnvironment>(outerChildEnv));
+          }
         }
         let isCompProtected = (varFlags & FLAG_VAR_PROTECTED) != 0;
         if (dim1 > 0) {
