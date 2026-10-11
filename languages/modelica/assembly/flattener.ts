@@ -840,6 +840,26 @@ export function getArrayCtorCount(dae: DaeBuilder, ctorId: u32): u32 {
 }
 
 @inline
+export function isRank2ArrayCtor(dae: DaeBuilder, id: u32): bool {
+  if (id == 0xffffffff || id >= dae.exprCount) return false;
+  if (dae.getExprKind(id) != ExprKind.ArrayCtor) return false;
+  let count = dae.getExprData1(id);
+  if (count == 0) return false;
+  let first = getArrayCtorElement(dae, id, 0);
+  return dae.getExprKind(first) == ExprKind.ArrayCtor;
+}
+
+@inline
+export function isRank1ArrayCtor(dae: DaeBuilder, id: u32): bool {
+  if (id == 0xffffffff || id >= dae.exprCount) return false;
+  if (dae.getExprKind(id) != ExprKind.ArrayCtor) return false;
+  let count = dae.getExprData1(id);
+  if (count == 0) return true;
+  let first = getArrayCtorElement(dae, id, 0);
+  return dae.getExprKind(first) != ExprKind.ArrayCtor;
+}
+
+@inline
 export function sliceAttrExpr1D(dae: DaeBuilder, attrExprId: u32, index: u32): u32 {
   if (attrExprId == 0xffffffff || attrExprId >= dae.exprCount) return 0xffffffff;
   if (dae.getExprKind(attrExprId) == ExprKind.ArrayCtor) {
@@ -1106,6 +1126,45 @@ function findClassDefinitionLoc(rootLoc: u64, targetNameId: u32, pool: ArenaStri
     ch = locNextSibling(ch);
   }
   return 0;
+}
+
+function findComponentDeclInClass(classLoc: u64, compNameId: u32, pool: ArenaStringPool, maxDepth: i32 = 120): u64 {
+  if (locIsNull(classLoc) || compNameId == 0 || maxDepth <= 0) return 0;
+  let ch = locFirstChild(classLoc);
+  while (!locIsNull(ch)) {
+    let t = locType(ch);
+    if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+      let decl = locFindDescendant(ch, SyntaxType.COMPONENT_DECLARATION);
+      while (!locIsNull(decl)) {
+        let idLoc = locFindDescendant(decl, SyntaxType.IDENTIFIER);
+        if (locIsNull(idLoc)) idLoc = locFindDescendant(decl, SyntaxType.TOKEN_IDENTIFIER_ALT);
+        if (!locIsNull(idLoc) && locIntern(pool, idLoc) == compNameId) {
+          return decl;
+        }
+        decl = locNextSibling(decl);
+      }
+    } else if (t != SyntaxType.CLASS_DEFINITION) {
+      let found = findComponentDeclInClass(ch, compNameId, pool, maxDepth - 1);
+      if (!locIsNull(found)) return found;
+    }
+    ch = locNextSibling(ch);
+  }
+  return 0;
+}
+
+function getPathLastPart(pool: ArenaStringPool, id: u32): u32 {
+  if (id == 0 || id >= pool.stringCount) return 0;
+  let len = pool.stringLengths.get(id);
+  let off = pool.stringOffsets.get(id);
+  let lastDot: i32 = -1;
+  for (let i: i32 = (len as i32) - 1; i >= 0; i--) {
+    if (pool.charBuffer.get(off + i) == 46) {
+      lastDot = i;
+      break;
+    }
+  }
+  if (lastDot < 0) return id;
+  return pool.internChunk(off + lastDot + 1, (len as i32) - lastDot - 1);
 }
 
 function findClassByPtr(rootLoc: u64, targetPtr: u32, maxDepth: i32 = 120): u64 {
@@ -2217,6 +2276,7 @@ export class WasmExprVisitor {
   // Keep `a:b` / `a:s:b` as Range nodes instead of expanding them to array
   // constructors (used for `for`-statement ranges, which OMC prints verbatim).
   keepRanges: boolean;
+  stopLocReached: bool;
 
   @inline get dae(): DaeBuilder {
     return changetype<DaeBuilder>(this.daePtr);
@@ -2256,6 +2316,7 @@ export class WasmExprVisitor {
     this.subLoc3 = 0;
     this.symbolicSubscripts = false;
     this.keepRanges = false;
+    this.stopLocReached = false;
   }
 
   @inline resolveVarName(nameId: u32): u32 {
@@ -2548,6 +2609,142 @@ export class WasmExprVisitor {
     return false;
   }
 
+  matrixPower(left: u32, powVal: i64): u32 {
+    let N = this.dae.getExprData1(left);
+    if (N == 0) return left;
+    let firstRow = getArrayCtorElement(this.dae, left, 0);
+    let M = this.dae.getExprData1(firstRow);
+    if (N != M) return 0xffffffff;
+
+    if (powVal == 0) {
+      let rows = new StaticArray<u32>(N);
+      for (let i: u32 = 0; i < N; i++) {
+        let cols = new StaticArray<u32>(N);
+        for (let j: u32 = 0; j < N; j++) {
+          unchecked(cols[j] = this.dae.addRealLiteral(i == j ? 1.0 : 0.0));
+        }
+        unchecked(rows[i] = addArrayCtorFromStatic(this.dae, cols));
+      }
+      return addArrayCtorFromStatic(this.dae, rows);
+    }
+    if (powVal == 1) {
+      return left;
+    }
+    if (powVal == 2) {
+      return this.matrixMul(left, left);
+    }
+    let cur = left;
+    for (let p: i64 = 2; p <= powVal; p++) {
+      cur = this.matrixMul(cur, left);
+    }
+    return cur;
+  }
+
+  matrixMul(left: u32, right: u32): u32 {
+    let N = this.dae.getExprData1(left);
+    if (N == 0) return 0xffffffff;
+    let firstL = getArrayCtorElement(this.dae, left, 0);
+    let K = this.dae.getExprData1(firstL);
+    let rRows = this.dae.getExprData1(right);
+    if (K != rRows || rRows == 0) return 0xffffffff;
+    let firstR = getArrayCtorElement(this.dae, right, 0);
+    let M = this.dae.getExprData1(firstR);
+
+    let resRows = new StaticArray<u32>(N);
+    for (let i: u32 = 0; i < N; i++) {
+      let lRowI = getArrayCtorElement(this.dae, left, i);
+      let rowCols = new StaticArray<u32>(M);
+      for (let j: u32 = 0; j < M; j++) {
+        let sumExpr: u32 = 0xffffffff;
+        for (let k: u32 = 0; k < K; k++) {
+          let a_ik = getArrayCtorElement(this.dae, lRowI, k);
+          let rRowK = getArrayCtorElement(this.dae, right, k);
+          let b_kj = getArrayCtorElement(this.dae, rRowK, j);
+          let term = this.lowerBinary(BinOp.Mul as u16, a_ik, b_kj);
+          if (sumExpr == 0xffffffff) {
+            sumExpr = term;
+          } else {
+            sumExpr = this.lowerBinary(BinOp.Add as u16, sumExpr, term);
+          }
+        }
+        unchecked(rowCols[j] = sumExpr != 0xffffffff ? sumExpr : this.dae.addRealLiteral(0.0));
+      }
+      unchecked(resRows[i] = addArrayCtorFromStatic(this.dae, rowCols));
+    }
+    return addArrayCtorFromStatic(this.dae, resRows);
+  }
+
+  matrixVectorMul(left: u32, right: u32): u32 {
+    let N = this.dae.getExprData1(left);
+    let firstL = getArrayCtorElement(this.dae, left, 0);
+    let K = this.dae.getExprData1(firstL);
+    let rLen = this.dae.getExprData1(right);
+    if (K != rLen || N == 0) return 0xffffffff;
+
+    let resElems = new StaticArray<u32>(N);
+    for (let i: u32 = 0; i < N; i++) {
+      let lRowI = getArrayCtorElement(this.dae, left, i);
+      let sumExpr: u32 = 0xffffffff;
+      for (let k: u32 = 0; k < K; k++) {
+        let a_ik = getArrayCtorElement(this.dae, lRowI, k);
+        let b_k = getArrayCtorElement(this.dae, right, k);
+        let term = this.lowerBinary(BinOp.Mul as u16, a_ik, b_k);
+        if (sumExpr == 0xffffffff) {
+          sumExpr = term;
+        } else {
+          sumExpr = this.lowerBinary(BinOp.Add as u16, sumExpr, term);
+        }
+      }
+      unchecked(resElems[i] = sumExpr != 0xffffffff ? sumExpr : this.dae.addRealLiteral(0.0));
+    }
+    return addArrayCtorFromStatic(this.dae, resElems);
+  }
+
+  vectorMatrixMul(left: u32, right: u32): u32 {
+    let K = this.dae.getExprData1(left);
+    let rRows = this.dae.getExprData1(right);
+    if (K != rRows || K == 0) return 0xffffffff;
+    let firstR = getArrayCtorElement(this.dae, right, 0);
+    let M = this.dae.getExprData1(firstR);
+
+    let resElems = new StaticArray<u32>(M);
+    for (let j: u32 = 0; j < M; j++) {
+      let sumExpr: u32 = 0xffffffff;
+      for (let k: u32 = 0; k < K; k++) {
+        let a_k = getArrayCtorElement(this.dae, left, k);
+        let rRowK = getArrayCtorElement(this.dae, right, k);
+        let b_kj = getArrayCtorElement(this.dae, rRowK, j);
+        let term = this.lowerBinary(BinOp.Mul as u16, a_k, b_kj);
+        if (sumExpr == 0xffffffff) {
+          sumExpr = term;
+        } else {
+          sumExpr = this.lowerBinary(BinOp.Add as u16, sumExpr, term);
+        }
+      }
+      unchecked(resElems[j] = sumExpr != 0xffffffff ? sumExpr : this.dae.addRealLiteral(0.0));
+    }
+    return addArrayCtorFromStatic(this.dae, resElems);
+  }
+
+  vectorDotMul(left: u32, right: u32): u32 {
+    let K = this.dae.getExprData1(left);
+    let rLen = this.dae.getExprData1(right);
+    if (K != rLen || K == 0) return 0xffffffff;
+
+    let sumExpr: u32 = 0xffffffff;
+    for (let k: u32 = 0; k < K; k++) {
+      let a_k = getArrayCtorElement(this.dae, left, k);
+      let b_k = getArrayCtorElement(this.dae, right, k);
+      let term = this.lowerBinary(BinOp.Mul as u16, a_k, b_k);
+      if (sumExpr == 0xffffffff) {
+        sumExpr = term;
+      } else {
+        sumExpr = this.lowerBinary(BinOp.Add as u16, sumExpr, term);
+      }
+    }
+    return sumExpr != 0xffffffff ? sumExpr : this.dae.addRealLiteral(0.0);
+  }
+
   lowerBinary(op: u16, left: u32, right: u32): u32 {
     let baseOp = op;
     if (op == (BinOp.ElemAdd as u16)) baseOp = BinOp.Add as u16;
@@ -2568,6 +2765,40 @@ export class WasmExprVisitor {
 
     if (baseOp == (BinOp.And as u16) || baseOp == (BinOp.Or as u16)) {
       return this.dae.addBinaryExpr(baseOp, left, right);
+    }
+
+    // Matrix power: M ^ n (Modelica MLS §7.6)
+    if (op == (BinOp.Pow as u16) && isRank2ArrayCtor(this.dae, left)) {
+      let powVal: i64 = -1;
+      if (kRight == ExprKind.IntLiteral) {
+        powVal = <i64>this.dae.getExprData1(right);
+      } else if (kRight == ExprKind.RealLiteral) {
+        let rv = this.dae.getExprRealValue(right);
+        if (rv == Math.floor(rv)) {
+          powVal = <i64>rv;
+        }
+      }
+      if (powVal >= 0) {
+        return this.matrixPower(left, powVal);
+      }
+    }
+
+    // Matrix / Vector multiplication: A * B (Modelica MLS §7.6)
+    if (op == (BinOp.Mul as u16)) {
+      let lIsM = isRank2ArrayCtor(this.dae, left);
+      let lIsV = !lIsM && (kLeft == ExprKind.ArrayCtor);
+      let rIsM = isRank2ArrayCtor(this.dae, right);
+      let rIsV = !rIsM && (kRight == ExprKind.ArrayCtor);
+
+      if (lIsM && rIsM) {
+        return this.matrixMul(left, right);
+      } else if (lIsM && rIsV) {
+        return this.matrixVectorMul(left, right);
+      } else if (lIsV && rIsM) {
+        return this.vectorMatrixMul(left, right);
+      } else if (lIsV && rIsV) {
+        return this.vectorDotMul(left, right);
+      }
     }
 
     // Vector broadcasting: ArrayCtor with ArrayCtor or scalar with ArrayCtor
@@ -3913,8 +4144,12 @@ export class WasmExprVisitor {
     }
   }
 
-  private appendComponentRefParts(nodeLoc: u64, pool: ArenaStringPool, currentNameId: u32): u32 {
-    if (locIsNull(nodeLoc)) return currentNameId;
+  private appendComponentRefParts(nodeLoc: u64, pool: ArenaStringPool, currentNameId: u32, stopLoc: u64 = 0): u32 {
+    if (locIsNull(nodeLoc) || this.stopLocReached) return currentNameId;
+    if (stopLoc != 0 && nodeLoc == stopLoc) {
+      this.stopLocReached = true;
+      return currentNameId;
+    }
     let ct = locType(nodeLoc);
 
     // 1. Identifier
@@ -3957,7 +4192,12 @@ export class WasmExprVisitor {
     // 4. Any intermediate compound node (such as rule 321 or component_reference itself):
     let child = locFirstChild(nodeLoc);
     while (!locIsNull(child)) {
-      currentNameId = this.appendComponentRefParts(child, pool, currentNameId);
+      if (stopLoc != 0 && child == stopLoc) {
+        this.stopLocReached = true;
+        break;
+      }
+      currentNameId = this.appendComponentRefParts(child, pool, currentNameId, stopLoc);
+      if (this.stopLocReached) break;
       child = locNextSibling(child);
     }
     return currentNameId;
@@ -3985,43 +4225,26 @@ export class WasmExprVisitor {
     return false;
   }
 
-  extractBaseRefName(compRefLoc: u64, targetSubLoc: u64, pool: ArenaStringPool): u32 {
-    let baseId: u32 = 0;
-    let ch = locFirstChild(compRefLoc);
+  findSliceSubscript(loc: u64): u64 {
+    if (locIsNull(loc)) return 0;
+    let ch = locFirstChild(loc);
+    let found: u64 = 0;
     while (!locIsNull(ch)) {
-      if (ch == targetSubLoc) {
-        break;
-      }
-      let ct = locType(ch);
-      if (ct == SyntaxType.ARRAY_SUBSCRIPTS) {
-        let subDesc = locFindDescendant(ch, SyntaxType.SUBSCRIPT);
-        let targetDesc = locFindDescendant(targetSubLoc, SyntaxType.SUBSCRIPT);
-        if (subDesc == targetDesc && !locIsNull(subDesc)) {
-          break;
-        }
-        let sStart = this.tempBuffer.length;
-        this.collectSubscripts(ch, baseId);
-        let sCount = this.tempBuffer.length - sStart;
-        let s1: i32 = sCount >= 1 ? (this.tempBuffer.get(sStart) as i32) : 0;
-        let s2: i32 = sCount >= 2 ? (this.tempBuffer.get(sStart + 1) as i32) : 0;
-        this.tempBuffer.length = sStart;
-        if (baseId != 0 && s1 > 0) {
-          if (sCount >= 2 && s2 > 0) baseId = concatArrayIndex2D(pool, baseId, s1 as u32, s2 as u32);
-          else baseId = concatArrayIndex1D(pool, baseId, s1 as u32);
-        }
-      } else if (ct == SyntaxType.IDENTIFIER || ct == SyntaxType.TOKEN_IDENTIFIER_ALT || ct == SyntaxType.NAME) {
-        let partId = locIntern(pool, ch);
-        if (baseId == 0) baseId = partId;
-        else baseId = pool.concatIds(baseId, partId);
-      } else if (!locMatches(ch, ".") && locChildCount(ch) > 0) {
-        let subId = this.extractBaseRefName(ch, targetSubLoc, pool);
-        if (subId != 0) {
-          if (baseId == 0) baseId = subId;
-          else baseId = pool.concatIds(baseId, subId);
-        }
+      if (locType(ch) == SyntaxType.ARRAY_SUBSCRIPTS && this.hasSliceSubscript(ch)) {
+        found = ch;
+      } else {
+        let nested = this.findSliceSubscript(ch);
+        if (!locIsNull(nested)) found = nested;
       }
       ch = locNextSibling(ch);
     }
+    return found;
+  }
+
+  extractBaseRefName(compRefLoc: u64, targetSubLoc: u64, pool: ArenaStringPool): u32 {
+    this.stopLocReached = false;
+    let baseId = this.appendComponentRefParts(compRefLoc, pool, 0, targetSubLoc);
+    this.stopLocReached = false;
     if (baseId == 0) {
       let idLoc = locFindDescendant(compRefLoc, SyntaxType.IDENTIFIER);
       if (!locIsNull(idLoc)) baseId = locIntern(pool, idLoc);
@@ -4033,12 +4256,21 @@ export class WasmExprVisitor {
     let prevEnd = this.currentDimEnd;
     this.currentDimEnd = dSize as i32;
 
+    if (locType(nodeLoc) == SyntaxType.SUBSCRIPT) {
+      let subExpr = locFindDescendant(nodeLoc, SyntaxType.EXPRESSION);
+      if (!locIsNull(subExpr)) nodeLoc = subExpr;
+    }
+
     if (locMatches(nodeLoc, "end") || (locType(nodeLoc) as u32) == 23) {
       this.currentDimEnd = prevEnd;
       return dSize as i32;
     }
     let singleCh = locFirstChild(nodeLoc);
     if (!locIsNull(singleCh) && (locMatches(singleCh, "end") || (locType(singleCh) as u32) == 23) && locIsNull(locNextSibling(singleCh))) {
+      this.currentDimEnd = prevEnd;
+      return dSize as i32;
+    }
+    if (!locIsNull(locFindMatchingDescendant(nodeLoc, "end")) && locIsNull(locFindMatchingDescendant(nodeLoc, "+")) && locIsNull(locFindMatchingDescendant(nodeLoc, "-"))) {
       this.currentDimEnd = prevEnd;
       return dSize as i32;
     }
@@ -4267,12 +4499,51 @@ export class WasmExprVisitor {
         d3 = this.getArrayShapeDim(baseNameId, 3);
       }
     }
+    let constArrayCtor: u32 = 0xffffffff;
     if (d1 == 0) {
       if (this.dae.lookupVariableByName(concatArrayIndex2D(pool, fullBaseId, 1, 1)) >= 0) {
         while (this.dae.lookupVariableByName(concatArrayIndex2D(pool, fullBaseId, d1 + 1, 1)) >= 0) d1++;
         while (this.dae.lookupVariableByName(concatArrayIndex2D(pool, fullBaseId, 1, d2 + 1)) >= 0) d2++;
       } else if (this.dae.lookupVariableByName(concatArrayIndex1D(pool, fullBaseId, 1)) >= 0) {
         while (this.dae.lookupVariableByName(concatArrayIndex1D(pool, fullBaseId, d1 + 1)) >= 0) d1++;
+      } else if (this.dae.lookupVariableByName(concatArrayIndex1D(pool, baseNameId, 1)) >= 0) {
+        fullBaseId = baseNameId;
+        while (this.dae.lookupVariableByName(concatArrayIndex1D(pool, fullBaseId, d1 + 1)) >= 0) d1++;
+      } else if (this.flattenerPtr != 0 && pool.hasDot(baseNameId)) {
+        let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
+        let pkgId = pool.getParentPrefix(baseNameId);
+        let compId = getPathLastPart(pool, baseNameId);
+        let pkgLoc: u64 = 0;
+        if (!locIsNull(flattener.currentClassLoc)) {
+          pkgLoc = findClassDefinitionLoc(flattener.currentClassLoc, pkgId, pool);
+        }
+        if (locIsNull(pkgLoc) && !locIsNull(flattener.rootProgramLoc)) {
+          pkgLoc = findClassDefinitionLoc(flattener.rootProgramLoc, pkgId, pool);
+        }
+        if (!locIsNull(pkgLoc)) {
+          let compDecl = findComponentDeclInClass(pkgLoc, compId, pool);
+          if (!locIsNull(compDecl)) {
+            let declSub = locFindDescendant(compDecl, SyntaxType.ARRAY_SUBSCRIPTS);
+            if (!locIsNull(declSub)) {
+              let dims = parseArrayDimensionsLoc(declSub, this.dae, pool);
+              d1 = (dims >> 32) as u32;
+            }
+            let modLoc = locFindDescendant(compDecl, SyntaxType.MODIFICATION);
+            let bExpr = findBindingExpressionLoc(modLoc);
+            if (!locIsNull(bExpr)) {
+              constArrayCtor = this.visitLoc(bExpr);
+              let typeSpecLoc = locFindDescendant(compDecl, SyntaxType.TYPE_SPECIFIER);
+              if (locIsNull(typeSpecLoc)) typeSpecLoc = locFindDescendant(pkgLoc, SyntaxType.TYPE_SPECIFIER);
+              let isReal = !locIsNull(typeSpecLoc) && locMatches(typeSpecLoc, "Real");
+              if (isReal && constArrayCtor != 0xffffffff && !this.isRealExpr(constArrayCtor)) {
+                constArrayCtor = this.castToReal(constArrayCtor);
+              }
+              if (d1 == 0 && constArrayCtor != 0xffffffff && this.dae.getExprKind(constArrayCtor) == ExprKind.ArrayCtor) {
+                d1 = getArrayCtorCount(this.dae, constArrayCtor);
+              }
+            }
+          }
+        }
       }
     }
 
@@ -4322,11 +4593,20 @@ export class WasmExprVisitor {
         let fixedK = count3 > 0 ? this.tempBuffer.get(dim3Start) : 1;
         for (let i: u32 = 0; i < count1; i++) {
           let row = this.tempBuffer.get(dim1Start + i);
-          let elemNameId: u32 = 0;
-          if (subCount >= 3) elemNameId = concatArrayIndex3D(pool, fullBaseId, row, fixedCol, fixedK);
-          else if (subCount >= 2) elemNameId = concatArrayIndex2D(pool, fullBaseId, row, fixedCol);
-          else elemNameId = concatArrayIndex1D(pool, fullBaseId, row);
-          let elemExpr = this.dae.addExpression(ExprKind.Name, elemNameId);
+          let elemExpr: u32 = 0;
+          if (constArrayCtor != 0xffffffff && this.dae.getExprKind(constArrayCtor) == ExprKind.ArrayCtor) {
+            let cCount = getArrayCtorCount(this.dae, constArrayCtor);
+            if (row >= 1 && (row - 1) < cCount) {
+              elemExpr = getArrayCtorElement(this.dae, constArrayCtor, row - 1);
+            }
+          }
+          if (elemExpr == 0) {
+            let elemNameId: u32 = 0;
+            if (subCount >= 3) elemNameId = concatArrayIndex3D(pool, fullBaseId, row, fixedCol, fixedK);
+            else if (subCount >= 2) elemNameId = concatArrayIndex2D(pool, fullBaseId, row, fixedCol);
+            else elemNameId = concatArrayIndex1D(pool, fullBaseId, row);
+            elemExpr = this.dae.addExpression(ExprKind.Name, elemNameId);
+          }
           this.tempBuffer.push(elemExpr);
         }
         let ctorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, resStart, count1);
@@ -4671,15 +4951,17 @@ export class WasmExprVisitor {
         return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
       }
 
+      let sliceSubLoc = this.findSliceSubscript(loc);
+      if (sliceSubLoc != 0) {
+        let sliceExprId = this.lowerArraySlice(loc, sliceSubLoc, pool);
+        if (sliceExprId != 0xffffffff) return sliceExprId;
+      }
+
       let subLoc = locFindDescendant(loc, SyntaxType.ARRAY_SUBSCRIPTS);
       if (!locIsNull(subLoc)) {
         if (this.symbolicSubscripts) {
           let symId = this.tryLowerSymbolicRef(loc, subLoc, pool);
           if (symId != 0xffffffff) return symId;
-        }
-        if (this.hasSliceSubscript(subLoc)) {
-          let sliceExprId = this.lowerArraySlice(loc, subLoc, pool);
-          if (sliceExprId != 0xffffffff) return sliceExprId;
         }
         let resolvedNameId = this.appendComponentRefParts(loc, pool, 0);
         if (resolvedNameId != 0) {
@@ -8239,6 +8521,12 @@ export class ModelicaFlattener {
           populateEnvFromClassModLoc(subEnvPtr, classModLoc, pool, this.exprVisitor);
         }
         let isCompProtected = (varFlags & FLAG_VAR_PROTECTED) != 0;
+        if (dim1 > 0) {
+          this.registerArrayShape(fullVarNameId, dim1, dim2, dim3);
+          if (prefixPathId != 0) {
+            this.registerArrayShape(compNameId, dim1, dim2, dim3);
+          }
+        }
         if (dim1 > 0 && dim2 == 0) {
           for (let i: u32 = 1; i <= dim1; i++) {
             let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
@@ -8452,6 +8740,10 @@ export class ModelicaFlattener {
             }
           }
           if (dim1 > 0) {
+            this.registerArrayShape(fullVarNameId, dim1);
+            if (prefixPathId != 0) {
+              this.registerArrayShape(compNameId, dim1);
+            }
             for (let i: u32 = 1; i <= dim1; i++) {
               let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
               count += this.lowerAllClassEquationsLoc(subClassLoc, subPrefix);
