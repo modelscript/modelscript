@@ -150,6 +150,7 @@ export * from "./formal/abstract_interpretation/reduced_product.js";
 // Semantic Theory Coordinator & Theory Oracles
 export * from "./formal/candidate_filter.js";
 export * from "./formal/dae/affine_domain.js";
+export * from "./formal/dae/arena_dae_compiler.js";
 export * from "./formal/dae/arena_eval.js";
 export * from "./formal/dae/arena_fingerprint.js";
 export * from "./formal/dae/dae_blt_reachability.js";

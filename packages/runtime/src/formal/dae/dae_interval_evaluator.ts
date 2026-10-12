@@ -220,7 +220,9 @@ export class DaeIntervalEvaluator {
       const hasRange =
         (this.arena.getVarAttrExprId(varIdx, "min") ?? -1) >= 0 ||
         (this.arena.getVarAttrExprId(varIdx, "max") ?? -1) >= 0;
-      if (!hasRange) {
+      // The start accessor defaults to 0.0 for "unset", so only a declared start attribute is trusted.
+      const hasStart = (this.arena.getVarAttrExprId(varIdx, "start") ?? -1) >= 0;
+      if (!hasRange && hasStart) {
         const startVal = this.arena.getVarStartValue(varIdx);
         if (Number.isFinite(startVal)) {
           const b = NumericalInterval.const(startVal);
