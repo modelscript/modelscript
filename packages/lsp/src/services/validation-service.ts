@@ -2266,282 +2266,198 @@ export class ValidationService {
     }
   }
 
+  /** Per-class DAE verification results keyed by `<uri>#<class>`; valid while the DAE fingerprint matches (K5). */
+  private daeVerificationCache = new Map<string, { fingerprint: string; record: any }>();
+
+  /** Wall-clock budget (ms) for keystroke-tier DAE verification of one document. Classes beyond it are left unverified. */
+  public daeVerificationBudgetMs = 150;
+
+  /**
+   * Flattens a Modelica class through the canonical arena pipeline
+   * (`sharedContext.flattenArena` -> `ArenaQueryFlattener`). Returns `null` when flattening is
+   * unavailable or fails; callers then report nothing instead of guessing from source text (K6).
+   */
+  protected flattenModelicaClassForVerification(name: string, symbolId: number, uri: string): any | null {
+    const ctx = this.parserService?.sharedContext as any;
+    if (!ctx || typeof ctx.flattenArena !== "function") return null;
+    try {
+      return ctx.flattenArena(name, symbolId, uri) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Lists the model/block/class definitions of a document from the symbol index (no text scanning).
+   */
+  protected listModelicaClassesForUri(
+    uri: string,
+  ): Array<{ name: string; symbolId: number; startByte: number; endByte: number }> {
+    const engine: any =
+      this.workspaceManager?.globalModelicaQueryEngine ?? this.workspaceManager?.getQueryEngine?.("modelica");
+    const symbols: Map<number, any> | undefined = engine?.index?.symbols;
+    if (!symbols) return [];
+    const norm = (u: string | undefined) => (u ? u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "");
+    const target = norm(uri);
+    const out: Array<{ name: string; symbolId: number; startByte: number; endByte: number }> = [];
+    for (const [id, entry] of symbols.entries()) {
+      if (norm(entry.resourceId) !== target) continue;
+      if (entry.kind !== "Class" && entry.kind !== "Def") continue;
+      const classKind = (entry.metadata?.classKind as string | undefined) ?? "class";
+      if (classKind !== "model" && classKind !== "block" && classKind !== "class") continue;
+      out.push({
+        name: entry.name,
+        symbolId: id,
+        startByte: entry.startByte ?? 0,
+        endByte: entry.endByte ?? 0,
+      });
+    }
+    out.sort((a, b) => a.startByte - b.startByte);
+    return out;
+  }
+
   public async postValidateModelicaDaeReachability(
     effectiveUri: string,
     textDocument: TextDocument,
     diagnostics: Diagnostic[],
   ): Promise<void> {
+    const daeMap = new Map<string, any>();
+    this.modelicaDaeVerificationResultsByUri.set(effectiveUri, daeMap);
     try {
-      const text = textDocument.getText();
-      if (!/\bequation\b/.test(text) && !/\bmodel\b|\bblock\b|\bclass\b/.test(text)) return;
+      const classes = this.listModelicaClassesForUri(effectiveUri);
+      if (classes.length === 0) return;
 
       const {
-        DAEBuilder,
         DaeBltReachabilityEngine,
         HybridModeConsistencyVerifier,
         performBltTransformationArena,
         initBltWasm,
-        BinOp,
-        EqKind,
-        ExprKind,
-        UnaryOp,
+        arenaFingerprint,
         Variability,
-        VarType,
       } = await import("@modelscript/runtime");
 
-      const daeMap = new Map<string, any>();
-      this.modelicaDaeVerificationResultsByUri.set(effectiveUri, daeMap);
-
-      const classRegex = /\b(model|block|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
-      let match: RegExpExecArray | null;
-
-      while ((match = classRegex.exec(text)) !== null) {
-        const name = match[2]!;
-        const body = match[3]!;
-        const classOffset = match.index;
-
-        if (!/\bequation\b/.test(body)) continue;
-
-        let arena: any;
-        const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
-        const context = this.parserService?.sharedContext;
-        if (typeof flattenFn === "function" && context) {
-          try {
-            arena = flattenFn({ name }, context);
-          } catch {
-            // fallback
-          }
+      const text = textDocument.getText();
+      const byteToChar = (byteOffset: number): number => {
+        if (!/[\u0080-\uFFFF]/.test(text)) return byteOffset;
+        let bytes = 0;
+        let i = 0;
+        while (i < text.length && bytes < byteOffset) {
+          const cp = text.codePointAt(i)!;
+          bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+          i += cp > 0xffff ? 2 : 1;
         }
+        return i;
+      };
 
-        if (!arena) {
-          arena = this.extractLightweightDaeArena(
-            body,
-            DAEBuilder,
-            EqKind,
-            ExprKind,
-            BinOp,
-            UnaryOp,
-            Variability,
-            VarType,
-          );
+      const started = Date.now();
+      let completed = true;
+      const liveKeys = new Set<string>();
+
+      for (const cls of classes) {
+        if (Date.now() - started > this.daeVerificationBudgetMs) {
+          completed = false;
+          break;
         }
+        const arena = this.flattenModelicaClassForVerification(cls.name, cls.symbolId, effectiveUri);
         if (!arena || arena.eqCount === 0) continue;
 
-        let bltResult: any;
-        try {
-          await initBltWasm();
-          bltResult = performBltTransformationArena(arena);
-        } catch {
-          const blocks = [];
-          for (let e = 0; e < arena.eqCount; e++) {
-            blocks.push({ eqIdxs: [e], vars: [Math.min(e, arena.varCount - 1)] });
+        const key = `${effectiveUri}#${cls.name}`;
+        liveKeys.add(key);
+        const fingerprint = arenaFingerprint(arena);
+        let record = this.daeVerificationCache.get(key)?.record;
+        if (!record || this.daeVerificationCache.get(key)!.fingerprint !== fingerprint) {
+          let bltResult: any;
+          try {
+            await initBltWasm();
+            bltResult = performBltTransformationArena(arena);
+          } catch {
+            // No sound block structure: leave this class unverified rather than invent one.
+            continue;
           }
-          bltResult = { sortedEquations: blocks.map((_, i) => i), blocks };
-        }
 
-        const reachEngine = new DaeBltReachabilityEngine(arena);
-        const reachSummary = reachEngine.verify(bltResult);
+          const reachEngine = new DaeBltReachabilityEngine(arena);
+          const reachSummary = reachEngine.verify(bltResult);
+          const hybridVerifier = new HybridModeConsistencyVerifier(arena);
+          const hybridResult = hybridVerifier.verify();
+          const allIssues = [...reachSummary.issues, ...hybridResult.issues];
 
-        const hybridVerifier = new HybridModeConsistencyVerifier(arena);
-        const hybridResult = hybridVerifier.verify();
-
-        const allIssues = [...reachSummary.issues, ...hybridResult.issues];
-
-        const namedBounds = new Map<string, any>();
-        for (let i = 0; i < arena.varCount; i++) {
-          const vName = arena.getVarName(i);
-          const bound = reachSummary.variableBounds.get(i) ?? reachEngine.evaluator.getVarBound(i);
-          if (vName && bound && !bound.isTop?.() && !bound.isBottom?.()) {
-            namedBounds.set(vName, bound);
-          }
-        }
-
-        daeMap.set(name, {
-          isFullyCertified: reachSummary.isFullyCertified && hybridResult.isCertifiedConsistent,
-          reachSummary,
-          hybridResult,
-          issues: allIssues,
-          variableBounds: namedBounds,
-        });
-
-        for (const issue of allIssues) {
-          let issueOffset = classOffset;
-          if (issue.varName && body.includes(issue.varName)) {
-            issueOffset = classOffset + body.indexOf(issue.varName);
-          } else {
-            const eqMatch = /\bequation\b/.exec(body);
-            if (eqMatch) {
-              issueOffset = classOffset + eqMatch.index;
+          const namedBounds = new Map<string, any>();
+          let unboundedVariables = 0;
+          for (let i = 0; i < arena.varCount; i++) {
+            const vName = arena.getVarName(i);
+            const bound = reachSummary.variableBounds.get(i) ?? reachEngine.evaluator.getVarBound(i);
+            const bounded = !!bound && !bound.isTop?.() && !bound.isBottom?.();
+            if (vName && bounded) namedBounds.set(vName, bound);
+            const variability = arena.getVarVariability(i);
+            if (!bounded && (variability === Variability.Continuous || variability === Variability.Discrete)) {
+              unboundedVariables++;
             }
           }
 
+          const hasDefinite = allIssues.some((i: any) => i.severity === "definite");
+          const verdict = hasDefinite
+            ? {
+                kind: "violated",
+                witness: { time: 0, state: {} },
+                detail: "Equation is defective for every admissible state (definite singularity).",
+              }
+            : allIssues.length === 0 && unboundedVariables === 0
+              ? { kind: "proven", rigor: "float-sound", detail: "No singularity found; all variables bounded." }
+              : {
+                  kind: "unknown",
+                  reason: "inconclusive-enclosure",
+                  detail: `${allIssues.length} possible issue(s); ${unboundedVariables} unbounded variable(s).`,
+                };
+
+          record = {
+            isFullyCertified: verdict.kind === "proven",
+            verdict,
+            reachSummary,
+            hybridResult,
+            issues: allIssues,
+            variableBounds: namedBounds,
+            unboundedVariables,
+            fingerprint,
+          };
+          this.daeVerificationCache.set(key, { fingerprint, record });
+        }
+
+        daeMap.set(cls.name, record);
+
+        const classStart = byteToChar(cls.startByte);
+        const classEnd = cls.endByte > cls.startByte ? byteToChar(cls.endByte) : text.length;
+        const body = text.slice(classStart, classEnd);
+        for (const issue of record.issues) {
+          let issueOffset = classStart;
+          const varIdx = issue.varName ? body.indexOf(issue.varName) : -1;
+          if (varIdx >= 0) {
+            issueOffset = classStart + varIdx;
+          } else {
+            const eqIdx = body.indexOf("equation");
+            if (eqIdx >= 0) issueOffset = classStart + eqIdx;
+          }
           const startPos = textDocument.positionAt(issueOffset);
           const endPos = textDocument.positionAt(issueOffset + (issue.varName?.length ?? 10));
+          const definite = issue.severity === "definite";
+          diagnostics.push({
+            severity: definite ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+            range: { start: startPos, end: endPos },
+            message: `${definite ? "[DAE Formal Defect]" : "[DAE Invariant Warning]"} ${issue.message}`,
+            source: "modelscript-dae-verifier",
+            code: issue.kind,
+          });
+        }
+      }
 
-          if (issue.severity === "definite") {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              range: { start: startPos, end: endPos },
-              message: `[DAE Formal Defect] ${issue.message}`,
-              source: "modelscript-dae-verifier",
-              code: issue.kind,
-            });
-          } else {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Warning,
-              range: { start: startPos, end: endPos },
-              message: `[DAE Invariant Warning] ${issue.message}`,
-              source: "modelscript-dae-verifier",
-              code: issue.kind,
-            });
-          }
+      if (completed) {
+        const prefix = `${effectiveUri}#`;
+        for (const k of [...this.daeVerificationCache.keys()]) {
+          if (k.startsWith(prefix) && !liveKeys.has(k)) this.daeVerificationCache.delete(k);
         }
       }
     } catch (err: any) {
       this.connection?.console?.error?.(`[modelica-dae-verifier] Error in DAE verification: ${err?.message}`);
     }
-  }
-
-  private extractLightweightDaeArena(
-    body: string,
-    DAEBuilder: any,
-    EqKind: any,
-    ExprKind: any,
-    BinOp: any,
-    _UnaryOp: any,
-    Variability: any,
-    VarType: any,
-  ): any {
-    const arena = new DAEBuilder();
-
-    const varDeclRegex =
-      /\b(parameter|constant)?\s*(Real|Integer|Boolean)\s+(?:\[(.*?)\]\s+)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((.*?)\))?(?:\s*=\s*([^;]+))?\s*;/g;
-    let vMatch: RegExpExecArray | null;
-    while ((vMatch = varDeclRegex.exec(body)) !== null) {
-      const variabilityStr = vMatch[1];
-      const typeStr = vMatch[2];
-      const nameStr = vMatch[4]!;
-      const attrsStr = vMatch[5];
-      const initExprStr = vMatch[6];
-
-      let varType = VarType.Real;
-      if (typeStr === "Integer") varType = VarType.Integer;
-      else if (typeStr === "Boolean") varType = VarType.Boolean;
-
-      let variability = Variability.Continuous;
-      if (variabilityStr === "parameter") variability = Variability.Parameter;
-      else if (variabilityStr === "constant") variability = Variability.Constant;
-
-      const vIdx = arena.addVariable(nameStr, varType, variability);
-
-      if (attrsStr) {
-        const minMatch = /\bmin\s*=\s*(-?\d+(?:\.\d+)?)/.exec(attrsStr);
-        if (minMatch) {
-          arena.setVarAttr(vIdx, "min", arena.addRealLiteral(Number(minMatch[1])));
-        }
-        const maxMatch = /\bmax\s*=\s*(-?\d+(?:\.\d+)?)/.exec(attrsStr);
-        if (maxMatch) {
-          arena.setVarAttr(vIdx, "max", arena.addRealLiteral(Number(maxMatch[1])));
-        }
-        const startMatch = /\bstart\s*=\s*(-?\d+(?:\.\d+)?)/.exec(attrsStr);
-        if (startMatch) {
-          arena.setVarStartValue(vIdx, Number(startMatch[1]));
-        }
-      }
-
-      if (initExprStr) {
-        const val = Number(initExprStr.trim());
-        if (Number.isFinite(val)) {
-          arena.setVarStartValue(vIdx, val);
-        }
-      }
-    }
-
-    const eqMatch = /\bequation\b([\s\S]*)$/.exec(body);
-    if (!eqMatch) return arena;
-
-    const eqSection = eqMatch[1]!;
-
-    const parseExpr = (exprStr: string): number => {
-      const s = exprStr.trim();
-      if (!s) return -1;
-
-      if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
-        return arena.addRealLiteral(Number(s));
-      }
-
-      const derMatch = /^der\((.*?)\)$/.exec(s);
-      if (derMatch) {
-        const inner = parseExpr(derMatch[1]!);
-        return arena.addExpression(ExprKind.Der, inner);
-      }
-
-      const sqrtMatch = /^sqrt\((.*?)\)$/.exec(s);
-      if (sqrtMatch) {
-        const inner = parseExpr(sqrtMatch[1]!);
-        return arena.addCallExpr(arena.interner.intern("sqrt"), [inner]);
-      }
-
-      const binOps = [
-        { op: "+", kind: BinOp.Add },
-        { op: "-", kind: BinOp.Sub },
-        { op: "*", kind: BinOp.Mul },
-        { op: "/", kind: BinOp.Div },
-        { op: "<=", kind: BinOp.Lte },
-        { op: ">=", kind: BinOp.Gte },
-        { op: "<", kind: BinOp.Lt },
-        { op: ">", kind: BinOp.Gt },
-      ];
-
-      for (const b of binOps) {
-        const opIdx = s.lastIndexOf(b.op);
-        if (opIdx > 0 && opIdx < s.length - 1) {
-          const leftStr = s.slice(0, opIdx).trim();
-          const rightStr = s.slice(opIdx + b.op.length).trim();
-          if (leftStr && rightStr) {
-            const leftExpr = parseExpr(leftStr);
-            const rightExpr = parseExpr(rightStr);
-            return arena.addBinaryExpr(b.kind, leftExpr, rightExpr);
-          }
-        }
-      }
-
-      let vIdx = arena.getVarIdxByName(s);
-      if (vIdx < 0) {
-        vIdx = arena.addVariable(s, VarType.Real, Variability.Continuous);
-      }
-      return arena.addExpression(ExprKind.Name, arena.interner.intern(s));
-    };
-
-    const rawStmts = eqSection.split(";");
-    for (let rawStmt of rawStmts) {
-      rawStmt = rawStmt.trim();
-      if (!rawStmt || rawStmt.startsWith("//")) continue;
-
-      const whenMatch = /\bwhen\s+(.*?)\s+then\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)\s*(?:;\s*)?end\s+when/s.exec(
-        rawStmt,
-      );
-      if (whenMatch) {
-        const condExpr = parseExpr(whenMatch[1]!);
-        const targetName = whenMatch[2]!;
-        const valExpr = parseExpr(whenMatch[3]!);
-        const whenIdx = arena.addWhenEquation(condExpr);
-        let targetIdx = arena.getVarIdxByName(targetName);
-        if (targetIdx < 0) targetIdx = arena.addVariable(targetName, VarType.Real, Variability.Continuous);
-        const targetExpr = arena.addExpression(ExprKind.Name, arena.interner.intern(targetName));
-        arena.addWhenBodyEquation(whenIdx, EqKind.Simple, targetExpr, valExpr);
-        continue;
-      }
-
-      const eqParts = rawStmt.split("=");
-      if (eqParts.length === 2) {
-        const lhsExpr = parseExpr(eqParts[0]!.trim());
-        const rhsExpr = parseExpr(eqParts[1]!.trim());
-        arena.addEquation(EqKind.Simple, lhsExpr, rhsExpr);
-      }
-    }
-
-    return arena;
   }
 
   private checkAutoVerify(effectiveUri: string): void {

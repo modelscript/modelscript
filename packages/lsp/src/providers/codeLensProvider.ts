@@ -152,7 +152,11 @@ export function registerCodeLensProvider(context: LspContext) {
           const daeMap = context.validationService.modelicaDaeVerificationResultsByUri?.get(uri);
           const daeProof = daeMap?.get(sym.name);
           if (daeProof) {
-            let daeTitle = "✓ DAE Formally Verified (Non-Singular BLT, 0 Singularities)";
+            // Never display "verified" for anything other than a proven verdict.
+            let daeTitle =
+              daeProof.verdict?.kind === "proven"
+                ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
+                : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
             if (daeProof.issues.length > 0) {
               const definite = daeProof.issues.find((i: any) => i.severity === "definite");
               if (definite) {

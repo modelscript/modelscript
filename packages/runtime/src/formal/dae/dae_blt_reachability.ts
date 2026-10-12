@@ -14,6 +14,7 @@
 import { ArenaBltResult } from "../../analysis/wasm_blt.js";
 import { BinOp, DAEBuilder, ExprKind, differentiateArenaExpression } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
+import { blockFingerprint } from "./arena_fingerprint.js";
 import { DaeEvaluatorOptions, DaeIntervalEvaluator, DaeSingularityIssue } from "./dae_interval_evaluator.js";
 
 export interface BlockReachabilityResult {
@@ -55,11 +56,13 @@ export interface DaeReachabilitySummary {
 }
 
 /**
- * Computes a fast hash fingerprint of a collection of input intervals.
+ * Exact fingerprint of a collection of input intervals. `String(number)` round-trips every double
+ * exactly, so two different inputs never share a fingerprint (the former 8-digit `toPrecision`
+ * could return a stale block result for inputs that differ beyond the 8th digit).
  */
 function computeInputFingerprint(inputs: [number, NumericalInterval][]): string {
   inputs.sort((a, b) => a[0] - b[0]);
-  return inputs.map(([id, iv]) => `${id}:${iv.low.toPrecision(8)},${iv.high.toPrecision(8)}`).join(";");
+  return inputs.map(([id, iv]) => `${id}:${iv.low},${iv.high}`).join(";");
 }
 
 export class DaeBltReachabilityEngine {
@@ -126,7 +129,9 @@ export class DaeBltReachabilityEngine {
       for (const depVar of inputDeps) {
         inputTuples.push([depVar, globalBounds.get(depVar) ?? this.evaluator.getVarBound(depVar)]);
       }
-      const fingerprint = computeInputFingerprint(inputTuples);
+      // The key covers BOTH the block's content (equations, variable attributes) and the exact
+      // input bounds, so a cached result can never be reused after the block's equations change.
+      const fingerprint = `${blockFingerprint(this.arena, block.eqIdxs, block.vars)}|${computeInputFingerprint(inputTuples)}`;
 
       // Check Salsa-style cache
       const cached = this.blockCache.get(blockIdx);
@@ -230,7 +235,7 @@ export class DaeBltReachabilityEngine {
 
     // Check if LHS is der(x)
     if (lhsKind === ExprKind.Der) {
-      const inner = this.arena.getExprData1(lhs);
+      const _inner = this.arena.getExprData1(lhs);
       const rhsEval = this.evaluator.evaluateExpr(rhs, globalBounds);
       issues.push(...rhsEval.issues);
       derBounds.set(varIdx, rhsEval.interval);

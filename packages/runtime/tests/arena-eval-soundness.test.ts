@@ -171,4 +171,13 @@ describe("evalArenaExpr (interval domain) soundness", () => {
     assert.equal(r.value.lo, 10);
     assert.equal(r.value.hi, 20);
   });
+
+  it("defect in an indeterminately-guarded branch is only 'possible'", () => {
+    // if x > 0 then 1/0 else 2 — the division is unreachable when x <= 0.
+    const e = arena.addIfElseExpr(bin(BinOp.Gt, x, lit(0)), bin(BinOp.Div, lit(1), lit(0)), lit(2));
+    const r = evalArenaExpr(arena, e, { variable: () => new Interval(-1, 1) }, IntervalDomain);
+    const div = r.issues.find((i) => i.kind === "div_by_zero");
+    assert.ok(div);
+    assert.equal(div.severity, "possible");
+  });
 });

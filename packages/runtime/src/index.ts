@@ -149,9 +149,13 @@ export * from "./formal/abstract_interpretation/reduced_product.js";
 
 // Semantic Theory Coordinator & Theory Oracles
 export * from "./formal/candidate_filter.js";
+export * from "./formal/dae/affine_domain.js";
+export * from "./formal/dae/arena_eval.js";
+export * from "./formal/dae/arena_fingerprint.js";
 export * from "./formal/dae/dae_blt_reachability.js";
 export * from "./formal/dae/dae_flowpipe_bridge.js";
 export * from "./formal/dae/dae_interval_evaluator.js";
 export * from "./formal/dae/hybrid_mode_verifier.js";
+export * from "./formal/dae/taylor_domain.js";
 export * from "./formal/oracles/index.js";
 export * from "./formal/theory_coordinator.js";

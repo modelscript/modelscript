@@ -215,11 +215,18 @@ export class DaeIntervalEvaluator {
           return res.interval;
         }
       }
-      const startVal = this.arena.getVarStartValue(varIdx);
-      if (Number.isFinite(startVal)) {
-        const b = NumericalInterval.const(startVal);
-        this.varBounds.set(varIdx, b);
-        return b;
+      // An unbound parameter with declared min/max ranges over that interval; the start value is
+      // then only a nominal point inside it.
+      const hasRange =
+        (this.arena.getVarAttrExprId(varIdx, "min") ?? -1) >= 0 ||
+        (this.arena.getVarAttrExprId(varIdx, "max") ?? -1) >= 0;
+      if (!hasRange) {
+        const startVal = this.arena.getVarStartValue(varIdx);
+        if (Number.isFinite(startVal)) {
+          const b = NumericalInterval.const(startVal);
+          this.varBounds.set(varIdx, b);
+          return b;
+        }
       }
     }
 

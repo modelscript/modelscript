@@ -37,7 +37,7 @@ import {
 } from "../../analysis/outward_rounding.js";
 import { Interval } from "../../analysis/wasm_interval.js";
 import type { ArenaEvalEnv } from "./arena_eval.js";
-import { IntervalDomain, type AbstractDomain } from "./arena_eval.js";
+import { IntervalDomain, type ExprDomain } from "./arena_eval.js";
 
 const EPS = 2 ** -52;
 const TINY = 2 ** -1074;
@@ -93,7 +93,7 @@ function ivToCenterErr(iv: Interval): { c: number; r: number } | null {
 }
 
 export interface AffineDomainHandle {
-  domain: AbstractDomain<Aff>;
+  domain: ExprDomain<Aff>;
   /** Fresh form for an interval, with a new noise symbol. */
   fresh(iv: Interval): Aff;
 }
@@ -103,9 +103,9 @@ export function createAffineDomain(): AffineDomain {
   return new AffineDomain();
 }
 
-export class AffineDomain implements AbstractDomain<Aff>, AffineDomainHandle {
+export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
   private next = 1;
-  get domain(): AbstractDomain<Aff> {
+  get domain(): ExprDomain<Aff> {
     return this;
   }
 

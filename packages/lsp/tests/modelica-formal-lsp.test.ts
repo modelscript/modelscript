@@ -284,6 +284,33 @@ end DaeModel;
       const daeDoc = TextDocument.create(daeUri, "modelica", 1, daeContent);
       mockDocManager.documents.set(daeUri, daeDoc);
 
+      const { DAEBuilder, VarType, Variability, BinOp, EqKind } = await import("@modelscript/runtime");
+      const safeStart = daeContent.indexOf("model SafeCircuit");
+      const singStart = daeContent.indexOf("model SingularCircuit");
+      (validationService as any).listModelicaClassesForUri = () => [
+        { name: "SafeCircuit", symbolId: 10, startByte: safeStart, endByte: singStart },
+        { name: "SingularCircuit", symbolId: 11, startByte: singStart, endByte: daeContent.length },
+      ];
+      (validationService as any).flattenModelicaClassForVerification = (name: string) => {
+        const arena: any = new DAEBuilder();
+        const v = arena.addVariable("V", VarType.Real, Variability.Parameter);
+        const r = arena.addVariable("R", VarType.Real, Variability.Parameter);
+        arena.addVariable("I", VarType.Real, Variability.Continuous);
+        const denom = name === "SafeCircuit" ? arena.addNameExpr("R") : arena.addRealLiteral(0.0);
+        if (name === "SafeCircuit") {
+          arena.setVarAttr(v, "min", arena.addRealLiteral(8.0));
+          arena.setVarAttr(v, "max", arena.addRealLiteral(12.0));
+          arena.setVarAttr(r, "min", arena.addRealLiteral(2.0));
+          arena.setVarAttr(r, "max", arena.addRealLiteral(4.0));
+        } else {
+          arena.setVarAttr(v, "min", arena.addRealLiteral(8.0));
+          arena.setVarAttr(v, "max", arena.addRealLiteral(12.0));
+        }
+        const rhs = arena.addBinaryExpr(BinOp.Div, arena.addNameExpr("V"), denom);
+        arena.addEquation(EqKind.Simple, arena.addNameExpr("I"), rhs);
+        return arena;
+      };
+
       const diagnostics: any[] = [];
       await validationService.postValidateModelicaDaeReachability(daeUri, daeDoc, diagnostics);
 
@@ -348,8 +375,8 @@ end DaeModel;
       registerCodeLensProvider(mockDaeContext);
       const lenses = codeLensHandler({ textDocument: { uri: daeUri } });
 
-      const safeLens = lenses.find((l: any) => l.command.title.includes("DAE Formally Verified"));
-      assert.ok(safeLens, "Must have '✓ DAE Formally Verified' badge for SafeCircuit");
+      const safeLens = lenses.find((l: any) => l.command.title.includes("no singularities"));
+      assert.ok(safeLens, "Must have '✓ DAE: no singularities' badge for SafeCircuit");
       assert.strictEqual(safeLens.command.arguments[1], "SafeCircuit");
 
       const defectLens = lenses.find((l: any) => l.command.title.includes("DAE Defect"));

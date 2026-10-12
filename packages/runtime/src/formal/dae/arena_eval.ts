@@ -4,7 +4,7 @@
  * @modelscript/runtime — Domain-generic arena expression interpreter.
  *
  * `evalArenaExpr<T>` walks a DAEBuilder expression tree once, parameterised by an
- * {@link AbstractDomain} (outward-rounded intervals, affine forms, Taylor models, ...).
+ * {@link ExprDomain} (outward-rounded intervals, affine forms, Taylor models, ...).
  * All domains therefore share ONE definition of the expression semantics, so a soundness
  * fix here benefits every verification method.
  *
@@ -39,7 +39,7 @@ import { NumericalInterval } from "../abstract_interpretation/interval_domain.js
 import type { DaeSingularityIssue } from "./dae_interval_evaluator.js";
 
 /** Abstract domain over real-valued expressions. All operations must be sound enclosures. */
-export interface AbstractDomain<T> {
+export interface ExprDomain<T> {
   constant(v: number): T;
   fromInterval(iv: Interval): T;
   /** Sound interval hull of the abstract value. */
@@ -73,7 +73,7 @@ function sanitize(iv: Interval): Interval {
 }
 
 /** Sound interval domain built on the outward-rounded scalar kernel. */
-export const IntervalDomain: AbstractDomain<Interval> = {
+export const IntervalDomain: ExprDomain<Interval> = {
   constant: (v) => (Number.isFinite(v) ? new Interval(v, v) : WHOLE_LINE()),
   fromInterval: (iv) => new Interval(iv.lo, iv.hi),
   toInterval: (t) => t,
@@ -126,7 +126,7 @@ export function evalArenaExpr<T>(
   arena: DAEBuilder,
   exprId: number,
   env: ArenaEvalEnv<T>,
-  domain: AbstractDomain<T>,
+  domain: ExprDomain<T>,
 ): ArenaEvalResult<T> {
   const issues: DaeSingularityIssue[] = [];
   const top = (): T => domain.fromInterval(WHOLE_LINE());
@@ -192,7 +192,11 @@ export function evalArenaExpr<T>(
         const elseId = arena.getExprRight(id);
         if (cond === "true") return go(thenId);
         if (cond === "false") return go(elseId);
-        return domain.join(go(thenId), go(elseId));
+        // Either branch may be the one taken: a defect inside it is only "possible".
+        const before = issues.length;
+        const joined = domain.join(go(thenId), go(elseId));
+        for (let k = before; k < issues.length; k++) issues[k]!.severity = "possible";
+        return joined;
       }
 
       case ExprKind.Der: {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @modelscript/runtime — Taylor-model AbstractDomain.
+ * @modelscript/runtime — Taylor-model ExprDomain.
  *
  * Wraps {@link TaylorModel} so it can be driven by `evalArenaExpr`.
  *
@@ -21,13 +21,13 @@ import { addUp, ivAbs, ivAdd, ivDiv, ivMul, ivPowInt, ivSub, nextUp, subUp } fro
 import { Interval } from "../../analysis/wasm_interval.js";
 import { TaylorModel } from "../../analysis/wasm_taylor_model.js";
 import type { ArenaEvalEnv } from "./arena_eval.js";
-import { IntervalDomain, type AbstractDomain } from "./arena_eval.js";
+import { IntervalDomain, type ExprDomain } from "./arena_eval.js";
 
 const EPS = 2 ** -52;
 const TINY = 2 ** -1074;
 const K = 16;
 
-export class TaylorDomain implements AbstractDomain<TaylorModel> {
+export class TaylorDomain implements ExprDomain<TaylorModel> {
   constructor(
     public readonly boxes: Interval[],
     public readonly order = 4,
@@ -86,7 +86,7 @@ export class TaylorDomain implements AbstractDomain<TaylorModel> {
     return res;
   }
 
-  // ── AbstractDomain ──
+  // ── ExprDomain ──
 
   constant(v: number): TaylorModel {
     if (!Number.isFinite(v)) return this.top();

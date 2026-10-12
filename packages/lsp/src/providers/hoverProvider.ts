@@ -636,7 +636,7 @@ export function registerHoverProvider(
           for (const [modelName, daeProof] of daeMap.entries()) {
             const varBound = daeProof.variableBounds?.get(token);
             if (varBound && !varBound.isTop?.() && !varBound.isBottom?.()) {
-              hoverContent += `\n\n---\n**DAE Reachability Invariant:**\n- \`${token} \u2208 ${varBound.toString()}\` \u2713 (Sound BLT Reachability in \`${modelName}\`)`;
+              hoverContent += `\n\n---\n**DAE Reachability Invariant:**\n- \`${token} \u2208 ${varBound.toString()}\` (interval enclosure from declared bounds in \`${modelName}\`)`;
             }
           }
         }
