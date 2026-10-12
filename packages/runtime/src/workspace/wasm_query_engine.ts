@@ -514,12 +514,13 @@ export class WasmQueryEngine {
       }
     }
 
-    const symbolsToClearMemos = structuralChangedIds ? new Set([...structuralChangedIds, ...ids]) : ids;
-    for (const id of symbolsToClearMemos) {
-      const dependentKeys = this.inputReverseDependencies.get(id);
-      if (dependentKeys) {
-        for (const key of dependentKeys) {
-          this.memos.delete(key);
+    if (structuralChangedIds) {
+      for (const id of structuralChangedIds) {
+        const dependentKeys = this.inputReverseDependencies.get(id);
+        if (dependentKeys) {
+          for (const key of dependentKeys) {
+            this.memos.delete(key);
+          }
         }
       }
     }

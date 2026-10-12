@@ -4646,7 +4646,7 @@ export class SyntaxNode {
               parentTypeId,
               childIndex,
               typeId,
-              0,
+              1,
             );
           } catch {}
         }

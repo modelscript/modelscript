@@ -100,7 +100,9 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(scadLanguage.polyglot, "OpenSCAD should define polyglot configuration");
     const compiled = compileTGGRules(scadLanguage.polyglot);
-    assert.strictEqual(compiled.ruleCount, 11, "OpenSCAD should have 11 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 13, "OpenSCAD should have 13 TGG transformation rules");
+    assert.ok(compiled.ruleNames.includes("ScadProjectedAreaToModelicaParam"));
+    assert.ok(compiled.ruleNames.includes("ScadProjectedAreaToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("ScadModuleToSysmlPart"));
     assert.ok(compiled.ruleNames.includes("ScadTagPortToSysmlPort"));
     assert.ok(compiled.ruleNames.includes("ScadVariableToSysmlAttribute"));
@@ -121,7 +123,9 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(cfdLanguage.polyglot, "CFD should define polyglot configuration");
     const compiled = compileTGGRules(cfdLanguage.polyglot);
-    assert.strictEqual(compiled.ruleCount, 4, "CFD should have 4 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 6, "CFD should have 6 TGG transformation rules");
+    assert.ok(compiled.ruleNames.includes("CfdDragPolarToModelicaParam"));
+    assert.ok(compiled.ruleNames.includes("CfdDragPolarToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("CfdInletToModelicaFluidPort"));
     assert.ok(compiled.ruleNames.includes("CfdHeatFluxToModelicaHeatPort"));
     assert.ok(compiled.ruleNames.includes("CfdMarkerToSysmlPort"));
@@ -135,7 +139,9 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(feaLanguage.polyglot, "FEA should define polyglot configuration");
     const compiled = compileTGGRules(feaLanguage.polyglot);
-    assert.strictEqual(compiled.ruleCount, 4, "FEA should have 4 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 6, "FEA should have 6 TGG transformation rules");
+    assert.ok(compiled.ruleNames.includes("FeaStressMassToModelicaParam"));
+    assert.ok(compiled.ruleNames.includes("FeaStressMassToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("FeaMaterialToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("FeaBoundaryFixToModelicaFixed"));
     assert.ok(compiled.ruleNames.includes("FeaSpringToModelicaSpring"));

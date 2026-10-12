@@ -9,7 +9,9 @@ console.log("Testing CFD Polyglot TGG Rules Compilation...");
 assert.ok(cfdLanguage.polyglot, "CFD should define polyglot configuration");
 const compiled = compileTGGRules(cfdLanguage.polyglot);
 
-assert.strictEqual(compiled.ruleCount, 4, "CFD should have 4 TGG transformation rules");
+assert.strictEqual(compiled.ruleCount, 6, "CFD should have 6 TGG transformation rules");
+assert.ok(compiled.ruleNames.includes("CfdDragPolarToModelicaParam"));
+assert.ok(compiled.ruleNames.includes("CfdDragPolarToSysmlAttribute"));
 assert.ok(compiled.ruleNames.includes("CfdInletToModelicaFluidPort"));
 assert.ok(compiled.ruleNames.includes("CfdHeatFluxToModelicaHeatPort"));
 assert.ok(compiled.ruleNames.includes("CfdMarkerToSysmlPort"));

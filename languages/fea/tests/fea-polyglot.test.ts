@@ -9,7 +9,9 @@ console.log("Testing FEA Polyglot TGG Rules Compilation...");
 assert.ok(feaLanguage.polyglot, "FEA should define polyglot configuration");
 const compiled = compileTGGRules(feaLanguage.polyglot);
 
-assert.strictEqual(compiled.ruleCount, 4, "FEA should have 4 TGG transformation rules");
+assert.strictEqual(compiled.ruleCount, 6, "FEA should have 6 TGG transformation rules");
+assert.ok(compiled.ruleNames.includes("FeaStressMassToModelicaParam"));
+assert.ok(compiled.ruleNames.includes("FeaStressMassToSysmlAttribute"));
 assert.ok(compiled.ruleNames.includes("FeaMaterialToSysmlAttribute"));
 assert.ok(compiled.ruleNames.includes("FeaBoundaryFixToModelicaFixed"));
 assert.ok(compiled.ruleNames.includes("FeaSpringToModelicaSpring"));

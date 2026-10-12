@@ -9,7 +9,9 @@ console.log("Testing OpenSCAD Polyglot TGG Rules Compilation...");
 assert.ok(scadLanguage.polyglot, "OpenSCAD should define polyglot configuration");
 const compiled = compileTGGRules(scadLanguage.polyglot);
 
-assert.strictEqual(compiled.ruleCount, 11, "OpenSCAD should have 11 TGG transformation rules");
+assert.strictEqual(compiled.ruleCount, 13, "OpenSCAD should have 13 TGG transformation rules");
+assert.ok(compiled.ruleNames.includes("ScadProjectedAreaToModelicaParam"));
+assert.ok(compiled.ruleNames.includes("ScadProjectedAreaToSysmlAttribute"));
 assert.ok(compiled.ruleNames.includes("ScadModuleToSysmlPart"));
 assert.ok(compiled.ruleNames.includes("ScadTagPortToSysmlPort"));
 assert.ok(compiled.ruleNames.includes("ScadVariableToSysmlAttribute"));

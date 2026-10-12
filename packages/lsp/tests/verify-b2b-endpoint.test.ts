@@ -124,6 +124,7 @@ end LspB2BTestModel;
       target: "LspB2BTestModel",
       options: {
         all: false,
+        flowpipes: false,
         decisions: false,
         contracts: false,
         stateMachines: false,

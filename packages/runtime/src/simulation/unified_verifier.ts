@@ -176,25 +176,31 @@ export class UnifiedVerifier {
 
     // 1. Determine active stages via explicit options or auto-detection
     const runAll = options.all === true;
-    const hasDecisions = options.decisions ?? (runAll || /\b(decide|decision|table)\b/i.test(text));
+    const autoDetect = options.all !== false;
+    const hasDecisions = options.decisions ?? (runAll || (autoDetect && /\b(decide|decision|table)\b/i.test(text)));
     const hasRegionDecomp =
-      options.regionDecomposition ?? (runAll || options.mcdc === true || /\b(action|calc)\s+def\b/.test(text));
-    const hasContracts = options.contracts ?? (runAll || /\b(contract|assume|guarantee)\b/i.test(text));
-    const hasStateMachines = options.stateMachines ?? (runAll || /\b(state|activity|transition)\b/i.test(text));
+      options.regionDecomposition ??
+      (runAll || (autoDetect && (options.mcdc === true || /\b(action|calc)\s+def\b/.test(text))));
+    const hasContracts = options.contracts ?? (runAll || (autoDetect && /\b(contract|assume|guarantee)\b/i.test(text)));
+    const hasStateMachines =
+      options.stateMachines ?? (runAll || (autoDetect && /\b(state|activity|transition)\b/i.test(text)));
     const hasFlowpipes =
-      options.flowpipes ?? (runAll || ctx.hybridAutomaton != null || /\b(flowpipe|der\(|ode)\b/i.test(text));
-    const hasBarriers = options.barriers ?? (runAll || /\b(barrier|lyapunov|sos)\b/i.test(text));
+      options.flowpipes ??
+      (runAll || (autoDetect && (ctx.hybridAutomaton != null || /\b(flowpipe|der\(|ode)\b/i.test(text))));
+    const hasBarriers = options.barriers ?? (runAll || (autoDetect && /\b(barrier|lyapunov|sos)\b/i.test(text)));
     const hasClearance =
-      options.clearance ?? (runAll || ctx.assembly != null || /\b(assembly|clearance|step)\b/i.test(text));
+      options.clearance ??
+      (runAll || (autoDetect && (ctx.assembly != null || /\b(assembly|clearance|step)\b/i.test(text))));
     const hasTrajectories =
       options.trajectories ??
       (runAll ||
-        (ctx.simulationResult != null && ctx.verifyCaseId != null) ||
-        /\b(verification\s+case|satisfy)\b/i.test(text));
+        (autoDetect &&
+          ((ctx.simulationResult != null && ctx.verifyCaseId != null) ||
+            /\b(verification\s+case|satisfy)\b/i.test(text))));
     const hasB2B = options.b2b ?? (runAll && ctx.arena != null);
-    const hasAlgorithms = options.algorithms ?? (runAll || /\b(algorithm|function)\b/i.test(text));
+    const hasAlgorithms = options.algorithms ?? (runAll || (autoDetect && /\b(algorithm|function)\b/i.test(text)));
 
-    const hasCoordinator = options.theoryCoordinator ?? (runAll || ctx.coordinator != null);
+    const hasCoordinator = options.theoryCoordinator ?? (runAll || (autoDetect && ctx.coordinator != null));
 
     // ── Stage 0: Semantic Theory Coordination & Synthesized Domain Stages ─────
     if (hasCoordinator) {
