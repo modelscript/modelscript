@@ -13,10 +13,11 @@
 
 import { ArenaBltResult } from "../../analysis/wasm_blt.js";
 import { Interval } from "../../analysis/wasm_interval.js";
+import { ConservativeLinearizationSolver } from "../../analysis/wasm_zonotope_reach.js";
 import { BinOp, DAEBuilder, ExprKind } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
 import type { VerificationVerdict } from "../verdict.js";
-import { IntervalDual, createDualDomain } from "./arena_dae_compiler.js";
+import { IntervalDual, compileArenaToDae, createDualDomain } from "./arena_dae_compiler.js";
 import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
 import { blockFingerprint } from "./arena_fingerprint.js";
 import { DaeEvaluatorOptions, DaeIntervalEvaluator, DaeSingularityIssue } from "./dae_interval_evaluator.js";
@@ -44,6 +45,8 @@ export interface DaeBltReachabilityOptions {
   stateVars?: Set<number>;
   /** General evaluator options */
   evaluatorOptions?: DaeEvaluatorOptions;
+  /** Keystroke time budget in ms (default 150 ms) */
+  budgetMs?: number;
 }
 
 export interface DaeReachabilitySummary {
@@ -188,26 +191,122 @@ export class DaeBltReachabilityEngine {
       allIssues.push(...blockRes.issues);
     }
 
+    let hasDifferentialStates = false;
+    for (const b of blockResults) {
+      if (b.derivativeBounds && b.derivativeBounds.size > 0) {
+        hasDifferentialStates = true;
+        break;
+      }
+    }
+
+    let continuousSolverVerdict: VerificationVerdict | null = null;
+    let usedConservativeLinearization = false;
+
+    if (hasDifferentialStates) {
+      const compileRes = compileArenaToDae(this.arena);
+      if (compileRes.ok && compileRes.compiled.dae.numDiffStates > 0) {
+        const compiled = compileRes.compiled;
+        const diffCount = compiled.dae.numDiffStates;
+        const initialIv: Interval[] = [];
+        let allInitialBounded = true;
+
+        for (let s = 0; s < diffCount; s++) {
+          const varName = compiled.stateNames[s]!;
+          const vIdx = this.arena.getVarIdxByName(varName);
+          const bound = vIdx >= 0 ? (globalBounds.get(vIdx) ?? this.evaluator.getVarBound(vIdx)) : null;
+          if (!bound || bound.isTop() || bound.isBottom()) {
+            allInitialBounded = false;
+            break;
+          }
+          initialIv.push(new Interval(bound.low, bound.high));
+        }
+
+        if (allInitialBounded) {
+          const reachRes = ConservativeLinearizationSolver.solve({
+            dae: compiled.dae,
+            initialSet: initialIv,
+            tSpan: [0, timeHorizon],
+            dt: Math.min(0.02, timeHorizon / 10),
+            budgetMs: this.options.budgetMs ?? 150,
+          });
+
+          continuousSolverVerdict = reachRes.verdict;
+          usedConservativeLinearization = true;
+
+          if (reachRes.continuousEnclosures.length > 0) {
+            for (let s = 0; s < diffCount; s++) {
+              const varName = compiled.stateNames[s]!;
+              const vIdx = this.arena.getVarIdxByName(varName);
+              let sLo = Infinity;
+              let sHi = -Infinity;
+              for (const tube of reachRes.continuousEnclosures) {
+                const iv = tube[s];
+                if (iv) {
+                  if (iv.lo < sLo) sLo = iv.lo;
+                  if (iv.hi > sHi) sHi = iv.hi;
+                }
+              }
+              if (Number.isFinite(sLo) && Number.isFinite(sHi)) {
+                const cur = stateEnclosures.get(vIdx);
+                const projectedX = cur
+                  ? new NumericalInterval(Math.min(cur.low, sLo), Math.max(cur.high, sHi))
+                  : new NumericalInterval(sLo, sHi);
+                stateEnclosures.set(vIdx, projectedX);
+                this.checkStateInvariants(vIdx, projectedX, allIssues);
+              }
+            }
+          }
+
+          if (reachRes.verdict.kind === "violated") {
+            for (const v of reachRes.violations.filter((v) => v.isConcreteWitness)) {
+              const varName = compiled.stateNames[v.stateIndex]!;
+              const vIdx = this.arena.getVarIdxByName(varName);
+              allIssues.push({
+                kind: v.operator.includes("<") ? "max_bound_violation" : "min_bound_violation",
+                severity: "definite",
+                exprId: -1,
+                varIdx: vIdx >= 0 ? vIdx : undefined,
+                varName,
+                message: v.reason,
+                interval: new NumericalInterval(v.worstCaseValue, v.worstCaseValue),
+              });
+            }
+          }
+        }
+      }
+    }
+
     const hasDefiniteErrors = allIssues.some((i) => i.severity === "definite");
     const hasPossibleErrors = allIssues.some((i) => i.severity === "possible");
 
-    const verdict: VerificationVerdict = hasDefiniteErrors
-      ? {
-          kind: "violated",
-          witness: { time: 0, state: {} },
-          detail: "Definite singularity or invariant breach detected in BLT reachability evaluation.",
-        }
-      : hasPossibleErrors || singularLoopsCount > 0
-        ? {
-            kind: "unknown",
-            reason: "inconclusive-enclosure",
-            detail: `${allIssues.length} possible issue(s); singular loops: ${singularLoopsCount}.`,
-          }
-        : {
-            kind: "proven",
-            rigor: "float-sound",
-            detail: "All causal blocks and algebraic loops regular; state derivative enclosures bounded.",
-          };
+    let verdict: VerificationVerdict;
+    if (hasDefiniteErrors || continuousSolverVerdict?.kind === "violated") {
+      verdict = {
+        kind: "violated",
+        witness: { time: 0, state: {} },
+        detail: "Definite singularity or invariant breach detected in BLT reachability evaluation.",
+      };
+    } else if (continuousSolverVerdict?.kind === "unknown") {
+      verdict = continuousSolverVerdict;
+    } else if (hasPossibleErrors || singularLoopsCount > 0) {
+      verdict = {
+        kind: "unknown",
+        reason: "inconclusive-enclosure",
+        detail: `${allIssues.length} possible issue(s); singular loops: ${singularLoopsCount}.`,
+      };
+    } else if (hasDifferentialStates && !usedConservativeLinearization) {
+      verdict = {
+        kind: "unknown",
+        reason: "not-rigorous",
+        detail: "Continuous state trajectory evaluated via Euler displacement without conservative linearization.",
+      };
+    } else {
+      verdict = {
+        kind: "proven",
+        rigor: "float-sound",
+        detail: "All causal blocks and algebraic loops regular; state derivative enclosures bounded.",
+      };
+    }
 
     return {
       isFullyCertified: !hasDefiniteErrors && singularLoopsCount === 0,

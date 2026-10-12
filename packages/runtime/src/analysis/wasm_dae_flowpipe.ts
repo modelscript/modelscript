@@ -37,14 +37,18 @@ export interface DaeSystem {
    */
   jacobianGx?: (x: number[], z: number[]) => number[][];
   /**
-   * Interval extensions of f, g and J_z. When all three are provided, `DaeFlowpipeSolver.solve`
-   * runs the validated path (interval Krawczyk with a full preconditioner and an a priori enclosure
-   * of the differential state); otherwise it falls back to the non-rigorous point-evaluation path.
+   * Jacobian of differential equations with respect to differential states: J_fx = \partial f / \partial x
+   */
+  jacobianFx?: (t: number, x: number[], z: number[]) => number[][];
+  /**
+   * Interval extensions of f, g, J_z and J_fx. When provided, validated reachability solvers
+   * can perform interval contractors and conservative linearization with rigorous remainder bounds.
    * Each must return an enclosure of the corresponding point function over the given boxes.
    */
   fInterval?: (t: Interval, x: Interval[], z: Interval[]) => Interval[];
   gInterval?: (x: Interval[], z: Interval[]) => Interval[];
   jacobianGzInterval?: (x: Interval[], z: Interval[]) => Interval[][];
+  jacobianFxInterval?: (t: Interval, x: Interval[], z: Interval[]) => Interval[][];
 }
 
 export interface DaeFlowpipeRequirement {

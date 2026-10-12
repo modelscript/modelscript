@@ -273,6 +273,24 @@ export function compileArenaToDae(arena: DAEBuilder): CompileResult {
       dualDomain,
     ).value;
 
+  const stateDualDomain = createDualDomain(nx);
+  const evalStateDual = (id: number, x: Interval[], z: Interval[]): IntervalDual =>
+    evalArenaExpr(
+      arena,
+      id,
+      {
+        variable: (idx): IntervalDual | undefined => {
+          const s = stateSlot.get(idx);
+          if (s !== undefined) return { v: x[s]!, g: Array.from({ length: nx }, (_, k) => pt(k === s ? 1 : 0)) };
+          const a = algSlot.get(idx);
+          if (a !== undefined) return { v: z[a]!, g: Array.from({ length: nx }, () => pt(0)) };
+          const f = fixed.get(idx);
+          return f ? { v: f, g: Array.from({ length: nx }, () => pt(0)) } : undefined;
+        },
+      },
+      stateDualDomain,
+    ).value;
+
   const mid = (iv: Interval): number => iv.lo + 0.5 * (iv.hi - iv.lo);
   const pts = (v: number[]): Interval[] => v.map(pt);
 
@@ -286,9 +304,11 @@ export function compileArenaToDae(arena: DAEBuilder): CompileResult {
         const d = dualDomain.sub(evalDual(l, pts(x), pts(z)), evalDual(algRhs[k]!, pts(x), pts(z)));
         return d.g.map(mid);
       }),
+    jacobianFx: (_t, x, z) => stateRhs.map((id) => evalStateDual(id, pts(x), pts(z)).g.map(mid)),
     fInterval: (_t, x, z) => stateRhs.map((id) => evalIv(id, x, z)),
     gInterval: (x, z) => algLhs.map((l, k) => ivSub(evalIv(l, x, z), evalIv(algRhs[k]!, x, z))),
     jacobianGzInterval: (x, z) => algLhs.map((l, k) => dualDomain.sub(evalDual(l, x, z), evalDual(algRhs[k]!, x, z)).g),
+    jacobianFxInterval: (_t, x, z) => stateRhs.map((id) => evalStateDual(id, x, z).g),
   };
 
   return {

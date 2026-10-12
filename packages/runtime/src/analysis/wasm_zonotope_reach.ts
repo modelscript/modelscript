@@ -15,6 +15,7 @@
  */
 
 import type { VerificationVerdict } from "../formal/verdict.js";
+import type { DaeSystem } from "./wasm_dae_flowpipe.js";
 import { Interval } from "./wasm_interval.js";
 import { Zonotope } from "./wasm_zonotope.js";
 
@@ -432,6 +433,367 @@ export class ZonotopeReachabilitySolver {
       steps,
       continuousEnclosures,
       violations,
+      summary,
+    };
+  }
+}
+
+export interface NonlinearZonotopeReachOptions {
+  dae: DaeSystem;
+  initialSet: Zonotope | Interval[];
+  nominalInitial?: number[];
+  tSpan: [number, number];
+  dt?: number;
+  maxOrder?: number;
+  expansionOrder?: number;
+  disturbanceSet?: Zonotope | Interval[];
+  algebraicSet?: Interval[];
+  requirements?: LinearSafetyRequirement[];
+  budgetMs?: number; // default 150 ms (looser budget for keystroke tier)
+}
+
+export interface NonlinearZonotopeReachResult {
+  verdict: VerificationVerdict;
+  isCertifiedSafe: boolean;
+  totalSteps: number;
+  steps: ZonotopeStepRecord[];
+  continuousEnclosures: Interval[][];
+  violations: {
+    time: number;
+    stateIndex: number;
+    operator: string;
+    worstCaseValue: number;
+    limitValue: number;
+    isConcreteWitness?: boolean;
+    reason: string;
+  }[];
+  durationMs: number;
+  summary: string;
+}
+
+export class ConservativeLinearizationSolver {
+  /**
+   * Computes guaranteed continuous reachability for nonlinear systems \dot{x} = f(t, x, z)
+   * using conservative linearization (Althoff 2008):
+   *   - Center-based Jacobian linearization A_k = \nabla_x f(t_k, c_k, z_k)
+   *   - Exact Mean Value Theorem Lagrange remainder bounding over the interval state box:
+   *       L_{k, i} = \sum_j ([J_{ij}(B_k)] - A_{k, ij}) * (B_{k, j} - c_{k, j})
+   *   - Matrix exponential and integral with Taylor truncation remainder bounds
+   *   - Continuous time-interval curvature bounds over each step [t_k, t_{k+1}]
+   *   - Order reduction to preserve efficiency
+   *   - Keystroke budget discipline (default 150 ms)
+   */
+  public static solve(options: NonlinearZonotopeReachOptions): NonlinearZonotopeReachResult {
+    const tStart = performance.now();
+    const budgetMs = options.budgetMs ?? 150;
+    const { dae, tSpan, requirements = [] } = options;
+    const n = dae.numDiffStates;
+    const dt = options.dt ?? 0.02;
+    const maxOrder = options.maxOrder ?? 5;
+    const expansionOrder = options.expansionOrder ?? 6;
+
+    let currentZ =
+      options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
+    let nomX = options.nominalInitial ? [...options.nominalInitial] : [...currentZ.center];
+    const distZ = options.disturbanceSet
+      ? options.disturbanceSet instanceof Zonotope
+        ? options.disturbanceSet
+        : Zonotope.fromIntervals(options.disturbanceSet)
+      : null;
+    const algIv = options.algebraicSet ?? Array.from({ length: dae.numAlgStates }, () => new Interval(0, 0));
+    const algNom = algIv.map((iv) => iv.mid);
+
+    if (!dae.jacobianFxInterval) {
+      return {
+        verdict: {
+          kind: "unknown",
+          reason: "unsupported",
+          detail: "dae.jacobianFxInterval is required for sound conservative linearization.",
+        },
+        isCertifiedSafe: false,
+        totalSteps: 0,
+        steps: [],
+        continuousEnclosures: [],
+        violations: [],
+        durationMs: performance.now() - tStart,
+        summary: "Unknown: missing interval Jacobian for conservative linearization.",
+      };
+    }
+
+    let t = tSpan[0];
+    const tEnd = tSpan[1];
+    const steps: ZonotopeStepRecord[] = [];
+    const continuousEnclosures: Interval[][] = [];
+    const violations: NonlinearZonotopeReachResult["violations"] = [];
+
+    let currentEnc = currentZ.toIntervals();
+    steps.push({
+      time: t,
+      zonotope: currentZ.clone(),
+      enclosure: currentEnc,
+    });
+
+    let hasWitnessViolation = false;
+    let hasLimitCrossing = false;
+    let timedOut = false;
+
+    while (t < tEnd - 1e-12) {
+      if (performance.now() - tStart > budgetMs) {
+        timedOut = true;
+        break;
+      }
+
+      const tNext = Math.min(t + dt, tEnd);
+      const h = tNext - t;
+      const c_k = currentZ.center;
+      const B_k = currentEnc;
+
+      // 1. Center evaluation f0 = f(t, c_k, z_nom)
+      const f0 = dae.f(t, c_k, algNom);
+
+      // 2. Point Jacobian A_k
+      let Ak: number[][];
+      if (dae.jacobianFx) {
+        Ak = dae.jacobianFx(t, c_k, algNom);
+      } else {
+        Ak = Array.from({ length: n }, () => new Array(n).fill(0));
+        const eps = 1e-7;
+        for (let j = 0; j < n; j++) {
+          const xPert = [...c_k];
+          xPert[j] += eps;
+          const fPert = dae.f(t, xPert, algNom);
+          for (let i = 0; i < n; i++) {
+            Ak[i]![j] = (fPert[i]! - f0[i]!) / eps;
+          }
+        }
+      }
+
+      // 3. Interval Jacobian J_k over B_k
+      const Jk = dae.jacobianFxInterval(new Interval(t, tNext), B_k, algIv);
+
+      // 4. Mean Value Theorem Lagrange remainder bound:
+      const lambda = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        let sumRem = 0;
+        for (let j = 0; j < n; j++) {
+          const r_j = Math.max(c_k[j]! - B_k[j]!.lo, B_k[j]!.hi - c_k[j]!);
+          const devLo = Math.abs(Jk[i]![j]!.lo - Ak[i]![j]!);
+          const devHi = Math.abs(Jk[i]![j]!.hi - Ak[i]![j]!);
+          const maxDev = Math.max(devLo, devHi);
+          sumRem += maxDev * r_j;
+        }
+        lambda[i] = sumRem;
+      }
+
+      // 5. Affine drift term: d_k = f0 - Ak * c_k
+      const Ak_ck = matrixVectorMultiply(Ak, c_k);
+      const dk = new Array<number>(n);
+      for (let i = 0; i < n; i++) {
+        dk[i] = f0[i]! - Ak_ck[i]!;
+      }
+
+      // 6. Effective input set U_eff = Zonotope(dk, diag(lambda)) \oplus distZ
+      const uG: number[][] = [];
+      for (let j = 0; j < n; j++) {
+        if (lambda[j] > 1e-15) {
+          const col = new Array<number>(n).fill(0);
+          col[j] = lambda[j];
+          uG.push(col);
+        }
+      }
+      let U_eff = new Zonotope(dk, uG);
+      if (distZ) {
+        U_eff = U_eff.minkowskiSum(distZ);
+      }
+
+      // 7. Matrix exponential and integral
+      const { expM, psiM, remainderNorm, psiRemainderNorm } = computeMatrixExponentialAndIntegral(
+        Ak,
+        h,
+        expansionOrder,
+      );
+
+      // 8. Homogeneous propagation + input set
+      let nextZ = currentZ.linearMap(expM).minkowskiSum(U_eff.linearMap(psiM));
+
+      // State truncation error:
+      let rK = 0;
+      for (const iv of currentEnc) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > rK) rK = m;
+      }
+      const stateTruncRadius = remainderNorm * rK;
+      if (stateTruncRadius > 1e-15) {
+        const truncBox = Array.from({ length: n }, () => new Interval(-stateTruncRadius, stateTruncRadius));
+        nextZ = nextZ.minkowskiSum(Zonotope.fromIntervals(truncBox));
+      }
+
+      // Input truncation error:
+      const uEnc = U_eff.toIntervals();
+      let maxUNorm = 0;
+      for (const iv of uEnc) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > maxUNorm) maxUNorm = m;
+      }
+      const inputTruncRadius = psiRemainderNorm * maxUNorm;
+      if (inputTruncRadius > 1e-15) {
+        const inputTruncBox = Array.from({ length: n }, () => new Interval(-inputTruncRadius, inputTruncRadius));
+        nextZ = nextZ.minkowskiSum(Zonotope.fromIntervals(inputTruncBox));
+      }
+
+      // Order reduction
+      if (nextZ.generatorCount > maxOrder * n) {
+        nextZ = nextZ.reduce(maxOrder);
+      }
+
+      const nextEnc = nextZ.toIntervals();
+
+      // 9. Continuous time-interval curvature tube over [t, tNext]:
+      const normAk = matrixInfinityNorm(Ak);
+      const Ak2 = matrixMultiply(Ak, Ak);
+      const normAk2 = matrixInfinityNorm(Ak2);
+      let rNext = 0;
+      for (const iv of nextEnc) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > rNext) rNext = m;
+      }
+      const rTube = Math.max(rK, rNext, Math.exp(normAk * h) * (rK + h * maxUNorm));
+      const curvRadius = ((h * h) / 8.0) * (normAk2 * rTube + normAk * maxUNorm);
+
+      const tube: Interval[] = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const lo = Math.min(currentEnc[i]!.lo, nextEnc[i]!.lo) - curvRadius;
+        const hi = Math.max(currentEnc[i]!.hi, nextEnc[i]!.hi) + curvRadius;
+        tube[i] = new Interval(lo, hi);
+      }
+      continuousEnclosures.push(tube);
+
+      // 10. Advance nominal trajectory using RK4
+      const k1 = dae.f(t, nomX, algNom);
+      const xMid1 = nomX.map((xi, i) => xi + 0.5 * h * k1[i]!);
+      const k2 = dae.f(t + 0.5 * h, xMid1, algNom);
+      const xMid2 = nomX.map((xi, i) => xi + 0.5 * h * k2[i]!);
+      const k3 = dae.f(t + 0.5 * h, xMid2, algNom);
+      const xEnd = nomX.map((xi, i) => xi + h * k3[i]!);
+      const k4 = dae.f(tNext, xEnd, algNom);
+      const nextNomX = nomX.map((xi, i) => xi + (h / 6.0) * (k1[i]! + 2 * k2[i]! + 2 * k3[i]! + k4[i]!));
+
+      // 11. Requirement checking
+      for (const req of requirements) {
+        const inv = tube[req.stateIndex];
+        if (!inv) continue;
+
+        let crossed = false;
+        let worstVal = inv.mid;
+        if (req.operator === "<=" || req.operator === "<") {
+          worstVal = inv.hi;
+          if (worstVal > req.limitValue) crossed = true;
+        } else if (req.operator === ">=" || req.operator === ">") {
+          worstVal = inv.lo;
+          if (worstVal < req.limitValue) crossed = true;
+        }
+
+        if (crossed) {
+          let isWitness = false;
+          const witnessVal = nextNomX[req.stateIndex]!;
+          const witnessTime = tNext;
+          if (req.operator === "<=" || req.operator === "<") {
+            if (witnessVal > req.limitValue) isWitness = true;
+          } else if (req.operator === ">=" || req.operator === ">") {
+            if (witnessVal < req.limitValue) isWitness = true;
+          }
+
+          if (isWitness) {
+            hasWitnessViolation = true;
+            violations.push({
+              time: witnessTime,
+              stateIndex: req.stateIndex,
+              operator: req.operator,
+              worstCaseValue: worstVal,
+              limitValue: req.limitValue,
+              isConcreteWitness: true,
+              reason: `Concrete nominal trajectory witness breached ${req.name ?? `x[${req.stateIndex}]`} ${req.operator} ${req.limitValue} with value ${witnessVal.toFixed(4)} at t=${witnessTime.toFixed(3)}s.`,
+            });
+            break;
+          } else {
+            hasLimitCrossing = true;
+            violations.push({
+              time: tNext,
+              stateIndex: req.stateIndex,
+              operator: req.operator,
+              worstCaseValue: worstVal,
+              limitValue: req.limitValue,
+              isConcreteWitness: false,
+              reason: `Conservative continuous enclosure [${inv.lo.toFixed(4)}, ${inv.hi.toFixed(4)}] crossed boundary ${req.limitValue} at t=${tNext.toFixed(3)}s (inconclusive).`,
+            });
+          }
+        }
+      }
+
+      currentZ = nextZ;
+      currentEnc = nextEnc;
+      nomX = nextNomX;
+      t = tNext;
+      steps.push({
+        time: t,
+        zonotope: currentZ.clone(),
+        enclosure: currentEnc,
+      });
+
+      if (hasWitnessViolation) {
+        break;
+      }
+    }
+
+    const durationMs = performance.now() - tStart;
+    let verdict: VerificationVerdict;
+    const isCertifiedSafe = !hasWitnessViolation && !hasLimitCrossing && !timedOut;
+
+    if (hasWitnessViolation) {
+      verdict = {
+        kind: "violated",
+        witness: {
+          time: violations[0]!.time,
+          state: { [violations[0]!.stateIndex]: violations[0]!.worstCaseValue },
+        },
+        detail: violations[0]!.reason,
+      };
+    } else if (timedOut) {
+      verdict = {
+        kind: "unknown",
+        reason: "budget",
+        detail: `Keystroke budget of ${budgetMs}ms exceeded at t=${t.toFixed(3)}s across ${steps.length} steps.`,
+      };
+    } else if (hasLimitCrossing) {
+      verdict = {
+        kind: "unknown",
+        reason: "inconclusive-enclosure",
+        detail: `Continuous enclosure crossed requirement boundary across ${violations.length} step(s); no concrete witness found.`,
+      };
+    } else {
+      verdict = {
+        kind: "proven",
+        rigor: "float-sound",
+        detail: `Certified safe across ${steps.length} steps up to t=${tSpan[1]}s with conservative linearization zonotopes and continuous curvature bounds.`,
+      };
+    }
+
+    const summary = isCertifiedSafe
+      ? `Certified safe (float-sound continuous enclosure) across ${steps.length} steps up to t=${tSpan[1]}s (dimension=${n}, max generators=${maxOrder * n}).`
+      : hasWitnessViolation
+        ? `Safety violation detected (proven): concrete witness found at t=${violations[0]!.time.toFixed(3)}s.`
+        : timedOut
+          ? `Analysis inconclusive (out-of-budget): reached t=${t.toFixed(3)}s in ${durationMs.toFixed(1)}ms (budget: ${budgetMs}ms).`
+          : `Safety violation detected (inconclusive / unknown): enclosure crossed requirement boundary across ${violations.length} step(s).`;
+
+    return {
+      verdict,
+      isCertifiedSafe,
+      totalSteps: steps.length,
+      steps,
+      continuousEnclosures,
+      violations,
+      durationMs,
       summary,
     };
   }

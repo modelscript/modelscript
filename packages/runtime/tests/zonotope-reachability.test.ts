@@ -2,9 +2,14 @@
 
 import { expect } from "expect";
 import { describe, it } from "node:test";
+import type { DaeSystem } from "../src/analysis/wasm_dae_flowpipe.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { Zonotope } from "../src/analysis/wasm_zonotope.js";
-import { computeMatrixExponential, ZonotopeReachabilitySolver } from "../src/analysis/wasm_zonotope_reach.js";
+import {
+  computeMatrixExponential,
+  ConservativeLinearizationSolver,
+  ZonotopeReachabilitySolver,
+} from "../src/analysis/wasm_zonotope_reach.js";
 
 describe("High-Dimensional Zonotope Linear Continuous Reachability", () => {
   it("should compute accurate matrix exponentials", () => {
@@ -265,6 +270,109 @@ describe("Zonotope reachability Monte-Carlo soundness oracle", () => {
           ];
         }
       }
+    }
+  });
+});
+
+describe("ConservativeLinearizationSolver (Althoff 2008 Nonlinear Zonotopes)", () => {
+  // Nonlinear damped pendulum:
+  // dx1/dt = x2
+  // dx2/dt = -sin(x1) - 0.2*x2
+  const pendulumDae: DaeSystem = {
+    numDiffStates: 2,
+    numAlgStates: 0,
+    f: (_t, x) => [x[1]!, -Math.sin(x[0]!) - 0.2 * x[1]!],
+    g: () => [],
+    jacobianGz: () => [],
+    jacobianFx: (_t, x) => [
+      [0, 1],
+      [-Math.cos(x[0]!), -0.2],
+    ],
+    jacobianFxInterval: (_t, x) => {
+      // Over x1 \in [lo, hi], cos(x1) is enclosed by [min(cos), max(cos)]
+      const x1 = x[0]!;
+      const cLo = Math.cos(x1.lo);
+      const cHi = Math.cos(x1.hi);
+      let minC = Math.min(cLo, cHi);
+      let maxC = Math.max(cLo, cHi);
+      if (x1.lo <= 0 && x1.hi >= 0) maxC = 1.0;
+      if (x1.lo <= Math.PI && x1.hi >= Math.PI) minC = -1.0;
+      return [
+        [new Interval(0, 0), new Interval(1, 1)],
+        [new Interval(-maxC, -minC), new Interval(-0.2, -0.2)],
+      ];
+    },
+  };
+
+  it("should prove safety on nonlinear pendulum with continuous curvature bounds", () => {
+    const init = [new Interval(0.5, 0.6), new Interval(0.0, 0.1)];
+    const res = ConservativeLinearizationSolver.solve({
+      dae: pendulumDae,
+      initialSet: init,
+      tSpan: [0, 1.0],
+      dt: 0.05,
+      requirements: [{ stateIndex: 0, operator: "<=", limitValue: 1.5 }],
+    });
+
+    expect(res.isCertifiedSafe).toBe(true);
+    expect(res.verdict.kind).toBe("proven");
+    expect(res.continuousEnclosures.length).toBeGreaterThanOrEqual(19);
+
+    // Monte-Carlo soundness oracle: 100 sample trajectories with fine RK4 stay within continuous tube
+    let seed = 54321;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    for (let trial = 0; trial < 100; trial++) {
+      let x = [0.5 + 0.1 * rnd(), 0.0 + 0.1 * rnd()];
+      const dt = 0.05;
+      const h = dt / 10;
+      for (const stepEnclosure of res.continuousEnclosures) {
+        for (let s = 0; s <= 10; s++) {
+          for (let i = 0; i < 2; i++) {
+            expect(x[i]!).toBeGreaterThanOrEqual(stepEnclosure[i]!.lo - 1e-6);
+            expect(x[i]!).toBeLessThanOrEqual(stepEnclosure[i]!.hi + 1e-6);
+          }
+          if (s === 10) break;
+          const k1 = pendulumDae.f(0, x, []);
+          const k2 = pendulumDae.f(0, [x[0]! + (h / 2) * k1[0]!, x[1]! + (h / 2) * k1[1]!], []);
+          const k3 = pendulumDae.f(0, [x[0]! + (h / 2) * k2[0]!, x[1]! + (h / 2) * k2[1]!], []);
+          const k4 = pendulumDae.f(0, [x[0]! + h * k3[0]!, x[1]! + h * k3[1]!], []);
+          x = [
+            x[0]! + (h / 6) * (k1[0]! + 2 * k2[0]! + 2 * k3[0]! + k4[0]!),
+            x[1]! + (h / 6) * (k1[1]! + 2 * k2[1]! + 2 * k3[1]! + k4[1]!),
+          ];
+        }
+      }
+    }
+  });
+
+  it("should detect concrete witness violation when nominal trajectory exceeds threshold", () => {
+    const init = [new Interval(0.5, 0.6), new Interval(1.0, 1.2)];
+    const res = ConservativeLinearizationSolver.solve({
+      dae: pendulumDae,
+      initialSet: init,
+      tSpan: [0, 1.0],
+      dt: 0.05,
+      requirements: [{ stateIndex: 0, operator: "<=", limitValue: 0.7 }],
+    });
+
+    expect(res.isCertifiedSafe).toBe(false);
+    expect(res.verdict.kind).toBe("violated");
+    expect(res.violations.some((v) => v.isConcreteWitness)).toBe(true);
+  });
+
+  it("should respect keystroke budget discipline and exit unknown(budget) when timeout exceeded", () => {
+    const init = [new Interval(0.5, 0.6), new Interval(0.0, 0.1)];
+    const res = ConservativeLinearizationSolver.solve({
+      dae: pendulumDae,
+      initialSet: init,
+      tSpan: [0, 5.0],
+      dt: 0.001, // 5000 fine steps
+      budgetMs: 0.001, // immediate budget expiration
+    });
+
+    expect(res.verdict.kind).toBe("unknown");
+    if (res.verdict.kind === "unknown") {
+      expect(res.verdict.reason).toBe("budget");
     }
   });
 });
