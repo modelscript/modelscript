@@ -246,13 +246,9 @@ export class DaeIntervalEvaluator {
       return b;
     }
 
-    // 4. Fallback to start value if finite
-    const start = this.arena.getVarStartValue(varIdx);
-    if (Number.isFinite(start)) {
-      const b = NumericalInterval.const(start);
-      this.varBounds.set(varIdx, b);
-      return b;
-    }
+    // 4. No fallback to the start value: for a continuous/discrete variable `start` is only an
+    //    initial guess, not an enclosure of its trajectory (soundness fix K3). Callers that know the
+    //    initial set must supply it explicitly via varBounds.
 
     return NumericalInterval.TOP;
   }
@@ -696,11 +692,8 @@ export class DaeIntervalEvaluator {
       }
 
       case ExprKind.Der: {
-        // der(x): look up bounds for the derivative variable
-        const innerExpr = this.arena.getExprData1(exprId);
-        const innerRes = this.evaluateExpr(innerExpr, localEnv);
-        issues.push(...innerRes.issues);
-        return innerRes;
+        // der(x) is unrelated to the bound of x; without a derivative bound it is unbounded.
+        return { interval: NumericalInterval.TOP, issues };
       }
 
       default:
