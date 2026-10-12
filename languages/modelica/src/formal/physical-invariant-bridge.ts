@@ -188,14 +188,14 @@ export class PhysicalInvariantBridge {
       `├────────────────────────────────────────────────────────────────────────┤`,
       `│ 1. Continuous Physical Plant Reachability Envelopes:                  │`,
       invariantRows || `│   (No physical invariants specified)                                   │`,
-      `│   Continuous Dynamics Certified Safe: ${continuousSafetyCertified ? "YES (100% Reachability Guaranteed)" : "NO (Violations)"}│`,
+      `│   Continuous Dynamics Proven Safe: ${continuousSafetyCertified ? "YES (validated enclosure, float-sound)" : "NO (not proven)"}│`,
       `├────────────────────────────────────────────────────────────────────────┤`,
       `│ 2. Discrete Algorithmic Static Analysis Comparison:                   │`,
       `│   Unconstrained Baseline Potential Alarms: ${String(unconstrainedResult.potentialBugs.length).padStart(3)}                         │`,
       `│   Physics-Constrained Remaining Violations: ${String(physicsConstrainedResult.potentialBugs.length + physicsConstrainedResult.definiteBugs.length).padStart(3)}                         │`,
       `│   False Alarms Eliminated via Physical Invariants: ${String(eliminatedFalseAlarms).padStart(3)}                │`,
       `├────────────────────────────────────────────────────────────────────────┤`,
-      `│ FINAL CERTIFICATION: ${isCertifiedSafe ? "100% MATHEMATICALLY CERTIFIED SAFE (Zero False Alarms)" : "VERIFICATION INCOMPLETE"}│`,
+      `│ FINAL CERTIFICATION: ${isCertifiedSafe ? "PROVEN SAFE (validated enclosures, float-sound)" : "VERIFICATION INCOMPLETE"}│`,
       `└────────────────────────────────────────────────────────────────────────┘`,
     ].join("\n");
 

@@ -29,7 +29,8 @@ describe("SysML v2 Hybrid Flowpipe Reachability Bridge Suite", () => {
       useQrPreconditioning: true,
     });
 
-    assert(result.isCertifiedSafe, `Expected certified safe: ${result.summary}`);
+    // The mode switch is not yet enclosure-validated, so the run must not be claimed proven.
+    assert.strictEqual(result.isCertifiedSafe, false, `Unexpected proof claim: ${result.summary}`);
     assert.strictEqual(result.modelName, "ClimateControlSystem");
     assert(result.totalSteps > 10, `Expected > 10 steps, got ${result.totalSteps}`);
     assert(result.jumpCount >= 1, `Expected at least 1 discrete mode switch jump, got ${result.jumpCount}`);
@@ -46,7 +47,7 @@ describe("SysML v2 Hybrid Flowpipe Reachability Bridge Suite", () => {
     assert(jump.preJumpNominal[0]! >= 21.0 && jump.preJumpNominal[0]! <= 23.0);
     assert(jump.preJumpEnclosure[0]!.hi >= 21.8);
 
-    assert(result.summary.includes("Hybrid reachability certified safe"));
+    assert(result.summary.includes("not proven"));
   });
 
   it("should handle invalid timeSpan formats gracefully with defaults", async () => {
@@ -55,7 +56,7 @@ describe("SysML v2 Hybrid Flowpipe Reachability Bridge Suite", () => {
       timeSpan: "invalid_json_string",
     });
 
-    assert(result.isCertifiedSafe);
+    assert.strictEqual(result.isCertifiedSafe, false);
     assert(result.totalSteps > 0);
   });
 });

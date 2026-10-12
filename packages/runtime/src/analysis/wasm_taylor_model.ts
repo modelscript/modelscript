@@ -813,7 +813,7 @@ export class TaylorModelFlowpipeSolver {
    * theorem guarantees that the true solution lies in `p + R` on the whole step. Returns the
    * polynomial with the (tightened) validated remainder, or `null` if no R could be validated.
    */
-  private static validatedPicardStep(
+  static validatedPicardStep(
     dynamics: (t: TaylorModel, y: TaylorModel[]) => TaylorModel[],
     timeTM: TaylorModel,
     initialTMs: TaylorModel[],

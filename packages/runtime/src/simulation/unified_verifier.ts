@@ -701,13 +701,22 @@ export class UnifiedVerifier {
 
         const passed = result.isCertifiedSafe;
         const violations: VerificationViolation[] = [];
+        const unknownReason =
+          result.verdict.kind === "unknown"
+            ? result.verdict.reason
+            : result.verdict.kind === "violated"
+              ? "violated"
+              : "";
 
         if (!passed) {
           violations.push({
             id: "MSC-VERIFY-FLOWPIPE-UNSAFE",
             stage: "flowpipes",
             severity: "error",
-            message: `Continuous/hybrid reachability tube escaped safety invariant corridor.`,
+            message:
+              result.violations.length > 0
+                ? `Reachability enclosure crosses a requirement limit (not proven; no concrete witness).`
+                : `Reachability not proven (${unknownReason}): ${result.verdict.detail ?? "inconclusive"}`,
             location: { uri: ctx.uri },
           });
         }
@@ -719,8 +728,8 @@ export class UnifiedVerifier {
           certified: passed,
           durationMs: Date.now() - t0,
           summary: passed
-            ? `Safety certified: continuous Taylor reachability tubes remain strictly within safe bounds across all modes.`
-            : "Reachability flowpipe violated invariant safety corridor.",
+            ? `Proven: validated Taylor reachability tubes stay within the requirements (float-sound).`
+            : `Reachability not proven (${unknownReason || "inconclusive"}).`,
           violations,
           details: result,
         };

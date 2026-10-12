@@ -138,7 +138,7 @@ describe("Phase 4: Physical Reachability Invariant Bridge (Continuous Plant -> D
     // 3. Exactly 2 false alarms were eliminated
     assert.strictEqual(cert.eliminatedFalseAlarms, 2);
     assert.strictEqual(cert.isCertifiedSafe, true);
-    assert.ok(cert.executiveSummary.includes("100% MATHEMATICALLY CERTIFIED SAFE (Zero False Alarms)"));
+    assert.ok(cert.executiveSummary.includes("PROVEN SAFE (validated enclosures, float-sound)"));
   });
 
   it("should execute end-to-end continuous hybrid reachability and verify discrete controller", () => {

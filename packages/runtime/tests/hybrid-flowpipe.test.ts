@@ -119,7 +119,10 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
       ],
     });
 
-    assert(result.isCertifiedSafe, `Bouncing ball safety verification failed: ${result.summary}`);
+    // No enclosure breach; the jump itself is not yet enclosure-validated, so no "proven" claim.
+    assert.equal(result.violations.length, 0, `Bouncing ball enclosure breach: ${result.summary}`);
+    assert.equal(result.isCertifiedSafe, false);
+    assert.equal(result.verdict.kind, "unknown");
     assert(result.jumps.length >= 1, "Expected at least 1 discrete ground collision jump");
 
     const jump = result.jumps[0]!;
@@ -223,7 +226,9 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
       ],
     });
 
-    assert(result.isCertifiedSafe, `Thermostat verification failed: ${result.summary}`);
+    assert.equal(result.violations.length, 0, `Thermostat enclosure breach: ${result.summary}`);
+    assert.equal(result.isCertifiedSafe, false);
+    assert.equal(result.verdict.kind, "unknown");
     assert(result.segments.length >= 2, "Expected at least 2 mode segments (Heating -> Cooling)");
     assert(result.jumps.length >= 1, "Expected at least 1 thermostat switch jump");
 
@@ -346,7 +351,8 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
     });
 
     assert(result.totalSteps > 10, "Expected multiple continuous steps");
-    assert(result.isCertifiedSafe, "All states must remain strictly within safety requirements");
+    assert.equal(result.violations.length, 0, "All states must remain strictly within safety requirements");
+    assert.equal(result.verdict.kind, "unknown"); // matrix-exponential step not yet enclosure-validated
     assert(result.violations.length === 0, "No violations expected");
     // Should cross guard and jump into Decay mode
     assert(result.jumps.length >= 1, "Expected transition from Oscillator to Decay");

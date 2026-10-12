@@ -11,10 +11,11 @@
  *   - Mode invariant monitoring and comprehensive safety requirement verification.
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
 import { computeRotationMatrix, encloseRotatedBox } from "../solvers/wasm_qr.js";
 import { ConstrainedZonotope } from "./wasm_constrained_zonotope.js";
 import type { FlowpipeReachabilityResult, FlowpipeRequirement, FlowpipeStepResult } from "./wasm_taylor_model.js";
-import { Interval, TaylorModel } from "./wasm_taylor_model.js";
+import { Interval, TaylorModel, TaylorModelFlowpipeSolver } from "./wasm_taylor_model.js";
 import { Zonotope } from "./wasm_zonotope.js";
 import { computeMatrixExponential } from "./wasm_zonotope_reach.js";
 
@@ -76,7 +77,13 @@ export interface HybridFlowpipeModeSegment {
 }
 
 export interface HybridFlowpipeResult {
+  /** True only when `verdict.kind === "proven"`. */
   isCertifiedSafe: boolean;
+  /**
+   * Sound verdict. Runs that take a discrete jump or the linear constrained-zonotope path are
+   * `unknown(not-rigorous)`: guard-crossing and matrix-exponential steps are not yet enclosure-validated.
+   */
+  verdict: VerificationVerdict;
   segments: HybridFlowpipeModeSegment[];
   jumps: HybridJumpEvent[];
   violations: FlowpipeReachabilityResult["violations"];
@@ -280,6 +287,8 @@ export class HybridFlowpipeSolver {
     }
 
     const maxStepsGuard = 10000;
+    let nonconvergent = false;
+    let usedLinearCZ = false;
 
     while (currentTime < tEnd - 1e-12 && totalSteps < maxStepsGuard) {
       const mode = modeMap.get(currentModeId);
@@ -338,17 +347,22 @@ export class HybridFlowpipeSolver {
         stateTMs.push(TaylorModel.variable(j + 1, stepDomain, currentOrder, center));
       }
 
-      // Picard fixed-point contractor
-      let picardTMs = stateTMs.map((tm) => tm.clone());
-      for (let iter = 0; iter < maxPicardIterations; iter++) {
-        const derivTMs = mode.dynamics(timeTM, picardTMs);
-        const nextTMs: TaylorModel[] = [];
-        for (let j = 0; j < nStates; j++) {
-          const integratedDeriv = derivTMs[j]!.integrateTime(0);
-          nextTMs.push(stateTMs[j]!.add(integratedDeriv));
+      // Validated Picard step (Schauder remainder check); halve the step when it cannot be validated.
+      const validated = TaylorModelFlowpipeSolver.validatedPicardStep(
+        mode.dynamics,
+        timeTM,
+        stateTMs,
+        Math.max(maxPicardIterations, currentOrder + 1),
+      );
+      if (!validated) {
+        if (currentDt > minDt * 1.01) {
+          currentDt = Math.max(minDt, currentDt * 0.5);
+          continue;
         }
-        picardTMs = nextTMs;
+        nonconvergent = true;
+        break;
       }
+      const picardTMs = validated;
 
       // Adaptive remainder check
       const maxRemWidth = Math.max(...picardTMs.map((tm) => tm.remainder.width));
@@ -599,6 +613,7 @@ export class HybridFlowpipeSolver {
 
       // Enclosure at end of step
       if (mode.linearDynamics && useConstrainedZonotopes) {
+        usedLinearCZ = true;
         if (!currentCZ) {
           currentCZ = ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(currentEnclosure));
         }
@@ -645,13 +660,36 @@ export class HybridFlowpipeSolver {
       });
     }
 
-    const isCertifiedSafe = violations.length === 0;
+    const coveredHorizon = currentTime >= tEnd - 1e-12;
+    let verdict: VerificationVerdict;
+    if (nonconvergent) {
+      verdict = { kind: "unknown", reason: "nonconvergent", detail: `Picard validation failed at t=${currentTime}.` };
+    } else if (!coveredHorizon) {
+      verdict = { kind: "unknown", reason: "budget", detail: `Step budget exhausted at t=${currentTime}.` };
+    } else if (violations.length > 0) {
+      verdict = {
+        kind: "unknown",
+        reason: "inconclusive-enclosure",
+        detail: `${violations.length} enclosure breach(es); no concrete witness.`,
+      };
+    } else if (jumps.length > 0 || usedLinearCZ) {
+      verdict = {
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail: "Guard crossings / matrix-exponential steps are not yet enclosure-validated.",
+      };
+    } else {
+      verdict = { kind: "proven", rigor: "float-sound", detail: "No mode switch; validated continuous flowpipe." };
+    }
+    const isCertifiedSafe = verdict.kind === "proven";
     const summary = isCertifiedSafe
-      ? `Hybrid reachability certified safe across ${segments.length} mode segment(s) and ${jumps.length} discrete jump(s) over ${totalSteps} steps.`
-      : `Hybrid safety verification failed: detected ${violations.length} requirement violation(s).`;
+      ? `Hybrid reachability proven across ${segments.length} mode segment(s) over ${totalSteps} steps (no discrete jumps).`
+      : `Hybrid verification not proven (${verdict.kind === "unknown" ? verdict.reason : verdict.kind}); ${violations.length} enclosure breach(es), ${jumps.length} jump(s) over ${totalSteps} steps.`;
 
     return {
       isCertifiedSafe,
+      verdict,
       segments,
       jumps,
       violations,
