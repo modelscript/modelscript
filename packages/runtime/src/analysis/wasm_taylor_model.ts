@@ -9,49 +9,36 @@
  * Enables guaranteed reachability tubes and safety verification over continuous physical dynamics.
  */
 
-import { computeRotationMatrix, encloseRotatedBox } from "../solvers/wasm_qr.js";
+import type { VerificationVerdict } from "../formal/verdict.js";
+import { ivAdd, ivMul, ivPowInt, ivSub } from "./outward_rounding.js";
 import { Interval } from "./wasm_interval.js";
 export { Interval } from "./wasm_interval.js";
 
 // ── Basic Interval Arithmetic Helpers ──
 
+// These helpers use the outward-rounded kernel so interval remainders stay sound under IEEE rounding.
+// (Polynomial coefficient arithmetic in `TaylorModel` is still plain IEEE: rigor is "float-sound".)
+
 export function addInterval(a: Interval, b: Interval): Interval {
-  return new Interval(a.lo + b.lo, a.hi + b.hi);
+  return ivAdd(a, b);
 }
 
 export function subInterval(a: Interval, b: Interval): Interval {
-  return new Interval(a.lo - b.hi, a.hi - b.lo);
+  return ivSub(a, b);
 }
 
 export function mulInterval(a: Interval, b: Interval): Interval {
-  const p1 = a.lo * b.lo;
-  const p2 = a.lo * b.hi;
-  const p3 = a.hi * b.lo;
-  const p4 = a.hi * b.hi;
-  return new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
+  return ivMul(a, b);
 }
 
 export function scaleInterval(a: Interval, s: number): Interval {
-  if (s >= 0) {
-    return new Interval(a.lo * s, a.hi * s);
-  }
-  return new Interval(a.hi * s, a.lo * s);
+  return ivMul(a, new Interval(s, s));
 }
 
 export function powInterval(a: Interval, n: number): Interval {
   if (n === 0) return new Interval(1, 1);
   if (n === 1) return new Interval(a.lo, a.hi);
-  if (n % 2 === 1) {
-    return new Interval(Math.pow(a.lo, n), Math.pow(a.hi, n));
-  }
-  // Even power
-  if (a.lo >= 0) {
-    return new Interval(Math.pow(a.lo, n), Math.pow(a.hi, n));
-  }
-  if (a.hi <= 0) {
-    return new Interval(Math.pow(a.hi, n), Math.pow(a.lo, n));
-  }
-  return new Interval(0, Math.max(Math.pow(a.lo, n), Math.pow(a.hi, n)));
+  return ivPowInt(a, n);
 }
 
 // ── Multivariate Taylor Model ──
@@ -477,6 +464,37 @@ export class TaylorModel {
   }
 
   /**
+   * Fixes variable `varIndex` to `value`, merging monomials that differ only in that variable.
+   * This avoids the interval dependency problem of evaluating each monomial separately (e.g. the
+   * end-of-step enclosure of a flowpipe, where time is a single point). A relative rounding
+   * allowance for the coefficient arithmetic is added to the remainder.
+   */
+  restrictVariable(varIndex: number, value: number): TaylorModel {
+    const dom = this.domain.map((iv, i) => (i === varIndex ? new Interval(value, value) : iv));
+    const res = new TaylorModel(this.numVars, this.order, dom, this.remainder);
+    const acc = new Map<string, number>();
+    let absSum = 0;
+    let count = 0;
+    let maxDeg = 0;
+    for (const [k, c] of this.terms.entries()) {
+      const exps = TaylorModel.parseKey(k);
+      const e = exps[varIndex] ?? 0;
+      const reduced = [...exps];
+      reduced[varIndex] = 0;
+      const key = TaylorModel.serializeKey(reduced);
+      const term = c * Math.pow(value, e);
+      acc.set(key, (acc.get(key) ?? 0) + term);
+      absSum += Math.abs(term);
+      count++;
+      maxDeg = Math.max(maxDeg, e);
+    }
+    const allowance = (count + maxDeg + 2) * 2 ** -52 * absSum;
+    res.remainder = addInterval(res.remainder, new Interval(-allowance, allowance));
+    for (const [key, v] of acc.entries()) res.set(TaylorModel.parseKey(key), v);
+    return res;
+  }
+
+  /**
    * Computes the rigorous bounding interval [x_lo, x_hi] of this Taylor Model
    * over the entire domain box: P(domain) + [r].
    */
@@ -522,7 +540,12 @@ export interface FlowpipeStepResult {
 }
 
 export interface FlowpipeReachabilityResult {
+  /** True only when `verdict.kind === "proven"`. */
   isCertifiedSafe: boolean;
+  /** Sound verdict: proven (validated enclosure satisfies all requirements), else unknown. */
+  verdict: VerificationVerdict;
+  /** Time reached by validated steps (equals tSpan[1] when the whole horizon was covered). */
+  reachedTime: number;
   steps: FlowpipeStepResult[];
   violations: {
     stepIndex: number;
@@ -564,7 +587,10 @@ export interface FlowpipeProblemOptions {
   minDt?: number;
   /** Maximum step size for adaptive stepping (default: 1.0) */
   maxDt?: number;
-  /** Whether to apply Householder QR preconditioning to mitigate wrapping effects */
+  /**
+   * @deprecated Ignored. The previous "QR tightening" only widened the enclosure (union of the
+   * direct and rotated boxes). Proper preconditioned Taylor models are tracked in the hardening plan.
+   */
   useQrPreconditioning?: boolean;
 }
 
@@ -589,11 +615,9 @@ export class TaylorModelFlowpipeSolver {
       tol = 1e-4,
       minDt = 1e-6,
       maxDt = 1.0,
-      useQrPreconditioning = false,
     } = options;
 
     const nStates = initialEnclosure.length;
-    const numVars = 1 + nStates; // v0 = delta_t, v1..vn = delta_x1..delta_xn
     const [t0, tEnd] = tSpan;
 
     const steps: FlowpipeStepResult[] = [];
@@ -633,45 +657,14 @@ export class TaylorModelFlowpipeSolver {
     let step = 0;
     const maxStepsGuard = 10000;
 
+    let abortReason: "nonconvergent" | null = null;
+
     while (currentTime < tEnd - 1e-12 && step < maxStepsGuard) {
       if (currentTime + currentDt > tEnd) {
         currentDt = tEnd - currentTime;
       }
 
-      // 1. Optional QR preconditioning: compute sensitivity matrix Phi = I + currentDt * J
-      let Q_matrix: Float64Array[] | null = null;
-      if (useQrPreconditioning && nStates > 1) {
-        const eps = 1e-5;
-        const J: Float64Array[] = [];
-        const tNomTM = TaylorModel.constant(currentTime, 1, [new Interval(0, 1)], 1);
-        const yNomTMs = currentNominal.map((v) => TaylorModel.constant(v, 1, [new Interval(0, 1)], 1));
-        const fNom = dynamics(tNomTM, yNomTMs).map((tm) => tm.get([0]));
-
-        for (let i = 0; i < nStates; i++) {
-          const row = new Float64Array(nStates);
-          for (let j = 0; j < nStates; j++) {
-            const yPert = currentNominal.map((v, idx) =>
-              TaylorModel.constant(idx === j ? v + eps : v, 1, [new Interval(0, 1)], 1),
-            );
-            const fPert = dynamics(tNomTM, yPert)[i]!.get([0]);
-            row[j] = (fPert - fNom[i]!) / eps;
-          }
-          J.push(row);
-        }
-
-        const Phi: Float64Array[] = [];
-        for (let i = 0; i < nStates; i++) {
-          const row = new Float64Array(nStates);
-          for (let j = 0; j < nStates; j++) {
-            row[j] = (i === j ? 1.0 : 0.0) + currentDt * J[i]![j]!;
-          }
-          Phi.push(row);
-        }
-
-        Q_matrix = computeRotationMatrix(Phi, nStates);
-      }
-
-      // 2. Domain for this step: v0 \in [0, currentDt], v_j \in [-halfWidth, halfWidth]
+      // 1. Domain for this step: v0 \in [0, currentDt], v_j \in [-halfWidth, halfWidth]
       const stepDomain: Interval[] = [new Interval(0, currentDt)];
       for (let j = 0; j < nStates; j++) {
         const halfWidth = 0.5 * currentEnclosure[j]!.width;
@@ -688,19 +681,22 @@ export class TaylorModelFlowpipeSolver {
         stateTMs.push(TaylorModel.variable(j + 1, stepDomain, order, center));
       }
 
-      // Picard fixed-point iteration:
-      // x^{(k+1)}(t) = x(currentTime) + \int_0^t f(\tau, x^{(k)}(\tau)) d\tau
-      let picardTMs = stateTMs.map((tm) => tm.clone());
+      // 2. Validated Picard step (Schauder fixed-point check); null when it cannot be validated.
+      const picardTMs = TaylorModelFlowpipeSolver.validatedPicardStep(
+        dynamics,
+        timeTM,
+        stateTMs,
+        Math.max(maxPicardIterations, order + 1),
+      );
 
-      for (let iter = 0; iter < maxPicardIterations; iter++) {
-        const derivTMs = dynamics(timeTM, picardTMs);
-        const nextTMs: TaylorModel[] = [];
-
-        for (let j = 0; j < nStates; j++) {
-          const integratedDeriv = derivTMs[j]!.integrateTime(0);
-          nextTMs.push(stateTMs[j]!.add(integratedDeriv));
+      if (!picardTMs) {
+        // Remainder could not be validated at this step size: halve and retry.
+        if (currentDt > minDt * 1.01) {
+          currentDt = Math.max(minDt, currentDt * 0.5);
+          continue;
         }
-        picardTMs = nextTMs;
+        abortReason = "nonconvergent";
+        break;
       }
 
       // 3. Adaptive time stepping check: test remainder width against tolerance
@@ -718,7 +714,7 @@ export class TaylorModelFlowpipeSolver {
       currentTime += currentDt;
 
       // Compute bounding tubes across [0, currentDt]
-      let nextTubes: Interval[] = [];
+      const nextTubes: Interval[] = [];
       for (let j = 0; j < nStates; j++) {
         const range = picardTMs[j]!.evaluateRange();
         nextTubes.push(range);
@@ -729,19 +725,6 @@ export class TaylorModelFlowpipeSolver {
       const nextNominal: number[] = [];
       for (let j = 0; j < nStates; j++) {
         nextNominal.push(picardTMs[j]!.evaluateAt(nominalPoint));
-      }
-
-      // If QR preconditioning enabled, wrap bounding box through Q
-      if (Q_matrix) {
-        const halfWidths = nextTubes.map((t) => 0.5 * t.width);
-        const rotatedTubes = encloseRotatedBox(nextNominal, Q_matrix, halfWidths);
-        const tightenedTubes: Interval[] = [];
-        for (let j = 0; j < nStates; j++) {
-          const direct = nextTubes[j]!;
-          const rot = rotatedTubes[j]!;
-          tightenedTubes.push(new Interval(Math.min(direct.lo, rot.lo), Math.max(direct.hi, rot.hi)));
-        }
-        nextTubes = tightenedTubes;
       }
 
       steps.push({
@@ -768,15 +751,11 @@ export class TaylorModelFlowpipeSolver {
         }
       }
 
-      // State enclosure for next step evaluated at end of interval delta_t = currentDt
-      const endDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
+      // State enclosure for next step: evaluate at the single time point delta_t = currentDt,
+      // merging monomials first so alternating-sign terms do not suffer the dependency problem.
       currentEnclosure = [];
       for (let j = 0; j < nStates; j++) {
-        const endTM = new TaylorModel(numVars, order, endDomain, picardTMs[j]!.remainder);
-        for (const [k, v] of picardTMs[j]!.terms.entries()) {
-          endTM.terms.set(k, v);
-        }
-        currentEnclosure.push(endTM.evaluateRange());
+        currentEnclosure.push(picardTMs[j]!.restrictVariable(0, currentDt).evaluateRange());
       }
       currentNominal = nextNominal;
 
@@ -787,17 +766,108 @@ export class TaylorModelFlowpipeSolver {
       }
     }
 
-    const isCertifiedSafe = violations.length === 0;
-    const summary = isCertifiedSafe
-      ? `Flowpipe reachability certified safe across all ${steps.length} time steps with ${requirements.length} requirements verified.`
-      : `Safety verification failed: detected ${violations.length} flowpipe boundary violations.`;
+    const coveredHorizon = currentTime >= tEnd - 1e-12;
+    let verdict: VerificationVerdict;
+    let summary: string;
+    if (abortReason) {
+      verdict = {
+        kind: "unknown",
+        reason: "nonconvergent",
+        detail: `Picard remainder could not be validated below minDt at t=${currentTime}.`,
+      };
+      summary = `Flowpipe stopped at t=${currentTime}: remainder validation failed (verdict unknown).`;
+    } else if (!coveredHorizon) {
+      verdict = { kind: "unknown", reason: "budget", detail: `Step budget exhausted at t=${currentTime}.` };
+      summary = `Flowpipe stopped at t=${currentTime}: step budget exhausted (verdict unknown).`;
+    } else if (violations.length > 0) {
+      // An over-approximation crossing a limit is not a counterexample.
+      verdict = {
+        kind: "unknown",
+        reason: "inconclusive-enclosure",
+        rigor: "float-sound",
+        detail: `${violations.length} enclosure breach(es); no concrete witness.`,
+      };
+      summary = `Enclosure crosses a requirement limit in ${violations.length} step(s); not proven (no witness found).`;
+    } else {
+      verdict = {
+        kind: "proven",
+        rigor: "float-sound",
+        detail: "Validated (Schauder-checked) Taylor-model flowpipe satisfies all requirements.",
+      };
+      summary = `Flowpipe reachability proven (validated enclosure) across ${steps.length} time steps with ${requirements.length} requirements.`;
+    }
 
     return {
-      isCertifiedSafe,
+      isCertifiedSafe: verdict.kind === "proven",
+      verdict,
+      reachedTime: currentTime,
       steps,
       violations,
       summary,
     };
+  }
+
+  /**
+   * Picard step with remainder validation (Berz–Makino / Flow*): computes the order-k Picard
+   * polynomial `p`, then finds a remainder interval R with `P(p + R) - p ⊆ R`, which by Schauder's
+   * theorem guarantees that the true solution lies in `p + R` on the whole step. Returns the
+   * polynomial with the (tightened) validated remainder, or `null` if no R could be validated.
+   */
+  private static validatedPicardStep(
+    dynamics: (t: TaylorModel, y: TaylorModel[]) => TaylorModel[],
+    timeTM: TaylorModel,
+    initialTMs: TaylorModel[],
+    iterations: number,
+  ): TaylorModel[] | null {
+    const n = initialTMs.length;
+    const picard = (candidate: TaylorModel[]): TaylorModel[] => {
+      const d = dynamics(timeTM, candidate);
+      return initialTMs.map((s, j) => s.add(d[j]!.integrateTime(0)));
+    };
+    const finite = (iv: Interval): boolean => Number.isFinite(iv.lo) && Number.isFinite(iv.hi);
+    const inflate = (iv: Interval): Interval => {
+      const pad = Math.max(0.1 * iv.width, 1e-14 * (Math.abs(iv.lo) + Math.abs(iv.hi)), 1e-300);
+      return new Interval(iv.lo - pad, iv.hi + pad);
+    };
+
+    // Polynomial part: iterate with the remainder dropped; it is re-derived by the validation below.
+    let poly = initialTMs.map((tm) => tm.clone());
+    for (let it = 0; it < iterations; it++) {
+      poly = picard(poly);
+      for (const tm of poly) tm.remainder = new Interval(0, 0);
+    }
+
+    const residual = (candidate: TaylorModel[]): Interval[] => {
+      const next = picard(candidate);
+      return next.map((nx, j) => nx.sub(poly[j]!).evaluateRange());
+    };
+
+    const probe = residual(poly);
+    if (!probe.every(finite)) return null;
+    let R = probe.map((iv) => inflate(new Interval(Math.min(iv.lo, 0), Math.max(iv.hi, 0))));
+
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const candidate = poly.map((p, j) => {
+        const c = p.clone();
+        c.remainder = new Interval(R[j]!.lo, R[j]!.hi);
+        return c;
+      });
+      const Rn = residual(candidate);
+      if (!Rn.every(finite)) return null;
+      let contained = true;
+      for (let j = 0; j < n; j++) {
+        if (!(Rn[j]!.lo >= R[j]!.lo && Rn[j]!.hi <= R[j]!.hi)) contained = false;
+      }
+      if (contained) {
+        return poly.map((p, j) => {
+          const c = p.clone();
+          c.remainder = new Interval(Rn[j]!.lo, Rn[j]!.hi);
+          return c;
+        });
+      }
+      R = R.map((r, j) => inflate(new Interval(Math.min(r.lo, Rn[j]!.lo), Math.max(r.hi, Rn[j]!.hi))));
+    }
+    return null;
   }
 
   private static checkRequirement(tube: Interval, req: FlowpipeRequirement): { holds: boolean; worstValue: number } {
