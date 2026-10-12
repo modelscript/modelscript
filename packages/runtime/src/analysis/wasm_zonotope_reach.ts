@@ -30,6 +30,7 @@ export interface ZonotopeReachabilityOptions {
   B?: number[][];
   U?: Zonotope;
   initialSet: Zonotope | Interval[];
+  nominalInitial?: number[];
   tSpan: [number, number];
   dt?: number;
   maxOrder?: number;
@@ -44,15 +45,18 @@ export interface ZonotopeStepRecord {
 }
 
 export interface ZonotopeReachabilityResult {
+  verdict: VerificationVerdict;
   isCertifiedSafe: boolean;
   totalSteps: number;
   steps: ZonotopeStepRecord[];
+  continuousEnclosures?: Interval[][];
   violations: {
     time: number;
     stateIndex: number;
     operator: string;
     worstCaseValue: number;
     limitValue: number;
+    isConcreteWitness?: boolean;
     reason: string;
   }[];
   summary: string;
@@ -123,6 +127,57 @@ export function matrixInfinityNorm(A: number[][]): number {
   return maxRowSum;
 }
 
+/** Matrix-vector multiplication y = A * x */
+export function matrixVectorMultiply(A: number[][], x: number[]): number[] {
+  const rows = A.length;
+  const cols = A[0] ? A[0].length : 0;
+  const y = new Array<number>(rows).fill(0);
+  for (let i = 0; i < rows; i++) {
+    const row = A[i]!;
+    let sum = 0;
+    for (let j = 0; j < cols; j++) {
+      sum += row[j]! * x[j]!;
+    }
+    y[i] = sum;
+  }
+  return y;
+}
+
+/**
+ * Computes both matrix exponential exp(A * dt) and integral Psi = \int_0^dt exp(A * s) ds
+ * using Taylor series with rigorous truncation remainder bounds.
+ */
+export function computeMatrixExponentialAndIntegral(
+  A: number[][],
+  dt: number,
+  expansionOrder = 6,
+): { expM: number[][]; psiM: number[][]; remainderNorm: number; psiRemainderNorm: number } {
+  const n = A.length;
+  const M = matrixScale(dt, A);
+  let expM = matrixIdentity(n);
+  let psiM = matrixScale(dt, matrixIdentity(n));
+  let term = matrixIdentity(n);
+
+  for (let k = 1; k <= expansionOrder; k++) {
+    term = matrixMultiply(term, M);
+    term = matrixScale(1 / k, term);
+    expM = matrixAdd(expM, term);
+    psiM = matrixAdd(psiM, matrixScale(dt / (k + 1), term));
+  }
+
+  const normM = matrixInfinityNorm(M);
+  let factExp = 1;
+  for (let k = 1; k <= expansionOrder + 1; k++) factExp *= k;
+  const denomExp = factExp * Math.max(0.1, 1 - normM / (expansionOrder + 2));
+  const remainderNorm = Math.pow(normM, expansionOrder + 1) / denomExp;
+
+  let factPsi = factExp * (expansionOrder + 2);
+  const denomPsi = factPsi * Math.max(0.1, 1 - normM / (expansionOrder + 3));
+  const psiRemainderNorm = (Math.abs(dt) * Math.pow(normM, expansionOrder + 1)) / denomPsi;
+
+  return { expM, psiM, remainderNorm, psiRemainderNorm };
+}
+
 /**
  * Computes matrix exponential exp(A * dt) using Taylor series with truncation remainder bound.
  */
@@ -131,30 +186,15 @@ export function computeMatrixExponential(
   dt: number,
   expansionOrder = 6,
 ): { expM: number[][]; remainderNorm: number } {
-  const n = A.length;
-  const M = matrixScale(dt, A);
-  let expM = matrixIdentity(n);
-  let term = matrixIdentity(n);
-
-  for (let k = 1; k <= expansionOrder; k++) {
-    term = matrixMultiply(term, M);
-    term = matrixScale(1 / k, term);
-    expM = matrixAdd(expM, term);
-  }
-
-  // Remainder bound: ||E|| <= ||M||^(K+1) / ((K+1)! * (1 - ||M||/(K+2)))
-  const normM = matrixInfinityNorm(M);
-  let fact = 1;
-  for (let k = 1; k <= expansionOrder + 1; k++) fact *= k;
-  const denom = fact * Math.max(0.1, 1 - normM / (expansionOrder + 2));
-  const remainderNorm = Math.pow(normM, expansionOrder + 1) / denom;
-
-  return { expM, remainderNorm };
+  const res = computeMatrixExponentialAndIntegral(A, dt, expansionOrder);
+  return { expM: res.expM, remainderNorm: res.remainderNorm };
 }
 
 export class ZonotopeReachabilitySolver {
   /**
-   * Solves continuous linear reachability for \dot{x} = A x + B u over [t0, tEnd].
+   * Solves continuous linear reachability for \dot{x} = A x + B u over [t0, tEnd]
+   * with rigorous norm-scaled truncation bounds, sound continuous input integration,
+   * and time-interval curvature enclosures over each step.
    */
   public static solve(options: ZonotopeReachabilityOptions): ZonotopeReachabilityResult {
     const { A, tSpan, requirements = [] } = options;
@@ -167,46 +207,83 @@ export class ZonotopeReachabilitySolver {
     let currentZ =
       options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
 
-    const { expM, remainderNorm } = computeMatrixExponential(A, dt, expansionOrder);
+    const { expM, psiM, remainderNorm, psiRemainderNorm } = computeMatrixExponentialAndIntegral(A, dt, expansionOrder);
 
-    // Truncation error as a zonotope box
-    const truncBox = Array.from({ length: n }, () => new Interval(-remainderNorm, remainderNorm));
-    const truncZ = Zonotope.fromIntervals(truncBox);
-
-    // Input contribution zonotope (B * U * dt)
+    // Compute input set contribution: \Psi(A, dt) * (B * U) plus truncation error
     let inputZ: Zonotope | null = null;
+    let normAB = 0;
+    let maxUNorm = 0;
     if (options.B && options.U) {
       const BU = options.U.linearMap(options.B);
-      inputZ = BU.scale(dt);
+      const psiBU = BU.linearMap(psiM);
+      const buIntervals = BU.toIntervals();
+      let maxBUNorm = 0;
+      for (const iv of buIntervals) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > maxBUNorm) maxBUNorm = m;
+      }
+      const uIntervals = options.U.toIntervals();
+      for (const iv of uIntervals) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > maxUNorm) maxUNorm = m;
+      }
+      const inputTruncRadius = psiRemainderNorm * maxBUNorm;
+      if (inputTruncRadius > 1e-15) {
+        const inputTruncBox = Array.from({ length: n }, () => new Interval(-inputTruncRadius, inputTruncRadius));
+        inputZ = psiBU.minkowskiSum(Zonotope.fromIntervals(inputTruncBox));
+      } else {
+        inputZ = psiBU;
+      }
+      const AB = matrixMultiply(A, options.B);
+      normAB = matrixInfinityNorm(AB);
     }
 
+    const normA = matrixInfinityNorm(A);
+    const normB = options.B ? matrixInfinityNorm(options.B) : 0;
+    const A2 = matrixMultiply(A, A);
+    const normA2 = matrixInfinityNorm(A2);
+
+    let nomX = options.nominalInitial ? [...options.nominalInitial] : [...currentZ.center];
+    const nomU = options.U ? [...options.U.center] : null;
+
     const steps: ZonotopeStepRecord[] = [];
+    const continuousEnclosures: Interval[][] = [];
     const violations: ZonotopeReachabilityResult["violations"] = [];
 
     let t = tSpan[0];
     const tEnd = tSpan[1];
 
-    // Initial step
+    let currentEnc = currentZ.toIntervals();
     steps.push({
       time: t,
       zonotope: currentZ.clone(),
-      enclosure: currentZ.toIntervals(),
+      enclosure: currentEnc,
     });
 
+    let hasWitnessViolation = false;
+    let hasLimitCrossing = false;
+
     while (t < tEnd - 1e-12) {
-      t += dt;
+      const tNext = t + dt;
 
       // 1. Homogeneous propagation: exp(A*dt) * Z_k
       let nextZ = currentZ.linearMap(expM);
 
-      // 2. Add input set if present: \oplus B * U * dt
+      // 2. Add input set if present: \oplus \Psi * B * U
       if (inputZ) {
         nextZ = nextZ.minkowskiSum(inputZ);
       }
 
-      // 3. Add truncation error: \oplus \mathcal{E}_{trunc}
-      if (remainderNorm > 1e-14) {
-        nextZ = nextZ.minkowskiSum(truncZ);
+      // 3. State truncation error scaled by maximum state radius R_k: ||E|| * ||x||_\infty (fixes D9)
+      let rK = 0;
+      for (const iv of currentEnc) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > rK) rK = m;
+      }
+      const stateTruncRadius = remainderNorm * rK;
+      if (stateTruncRadius > 1e-15) {
+        const truncBox = Array.from({ length: n }, () => new Interval(-stateTruncRadius, stateTruncRadius));
+        nextZ = nextZ.minkowskiSum(Zonotope.fromIntervals(truncBox));
       }
 
       // 4. Order reduction if generator count exceeds maxOrder * n
@@ -214,53 +291,146 @@ export class ZonotopeReachabilitySolver {
         nextZ = nextZ.reduce(maxOrder);
       }
 
-      currentZ = nextZ;
-      const enclosure = currentZ.toIntervals();
+      const nextEnc = nextZ.toIntervals();
 
-      steps.push({
-        time: t,
-        zonotope: currentZ.clone(),
-        enclosure,
-      });
+      // 5. Sound time-interval continuous enclosure R_{[t_k, t_{k+1}]}:
+      // Interval hull of (Z_k, Z_{k+1}) \oplus curvature box [-curvRadius, curvRadius]^n
+      let rNext = 0;
+      for (const iv of nextEnc) {
+        const m = Math.max(Math.abs(iv.lo), Math.abs(iv.hi));
+        if (m > rNext) rNext = m;
+      }
+      // Gronwall bound on |x(s)| inside the step: e^{||A|| dt} (R_k + dt ||B|| ||U||). Endpoint radii alone
+      // do not bound the interior.
+      const rTube = Math.max(rK, rNext, Math.exp(normA * dt) * (rK + dt * normB * maxUNorm));
+      const curvRadius = ((dt * dt) / 8.0) * (normA2 * rTube + normAB * maxUNorm);
 
-      // 5. Check safety requirements
+      const tube: Interval[] = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const lo = Math.min(currentEnc[i]!.lo, nextEnc[i]!.lo) - curvRadius;
+        const hi = Math.max(currentEnc[i]!.hi, nextEnc[i]!.hi) + curvRadius;
+        tube[i] = new Interval(lo, hi);
+      }
+      continuousEnclosures.push(tube);
+
+      // Nominal trajectory step
+      let nextNomX = matrixVectorMultiply(expM, nomX);
+      if (options.B && nomU) {
+        const bNomU = matrixVectorMultiply(options.B, nomU);
+        const psiBNomU = matrixVectorMultiply(psiM, bNomU);
+        for (let i = 0; i < n; i++) nextNomX[i] += psiBNomU[i]!;
+      }
+
+      // 6. Check safety requirements against the continuous time-interval enclosure
       for (const req of requirements) {
-        const inv = enclosure[req.stateIndex];
+        const inv = tube[req.stateIndex];
         if (!inv) continue;
 
-        let violated = false;
+        let crossed = false;
         let worstVal = inv.mid;
 
         if (req.operator === "<=" || req.operator === "<") {
           worstVal = inv.hi;
-          if (worstVal > req.limitValue) violated = true;
+          if (worstVal > req.limitValue) crossed = true;
         } else if (req.operator === ">=" || req.operator === ">") {
           worstVal = inv.lo;
-          if (worstVal < req.limitValue) violated = true;
+          if (worstVal < req.limitValue) crossed = true;
         }
 
-        if (violated) {
+        if (crossed) {
+          // Check if nominal trajectory provides a concrete witness
+          const nomValCurrent = nomX[req.stateIndex]!;
+          const nomValNext = nextNomX[req.stateIndex]!;
+          let isWitness = false;
+          let witnessVal = nomValNext;
+          let witnessTime = tNext;
+
+          if (req.operator === "<=" || req.operator === "<") {
+            if (nomValNext > req.limitValue) {
+              isWitness = true;
+            } else if (nomValCurrent > req.limitValue) {
+              isWitness = true;
+              witnessVal = nomValCurrent;
+              witnessTime = t;
+            }
+          } else if (req.operator === ">=" || req.operator === ">") {
+            if (nomValNext < req.limitValue) {
+              isWitness = true;
+            } else if (nomValCurrent < req.limitValue) {
+              isWitness = true;
+              witnessVal = nomValCurrent;
+              witnessTime = t;
+            }
+          }
+
+          if (isWitness) {
+            hasWitnessViolation = true;
+          } else {
+            hasLimitCrossing = true;
+          }
+
           violations.push({
-            time: t,
+            time: isWitness ? witnessTime : tNext,
             stateIndex: req.stateIndex,
             operator: req.operator,
             worstCaseValue: worstVal,
             limitValue: req.limitValue,
-            reason: `At t = ${t.toFixed(3)}s: state x[${req.stateIndex}] worst-case ${worstVal.toFixed(4)} violates ${req.operator} ${req.limitValue}`,
+            isConcreteWitness: isWitness,
+            reason: isWitness
+              ? `At t = ${witnessTime.toFixed(3)}s: nominal witness x[${req.stateIndex}]=${witnessVal.toFixed(4)} strictly violates ${req.operator} ${req.limitValue}`
+              : `At t in [${t.toFixed(3)}, ${tNext.toFixed(3)}]s: continuous enclosure x[${req.stateIndex}] worst-case ${worstVal.toFixed(4)} crosses ${req.operator} ${req.limitValue}`,
           });
         }
       }
+
+      t = tNext;
+      nomX = nextNomX;
+      currentZ = nextZ;
+      currentEnc = nextEnc;
+
+      steps.push({
+        time: t,
+        zonotope: currentZ.clone(),
+        enclosure: currentEnc,
+      });
     }
 
     const isCertifiedSafe = violations.length === 0;
+
+    let verdict: VerificationVerdict;
+    if (hasWitnessViolation) {
+      const firstWitness = violations.find((v) => v.isConcreteWitness) ?? violations[0]!;
+      verdict = {
+        kind: "violated",
+        witness: { time: firstWitness.time, state: { [firstWitness.stateIndex]: firstWitness.worstCaseValue } },
+        detail: `Concrete trajectory witness violated requirement ${firstWitness.operator} ${firstWitness.limitValue}.`,
+      };
+    } else if (hasLimitCrossing) {
+      verdict = {
+        kind: "unknown",
+        reason: "inconclusive-enclosure",
+        detail: `Continuous reachability enclosure crossed requirement boundary across ${violations.length} step(s), but no concrete witness breach was confirmed.`,
+      };
+    } else {
+      verdict = {
+        kind: "proven",
+        rigor: "float-sound",
+        detail: `Certified safe across ${steps.length} steps up to t=${tSpan[1]}s with continuous time-interval curvature bounds.`,
+      };
+    }
+
     const summary = isCertifiedSafe
-      ? `Certified safe across ${steps.length} steps up to t=${tSpan[1]}s (dimension=${n}, max generators=${maxOrder * n}).`
-      : `Safety violation detected: ${violations.length} violation(s) found. First violation at t=${violations[0]!.time.toFixed(3)}s.`;
+      ? `Certified safe (float-sound continuous enclosure) across ${steps.length} steps up to t=${tSpan[1]}s (dimension=${n}, max generators=${maxOrder * n}).`
+      : hasWitnessViolation
+        ? `Safety violation detected (proven): concrete witness found at t=${violations[0]!.time.toFixed(3)}s.`
+        : `Safety violation detected (inconclusive / unknown): enclosure crossed requirement boundary across ${violations.length} step(s).`;
 
     return {
+      verdict,
       isCertifiedSafe,
       totalSteps: steps.length,
       steps,
+      continuousEnclosures,
       violations,
       summary,
     };

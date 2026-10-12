@@ -106,4 +106,165 @@ describe("High-Dimensional Zonotope Linear Continuous Reachability", () => {
       expect(step.zonotope.generatorCount).toBeLessThanOrEqual(6);
     }
   });
+
+  it("should return verdict 'proven' with float-sound continuous enclosures", () => {
+    // 2D stable oscillator with damping: A = [[0, 1], [-2, -1]]
+    const A = [
+      [0, 1],
+      [-2, -1],
+    ];
+    const initialSet = [new Interval(0.9, 1.1), new Interval(-0.1, 0.1)];
+
+    const result = ZonotopeReachabilitySolver.solve({
+      A,
+      initialSet,
+      tSpan: [0, 2.0],
+      dt: 0.05,
+      requirements: [
+        { stateIndex: 0, operator: "<=", limitValue: 2.0 },
+        { stateIndex: 0, operator: ">=", limitValue: -2.0 },
+      ],
+    });
+
+    expect(result.isCertifiedSafe).toBe(true);
+    expect(result.verdict.kind).toBe("proven");
+    if (result.verdict.kind === "proven") {
+      expect(result.verdict.rigor).toBe("float-sound");
+    }
+    expect(result.continuousEnclosures).toBeDefined();
+    expect(result.continuousEnclosures!.length).toBeGreaterThan(0);
+  });
+
+  it("should return verdict 'unknown' when enclosure crosses boundary but nominal stays safe", () => {
+    // 1D decay: dx/dt = -0.1 x, x(0) in [10, 12], nominal = 11.
+    // At t=0, interval reaches 12.0. Requirement: x <= 11.5.
+    // Nominal is 11.0 <= 11.5 (safe!), but upper bound 12.0 > 11.5 (crosses!).
+    const A = [[-0.1]];
+    const initialSet = [new Interval(10.0, 12.0)];
+
+    const result = ZonotopeReachabilitySolver.solve({
+      A,
+      initialSet,
+      nominalInitial: [11.0],
+      tSpan: [0, 1.0],
+      dt: 0.1,
+      requirements: [{ stateIndex: 0, operator: "<=", limitValue: 11.5 }],
+    });
+
+    expect(result.isCertifiedSafe).toBe(false);
+    expect(result.verdict.kind).toBe("unknown");
+    if (result.verdict.kind === "unknown") {
+      expect(result.verdict.reason).toBe("inconclusive-enclosure");
+    }
+    // Crossings recorded, but no concrete witness
+    expect(result.violations.some((v) => v.isConcreteWitness)).toBe(false);
+  });
+
+  it("should return verdict 'violated' when concrete nominal witness breaches requirement", () => {
+    // 1D decay: dx/dt = -0.1 x, x(0) in [10, 12], nominal = 11.
+    // Requirement: x <= 8.0. Nominal is 11.0 > 8.0 -> concrete breach!
+    const A = [[-0.1]];
+    const initialSet = [new Interval(10.0, 12.0)];
+
+    const result = ZonotopeReachabilitySolver.solve({
+      A,
+      initialSet,
+      nominalInitial: [11.0],
+      tSpan: [0, 1.0],
+      dt: 0.1,
+      requirements: [{ stateIndex: 0, operator: "<=", limitValue: 8.0 }],
+    });
+
+    expect(result.isCertifiedSafe).toBe(false);
+    expect(result.verdict.kind).toBe("violated");
+    if (result.verdict.kind === "violated") {
+      expect(result.verdict.witness).toBeDefined();
+    }
+    expect(result.violations.some((v) => v.isConcreteWitness)).toBe(true);
+  });
+
+  it("should scale truncation error with large state norm (D9 fix)", () => {
+    // Large state system x_0 = 1e6
+    const A = [[-0.01]];
+    const initialSet = [new Interval(1e6 - 10, 1e6 + 10)];
+
+    const result = ZonotopeReachabilitySolver.solve({
+      A,
+      initialSet,
+      tSpan: [0, 0.2],
+      dt: 0.1,
+    });
+
+    expect(result.isCertifiedSafe).toBe(true);
+    expect(result.steps.length).toBe(3);
+    // Upper bound after step 1 should decay: x(0.1) ~= 1e6 * exp(-0.001) < 1e6
+    const enc1 = result.steps[1]!.enclosure[0]!;
+    expect(enc1.hi).toBeLessThan(1e6 + 10);
+  });
+
+  it("should soundly integrate continuous input set via Psi(A, dt) * B * U", () => {
+    // dx/dt = -x + u, u in [-0.5, 0.5], x(0) = 0
+    const A = [[-1.0]];
+    const B = [[1.0]];
+    const U = new Zonotope([0.0], [[0.5]]);
+    const initialSet = [new Interval(0, 0)];
+
+    const result = ZonotopeReachabilitySolver.solve({
+      A,
+      B,
+      U,
+      initialSet,
+      tSpan: [0, 1.0],
+      dt: 0.1,
+      requirements: [{ stateIndex: 0, operator: "<=", limitValue: 0.6 }],
+    });
+
+    expect(result.isCertifiedSafe).toBe(true);
+    expect(result.verdict.kind).toBe("proven");
+    const finalEnc = result.steps[result.steps.length - 1]!.enclosure[0]!;
+    // Steady state bound for u in [-0.5, 0.5] is [-0.5, 0.5]
+    expect(finalEnc.hi).toBeLessThanOrEqual(0.6);
+    expect(finalEnc.lo).toBeGreaterThanOrEqual(-0.6);
+  });
+});
+
+describe("Zonotope reachability Monte-Carlo soundness oracle", () => {
+  it("every sampled trajectory (fine RK4, random x0 and piecewise-constant u) stays inside the tube", () => {
+    const A = [
+      [0, 1],
+      [-4, -0.3],
+    ];
+    const B = [[0], [1]];
+    const U = new Zonotope([0], [[0.4]]);
+    const init = [new Interval(0.8, 1.2), new Interval(-0.2, 0.2)];
+    const dt = 0.1;
+    const T = 3;
+    const res = ZonotopeReachabilitySolver.solve({ A, B, U, initialSet: init, tSpan: [0, T], dt });
+    const tube = res.continuousEnclosures!;
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    const f = (x: number[], u: number) => [x[1]!, -4 * x[0]! - 0.3 * x[1]! + u];
+    for (let trial = 0; trial < 200; trial++) {
+      let x = [0.8 + 0.4 * rnd(), -0.2 + 0.4 * rnd()];
+      const h = dt / 20;
+      for (const stepEnclosure of tube) {
+        const u = (rnd() * 2 - 1) * 0.4;
+        for (let s = 0; s <= 20; s++) {
+          for (let i = 0; i < 2; i++) {
+            expect(x[i]!).toBeGreaterThanOrEqual(stepEnclosure[i]!.lo - 1e-9);
+            expect(x[i]!).toBeLessThanOrEqual(stepEnclosure[i]!.hi + 1e-9);
+          }
+          if (s === 20) break;
+          const k1 = f(x, u);
+          const k2 = f([x[0]! + (h / 2) * k1[0]!, x[1]! + (h / 2) * k1[1]!], u);
+          const k3 = f([x[0]! + (h / 2) * k2[0]!, x[1]! + (h / 2) * k2[1]!], u);
+          const k4 = f([x[0]! + h * k3[0]!, x[1]! + h * k3[1]!], u);
+          x = [
+            x[0]! + (h / 6) * (k1[0]! + 2 * k2[0]! + 2 * k3[0]! + k4[0]!),
+            x[1]! + (h / 6) * (k1[1]! + 2 * k2[1]! + 2 * k3[1]! + k4[1]!),
+          ];
+        }
+      }
+    }
+  });
 });

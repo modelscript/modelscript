@@ -659,6 +659,8 @@ export class DaeBltReachabilityEngine {
 
   /**
    * Checks Modelica physical invariant min/max violations for continuous state dynamic tubes.
+   * Note: The projected tube uses Euler derivative displacement, so bounds are approximate
+   * and any breach is reported as severity "possible" (never claiming a definite breach without a simulation witness).
    */
   private checkStateInvariants(varIdx: number, enclosure: NumericalInterval, issues: DaeSingularityIssue[]): void {
     const varName = this.arena.getVarName(varIdx);
@@ -666,28 +668,32 @@ export class DaeBltReachabilityEngine {
     const minExpr = this.arena.getVarAttrExprId(varIdx, "min");
     if (minExpr !== undefined && minExpr >= 0) {
       const minVal = this.arena.getExprRealValue(minExpr);
-      if (Number.isFinite(minVal)) {
-        if (enclosure.high < minVal) {
-          issues.push({
-            kind: "min_bound_violation",
-            severity: "definite",
-            exprId: minExpr,
-            varIdx,
-            varName,
-            message: `Continuous state trajectory '${varName}' enclosure [${enclosure.low}, ${enclosure.high}] strictly breaches min physical invariant ${minVal}.`,
-            interval: enclosure,
-          });
-        } else if (enclosure.low < minVal) {
-          issues.push({
-            kind: "min_bound_violation",
-            severity: "possible",
-            exprId: minExpr,
-            varIdx,
-            varName,
-            message: `Continuous state trajectory '${varName}' enclosure [${enclosure.low}, ${enclosure.high}] may breach min physical invariant ${minVal}.`,
-            interval: enclosure,
-          });
-        }
+      if (Number.isFinite(minVal) && enclosure.low < minVal) {
+        issues.push({
+          kind: "min_bound_violation",
+          severity: "possible",
+          exprId: minExpr,
+          varIdx,
+          varName,
+          message: `Continuous state trajectory '${varName}' projected displacement [${enclosure.low}, ${enclosure.high}] may breach min physical invariant ${minVal}.`,
+          interval: enclosure,
+        });
+      }
+    }
+
+    const maxExpr = this.arena.getVarAttrExprId(varIdx, "max");
+    if (maxExpr !== undefined && maxExpr >= 0) {
+      const maxVal = this.arena.getExprRealValue(maxExpr);
+      if (Number.isFinite(maxVal) && enclosure.high > maxVal) {
+        issues.push({
+          kind: "max_bound_violation",
+          severity: "possible",
+          exprId: maxExpr,
+          varIdx,
+          varName,
+          message: `Continuous state trajectory '${varName}' projected displacement [${enclosure.low}, ${enclosure.high}] may breach max physical invariant ${maxVal}.`,
+          interval: enclosure,
+        });
       }
     }
   }
