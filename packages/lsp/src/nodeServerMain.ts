@@ -59,6 +59,7 @@ import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
 import { LspContext } from "./lsp-context.js";
+import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerColorProvider } from "./providers/colorProvider.js";
 import { registerCompletionProvider } from "./providers/completionProvider.js";
 import { registerDefinitionProvider } from "./providers/definitionProvider.js";
@@ -499,6 +500,7 @@ export function startNodeServer(input?: any, output?: any) {
       },
       workspaceSymbolProvider: true,
       inlayHintProvider: true,
+      codeLensProvider: { resolveProvider: false },
     };
 
     return { capabilities };
@@ -801,7 +803,7 @@ export function startNodeServer(input?: any, output?: any) {
     parserService.getLineIndexForDoc.bind(parserService),
   );
 
-  // registerCodeLensProvider(lspContext); // Disabled: code lens is messy in editor
+  registerCodeLensProvider(lspContext);
   registerInlayHintProvider(lspContext);
 
   // 4. Register Custom Domain Handlers & RPC Endpoints

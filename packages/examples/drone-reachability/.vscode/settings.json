@@ -6,5 +6,12 @@
     "*.inp": "fea",
     "*.inpt": "fea",
     "*.bdf": "fea"
-  }
+  },
+  "workbench.editorAssociations": {
+    "*.step": "modelscript.stepEditor",
+    "*.stp": "modelscript.stepEditor",
+    "*.inp": "modelscript.inpEditor",
+    "*.cfg": "modelscript.cfgEditor"
+  },
+  "editor.codeLens": true
 }

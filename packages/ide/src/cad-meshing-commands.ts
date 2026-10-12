@@ -6,6 +6,28 @@ import * as vscode from "vscode";
 /**
  * Registers automated CAD-to-Mesh command palette and context menu actions in VS Code.
  */
+
+async function resolveStepBytes(targetUri: vscode.Uri, rawBytes: Uint8Array): Promise<Uint8Array | string> {
+  if (/\.scad$/i.test(targetUri.path)) {
+    try {
+      const text = new TextDecoder().decode(rawBytes);
+      const { getScadParser } = await import("@modelscript/scad");
+      const { ScadEvaluator } = await import("@modelscript/scad/evaluator");
+      const { compileToStep } = await import("@modelscript/cad");
+      const parser = await getScadParser();
+      const tree = parser.parse(text);
+      const evaluator = new ScadEvaluator();
+      const solid = evaluator.evaluate(tree.rootNode);
+      if (solid) {
+        return compileToStep(solid);
+      }
+    } catch (err) {
+      console.warn("[cad-meshing] Direct SCAD evaluation fallback:", err);
+    }
+  }
+  return rawBytes;
+}
+
 export function registerCadMeshingCommands(context: vscode.ExtensionContext): void {
   // Command: Generate FEA Mesh (.inp) from CAD
   const genFeaDisposable = vscode.commands.registerCommand(
@@ -58,7 +80,8 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext): vo
         async () => {
           try {
             const rawBytes = await vscode.workspace.fs.readFile(targetUri!);
-            const result = StepMesher.meshStepToTetrahedra(rawBytes, {
+            const stepBytes = await resolveStepBytes(targetUri!, rawBytes);
+            const result = StepMesher.meshStepToTetrahedra(stepBytes, {
               resolution: resolution.res,
               order: orderChoice.order,
             });
@@ -131,7 +154,8 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext): vo
         async () => {
           try {
             const rawBytes = await vscode.workspace.fs.readFile(targetUri!);
-            const result = StepMesher.meshStepToTetrahedra(rawBytes, {
+            const stepBytes = await resolveStepBytes(targetUri!, rawBytes);
+            const result = StepMesher.meshStepToTetrahedra(stepBytes, {
               resolution: 18,
               order: "linear",
               inflation: inflationChoice.inflate

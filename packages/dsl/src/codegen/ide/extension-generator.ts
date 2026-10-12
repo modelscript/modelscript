@@ -251,11 +251,19 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       command: "modelscript.generateFeaMesh",
       title: "ModelScript: Discretize CAD to FEA Mesh (.inp)",
       category: "ModelScript CAE",
+      icon: "$(symbol-structure)",
     },
     {
       command: "modelscript.generateCfdMesh",
       title: "ModelScript: Discretize CAD to CFD Mesh (.su2)",
       category: "ModelScript CAE",
+      icon: "$(flame)",
+    },
+    {
+      command: "modelscript.syncDigitalThreadParams",
+      title: "ModelScript: Sync Multi-Domain Digital Thread (CAE -> Modelica & SysML)",
+      category: "ModelScript Digital Thread",
+      icon: "$(sync)",
     },
     {
       command: "modelscript.generateMultiBody",
@@ -342,6 +350,24 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       category: "ModelScript Verification",
       icon: "$(shield)",
     },
+    {
+      command: "modelscript.runReachabilityFlowpipe",
+      title: "ModelScript: Compute Continuous Reachable Set Envelope (WASM Zonotopes)",
+      category: "ModelScript Verification",
+      icon: "$(shield)",
+    },
+    {
+      command: "modelscript.openThreadExplorer",
+      title: "ModelScript: Open Multi-Domain Digital Thread Explorer",
+      category: "ModelScript Digital Thread",
+      icon: "$(graph)",
+    },
+    {
+      command: "modelscript.openSimulationView",
+      title: "ModelScript: Open Simulation View (RK4 / CVODE)",
+      category: "ModelScript Simulation",
+      icon: "$(play)",
+    },
   ];
 
   const editorTitleMenus: any[] = [
@@ -350,9 +376,56 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml",
       group: "navigation@0",
     },
+    {
+      command: "modelscript.syncDigitalThreadParams",
+      when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd",
+      group: "navigation@1",
+    },
+    {
+      command: "modelscript.generateFeaMesh",
+      when: "activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad",
+      group: "navigation@2",
+    },
+    {
+      command: "modelscript.generateCfdMesh",
+      when: "activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad",
+      group: "navigation@3",
+    },
   ];
-  const editorContextMenus: any[] = [];
-  const explorerContextMenus: any[] = [];
+  const editorContextMenus: any[] = [
+    {
+      command: "modelscript.generateFeaMesh",
+      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad",
+      group: "2_transform@2",
+    },
+    {
+      command: "modelscript.generateCfdMesh",
+      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad",
+      group: "2_transform@3",
+    },
+    {
+      command: "modelscript.syncDigitalThreadParams",
+      when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd",
+      group: "4_polyglot@3",
+    },
+  ];
+  const explorerContextMenus: any[] = [
+    {
+      command: "modelscript.generateFeaMesh",
+      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad",
+      group: "modelscript_convert@2",
+    },
+    {
+      command: "modelscript.generateCfdMesh",
+      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad",
+      group: "modelscript_convert@3",
+    },
+    {
+      command: "modelscript.scad.export_step",
+      when: "resourceExtname == .scad",
+      group: "modelscript_convert@1",
+    },
+  ];
 
   const polyglotWhen = languages.map((l) => `editorLangId == ${l.id} || resourceLangId == ${l.id}`).join(" || ");
   if (polyglotWhen) {
@@ -682,7 +755,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     ],
     configurationDefaults: {
-      "editor.codeLens": false,
+      "editor.codeLens": true,
       "editor.semanticHighlighting.enabled": true,
     },
   };

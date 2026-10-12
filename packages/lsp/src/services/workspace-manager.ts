@@ -166,6 +166,63 @@ export class WorkspaceManager {
       domain: "cad",
       properties: { mass: 1.15 },
     });
+
+    const sDrone = this.hypergraph.createThread(104, 3);
+    this.hypergraph.bindDomainNode(sDrone, ThreadDomain.SysML2, 2004);
+    this.hypergraph.bindDomainNode(sDrone, ThreadDomain.Modelica, 3004);
+    this.hypergraph.bindDomainNode(sDrone, ThreadDomain.CAD, 4004);
+    this.hypergraph.bindDomainNode(sDrone, ThreadDomain.FEA, 5004);
+    this.hypergraph.bindDomainNode(sDrone, ThreadDomain.CFD, 6004);
+    this.hypergraph.bindDomainNode(sDrone, ThreadDomain.Requirements, 7004);
+
+    this.threadMetadataMap.set("sysml2:2004", {
+      name: "part def DroneAssembly",
+      uri: "sysml/drone_specs.sysml",
+      line: 30,
+      column: 3,
+      domain: "sysml2",
+      properties: { mass: 1.2, frontalArea: 0.03, aeroDragCoeff: 0.8 },
+    });
+    this.threadMetadataMap.set("modelica:3004", {
+      name: "model DroneSimulation",
+      uri: "modelica/DroneSimulation.mo",
+      line: 1,
+      column: 1,
+      domain: "modelica",
+      properties: { mass: 1.2, frontalArea: 0.03, aeroDragCoeff: 0.8 },
+    });
+    this.threadMetadataMap.set("cad:4004", {
+      name: "drone.scad",
+      uri: "cad/drone.scad",
+      line: 12,
+      column: 1,
+      domain: "cad",
+      properties: { frontalArea: 0.03, mass: 1.2 },
+    });
+    this.threadMetadataMap.set("fea:5004", {
+      name: "drone_chassis.inp",
+      uri: "cae/drone_chassis.inp",
+      line: 33,
+      column: 1,
+      domain: "fea",
+      properties: { mass: 1.2, maxStress: 172.4, yieldStrength: 180.0 },
+    });
+    this.threadMetadataMap.set("cfd:6004", {
+      name: "drone_aero.cfg",
+      uri: "cae/drone_aero.cfg",
+      line: 23,
+      column: 1,
+      domain: "cfd",
+      properties: { aeroDragCoeff: 0.8, frontalArea: 0.03 },
+    });
+    this.threadMetadataMap.set("requirements:7004", {
+      name: "requirement FlightCeilingRequirement",
+      uri: "sysml/drone_specs.sysml",
+      line: 43,
+      column: 3,
+      domain: "requirements",
+      properties: { v_climb_max: 12.0, status: "Verified" },
+    });
   }
 
   public bindThreadSlot(threadId: number, domain: ThreadDomain, nodeId: number, meta: ThreadElementMetadata): number {

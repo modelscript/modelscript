@@ -58,6 +58,7 @@ export * from "./formal/simplification_waterfall.js";
 export * from "./formal/stl_monitor.js";
 export * from "./formal/theory_coordinator.js";
 export * from "./formal/trace_record.js";
+export * from "./formal/verdict.js";
 export * from "./gpu/wasm_gpu_buffers.js";
 export * from "./gpu/wasm_memory_planner.js";
 export * from "./gpu/webgpu_reasoner.js";

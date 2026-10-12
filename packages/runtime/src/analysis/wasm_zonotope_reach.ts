@@ -14,6 +14,7 @@
  *  - Safety certificate generation against linear hyperplane requirements
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
 import { Interval } from "./wasm_interval.js";
 import { Zonotope } from "./wasm_zonotope.js";
 
@@ -281,7 +282,13 @@ export interface DroneReachabilityParams {
 }
 
 export interface DroneReachabilityResult {
-  isCertifiedSafe: boolean;
+  /**
+   * Whether the (non-rigorous) linearized zonotope envelope stays below `v_limit`.
+   * This is NOT a proof; see `verdict`.
+   */
+  envelopeWithinLimit: boolean;
+  /** Soundness-aware verdict. Always `unknown(not-rigorous)` for this estimator. */
+  verdict: VerificationVerdict;
   time: number[];
   nominal: number[];
   zonotopeLo: number[];
@@ -291,18 +298,22 @@ export interface DroneReachabilityResult {
   intervalHi: number[];
   intervalMaxVelocity: number;
   intervalBreachTime?: number;
-  octagonLo: number[];
-  octagonHi: number[];
-  affineLo: number[];
-  affineHi: number[];
   settlingDipVelocity: number;
   durationMs: number;
   summary: string;
 }
 
 /**
- * High-speed autonomous reachability pipeline evaluating multi-domain drone flight DAE
- * across Zonotopes, Affine forms, Octagons, and Interval Arithmetic in pure WebAssembly.
+ * Fast linearized reachability *estimate* for the 2-state drone climb model (z, v).
+ *
+ * Propagates a zonotope and an interval box through the per-step Jacobian linearization
+ * around an explicit-Euler nominal trajectory, illustrating the interval wrapping effect.
+ *
+ * LIMITATIONS (why the verdict is `unknown(not-rigorous)`):
+ *  - the linearization (Lagrange) remainder of the nonlinear drag term is not bounded;
+ *  - the nominal trajectory uses explicit Euler without a truncation-error enclosure;
+ *  - enclosures are checked only at grid points, not over each time step;
+ *  - floating-point rounding is not controlled.
  */
 export function simulateDroneReachability(params: DroneReachabilityParams = {}): DroneReachabilityResult {
   const t0 = performance.now();
@@ -327,10 +338,6 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
   const c_z: [number, number][] = Array.from({ length: N }, () => [0.0, 0.0]);
   const z_lo = new Float64Array(N);
   const z_hi = new Float64Array(N);
-  const a_lo = new Float64Array(N);
-  const a_hi = new Float64Array(N);
-  const o_lo = new Float64Array(N);
-  const o_hi = new Float64Array(N);
   const i_lo = new Float64Array(N);
   const i_hi = new Float64Array(N);
 
@@ -339,18 +346,10 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
     [delta0[0], 0.0],
     [0.0, delta0[1]],
   ];
-  let G_a = [
-    [delta0[0], 0.0],
-    [0.0, delta0[1]],
-  ];
   const int_rad = [delta0[0], delta0[1]];
 
   z_lo[0] = -delta0[1];
   z_hi[0] = delta0[1];
-  a_lo[0] = -delta0[1];
-  a_hi[0] = delta0[1];
-  o_lo[0] = -delta0[1];
-  o_hi[0] = delta0[1];
   i_lo[0] = -delta0[1];
   i_hi[0] = delta0[1];
 
@@ -435,52 +434,6 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
     z_hi[k + 1] = c_z[k + 1][1] + rad_v;
     if (z_hi[k + 1] > zonotopeMaxV) zonotopeMaxV = z_hi[k + 1];
 
-    // Affine forms
-    const numGa = G_a[0].length;
-    const newGa0 = new Array(numGa + 2);
-    const newGa1 = new Array(numGa + 2);
-    for (let j = 0; j < numGa; j++) {
-      newGa0[j] = Phi[0][0] * G_a[0][j] + Phi[0][1] * G_a[1][j];
-      newGa1[j] = Phi[1][0] * G_a[0][j] + Phi[1][1] * G_a[1][j];
-    }
-    newGa0[numGa] = 0.005;
-    newGa1[numGa] = 0.0;
-    newGa0[numGa + 1] = 0.0;
-    newGa1[numGa + 1] = w_step;
-
-    if (newGa0.length > 6) {
-      const scored = newGa0.map((g0, idx) => ({ idx, len: Math.hypot(g0, newGa1[idx]) })).sort((a, b) => b.len - a.len);
-      const keep0 = [];
-      const keep1 = [];
-      let remSum0 = 0.0,
-        remSum1 = 0.0;
-      for (let i = 0; i < scored.length; i++) {
-        const origIdx = scored[i].idx;
-        if (i < 4) {
-          keep0.push(newGa0[origIdx]);
-          keep1.push(newGa1[origIdx]);
-        } else {
-          remSum0 += Math.abs(newGa0[origIdx]);
-          remSum1 += Math.abs(newGa1[origIdx]);
-        }
-      }
-      keep0.push(remSum0 * 1.02, 0.0);
-      keep1.push(0.0, remSum1 * 1.02);
-      G_a = [keep0, keep1];
-    } else {
-      G_a = [newGa0, newGa1];
-    }
-
-    let rad_av = 0.0;
-    for (let j = 0; j < G_a[1].length; j++) rad_av += Math.abs(G_a[1][j]);
-    a_lo[k + 1] = c_z[k + 1][1] - rad_av;
-    a_hi[k + 1] = c_z[k + 1][1] + rad_av;
-
-    // Octagon DBM
-    const drift = 1.0 + 0.05 * (k * dt);
-    o_lo[k + 1] = c_z[k + 1][1] - rad_v * 1.3 * drift;
-    o_hi[k + 1] = c_z[k + 1][1] + rad_v * 1.3 * drift;
-
     // Interval Wrapping Blowup
     const next_rad0 = Math.abs(Phi[0][0]) * int_rad[0] + Math.abs(Phi[0][1]) * int_rad[1] + 0.005;
     const next_rad1 = Math.abs(Phi[1][0]) * int_rad[0] + Math.abs(Phi[1][1]) * int_rad[1] + w_step;
@@ -497,10 +450,17 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
   }
 
   const durationMs = performance.now() - t0;
-  const isCertifiedSafe = zonotopeMaxV <= v_limit;
+  const envelopeWithinLimit = zonotopeMaxV <= v_limit;
+  const verdict: VerificationVerdict = {
+    kind: "unknown",
+    reason: "not-rigorous",
+    rigor: "heuristic",
+    detail: "Linearized zonotope estimate without a bound on the linearization remainder.",
+  };
 
   return {
-    isCertifiedSafe,
+    envelopeWithinLimit,
+    verdict,
     time,
     nominal: Array.from(nom),
     zonotopeLo: Array.from(z_lo),
@@ -510,14 +470,10 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
     intervalHi: Array.from(i_hi),
     intervalMaxVelocity: parseFloat(intervalMaxV.toFixed(2)),
     intervalBreachTime,
-    octagonLo: Array.from(o_lo),
-    octagonHi: Array.from(o_hi),
-    affineLo: Array.from(a_lo),
-    affineHi: Array.from(a_hi),
     settlingDipVelocity: parseFloat(settlingDipV.toFixed(2)),
     durationMs: parseFloat(durationMs.toFixed(2)),
-    summary: isCertifiedSafe
-      ? `Zonotope reachability certified safe: peak velocity ${zonotopeMaxV.toFixed(2)} m/s <= ${v_limit} m/s in ${durationMs.toFixed(2)} ms.`
-      : `Safety violation: peak velocity ${zonotopeMaxV.toFixed(2)} m/s > ${v_limit} m/s.`,
+    summary: envelopeWithinLimit
+      ? `Linearized zonotope estimate (non-rigorous): peak velocity ${zonotopeMaxV.toFixed(2)} m/s <= ${v_limit} m/s in ${durationMs.toFixed(2)} ms.`
+      : `Linearized zonotope estimate (non-rigorous): peak velocity ${zonotopeMaxV.toFixed(2)} m/s exceeds ${v_limit} m/s.`,
   };
 }

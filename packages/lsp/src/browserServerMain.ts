@@ -275,6 +275,7 @@ import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
 import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
+import { registerCodeLensProvider } from "./providers/codeLensProvider.js";
 import { registerInlayHintProvider } from "./providers/inlayHintProvider.js";
 import { registerSignatureHelpProvider } from "./providers/signatureHelpProvider.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
@@ -679,6 +680,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     },
     workspaceSymbolProvider: true,
     inlayHintProvider: true,
+    codeLensProvider: { resolveProvider: false },
   };
   return { capabilities };
 });
@@ -1309,7 +1311,7 @@ registerSignatureHelpProvider(
   () => parserService.getParser("modelica"),
   parserService.getLineIndexForDoc.bind(parserService),
 );
-// registerCodeLensProvider(lspContext); // Disabled: code lens is messy in editor
+registerCodeLensProvider(lspContext);
 registerInlayHintProvider(lspContext);
 connection.listen();
 

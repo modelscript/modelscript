@@ -132,7 +132,7 @@ describe("Native Polyglot Drone Reachability Workspace (Zero-Glue Engine)", () =
     expect(cdEq?.bounds?.[0]).toBe(0.8);
   });
 
-  it("Phase 3: WASM Continuous Reachability Solvers should match Slide 11 exactly", () => {
+  it("Phase 3: linearized zonotope estimate reproduces the reference envelope (non-rigorous)", () => {
     const result = simulateDroneReachability({
       m: 1.2,
       A: 0.03,
@@ -145,23 +145,24 @@ describe("Native Polyglot Drone Reachability Workspace (Zero-Glue Engine)", () =
       v_limit: 12.0,
     });
 
-    // 1. Zonotope reachability proves SAT
-    expect(result.isCertifiedSafe).toBe(true);
+    // 1. Zonotope envelope stays below the limit, but this is an estimate, not a proof
+    expect(result.envelopeWithinLimit).toBe(true);
     expect(result.zonotopeMaxVelocity).toBe(11.42);
-    expect(result.zonotopeMaxVelocity).toBeLessThanOrEqual(12.0);
+    expect(result.verdict.kind).toBe("unknown");
+    expect(result.verdict.kind === "unknown" && result.verdict.reason).toBe("not-rigorous");
 
     // 2. High-speed performance (< 10ms, typically < 3ms)
     expect(result.durationMs).toBeLessThan(15.0);
 
-    // 3. Spurious interval arithmetic wrapping breach at t = 3.42s
+    // 3. Interval arithmetic wrapping blow-up crosses the limit at t = 3.42s
     expect(result.intervalBreachTime).toBe(3.42);
     expect(result.intervalMaxVelocity).toBeGreaterThan(12.0);
 
     // 4. Negative settling velocity dip down to -3.25 m/s
     expect(result.settlingDipVelocity).toBe(-3.25);
 
-    // 5. Verification summary text
-    expect(result.summary).toContain("Zonotope reachability certified safe");
-    expect(result.summary).toContain("11.42 m/s <= 12 m/s");
+    // 5. Summary text must not claim certification
+    expect(result.summary).toContain("non-rigorous");
+    expect(result.summary).not.toContain("certified");
   });
 });

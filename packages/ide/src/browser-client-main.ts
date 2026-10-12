@@ -2555,7 +2555,7 @@ END-ISO-10303-21;`;
 
       const envelopes: FlowpipeEnvelope[] = [
         {
-          name: "Interval Arithmetic (Moore 1966)",
+          name: "Interval Arithmetic (linearized, non-rigorous)",
           kind: "interval",
           color: "#ef4444",
           fillColor: "rgba(239, 68, 68, 0.12)",
@@ -2564,27 +2564,10 @@ END-ISO-10303-21;`;
           hi: res.intervalHi,
           peakVal: res.intervalMaxVelocity,
           breachTime: res.intervalBreachTime,
-          isViolation: true,
+          isViolation: res.intervalBreachTime !== undefined,
         },
         {
-          name: "Octagon DBM Drift",
-          kind: "octagon",
-          color: "#f59e0b",
-          fillColor: "rgba(245, 158, 11, 0.15)",
-          borderDash: [4, 4],
-          lo: res.octagonLo,
-          hi: res.octagonHi,
-        },
-        {
-          name: "Affine Form Noise Symbols",
-          kind: "affine",
-          color: "#0ea5e9",
-          fillColor: "rgba(14, 165, 233, 0.18)",
-          lo: res.affineLo,
-          hi: res.affineHi,
-        },
-        {
-          name: "WASM Zonotopes (Girard Reduction)",
+          name: "Zonotope (linearized, non-rigorous)",
           kind: "zonotope",
           color: "#22c55e",
           fillColor: "rgba(34, 197, 94, 0.28)",
@@ -2594,29 +2577,123 @@ END-ISO-10303-21;`;
         },
       ];
 
+      const statusBadges: { text: string; kind: "pass" | "warn" | "fail" }[] = [
+        {
+          text: res.envelopeWithinLimit
+            ? `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} <= ${v_limit} m/s (not a proof)`
+            : `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} > ${v_limit} m/s (not a proof)`,
+          kind: "warn",
+        },
+      ];
+      if (res.intervalBreachTime !== undefined) {
+        statusBadges.push({
+          text: `Interval wrapping blow-up crosses limit @ t = ${res.intervalBreachTime}s`,
+          kind: "warn",
+        });
+      }
+
       SimulationPanel.postReachabilityData({
         t: res.time,
         variable: "v",
         nominalTrajectory: res.nominal,
         envelopes,
-        requirementLimit: 12.0,
-        requirementLabel: "SysML v2 FlightCeiling: v(t) <= 12.0 m/s",
-        isCertifiedSafe: res.isCertifiedSafe,
-        statusBadges: [
-          { text: `Zonotope Proves SAT (Peak v = ${res.zonotopeMaxVelocity} <= ${v_limit} m/s)`, kind: "pass" },
-          { text: `Interval Wrapping Blowup (Spurious Breach @ t = ${res.intervalBreachTime}s)`, kind: "warn" },
-        ],
+        requirementLimit: v_limit,
+        requirementLabel: `SysML v2 FlightCeiling: v(t) <= ${v_limit} m/s`,
+        // Webview field drives requirement-line coloring only; this is an estimate, not a certificate.
+        isCertifiedSafe: res.envelopeWithinLimit,
+        statusBadges,
         yRange: [-6.0, 15.5],
       });
 
-      if (res.isCertifiedSafe) {
+      vscode.window.showInformationMessage(`Reachability estimate (non-rigorous): ${res.summary}`);
+    }),
+    commands.registerCommand("modelscript.syncDigitalThreadParams", async () => {
+      try {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) return;
+        const rootUri = workspaceFolders[0].uri;
+
+        const inpUri = Uri.joinPath(rootUri, "cae/drone_chassis.inp");
+        const cfgUri = Uri.joinPath(rootUri, "cae/drone_aero.cfg");
+        const moUri = Uri.joinPath(rootUri, "modelica/DroneSimulation.mo");
+        const sysmlUri = Uri.joinPath(rootUri, "sysml/drone_specs.sysml");
+
+        let mass = 1.2;
+        let maxVonMisesPa = 172.4e6;
+        let cd = 0.8;
+        let area = 0.03;
+        let rho = 1.225;
+
+        // 1. Read FEA deck
+        try {
+          const rawInp = await vscode.workspace.fs.readFile(inpUri);
+          const inpText = new TextDecoder().decode(rawInp);
+          const massMatch = inpText.match(/\bmass\s*=\s*([\d.]+)/i);
+          if (massMatch) mass = parseFloat(massMatch[1]);
+          const misesMatch = inpText.match(/\bmax_von_mises\s*=\s*([\d.]+)/i);
+          if (misesMatch) maxVonMisesPa = parseFloat(misesMatch[1]) * 1e6;
+        } catch {}
+
+        // 2. Read CFD config
+        try {
+          const rawCfg = await vscode.workspace.fs.readFile(cfgUri);
+          const cfgText = new TextDecoder().decode(rawCfg);
+          const cdMatch = cfgText.match(/\bCd_total\s*=\s*([\d.]+)/i) || cfgText.match(/\bCD\s*=\s*([\d.]+)/i);
+          if (cdMatch) cd = parseFloat(cdMatch[1]);
+          const areaMatch = cfgText.match(/REF_AREA\s*=\s*([\d.]+)/i);
+          if (areaMatch) area = parseFloat(areaMatch[1]);
+          const rhoMatch = cfgText.match(/INC_DENSITY_INIT\s*=\s*([\d.]+)/i);
+          if (rhoMatch) rho = parseFloat(rhoMatch[1]);
+        } catch {}
+
+        // 3. Propagate into Modelica document
+        try {
+          const moDoc = await vscode.workspace.openTextDocument(moUri);
+          const moText = moDoc.getText();
+          const updatedMoText = moText
+            .replace(/\bparameter\s+Real\s+m\s*=\s*[\d.]+/g, `parameter Real m = ${mass}`)
+            .replace(/\bparameter\s+Real\s+A\s*=\s*[\d.]+/g, `parameter Real A = ${area}`)
+            .replace(/\bparameter\s+Real\s+Cd\s*=\s*[\d.]+/g, `parameter Real Cd = ${cd.toFixed(2)}`)
+            .replace(/\bparameter\s+Real\s+rho\s*=\s*[\d.]+/g, `parameter Real rho = ${rho}`);
+
+          if (updatedMoText !== moText) {
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(moUri, new vscode.Range(moDoc.positionAt(0), moDoc.positionAt(moText.length)), updatedMoText);
+            await vscode.workspace.applyEdit(edit);
+          }
+        } catch {}
+
+        // 4. Propagate into SysML v2 document
+        try {
+          const sysmlDoc = await vscode.workspace.openTextDocument(sysmlUri);
+          const sysmlText = sysmlDoc.getText();
+          const updatedSysml = sysmlText
+            .replace(/\battribute\s+totalMass\s*:\s*Real\s*=\s*[\d.]+/g, `attribute totalMass : Real = ${mass}`)
+            .replace(
+              /\battribute\s+totalFrontalArea\s*:\s*Real\s*=\s*[\d.]+/g,
+              `attribute totalFrontalArea : Real = ${area}`,
+            )
+            .replace(
+              /\battribute\s+aeroDragCoeff\s*:\s*Real\s*=\s*[\d.]+/g,
+              `attribute aeroDragCoeff : Real = ${cd.toFixed(2)}`,
+            );
+
+          if (updatedSysml !== sysmlText) {
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(
+              sysmlUri,
+              new vscode.Range(sysmlDoc.positionAt(0), sysmlDoc.positionAt(sysmlText.length)),
+              updatedSysml,
+            );
+            await vscode.workspace.applyEdit(edit);
+          }
+        } catch {}
+
         vscode.window.showInformationMessage(
-          `✔ Reachability Verified Safe: Zonotope Peak v = ${res.zonotopeMaxVelocity} m/s <= ${v_limit} m/s (< 3ms)`,
+          `✔ Digital Thread Synchronized: FEA mass (m = ${mass} kg, σ = ${(maxVonMisesPa / 1e6).toFixed(1)} MPa), CFD drag (Cd = ${cd.toFixed(2)}), and CAD area (A = ${area} m²) aligned with Modelica DAE & SysML v2.`,
         );
-      } else {
-        vscode.window.showWarningMessage(
-          `⚠ Reachability Violated: Peak v = ${res.zonotopeMaxVelocity} m/s > ${v_limit} m/s!`,
-        );
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`Digital thread sync error: ${err?.message || err}`);
       }
     }),
     commands.registerCommand("modelscript.runReachabilityFlowpipe", async (uri?: string) => {

@@ -11,6 +11,7 @@
  *   - Guaranteed Taylor model reachability tubes for semi-explicit and implicit DAEs.
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
 import { Interval, addMachineEps, subMachineEps } from "./wasm_interval.js";
 
 export interface DaeSystem {
@@ -58,10 +59,20 @@ export interface DaeFlowpipeStep {
 }
 
 export interface DaeFlowpipeResult {
+  /**
+   * True only if the algebraic manifold was certified (Krawczyk containment) at every step.
+   * NOTE: this does not imply the differential tubes are guaranteed enclosures; see `verdict`.
+   */
   isCertifiedSafe: boolean;
   totalSteps: number;
   steps: DaeFlowpipeStep[];
   summary: string;
+  /**
+   * Soundness-aware verdict. Currently always `unknown(not-rigorous)`: the differential tube step
+   * evaluates f only at box corners and the Krawczyk test uses a point Jacobian, so the tubes are
+   * not guaranteed over-approximations.
+   */
+  verdict: VerificationVerdict;
 }
 
 export class IntervalKrawczykOperator {
@@ -144,7 +155,7 @@ export class IntervalKrawczykOperator {
  */
 export class DaeFlowpipeSolver {
   public static solve(options: DaeFlowpipeOptions): DaeFlowpipeResult {
-    const { dae, initialX, initialZ, nominalX, nominalZ, tSpan, dt, order = 2 } = options;
+    const { dae, initialX, initialZ, nominalX, nominalZ, tSpan, dt } = options;
 
     const [t0, tEnd] = tSpan;
     const steps: DaeFlowpipeStep[] = [];
@@ -224,11 +235,23 @@ export class DaeFlowpipeSolver {
       });
     }
 
+    const allManifoldCertified = steps.every((s) => s.isAlgebraicManifoldCertified);
+    const verdict: VerificationVerdict = {
+      kind: "unknown",
+      reason: "not-rigorous",
+      rigor: "heuristic",
+      detail:
+        "Differential tubes use corner evaluation of f and a point-Jacobian Krawczyk test; enclosures are not guaranteed.",
+    };
+
     return {
-      isCertifiedSafe: true,
+      isCertifiedSafe: allManifoldCertified,
       totalSteps: steps.length,
       steps,
-      summary: `DAE flowpipe reachability certified over [${t0}, ${tEnd}] (${steps.length} steps) on algebraic constraint manifold.`,
+      summary: allManifoldCertified
+        ? `DAE flowpipe computed over [${t0}, ${tEnd}] (${steps.length} steps); algebraic manifold contracted at every step (non-rigorous tubes).`
+        : `DAE flowpipe computed over [${t0}, ${tEnd}] (${steps.length} steps); algebraic manifold NOT certified at ${steps.filter((s) => !s.isAlgebraicManifoldCertified).length} step(s).`,
+      verdict,
     };
   }
 }
