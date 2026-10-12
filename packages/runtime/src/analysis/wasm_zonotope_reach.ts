@@ -195,12 +195,14 @@ export function computeMatrixExponentialAndIntegral(
   const normM = matrixInfinityNorm(M);
   let factExp = 1;
   for (let k = 1; k <= expansionOrder + 1; k++) factExp *= k;
-  const denomExp = factExp * Math.max(0.1, 1 - normM / (expansionOrder + 2));
-  const remainderNorm = Math.pow(normM, expansionOrder + 1) / denomExp;
+  const ratioExp = normM / (expansionOrder + 2);
+  const factorExp = ratioExp < 1 ? Math.min(Math.exp(normM), 1 / (1 - ratioExp)) : Math.exp(normM);
+  const remainderNorm = (Math.pow(normM, expansionOrder + 1) / factExp) * factorExp;
 
   let factPsi = factExp * (expansionOrder + 2);
-  const denomPsi = factPsi * Math.max(0.1, 1 - normM / (expansionOrder + 3));
-  const psiRemainderNorm = (Math.abs(dt) * Math.pow(normM, expansionOrder + 1)) / denomPsi;
+  const ratioPsi = normM / (expansionOrder + 3);
+  const factorPsi = ratioPsi < 1 ? Math.min(Math.exp(normM), 1 / (1 - ratioPsi)) : Math.exp(normM);
+  const psiRemainderNorm = ((Math.abs(dt) * Math.pow(normM, expansionOrder + 1)) / factPsi) * factorPsi;
 
   return { expM, psiM, remainderNorm, psiRemainderNorm };
 }

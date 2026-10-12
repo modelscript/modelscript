@@ -83,7 +83,7 @@ describe("DualDomain (interval forward-mode AD)", () => {
     }
   });
 
-  it("undecided if / abs at zero give unbounded gradients (never a false 0)", () => {
+  it("undecided if / abs at zero gives Clarke subgradient [-1, 1] (never a false 0)", () => {
     const arena = new DAEBuilder();
     arena.addVariable("a", VarType.Real, Variability.Continuous);
     const e = arena.addCallExpr("abs", [arena.addNameExpr("a")]);
@@ -93,7 +93,8 @@ describe("DualDomain (interval forward-mode AD)", () => {
       { variable: () => ({ v: new Interval(-1, 1), g: [new Interval(1, 1)] }) },
       createDualDomain(1),
     ).value;
-    assert.equal(r.g[0]!.lo, -Infinity);
+    assert.equal(r.g[0]!.lo, -1);
+    assert.equal(r.g[0]!.hi, 1);
   });
 });
 

@@ -99,6 +99,38 @@ describe("MonomialBasis (Graded-Lexicographical Monomial Indexing)", () => {
     assert.strictEqual(div0[3], 3);
   });
 
+  it("should precompute variable differentiation maps correctly", () => {
+    const basis = MonomialBasis.get(2, 2);
+
+    // Differentiating with respect to variable 0 (x0)
+    const target0 = basis.diffTarget[0]!;
+    const mult0 = basis.diffMultiplier[0]!;
+
+    // 1 [0, 0] (idx 0) -> derivative is 0 (-1)
+    assert.strictEqual(target0[0], -1);
+    assert.strictEqual(mult0[0], 0);
+
+    // x0 [1, 0] (idx 1) -> 1 [0, 0] (idx 0), mult 1
+    assert.strictEqual(target0[1], 0);
+    assert.strictEqual(mult0[1], 1);
+
+    // x1 [0, 1] (idx 2) -> derivative wrt x0 is 0 (-1)
+    assert.strictEqual(target0[2], -1);
+    assert.strictEqual(mult0[2], 0);
+
+    // x0^2 [2, 0] (idx 3) -> 2*x0 [1, 0] (idx 1), mult 2
+    assert.strictEqual(target0[3], 1);
+    assert.strictEqual(mult0[3], 2);
+
+    // x0*x1 [1, 1] (idx 4) -> x1 [0, 1] (idx 2), mult 1
+    assert.strictEqual(target0[4], 2);
+    assert.strictEqual(mult0[4], 1);
+
+    // x1^2 [0, 2] (idx 5) -> derivative wrt x0 is 0 (-1)
+    assert.strictEqual(target0[5], -1);
+    assert.strictEqual(mult0[5], 0);
+  });
+
   it("should reuse cached MonomialBasis instances", () => {
     const b1 = MonomialBasis.get(3, 3);
     const b2 = MonomialBasis.get(3, 3);

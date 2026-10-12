@@ -119,10 +119,10 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
       ],
     });
 
-    // No enclosure breach; the jump itself is not yet enclosure-validated, so no "proven" claim.
+    // Validated hybrid flowpipe with sound guard crossing enclosures and reset mapping
     assert.equal(result.violations.length, 0, `Bouncing ball enclosure breach: ${result.summary}`);
-    assert.equal(result.isCertifiedSafe, false);
-    assert.equal(result.verdict.kind, "unknown");
+    assert.equal(result.isCertifiedSafe, true);
+    assert.equal(result.verdict.kind, "proven");
     assert(result.jumps.length >= 1, "Expected at least 1 discrete ground collision jump");
 
     const jump = result.jumps[0]!;
@@ -227,8 +227,8 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
     });
 
     assert.equal(result.violations.length, 0, `Thermostat enclosure breach: ${result.summary}`);
-    assert.equal(result.isCertifiedSafe, false);
-    assert.equal(result.verdict.kind, "unknown");
+    assert.equal(result.isCertifiedSafe, true);
+    assert.equal(result.verdict.kind, "proven");
     assert(result.segments.length >= 2, "Expected at least 2 mode segments (Heating -> Cooling)");
     assert(result.jumps.length >= 1, "Expected at least 1 thermostat switch jump");
 

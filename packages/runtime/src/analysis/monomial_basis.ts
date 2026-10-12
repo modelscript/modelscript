@@ -58,6 +58,15 @@ export class MonomialBasis {
   public readonly integrateTarget: Int32Array[];
   public readonly integrateDivisor: Float64Array[];
 
+  /**
+   * Variable differentiation maps: for each variable v,
+   * diffTarget[v][i] gives the index of alpha_i with alpha_i[v] decremented by 1
+   * (or -1 if alpha_i[v] === 0).
+   * diffMultiplier[v][i] gives alpha_i[v].
+   */
+  public readonly diffTarget: Int32Array[];
+  public readonly diffMultiplier: Float64Array[];
+
   private constructor(
     public readonly numVars: number,
     public readonly maxOrder: number,
@@ -153,6 +162,28 @@ export class MonomialBasis {
       }
       this.integrateTarget[v] = targets;
       this.integrateDivisor[v] = divisors;
+    }
+
+    // 6. Precompute differentiation maps for each variable
+    this.diffTarget = new Array(numVars);
+    this.diffMultiplier = new Array(numVars);
+    for (let v = 0; v < numVars; v++) {
+      const targets = new Int32Array(this.totalMonomials);
+      const multipliers = new Float64Array(this.totalMonomials);
+      for (let i = 0; i < this.totalMonomials; i++) {
+        const exps = list[i]!;
+        const e = exps[v]!;
+        multipliers[i] = e;
+        if (e === 0) {
+          targets[i] = -1;
+        } else {
+          const dec = [...exps];
+          dec[v] = e - 1;
+          targets[i] = this.keyToIndex.get(dec.join(",")) ?? -1;
+        }
+      }
+      this.diffTarget[v] = targets;
+      this.diffMultiplier[v] = multipliers;
     }
   }
 

@@ -145,15 +145,21 @@ export class IntervalNewtonRootFinder {
       const evalDomain = evalGuard(current);
 
       const deriv = evalDomain.deriv;
-      // If derivative interval contains 0, perform standard interval bisection step
+      // If derivative interval contains 0, perform sound interval bisection step
       if (deriv.lo <= 0 && deriv.hi >= 0) {
         const left = new Interval(current.lo, mid);
         const right = new Interval(mid, current.hi);
         const evalLeft = evalGuard(left);
-        if (evalLeft.value.lo <= 0 && evalLeft.value.hi >= 0) {
+        const evalRight = evalGuard(right);
+        const leftHasRoot = evalLeft.value.lo <= 0 && evalLeft.value.hi >= 0;
+        const rightHasRoot = evalRight.value.lo <= 0 && evalRight.value.hi >= 0;
+        if (leftHasRoot && !rightHasRoot) {
           current = left;
-        } else {
+        } else if (!leftHasRoot && rightHasRoot) {
           current = right;
+        } else {
+          // Cannot safely prune either half without risk of dropping a valid root
+          break;
         }
         continue;
       }
@@ -385,6 +391,7 @@ export class HybridFlowpipeSolver {
       const outgoing = transitionsBySource.get(currentModeId) ?? [];
       let triggeredTransition: HybridTransition | null = null;
       let crossingTimeInterval: Interval | null = null;
+      let crossingDeltaInterval: Interval | null = null;
 
       for (const tr of outgoing) {
         // Evaluate guard TaylorModel
@@ -405,34 +412,17 @@ export class HybridFlowpipeSolver {
         // Guard crossing condition: 0 in guardRange or guard range is <= 0 or pointTriggered
         if (pointTriggered || (guardRange.lo <= 0 && guardRange.hi >= 0) || guardRange.hi <= 0) {
           // Refine crossing time using Interval Newton
+          const guardTMTimeDeriv = guardTM.differentiateVariable(0);
           const evalGuardAtDeltaT = (dtInv: Interval) => {
             const subDomain = [dtInv, ...stepDomain.slice(1)];
             const subTM = guardTM.withDomain(subDomain);
             const val = subTM.evaluateRange();
+            const dSubTM = guardTMTimeDeriv.withDomain(subDomain);
+            const deriv = dSubTM.evaluateRange();
 
-            // Compute time derivative of guard
-            let derivLo = 0.0;
-            let derivHi = 0.0;
-            for (const [k, coeff] of guardTM.terms.entries()) {
-              const exps = TaylorModel.parseKey(k);
-              const tExp = exps[0] ?? 0;
-              if (tExp > 0) {
-                const derCoeff = coeff * tExp;
-                let termLo = derCoeff;
-                let termHi = derCoeff;
-                if (tExp > 1) {
-                  const pwrLo = Math.pow(Math.max(0, dtInv.lo), tExp - 1);
-                  const pwrHi = Math.pow(Math.max(0, dtInv.hi), tExp - 1);
-                  termLo *= Math.min(pwrLo, pwrHi);
-                  termHi *= Math.max(pwrLo, pwrHi);
-                }
-                derivLo += Math.min(termLo, termHi);
-                derivHi += Math.max(termLo, termHi);
-              }
-            }
             return {
               value: val,
-              deriv: new Interval(derivLo - 0.01, derivHi + 0.01),
+              deriv: new Interval(deriv.lo - 1e-4, deriv.hi + 1e-4),
             };
           };
 
@@ -444,6 +434,7 @@ export class HybridFlowpipeSolver {
           );
 
           triggeredTransition = tr;
+          crossingDeltaInterval = refinedLocalDt;
           crossingTimeInterval = new Interval(currentTime + refinedLocalDt.lo, currentTime + refinedLocalDt.hi);
           break;
         }
@@ -469,9 +460,11 @@ export class HybridFlowpipeSolver {
         lastJumpTime = crossingTime;
 
         const localDt = Math.max(0, Math.min(currentDt, crossingTime - currentTime));
+        const dtCrossLo = crossingDeltaInterval ? Math.max(0, crossingDeltaInterval.lo) : localDt;
+        const dtCrossHi = crossingDeltaInterval ? Math.min(currentDt, crossingDeltaInterval.hi) : localDt;
 
-        // Evaluate pre-jump enclosure at crossing time
-        const crossDomain = [new Interval(localDt, localDt), ...stepDomain.slice(1)];
+        // Evaluate pre-jump enclosure over the full validated crossing time interval
+        const crossDomain = [new Interval(dtCrossLo, dtCrossHi), ...stepDomain.slice(1)];
         const preJumpEnclosure: Interval[] = [];
         for (let j = 0; j < nStates; j++) {
           const crossTM = picardTMs[j]!.withDomain(crossDomain);
@@ -479,6 +472,23 @@ export class HybridFlowpipeSolver {
         }
 
         const preJumpNominal = picardTMs.map((tm) => tm.evaluateAt([localDt, ...new Array(nStates).fill(0)]));
+
+        // Check safety requirements on pre-jump enclosure
+        for (const req of requirements) {
+          const tube = preJumpEnclosure[req.stateIndex]!;
+          const check = HybridFlowpipeSolver.checkRequirement(tube, req);
+          if (!check.holds) {
+            violations.push({
+              stepIndex: totalSteps,
+              time: crossingTime,
+              stateIndex: req.stateIndex,
+              operator: req.operator,
+              worstCaseValue: check.worstValue,
+              limitValue: req.limitValue,
+              reason: `Pre-jump enclosure breach in mode '${currentModeId}' at t=${crossingTime.toFixed(3)}s: state[${req.stateIndex}] worst-case ${check.worstValue.toFixed(4)} violates ${req.operator} ${req.limitValue}`,
+            });
+          }
+        }
 
         if (enableSetBranching) {
           const zCrossing = Zonotope.fromIntervals(preJumpEnclosure);
@@ -536,6 +546,23 @@ export class HybridFlowpipeSolver {
           postJumpNominal = triggeredTransition.resetPoint(preJumpNominal);
         } else if (triggeredTransition.reset) {
           postJumpNominal = postJumpEnclosure.map((inv) => inv.mid);
+        }
+
+        // Check safety requirements on post-jump enclosure
+        for (const req of requirements) {
+          const tube = postJumpEnclosure[req.stateIndex]!;
+          const check = HybridFlowpipeSolver.checkRequirement(tube, req);
+          if (!check.holds) {
+            violations.push({
+              stepIndex: totalSteps,
+              time: crossingTime,
+              stateIndex: req.stateIndex,
+              operator: req.operator,
+              worstCaseValue: check.worstValue,
+              limitValue: req.limitValue,
+              reason: `Post-jump enclosure breach transitioning to mode '${triggeredTransition.targetModeId}' at t=${crossingTime.toFixed(3)}s: state[${req.stateIndex}] worst-case ${check.worstValue.toFixed(4)} violates ${req.operator} ${req.limitValue}`,
+            });
+          }
         }
 
         // Record jump event
@@ -693,19 +720,33 @@ export class HybridFlowpipeSolver {
         reason: "inconclusive-enclosure",
         detail: `${violations.length} enclosure breach(es); no concrete witness.`,
       };
-    } else if (jumps.length > 0 || usedLinearCZ) {
+    } else if (usedLinearCZ) {
       verdict = {
         kind: "unknown",
         reason: "not-rigorous",
         rigor: "heuristic",
-        detail: "Guard crossings / matrix-exponential steps are not yet enclosure-validated.",
+        detail: "Matrix-exponential steps with Constrained Zonotopes are not yet enclosure-validated.",
+      };
+    } else if (enableSetBranching) {
+      verdict = {
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail: "Clustered set branching is heuristic.",
       };
     } else {
-      verdict = { kind: "proven", rigor: "float-sound", detail: "No mode switch; validated continuous flowpipe." };
+      verdict = {
+        kind: "proven",
+        rigor: "float-sound",
+        detail:
+          jumps.length > 0
+            ? `Certified safe across ${segments.length} mode segment(s) with ${jumps.length} validated guard crossing jump(s).`
+            : "No mode switch; validated continuous flowpipe.",
+      };
     }
     const isCertifiedSafe = verdict.kind === "proven";
     const summary = isCertifiedSafe
-      ? `Hybrid reachability proven across ${segments.length} mode segment(s) over ${totalSteps} steps (no discrete jumps).`
+      ? `Hybrid reachability proven across ${segments.length} mode segment(s) over ${totalSteps} steps (${jumps.length} validated discrete jump(s)).`
       : `Hybrid verification not proven (${verdict.kind === "unknown" ? verdict.reason : verdict.kind}); ${violations.length} enclosure breach(es), ${jumps.length} jump(s) over ${totalSteps} steps.`;
 
     return {

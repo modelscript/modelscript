@@ -227,6 +227,15 @@ export class DaeBltReachabilityEngine {
         break;
       }
     }
+    if (!hasDifferentialStates) {
+      const eqs = this.arena.getEquations();
+      for (const eq of eqs) {
+        if (eq.lhs >= 0 && this.arena.getExprKind(eq.lhs) === ExprKind.Der) {
+          hasDifferentialStates = true;
+          break;
+        }
+      }
+    }
 
     let continuousSolverVerdict: VerificationVerdict | null = null;
     let usedConservativeLinearization = false;

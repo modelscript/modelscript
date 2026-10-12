@@ -643,6 +643,28 @@ export class TaylorModel {
   }
 
   /**
+   * Differentiates the Taylor Model with respect to variable `varIndex` (default: time variable 0):
+   * \frac{\partial P}{\partial x_v}
+   */
+  differentiateVariable(varIndex = 0): TaylorModel {
+    const res = new TaylorModel(this.numVars, this.order, this.domain);
+    const targetMap = this.basis.diffTarget[varIndex]!;
+    const multMap = this.basis.diffMultiplier[varIndex]!;
+    const M = this.basis.totalMonomials;
+
+    for (let i = 0; i < M; i++) {
+      const coeff = this.coeffs[i]!;
+      if (coeff === 0) continue;
+      const target = targetMap[i]!;
+      if (target >= 0) {
+        res.coeffs[target] = (res.coeffs[target] ?? 0) + coeff * multMap[i]!;
+      }
+    }
+
+    return res;
+  }
+
+  /**
    * Fixes variable `varIndex` to `value`, merging monomials that differ only in that variable.
    * This avoids the interval dependency problem of evaluating each monomial separately (e.g. the
    * end-of-step enclosure of a flowpipe, where time is a single point). A relative rounding
