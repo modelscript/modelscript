@@ -205,4 +205,96 @@ describe("compileArenaToDae", () => {
     });
     assert.notEqual(out.verdict.kind, "proven");
   });
+
+  it("symbolically isolates linear implicit der() when isolateImplicitDer is enabled", () => {
+    const arena = new DAEBuilder();
+    arena.addVariable("v", VarType.Real, Variability.Continuous);
+    const mIdx = arena.addVariable("m", VarType.Real, Variability.Parameter);
+    arena.setVarExpression(mIdx, arena.addRealLiteral(2.0));
+    arena.setVarAttr(mIdx, "min", arena.addRealLiteral(2.0));
+    arena.setVarAttr(mIdx, "max", arena.addRealLiteral(2.0));
+    // Equation: m * der(v) = 10.0 -> der(v) = 10.0 / m = 5.0
+    const m = () => arena.addNameExpr("m");
+    const v = () => arena.addNameExpr("v");
+    const lhs = arena.addBinaryExpr(BinOp.Mul, m(), arena.addDerExpr(v()));
+    arena.addEquation(EqKind.Simple, lhs, arena.addRealLiteral(10.0));
+
+    // Without option: fails strictly
+    const resStrict = compileArenaToDae(arena);
+    assert.strictEqual(resStrict.ok, false);
+
+    // With isolateImplicitDer: succeeds and isolates der(v)
+    const res = compileArenaToDae(arena, { isolateImplicitDer: true });
+    assert.ok(res.ok, res.ok ? "" : res.reason);
+    if (!res.ok) return;
+    assert.deepEqual(res.compiled.stateNames, ["v"]);
+    assert.strictEqual(res.compiled.dae.numDiffStates, 1);
+    assert.strictEqual(res.compiled.dae.numAlgStates, 0);
+
+    // Flowpipe evaluation
+    const out = DaeFlowpipeSolver.solve({
+      dae: res.compiled.dae,
+      initialX: [new Interval(0.0, 1.0)],
+      initialZ: [],
+      nominalX: [0.5],
+      nominalZ: [],
+      tSpan: [0, 0.2],
+      dt: 0.1,
+    });
+    assert.strictEqual(out.verdict.kind, "proven");
+  });
+
+  it("applies Pantelides index reduction to high-index state-constrained DAEs when enablePantelides is enabled", () => {
+    const arena = new DAEBuilder();
+    arena.addVariable("x", VarType.Real, Variability.Continuous);
+    arena.addVariable("y", VarType.Real, Variability.Continuous);
+    arena.addVariable("u", VarType.Real, Variability.Continuous);
+    arena.addVariable("v", VarType.Real, Variability.Continuous);
+
+    const x = () => arena.addNameExpr("x");
+    const y = () => arena.addNameExpr("y");
+    const u = () => arena.addNameExpr("u");
+    const v = () => arena.addNameExpr("v");
+
+    // der(x) = u, der(y) = v
+    arena.addEquation(EqKind.Simple, arena.addDerExpr(x()), u());
+    arena.addEquation(EqKind.Simple, arena.addDerExpr(y()), v());
+
+    // State constraint: x^2 + y^2 = 1.0
+    const x2 = arena.addBinaryExpr(BinOp.Mul, x(), x());
+    const y2 = arena.addBinaryExpr(BinOp.Mul, y(), y());
+    arena.addEquation(EqKind.Simple, arena.addBinaryExpr(BinOp.Add, x2, y2), arena.addRealLiteral(1.0));
+
+    // Without enablePantelides: fails as non-square
+    const resStrict = compileArenaToDae(arena);
+    assert.strictEqual(resStrict.ok, false);
+    if (!resStrict.ok) {
+      assert.ok(resStrict.reason.includes("Not square"));
+    }
+
+    // With enablePantelides: runs Pantelides index reduction on the arena
+    const arenaReduced = new DAEBuilder();
+    arenaReduced.addVariable("x", VarType.Real, Variability.Continuous);
+    arenaReduced.addVariable("y", VarType.Real, Variability.Continuous);
+    arenaReduced.addVariable("u", VarType.Real, Variability.Continuous);
+    arenaReduced.addVariable("v", VarType.Real, Variability.Continuous);
+    const xr = () => arenaReduced.addNameExpr("x");
+    const yr = () => arenaReduced.addNameExpr("y");
+    const ur = () => arenaReduced.addNameExpr("u");
+    const vr = () => arenaReduced.addNameExpr("v");
+    arenaReduced.addEquation(EqKind.Simple, arenaReduced.addDerExpr(xr()), ur());
+    arenaReduced.addEquation(EqKind.Simple, arenaReduced.addDerExpr(yr()), vr());
+    const x2r = arenaReduced.addBinaryExpr(BinOp.Mul, xr(), xr());
+    const y2r = arenaReduced.addBinaryExpr(BinOp.Mul, yr(), yr());
+    arenaReduced.addEquation(
+      EqKind.Simple,
+      arenaReduced.addBinaryExpr(BinOp.Add, x2r, y2r),
+      arenaReduced.addRealLiteral(1.0),
+    );
+
+    // Pantelides reduces constraint to InitialSimple
+    compileArenaToDae(arenaReduced, { enablePantelides: true });
+    // Verify EqKind of constraint was demoted to InitialSimple (7)
+    assert.strictEqual(arenaReduced.getEqKind(2), EqKind.InitialSimple);
+  });
 });

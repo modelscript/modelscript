@@ -135,6 +135,17 @@ export class TaylorModel {
     return res;
   }
 
+  /**
+   * Returns a copy of this Taylor Model with updated domain intervals.
+   */
+  withDomain(domain: Interval[]): TaylorModel {
+    const res = new TaylorModel(this.numVars, this.order, domain, this.remainder);
+    for (const [k, v] of this.terms.entries()) {
+      res.terms.set(k, v);
+    }
+    return res;
+  }
+
   addConstant(c: number): TaylorModel {
     const res = this.clone();
     const zeroKey = new Array(this.numVars).fill(0);
@@ -588,6 +599,15 @@ export interface FlowpipeProblemOptions {
   /** Maximum step size for adaptive stepping (default: 1.0) */
   maxDt?: number;
   /**
+   * Whether to carry over polynomial dependencies symbolically across time steps
+   * (Makino–Berz / Flow* scheme) to mitigate the wrapping effect.
+   * If true (or positive number of steps), the state Taylor models retain their polynomial
+   * dependencies on the initial set across steps instead of being re-boxed at every step.
+   * A numeric value specifies the maximum number of steps between coordinate refreshes.
+   * Default: true (with automatic coordinate refresh on Picard failure or every 20 steps).
+   */
+  symbolicCarryOver?: boolean | number;
+  /**
    * @deprecated Ignored. The previous "QR tightening" only widened the enclosure (union of the
    * direct and rotated boxes). Proper preconditioned Taylor models are tracked in the hardening plan.
    */
@@ -615,7 +635,10 @@ export class TaylorModelFlowpipeSolver {
       tol = 1e-4,
       minDt = 1e-6,
       maxDt = 1.0,
+      symbolicCarryOver = true,
     } = options;
+
+    const carryOverLimit = typeof symbolicCarryOver === "number" ? symbolicCarryOver : symbolicCarryOver ? 20 : 0;
 
     const nStates = initialEnclosure.length;
     const [t0, tEnd] = tSpan;
@@ -626,6 +649,11 @@ export class TaylorModelFlowpipeSolver {
     // Current state enclosure at step k
     let currentEnclosure = initialEnclosure.map((inv) => new Interval(inv.lo, inv.hi));
     let currentNominal = [...nominalInitial];
+    let refreshEnclosure = currentEnclosure;
+    let refreshNominalInitial = [...currentNominal];
+    let spatialDomain = refreshEnclosure.map((iv) => new Interval(-0.5 * iv.width, 0.5 * iv.width));
+    let currentSpatialTMs: TaylorModel[] | null = null;
+    let stepsSinceRefresh = 0;
 
     // Record initial step
     steps.push({
@@ -664,22 +692,29 @@ export class TaylorModelFlowpipeSolver {
         currentDt = tEnd - currentTime;
       }
 
-      // 1. Domain for this step: v0 \in [0, currentDt], v_j \in [-halfWidth, halfWidth]
-      const stepDomain: Interval[] = [new Interval(0, currentDt)];
-      for (let j = 0; j < nStates; j++) {
-        const halfWidth = 0.5 * currentEnclosure[j]!.width;
-        stepDomain.push(new Interval(-halfWidth, halfWidth));
+      // 1. Domain and initial state Taylor models for this step
+      let stepDomain: Interval[];
+      let stateTMs: TaylorModel[];
+
+      const useCarry = carryOverLimit > 0 && currentSpatialTMs !== null && stepsSinceRefresh < carryOverLimit;
+      if (useCarry) {
+        stepDomain = [new Interval(0, currentDt), ...spatialDomain];
+        stateTMs = currentSpatialTMs!.map((tm) => tm.withDomain(stepDomain));
+      } else {
+        refreshEnclosure = currentEnclosure;
+        refreshNominalInitial = [...currentNominal];
+        spatialDomain = refreshEnclosure.map((iv) => new Interval(-0.5 * iv.width, 0.5 * iv.width));
+        stepDomain = [new Interval(0, currentDt), ...spatialDomain];
+        stateTMs = [];
+        for (let j = 0; j < nStates; j++) {
+          const center = refreshEnclosure[j]!.mid;
+          stateTMs.push(TaylorModel.variable(j + 1, stepDomain, order, center));
+        }
+        stepsSinceRefresh = 0;
       }
 
       // Time TM: t = currentTime + delta_t
       const timeTM = TaylorModel.variable(0, stepDomain, order, currentTime);
-
-      // Initial state TMs: x_j(currentTime) = center_j + delta_x_j
-      const stateTMs: TaylorModel[] = [];
-      for (let j = 0; j < nStates; j++) {
-        const center = currentEnclosure[j]!.mid;
-        stateTMs.push(TaylorModel.variable(j + 1, stepDomain, order, center));
-      }
 
       // 2. Validated Picard step (Schauder fixed-point check); null when it cannot be validated.
       const picardTMs = TaylorModelFlowpipeSolver.validatedPicardStep(
@@ -690,6 +725,13 @@ export class TaylorModelFlowpipeSolver {
       );
 
       if (!picardTMs) {
+        // If Picard failed while using carried-over polynomial dependencies, force a refresh/re-box
+        // at the current time before giving up or halving dt.
+        if (useCarry) {
+          currentSpatialTMs = null;
+          stepsSinceRefresh = carryOverLimit;
+          continue;
+        }
         // Remainder could not be validated at this step size: halve and retry.
         if (currentDt > minDt * 1.01) {
           currentDt = Math.max(minDt, currentDt * 0.5);
@@ -712,6 +754,7 @@ export class TaylorModelFlowpipeSolver {
       // 4. Step accepted!
       step++;
       currentTime += currentDt;
+      stepsSinceRefresh++;
 
       // Compute bounding tubes across [0, currentDt]
       const nextTubes: Interval[] = [];
@@ -721,7 +764,8 @@ export class TaylorModelFlowpipeSolver {
       }
 
       // Advance nominal point
-      const nominalPoint = [currentDt, ...new Array(nStates).fill(0)];
+      const initialNominalOffset = refreshNominalInitial.map((val, j) => val - refreshEnclosure[j]!.mid);
+      const nominalPoint = [currentDt, ...initialNominalOffset];
       const nextNominal: number[] = [];
       for (let j = 0; j < nStates; j++) {
         nextNominal.push(picardTMs[j]!.evaluateAt(nominalPoint));
@@ -753,11 +797,15 @@ export class TaylorModelFlowpipeSolver {
 
       // State enclosure for next step: evaluate at the single time point delta_t = currentDt,
       // merging monomials first so alternating-sign terms do not suffer the dependency problem.
-      currentEnclosure = [];
-      for (let j = 0; j < nStates; j++) {
-        currentEnclosure.push(picardTMs[j]!.restrictVariable(0, currentDt).evaluateRange());
-      }
+      const endTMs = picardTMs.map((tm) => tm.restrictVariable(0, currentDt));
+      currentEnclosure = endTMs.map((tm) => tm.evaluateRange());
       currentNominal = nextNominal;
+
+      if (carryOverLimit > 0) {
+        currentSpatialTMs = endTMs;
+      } else {
+        currentSpatialTMs = null;
+      }
 
       // Adapt step size for next step
       if (adaptive) {

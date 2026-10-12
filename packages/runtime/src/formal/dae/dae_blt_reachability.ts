@@ -210,7 +210,7 @@ export class DaeBltReachabilityEngine {
     let usedConservativeLinearization = false;
 
     if (hasDifferentialStates) {
-      const compileRes = compileArenaToDae(this.arena);
+      const compileRes = compileArenaToDae(this.arena, { isolateImplicitDer: true, enablePantelides: true });
       if (compileRes.ok && compileRes.compiled.dae.numDiffStates > 0) {
         const compiled = compileRes.compiled;
         const diffCount = compiled.dae.numDiffStates;

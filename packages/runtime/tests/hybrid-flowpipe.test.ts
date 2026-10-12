@@ -360,4 +360,53 @@ describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {
     assert.strictEqual(jump.targetModeId, "Decay");
     assert(jump.preJumpEnclosure[0]!.lo <= 0.1, "Guard crossing enclosure should be bounded near 0");
   });
+
+  it("should detect Zeno chattering / jump budget exhaustion and return sound unknown verdict", () => {
+    // Mode A: dx/dt = 0
+    const modeA: HybridMode = {
+      id: "ModeA",
+      dynamics: (_t, y) => [TaylorModel.constant(0, y[0]!.numVars, y[0]!.domain, y[0]!.order)],
+    };
+    // Mode B: dx/dt = 0
+    const modeB: HybridMode = {
+      id: "ModeB",
+      dynamics: (_t, y) => [TaylorModel.constant(0, y[0]!.numVars, y[0]!.domain, y[0]!.order)],
+    };
+
+    // Immediate chattering loop: A -> B -> A at x <= 0
+    const automaton: HybridAutomaton = {
+      modes: [modeA, modeB],
+      transitions: [
+        {
+          id: "AtoB",
+          sourceModeId: "ModeA",
+          targetModeId: "ModeB",
+          guard: (y) => y[0]!,
+          guardPoint: (y) => y[0]!,
+        },
+        {
+          id: "BtoA",
+          sourceModeId: "ModeB",
+          targetModeId: "ModeA",
+          guard: (y) => y[0]!,
+          guardPoint: (y) => y[0]!,
+        },
+      ],
+    };
+
+    const result = HybridFlowpipeSolver.solve({
+      automaton,
+      initialModeId: "ModeA",
+      initialEnclosure: [new Interval(-0.1, 0.0)], // already on guard
+      nominalInitial: [0.0],
+      tSpan: [0, 1.0],
+      dt: 0.1,
+      maxJumps: 10,
+    });
+
+    assert.strictEqual(result.isCertifiedSafe, false);
+    assert.strictEqual(result.verdict.kind, "unknown");
+    assert.strictEqual(result.verdict.reason, "budget");
+    assert(result.verdict.detail?.includes("Zeno") || result.verdict.detail?.includes("jump limit"));
+  });
 });

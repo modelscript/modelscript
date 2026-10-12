@@ -775,8 +775,29 @@ export class UnifiedVerifier {
       }
 
       if (ctx.arena) {
-        const compiled = compileArenaToDae(ctx.arena);
-        if (compiled.ok) {
+        const compiled = compileArenaToDae(ctx.arena, { isolateImplicitDer: true, enablePantelides: true });
+        if (!compiled.ok && "reason" in compiled) {
+          if (!compiled.reason.includes("No state variables")) {
+            return {
+              stage: "flowpipes",
+              name: "Validated DAE Reachability Flowpipe Engine",
+              passed: false,
+              certified: false,
+              durationMs: Date.now() - t0,
+              summary: `DAE reachability not proven: ${compiled.reason}`,
+              violations: [
+                {
+                  id: "MSC-VERIFY-FLOWPIPE-UNSUPPORTED",
+                  stage: "flowpipes",
+                  severity: "warning",
+                  message: `Continuous dynamic system could not be compiled to index-1 semi-explicit DAE: ${compiled.reason}`,
+                  location: { uri: ctx.uri },
+                },
+              ],
+              details: { error: compiled.reason },
+            };
+          }
+        } else {
           const { dae, stateNames, algebraicNames } = compiled.compiled;
           const exp = (ctx.arena as any).experiment;
           const horizon = ctx.flowpipeOptions?.horizon ?? options?.flowpipeHorizon ?? exp?.stopTime ?? 1.0;
@@ -1209,7 +1230,7 @@ export class UnifiedVerifier {
       };
 
       while ((match = funcRegex.exec(text)) !== null) {
-        const kind = match[1]!;
+        const _kind = match[1]!;
         const name = match[2]!;
         const body = match[3]!;
 

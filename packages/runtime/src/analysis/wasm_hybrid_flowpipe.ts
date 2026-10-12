@@ -289,6 +289,9 @@ export class HybridFlowpipeSolver {
     const maxStepsGuard = 10000;
     let nonconvergent = false;
     let usedLinearCZ = false;
+    let zenoDetected = false;
+    let lastJumpTime = -Infinity;
+    let rapidJumpStreak = 0;
 
     while (currentTime < tEnd - 1e-12 && totalSteps < maxStepsGuard) {
       const mode = modeMap.get(currentModeId);
@@ -448,9 +451,24 @@ export class HybridFlowpipeSolver {
       }
 
       // Handle triggered discrete transition
-      if (triggeredTransition && crossingTimeInterval && jumps.length < maxJumps) {
+      if (triggeredTransition && crossingTimeInterval) {
+        if (jumps.length >= maxJumps) {
+          zenoDetected = true;
+          break;
+        }
         totalSteps++;
         const crossingTime = crossingTimeInterval.mid;
+        if (Math.abs(crossingTime - lastJumpTime) < 1e-7) {
+          rapidJumpStreak++;
+          if (rapidJumpStreak >= 5) {
+            zenoDetected = true;
+            break;
+          }
+        } else {
+          rapidJumpStreak = 0;
+        }
+        lastJumpTime = crossingTime;
+
         const localDt = Math.max(0, Math.min(currentDt, crossingTime - currentTime));
 
         // Evaluate pre-jump enclosure at crossing time
@@ -664,6 +682,12 @@ export class HybridFlowpipeSolver {
     let verdict: VerificationVerdict;
     if (nonconvergent) {
       verdict = { kind: "unknown", reason: "nonconvergent", detail: `Picard validation failed at t=${currentTime}.` };
+    } else if (zenoDetected) {
+      verdict = {
+        kind: "unknown",
+        reason: "budget",
+        detail: `Suspected Zeno execution or exceeded maximum discrete jump limit (${maxJumps}) at t=${currentTime}.`,
+      };
     } else if (!coveredHorizon) {
       verdict = { kind: "unknown", reason: "budget", detail: `Step budget exhausted at t=${currentTime}.` };
     } else if (violations.length > 0) {
