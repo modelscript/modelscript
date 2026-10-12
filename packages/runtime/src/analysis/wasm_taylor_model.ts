@@ -124,9 +124,20 @@ export class TaylorModel {
     const key = TaylorModel.serializeKey(exponents);
     if (Math.abs(val) < 1e-15) {
       this.terms.delete(key);
+      // A non-zero coefficient must not vanish silently: bound c * monomial over the domain
+      // and absorb it into the remainder so the enclosure stays sound.
+      if (val !== 0) this.sweepIntoRemainder(exponents, val);
     } else {
       this.terms.set(key, val);
     }
+  }
+
+  /**
+   * Moves the term `coeff * x^exponents` out of the polynomial and into the remainder interval.
+   */
+  private sweepIntoRemainder(exponents: number[], coeff: number): void {
+    const range = this.evaluateMonomialRange(exponents);
+    this.remainder = addInterval(this.remainder, scaleInterval(range, coeff));
   }
 
   clone(): TaylorModel {
@@ -165,6 +176,7 @@ export class TaylorModel {
       const next = cur + v;
       if (Math.abs(next) < 1e-15) {
         res.terms.delete(k);
+        if (next !== 0) res.sweepIntoRemainder(TaylorModel.parseKey(k), next);
       } else {
         res.terms.set(k, next);
       }
@@ -192,6 +204,7 @@ export class TaylorModel {
       const next = cur - v;
       if (Math.abs(next) < 1e-15) {
         res.terms.delete(k);
+        if (next !== 0) res.sweepIntoRemainder(TaylorModel.parseKey(k), next);
       } else {
         res.terms.set(k, next);
       }
@@ -321,7 +334,11 @@ export class TaylorModel {
 
     const res = polySum.scale(expC);
     const expRem = scaleInterval(truncRemainder, expC);
-    const remInput = scaleInterval(deltaRemainder, Math.exp(c + deltaRange.hi));
+    // Input remainder r: exp(P + r) - exp(P) = exp(xi) * r (mean value theorem), where xi ranges over
+    // c + range(delta) extended by r. Use the interval of the derivative, so negative r is handled.
+    const dLo = Math.exp(c + deltaRange.lo + Math.min(0, deltaRemainder.lo));
+    const dHi = Math.exp(c + deltaRange.hi + Math.max(0, deltaRemainder.hi));
+    const remInput = mulInterval(deltaRemainder, new Interval(dLo, dHi));
     res.remainder = addInterval(res.remainder, addInterval(expRem, remInput));
 
     return res;
@@ -360,18 +377,22 @@ export class TaylorModel {
       else if (k % 4 === 0) cosDelta = cosDelta.add(powers[k]!.scale(1.0 / fact));
     }
 
-    // Lagrange remainder bounds
+    // Lagrange remainder bounds: each of the two series (sin delta, cos delta) is truncated with
+    // error <= maxDelta^(n+1)/(n+1)!, and they enter with weights |cos c| and |sin c| respectively.
     const deltaRange = delta.evaluatePolynomialRange();
     const maxDelta = Math.max(Math.abs(deltaRange.lo), Math.abs(deltaRange.hi));
     const nextFact = fact * (this.order + 1);
-    const lagrangeBound = Math.pow(maxDelta, this.order + 1) / nextFact;
+    const lagrangeBound = (Math.pow(maxDelta, this.order + 1) / nextFact) * (Math.abs(sinC) + Math.abs(cosC));
     const truncRem = new Interval(-lagrangeBound, lagrangeBound);
+    // Input remainder: |sin'| <= 1, so sin(P + r) differs from sin(P) by at most max|r|.
+    const inRad = Math.max(Math.abs(this.remainder.lo), Math.abs(this.remainder.hi));
+    const inputRem = new Interval(-inRad, inRad);
 
     // sin(c)*cos(delta) + cos(c)*sin(delta)
     const part1 = cosDelta.scale(sinC);
     const part2 = sinDelta.scale(cosC);
     const res = part1.add(part2);
-    res.remainder = addInterval(res.remainder, truncRem);
+    res.remainder = addInterval(res.remainder, addInterval(truncRem, inputRem));
     return res;
   }
 
@@ -409,14 +430,17 @@ export class TaylorModel {
     const deltaRange = delta.evaluatePolynomialRange();
     const maxDelta = Math.max(Math.abs(deltaRange.lo), Math.abs(deltaRange.hi));
     const nextFact = fact * (this.order + 1);
-    const lagrangeBound = Math.pow(maxDelta, this.order + 1) / nextFact;
+    const lagrangeBound = (Math.pow(maxDelta, this.order + 1) / nextFact) * (Math.abs(sinC) + Math.abs(cosC));
     const truncRem = new Interval(-lagrangeBound, lagrangeBound);
+    // Input remainder: |cos'| <= 1, so cos(P + r) differs from cos(P) by at most max|r|.
+    const inRad = Math.max(Math.abs(this.remainder.lo), Math.abs(this.remainder.hi));
+    const inputRem = new Interval(-inRad, inRad);
 
     // cos(c)*cos(delta) - sin(c)*sin(delta)
     const part1 = cosDelta.scale(cosC);
     const part2 = sinDelta.scale(sinC);
     const res = part1.sub(part2);
-    res.remainder = addInterval(res.remainder, truncRem);
+    res.remainder = addInterval(res.remainder, addInterval(truncRem, inputRem));
     return res;
   }
 
