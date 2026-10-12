@@ -74,6 +74,7 @@ export interface SarifVerificationReportInput {
       name: string;
       passed: boolean;
       certified?: boolean;
+      details?: any;
       violations?: {
         id?: string;
         message: string;
@@ -227,6 +228,8 @@ export function generateSarifReport(report: SarifVerificationReportInput, toolVe
           stage: stageKey,
           stageName: stageResult.name,
           witness: v.witness,
+          verdict: stageResult.details?.verdict?.kind,
+          rigor: stageResult.details?.verdict?.rigor,
         },
       };
 

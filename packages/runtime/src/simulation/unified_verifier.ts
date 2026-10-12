@@ -15,13 +15,15 @@
  *   9. Spatial Clearance: 3D CAD physical clearances & collision detection.
  */
 
+import { DaeFlowpipeSolver, type DaeFlowpipeRequirement } from "../analysis/wasm_dae_flowpipe.js";
 import {
   HybridFlowpipeSolver,
   type HybridAutomaton,
   type HybridFlowpipeResult,
 } from "../analysis/wasm_hybrid_flowpipe.js";
 import { Interval } from "../analysis/wasm_interval.js";
-import { SosBarrierSynthesizer, type BarrierCertificateResult } from "../analysis/wasm_sos_barrier.js";
+import { compileArenaToDae } from "../formal/dae/arena_dae_compiler.js";
+import { DaeIntervalEvaluator } from "../formal/dae/dae_interval_evaluator.js";
 import {
   AbstractDomainOracle,
   ConstraintTheoryOracle,
@@ -80,6 +82,10 @@ export interface UnifiedVerificationOptions {
   contracts?: boolean | undefined;
   stateMachines?: boolean | undefined;
   flowpipes?: boolean | undefined;
+  flowpipeOrder?: number | undefined;
+  flowpipeDt?: number | undefined;
+  flowpipeHorizon?: number | undefined;
+  flowpipeInitialSet?: string | undefined;
   barriers?: boolean | undefined;
   trajectories?: boolean | undefined;
   falsification?: boolean | undefined;
@@ -115,6 +121,30 @@ export interface UnifiedVerificationReport {
   artifacts?: Record<string, string>;
 }
 
+export interface FlowpipeConfigOptions {
+  dt?: number;
+  horizon?: number;
+  order?: number;
+  initialSet?: Record<string, [number, number]> | Map<string, [number, number]>;
+}
+
+export function parseInitialSetString(str: string): Map<string, [number, number]> {
+  const map = new Map<string, [number, number]>();
+  if (!str) return map;
+  const regex =
+    /([a-zA-Z0-9_.]+)\s*[:=]\s*\[?\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*[,:]\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\]?/g;
+  let match;
+  while ((match = regex.exec(str)) !== null) {
+    const varName = match[1];
+    const lo = parseFloat(match[2]);
+    const hi = parseFloat(match[3]);
+    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+      map.set(varName, [Math.min(lo, hi), Math.max(lo, hi)]);
+    }
+  }
+  return map;
+}
+
 export interface VerificationInputContext {
   uri?: string;
   sourceText?: string;
@@ -128,6 +158,8 @@ export interface VerificationInputContext {
   coordinator?: SemanticTheoryCoordinator;
   hypergraph?: DigitalThreadHypergraph;
   contractedStateSpace?: Map<string, [number, number]>;
+  flowpipeRequirements?: DaeFlowpipeRequirement[];
+  flowpipeOptions?: FlowpipeConfigOptions;
 }
 
 export class UnifiedVerifier {
@@ -194,7 +226,7 @@ export class UnifiedVerifier {
 
     // ── Stage 5: Continuous / Hybrid Reachability Flowpipes ───────────────────
     if (hasFlowpipes) {
-      stages["flowpipes"] = await this.runFlowpipesStage(ctx);
+      stages["flowpipes"] = await this.runFlowpipesStage(ctx, options);
     }
 
     // ── Stage 6: Sum-of-Squares Barrier Certificates ──────────────────────────
@@ -670,7 +702,10 @@ export class UnifiedVerifier {
     }
   }
 
-  private static async runFlowpipesStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
+  private static async runFlowpipesStage(
+    ctx: VerificationInputContext,
+    options?: UnifiedVerificationOptions,
+  ): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
       if (ctx.hybridAutomaton) {
@@ -687,16 +722,20 @@ export class UnifiedVerifier {
           }
         }
 
+        const nominalInitial = initialEnclosure.map((iv) => (iv.lo + iv.hi) / 2);
+        const order = ctx.flowpipeOptions?.order ?? options?.flowpipeOrder ?? 4;
+        const dt = ctx.flowpipeOptions?.dt ?? options?.flowpipeDt ?? 0.1;
+        const horizon = ctx.flowpipeOptions?.horizon ?? options?.flowpipeHorizon ?? 10.0;
         const result: HybridFlowpipeResult = HybridFlowpipeSolver.solve({
           automaton: ctx.hybridAutomaton,
           initialModeId: Array.isArray(ctx.hybridAutomaton.modes)
             ? ctx.hybridAutomaton.modes[0]?.id || "m0"
             : ctx.hybridAutomaton.modes.keys().next().value || "m0",
           initialEnclosure,
-          nominalInitial: [0],
-          tSpan: [0, 10.0],
-          dt: 0.1,
-          order: 4,
+          nominalInitial,
+          tSpan: [0, horizon],
+          dt,
+          order,
         });
 
         const passed = result.isCertifiedSafe;
@@ -731,8 +770,158 @@ export class UnifiedVerifier {
             ? `Proven: validated Taylor reachability tubes stay within the requirements (float-sound).`
             : `Reachability not proven (${unknownReason || "inconclusive"}).`,
           violations,
-          details: result,
+          details: { ...result, order, dt, tSpan: [0, horizon] },
         };
+      }
+
+      if (ctx.arena) {
+        const compiled = compileArenaToDae(ctx.arena);
+        if (compiled.ok) {
+          const { dae, stateNames, algebraicNames } = compiled.compiled;
+          const exp = (ctx.arena as any).experiment;
+          const horizon = ctx.flowpipeOptions?.horizon ?? options?.flowpipeHorizon ?? exp?.stopTime ?? 1.0;
+          const tSpan: [number, number] = [exp?.startTime ?? 0, horizon];
+          const dt = ctx.flowpipeOptions?.dt ?? options?.flowpipeDt ?? exp?.interval ?? 0.05;
+          const order = ctx.flowpipeOptions?.order ?? options?.flowpipeOrder ?? 4;
+
+          const customBounds =
+            ctx.flowpipeOptions?.initialSet instanceof Map
+              ? ctx.flowpipeOptions.initialSet
+              : ctx.flowpipeOptions?.initialSet
+                ? new Map(Object.entries(ctx.flowpipeOptions.initialSet))
+                : options?.flowpipeInitialSet
+                  ? parseInitialSetString(options.flowpipeInitialSet)
+                  : new Map<string, [number, number]>();
+
+          const evaluator = new DaeIntervalEvaluator(ctx.arena);
+          const initialX: Interval[] = [];
+          const nominalX: number[] = [];
+          for (let s = 0; s < stateNames.length; s++) {
+            const sName = stateNames[s];
+            if (customBounds.has(sName)) {
+              const [lo, hi] = customBounds.get(sName)!;
+              initialX.push(new Interval(lo, hi));
+              nominalX.push((lo + hi) / 2);
+              continue;
+            }
+            const vIdx = (ctx.arena as any).lookupVariable?.((ctx.arena as any).interner.intern(sName)) ?? -1;
+            const b = vIdx >= 0 ? evaluator.getVarBound(vIdx) : null;
+            if (b && !b.isBottom() && !b.isTop()) {
+              initialX.push(new Interval(b.low, b.high));
+              nominalX.push((b.low + b.high) / 2);
+            } else {
+              const startVal = vIdx >= 0 ? ((ctx.arena as any).getVarStartValue?.(vIdx) ?? 0) : 0;
+              initialX.push(new Interval(startVal - 0.1, startVal + 0.1));
+              nominalX.push(startVal);
+            }
+          }
+
+          const initialZ: Interval[] = [];
+          const nominalZ: number[] = [];
+          for (let a = 0; a < algebraicNames.length; a++) {
+            const aName = algebraicNames[a];
+            if (customBounds.has(aName)) {
+              const [lo, hi] = customBounds.get(aName)!;
+              initialZ.push(new Interval(lo, hi));
+              nominalZ.push((lo + hi) / 2);
+              continue;
+            }
+            const vIdx = (ctx.arena as any).lookupVariable?.((ctx.arena as any).interner.intern(aName)) ?? -1;
+            const b = vIdx >= 0 ? evaluator.getVarBound(vIdx) : null;
+            if (b && !b.isBottom() && !b.isTop()) {
+              initialZ.push(new Interval(b.low, b.high));
+              nominalZ.push((b.low + b.high) / 2);
+            } else {
+              initialZ.push(new Interval(-1, 1));
+              nominalZ.push(0);
+            }
+          }
+
+          const requirements: DaeFlowpipeRequirement[] = [];
+          if (ctx.flowpipeRequirements) {
+            requirements.push(...ctx.flowpipeRequirements);
+          }
+          for (let s = 0; s < stateNames.length; s++) {
+            const vIdx = (ctx.arena as any).lookupVariable?.((ctx.arena as any).interner.intern(stateNames[s])) ?? -1;
+            if (vIdx >= 0) {
+              const maxExpr = (ctx.arena as any).getVarAttrExprId?.(vIdx, "max");
+              if (maxExpr !== undefined && maxExpr >= 0) {
+                const maxVal = (ctx.arena as any).getExprRealValue?.(maxExpr);
+                if (Number.isFinite(maxVal)) {
+                  requirements.push({ variable: "x", index: s, operator: "<=", limitValue: maxVal });
+                }
+              }
+              const minExpr = (ctx.arena as any).getVarAttrExprId?.(vIdx, "min");
+              if (minExpr !== undefined && minExpr >= 0) {
+                const minVal = (ctx.arena as any).getExprRealValue?.(minExpr);
+                if (Number.isFinite(minVal)) {
+                  requirements.push({ variable: "x", index: s, operator: ">=", limitValue: minVal });
+                }
+              }
+            }
+          }
+          for (let a = 0; a < algebraicNames.length; a++) {
+            const vIdx =
+              (ctx.arena as any).lookupVariable?.((ctx.arena as any).interner.intern(algebraicNames[a])) ?? -1;
+            if (vIdx >= 0) {
+              const maxExpr = (ctx.arena as any).getVarAttrExprId?.(vIdx, "max");
+              if (maxExpr !== undefined && maxExpr >= 0) {
+                const maxVal = (ctx.arena as any).getExprRealValue?.(maxExpr);
+                if (Number.isFinite(maxVal)) {
+                  requirements.push({ variable: "z", index: a, operator: "<=", limitValue: maxVal });
+                }
+              }
+              const minExpr = (ctx.arena as any).getVarAttrExprId?.(vIdx, "min");
+              if (minExpr !== undefined && minExpr >= 0) {
+                const minVal = (ctx.arena as any).getExprRealValue?.(minExpr);
+                if (Number.isFinite(minVal)) {
+                  requirements.push({ variable: "z", index: a, operator: ">=", limitValue: minVal });
+                }
+              }
+            }
+          }
+
+          const daeRes = DaeFlowpipeSolver.solve({
+            dae,
+            initialX,
+            initialZ,
+            nominalX,
+            nominalZ,
+            tSpan,
+            dt,
+            order,
+            requirements,
+          });
+
+          const passed = daeRes.isCertifiedSafe;
+          const unknownReason = daeRes.verdict.kind === "unknown" ? daeRes.verdict.reason : "";
+          const violations: VerificationViolation[] = [];
+          if (!passed) {
+            violations.push({
+              id: "MSC-VERIFY-FLOWPIPE-UNSAFE",
+              stage: "flowpipes",
+              severity: "error",
+              message:
+                daeRes.verdict.kind === "violated"
+                  ? `DAE reachability enclosure crosses a requirement limit.`
+                  : `DAE reachability not proven (${unknownReason}): ${daeRes.verdict.detail ?? "inconclusive"}`,
+              location: { uri: ctx.uri },
+            });
+          }
+
+          return {
+            stage: "flowpipes",
+            name: "Validated DAE Reachability Flowpipe Engine",
+            passed,
+            certified: passed,
+            durationMs: Date.now() - t0,
+            summary: passed
+              ? `Proven: validated DAE reachability tubes satisfy all requirements (${stateNames.length} state(s), ${algebraicNames.length} algebraic).`
+              : `DAE reachability not proven (${unknownReason || "inconclusive"}).`,
+            violations,
+            details: { ...daeRes, order, dt, tSpan, stateNames, algebraicNames },
+          };
+        }
       }
 
       return {
@@ -740,7 +929,7 @@ export class UnifiedVerifier {
         name: "Validated Reachability Flowpipe Engine",
         passed: true,
         durationMs: Date.now() - t0,
-        summary: "Flowpipe reachability check passed (no hybrid automata detected).",
+        summary: "Flowpipe reachability check passed (no continuous dynamic systems detected).",
         violations: [],
       };
     } catch (err: any) {
@@ -758,28 +947,17 @@ export class UnifiedVerifier {
   private static async runBarriersStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
-      const result: BarrierCertificateResult = SosBarrierSynthesizer.synthesizeQuadratic(
-        {
-          numVars: 2,
-          f: (x: number[]) => [-x[0]!, -x[1]!],
-        },
-        {
-          initialRadius: 1.0,
-          unsafeRadius: 3.0,
-        },
-      );
-
+      // Barrier synthesis is not yet bound to the model's dynamics. Running it on a hardcoded generic
+      // system (f = -x) would report a certificate that says nothing about the user's model.
+      void ctx;
       return {
         stage: "barriers",
         name: "Sum-of-Squares Barrier Synthesizer",
-        passed: result.isCertifiedSafe,
-        certified: result.isCertifiedSafe,
+        passed: true,
+        certified: false,
         durationMs: Date.now() - t0,
-        summary: result.summary,
-        violations: result.isCertifiedSafe
-          ? []
-          : [{ stage: "barriers", message: "Failed to synthesize valid barrier certificate", severity: "warning" }],
-        details: result,
+        summary: "Not evaluated: barrier synthesis is not bound to this model's dynamics (no certificate produced).",
+        violations: [],
       };
     } catch (err: any) {
       return {
@@ -1245,6 +1423,12 @@ export class UnifiedVerifier {
     for (const st of Object.values(report.stages)) {
       const badge = st.passed ? (st.certified ? "[CERTIFIED]" : "[PASSED]   ") : "[FAILED]   ";
       lines.push(`${badge} ${st.name.padEnd(40)} (${st.durationMs.toFixed(1)}ms)`);
+      if (st.details?.verdict) {
+        const v = st.details.verdict;
+        lines.push(
+          `          Verdict: ${v.kind.toUpperCase()}${v.rigor ? ` (rigor: ${v.rigor})` : ""}${v.reason ? ` (reason: ${v.reason})` : ""}`,
+        );
+      }
       lines.push(`          ${st.summary}`);
       if (st.stage === "algorithms" && st.details?.formattedMatrix) {
         lines.push("");
@@ -1285,6 +1469,8 @@ export class UnifiedVerifier {
             isSatisfied: false,
             requirementName: st.name,
             message: v.message,
+            verdict: st.details?.verdict?.kind,
+            rigor: st.details?.verdict?.rigor,
           });
         }
       } else {
@@ -1293,6 +1479,8 @@ export class UnifiedVerifier {
           constraintId: 1,
           isSatisfied: true,
           requirementName: st.name,
+          verdict: st.details?.verdict?.kind,
+          rigor: st.details?.verdict?.rigor,
         });
       }
     }

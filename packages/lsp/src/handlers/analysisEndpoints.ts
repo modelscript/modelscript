@@ -2025,9 +2025,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         return {
           success: true,
-          isCertifiedSafe: res.isCertifiedSafe,
+          isCertifiedSafe: false,
+          candidateFound: res.candidateFound,
+          verdict: res.verdict,
+          boundToModel: false,
           degree: res.barrierDegree,
-          summary: res.summary,
+          summary: `${res.summary} (generic stable-linear demo system; not bound to the model's dynamics)`,
         };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : String(e) };

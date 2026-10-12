@@ -98,6 +98,17 @@ export function generateHtmlReport(
             <span class="stage-toggle">▼</span>
           </div>
           <div class="stage-body">
+            ${
+              st.details?.verdict
+                ? `
+              <div style="margin-bottom: 8px; font-weight: 500; font-size: 0.9em;">
+                Verdict: <span style="font-family: monospace; text-transform: uppercase;">${escapeHtml(st.details.verdict.kind)}</span>
+                ${st.details.verdict.rigor ? `<span style="opacity: 0.8;"> (rigor: ${escapeHtml(st.details.verdict.rigor)})</span>` : ""}
+                ${st.details.verdict.reason ? `<span style="opacity: 0.8;"> (reason: ${escapeHtml(st.details.verdict.reason)})</span>` : ""}
+              </div>
+            `
+                : ""
+            }
             <div class="stage-summary">${escapeHtml(st.summary)}</div>
             ${matrixSection}
             ${violationDetails}

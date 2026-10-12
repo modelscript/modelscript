@@ -55,7 +55,7 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
     assert(SdpSolver.isPsd(res.X));
   });
 
-  it("should synthesize certified Barrier Certificate for infinite time t in [0, inf)", () => {
+  it("should find a (heuristic, unverified) barrier candidate and never claim a certificate", () => {
     // Stable damped system: dx0/dt = -2 * x0, dx1/dt = -3 * x1
     // Initial set: ||x|| <= 1.0
     // Unsafe set: ||x|| >= 3.0
@@ -70,7 +70,9 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
       },
     );
 
-    assert(result.isCertifiedSafe, `Barrier certificate should certify safety: ${result.summary}`);
+    assert.strictEqual(result.isCertifiedSafe, false);
+    assert.strictEqual(result.verdict.kind, "unknown");
+    assert(result.candidateFound, `Barrier candidate should be found: ${result.summary}`);
     assert.strictEqual(result.barrierDegree, 2);
     assert(result.barrierCoefficients.length === 4);
   });

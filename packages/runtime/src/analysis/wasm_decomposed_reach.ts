@@ -10,6 +10,7 @@
  *   - Reconstructs full-dimensional reachability tubes via Cartesian product / Star Set enclosure.
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
 import { HjiLevelSetSolver, type HjiProblem } from "./wasm_hji_solver.js";
 import { Interval } from "./wasm_interval.js";
 import { StarSet } from "./wasm_star_set.js";
@@ -41,7 +42,12 @@ export interface DecomposedSystemProblem {
 }
 
 export interface DecomposedReachResult {
+  /** Always false: grid level-set results carry no rigorous error bound (see `verdict`). */
   isCertifiedSafe: boolean;
+  /** Always `unknown(not-rigorous)`. */
+  verdict: VerificationVerdict;
+  /** Whether every subsystem's grid estimate reports no unsafe region. NOT a proof. */
+  allSubsystemsEstimatedSafe: boolean;
   totalDim: number;
   subsystemResults: {
     name: string;
@@ -101,11 +107,19 @@ export class DecomposedReachabilitySolver {
     const composedStarSet = StarSet.fromIntervals(localIntervals);
 
     return {
-      isCertifiedSafe: allSubsystemsSafe,
+      isCertifiedSafe: false,
+      allSubsystemsEstimatedSafe: allSubsystemsSafe,
+      verdict: {
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail:
+          "Subsystem Hamilton-Jacobi grids have no rigorous discretization error bound, and unsampled dimensions default to the initial enclosure.",
+      },
       totalDim,
       subsystemResults: subResults,
       composedStarSet,
-      summary: `Decomposed reachability completed for ${totalDim}D system across ${subsystems.length} subsystems without dimensional grid explosion. Overall certified: ${allSubsystemsSafe}.`,
+      summary: `Decomposed reachability estimate (non-rigorous) for ${totalDim}D system across ${subsystems.length} subsystems; grid estimates ${allSubsystemsSafe ? "report no unsafe region" : "report an unsafe region"}; safety is not proven.`,
     };
   }
 }

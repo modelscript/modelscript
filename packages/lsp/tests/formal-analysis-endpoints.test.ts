@@ -142,9 +142,10 @@ action def SpeedGovernor {
       });
 
       assert.strictEqual(result.success, true);
-      assert.strictEqual(result.isCertifiedSafe, true);
+      assert.strictEqual(result.isCertifiedSafe, false);
+      assert.strictEqual(result.candidateFound, true);
       assert.strictEqual(result.degree, 2);
-      assert.ok(result.summary.includes("SOS Barrier Certificate"));
+      assert.ok(result.summary.toLowerCase().includes("barrier"));
     },
   );
 

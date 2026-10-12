@@ -124,4 +124,46 @@ describe("validated Taylor-model flowpipe (Schauder-checked Picard)", () => {
     assert.ok(last.tubes[0]!.hi >= 1.1 * Math.exp(-1) - 1e-9);
     assert.ok(last.tubes[0]!.width < 0.5, `width ${last.tubes[0]!.width}`);
   });
+
+  it("Brusselator: 50 randomized RK4 trajectories stay inside step enclosures", () => {
+    const A = 1.0;
+    const B = 1.5;
+    const f: F = (_t, [x, y]) => [A + x! * x! * y! - (B + 1) * x!, B * x! - x! * x! * y!];
+    const dynamics = (_t: TaylorModel, y: TaylorModel[]) => {
+      const x = y[0]!;
+      const yVar = y[1]!;
+      const xSq = x.mul(x);
+      const xSqY = xSq.mul(yVar);
+      // dx/dt = 1 + x^2 y - 2.5 x
+      const dx = xSqY.addConstant(A).sub(x.scale(B + 1));
+      // dy/dt = 1.5 x - x^2 y
+      const dy = x.scale(B).sub(xSqY);
+      return [dx, dy];
+    };
+    const box = [new Interval(0.95, 1.05), new Interval(1.45, 1.55)];
+    const res = TaylorModelFlowpipeSolver.solve({
+      dynamics,
+      initialEnclosure: box,
+      nominalInitial: [1.0, 1.5],
+      tSpan: [0, 0.3],
+      dt: 0.02,
+      order: 4,
+    });
+    assert.ok(res.reachedTime >= 0.3 - 1e-9, `reached ${res.reachedTime}: ${res.summary}`);
+    assert.strictEqual(res.verdict.kind, "proven");
+
+    const rand = rng(12345);
+    for (let s = 0; s < 50; s++) {
+      const y0 = box.map((iv) => iv.lo + rand() * iv.width);
+      for (const step of res.steps) {
+        const y = rk4(f, y0, 0, step.time, 5e-4);
+        for (let j = 0; j < 2; j++) {
+          assert.ok(
+            y[j]! >= step.tubes[j]!.lo - 1e-6 && y[j]! <= step.tubes[j]!.hi + 1e-6,
+            `Brusselator sample ${s} state ${j} at t=${step.time}: ${y[j]} not in [${step.tubes[j]!.lo}, ${step.tubes[j]!.hi}]`,
+          );
+        }
+      }
+    }
+  });
 });

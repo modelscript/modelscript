@@ -15,6 +15,7 @@ import { ArenaBltResult } from "../../analysis/wasm_blt.js";
 import { Interval } from "../../analysis/wasm_interval.js";
 import { BinOp, DAEBuilder, ExprKind } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
+import type { VerificationVerdict } from "../verdict.js";
 import { IntervalDual, createDualDomain } from "./arena_dae_compiler.js";
 import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
 import { blockFingerprint } from "./arena_fingerprint.js";
@@ -56,6 +57,7 @@ export interface DaeReachabilitySummary {
   blockResults: BlockReachabilityResult[];
   recomputedBlocks: number;
   cachedBlocks: number;
+  verdict: VerificationVerdict;
 }
 
 /**
@@ -187,9 +189,29 @@ export class DaeBltReachabilityEngine {
     }
 
     const hasDefiniteErrors = allIssues.some((i) => i.severity === "definite");
+    const hasPossibleErrors = allIssues.some((i) => i.severity === "possible");
+
+    const verdict: VerificationVerdict = hasDefiniteErrors
+      ? {
+          kind: "violated",
+          witness: { time: 0, state: {} },
+          detail: "Definite singularity or invariant breach detected in BLT reachability evaluation.",
+        }
+      : hasPossibleErrors || singularLoopsCount > 0
+        ? {
+            kind: "unknown",
+            reason: "inconclusive-enclosure",
+            detail: `${allIssues.length} possible issue(s); singular loops: ${singularLoopsCount}.`,
+          }
+        : {
+            kind: "proven",
+            rigor: "float-sound",
+            detail: "All causal blocks and algebraic loops regular; state derivative enclosures bounded.",
+          };
 
     return {
       isFullyCertified: !hasDefiniteErrors && singularLoopsCount === 0,
+      verdict,
       totalBlocks: blocks.length,
       algebraicLoopsCount,
       singularLoopsCount,

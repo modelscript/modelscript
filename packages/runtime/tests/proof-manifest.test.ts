@@ -58,7 +58,7 @@ describe("Cryptographically Verifiable Digital Thread Proof Manifest Suite", () 
     // Markdown generation
     const md = ProofManifestGenerator.formatMarkdownSection(manifest);
     assert(md.includes("Cryptographic Digital Thread Proof Manifest"));
-    assert(md.includes("MATHEMATICALLY CERTIFIED SAFE"));
+    assert(md.includes("ALL FORMAL ITEMS PROVEN"));
     assert(md.includes("SysML::SafePressureReq"));
     assert(md.includes("file:///models/ValveControl.mo"));
   });

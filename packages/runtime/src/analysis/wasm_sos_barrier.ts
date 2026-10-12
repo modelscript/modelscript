@@ -10,6 +10,7 @@
  *   - In-WASM SDP solving for barrier certificate synthesis.
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
 import { SdpSolver, type SdpProblem } from "../solvers/wasm_sdp_solver.js";
 
 export interface PolynomialSystem {
@@ -30,12 +31,25 @@ export interface BarrierSpecification {
 }
 
 export interface BarrierCertificateResult {
+  /** Always false: no barrier inequality is verified (see `verdict`). */
   isCertifiedSafe: boolean;
+  /** Always `unknown(not-rigorous)`. */
+  verdict: VerificationVerdict;
+  /** Heuristic screening result (level-set separation and a negative diagonal Jacobian entry). NOT a proof. */
+  candidateFound: boolean;
   barrierCoefficients: number[];
   barrierDegree: number;
   lyapunovDecayRate?: number;
   summary: string;
 }
+
+const SOS_NOT_RIGOROUS: VerificationVerdict = {
+  kind: "unknown",
+  reason: "not-rigorous",
+  rigor: "heuristic",
+  detail:
+    "The candidate B(x)=x^T P x is not verified: dynamics are linearized at the origin by finite differences, stability is read from A[0][0] only, and P is not shown to solve a Lyapunov inequality.",
+};
 
 export class SosBarrierSynthesizer {
   /**
@@ -121,14 +135,16 @@ export class SosBarrierSynthesizer {
       }
     }
 
-    const statusStr = isCertified ? "CERTIFIED SAFE FOR ALL t in [0, inf)" : "SYNTHESIS INFEASIBLE";
+    const statusStr = isCertified ? "candidate found (heuristic, NOT verified)" : "no candidate found";
 
     return {
-      isCertifiedSafe: isCertified,
+      isCertifiedSafe: false,
+      verdict: SOS_NOT_RIGOROUS,
+      candidateFound: isCertified,
       barrierCoefficients: coeffs,
       barrierDegree: 2,
       lyapunovDecayRate: Math.abs(A[0]?.[0] ?? 0.1),
-      summary: `SOS Barrier Certificate ${statusStr}: B(x) = x^T P x proves unsafe set is unreachable for all infinite time.`,
+      summary: `Quadratic barrier ${statusStr}: B(x) = x^T P x; safety for all time is not proven.`,
     };
   }
 
@@ -142,12 +158,14 @@ export class SosBarrierSynthesizer {
     degree: 4 = 4,
   ): BarrierCertificateResult {
     const quadRes = SosBarrierSynthesizer.synthesizeQuadratic(system, spec);
-    if (!quadRes.isCertifiedSafe) {
+    if (!quadRes.candidateFound) {
       return {
         isCertifiedSafe: false,
+        verdict: SOS_NOT_RIGOROUS,
+        candidateFound: false,
         barrierCoefficients: [],
         barrierDegree: degree,
-        summary: "Higher-degree SOS barrier synthesis infeasible for given bounds.",
+        summary: "Higher-degree barrier candidate not found for given bounds.",
       };
     }
 
@@ -155,15 +173,17 @@ export class SosBarrierSynthesizer {
     const n = system.numVars;
     const quarticCoeffs = [...quadRes.barrierCoefficients];
     for (let i = 0; i < n; i++) {
-      quarticCoeffs.push(0.1); // positive quartic stabilization term c * x_i^4
+      quarticCoeffs.push(0.1); // positive quartic stabilization term c * x_i^4 (fixed heuristic constant)
     }
 
     return {
-      isCertifiedSafe: true,
+      isCertifiedSafe: false,
+      verdict: SOS_NOT_RIGOROUS,
+      candidateFound: true,
       barrierCoefficients: quarticCoeffs,
       barrierDegree: degree,
       lyapunovDecayRate: quadRes.lyapunovDecayRate,
-      summary: `Degree-${degree} SOS Barrier Certificate CERTIFIED SAFE FOR ALL t in [0, inf).`,
+      summary: `Degree-${degree} barrier candidate found (heuristic, NOT verified); safety for all time is not proven.`,
     };
   }
 }

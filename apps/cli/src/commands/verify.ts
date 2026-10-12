@@ -34,6 +34,10 @@ interface VerifyArgs {
   contracts?: boolean;
   stateMachines?: boolean;
   flowpipe?: boolean;
+  order?: number;
+  dt?: number;
+  horizon?: number;
+  initialSet?: string;
   barriers?: boolean;
   falsify?: boolean;
   simulation?: boolean;
@@ -94,6 +98,23 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         description: "enable validated continuous/hybrid reachability flowpipes",
         type: "boolean",
         default: false,
+      })
+      .option("order", {
+        description: "Taylor model flowpipe expansion order",
+        type: "number",
+        default: 4,
+      })
+      .option("dt", {
+        description: "time step size in seconds for flowpipe reachability",
+        type: "number",
+      })
+      .option("horizon", {
+        description: "time horizon (stop time) in seconds for flowpipe reachability",
+        type: "number",
+      })
+      .option("initial-set", {
+        description: "initial state set bounds (e.g. 'x=[0.9,1.1],y=[-0.1,0.1]')",
+        type: "string",
       })
       .option("barriers", {
         description: "enable sum-of-squares barrier certificate synthesis",
@@ -308,7 +329,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     let verifyEntry: any = null;
     let arena: any = null;
 
-    if (args.simulation !== false || args.b2b) {
+    if (args.simulation !== false || args.b2b || args.flowpipe || args.all) {
       // Find candidate verification case if a target name or any verify entry exists
       const entries = target ? db.byName(target) : db.allEntries();
       if (entries && entries.length > 0) {
@@ -413,6 +434,10 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       contracts: args.contracts,
       stateMachines: args.stateMachines,
       flowpipes: args.flowpipe,
+      flowpipeOrder: args.order,
+      flowpipeDt: args.dt,
+      flowpipeHorizon: args.horizon,
+      flowpipeInitialSet: args.initialSet,
       barriers: args.barriers,
       trajectories: args.simulation,
       clearance: args.clearance,

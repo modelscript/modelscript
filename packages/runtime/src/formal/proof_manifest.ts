@@ -16,6 +16,11 @@ export interface ProofManifestItem {
   sha256: string;
   verificationStatus: "CERTIFIED_SAFE" | "UNSAT" | "FALSIFIED" | "UNCHECKED";
   engine?: string; // e.g. "ic3", "dpll_t", "reachability", "contract_algebra"
+  /**
+   * Rigor of the evidence behind a safe status. A `heuristic` item can never make the manifest compliant;
+   * `float-sound` is sound in exact arithmetic with uncontrolled floating-point rounding.
+   */
+  rigor?: "rigorous" | "float-sound" | "heuristic";
   witnessTraceId?: string;
   timestamp?: string;
 }
@@ -69,14 +74,14 @@ export class ProofManifestGenerator {
     }
     const compositeRootHash = hash.digest("hex");
 
-    // All formal items must be either CERTIFIED_SAFE or UNSAT (safe)
+    // All formal items must be either CERTIFIED_SAFE or UNSAT (safe), and none may rest on heuristic evidence
     const isCertifiedCompliant =
       sortedItems.length > 0 &&
       sortedItems.every(
         (it) =>
           it.domain !== "formal_proof" ||
-          it.verificationStatus === "CERTIFIED_SAFE" ||
-          it.verificationStatus === "UNSAT",
+          ((it.verificationStatus === "CERTIFIED_SAFE" || it.verificationStatus === "UNSAT") &&
+            it.rigor !== "heuristic"),
       );
 
     const sigPayload = `PROOF-TOKEN::${compositeRootHash}::${gitCommitSha}::${isCertifiedCompliant ? "VALID" : "INVALID"}`;
@@ -209,7 +214,7 @@ export class ProofManifestGenerator {
     md += `| **Manifest Identifier** | \`${manifest.manifestId}\` |\n`;
     md += `| **Composite Merkle Root Hash** | \`${manifest.compositeRootHash}\` |\n`;
     md += `| **Cryptographic Proof Token** | \`${manifest.signatureToken}\` |\n`;
-    md += `| **Verification Compliance** | ${manifest.isCertifiedCompliant ? "✅ MATHEMATICALLY CERTIFIED SAFE" : "❌ VERIFICATION FALSIFIED / UNRESOLVED"} |\n`;
+    md += `| **Verification Compliance** | ${manifest.isCertifiedCompliant ? "✅ ALL FORMAL ITEMS PROVEN (see per-item rigor)" : "❌ VERIFICATION FALSIFIED / UNRESOLVED"} |\n`;
     md += `| **Timestamp** | ${manifest.timestamp} |\n\n`;
 
     md += `### Indexed Digital Thread Artifacts\n\n`;
@@ -224,7 +229,8 @@ export class ProofManifestGenerator {
             ? "❌ FALSIFIED"
             : "⏳ UNCHECKED";
 
-      md += `| \`${item.domain}\` | \`${item.identifier}\` | \`${item.sha256.substring(0, 16)}...\` | ${statusIcon} | ${item.engine ?? "N/A"} |\n`;
+      const engineLabel = item.rigor ? `${item.engine ?? "N/A"} (${item.rigor})` : (item.engine ?? "N/A");
+      md += `| \`${item.domain}\` | \`${item.identifier}\` | \`${item.sha256.substring(0, 16)}...\` | ${statusIcon} | ${engineLabel} |\n`;
     }
     md += `\n`;
 

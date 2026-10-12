@@ -3,6 +3,7 @@
 import {
   generateHtmlReport,
   generateSarifReport,
+  parseInitialSetString,
   UnifiedVerifier,
   type UnifiedVerificationReport,
 } from "@modelscript/runtime";
@@ -251,5 +252,57 @@ describe("Unified Formal Verification & Multi-Format Reporting", () => {
         (r) => r.ruleId === "MSC-VERIFY-ALGO-UNPROVEN" || r.ruleId === "MSC-VERIFY-ALGO-DEFECT",
       ),
     );
+  });
+
+  test("UnifiedVerifier formats formal verdict in SARIF, HTML, CTRF, and terminal for flowpipe results", () => {
+    const mockReport: UnifiedVerificationReport = {
+      timestamp: new Date().toISOString(),
+      target: "LinearDynamics",
+      summary: {
+        totalStages: 1,
+        passedStages: 1,
+        failedStages: 0,
+        certifiedStages: 1,
+        skippedStages: 0,
+        totalViolations: 0,
+        durationMs: 30.0,
+        overallPassed: true,
+      },
+      stages: {
+        flowpipes: {
+          stage: "flowpipes",
+          name: "Validated DAE Reachability Flowpipe Engine",
+          passed: true,
+          certified: true,
+          durationMs: 30.0,
+          summary: "Proven: validated DAE reachability tubes satisfy all requirements.",
+          violations: [],
+          details: {
+            verdict: {
+              kind: "proven",
+              rigor: "float-sound",
+            },
+            order: 4,
+            dt: 0.05,
+          },
+        },
+      },
+    };
+
+    const terminal = UnifiedVerifier.formatTerminal(mockReport);
+    assert(terminal.includes("Verdict: PROVEN (rigor: float-sound)"), "Terminal must format verdict and rigor");
+
+    const html = generateHtmlReport(mockReport);
+    assert(html.includes("Verdict:"), "HTML must include Verdict header");
+    assert(html.includes("proven"), "HTML must include verdict kind");
+    assert(html.includes("float-sound"), "HTML must include rigor");
+
+    const ctrf = UnifiedVerifier.formatCtrf(mockReport);
+    assert.strictEqual(ctrf.report.results.tests[0]?.extra?.verdict, "proven");
+    assert.strictEqual(ctrf.report.results.tests[0]?.extra?.rigor, "float-sound");
+
+    const parsedSet = parseInitialSetString("x=[0.9,1.1],y=[-0.5,0.5]");
+    assert.deepStrictEqual(parsedSet.get("x"), [0.9, 1.1]);
+    assert.deepStrictEqual(parsedSet.get("y"), [-0.5, 0.5]);
   });
 });

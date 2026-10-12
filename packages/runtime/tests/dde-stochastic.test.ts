@@ -22,7 +22,8 @@ describe("Native DDE & Stochastic Martingale Barrier Suite", () => {
     // Integrate over [0, 2.0] (two full delay horizons)
     const res = DdeFlowpipeSolver.solve(problem, [0, 2.0], 0.2);
 
-    assert(res.isCertifiedSafe);
+    assert.strictEqual(res.isCertifiedSafe, false);
+    assert.strictEqual(res.verdict.kind, "unknown");
     assert.strictEqual(res.totalSteps, 11);
 
     const finalStep = res.steps[res.steps.length - 1]!;
@@ -49,7 +50,9 @@ describe("Native DDE & Stochastic Martingale Barrier Suite", () => {
       },
     );
 
-    assert(res.isCertifiedSafe, `Stochastic system should be certified safe: ${res.summary}`);
+    assert.strictEqual(res.isCertifiedSafe, false);
+    assert.strictEqual(res.verdict.kind, "unknown");
+    assert(res.estimateWithinTolerance, `Heuristic estimate should be within tolerance: ${res.summary}`);
     assert(res.maxFailureProbability < 0.02, `Failure probability ${res.maxFailureProbability} must be < 2%`);
   });
 });

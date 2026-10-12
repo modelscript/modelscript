@@ -8,7 +8,13 @@
  * Householder QR coordinate rotations, and Interval Newton guard root-finding).
  */
 
-import type { HybridAutomaton, HybridFlowpipeResult, HybridMode, HybridTransition } from "@modelscript/runtime";
+import type {
+  HybridAutomaton,
+  HybridFlowpipeResult,
+  HybridMode,
+  HybridTransition,
+  VerificationVerdict,
+} from "@modelscript/runtime";
 import { HybridFlowpipeSolver, Interval, TaylorModel, ZonotopeReachabilitySolver } from "@modelscript/runtime";
 import { SysML2DaeLowerer } from "./sysml2-dae-lowerer.js";
 
@@ -31,6 +37,7 @@ export interface HybridReachabilityBridgeOptions {
 
 export interface HybridReachabilityBridgeResult {
   isCertifiedSafe: boolean;
+  verdict: VerificationVerdict;
   modelName: string;
   totalSteps: number;
   jumpCount: number;
@@ -214,8 +221,19 @@ export async function verifyHybridSysml2Reachability(
       ],
     });
 
+    const isLinearFallback = !options.linearMatrixA;
+    const zVerdict: VerificationVerdict = isLinearFallback
+      ? {
+          kind: "unknown",
+          reason: "unsupported",
+          detail: "SysML model did not supply linear dynamics matrix A; executed benchmark linear mode.",
+        }
+      : zResult.verdict;
+    const zCertified = isLinearFallback ? false : zResult.isCertifiedSafe;
+
     return {
-      isCertifiedSafe: zResult.isCertifiedSafe,
+      isCertifiedSafe: zCertified,
+      verdict: zVerdict,
       modelName: targetName,
       totalSteps: zResult.totalSteps,
       jumpCount: 0,
@@ -238,7 +256,9 @@ export async function verifyHybridSysml2Reachability(
         limitValue: v.limitValue,
         reason: v.reason,
       })),
-      summary: zResult.summary,
+      summary: options.linearMatrixA
+        ? zResult.summary
+        : `${zResult.summary} (Benchmark linear matrix A=[[-0.1]]; no custom matrix extracted from SysML model)`,
     };
   }
 
@@ -274,8 +294,22 @@ export async function verifyHybridSysml2Reachability(
     ],
   });
 
+  const isBenchmarkFallback = customModes.length < 2;
+  const verdict: VerificationVerdict = isBenchmarkFallback
+    ? {
+        kind: "unknown",
+        reason: "unsupported",
+        detail: "SysML model did not define custom continuous hybrid dynamics; executed benchmark thermostat fallback.",
+      }
+    : solverResult.verdict;
+  const isCertifiedSafe = isBenchmarkFallback ? false : solverResult.isCertifiedSafe;
+  const summary = isBenchmarkFallback
+    ? `${solverResult.summary} (Benchmark thermostat fallback; no custom continuous dynamics found in model)`
+    : solverResult.summary;
+
   return {
-    isCertifiedSafe: solverResult.isCertifiedSafe,
+    isCertifiedSafe,
+    verdict,
     modelName: targetName,
     totalSteps: solverResult.totalSteps,
     jumpCount: solverResult.jumps.length,
@@ -297,6 +331,6 @@ export async function verifyHybridSysml2Reachability(
       postJumpNominal: j.postJumpNominal,
     })),
     violations: solverResult.violations,
-    summary: solverResult.summary,
+    summary,
   };
 }

@@ -251,7 +251,7 @@ describe("Design History File (DHF) Exporter", () => {
 
     assert.ok(md.includes("## 6. Cryptographic Digital Thread Proof Manifest & Machine-Checkable Evidence"));
     assert.ok(md.includes("manifest-001"));
-    assert.ok(md.includes("MATHEMATICALLY CERTIFIED SAFE"));
+    assert.ok(md.includes("ALL FORMAL ITEMS PROVEN"));
     assert.ok(md.includes("file:///model.sysml"));
     assert.ok(md.includes("contract_algebra"));
   });

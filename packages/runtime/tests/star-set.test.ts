@@ -93,7 +93,9 @@ describe("Native High-Dimensional Star Set & Subsystem Decomposition Suite", () 
 
     const res = DecomposedReachabilitySolver.solve(problem);
 
-    assert(res.isCertifiedSafe);
+    assert.strictEqual(res.isCertifiedSafe, false);
+    assert.strictEqual(res.verdict.kind, "unknown");
+    assert(res.allSubsystemsEstimatedSafe);
     assert.strictEqual(res.totalDim, 6);
     assert.strictEqual(res.subsystemResults.length, 2);
     assert.strictEqual(res.composedStarSet.dim, 6);

@@ -38,6 +38,10 @@ export interface VerificationResult {
   metricValue?: number;
   /** Blast radius: number of impacted downstream artifacts in the digital thread on verification failure. */
   blastRadius?: number;
+  /** Formal verification verdict kind (proven, violated, unknown). */
+  verdict?: string;
+  /** Rigor level of the formal verification verdict. */
+  rigor?: string;
 }
 
 export type ComparisonOp = "<" | "<=" | "==" | ">=" | ">" | "!=";

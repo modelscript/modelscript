@@ -75,6 +75,8 @@ export function generateCtrfReport(
           limitValue: res.limitValue,
           metricName: res.metricName,
           metricValue: res.metricValue,
+          verdict: res.verdict,
+          rigor: res.rigor,
         },
       };
     } else {
@@ -94,6 +96,8 @@ export function generateCtrfReport(
           metricName: res.metricName,
           metricValue: res.metricValue,
           blastRadius: res.blastRadius,
+          verdict: res.verdict,
+          rigor: res.rigor,
         },
       };
     }

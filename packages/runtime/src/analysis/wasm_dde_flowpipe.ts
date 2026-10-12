@@ -9,6 +9,7 @@
  *   - Guaranteed enclosures across multiple delay intervals [0, \tau], [\tau, 2\tau], ...
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
 import { Interval } from "./wasm_interval.js";
 
 export interface DdeProblem {
@@ -33,7 +34,10 @@ export interface DdeFlowpipeStep {
 }
 
 export interface DdeFlowpipeResult {
+  /** Always false: this estimator does not produce a guaranteed enclosure (see `verdict`). */
   isCertifiedSafe: boolean;
+  /** Always `unknown(not-rigorous)`: corner-evaluated Euler steps and sampled delay history are not sound. */
+  verdict: VerificationVerdict;
   steps: DdeFlowpipeStep[];
   totalSteps: number;
   summary: string;
@@ -146,10 +150,17 @@ export class DdeFlowpipeSolver {
     }
 
     return {
-      isCertifiedSafe: true,
+      isCertifiedSafe: false,
+      verdict: {
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail:
+          "Vector field is evaluated only at box corners (unsound for non-monotone f), without an a priori enclosure, and the delayed state is read from the nearest earlier sample rather than a tube over the delay window.",
+      },
       steps,
       totalSteps: steps.length,
-      summary: `DDE flowpipe reachability certified over [${t0}, ${tEnd}] with delay tau=${delay} (${steps.length} steps).`,
+      summary: `DDE flowpipe estimate (non-rigorous) over [${t0}, ${tEnd}] with delay tau=${delay} (${steps.length} steps); safety is not proven.`,
     };
   }
 }

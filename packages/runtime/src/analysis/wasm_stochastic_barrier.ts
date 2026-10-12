@@ -13,6 +13,8 @@
  *     on failure probability: P(exists t >= 0 : x(t) \in X_u) <= B(x0) / \lambda.
  */
 
+import type { VerificationVerdict } from "../formal/verdict.js";
+
 export interface StochasticSystem {
   numVars: number;
   /** Drift vector field f(x) */
@@ -29,7 +31,12 @@ export interface StochasticBarrierSpec {
 }
 
 export interface StochasticBarrierResult {
+  /** Always false: the bound below is a heuristic estimate, not a verified certificate (see `verdict`). */
   isCertifiedSafe: boolean;
+  /** Always `unknown(not-rigorous)`. */
+  verdict: VerificationVerdict;
+  /** Whether the heuristic failure-probability estimate is within `riskTolerance`. NOT a proof. */
+  estimateWithinTolerance: boolean;
   maxFailureProbability: number;
   riskTolerance: number;
   barrierCoefficients: number[];
@@ -117,16 +124,24 @@ export class StochasticBarrierSynthesizer {
       }
     }
 
-    const statusStr = isSafe ? "CERTIFIED PROBABILISTICALLY SAFE" : "RISK TOLERANCE EXCEEDED";
+    const statusStr = isSafe ? "estimate within risk tolerance" : "RISK TOLERANCE EXCEEDED";
 
     return {
-      isCertifiedSafe: isSafe,
+      isCertifiedSafe: false,
+      estimateWithinTolerance: isSafe,
+      verdict: {
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail:
+          "Barrier B(x)=x^T P x uses P=I without verifying the generator inequality, linearizes the drift at the origin by finite differences, and takes A[0][0] as the global decay rate.",
+      },
       maxFailureProbability: maxProb,
       riskTolerance,
       barrierCoefficients: coeffs,
       driftDecayRate: decay,
       diffusionNoiseBound: trSigmaP,
-      summary: `Stochastic Martingale Barrier ${statusStr}: Maximum probability of unsafe set entry: ${(maxProb * 100).toFixed(2)}% (Risk threshold: ${(riskTolerance * 100).toFixed(1)}%).`,
+      summary: `Stochastic martingale barrier heuristic (non-rigorous), ${statusStr}: estimated probability of unsafe set entry ${(maxProb * 100).toFixed(2)}% (risk threshold ${(riskTolerance * 100).toFixed(1)}%).`,
     };
   }
 }
