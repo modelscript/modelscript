@@ -180,4 +180,167 @@ describe("SysML v2 9-View Complete Visual Parity & Swimlanes", () => {
     assert.ok(fuel.x >= lanePowertrain.x);
     assert.ok(fuel.x + fuel.width <= lanePowertrain.x + lanePowertrain.width);
   });
+
+  it("should not render attribute badge on top of title when shortName is not declared", () => {
+    const fakeIndex = {
+      symbols: new Map([
+        [
+          "s_trans",
+          {
+            id: "s_trans",
+            ruleName: "PartDefinition",
+            name: "Transmission",
+            parentId: null,
+            metadata: { shortName: null },
+          },
+        ],
+        [
+          "s_attr1",
+          {
+            id: "s_attr1",
+            ruleName: "AttributeUsage",
+            name: "gearRatio",
+            parentId: "s_trans",
+            metadata: {},
+          },
+        ],
+        [
+          "s_attr2",
+          {
+            id: "s_attr2",
+            ruleName: "AttributeUsage",
+            name: "numberOfGears",
+            parentId: "s_trans",
+            metadata: {},
+          },
+        ],
+      ]),
+      childrenOf: new Map([["s_trans", ["s_attr1", "s_attr2"]]]),
+    };
+
+    const data = buildSysML2DiagramData(fakeIndex as any, "file:///test.sysml", undefined, "BDD");
+    const transNode = data.nodes.find((n: any) => n.id === "n_s_trans");
+    assert(transNode, "Transmission node must exist");
+    assert.strictEqual(
+      transNode.markup.some((m: any) => m.selector === "idBadgeRect"),
+      false,
+      "Transmission should not have an idBadgeRect",
+    );
+    assert.strictEqual((transNode.attrs as any)?.idBadgeText, undefined);
+  });
+
+  it("should parse documentation doc /* ... */ comments and use cases without syntax errors", async () => {
+    const { createWasmParser } = await import("@modelscript/dsl");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const sysmlWasm = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/parser.wasm");
+    const { parser } = await createWasmParser(sysmlWasm);
+
+    const code = `
+      package VehicleSystem {
+        part def Driver { doc /* Primary operator. */ }
+        part def Mechanic { doc /* Service technician. */ }
+        part def FleetManager { doc /* Oversees fleet. */ }
+        part def Passenger { doc /* Rides vehicle. */ }
+        part def ChargingStation { doc /* Recharges battery. */ }
+        part def Pedestrian { doc /* External actor. */ }
+
+        use case def DriveVehicle {
+          subject vehicle : Vehicle;
+          actor driver : Driver;
+          include use case startUp : StartVehicle;
+          include use case navigate : NavigateRoute;
+        }
+
+        use case def StartVehicle {
+          subject vehicle : Vehicle;
+          actor driver : Driver;
+        }
+      }
+    `;
+
+    const tree = parser.parse(code);
+    assert.strictEqual(
+      tree.rootNode.hasError(),
+      false,
+      "VehicleSystem actors and use cases must parse with zero errors",
+    );
+  });
+
+  it("should render UseCaseDefinition as clean ellipse without rectangular headerBody and with bounded chords", () => {
+    const fakeIndex = {
+      symbols: new Map([
+        ["s_pkg", { id: "s_pkg", ruleName: "Package", name: "VehicleSystem", parentId: null, metadata: {} }],
+        [
+          "s_uc1",
+          { id: "s_uc1", ruleName: "UseCaseDefinition", name: "DriveVehicle", parentId: "s_pkg", metadata: {} },
+        ],
+        ["s_subj", { id: "s_subj", ruleName: "SubjectUsage", name: "vehicle", parentId: "s_uc1", metadata: {} }],
+        ["s_inc1", { id: "s_inc1", ruleName: "IncludeUseCaseUsage", name: "startUp", parentId: "s_uc1", metadata: {} }],
+        [
+          "s_inc2",
+          { id: "s_inc2", ruleName: "IncludeUseCaseUsage", name: "navigate", parentId: "s_uc1", metadata: {} },
+        ],
+        [
+          "s_uc2",
+          { id: "s_uc2", ruleName: "UseCaseDefinition", name: "StartVehicle", parentId: "s_pkg", metadata: {} },
+        ],
+      ]),
+      childrenOf: new Map([
+        ["s_pkg", ["s_uc1", "s_uc2"]],
+        ["s_uc1", ["s_subj", "s_inc1", "s_inc2"]],
+      ]),
+    };
+
+    const data = buildSysML2DiagramData(fakeIndex as any, "file:///test.sysml", undefined, "All");
+    const uc1 = data.nodes.find((n: any) => n.id === "n_s_uc1");
+    const uc2 = data.nodes.find((n: any) => n.id === "n_s_uc2");
+
+    assert(uc1, "DriveVehicle node must exist");
+    assert.strictEqual(uc1.shape, "ellipse");
+    assert.strictEqual(uc1.markup[0].tagName, "ellipse");
+    assert.strictEqual((uc1.attrs as any)?.headerBody, undefined, "UseCase must not have rectangular headerBody path");
+    assert((uc1.attrs as any)?.headerSep, "UseCase with compartments must have headerSep");
+    assert((uc1.attrs as any)?.headerSep.x1 > 0, "headerSep must be chord-bounded (x1 > 0)");
+    assert((uc1.attrs as any)?.headerSep.x2 < uc1.width, "headerSep must be chord-bounded (x2 < width)");
+
+    assert(uc2, "StartVehicle node must exist");
+    assert.strictEqual(uc2.shape, "ellipse");
+    assert.strictEqual(uc2.markup[0].tagName, "ellipse");
+    assert.strictEqual((uc2.attrs as any)?.headerBody, undefined);
+  });
+
+  it("should position port labels above the line with args.y offset", () => {
+    const fakeIndex = {
+      symbols: new Map([
+        ["s_sys", { id: "s_sys", ruleName: "PartDefinition", name: "Vehicle", parentId: null, metadata: {} }],
+        ["s_pIn", { id: "s_pIn", ruleName: "PortUsage", name: "torqueIn", parentId: "s_sys", metadata: {} }],
+        ["s_pOut", { id: "s_pOut", ruleName: "PortUsage", name: "torqueOut", parentId: "s_sys", metadata: {} }],
+      ]),
+      childrenOf: new Map([["s_sys", ["s_pIn", "s_pOut"]]]),
+    };
+
+    const data = buildSysML2DiagramData(fakeIndex as any, "file:///test.sysml", undefined, "All");
+    const sysNode = data.nodes.find((n: any) => n.id === "n_s_sys");
+    assert(sysNode, "Vehicle node must exist");
+
+    const inPort = sysNode.ports?.items?.find((p: any) => p.id === "torqueIn");
+    const outPort = sysNode.ports?.items?.find((p: any) => p.id === "torqueOut");
+
+    assert(inPort, "torqueIn port must exist");
+    assert.strictEqual(inPort.label?.position?.name, "left");
+    assert.strictEqual(
+      (inPort.label?.position as any)?.args?.y,
+      -10,
+      "Port label must be offset above the line (y = -10)",
+    );
+
+    assert(outPort, "torqueOut port must exist");
+    assert.strictEqual(outPort.label?.position?.name, "right");
+    assert.strictEqual(
+      (outPort.label?.position as any)?.args?.y,
+      -10,
+      "Port label must be offset above the line (y = -10)",
+    );
+  });
 });

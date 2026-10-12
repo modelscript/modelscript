@@ -1383,92 +1383,12 @@ export function buildPolyglotDiagram(
       continue;
     }
 
-    // ── Special case: Use Case ellipse rendering ──
-    if (
-      diagramType === "UseCase" &&
-      (sym.ruleName === "UseCaseDefinition" ||
-        sym.ruleName === "UseCaseUsage" ||
-        sym.ruleName === "IncludeUseCaseUsage")
-    ) {
-      const ucWidth = Math.max(160, nameText.length * 9 + 40);
-      const ucHeight = 60;
-      const ucIsInclude = sym.ruleName === "IncludeUseCaseUsage";
-
-      const ucMarkup: any[] = [
-        { tagName: "ellipse", selector: "body" },
-        { tagName: "text", selector: "label" },
-      ];
-      const ucAttrs: Record<string, any> = {
-        body: {
-          cx: ucWidth / 2,
-          cy: ucHeight / 2,
-          rx: ucWidth / 2,
-          ry: ucHeight / 2,
-          fill: ucIsInclude ? "#f3e5f5" : "#e8eaf6",
-          stroke: ucIsInclude ? "#7b1fa2" : "#283593",
-          strokeWidth: 1.5,
-          ...(ucIsInclude ? { strokeDasharray: "6 3" } : {}),
-        },
-        label: {
-          text: nameText,
-          fill: "#1a1a1a",
-          fontSize: 13,
-          fontWeight: "bold",
-          textAnchor: "middle",
-          textVerticalAnchor: "middle",
-          refX: 0.5,
-          refY: 0.5,
-        },
-      };
-
-      const parameters: { name: string; value: string }[] = [];
-      for (const [key, value] of Object.entries(sym.metadata || {})) {
-        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-          parameters.push({ name: key, value: String(value) });
-        }
-      }
-
-      const ucNode: PolyglotDiagramNode = {
-        id: nodeId,
-        x: 0,
-        y: 0,
-        width: ucWidth,
-        height: ucHeight,
-        angle: 0,
-        opacity: 1,
-        zIndex: 10,
-        markup: ucMarkup,
-        attrs: ucAttrs,
-        shape: "rect",
-        ports: { groups: {}, items: [] },
-        properties: {
-          className: sym.ruleName,
-          description: sym.name ?? "",
-          parameters,
-        },
-        autoLayout: true,
-      };
-
-      // Resolve parent group embedding
-      if (sym.parentId !== null) {
-        let ancestorId: SymbolId | null = sym.parentId;
-        while (ancestorId !== null) {
-          const ancestorSym = index.symbols.get(ancestorId);
-          if (!ancestorSym) break;
-          if (groupKinds.has(ancestorSym.ruleName)) {
-            ucNode.parent = symbolIdToNodeId.get(ancestorId);
-            ucNode.autoLayout = false;
-            break;
-          }
-          ancestorId = ancestorSym.parentId;
-        }
-      }
-
-      enrichNodePresentation(ucNode, config, sym);
-      actualNodeIds.add(ucNode.id);
-      nodes.push(ucNode);
-      continue;
-    }
+    const isEllipse =
+      nodeConfig.shape === "ellipse" ||
+      config.node?.shape === "ellipse" ||
+      sym.ruleName === "UseCaseDefinition" ||
+      sym.ruleName === "UseCaseUsage" ||
+      sym.ruleName === "IncludeUseCaseUsage";
 
     const hasExplicitVectorGlyph =
       sections.length === 0 &&
@@ -1485,22 +1405,38 @@ export function buildPolyglotDiagram(
           )));
 
     if (isStructural && !hasExplicitVectorGlyph) {
-      // ── Dynamic markup generation for compartmented BDD blocks ──
-      const HEADER_HEIGHT = 42; // stereotype + label area
+      // ── Dynamic markup generation for compartmented BDD blocks & Use Cases ──
+      const HEADER_HEIGHT = isEllipse ? 46 : 42; // stereotype + label area
       const LINE_HEIGHT = 15; // pixels per text line
       const SECTION_PAD = 2; // padding above section header
 
       // Build markup array and attrs dynamically
-      const markup: any[] = [
-        { tagName: "rect", selector: "body" },
-        { tagName: "path", selector: "headerBody" },
-        { tagName: "text", selector: "stereotype" },
-        { tagName: "text", selector: "label" },
-        { tagName: "line", selector: "headerSep" },
-      ];
+      const markup: any[] = isEllipse
+        ? [
+            { tagName: "ellipse", selector: "body" },
+            { tagName: "text", selector: "stereotype" },
+            { tagName: "text", selector: "label" },
+            ...(sections.length > 0 ? [{ tagName: "line", selector: "headerSep" }] : []),
+          ]
+        : [
+            { tagName: "rect", selector: "body" },
+            { tagName: "path", selector: "headerBody" },
+            { tagName: "text", selector: "stereotype" },
+            { tagName: "text", selector: "label" },
+            { tagName: "line", selector: "headerSep" },
+          ];
 
-      const shortName = (sym as any).attributes?.shortName ?? (sym.metadata as any)?.shortName;
-      if (shortName) {
+      const rawShortName = (sym as any).attributes?.shortName ?? (sym.metadata as any)?.shortName;
+      const shortName =
+        typeof rawShortName === "string" &&
+        rawShortName.trim().length > 0 &&
+        rawShortName.trim().length <= 32 &&
+        !rawShortName.includes(";") &&
+        !rawShortName.includes("\n") &&
+        !/^(attribute|part|port|def|item|action)\s+/i.test(rawShortName.trim())
+          ? rawShortName.trim()
+          : undefined;
+      if (shortName && !isEllipse) {
         markup.push({ tagName: "rect", selector: "idBadgeRect" }, { tagName: "text", selector: "idBadgeText" });
       }
 
@@ -1513,7 +1449,7 @@ export function buildPolyglotDiagram(
           textAnchor: "middle",
           textVerticalAnchor: "top",
           refX: 0.5,
-          refY: 6,
+          refY: isEllipse ? 10 : 6,
         },
         label: {
           text: nameText,
@@ -1523,7 +1459,7 @@ export function buildPolyglotDiagram(
           textAnchor: "middle",
           textVerticalAnchor: "top",
           refX: 0.5,
-          refY: 22,
+          refY: isEllipse ? 26 : 22,
         },
       };
 
@@ -1533,7 +1469,7 @@ export function buildPolyglotDiagram(
       attrs.headerSep = {
         x1: 0,
         y1: currentY,
-        x2: 999, // will be clamped by node width
+        x2: 999, // will be clamped by node width or chord
         y2: currentY,
         stroke: strokeColor,
         strokeWidth: 1,
@@ -1553,7 +1489,7 @@ export function buildPolyglotDiagram(
           attrs[sepId] = {
             x1: 0,
             y1: currentY,
-            x2: 999, // will be clamped by node width
+            x2: 999, // will be clamped by node width or chord
             y2: currentY,
             stroke: strokeColor,
             strokeWidth: 0.5,
@@ -1578,7 +1514,7 @@ export function buildPolyglotDiagram(
         currentY += LINE_HEIGHT;
         maxContentWidth = Math.max(maxContentWidth, section.header.length * 8 + 32);
 
-        // Entries (left-aligned)
+        // Entries
         for (let ei = 0; ei < section.entries.length; ei++) {
           const entryId = `entry_${si}_${ei}`;
           let entryText = section.entries[ei];
@@ -1598,35 +1534,39 @@ export function buildPolyglotDiagram(
             text: entryText,
             fill: textColor,
             fontSize: 11,
-            textAnchor: "start",
+            textAnchor: isEllipse ? "middle" : "start",
             textVerticalAnchor: "top",
-            refX: 16,
+            refX: isEllipse ? 0.5 : 16,
             refY: currentY,
           };
           currentY += LINE_HEIGHT;
-          // Entry font is 11px, starts at refX: 16, needs generous right clearance (>=24px)
-          // so text never overlaps right-side boundary ports or box edges
-          const entryWidth = entryText.length * 8.2 + 42;
+          const entryWidth = entryText.length * (isEllipse ? 8.5 : 8.2) + 42;
           maxContentWidth = Math.max(maxContentWidth, entryWidth);
         }
       }
 
       currentY += 4; // bottom padding
 
-      const adjustedWidth = Math.ceil(maxContentWidth);
-      const adjustedHeight = Math.max(size.height, currentY);
+      const adjustedWidth = isEllipse
+        ? Math.ceil(Math.max(size.width, maxContentWidth * 1.35 + 40, 200))
+        : Math.ceil(maxContentWidth);
+      const adjustedHeight = isEllipse
+        ? Math.ceil(Math.max(size.height, currentY + 22, 80))
+        : Math.max(size.height, currentY);
       const hasSections = sections.length > 0;
 
-      // Header band covering top area with rounded top corners
-      const headerPath = `M 0 6 A 6 6 0 0 1 6 0 L ${adjustedWidth - 6} 0 A 6 6 0 0 1 ${adjustedWidth} 6 L ${adjustedWidth} ${HEADER_HEIGHT} L 0 ${HEADER_HEIGHT} Z`;
+      if (!isEllipse) {
+        // Header band covering top area with rounded top corners
+        const headerPath = `M 0 6 A 6 6 0 0 1 6 0 L ${adjustedWidth - 6} 0 A 6 6 0 0 1 ${adjustedWidth} 6 L ${adjustedWidth} ${HEADER_HEIGHT} L 0 ${HEADER_HEIGHT} Z`;
 
-      attrs.headerBody = {
-        d: hasSections ? headerPath : "",
-        fill: hasSections ? fillColor : "transparent",
-        stroke: "none",
-      };
+        attrs.headerBody = {
+          d: hasSections ? headerPath : "",
+          fill: hasSections ? fillColor : "transparent",
+          stroke: "none",
+        };
+      }
 
-      if (shortName) {
+      if (shortName && !isEllipse) {
         const badgeWidth = shortName.length * 6.8 + 12;
         attrs.idBadgeRect = {
           x: adjustedWidth - badgeWidth - 8,
@@ -1651,7 +1591,7 @@ export function buildPolyglotDiagram(
       }
 
       const isParallel = (sym as any).attributes?.isParallel || (sym.metadata as any)?.isParallel;
-      if (isParallel && hasSections) {
+      if (isParallel && hasSections && !isEllipse) {
         const midY = (HEADER_HEIGHT + adjustedHeight) / 2;
         markup.push({ tagName: "line", selector: "parallelRegionDivider" });
         attrs.parallelRegionDivider = {
@@ -1665,25 +1605,71 @@ export function buildPolyglotDiagram(
         };
       }
 
-      // Update separator x2 values to match the width
-      attrs.headerSep.x2 = adjustedWidth;
-      for (let si = 0; si < sections.length; si++) {
-        const sepId = `sep_${si}`;
-        if (attrs[sepId]) {
-          attrs[sepId].x2 = adjustedWidth;
+      // Update separator positions matching bounds (chords for ellipse, full width for rect)
+      if (isEllipse) {
+        const calcChord = (y: number) => {
+          const rx = adjustedWidth / 2;
+          const ry = adjustedHeight / 2;
+          const dy = y - ry;
+          const ratio = Math.min(1, Math.abs(dy) / ry);
+          const dx = rx * Math.sqrt(Math.max(0, 1 - ratio * ratio));
+          return {
+            x1: Math.round(rx - dx + 3),
+            x2: Math.round(rx + dx - 3),
+          };
+        };
+
+        if (attrs.headerSep) {
+          const hChord = calcChord(HEADER_HEIGHT);
+          attrs.headerSep.x1 = hChord.x1;
+          attrs.headerSep.x2 = hChord.x2;
+        }
+
+        for (let si = 0; si < sections.length; si++) {
+          const sepId = `sep_${si}`;
+          if (attrs[sepId]) {
+            const sChord = calcChord(attrs[sepId].y1);
+            attrs[sepId].x1 = sChord.x1;
+            attrs[sepId].x2 = sChord.x2;
+          }
+        }
+      } else {
+        attrs.headerSep.x2 = adjustedWidth;
+        for (let si = 0; si < sections.length; si++) {
+          const sepId = `sep_${si}`;
+          if (attrs[sepId]) {
+            attrs[sepId].x2 = adjustedWidth;
+          }
         }
       }
 
-      // Body rect — clean white/surface fill when compartments exist, with subtle border
-      attrs.body = {
-        fill: hasSections ? "#ffffff" : fillColor,
-        stroke: strokeColor,
-        strokeWidth: isDef ? 1.5 : 1,
-        rx: 6,
-        ry: 6,
-        refWidth: "100%",
-        refHeight: "100%",
-      };
+      // Body definition — ellipse or clean rect
+      if (isEllipse) {
+        attrs.body = {
+          fill: fillColor || "#fdf2f8",
+          stroke: strokeColor || "#db2777",
+          strokeWidth: isDef ? 1.5 : 1,
+          cx: adjustedWidth / 2,
+          cy: adjustedHeight / 2,
+          rx: adjustedWidth / 2,
+          ry: adjustedHeight / 2,
+          refCx: "50%",
+          refCy: "50%",
+          refRx: "50%",
+          refRy: "50%",
+          ...(isDef ? {} : { strokeDasharray: "6 3" }),
+        };
+      } else {
+        attrs.body = {
+          fill: hasSections ? "#ffffff" : fillColor,
+          stroke: strokeColor,
+          strokeWidth: isDef ? 1.5 : 1,
+          rx: 6,
+          ry: 6,
+          refWidth: "100%",
+          refHeight: "100%",
+        };
+      }
 
       // Build metadata for properties panel
       const parameters: { name: string; value: string }[] = [];
@@ -1704,7 +1690,7 @@ export function buildPolyglotDiagram(
         zIndex: 10,
         markup,
         attrs,
-        shape: nodeConfig.shape,
+        shape: isEllipse ? "ellipse" : nodeConfig.shape,
         ports: {
           groups: nodeConfig.ports?.groups ?? {},
           items: [...(nodeConfig.ports?.items ?? [])],
@@ -1776,6 +1762,24 @@ export function buildPolyglotDiagram(
     if (resolvedAttrs?.separator) {
       (resolvedAttrs.separator as any).x2 = adjustedWidth;
     }
+    if (isEllipse && resolvedAttrs?.body) {
+      (resolvedAttrs.body as any).cx = adjustedWidth / 2;
+      (resolvedAttrs.body as any).cy = adjustedHeight / 2;
+      (resolvedAttrs.body as any).rx = adjustedWidth / 2;
+      (resolvedAttrs.body as any).ry = adjustedHeight / 2;
+      (resolvedAttrs.body as any).refCx = "50%";
+      (resolvedAttrs.body as any).refCy = "50%";
+      (resolvedAttrs.body as any).refRx = "50%";
+      (resolvedAttrs.body as any).refRy = "50%";
+      if (resolvedAttrs.stereotype) {
+        (resolvedAttrs.stereotype as any).refX = 0.5;
+        (resolvedAttrs.stereotype as any).refY = Math.round(adjustedHeight * 0.28);
+      }
+      if (resolvedAttrs.label) {
+        (resolvedAttrs.label as any).refX = 0.5;
+        (resolvedAttrs.label as any).refY = Math.round(adjustedHeight * 0.55);
+      }
+    }
 
     // Build metadata for properties panel
     const parameters: { name: string; value: string }[] = [];
@@ -1796,7 +1800,7 @@ export function buildPolyglotDiagram(
       zIndex: 10,
       markup: nodeConfig.markup ?? [],
       attrs: resolvedAttrs,
-      shape: nodeConfig.shape,
+      shape: isEllipse ? "ellipse" : nodeConfig.shape,
       ports: {
         groups: nodeConfig.ports?.groups ?? {},
         items: [...(nodeConfig.ports?.items ?? [])],
@@ -1875,11 +1879,11 @@ export function buildPolyglotDiagram(
           text: { fontSize: 10, fill: "#334155" },
         },
         label: {
-          position: { name: "left" },
+          position: { name: "left", args: { y: -10 } },
         },
       };
     } else if (!groups.in.label || !groups.in.label.position) {
-      groups.in.label = { position: { name: "left" } };
+      groups.in.label = { position: { name: "left", args: { y: -10 } } };
     }
 
     if (!groups.out) {
@@ -1891,22 +1895,22 @@ export function buildPolyglotDiagram(
           text: { fontSize: 10, fill: "#334155" },
         },
         label: {
-          position: { name: "right" },
+          position: { name: "right", args: { y: -10 } },
         },
       };
     } else if (!groups.out.label || !groups.out.label.position) {
-      groups.out.label = { position: { name: "right" } };
+      groups.out.label = { position: { name: "right", args: { y: -10 } } };
     }
 
     for (const [gName, gVal] of Object.entries(groups)) {
       if (gVal && (!gVal.label || !gVal.label.position)) {
         const pos = typeof gVal.position === "string" ? gVal.position : (gVal.position as any)?.name;
         if (pos === "left" || pos === "right" || pos === "top" || pos === "bottom") {
-          gVal.label = { position: { name: pos } };
+          gVal.label = { position: { name: pos, args: { y: pos === "bottom" ? 10 : -10 } } };
         } else if (gName === "in") {
-          gVal.label = { position: { name: "left" } };
+          gVal.label = { position: { name: "left", args: { y: -10 } } };
         } else if (gName === "out") {
-          gVal.label = { position: { name: "right" } };
+          gVal.label = { position: { name: "right", args: { y: -10 } } };
         }
       }
     }
@@ -1993,7 +1997,7 @@ export function buildPolyglotDiagram(
         },
       },
       label: {
-        position: { name: labelSide },
+        position: { name: labelSide, args: { y: labelSide === "bottom" ? 10 : -10 } },
         attrs: {
           text: {
             text: isConjugated && !portName.startsWith("~") ? `~${portName}` : portName,
@@ -3186,8 +3190,16 @@ export function buildDiagramFromDSL(
     }
 
     const portGroups: Record<string, any> = {
-      left: { position: "left", label: { position: { name: "left" } }, attrs: { circle: { magnet: true } } },
-      right: { position: "right", label: { position: { name: "right" } }, attrs: { circle: { magnet: true } } },
+      left: {
+        position: "left",
+        label: { position: { name: "left", args: { y: -10 } } },
+        attrs: { circle: { magnet: true } },
+      },
+      right: {
+        position: "right",
+        label: { position: { name: "right", args: { y: -10 } } },
+        attrs: { circle: { magnet: true } },
+      },
     };
 
     const fill = style.fill || "#1e293b";

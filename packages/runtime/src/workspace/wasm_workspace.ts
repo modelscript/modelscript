@@ -76,6 +76,16 @@ function findDescendantByFieldName(node: any, fieldName: string): any | null {
     if (directId) return directId;
   }
   for (const child of node.children || []) {
+    const type = child.type || "";
+    if (
+      type.endsWith("Body") ||
+      type.endsWith("Member") ||
+      type.endsWith("Section") ||
+      type === "class_body" ||
+      type === "body"
+    ) {
+      continue;
+    }
     const found = findDescendantByFieldName(child, fieldName);
     if (found) return found;
   }

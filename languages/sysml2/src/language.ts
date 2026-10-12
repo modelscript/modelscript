@@ -2399,7 +2399,7 @@ const sysmlNodeGraphics = (opts: {
             rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
             circle: { r: 5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
           },
-          label: { position: { name: "left" } },
+          label: { position: { name: "left", args: { y: -10 } } },
         },
         out: {
           position: "right",
@@ -2408,7 +2408,7 @@ const sysmlNodeGraphics = (opts: {
             rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
             circle: { r: 5, fill: "#ffffff", stroke: opts.stroke, strokeWidth: 1.5 },
           },
-          label: { position: { name: "right" } },
+          label: { position: { name: "right", args: { y: -10 } } },
         },
       },
     },
@@ -3177,23 +3177,38 @@ export const sysml2Language = language({
 
     Comment: ($) =>
       seq(
-        optional(
+        choice(
           seq(
             "comment",
             optional($._Identification),
             optional(seq("about", $.Annotation, repeat(seq(",", $.Annotation)))),
+            optional(seq("locale", field("locale", $.STRING_VALUE))),
+            optional(field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE))),
+          ),
+          seq(
+            optional(seq("locale", field("locale", $.STRING_VALUE))),
+            field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE)),
           ),
         ),
-        optional(seq("locale", field("locale", $.STRING_VALUE))),
-        field("body", $.REGULAR_COMMENT),
+        optional(";"),
       ),
 
     Documentation: ($) =>
       seq(
-        "doc",
-        optional($._Identification),
-        optional(seq("locale", field("locale", $.STRING_VALUE))),
-        field("body", $.REGULAR_COMMENT),
+        choice(
+          seq(
+            "doc",
+            optional($._Identification),
+            optional(seq("locale", field("locale", $.STRING_VALUE))),
+            field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE)),
+          ),
+          seq(
+            "doc",
+            optional(seq("<", field("declaredShortName", $.Name), ">")),
+            optional(seq("locale", field("locale", $.STRING_VALUE))),
+          ),
+        ),
+        optional(";"),
       ),
 
     TextualRepresentation: ($) =>
@@ -3201,7 +3216,8 @@ export const sysml2Language = language({
         optional(seq("rep", optional($._Identification))),
         "language",
         field("language", $.STRING_VALUE),
-        field("body", $.REGULAR_COMMENT),
+        optional(field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE))),
+        optional(";"),
       ),
 
     // =====================================================================
@@ -4001,7 +4017,7 @@ export const sysml2Language = language({
         syntax: seq(
           repeat($._usage_modifier),
           optional(seq("succession", optional($._UsageDeclaration))),
-          "first",
+          optional("first"),
           $.ConnectorEndMember,
           "then",
           $.ConnectorEndMember,
@@ -4211,9 +4227,11 @@ export const sysml2Language = language({
         $.DefinitionMember,
         $.VariantUsageMember,
         $.NonOccurrenceUsageMember,
+        $.OccurrenceUsageMember,
         seq(optional($.EmptySuccessionMember), $._OccurrenceUsageElement),
         $.ActionNodeMember,
         $.ReturnParameterMember,
+        $.AnnotatingMember,
       ),
 
     EmptySuccessionMember: ($) => seq("then", field("ownedRelatedElement", $.MultiplicitySourceEnd)),
@@ -4968,7 +4986,8 @@ export const sysml2Language = language({
     _VerificationBody: ($) =>
       choice(";", seq("{", repeat($._VerificationBodyItem), optional($.ResultExpressionMember), "}")),
 
-    _VerificationBodyItem: ($) => choice($._ActionBodyItem, $.VerifyRequirementUsageMember, $.ObjectiveMember),
+    _VerificationBodyItem: ($) =>
+      choice($._ActionBodyItem, $.VerifyRequirementUsageMember, $.ObjectiveMember, $.AnnotatingMember),
 
     VerifyRequirementUsageMember: ($) =>
       seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.VerifyRequirementUsage)),
@@ -5033,7 +5052,15 @@ export const sysml2Language = language({
               { tagName: "text", selector: "label" },
             ],
             attrs: {
-              body: { cx: 80, cy: 30, rx: 80, ry: 30, fill: "#fdf2f8", stroke: "#db2777", strokeWidth: 1.5 },
+              body: {
+                refCx: "50%",
+                refCy: "50%",
+                refRx: "50%",
+                refRy: "50%",
+                fill: "#fdf2f8",
+                stroke: "#db2777",
+                strokeWidth: 1.5,
+              },
               stereotype: {
                 text: "«use case def»",
                 fill: "#db2777",
@@ -5041,7 +5068,7 @@ export const sysml2Language = language({
                 fontStyle: "italic",
                 textAnchor: "middle",
                 refX: 0.5,
-                refY: 20,
+                refY: 18,
               },
               label: {
                 text: "{{name}}",
@@ -5050,7 +5077,7 @@ export const sysml2Language = language({
                 fontWeight: "bold",
                 textAnchor: "middle",
                 refX: 0.5,
-                refY: 38,
+                refY: 34,
               },
             },
             size: { width: 160, height: 60 },
@@ -5083,10 +5110,10 @@ export const sysml2Language = language({
             ],
             attrs: {
               body: {
-                cx: 70,
-                cy: 25,
-                rx: 70,
-                ry: 25,
+                refCx: "50%",
+                refCy: "50%",
+                refRx: "50%",
+                refRy: "50%",
                 fill: "#fdf2f8",
                 stroke: "#db2777",
                 strokeWidth: 1.5,
@@ -5099,7 +5126,7 @@ export const sysml2Language = language({
                 fontStyle: "italic",
                 textAnchor: "middle",
                 refX: 0.5,
-                refY: 18,
+                refY: 16,
               },
               label: {
                 text: "{{name}}",
@@ -5108,7 +5135,7 @@ export const sysml2Language = language({
                 fontWeight: "bold",
                 textAnchor: "middle",
                 refX: 0.5,
-                refY: 33,
+                refY: 32,
               },
             },
             size: { width: 140, height: 50 },
@@ -5131,6 +5158,48 @@ export const sysml2Language = language({
         symbol: usageAttrs("useCase"),
         queries: usageQueries,
         model: usageModel,
+        graphics: () => ({
+          role: "node",
+          node: {
+            shape: "ellipse",
+            markup: [
+              { tagName: "ellipse", selector: "body" },
+              { tagName: "text", selector: "stereotype" },
+              { tagName: "text", selector: "label" },
+            ],
+            attrs: {
+              body: {
+                refCx: "50%",
+                refCy: "50%",
+                refRx: "50%",
+                refRy: "50%",
+                fill: "#fdf2f8",
+                stroke: "#db2777",
+                strokeWidth: 1.5,
+                strokeDasharray: "6 3",
+              },
+              stereotype: {
+                text: "«include»",
+                fill: "#db2777",
+                fontSize: 9,
+                fontStyle: "italic",
+                textAnchor: "middle",
+                refX: 0.5,
+                refY: 16,
+              },
+              label: {
+                text: "{{name}}",
+                fill: "#0f172a",
+                fontSize: 12,
+                fontWeight: "bold",
+                textAnchor: "middle",
+                refX: 0.5,
+                refY: 32,
+              },
+            },
+            size: { width: 140, height: 50 },
+          },
+        }),
       }),
 
     // =====================================================================
@@ -5170,11 +5239,13 @@ export const sysml2Language = language({
         $.DefinitionMember,
         $.VariantUsageMember,
         $.NonOccurrenceUsageMember,
+        $.OccurrenceUsageMember,
         seq(optional($.EmptySuccessionMember), $._OccurrenceUsageElement),
         $.TransitionUsageMember,
         $.EntryActionMember,
         $.DoActionMember,
         $.ExitActionMember,
+        $.AnnotatingMember,
       ),
 
     EntryActionMember: ($) =>
