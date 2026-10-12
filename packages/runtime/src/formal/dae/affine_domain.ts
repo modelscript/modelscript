@@ -28,7 +28,6 @@ import {
   ivPowInt,
   ivSin,
   ivSqrt,
-  ivSub,
   ivTan,
   ivTanh,
   nextUp,
@@ -74,14 +73,34 @@ export class Aff {
     if (!Number.isFinite(r)) return new Interval(-Infinity, Infinity);
     return new Interval(subDown(this.c, r), addUp(this.c, r));
   }
+
+  /**
+   * Condenses the affine form so that at most `maxTerms` active noise symbols remain.
+   * The smallest noise symbols are gathered and their absolute sum is added to `err` with upward rounding.
+   * Soundness: \sum_{j} |t_j| \cdot |\epsilon_j| <= \sum_{j} |t_j|.
+   */
+  condense(maxTerms = 32): Aff {
+    if (this.terms.size <= maxTerms || this.isTop) return this;
+    const sorted = [...this.terms.entries()].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    const kept = new Map<number, number>();
+    for (let i = 0; i < maxTerms; i++) {
+      kept.set(sorted[i]![0], sorted[i]![1]);
+    }
+    let condensedErr = this.err;
+    for (let i = maxTerms; i < sorted.length; i++) {
+      condensedErr = addUp(condensedErr, Math.abs(sorted[i]![1]));
+    }
+    return new Aff(this.c, kept, condensedErr);
+  }
 }
 
 const TOP = new Aff(0, new Map(), Infinity);
 
-function finiteForm(c: number, terms: Map<number, number>, err: number): Aff {
+function finiteForm(c: number, terms: Map<number, number>, err: number, maxTerms = 32): Aff {
   if (!Number.isFinite(c) || !Number.isFinite(err)) return TOP;
   for (const t of terms.values()) if (!Number.isFinite(t)) return TOP;
-  return new Aff(c, terms, err);
+  const res = new Aff(c, terms, err);
+  return terms.size > maxTerms ? res.condense(maxTerms) : res;
 }
 
 function ivToCenterErr(iv: Interval): { c: number; r: number } | null {
@@ -98,13 +117,15 @@ export interface AffineDomainHandle {
   fresh(iv: Interval): Aff;
 }
 
-/** Create an affine domain with its own noise-symbol counter. */
-export function createAffineDomain(): AffineDomain {
-  return new AffineDomain();
+/** Create an affine domain with its own noise-symbol counter and optional noise symbol bound. */
+export function createAffineDomain(maxTerms = 32): AffineDomain {
+  return new AffineDomain(maxTerms);
 }
 
 export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
   private next = 1;
+  constructor(public readonly maxTerms = 32) {}
+
   get domain(): ExprDomain<Aff> {
     return this;
   }
@@ -149,7 +170,7 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
         terms.set(k, s);
       }
     }
-    return finiteForm(c, terms, err);
+    return finiteForm(c, terms, err, this.maxTerms);
   }
 
   neg(a: Aff): Aff {
@@ -174,7 +195,7 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
       err = addUp(err, rnd(p));
       terms.set(i, p);
     }
-    return finiteForm(c, terms, err);
+    return finiteForm(c, terms, err, this.maxTerms);
   }
 
   mul(a: Aff, b: Aff): Aff {
@@ -208,7 +229,7 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
     err = addUp(err, nextUp(Math.abs(a.c) * b.err));
     err = addUp(err, nextUp(Math.abs(b.c) * a.err));
     err = addUp(err, nextUp(ra * rb));
-    return finiteForm(c, terms, err);
+    return finiteForm(c, terms, err, this.maxTerms);
   }
 
   /** Mean-value-form lift of a unary function with interval enclosures `f` and derivative `df`. */
@@ -239,15 +260,182 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
     return res;
   }
 
+  /**
+   * Applies an affine map alpha * x + zeta with Chebyshev minimax truncation error delta.
+   *
+   * Form:
+   *   alpha * (c + \sum t_i \epsilon_i \pm err) + zeta = (alpha * c + zeta) + \sum (alpha * t_i) \epsilon_i \pm (|alpha| * err + delta + rounding)
+   */
+  private affineMap(a: Aff, alpha: number, zeta: number, delta: number): Aff {
+    if (a.isTop || !Number.isFinite(alpha) || !Number.isFinite(zeta) || !Number.isFinite(delta)) {
+      return TOP;
+    }
+    const c = a.c * alpha + zeta;
+    let err = addUp(addUp(rnd(c), delta), nextUp(Math.abs(alpha) * a.err));
+    const terms = new Map<number, number>();
+    for (const [k, v] of a.terms) {
+      const p = v * alpha;
+      err = addUp(err, rnd(p));
+      terms.set(k, p);
+    }
+    return finiteForm(c, terms, err, this.maxTerms);
+  }
+
+  /**
+   * Chebyshev minimax linear approximation of f(x) = x^2 on [a, b].
+   * Secant slope alpha = a + b, minimax error delta = (b - a)^2 / 8.
+   */
+  chebyshevSqr(a: Aff): Aff {
+    const X = a.hull();
+    if (a.isTop || !Number.isFinite(X.lo) || !Number.isFinite(X.hi)) return TOP;
+    const direct = ivPowInt(X, 2);
+    const aVal = X.lo;
+    const bVal = X.hi;
+    const w = subUp(bVal, aVal);
+    if (w <= 1e-14) return this.fresh(direct);
+
+    const alpha = aVal + bVal;
+    const dMin = -0.25 * alpha * alpha;
+    const dMax = -aVal * bVal;
+    const zeta = 0.5 * (dMax + dMin);
+    const delta = nextUp(0.5 * (dMax - dMin));
+    const res = this.affineMap(a, alpha, zeta, delta);
+    if (res.isTop) return this.fresh(direct);
+    const hw = res.hull();
+    const dw = direct.hi - direct.lo;
+    if (Number.isFinite(dw) && hw.hi - hw.lo > dw) return this.fresh(direct);
+    return res;
+  }
+
+  /**
+   * Chebyshev minimax linear approximation of f(x) = sqrt(x) on [a, b] with a > 0.
+   */
+  chebyshevSqrt(a: Aff): Aff {
+    const X = a.hull();
+    if (a.isTop || !Number.isFinite(X.lo) || !Number.isFinite(X.hi) || X.lo <= 0) {
+      return this.lift(
+        a,
+        ivSqrt,
+        X.lo > 0 ? (x) => ivDiv(new Interval(1, 1), ivMul(new Interval(2, 2), ivSqrt(x))) : null,
+      );
+    }
+    const direct = ivSqrt(X);
+    const aVal = X.lo;
+    const bVal = X.hi;
+    const w = subUp(bVal, aVal);
+    if (w <= 1e-14) return this.fresh(direct);
+
+    const sqA = Math.sqrt(aVal);
+    const sqB = Math.sqrt(bVal);
+    const alpha = (sqB - sqA) / (bVal - aVal);
+    if (alpha <= 0 || !Number.isFinite(alpha)) return this.fresh(direct);
+    const dMin = alpha * Math.sqrt(aVal * bVal);
+    const dMax = 0.25 / alpha;
+    const zeta = 0.5 * (dMax + dMin);
+    const delta = nextUp(0.5 * (dMax - dMin));
+    const res = this.affineMap(a, alpha, zeta, delta);
+    if (res.isTop) return this.fresh(direct);
+    const hw = res.hull();
+    const dw = direct.hi - direct.lo;
+    if (Number.isFinite(dw) && hw.hi - hw.lo > dw) return this.fresh(direct);
+    return res;
+  }
+
+  /**
+   * Chebyshev minimax linear approximation of f(x) = 1/x on [a, b] with 0 not in [a, b].
+   */
+  chebyshevInv(a: Aff): Aff {
+    const X = a.hull();
+    if (a.isTop || !Number.isFinite(X.lo) || !Number.isFinite(X.hi) || (X.lo <= 0 && X.hi >= 0)) {
+      return TOP;
+    }
+    const direct = ivDiv(new Interval(1, 1), X);
+    const aVal = X.lo;
+    const bVal = X.hi;
+    const w = subUp(bVal, aVal);
+    if (w <= 1e-14) return this.fresh(direct);
+
+    if (aVal > 0) {
+      const alpha = -1.0 / (aVal * bVal);
+      const dMin = 2.0 / Math.sqrt(aVal * bVal);
+      const dMax = (aVal + bVal) / (aVal * bVal);
+      const zeta = 0.5 * (dMax + dMin);
+      const delta = nextUp(0.5 * (dMax - dMin));
+      const res = this.affineMap(a, alpha, zeta, delta);
+      if (res.isTop) return this.fresh(direct);
+      const hw = res.hull();
+      const dw = direct.hi - direct.lo;
+      if (Number.isFinite(dw) && hw.hi - hw.lo > dw) return this.fresh(direct);
+      return res;
+    } else {
+      const negA = this.neg(a);
+      const negInv = this.chebyshevInv(negA);
+      return this.neg(negInv);
+    }
+  }
+
+  /**
+   * Chebyshev minimax linear approximation of f(x) = exp(x) on [a, b].
+   */
+  chebyshevExp(a: Aff): Aff {
+    const X = a.hull();
+    if (a.isTop || !Number.isFinite(X.lo) || !Number.isFinite(X.hi)) return TOP;
+    const direct = ivExp(X);
+    const aVal = X.lo;
+    const bVal = X.hi;
+    const w = subUp(bVal, aVal);
+    if (w <= 1e-14) return this.fresh(direct);
+
+    const expA = Math.exp(aVal);
+    const expB = Math.exp(bVal);
+    const alpha = (expB - expA) / (bVal - aVal);
+    if (alpha <= 0 || !Number.isFinite(alpha)) return this.fresh(direct);
+    const dMin = alpha * (1.0 - Math.log(alpha));
+    const dMax = expA - alpha * aVal;
+    const zeta = 0.5 * (dMax + dMin);
+    const delta = nextUp(0.5 * (dMax - dMin));
+    const res = this.affineMap(a, alpha, zeta, delta);
+    if (res.isTop) return this.fresh(direct);
+    const hw = res.hull();
+    const dw = direct.hi - direct.lo;
+    if (Number.isFinite(dw) && hw.hi - hw.lo > dw) return this.fresh(direct);
+    return res;
+  }
+
+  /**
+   * Chebyshev minimax linear approximation of f(x) = log(x) on [a, b] with a > 0.
+   */
+  chebyshevLog(a: Aff): Aff {
+    const X = a.hull();
+    if (a.isTop || !Number.isFinite(X.lo) || !Number.isFinite(X.hi) || X.lo <= 0) {
+      return this.lift(a, ivLog, (x) => ivDiv(new Interval(1, 1), x));
+    }
+    const direct = ivLog(X);
+    const aVal = X.lo;
+    const bVal = X.hi;
+    const w = subUp(bVal, aVal);
+    if (w <= 1e-14) return this.fresh(direct);
+
+    const logA = Math.log(aVal);
+    const logB = Math.log(bVal);
+    const alpha = (logB - logA) / (bVal - aVal);
+    if (alpha <= 0 || !Number.isFinite(alpha)) return this.fresh(direct);
+    const dMin = logA - alpha * aVal;
+    const dMax = -Math.log(alpha) - 1.0;
+    const zeta = 0.5 * (dMax + dMin);
+    const delta = nextUp(0.5 * (dMax - dMin));
+    const res = this.affineMap(a, alpha, zeta, delta);
+    if (res.isTop) return this.fresh(direct);
+    const hw = res.hull();
+    const dw = direct.hi - direct.lo;
+    if (Number.isFinite(dw) && hw.hi - hw.lo > dw) return this.fresh(direct);
+    return res;
+  }
+
   div(a: Aff, b: Aff): Aff {
     const B = b.hull();
     if (b.isTop || (B.lo <= 0 && B.hi >= 0)) return TOP;
-    const inv = this.lift(
-      b,
-      (x) => ivDiv(new Interval(1, 1), x),
-      (x) => ivSub(new Interval(0, 0), ivDiv(new Interval(1, 1), ivPowInt(x, 2))),
-    );
-    return this.mul(a, inv);
+    return this.mul(a, this.chebyshevInv(b));
   }
 
   abs(a: Aff): Aff {
@@ -260,12 +448,7 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
   powInt(a: Aff, n: number): Aff {
     if (n === 0) return this.constant(1);
     if (n === 1) return a;
-    if (n === 2)
-      return this.lift(
-        a,
-        (x) => ivPowInt(x, 2),
-        (x) => ivMul(new Interval(2, 2), x),
-      );
+    if (n === 2) return this.chebyshevSqr(a);
     return this.lift(
       a,
       (x) => ivPowInt(x, n),
@@ -274,20 +457,15 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
   }
 
   exp(a: Aff): Aff {
-    return this.lift(a, ivExp, ivExp);
+    return this.chebyshevExp(a);
   }
 
   log(a: Aff): Aff {
-    return this.lift(a, ivLog, (x) => ivDiv(new Interval(1, 1), x));
+    return this.chebyshevLog(a);
   }
 
   sqrt(a: Aff): Aff {
-    const X = a.hull();
-    return this.lift(
-      a,
-      ivSqrt,
-      X.lo > 0 ? (x) => ivDiv(new Interval(1, 1), ivMul(new Interval(2, 2), ivSqrt(x))) : null,
-    );
+    return this.chebyshevSqrt(a);
   }
 
   sin(a: Aff): Aff {
