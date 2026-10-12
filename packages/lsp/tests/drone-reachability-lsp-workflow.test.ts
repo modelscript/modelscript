@@ -31,7 +31,7 @@ describe("Multi-Domain Drone Reachability: LSP CodeLens & Lint Verification", ()
   parameter Real kv = 1.35 "Velocity damping gain [N/(m/s)]";
   Real z(start = 0.0, fixed = true) "Altitude [m]";
   Real v(start = 0.0, fixed = true) "Vertical climb velocity [m/s]";
-  input Real w(start = 0.0) "Wind gust disturbance force in [-w_max, w_max] [N]";
+  input Real w(min = -0.50, max = 0.50, start = 0.0) "Wind gust disturbance force in [-w_max, w_max] [N]";
 equation
   der(z) = v;
   der(v) = (kz * (z_target - z) - kv * v - 0.5 * Cd * rho * A * v * abs(v) + w) / m;

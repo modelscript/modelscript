@@ -16,7 +16,7 @@ model DroneSimulation "Drone flight dynamics linked to SysML v2, CAD, FEA, and C
 
   Real z(start = 0.0, fixed = true) "Altitude [m]";
   Real v(start = 0.0, fixed = true) "Vertical climb velocity [m/s]";
-  input Real w(start = 0.0) "Wind gust disturbance force in [-w_max, w_max] [N]";
+  input Real w(min = -0.50, max = 0.50, start = 0.0) "Wind gust disturbance force in [-w_max, w_max] [N]";
 
 equation
   der(z) = v;

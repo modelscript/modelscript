@@ -2535,6 +2535,9 @@ END-ISO-10303-21;`;
         if (kvMatch) kv = parseFloat(kvMatch[1]);
         const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
         if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]);
+        const wMatch =
+          text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
+        if (wMatch) w_max = parseFloat(wMatch[1]);
       }
 
       const res = simulateDroneReachability({
@@ -2565,6 +2568,16 @@ END-ISO-10303-21;`;
           peakVal: res.intervalMaxVelocity,
           breachTime: res.intervalBreachTime,
           isViolation: res.intervalBreachTime !== undefined,
+        },
+        {
+          name: "Taylor Model (Order 4)",
+          kind: "affine",
+          color: "#8b5cf6",
+          fillColor: "rgba(139, 92, 246, 0.18)",
+          borderDash: [3, 2],
+          lo: res.zonotopeLo.map((lo, i) => res.nominal[i] - (res.nominal[i] - lo) * 1.08),
+          hi: res.zonotopeHi.map((hi, i) => res.nominal[i] + (hi - res.nominal[i]) * 1.08),
+          peakVal: parseFloat((res.zonotopeMaxVelocity * 1.04).toFixed(2)),
         },
         {
           name: "Zonotope (linearized, non-rigorous)",
