@@ -6,6 +6,7 @@ import { Interval } from "../src/analysis/wasm_interval.js";
 import { evaluateArenaRuntime } from "../src/dae/wasm_evaluator.js";
 import { affineBoxEnv, createAffineDomain } from "../src/formal/dae/affine_domain.js";
 import { evalArenaExpr, IntervalDomain, type ArenaEvalEnv } from "../src/formal/dae/arena_eval.js";
+import { taylorBoxEnv, TaylorDomain } from "../src/formal/dae/taylor_domain.js";
 import { BinOp, Causality, DAEBuilder, UnaryOp, Variability, VarType } from "../src/index.js";
 
 function setup() {
@@ -57,6 +58,16 @@ describe("evalArenaExpr (interval domain) soundness", () => {
 
   const evalHull = (domainName: string, expr: number, box: Record<string, Interval>): Interval => {
     if (domainName === "interval") return evalArenaExpr(arena, expr, boxEnv(arena, box), IntervalDomain).value;
+    if (domainName === "taylor") {
+      const td = new TaylorDomain([box.x!, box.y!], 4);
+      const tr = evalArenaExpr(
+        arena,
+        expr,
+        taylorBoxEnv(td, (_i, n) => (n === "x" ? 0 : 1)),
+        td,
+      );
+      return td.toInterval(tr.value);
+    }
     const dom = createAffineDomain();
     const r = evalArenaExpr(
       arena,
@@ -67,7 +78,7 @@ describe("evalArenaExpr (interval domain) soundness", () => {
     return dom.toInterval(r.value);
   };
 
-  for (const domainName of ["interval", "affine"]) {
+  for (const domainName of ["interval", "affine", "taylor"]) {
     for (const [name, expr] of Object.entries(cases)) {
       it(`${domainName} encloses point values: ${name}`, () => {
         for (let trial = 0; trial < 200; trial++) {
