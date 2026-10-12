@@ -246,3 +246,39 @@ describe("Phase 2: BLT-Driven Incremental Reachability Engine (@modelscript/runt
     assert.strictEqual(stateEnclosure.high, 12.0);
   });
 });
+
+describe("BLT singularity check uses sound derivatives", () => {
+  const build = (fn: string) => {
+    const arena = new DAEBuilder();
+    const uIdx = arena.addVariable("u", VarType.Real, Variability.Parameter);
+    const yIdx = arena.addVariable("y", VarType.Real, Variability.Continuous);
+    const lhs = arena.addCallExpr(fn, [arena.addNameExpr("y")]);
+    const eq = arena.addEquation(EqKind.Simple, lhs, arena.addNameExpr("u"));
+    const blt: ArenaBltResult = { sortedEquations: [eq], blocks: [{ eqIdxs: [eq], vars: [yIdx] }] };
+    return { arena, uIdx, yIdx, blt };
+  };
+
+  it("does not report a false definite singularity for tan(y) = u (symbolic differentiator returned 0)", () => {
+    const { arena, uIdx, yIdx, blt } = build("tan");
+    const engine = new DaeBltReachabilityEngine(arena, {
+      initialBounds: new Map([
+        [uIdx, new NumericalInterval(1.0, 2.0)],
+        [yIdx, new NumericalInterval(0.5, 1.0)],
+      ]),
+    });
+    const summary = engine.verify(blt);
+    assert.ok(!summary.issues.some((i) => i.kind === "singular_algebraic_loop" && i.severity === "definite"));
+  });
+
+  it("reports a possible singularity (never a silent pass) for abs(y) = u when y may be 0", () => {
+    const { arena, uIdx, yIdx, blt } = build("abs");
+    const engine = new DaeBltReachabilityEngine(arena, {
+      initialBounds: new Map([
+        [uIdx, new NumericalInterval(1.0, 2.0)],
+        [yIdx, new NumericalInterval(-1.0, 1.0)],
+      ]),
+    });
+    const summary = engine.verify(blt);
+    assert.ok(summary.issues.some((i) => i.kind === "singular_algebraic_loop"));
+  });
+});

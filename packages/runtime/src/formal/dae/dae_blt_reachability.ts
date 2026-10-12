@@ -12,8 +12,11 @@
  */
 
 import { ArenaBltResult } from "../../analysis/wasm_blt.js";
-import { BinOp, DAEBuilder, ExprKind, differentiateArenaExpression } from "../../dae/wasm_dae.js";
+import { Interval } from "../../analysis/wasm_interval.js";
+import { BinOp, DAEBuilder, ExprKind } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
+import { IntervalDual, createDualDomain } from "./arena_dae_compiler.js";
+import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
 import { blockFingerprint } from "./arena_fingerprint.js";
 import { DaeEvaluatorOptions, DaeIntervalEvaluator, DaeSingularityIssue } from "./dae_interval_evaluator.js";
 
@@ -294,10 +297,8 @@ export class DaeBltReachabilityEngine {
 
     // General residual formulation: g(y) = lhs - rhs = 0
     const residualExpr = this.arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
-    const varNameId = this.arena.interner.intern(varName);
-    const dRes_dy = differentiateArenaExpression(this.arena, residualExpr, varNameId);
-
-    const dResEval = this.evaluator.evaluateExpr(dRes_dy, globalBounds);
+    const dResIv = this.residualJacobianRow(residualExpr, [varIdx], globalBounds)[0]!;
+    const dResEval = { interval: dResIv, issues: [] as DaeSingularityIssue[] };
     issues.push(...dResEval.issues);
 
     if (dResEval.interval.canBeZero()) {
@@ -325,6 +326,36 @@ export class DaeBltReachabilityEngine {
       issues,
       recomputed: true,
     };
+  }
+
+  /**
+   * Interval enclosure of the gradient of a residual with respect to `vars`, via forward-mode interval AD.
+   * Constructs the symbolic differentiator cannot handle (if, abs, comparisons, tan, ...) yield
+   * unbounded entries, so a singularity check can never be fooled by a silently-zero derivative.
+   */
+  private residualJacobianRow(
+    residualExpr: number,
+    vars: number[],
+    globalBounds: Map<number, NumericalInterval>,
+  ): NumericalInterval[] {
+    const m = vars.length;
+    const dom = createDualDomain(m);
+    const slot = new Map(vars.map((v, k) => [v, k]));
+    const pt = (v: number): Interval => new Interval(v, v);
+    const res = evalArenaExpr(
+      this.arena,
+      residualExpr,
+      {
+        variable: (idx): IntervalDual | undefined => {
+          const b = globalBounds.get(idx) ?? this.evaluator.getVarBound(idx);
+          const v = b.isBottom() || b.isTop() ? WHOLE_LINE() : new Interval(b.low, b.high);
+          const s = slot.get(idx);
+          return { v, g: Array.from({ length: m }, (_, k) => pt(k === s ? 1 : 0)) };
+        },
+      },
+      dom,
+    ).value;
+    return res.g.map((g) => new NumericalInterval(g.lo, g.hi));
   }
 
   /**
@@ -358,23 +389,8 @@ export class DaeBltReachabilityEngine {
       const rhs = this.arena.getEqRhs(eqIdx);
       const residualExpr = this.arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
 
-      const row: NumericalInterval[] = [];
-      const nominalRow: number[] = [];
-
-      for (let j = 0; j < n; j++) {
-        const varIdx = block.vars[j]!;
-        const varName = this.arena.getVarName(varIdx);
-        const nameId = this.arena.interner.intern(varName);
-
-        const dExpr = differentiateArenaExpression(this.arena, residualExpr, nameId);
-        const dEval = this.evaluator.evaluateExpr(dExpr, globalBounds);
-        issues.push(...dEval.issues);
-
-        row.push(dEval.interval);
-        nominalRow.push(
-          dEval.interval.isTop() || dEval.interval.isBottom() ? 1.0 : (dEval.interval.low + dEval.interval.high) / 2,
-        );
-      }
+      const row: NumericalInterval[] = this.residualJacobianRow(residualExpr, block.vars, globalBounds);
+      const nominalRow: number[] = row.map((iv) => (iv.isTop() || iv.isBottom() ? 1.0 : (iv.low + iv.high) / 2));
       J.push(row);
       nominalJ.push(nominalRow);
     }
