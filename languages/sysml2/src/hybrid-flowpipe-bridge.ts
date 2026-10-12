@@ -304,7 +304,7 @@ export async function verifyHybridSysml2Reachability(
     : solverResult.verdict;
   const isCertifiedSafe = isBenchmarkFallback ? false : solverResult.isCertifiedSafe;
   const summary = isBenchmarkFallback
-    ? `${solverResult.summary} (Benchmark thermostat fallback; no custom continuous dynamics found in model)`
+    ? `Hybrid reachability not proven (unsupported): SysML model did not define custom continuous hybrid dynamics; executed benchmark thermostat fallback.`
     : solverResult.summary;
 
   return {
