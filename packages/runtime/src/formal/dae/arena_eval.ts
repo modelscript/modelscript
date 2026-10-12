@@ -100,7 +100,7 @@ export const IntervalDomain: AbstractDomain<Interval> = {
 /** Environment supplying values for variables. */
 export interface ArenaEvalEnv<T> {
   /** Value of a variable (by arena index); return `undefined` for TOP. */
-  variable(varIdx: number, name: string): T | undefined;
+  variable(varIdx: number, name: string, exprId?: number): T | undefined;
   /** Value of der(x); `undefined` means unbounded. */
   derivative?(varIdx: number, name: string): T | undefined;
 }
@@ -163,7 +163,7 @@ export function evalArenaExpr<T>(
       case ExprKind.Name: {
         const { idx, name } = resolveVar(arena, arena.getExprData1(id));
         if (idx < 0) return top();
-        return env.variable(idx, name) ?? top();
+        return env.variable(idx, name, id) ?? top();
       }
 
       case ExprKind.Unary: {

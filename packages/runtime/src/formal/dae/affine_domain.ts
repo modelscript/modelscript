@@ -43,6 +43,13 @@ const EPS = 2 ** -52;
 const TINY = 2 ** -1074;
 const rnd = (y: number): number => Math.abs(y) * EPS + TINY;
 
+/** Exact rounding error |(a + b) - fl(a + b)| via TwoSum (0 when the sum is exact). */
+function sumErr(a: number, b: number, s: number): number {
+  if (!Number.isFinite(s)) return Infinity;
+  const bb = s - a;
+  return Math.abs(a - (s - bb) + (b - bb));
+}
+
 export class Aff {
   constructor(
     public readonly c: number,
@@ -130,7 +137,7 @@ export class AffineDomain implements AbstractDomain<Aff>, AffineDomainHandle {
   add(a: Aff, b: Aff): Aff {
     if (a.isTop || b.isTop) return TOP;
     const c = a.c + b.c;
-    let err = addUp(addUp(a.err, b.err), rnd(c));
+    let err = addUp(addUp(a.err, b.err), sumErr(a.c, b.c, c));
     const terms = new Map<number, number>();
     for (const [k, v] of a.terms) terms.set(k, v);
     for (const [k, v] of b.terms) {
@@ -138,7 +145,7 @@ export class AffineDomain implements AbstractDomain<Aff>, AffineDomainHandle {
       if (prev === undefined) terms.set(k, v);
       else {
         const s = prev + v;
-        err = addUp(err, rnd(s));
+        err = addUp(err, sumErr(prev, v, s));
         terms.set(k, s);
       }
     }

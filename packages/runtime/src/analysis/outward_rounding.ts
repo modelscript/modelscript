@@ -80,9 +80,75 @@ export function subDown(a: number, b: number): number {
   return addDown(a, -b);
 }
 
-/** Product with the interval convention 0 * ±Infinity = 0. */
-function mulPoint(a: number, b: number): number {
-  return a === 0 || b === 0 ? 0 : a * b;
+const SPLIT = 134217729; // 2^27 + 1 (Veltkamp)
+const SAFE_HI = 2 ** 480;
+const SAFE_LO = 2 ** -480;
+
+/** True when Dekker's TwoProduct is exact for these operands (no overflow/underflow risk). */
+function twoProdSafe(a: number, b: number, p: number): boolean {
+  const aa = Math.abs(a);
+  const ab = Math.abs(b);
+  const ap = Math.abs(p);
+  return aa < SAFE_HI && ab < SAFE_HI && ap > SAFE_LO && ap < SAFE_HI && Number.isFinite(p);
+}
+
+/** Exact error e of p = fl(a*b), i.e. a*b = p + e (valid when twoProdSafe). */
+function prodErr(a: number, b: number, p: number): number {
+  let c = SPLIT * a;
+  const ah = c - (c - a);
+  const al = a - ah;
+  c = SPLIT * b;
+  const bh = c - (c - b);
+  const bl = b - bh;
+  return ah * bh - p + ah * bl + al * bh + al * bl;
+}
+
+/** a*b rounded toward -Infinity (interval convention 0 * ±Infinity = 0). */
+function mulDown(a: number, b: number): number {
+  if (a === 0 || b === 0) return 0;
+  const p = a * b;
+  if (!twoProdSafe(a, b, p)) {
+    if (Number.isFinite(p)) return nextDown(p);
+    return p > 0 && Number.isFinite(a) && Number.isFinite(b) ? Number.MAX_VALUE : p;
+  }
+  return prodErr(a, b, p) < 0 ? nextDown(p) : p;
+}
+
+/** a*b rounded toward +Infinity. */
+function mulUp(a: number, b: number): number {
+  if (a === 0 || b === 0) return 0;
+  const p = a * b;
+  if (!twoProdSafe(a, b, p)) {
+    if (Number.isFinite(p)) return nextUp(p);
+    return p < 0 && Number.isFinite(a) && Number.isFinite(b) ? -Number.MAX_VALUE : p;
+  }
+  return prodErr(a, b, p) > 0 ? nextUp(p) : p;
+}
+
+/** a/b rounded toward -Infinity / +Infinity (b != 0). */
+function divDir(a: number, b: number, up: boolean): number {
+  const q = a / b;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return q;
+  if (!Number.isFinite(q)) {
+    // overflow of finite operands: the true quotient is finite but huge
+    if (q > 0) return up ? q : Number.MAX_VALUE;
+    return up ? -Number.MAX_VALUE : q;
+  }
+  if (q === 0) {
+    if (a === 0) return 0;
+    const positive = a > 0 === b > 0;
+    return up ? (positive ? Number.MIN_VALUE : -0) : positive ? 0 : -Number.MIN_VALUE;
+  }
+  const p = q * b;
+  if (!twoProdSafe(q, b, p) || Math.abs(a) < SAFE_LO || Math.abs(a) > SAFE_HI) return up ? nextUp(q) : nextDown(q);
+  // exact remainder r = a - q*b = (a - p) - e
+  const e = prodErr(q, b, p);
+  const r = a - p - e;
+  if (r === 0) return q;
+  // a/b = q + r/b; the true quotient is above q iff r and b have the same sign
+  const trueAbove = r > 0 === b > 0;
+  if (up) return trueAbove ? nextUp(q) : q;
+  return trueAbove ? q : nextDown(q);
 }
 
 // ── Basic outward interval arithmetic ──
@@ -100,18 +166,27 @@ export function ivNeg(a: Interval): Interval {
 }
 
 export function ivMul(a: Interval, b: Interval): Interval {
-  const p1 = mulPoint(a.lo, b.lo);
-  const p2 = mulPoint(a.lo, b.hi);
-  const p3 = mulPoint(a.hi, b.lo);
-  const p4 = mulPoint(a.hi, b.hi);
-  return new Interval(nextDown(Math.min(p1, p2, p3, p4)), nextUp(Math.max(p1, p2, p3, p4)));
+  const lo = Math.min(mulDown(a.lo, b.lo), mulDown(a.lo, b.hi), mulDown(a.hi, b.lo), mulDown(a.hi, b.hi));
+  const hi = Math.max(mulUp(a.lo, b.lo), mulUp(a.lo, b.hi), mulUp(a.hi, b.lo), mulUp(a.hi, b.hi));
+  return new Interval(lo, hi);
 }
 
 /** Division; if the divisor contains 0 the (sound) whole line is returned. */
 export function ivDiv(a: Interval, b: Interval): Interval {
   if (b.lo <= 0 && b.hi >= 0) return new Interval(-Infinity, Infinity);
-  const q = [a.lo / b.lo, a.lo / b.hi, a.hi / b.lo, a.hi / b.hi];
-  return new Interval(nextDown(Math.min(...q)), nextUp(Math.max(...q)));
+  const lo = Math.min(
+    divDir(a.lo, b.lo, false),
+    divDir(a.lo, b.hi, false),
+    divDir(a.hi, b.lo, false),
+    divDir(a.hi, b.hi, false),
+  );
+  const hi = Math.max(
+    divDir(a.lo, b.lo, true),
+    divDir(a.lo, b.hi, true),
+    divDir(a.hi, b.lo, true),
+    divDir(a.hi, b.hi, true),
+  );
+  return new Interval(lo, hi);
 }
 
 export function ivAbs(a: Interval): Interval {

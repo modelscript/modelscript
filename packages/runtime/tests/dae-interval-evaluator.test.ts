@@ -53,8 +53,9 @@ describe("Phase 1: DAE Interval & Affine Expression Evaluator (@modelscript/runt
     evaluator.setVarBound(rIdx, new NumericalInterval(2, 4));
     let res = evaluator.evaluateExpr(divExpr);
     assert.strictEqual(res.issues.length, 0);
-    assert.strictEqual(res.interval.low, 5 / 4);
-    assert.strictEqual(res.interval.high, 12 / 2);
+    // Outward rounding: the enclosure may be an ulp wider than the exact quotient.
+    assert.ok(res.interval.low <= 5 / 4 && res.interval.low > 5 / 4 - 1e-12);
+    assert.ok(res.interval.high >= 12 / 2 && res.interval.high < 12 / 2 + 1e-12);
 
     // Case 2: Possible zero (R in [-1, 5])
     evaluator.setVarBound(rIdx, new NumericalInterval(-1, 5));

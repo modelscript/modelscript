@@ -9,8 +9,12 @@
  * non-positive logarithms) and physical invariant breaches (min/max bound violations).
  */
 
-import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "../../dae/wasm_dae.js";
+import { ivSub } from "../../analysis/outward_rounding.js";
+import { Interval } from "../../analysis/wasm_interval.js";
+import { DAEBuilder, EqKind, ExprKind, Variability } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
+import { Aff, createAffineDomain, type AffineDomain } from "./affine_domain.js";
+import { evalArenaExpr, IntervalDomain, type ArenaEvalEnv } from "./arena_eval.js";
 
 export type DaeSingularityKind =
   | "div_by_zero"
@@ -48,6 +52,8 @@ export interface DaeEvaluatorOptions {
 export interface DaeEvaluationResult {
   interval: NumericalInterval;
   affine?: AffineForm;
+  /** Sound affine form (same value as `affine`, with rounding-safe error term). */
+  aff?: Aff;
   issues: DaeSingularityIssue[];
 }
 
@@ -145,8 +151,8 @@ export class AffineForm {
 export class DaeIntervalEvaluator {
   private varBounds: Map<number, NumericalInterval>;
   private varBoundsByName: Map<string, NumericalInterval>;
-  private noiseSymbols: Map<number, number>;
-  private nextNoiseSymbol = 1;
+  private affineDomain: AffineDomain = createAffineDomain();
+  private affineCache = new Map<number, { lo: number; hi: number; form: Aff }>();
   private checkAttributes: boolean;
 
   constructor(
@@ -155,7 +161,8 @@ export class DaeIntervalEvaluator {
   ) {
     this.varBounds = options.varBounds ? new Map(options.varBounds) : new Map();
     this.varBoundsByName = options.varBoundsByName ? new Map(options.varBoundsByName) : new Map();
-    this.noiseSymbols = options.noiseSymbols ? new Map(options.noiseSymbols) : new Map();
+    // `options.noiseSymbols` is accepted for API compatibility; noise symbols are now allocated
+    // by the shared sound affine domain.
     this.checkAttributes = options.checkAttributes ?? true;
   }
 
@@ -254,451 +261,52 @@ export class DaeIntervalEvaluator {
   }
 
   /**
-   * Allocates a noise symbol for a variable for affine arithmetic.
-   */
-  private getNoiseSymbol(varIdx: number): number {
-    let sym = this.noiseSymbols.get(varIdx);
-    if (sym === undefined) {
-      sym = this.nextNoiseSymbol++;
-      this.noiseSymbols.set(varIdx, sym);
-    }
-    return sym;
-  }
-
-  /**
    * Evaluates an arbitrary DAE expression in arena linear memory.
    */
   public evaluateExpr(exprId: number, localEnv?: Map<number, NumericalInterval>): DaeEvaluationResult {
-    const issues: DaeSingularityIssue[] = [];
-
     if (exprId < 0) {
-      return { interval: NumericalInterval.BOTTOM, issues };
+      return { interval: NumericalInterval.BOTTOM, issues: [] };
     }
+    const issues: DaeSingularityIssue[] = [];
+    const whole = (): Interval => new Interval(-Infinity, Infinity);
+    const boundOf = (varIdx: number): NumericalInterval => localEnv?.get(varIdx) ?? this.getVarBound(varIdx);
+    const toIv = (b: NumericalInterval): Interval => (b.isBottom() ? whole() : new Interval(b.low, b.high));
 
-    const kind = this.arena.getExprKind(exprId);
-
-    switch (kind) {
-      case ExprKind.RealLiteral: {
-        const val = this.arena.getExprRealValue(exprId);
-        return {
-          interval: NumericalInterval.const(val),
-          affine: AffineForm.constant(val),
-          issues,
-        };
-      }
-
-      case ExprKind.IntLiteral: {
-        const val = this.arena.getExprData1(exprId);
-        return {
-          interval: NumericalInterval.const(val),
-          affine: AffineForm.constant(val),
-          issues,
-        };
-      }
-
-      case ExprKind.BoolLiteral: {
-        const val = this.arena.getExprData1(exprId);
-        return {
-          interval: NumericalInterval.const(val),
-          affine: AffineForm.constant(val),
-          issues,
-        };
-      }
-
-      case ExprKind.Name: {
-        const nameId = this.arena.getExprData1(exprId);
-        let varIdx = this.arena.lookupVariable(nameId);
-        let nameStr = this.arena.interner.resolve(nameId);
-
-        if (varIdx < 0 && nameStr) {
-          varIdx = this.arena.getVarIdxByName(nameStr);
+    // Pass 1: outward-rounded interval semantics (shared interpreter), collects singularity issues.
+    const ivEnv: ArenaEvalEnv<Interval> = {
+      variable: (varIdx, name, eid) => {
+        const b = boundOf(varIdx);
+        if (this.checkAttributes) {
+          this.validateVarAttributes(varIdx, name || `var_${varIdx}`, b, eid ?? exprId, issues);
         }
+        return toIv(b);
+      },
+    };
+    const ivRes = evalArenaExpr(this.arena, exprId, ivEnv, IntervalDomain);
+    issues.push(...ivRes.issues);
+    const ivHull = ivRes.value;
+    let interval = new NumericalInterval(ivHull.lo, ivHull.hi);
 
-        let bound: NumericalInterval;
-        if (localEnv && varIdx >= 0 && localEnv.has(varIdx)) {
-          bound = localEnv.get(varIdx)!;
-        } else if (varIdx >= 0) {
-          bound = this.getVarBound(varIdx);
-        } else {
-          bound = NumericalInterval.TOP;
-        }
+    // Pass 2: sound affine arithmetic with one noise symbol per variable (shared across calls).
+    const affEnv: ArenaEvalEnv<Aff> = {
+      variable: (varIdx) => {
+        const b = toIv(boundOf(varIdx));
+        const hit = this.affineCache.get(varIdx);
+        if (hit && hit.lo === b.lo && hit.hi === b.hi) return hit.form;
+        const form = this.affineDomain.fresh(b);
+        this.affineCache.set(varIdx, { lo: b.lo, hi: b.hi, form });
+        return form;
+      },
+    };
+    const affRes = evalArenaExpr(this.arena, exprId, affEnv, this.affineDomain);
+    const aff = affRes.value;
+    const affHull = this.affineDomain.toInterval(aff);
+    const met = interval.meet(new NumericalInterval(affHull.lo, affHull.hi));
+    if (!met.isBottom()) interval = met;
 
-        let affine: AffineForm | undefined;
-        if (varIdx >= 0) {
-          const sym = this.getNoiseSymbol(varIdx);
-          affine = AffineForm.fromInterval(bound, sym);
-        }
-
-        // Check if variable violates its own declared min/max attribute
-        if (this.checkAttributes && varIdx >= 0) {
-          this.validateVarAttributes(varIdx, nameStr ?? `var_${varIdx}`, bound, exprId, issues);
-        }
-
-        return { interval: bound, affine, issues };
-      }
-
-      case ExprKind.Unary: {
-        const op = this.arena.getExprData1(exprId) as UnaryOp;
-        const operandExpr = this.arena.getExprLeft(exprId);
-        const sub = this.evaluateExpr(operandExpr, localEnv);
-        issues.push(...sub.issues);
-
-        if (op === UnaryOp.Negate) {
-          return {
-            interval: sub.interval.neg(),
-            affine: sub.affine?.neg(),
-            issues,
-          };
-        } else if (op === UnaryOp.Not) {
-          if (sub.interval.isConstant()) {
-            const v = sub.interval.low === 0 ? 1 : 0;
-            return {
-              interval: NumericalInterval.const(v),
-              affine: AffineForm.constant(v),
-              issues,
-            };
-          }
-          return { interval: new NumericalInterval(0, 1), issues };
-        }
-        return { interval: sub.interval, affine: sub.affine, issues };
-      }
-
-      case ExprKind.Negate: {
-        const operandExpr = this.arena.getExprLeft(exprId);
-        const sub = this.evaluateExpr(operandExpr, localEnv);
-        issues.push(...sub.issues);
-        return {
-          interval: sub.interval.neg(),
-          affine: sub.affine?.neg(),
-          issues,
-        };
-      }
-
-      case ExprKind.Binary: {
-        const op = this.arena.getExprData1(exprId) as BinOp;
-        const leftExpr = this.arena.getExprLeft(exprId);
-        const rightExpr = this.arena.getExprRight(exprId);
-
-        const leftRes = this.evaluateExpr(leftExpr, localEnv);
-        const rightRes = this.evaluateExpr(rightExpr, localEnv);
-        issues.push(...leftRes.issues, ...rightRes.issues);
-
-        switch (op) {
-          case BinOp.Add:
-          case BinOp.ElemAdd: {
-            const intVal = leftRes.interval.add(rightRes.interval);
-            const affVal = leftRes.affine && rightRes.affine ? leftRes.affine.add(rightRes.affine) : undefined;
-            const combined = affVal ? intVal.meet(affVal.toInterval()) : intVal;
-            return { interval: combined, affine: affVal, issues };
-          }
-
-          case BinOp.Sub:
-          case BinOp.ElemSub: {
-            const intVal = leftRes.interval.sub(rightRes.interval);
-            const affVal = leftRes.affine && rightRes.affine ? leftRes.affine.sub(rightRes.affine) : undefined;
-            const combined = affVal ? intVal.meet(affVal.toInterval()) : intVal;
-            return { interval: combined, affine: affVal, issues };
-          }
-
-          case BinOp.Mul:
-          case BinOp.ElemMul: {
-            const intVal = leftRes.interval.mul(rightRes.interval);
-            const affVal = leftRes.affine && rightRes.affine ? leftRes.affine.mul(rightRes.affine) : undefined;
-            const combined = affVal ? intVal.meet(affVal.toInterval()) : intVal;
-            return { interval: combined, affine: affVal, issues };
-          }
-
-          case BinOp.Div:
-          case BinOp.ElemDiv: {
-            const divRes = leftRes.interval.div(rightRes.interval);
-            if (divRes.divisionByZero === "definite") {
-              issues.push({
-                kind: "div_by_zero",
-                severity: "definite",
-                exprId,
-                message: `Definite division by zero in equation expression: denominator is [0, 0].`,
-                interval: rightRes.interval,
-              });
-            } else if (divRes.divisionByZero === "possible") {
-              issues.push({
-                kind: "div_by_zero",
-                severity: "possible",
-                exprId,
-                message: `Possible division by zero: denominator interval [${rightRes.interval.low}, ${rightRes.interval.high}] contains 0.`,
-                interval: rightRes.interval,
-              });
-            }
-            return { interval: divRes.result, issues };
-          }
-
-          case BinOp.Pow:
-          case BinOp.ElemPow: {
-            let exponent = 0;
-            if (rightRes.interval.isConstant()) {
-              exponent = rightRes.interval.low;
-              const powRes = leftRes.interval.pow(exponent);
-              if (powRes.domainViolation === "definite") {
-                issues.push({
-                  kind: "pow_domain_violation",
-                  severity: "definite",
-                  exprId,
-                  message: `Definite power domain violation: base [${leftRes.interval.low}, ${leftRes.interval.high}] with non-integer power ${exponent}.`,
-                  interval: leftRes.interval,
-                });
-              } else if (powRes.domainViolation === "possible") {
-                issues.push({
-                  kind: "pow_domain_violation",
-                  severity: "possible",
-                  exprId,
-                  message: `Possible power domain violation: base [${leftRes.interval.low}, ${leftRes.interval.high}] contains negative values.`,
-                  interval: leftRes.interval,
-                });
-              }
-              return { interval: powRes.result, issues };
-            }
-
-            // Exponent is an interval
-            if (leftRes.interval.low > 0) {
-              const logLeft = leftRes.interval.log();
-              const mul = rightRes.interval.mul(logLeft.result);
-              return { interval: mul.exp(), issues };
-            } else {
-              issues.push({
-                kind: "pow_domain_violation",
-                severity: leftRes.interval.high <= 0 ? "definite" : "possible",
-                exprId,
-                message: `Power domain violation: base [${leftRes.interval.low}, ${leftRes.interval.high}] is non-positive with interval exponent.`,
-                interval: leftRes.interval,
-              });
-              return { interval: NumericalInterval.TOP, issues };
-            }
-          }
-
-          case BinOp.Lt: {
-            if (leftRes.interval.high < rightRes.interval.low) {
-              return { interval: NumericalInterval.ONE, affine: AffineForm.constant(1), issues };
-            }
-            if (leftRes.interval.low >= rightRes.interval.high) {
-              return { interval: NumericalInterval.ZERO, affine: AffineForm.constant(0), issues };
-            }
-            return { interval: new NumericalInterval(0, 1), issues };
-          }
-
-          case BinOp.Lte: {
-            if (leftRes.interval.high <= rightRes.interval.low) {
-              return { interval: NumericalInterval.ONE, affine: AffineForm.constant(1), issues };
-            }
-            if (leftRes.interval.low > rightRes.interval.high) {
-              return { interval: NumericalInterval.ZERO, affine: AffineForm.constant(0), issues };
-            }
-            return { interval: new NumericalInterval(0, 1), issues };
-          }
-
-          case BinOp.Gt: {
-            if (leftRes.interval.low > rightRes.interval.high) {
-              return { interval: NumericalInterval.ONE, affine: AffineForm.constant(1), issues };
-            }
-            if (leftRes.interval.high <= rightRes.interval.low) {
-              return { interval: NumericalInterval.ZERO, affine: AffineForm.constant(0), issues };
-            }
-            return { interval: new NumericalInterval(0, 1), issues };
-          }
-
-          case BinOp.Gte: {
-            if (leftRes.interval.low >= rightRes.interval.high) {
-              return { interval: NumericalInterval.ONE, affine: AffineForm.constant(1), issues };
-            }
-            if (leftRes.interval.high < rightRes.interval.low) {
-              return { interval: NumericalInterval.ZERO, affine: AffineForm.constant(0), issues };
-            }
-            return { interval: new NumericalInterval(0, 1), issues };
-          }
-
-          case BinOp.Eq: {
-            if (
-              leftRes.interval.isConstant() &&
-              rightRes.interval.isConstant() &&
-              leftRes.interval.low === rightRes.interval.low
-            ) {
-              return { interval: NumericalInterval.ONE, affine: AffineForm.constant(1), issues };
-            }
-            if (leftRes.interval.high < rightRes.interval.low || leftRes.interval.low > rightRes.interval.high) {
-              return { interval: NumericalInterval.ZERO, affine: AffineForm.constant(0), issues };
-            }
-            return { interval: new NumericalInterval(0, 1), issues };
-          }
-
-          case BinOp.Neq: {
-            if (leftRes.interval.high < rightRes.interval.low || leftRes.interval.low > rightRes.interval.high) {
-              return { interval: NumericalInterval.ONE, affine: AffineForm.constant(1), issues };
-            }
-            if (
-              leftRes.interval.isConstant() &&
-              rightRes.interval.isConstant() &&
-              leftRes.interval.low === rightRes.interval.low
-            ) {
-              return { interval: NumericalInterval.ZERO, affine: AffineForm.constant(0), issues };
-            }
-            return { interval: new NumericalInterval(0, 1), issues };
-          }
-
-          default:
-            return { interval: NumericalInterval.TOP, issues };
-        }
-      }
-
-      case ExprKind.Call: {
-        const nameId = this.arena.getExprData1(exprId);
-        const funcName = this.arena.interner.resolve(nameId)?.toLowerCase() ?? "";
-        const firstArgId = this.arena.getExprLeft(exprId);
-        const argCount = this.arena.getExprRight(exprId);
-
-        const argRes = this.evaluateExpr(firstArgId, localEnv);
-        issues.push(...argRes.issues);
-
-        switch (funcName) {
-          case "sqrt": {
-            const sqrtRes = argRes.interval.sqrt();
-            if (sqrtRes.domainViolation === "definite") {
-              issues.push({
-                kind: "sqrt_negative",
-                severity: "definite",
-                exprId,
-                message: `Definite domain violation in sqrt(): radicand interval [${argRes.interval.low}, ${argRes.interval.high}] is strictly negative.`,
-                interval: argRes.interval,
-              });
-            } else if (sqrtRes.domainViolation === "possible") {
-              issues.push({
-                kind: "sqrt_negative",
-                severity: "possible",
-                exprId,
-                message: `Possible domain violation in sqrt(): radicand interval [${argRes.interval.low}, ${argRes.interval.high}] contains negative values.`,
-                interval: argRes.interval,
-              });
-            }
-            return { interval: sqrtRes.result, issues };
-          }
-
-          case "exp":
-            return { interval: argRes.interval.exp(), issues };
-
-          case "log":
-          case "ln": {
-            const logRes = argRes.interval.log();
-            if (logRes.domainViolation === "definite") {
-              issues.push({
-                kind: "log_nonpositive",
-                severity: "definite",
-                exprId,
-                message: `Definite domain violation in log(): argument interval [${argRes.interval.low}, ${argRes.interval.high}] is non-positive.`,
-                interval: argRes.interval,
-              });
-            } else if (logRes.domainViolation === "possible") {
-              issues.push({
-                kind: "log_nonpositive",
-                severity: "possible",
-                exprId,
-                message: `Possible domain violation in log(): argument interval [${argRes.interval.low}, ${argRes.interval.high}] contains values <= 0.`,
-                interval: argRes.interval,
-              });
-            }
-            return { interval: logRes.result, issues };
-          }
-
-          case "sin":
-            return { interval: argRes.interval.sin(), issues };
-
-          case "cos":
-            return { interval: argRes.interval.cos(), issues };
-
-          case "tan": {
-            const tanRes = argRes.interval.tan();
-            if (tanRes.domainViolation === "definite") {
-              issues.push({
-                kind: "tan_singularity",
-                severity: "definite",
-                exprId,
-                message: `Definite singularity in tan(): interval [${argRes.interval.low}, ${argRes.interval.high}] contains odd multiples of pi/2.`,
-                interval: argRes.interval,
-              });
-            }
-            return { interval: tanRes.result, issues };
-          }
-
-          case "abs":
-            return { interval: argRes.interval.abs(), issues };
-
-          case "smooth":
-            // Pass-through regularized expression
-            return { interval: argRes.interval, affine: argRes.affine, issues };
-
-          case "min":
-            if (argCount >= 2) {
-              const secondArgId = this.arena.getExprLeft(exprId + 1);
-              const secondRes = this.evaluateExpr(secondArgId, localEnv);
-              issues.push(...secondRes.issues);
-              const l = Math.min(argRes.interval.low, secondRes.interval.low);
-              const h = Math.min(argRes.interval.high, secondRes.interval.high);
-              return { interval: new NumericalInterval(l, h), issues };
-            }
-            return { interval: argRes.interval, issues };
-
-          case "max":
-            if (argCount >= 2) {
-              const secondArgId = this.arena.getExprLeft(exprId + 1);
-              const secondRes = this.evaluateExpr(secondArgId, localEnv);
-              issues.push(...secondRes.issues);
-              const l = Math.max(argRes.interval.low, secondRes.interval.low);
-              const h = Math.max(argRes.interval.high, secondRes.interval.high);
-              return { interval: new NumericalInterval(l, h), issues };
-            }
-            return { interval: argRes.interval, issues };
-
-          case "sign":
-            if (argRes.interval.isDefinitePositive()) return { interval: NumericalInterval.ONE, issues };
-            if (argRes.interval.high < 0) return { interval: new NumericalInterval(-1, -1), issues };
-            return { interval: new NumericalInterval(-1, 1), issues };
-
-          default:
-            return { interval: NumericalInterval.TOP, issues };
-        }
-      }
-
-      case ExprKind.IfElse: {
-        const condExpr = this.arena.getExprData1(exprId);
-        const thenExpr = this.arena.getExprLeft(exprId);
-        const elseExpr = this.arena.getExprRight(exprId);
-
-        const condRes = this.evaluateExpr(condExpr, localEnv);
-        issues.push(...condRes.issues);
-
-        if (condRes.interval.isDefinitePositive()) {
-          const thenRes = this.evaluateExpr(thenExpr, localEnv);
-          issues.push(...thenRes.issues);
-          return thenRes;
-        } else if (condRes.interval.isDefiniteZero()) {
-          const elseRes = this.evaluateExpr(elseExpr, localEnv);
-          issues.push(...elseRes.issues);
-          return elseRes;
-        } else {
-          const thenRes = this.evaluateExpr(thenExpr, localEnv);
-          const elseRes = this.evaluateExpr(elseExpr, localEnv);
-          issues.push(...thenRes.issues, ...elseRes.issues);
-          return {
-            interval: thenRes.interval.join(elseRes.interval),
-            issues,
-          };
-        }
-      }
-
-      case ExprKind.Der: {
-        // der(x) is unrelated to the bound of x; without a derivative bound it is unbounded.
-        return { interval: NumericalInterval.TOP, issues };
-      }
-
-      default:
-        return { interval: NumericalInterval.TOP, issues };
-    }
+    const terms = new Map<number, number>(aff.terms);
+    const affine = aff.isTop ? undefined : new AffineForm(aff.c, terms, aff.err);
+    return { interval, affine, aff, issues };
   }
 
   /**
@@ -805,15 +413,31 @@ export class DaeIntervalEvaluator {
       issues.push(issue);
     }
 
-    const residualInterval = lhsRes.interval.sub(rhsRes.interval);
-    const residualAffine = lhsRes.affine && rhsRes.affine ? lhsRes.affine.sub(rhsRes.affine) : undefined;
+    const rIv = ivSub(
+      new Interval(lhsRes.interval.low, lhsRes.interval.high),
+      new Interval(rhsRes.interval.low, rhsRes.interval.high),
+    );
+    const residualInterval =
+      lhsRes.interval.isBottom() || rhsRes.interval.isBottom()
+        ? NumericalInterval.BOTTOM
+        : new NumericalInterval(rIv.lo, rIv.hi);
+    const residualAff = lhsRes.aff && rhsRes.aff ? this.affineDomain.sub(lhsRes.aff, rhsRes.aff) : undefined;
+    let residualMeet = residualInterval;
+    let residualAffine: AffineForm | undefined;
+    if (residualAff && !residualAff.isTop) {
+      const h = this.affineDomain.toInterval(residualAff);
+      const m = residualInterval.meet(new NumericalInterval(h.lo, h.hi));
+      if (!m.isBottom()) residualMeet = m;
+      residualAffine = new AffineForm(residualAff.c, new Map(residualAff.terms), residualAff.err);
+    }
 
     return {
       lhs: lhsRes,
       rhs: rhsRes,
       residual: {
-        interval: residualAffine ? residualInterval.meet(residualAffine.toInterval()) : residualInterval,
+        interval: residualMeet,
         affine: residualAffine,
+        aff: residualAff,
         issues: [],
       },
       issues,

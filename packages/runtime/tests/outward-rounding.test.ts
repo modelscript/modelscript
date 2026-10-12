@@ -287,3 +287,69 @@ describe("Rigorous scalar kernel: mutation guard", () => {
     assert.ok(contains(e, nextUp(Math.exp(1))) && contains(e, nextDown(Math.exp(1))));
   });
 });
+
+describe("Rigorous scalar kernel: exactly directed mul/div (BigInt oracle)", () => {
+  // x = n * 2^e exactly
+  const dv = new DataView(new ArrayBuffer(8));
+  function decomp(x: number): { n: bigint; e: number } {
+    dv.setFloat64(0, x);
+    const bits = dv.getBigUint64(0);
+    const sign = bits >> 63n ? -1n : 1n;
+    const exp = Number((bits >> 52n) & 0x7ffn);
+    const frac = bits & ((1n << 52n) - 1n);
+    if (exp === 0) return { n: sign * frac, e: -1074 };
+    return { n: sign * (frac | (1n << 52n)), e: exp - 1075 };
+  }
+  // compare n1*2^e1 with n2*2^e2
+  function cmp(n1: bigint, e1: number, n2: bigint, e2: number): number {
+    const e = Math.min(e1, e2);
+    const a = n1 << BigInt(e1 - e);
+    const b = n2 << BigInt(e2 - e);
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  let seed = 99;
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+  const rv = () => (rnd() - 0.5) * 2 ** Math.floor(rnd() * 40 - 20);
+
+  it("ivMul endpoints bracket the exact product and are within 1 ulp; exact products stay exact", () => {
+    for (let i = 0; i < 3000; i++) {
+      const a = rv();
+      const b = rv();
+      const r = ivMul(new Interval(a, a), new Interval(b, b));
+      const A = decomp(a);
+      const B = decomp(b);
+      const n = A.n * B.n;
+      const e = A.e + B.e;
+      const lo = decomp(r.lo);
+      const hi = decomp(r.hi);
+      assert.ok(cmp(lo.n, lo.e, n, e) <= 0, `lo above exact for ${a}*${b}`);
+      assert.ok(cmp(hi.n, hi.e, n, e) >= 0, `hi below exact for ${a}*${b}`);
+      assert.ok(r.hi === nextUp(r.lo) || r.hi === r.lo, `not tight for ${a}*${b}`);
+      if (cmp(lo.n, lo.e, n, e) === 0) assert.equal(r.lo, r.hi, "exact product must be a point");
+    }
+  });
+
+  it("ivDiv endpoints bracket the exact quotient and are within 1 ulp; exact quotients stay exact", () => {
+    for (let i = 0; i < 3000; i++) {
+      const a = rv();
+      let b = rv();
+      if (b === 0) b = 1;
+      const r = ivDiv(new Interval(a, a), new Interval(b, b));
+      const A = decomp(a);
+      const B = decomp(b);
+      // a/b >= x  <=>  a >= x*b (b>0) ; reverse when b<0
+      const sgn = b > 0 ? 1 : -1;
+      const lo = decomp(r.lo);
+      const hi = decomp(r.hi);
+      assert.ok(sgn * cmp(A.n, A.e, lo.n * B.n, lo.e + B.e) >= 0, `lo above exact for ${a}/${b}`);
+      assert.ok(sgn * cmp(A.n, A.e, hi.n * B.n, hi.e + B.e) <= 0, `hi below exact for ${a}/${b}`);
+      assert.ok(r.hi === nextUp(r.lo) || r.hi === r.lo, `not tight for ${a}/${b}`);
+    }
+    const q = ivDiv(new Interval(3, 3), new Interval(4, 4));
+    assert.equal(q.lo, 0.75);
+    assert.equal(q.hi, 0.75);
+  });
+});
