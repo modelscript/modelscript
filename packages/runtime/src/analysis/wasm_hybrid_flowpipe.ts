@@ -407,8 +407,7 @@ export class HybridFlowpipeSolver {
           // Refine crossing time using Interval Newton
           const evalGuardAtDeltaT = (dtInv: Interval) => {
             const subDomain = [dtInv, ...stepDomain.slice(1)];
-            const subTM = new TaylorModel(guardTM.numVars, guardTM.order, subDomain, guardTM.remainder);
-            for (const [k, v] of guardTM.terms.entries()) subTM.terms.set(k, v);
+            const subTM = guardTM.withDomain(subDomain);
             const val = subTM.evaluateRange();
 
             // Compute time derivative of guard
@@ -475,8 +474,7 @@ export class HybridFlowpipeSolver {
         const crossDomain = [new Interval(localDt, localDt), ...stepDomain.slice(1)];
         const preJumpEnclosure: Interval[] = [];
         for (let j = 0; j < nStates; j++) {
-          const crossTM = new TaylorModel(picardTMs[j]!.numVars, currentOrder, crossDomain, picardTMs[j]!.remainder);
-          for (const [k, v] of picardTMs[j]!.terms.entries()) crossTM.terms.set(k, v);
+          const crossTM = picardTMs[j]!.withDomain(crossDomain);
           preJumpEnclosure.push(crossTM.evaluateRange());
         }
 
@@ -646,8 +644,7 @@ export class HybridFlowpipeSolver {
         const endDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
         currentEnclosure = [];
         for (let j = 0; j < nStates; j++) {
-          const endTM = new TaylorModel(picardTMs[j]!.numVars, currentOrder, endDomain, picardTMs[j]!.remainder);
-          for (const [k, v] of picardTMs[j]!.terms.entries()) endTM.terms.set(k, v);
+          const endTM = picardTMs[j]!.withDomain(endDomain);
           currentEnclosure.push(endTM.evaluateRange());
         }
         if (useConstrainedZonotopes) {

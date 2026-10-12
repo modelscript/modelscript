@@ -89,7 +89,8 @@ export function createDualDomain(nDir: number): ExprDomain<IntervalDual> {
     abs: (a) => {
       if (a.v.lo > 0) return { v: ivAbs(a.v), g: a.g };
       if (a.v.hi < 0) return { v: ivAbs(a.v), g: a.g.map(ivNeg) };
-      return { v: ivAbs(a.v), g: wholes() }; // non-differentiable at 0
+      // Generalized Clarke subgradient for Lipschitz |x| over zero is [-1, 1]
+      return { v: ivAbs(a.v), g: scale(a.g, new Interval(-1, 1)) };
     },
     powInt: (a, n) => {
       if (n === 0) return dom.constant(1);

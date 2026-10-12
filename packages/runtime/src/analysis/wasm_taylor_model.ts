@@ -10,8 +10,10 @@
  */
 
 import type { VerificationVerdict } from "../formal/verdict.js";
+import { MonomialBasis } from "./monomial_basis.js";
 import { ivAdd, ivMul, ivPowInt, ivSub } from "./outward_rounding.js";
 import { Interval } from "./wasm_interval.js";
+export { MonomialBasis } from "./monomial_basis.js";
 export { Interval } from "./wasm_interval.js";
 
 // ── Basic Interval Arithmetic Helpers ──
@@ -41,18 +43,54 @@ export function powInterval(a: Interval, n: number): Interval {
   return ivPowInt(a, n);
 }
 
-// ── Multivariate Taylor Model ──
+class TaylorTermsMap extends Map<string, number> {
+  constructor(private readonly tm: TaylorModel) {
+    super();
+  }
+
+  override set(key: string, value: number): this {
+    super.set(key, value);
+    const exps = TaylorModel.parseKey(key);
+    const idx = this.tm.basis.indexOf(exps);
+    if (idx >= 0) {
+      this.tm.coeffs[idx] = value;
+    }
+    return this;
+  }
+
+  override delete(key: string): boolean {
+    const exps = TaylorModel.parseKey(key);
+    const idx = this.tm.basis.indexOf(exps);
+    if (idx >= 0) {
+      this.tm.coeffs[idx] = 0;
+    }
+    return super.delete(key);
+  }
+
+  override clear(): void {
+    super.clear();
+    this.tm.coeffs.fill(0);
+  }
+}
 
 export class TaylorModel {
   /**
-   * Polynomial coefficients indexed by serialized exponent vector (e.g. "0,1,0").
+   * Precomputed graded-lexicographical monomial basis.
    */
-  public readonly terms: Map<string, number> = new Map();
+  public readonly basis: MonomialBasis;
+
+  /**
+   * Dense polynomial coefficients indexed by graded-lex monomial ID.
+   * coeffs[0] is the constant term.
+   */
+  public readonly coeffs: Float64Array;
 
   /**
    * Remainder interval enclosing truncation and rounding errors: [r_lo, r_hi].
    */
   public remainder: Interval;
+
+  private _termsCache: Map<string, number> | null = null;
 
   constructor(
     public readonly numVars: number,
@@ -60,7 +98,28 @@ export class TaylorModel {
     public readonly domain: Interval[],
     remainder: Interval = new Interval(0, 0),
   ) {
+    this.basis = MonomialBasis.get(numVars, order);
+    this.coeffs = new Float64Array(this.basis.totalMonomials);
     this.remainder = new Interval(remainder.lo, remainder.hi);
+  }
+
+  /**
+   * Polynomial coefficients indexed by serialized exponent vector (e.g. "0,1,0").
+   * Lazily generated and synchronized with the dense graded-lex coeffs array.
+   */
+  public get terms(): Map<string, number> {
+    if (!this._termsCache) {
+      const map = new TaylorTermsMap(this);
+      const M = this.basis.totalMonomials;
+      for (let i = 0; i < M; i++) {
+        const c = this.coeffs[i]!;
+        if (c !== 0) {
+          Map.prototype.set.call(map, this.basis.serializedKeys[i]!, c);
+        }
+      }
+      this._termsCache = map;
+    }
+    return this._termsCache;
   }
 
   static serializeKey(exponents: number[]): string {
@@ -82,8 +141,11 @@ export class TaylorModel {
    */
   static constant(val: number, numVars: number, domain: Interval[], order: number = 2): TaylorModel {
     const tm = new TaylorModel(numVars, order, domain);
-    const zeroKey = new Array(numVars).fill(0);
-    tm.set(zeroKey, val);
+    if (Math.abs(val) >= 1e-15) {
+      tm.coeffs[0] = val;
+    } else if (val !== 0) {
+      tm.sweepIntoRemainderIndex(0, val);
+    }
     return tm;
   }
 
@@ -93,45 +155,59 @@ export class TaylorModel {
   static variable(varIndex: number, domain: Interval[], order: number = 2, center = 0): TaylorModel {
     const numVars = domain.length;
     const tm = new TaylorModel(numVars, order, domain);
-    const zeroKey = new Array(numVars).fill(0);
     if (center !== 0) {
-      tm.set(zeroKey, center);
+      if (Math.abs(center) >= 1e-15) {
+        tm.coeffs[0] = center;
+      } else {
+        tm.sweepIntoRemainderIndex(0, center);
+      }
     }
-    const varKey = new Array(numVars).fill(0);
-    varKey[varIndex] = 1;
-    tm.set(varKey, 1.0);
+    const varIdx = tm.basis.variableIndex(varIndex);
+    if (varIdx < tm.basis.totalMonomials) {
+      tm.coeffs[varIdx] = 1.0;
+    }
     return tm;
   }
 
   get(exponents: number[]): number {
-    return this.terms.get(TaylorModel.serializeKey(exponents)) ?? 0;
+    const idx = this.basis.indexOf(exponents);
+    return idx >= 0 ? this.coeffs[idx]! : 0;
   }
 
   set(exponents: number[], val: number): void {
-    const key = TaylorModel.serializeKey(exponents);
-    if (Math.abs(val) < 1e-15) {
-      this.terms.delete(key);
-      // A non-zero coefficient must not vanish silently: bound c * monomial over the domain
-      // and absorb it into the remainder so the enclosure stays sound.
-      if (val !== 0) this.sweepIntoRemainder(exponents, val);
+    this._termsCache = null;
+    const idx = this.basis.indexOf(exponents);
+    if (idx >= 0) {
+      if (Math.abs(val) < 1e-15) {
+        this.coeffs[idx] = 0;
+        if (val !== 0) this.sweepIntoRemainderIndex(idx, val);
+      } else {
+        this.coeffs[idx] = val;
+      }
     } else {
-      this.terms.set(key, val);
+      if (val !== 0) this.sweepIntoRemainderExponents(exponents, val);
     }
+  }
+
+  /**
+   * Moves the term `coeff * monomial[index]` out of the polynomial and into the remainder interval.
+   */
+  public sweepIntoRemainderIndex(index: number, coeff: number): void {
+    const range = this.evaluateMonomialRangeIndex(index);
+    this.remainder = addInterval(this.remainder, scaleInterval(range, coeff));
   }
 
   /**
    * Moves the term `coeff * x^exponents` out of the polynomial and into the remainder interval.
    */
-  private sweepIntoRemainder(exponents: number[], coeff: number): void {
-    const range = this.evaluateMonomialRange(exponents);
+  public sweepIntoRemainderExponents(exponents: number[], coeff: number): void {
+    const range = this.evaluateMonomialRangeExponents(exponents);
     this.remainder = addInterval(this.remainder, scaleInterval(range, coeff));
   }
 
   clone(): TaylorModel {
     const res = new TaylorModel(this.numVars, this.order, this.domain, this.remainder);
-    for (const [k, v] of this.terms.entries()) {
-      res.terms.set(k, v);
-    }
+    res.coeffs.set(this.coeffs);
     return res;
   }
 
@@ -140,17 +216,20 @@ export class TaylorModel {
    */
   withDomain(domain: Interval[]): TaylorModel {
     const res = new TaylorModel(this.numVars, this.order, domain, this.remainder);
-    for (const [k, v] of this.terms.entries()) {
-      res.terms.set(k, v);
-    }
+    res.coeffs.set(this.coeffs);
     return res;
   }
 
   addConstant(c: number): TaylorModel {
     const res = this.clone();
-    const zeroKey = new Array(this.numVars).fill(0);
-    const curr = res.get(zeroKey);
-    res.set(zeroKey, curr + c);
+    const curr = res.coeffs[0]!;
+    const next = curr + c;
+    if (Math.abs(next) < 1e-15) {
+      res.coeffs[0] = 0;
+      if (next !== 0) res.sweepIntoRemainderIndex(0, next);
+    } else {
+      res.coeffs[0] = next;
+    }
     return res;
   }
 
@@ -159,24 +238,40 @@ export class TaylorModel {
    * (P_1 + P_2) + (r_1 + r_2)
    */
   add(other: TaylorModel): TaylorModel {
-    const res = new TaylorModel(
-      this.numVars,
-      Math.max(this.order, other.order),
-      this.domain,
-      addInterval(this.remainder, other.remainder),
-    );
+    const maxOrder = Math.max(this.order, other.order);
+    const res = new TaylorModel(this.numVars, maxOrder, this.domain, addInterval(this.remainder, other.remainder));
 
-    for (const [k, v] of this.terms.entries()) {
-      res.terms.set(k, v);
-    }
-    for (const [k, v] of other.terms.entries()) {
-      const cur = res.terms.get(k) ?? 0;
-      const next = cur + v;
-      if (Math.abs(next) < 1e-15) {
-        res.terms.delete(k);
-        if (next !== 0) res.sweepIntoRemainder(TaylorModel.parseKey(k), next);
-      } else {
-        res.terms.set(k, next);
+    if (this.order === other.order && this.order === maxOrder) {
+      const M = this.basis.totalMonomials;
+      for (let i = 0; i < M; i++) {
+        const sum = this.coeffs[i]! + other.coeffs[i]!;
+        if (Math.abs(sum) < 1e-15) {
+          if (sum !== 0) res.sweepIntoRemainderIndex(i, sum);
+        } else {
+          res.coeffs[i] = sum;
+        }
+      }
+    } else {
+      for (let i = 0; i < this.basis.totalMonomials; i++) {
+        const c = this.coeffs[i]!;
+        if (c !== 0) {
+          const target = res.basis.indexOf(this.basis.exponents[i]!);
+          if (target >= 0) res.coeffs[target] += c;
+        }
+      }
+      for (let j = 0; j < other.basis.totalMonomials; j++) {
+        const c = other.coeffs[j]!;
+        if (c !== 0) {
+          const target = res.basis.indexOf(other.basis.exponents[j]!);
+          if (target >= 0) res.coeffs[target] += c;
+        }
+      }
+      for (let k = 0; k < res.basis.totalMonomials; k++) {
+        const c = res.coeffs[k]!;
+        if (Math.abs(c) < 1e-15 && c !== 0) {
+          res.coeffs[k] = 0;
+          res.sweepIntoRemainderIndex(k, c);
+        }
       }
     }
     return res;
@@ -187,24 +282,40 @@ export class TaylorModel {
    * (P_1 - P_2) + (r_1 - r_2)
    */
   sub(other: TaylorModel): TaylorModel {
-    const res = new TaylorModel(
-      this.numVars,
-      Math.max(this.order, other.order),
-      this.domain,
-      subInterval(this.remainder, other.remainder),
-    );
+    const maxOrder = Math.max(this.order, other.order);
+    const res = new TaylorModel(this.numVars, maxOrder, this.domain, subInterval(this.remainder, other.remainder));
 
-    for (const [k, v] of this.terms.entries()) {
-      res.terms.set(k, v);
-    }
-    for (const [k, v] of other.terms.entries()) {
-      const cur = res.terms.get(k) ?? 0;
-      const next = cur - v;
-      if (Math.abs(next) < 1e-15) {
-        res.terms.delete(k);
-        if (next !== 0) res.sweepIntoRemainder(TaylorModel.parseKey(k), next);
-      } else {
-        res.terms.set(k, next);
+    if (this.order === other.order && this.order === maxOrder) {
+      const M = this.basis.totalMonomials;
+      for (let i = 0; i < M; i++) {
+        const diff = this.coeffs[i]! - other.coeffs[i]!;
+        if (Math.abs(diff) < 1e-15) {
+          if (diff !== 0) res.sweepIntoRemainderIndex(i, diff);
+        } else {
+          res.coeffs[i] = diff;
+        }
+      }
+    } else {
+      for (let i = 0; i < this.basis.totalMonomials; i++) {
+        const c = this.coeffs[i]!;
+        if (c !== 0) {
+          const target = res.basis.indexOf(this.basis.exponents[i]!);
+          if (target >= 0) res.coeffs[target] += c;
+        }
+      }
+      for (let j = 0; j < other.basis.totalMonomials; j++) {
+        const c = other.coeffs[j]!;
+        if (c !== 0) {
+          const target = res.basis.indexOf(other.basis.exponents[j]!);
+          if (target >= 0) res.coeffs[target] -= c;
+        }
+      }
+      for (let k = 0; k < res.basis.totalMonomials; k++) {
+        const c = res.coeffs[k]!;
+        if (Math.abs(c) < 1e-15 && c !== 0) {
+          res.coeffs[k] = 0;
+          res.sweepIntoRemainderIndex(k, c);
+        }
       }
     }
     return res;
@@ -215,16 +326,24 @@ export class TaylorModel {
    */
   scale(c: number): TaylorModel {
     const res = new TaylorModel(this.numVars, this.order, this.domain, scaleInterval(this.remainder, c));
-    for (const [k, v] of this.terms.entries()) {
-      res.terms.set(k, v * c);
+    const M = this.basis.totalMonomials;
+    for (let i = 0; i < M; i++) {
+      res.coeffs[i] = this.coeffs[i]! * c;
     }
     return res;
   }
 
   /**
+   * Evaluates the range of monomial at given basis index over the domain box.
+   */
+  public evaluateMonomialRangeIndex(index: number): Interval {
+    return this.evaluateMonomialRangeExponents(this.basis.exponents[index]!);
+  }
+
+  /**
    * Evaluates the range of a monomial term x_0^e0 * x_1^e1 ... over the domain box.
    */
-  private evaluateMonomialRange(exps: number[]): Interval {
+  public evaluateMonomialRangeExponents(exps: number[]): Interval {
     let res = new Interval(1, 1);
     for (let i = 0; i < exps.length; i++) {
       const e = exps[i]!;
@@ -241,9 +360,11 @@ export class TaylorModel {
    */
   evaluatePolynomialRange(): Interval {
     let acc = new Interval(0, 0);
-    for (const [k, coeff] of this.terms.entries()) {
-      const exps = TaylorModel.parseKey(k);
-      const mRange = this.evaluateMonomialRange(exps);
+    const M = this.basis.totalMonomials;
+    for (let i = 0; i < M; i++) {
+      const coeff = this.coeffs[i]!;
+      if (coeff === 0) continue;
+      const mRange = this.evaluateMonomialRangeIndex(i);
       acc = addInterval(acc, scaleInterval(mRange, coeff));
     }
     return acc;
@@ -257,26 +378,73 @@ export class TaylorModel {
   mul(other: TaylorModel): TaylorModel {
     const maxOrder = Math.max(this.order, other.order);
     const res = new TaylorModel(this.numVars, maxOrder, this.domain);
-
     let excessRemainder = new Interval(0, 0);
 
-    for (const [k1, c1] of this.terms.entries()) {
-      const exps1 = TaylorModel.parseKey(k1);
-      for (const [k2, c2] of other.terms.entries()) {
-        const exps2 = TaylorModel.parseKey(k2);
-        const combinedExps = exps1.map((e, idx) => e + exps2[idx]!);
-        const deg = TaylorModel.degreeOf(combinedExps);
-        const coeff = c1 * c2;
+    const sameOrder = this.order === other.order && this.order === maxOrder;
+    const mulTable = sameOrder ? this.basis.mulTable : null;
 
-        if (deg <= maxOrder) {
-          const key = TaylorModel.serializeKey(combinedExps);
-          const cur = res.terms.get(key) ?? 0;
-          res.terms.set(key, cur + coeff);
-        } else {
-          // Truncation: bound the excess monomial
-          const mRange = this.evaluateMonomialRange(combinedExps);
-          excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+    if (mulTable) {
+      const M = this.basis.totalMonomials;
+      for (let i = 0; i < M; i++) {
+        const c1 = this.coeffs[i]!;
+        if (c1 === 0) continue;
+        const rowOffset = i * M;
+        for (let j = 0; j < M; j++) {
+          const c2 = other.coeffs[j]!;
+          if (c2 === 0) continue;
+          const coeff = c1 * c2;
+          const k = mulTable[rowOffset + j]!;
+          if (k >= 0) {
+            res.coeffs[k] += coeff;
+          } else {
+            const exps1 = this.basis.exponents[i]!;
+            const exps2 = this.basis.exponents[j]!;
+            const sumExps = new Array(this.numVars);
+            for (let v = 0; v < this.numVars; v++) sumExps[v] = exps1[v]! + exps2[v]!;
+            const mRange = this.evaluateMonomialRangeExponents(sumExps);
+            excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+          }
         }
+      }
+    } else {
+      for (let i = 0; i < this.basis.totalMonomials; i++) {
+        const c1 = this.coeffs[i]!;
+        if (c1 === 0) continue;
+        const exps1 = this.basis.exponents[i]!;
+        for (let j = 0; j < other.basis.totalMonomials; j++) {
+          const c2 = other.coeffs[j]!;
+          if (c2 === 0) continue;
+          const coeff = c1 * c2;
+          const exps2 = other.basis.exponents[j]!;
+          const sumExps = new Array(this.numVars);
+          let sumDeg = 0;
+          for (let v = 0; v < this.numVars; v++) {
+            const e = exps1[v]! + exps2[v]!;
+            sumExps[v] = e;
+            sumDeg += e;
+          }
+          if (sumDeg <= maxOrder) {
+            const target = res.basis.indexOf(sumExps);
+            if (target >= 0) {
+              res.coeffs[target] += coeff;
+            } else {
+              const mRange = this.evaluateMonomialRangeExponents(sumExps);
+              excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+            }
+          } else {
+            const mRange = this.evaluateMonomialRangeExponents(sumExps);
+            excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+          }
+        }
+      }
+    }
+
+    // Sweep any tiny cancellation terms in the product
+    for (let k = 0; k < res.basis.totalMonomials; k++) {
+      const c = res.coeffs[k]!;
+      if (Math.abs(c) < 1e-15 && c !== 0) {
+        res.coeffs[k] = 0;
+        res.sweepIntoRemainderIndex(k, c);
       }
     }
 
@@ -303,13 +471,12 @@ export class TaylorModel {
    *   exp(c + delta) = exp(c) * \sum_{k=0}^n (delta^k / k!) + [r_exp]
    */
   exp(): TaylorModel {
-    const zeroKey = new Array(this.numVars).fill(0);
-    const c = this.get(zeroKey);
+    const c = this.coeffs[0]!;
     const expC = Math.exp(c);
 
     // delta = this - c
     const delta = this.clone();
-    delta.set(zeroKey, 0);
+    delta.coeffs[0] = 0;
     const deltaRemainder = this.remainder;
     delta.remainder = new Interval(0, 0);
 
@@ -347,13 +514,12 @@ export class TaylorModel {
    * Uses angle addition: sin(c + delta) = sin(c)cos(delta) + cos(c)sin(delta).
    */
   sin(): TaylorModel {
-    const zeroKey = new Array(this.numVars).fill(0);
-    const c = this.get(zeroKey);
+    const c = this.coeffs[0]!;
     const sinC = Math.sin(c);
     const cosC = Math.cos(c);
 
     const delta = this.clone();
-    delta.set(zeroKey, 0);
+    delta.coeffs[0] = 0;
     delta.remainder = new Interval(0, 0);
 
     // Compute powers delta^k
@@ -399,13 +565,12 @@ export class TaylorModel {
    * Uses angle addition: cos(c + delta) = cos(c)cos(delta) - sin(c)sin(delta).
    */
   cos(): TaylorModel {
-    const zeroKey = new Array(this.numVars).fill(0);
-    const c = this.get(zeroKey);
+    const c = this.coeffs[0]!;
     const sinC = Math.sin(c);
     const cosC = Math.cos(c);
 
     const delta = this.clone();
-    delta.set(zeroKey, 0);
+    delta.coeffs[0] = 0;
     delta.remainder = new Interval(0, 0);
 
     const powers: TaylorModel[] = [TaylorModel.constant(1.0, this.numVars, this.domain, this.order)];
@@ -449,19 +614,22 @@ export class TaylorModel {
    */
   integrateTime(timeVarIndex = 0): TaylorModel {
     const res = new TaylorModel(this.numVars, this.order, this.domain);
+    const targetMap = this.basis.integrateTarget[timeVarIndex]!;
+    const divisorMap = this.basis.integrateDivisor[timeVarIndex]!;
+    const M = this.basis.totalMonomials;
 
-    for (const [k, coeff] of this.terms.entries()) {
-      const exps = TaylorModel.parseKey(k);
-      const tExp = exps[timeVarIndex]!;
-      const newExps = [...exps];
-      newExps[timeVarIndex] = tExp + 1;
-      const newCoeff = coeff / (tExp + 1);
-
-      if (TaylorModel.degreeOf(newExps) <= this.order) {
-        res.terms.set(TaylorModel.serializeKey(newExps), newCoeff);
+    for (let i = 0; i < M; i++) {
+      const coeff = this.coeffs[i]!;
+      if (coeff === 0) continue;
+      const target = targetMap[i]!;
+      const newCoeff = coeff / divisorMap[i]!;
+      if (target >= 0) {
+        res.coeffs[target] = newCoeff;
       } else {
-        // Exceeds order: truncate into remainder
-        const mRange = this.evaluateMonomialRange(newExps);
+        const exps = this.basis.exponents[i]!;
+        const newExps = [...exps];
+        newExps[timeVarIndex] = newExps[timeVarIndex]! + 1;
+        const mRange = this.evaluateMonomialRangeExponents(newExps);
         res.remainder = addInterval(res.remainder, scaleInterval(mRange, newCoeff));
       }
     }
@@ -483,25 +651,28 @@ export class TaylorModel {
   restrictVariable(varIndex: number, value: number): TaylorModel {
     const dom = this.domain.map((iv, i) => (i === varIndex ? new Interval(value, value) : iv));
     const res = new TaylorModel(this.numVars, this.order, dom, this.remainder);
-    const acc = new Map<string, number>();
+    const targetMap = this.basis.restrictTarget[varIndex]!;
+    const degMap = this.basis.restrictDegree[varIndex]!;
+    const M = this.basis.totalMonomials;
+
     let absSum = 0;
     let count = 0;
     let maxDeg = 0;
-    for (const [k, c] of this.terms.entries()) {
-      const exps = TaylorModel.parseKey(k);
-      const e = exps[varIndex] ?? 0;
-      const reduced = [...exps];
-      reduced[varIndex] = 0;
-      const key = TaylorModel.serializeKey(reduced);
-      const term = c * Math.pow(value, e);
-      acc.set(key, (acc.get(key) ?? 0) + term);
+
+    for (let i = 0; i < M; i++) {
+      const c = this.coeffs[i]!;
+      if (c === 0) continue;
+      const e = degMap[i]!;
+      const target = targetMap[i]!;
+      const term = c * (e === 0 ? 1 : Math.pow(value, e));
+      res.coeffs[target] += term;
       absSum += Math.abs(term);
       count++;
-      maxDeg = Math.max(maxDeg, e);
+      if (e > maxDeg) maxDeg = e;
     }
+
     const allowance = (count + maxDeg + 2) * 2 ** -52 * absSum;
     res.remainder = addInterval(res.remainder, new Interval(-allowance, allowance));
-    for (const [key, v] of acc.entries()) res.set(TaylorModel.parseKey(key), v);
     return res;
   }
 
@@ -519,14 +690,16 @@ export class TaylorModel {
    */
   evaluateAt(point: number[]): number {
     let sum = 0;
-    for (const [k, coeff] of this.terms.entries()) {
-      const exps = TaylorModel.parseKey(k);
-      let prod = coeff;
-      for (let i = 0; i < exps.length; i++) {
-        const e = exps[i]!;
-        if (e > 0) {
-          prod *= Math.pow(point[i] ?? 0, e);
-        }
+    const M = this.basis.totalMonomials;
+    for (let i = 0; i < M; i++) {
+      const c = this.coeffs[i]!;
+      if (c === 0) continue;
+      const exps = this.basis.exponents[i]!;
+      let prod = c;
+      for (let v = 0; v < this.numVars; v++) {
+        const e = exps[v]!;
+        if (e === 1) prod *= point[v] ?? 0;
+        else if (e > 1) prod *= Math.pow(point[v] ?? 0, e);
       }
       sum += prod;
     }

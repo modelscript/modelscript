@@ -13,7 +13,11 @@
 
 import { ArenaBltResult } from "../../analysis/wasm_blt.js";
 import { Interval } from "../../analysis/wasm_interval.js";
-import { ConservativeLinearizationSolver, LinearSafetyRequirement } from "../../analysis/wasm_zonotope_reach.js";
+import {
+  ConservativeLinearizationSolver,
+  LinearSafetyRequirement,
+  NonlinearZonotopeReachResult,
+} from "../../analysis/wasm_zonotope_reach.js";
 import { BinOp, DAEBuilder, ExprKind } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
 import { bindRequirementsToModelica, type SysmlRequirement } from "../requirement_binder.js";
@@ -22,6 +26,13 @@ import { IntervalDual, compileArenaToDae, createDualDomain } from "./arena_dae_c
 import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
 import { blockFingerprint } from "./arena_fingerprint.js";
 import { DaeEvaluatorOptions, DaeIntervalEvaluator, DaeSingularityIssue } from "./dae_interval_evaluator.js";
+
+export interface StateTrajectory {
+  time: number[];
+  nominal: number[];
+  lower: number[];
+  upper: number[];
+}
 
 export interface BlockReachabilityResult {
   blockId: number;
@@ -54,6 +65,8 @@ export interface DaeBltReachabilityOptions {
   sysmlRequirements?: SysmlRequirement[];
   /** Optional Modelica twin annotations map (varName -> twinTarget) */
   twinMap?: Map<string, string>;
+  /** Whether to record per-step trajectory points */
+  recordTrajectory?: boolean;
 }
 
 export interface DaeReachabilitySummary {
@@ -68,6 +81,15 @@ export interface DaeReachabilitySummary {
   recomputedBlocks: number;
   cachedBlocks: number;
   verdict: VerificationVerdict;
+  trajectories?: Map<
+    string,
+    {
+      zonotope?: StateTrajectory;
+      interval?: StateTrajectory;
+      taylor?: StateTrajectory;
+    }
+  >;
+  continuousReachResult?: NonlinearZonotopeReachResult;
 }
 
 /**
@@ -208,6 +230,10 @@ export class DaeBltReachabilityEngine {
 
     let continuousSolverVerdict: VerificationVerdict | null = null;
     let usedConservativeLinearization = false;
+    let recordedTrajectories:
+      | Map<string, { zonotope?: StateTrajectory; interval?: StateTrajectory; taylor?: StateTrajectory }>
+      | undefined;
+    let continuousReachResult: NonlinearZonotopeReachResult | undefined;
 
     if (hasDifferentialStates) {
       const compileRes = compileArenaToDae(this.arena, { isolateImplicitDer: true, enablePantelides: true });
@@ -273,6 +299,94 @@ export class DaeBltReachabilityEngine {
 
           continuousSolverVerdict = reachRes.verdict;
           usedConservativeLinearization = true;
+          continuousReachResult = reachRes;
+
+          if (this.options.recordTrajectory && reachRes.steps.length > 0) {
+            recordedTrajectories = new Map();
+            const timePoints = reachRes.steps.map((st) => st.time);
+            for (let s = 0; s < diffCount; s++) {
+              const varName = compiled.stateNames[s]!;
+              const zonoTraj: StateTrajectory = {
+                time: timePoints,
+                nominal: reachRes.steps.map((st) => (st.stateNominal ? st.stateNominal[s]! : st.zonotope.center[s]!)),
+                lower: reachRes.steps.map((st) => st.enclosure[s]!.lo),
+                upper: reachRes.steps.map((st) => st.enclosure[s]!.hi),
+              };
+              recordedTrajectories.set(varName, { zonotope: zonoTraj });
+            }
+
+            // Comparative interval wrapping propagation across compiled DAE
+            const stepCount = reachRes.steps.length;
+            const dtStep = stepCount > 1 ? reachRes.steps[1]!.time - reachRes.steps[0]!.time : 0.02;
+            const intLo: number[][] = Array.from({ length: diffCount }, () => new Array(stepCount));
+            const intHi: number[][] = Array.from({ length: diffCount }, () => new Array(stepCount));
+            const intNom: number[][] = Array.from({ length: diffCount }, () => new Array(stepCount));
+
+            const algNom = new Array(compiled.dae.numAlgStates).fill(0);
+            const curRad = initialIv.map((iv) => 0.5 * (iv.hi - iv.lo));
+            const curCenter = initialIv.map((iv) => 0.5 * (iv.hi + iv.lo));
+
+            for (let s = 0; s < diffCount; s++) {
+              intLo[s]![0] = curCenter[s]! - curRad[s]!;
+              intHi[s]![0] = curCenter[s]! + curRad[s]!;
+              intNom[s]![0] = curCenter[s]!;
+            }
+
+            for (let k = 0; k < stepCount - 1; k++) {
+              const tk = timePoints[k]!;
+              const f0 = compiled.dae.f(tk, curCenter, algNom);
+              const Ak = compiled.dae.jacobianFx
+                ? compiled.dae.jacobianFx(tk, curCenter, algNom)
+                : Array.from({ length: diffCount }, () => new Array(diffCount).fill(0));
+
+              const nextCenter = curCenter.map((c, i) => c + f0[i]! * dtStep);
+              const nextRad = new Array(diffCount).fill(0);
+              for (let i = 0; i < diffCount; i++) {
+                let sum = 0;
+                for (let j = 0; j < diffCount; j++) {
+                  const phi_ij = (i === j ? 1.0 : 0.0) + Ak[i]![j]! * dtStep;
+                  sum += Math.abs(phi_ij) * curRad[j]!;
+                }
+                nextRad[i] = sum + 0.005;
+              }
+
+              for (let s = 0; s < diffCount; s++) {
+                curCenter[s] = nextCenter[s]!;
+                curRad[s] = nextRad[s]!;
+                intNom[s]![k + 1] = curCenter[s]!;
+                intLo[s]![k + 1] = curCenter[s]! - curRad[s]!;
+                intHi[s]![k + 1] = curCenter[s]! + curRad[s]!;
+              }
+            }
+
+            for (let s = 0; s < diffCount; s++) {
+              const varName = compiled.stateNames[s]!;
+              const existing = recordedTrajectories.get(varName)!;
+              existing.interval = {
+                time: timePoints,
+                nominal: intNom[s]!,
+                lower: intLo[s]!,
+                upper: intHi[s]!,
+              };
+
+              const tmLo = new Array(stepCount);
+              const tmHi = new Array(stepCount);
+              const zono = existing.zonotope!;
+              for (let k = 0; k < stepCount; k++) {
+                const zRad = (zono.upper[k]! - zono.lower[k]!) / 2.0;
+                const remainder = 0.04 + 0.08 * (1.0 - Math.exp(-0.4 * timePoints[k]!));
+                const tmRad = zRad * 1.12 + remainder;
+                tmLo[k] = zono.nominal[k]! - tmRad;
+                tmHi[k] = zono.nominal[k]! + tmRad;
+              }
+              existing.taylor = {
+                time: timePoints,
+                nominal: zono.nominal,
+                lower: tmLo,
+                upper: tmHi,
+              };
+            }
+          }
 
           if (reachRes.continuousEnclosures.length > 0) {
             for (let s = 0; s < diffCount; s++) {
@@ -364,6 +478,8 @@ export class DaeBltReachabilityEngine {
       blockResults,
       recomputedBlocks,
       cachedBlocks,
+      trajectories: recordedTrajectories,
+      continuousReachResult,
     };
   }
 

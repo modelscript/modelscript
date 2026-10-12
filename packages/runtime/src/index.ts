@@ -6,6 +6,7 @@
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
+export * from "./analysis/monomial_basis.js";
 export * from "./analysis/octagon_dbm.js";
 export * from "./analysis/outward_rounding.js";
 export * from "./analysis/parametric_verifier.js";

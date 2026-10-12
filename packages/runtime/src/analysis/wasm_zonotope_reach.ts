@@ -48,6 +48,7 @@ export interface ZonotopeStepRecord {
   time: number;
   zonotope: Zonotope;
   enclosure: Interval[];
+  stateNominal?: number[];
 }
 
 export interface ZonotopeReachabilityResult {
@@ -287,6 +288,7 @@ export class ZonotopeReachabilitySolver {
       time: t,
       zonotope: currentZ.clone(),
       enclosure: currentEnc,
+      stateNominal: [...nomX],
     });
 
     let hasWitnessViolation = false;
@@ -642,6 +644,7 @@ export class ConservativeLinearizationSolver {
       time: t,
       zonotope: currentZ.clone(),
       enclosure: currentEnc,
+      stateNominal: [...nomX],
     });
 
     let hasWitnessViolation = false;
@@ -896,6 +899,7 @@ export class ConservativeLinearizationSolver {
         time: t,
         zonotope: currentZ.clone(),
         enclosure: currentEnc,
+        stateNominal: [...nomX],
       });
 
       if (hasWitnessViolation) {
