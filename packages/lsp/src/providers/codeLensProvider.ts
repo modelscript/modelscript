@@ -64,45 +64,68 @@ export function registerCodeLensProvider(context: LspContext) {
             }
           }
 
-          // Twin / Digital Thread Parameter: mass m
-          const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
-          if (massMatch) {
-            const val = massMatch[1];
-            const col = line.indexOf("m");
-            const range = Range.create(lineIdx, col, lineIdx, col + 1);
-            const isParity = Math.abs(parseFloat(val) - 1.2) < 0.01;
-            const title = isParity
-              ? `🔗 Digital Thread Parity: m = ${parseFloat(val).toFixed(2)} kg [Aligned with FEA drone_chassis.inp & SysML DroneAssembly]`
-              : `⚠ Digital Thread Drift: m = ${val} kg (FEA Structural Mass: 1.20 kg) | Reconcile`;
-            lenses.push({
-              range,
-              command: {
-                title,
-                command: "modelscript.syncDigitalThreadParams",
-                arguments: [uri],
-              },
-            });
-          }
-
-          // Aerodynamic twin parameters: Cd or A
-          const aeroMatch = /^\s*parameter\s+Real\s+(Cd|A)\s*=\s*([0-9.]+)/.exec(line);
-          if (aeroMatch) {
-            const param = aeroMatch[1];
-            const val = aeroMatch[2];
+          // Twin / Digital Thread Parameter inspection
+          const paramMatch = /^\s*parameter\s+Real\s+([A-Za-z0-9_]+)\s*=\s*([0-9.eE+-]+)/.exec(line);
+          if (paramMatch) {
+            const param = paramMatch[1]!;
+            const val = paramMatch[2]!;
             const col = line.indexOf(param);
             const range = Range.create(lineIdx, col, lineIdx, col + param.length);
-            const title =
-              param === "Cd"
-                ? `🔗 Aerodynamic Twin: Cd = ${val} [Aligned with CFD drone_aero.cfg RANS Polar]`
-                : `🔗 Frontal Area Twin: A = ${val} m² [Aligned with OpenSCAD CAD Projection]`;
-            lenses.push({
-              range,
-              command: {
-                title,
-                command: "modelscript.syncDigitalThreadParams",
-                arguments: [uri],
-              },
-            });
+
+            // Check for twin annotation
+            let twinTarget: string | undefined;
+            let scanWindow = line;
+            for (let j = 1; j <= 3 && lineIdx + j < lines.length; j++) {
+              if (scanWindow.includes(";")) break;
+              scanWindow += " " + lines[lineIdx + j]!;
+            }
+            const twinMatch = /(?:twin|counterpart)\s*=\s*"([^"]+)"/i.exec(scanWindow);
+            if (twinMatch) {
+              twinTarget = twinMatch[1];
+            }
+
+            if (param === "m") {
+              const numVal = parseFloat(val);
+              const isParity = Math.abs(numVal - 1.2) < 0.01;
+              const title = isParity
+                ? `🔗 Digital Thread Parity: m = ${numVal.toFixed(2)} kg [Aligned with FEA drone_chassis.inp & SysML DroneAssembly]`
+                : `⚠ Digital Thread Drift: m = ${val} kg (FEA Structural Mass: 1.20 kg) | Reconcile`;
+              lenses.push({
+                range,
+                command: {
+                  title,
+                  command: "modelscript.syncDigitalThreadParams",
+                  arguments: [uri],
+                },
+              });
+            } else if (param === "Cd") {
+              lenses.push({
+                range,
+                command: {
+                  title: `🔗 Aerodynamic Twin: Cd = ${val} [Aligned with CFD drone_aero.cfg RANS Polar]`,
+                  command: "modelscript.syncDigitalThreadParams",
+                  arguments: [uri],
+                },
+              });
+            } else if (param === "A") {
+              lenses.push({
+                range,
+                command: {
+                  title: `🔗 Frontal Area Twin: A = ${val} m² [Aligned with OpenSCAD CAD Projection]`,
+                  command: "modelscript.syncDigitalThreadParams",
+                  arguments: [uri],
+                },
+              });
+            } else if (twinTarget) {
+              lenses.push({
+                range,
+                command: {
+                  title: `🔗 Digital Twin: ${param} = ${val} [Linked to ${twinTarget}]`,
+                  command: "modelscript.syncDigitalThreadParams",
+                  arguments: [uri],
+                },
+              });
+            }
           }
         }
       }
@@ -278,11 +301,19 @@ export function registerCodeLensProvider(context: LspContext) {
                   arguments: [uri],
                 },
               });
+              lenses.push({
+                range,
+                command: {
+                  title: `🛡️ Verify Formal Requirement Contract: ${name}`,
+                  command: "modelscript.runReachabilityFlowpipe",
+                  arguments: [uri],
+                },
+              });
             } else {
               lenses.push({
                 range,
                 command: {
-                  title: "🛡️ Verify Formal Requirement Contract",
+                  title: `🛡️ Verify Formal Requirement Contract: ${name}`,
                   command: "modelscript.runReachabilityFlowpipe",
                   arguments: [uri],
                 },

@@ -487,20 +487,21 @@ export class ConservativeLinearizationSolver {
     const tStart = performance.now();
     const budgetMs = options.budgetMs ?? 150;
     const { dae, tSpan, requirements = [] } = options;
-    const n = dae.numDiffStates;
+    let currentZ =
+      options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
+    const n = dae.numDiffStates ?? (dae as any).nx ?? currentZ.dim;
     const dt = options.dt ?? 0.02;
     const maxOrder = options.maxOrder ?? 5;
     const expansionOrder = options.expansionOrder ?? 6;
 
-    let currentZ =
-      options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
     let nomX = options.nominalInitial ? [...options.nominalInitial] : [...currentZ.center];
     const distZ = options.disturbanceSet
       ? options.disturbanceSet instanceof Zonotope
         ? options.disturbanceSet
         : Zonotope.fromIntervals(options.disturbanceSet)
       : null;
-    const algIv = options.algebraicSet ?? Array.from({ length: dae.numAlgStates }, () => new Interval(0, 0));
+    const numAlg = dae.numAlgStates ?? (dae as any).ny ?? 0;
+    const algIv = options.algebraicSet ?? Array.from({ length: numAlg }, () => new Interval(0, 0));
     const algNom = algIv.map((iv) => iv.mid);
 
     if (!dae.jacobianFxInterval) {

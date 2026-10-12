@@ -13,9 +13,10 @@
 
 import { ArenaBltResult } from "../../analysis/wasm_blt.js";
 import { Interval } from "../../analysis/wasm_interval.js";
-import { ConservativeLinearizationSolver } from "../../analysis/wasm_zonotope_reach.js";
+import { ConservativeLinearizationSolver, LinearSafetyRequirement } from "../../analysis/wasm_zonotope_reach.js";
 import { BinOp, DAEBuilder, ExprKind } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
+import { bindRequirementsToModelica, type SysmlRequirement } from "../requirement_binder.js";
 import type { VerificationVerdict } from "../verdict.js";
 import { IntervalDual, compileArenaToDae, createDualDomain } from "./arena_dae_compiler.js";
 import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
@@ -47,6 +48,12 @@ export interface DaeBltReachabilityOptions {
   evaluatorOptions?: DaeEvaluatorOptions;
   /** Keystroke time budget in ms (default 150 ms) */
   budgetMs?: number;
+  /** Formal safety requirements to check against reachability tubes */
+  requirements?: LinearSafetyRequirement[];
+  /** Optional SysML requirements to bind dynamically against state variables */
+  sysmlRequirements?: SysmlRequirement[];
+  /** Optional Modelica twin annotations map (varName -> twinTarget) */
+  twinMap?: Map<string, string>;
 }
 
 export interface DaeReachabilitySummary {
@@ -222,12 +229,46 @@ export class DaeBltReachabilityEngine {
         }
 
         if (allInitialBounded) {
+          const reqs: LinearSafetyRequirement[] = [];
+          if (this.options.requirements) {
+            reqs.push(...this.options.requirements);
+          }
+          if (this.options.sysmlRequirements && this.options.sysmlRequirements.length > 0) {
+            const bound = bindRequirementsToModelica(
+              this.options.sysmlRequirements,
+              compiled.stateNames,
+              this.options.twinMap,
+            );
+            reqs.push(...bound);
+          }
+          for (let s = 0; s < diffCount; s++) {
+            const varName = compiled.stateNames[s]!;
+            const vIdx = this.arena.getVarIdxByName(varName);
+            if (vIdx >= 0) {
+              const maxExpr = this.arena.getVarAttrExprId(vIdx, "max");
+              if (maxExpr !== undefined && maxExpr >= 0) {
+                const maxVal = this.arena.getExprRealValue(maxExpr);
+                if (Number.isFinite(maxVal)) {
+                  reqs.push({ name: `${varName}_max`, stateIndex: s, operator: "<=", limitValue: maxVal });
+                }
+              }
+              const minExpr = this.arena.getVarAttrExprId(vIdx, "min");
+              if (minExpr !== undefined && minExpr >= 0) {
+                const minVal = this.arena.getExprRealValue(minExpr);
+                if (Number.isFinite(minVal)) {
+                  reqs.push({ name: `${varName}_min`, stateIndex: s, operator: ">=", limitValue: minVal });
+                }
+              }
+            }
+          }
+
           const reachRes = ConservativeLinearizationSolver.solve({
             dae: compiled.dae,
             initialSet: initialIv,
             tSpan: [0, timeHorizon],
             dt: Math.min(0.02, timeHorizon / 10),
             budgetMs: this.options.budgetMs ?? 150,
+            requirements: reqs,
           });
 
           continuousSolverVerdict = reachRes.verdict;
@@ -281,11 +322,14 @@ export class DaeBltReachabilityEngine {
 
     let verdict: VerificationVerdict;
     if (hasDefiniteErrors || continuousSolverVerdict?.kind === "violated") {
-      verdict = {
-        kind: "violated",
-        witness: { time: 0, state: {} },
-        detail: "Definite singularity or invariant breach detected in BLT reachability evaluation.",
-      };
+      verdict =
+        continuousSolverVerdict?.kind === "violated"
+          ? continuousSolverVerdict
+          : {
+              kind: "violated",
+              witness: { time: 0, state: {} },
+              detail: "Definite singularity or invariant breach detected in BLT reachability evaluation.",
+            };
     } else if (continuousSolverVerdict?.kind === "unknown") {
       verdict = continuousSolverVerdict;
     } else if (hasPossibleErrors || singularLoopsCount > 0) {
@@ -301,7 +345,7 @@ export class DaeBltReachabilityEngine {
         detail: "Continuous state trajectory evaluated via Euler displacement without conservative linearization.",
       };
     } else {
-      verdict = {
+      verdict = continuousSolverVerdict ?? {
         kind: "proven",
         rigor: "float-sound",
         detail: "All causal blocks and algebraic loops regular; state derivative enclosures bounded.",
@@ -309,7 +353,7 @@ export class DaeBltReachabilityEngine {
     }
 
     return {
-      isFullyCertified: !hasDefiniteErrors && singularLoopsCount === 0,
+      isFullyCertified: verdict.kind === "proven" && !hasDefiniteErrors && singularLoopsCount === 0,
       verdict,
       totalBlocks: blocks.length,
       algebraicLoopsCount,

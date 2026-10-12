@@ -55,6 +55,7 @@ export * from "./formal/oracles/safety_theory_oracle.js";
 export * from "./formal/proof_manifest.js";
 export * from "./formal/region_decomposer.js";
 export * from "./formal/relational_verifier.js";
+export * from "./formal/requirement_binder.js";
 export * from "./formal/simplification_waterfall.js";
 export * from "./formal/stl_monitor.js";
 export * from "./formal/theory_coordinator.js";

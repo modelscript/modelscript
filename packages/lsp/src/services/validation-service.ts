@@ -2334,6 +2334,8 @@ export class ValidationService {
         initBltWasm,
         arenaFingerprint,
         Variability,
+        extractModelicaTwinAnnotations,
+        parseSysmlRequirements,
       } = await import("@modelscript/runtime");
 
       const text = textDocument.getText();
@@ -2348,6 +2350,39 @@ export class ValidationService {
         }
         return i;
       };
+
+      const twinMap = extractModelicaTwinAnnotations(text);
+      const sysmlReqs: any[] = [];
+      let candidateDocs: any[] = [];
+      if (typeof (this.documentManager.documents as any)?.all === "function") {
+        candidateDocs = (this.documentManager.documents as any).all();
+      } else if (typeof (this.documentManager.documents as any)?.values === "function") {
+        candidateDocs = Array.from((this.documentManager.documents as any).values());
+      }
+      for (const d of candidateDocs) {
+        const dUri = d?.uri || "";
+        const lang = d?.languageId || "";
+        if (dUri.endsWith(".sysml") || dUri.endsWith(".kerml") || lang === "sysml2") {
+          const dText = typeof d.getText === "function" ? d.getText() : d.text;
+          if (typeof dText === "string") {
+            sysmlReqs.push(...parseSysmlRequirements(dText));
+          }
+        }
+      }
+      if (this.documentManager.documentTrees) {
+        for (const [tUri, entry] of this.documentManager.documentTrees.entries()) {
+          if (tUri.endsWith(".sysml") || tUri.endsWith(".kerml")) {
+            if (entry?.text && typeof entry.text === "string") {
+              const found = parseSysmlRequirements(entry.text);
+              for (const req of found) {
+                if (!sysmlReqs.some((r) => r.id === req.id && r.targetAttribute === req.targetAttribute)) {
+                  sysmlReqs.push(req);
+                }
+              }
+            }
+          }
+        }
+      }
 
       const started = Date.now();
       let completed = true;
@@ -2375,7 +2410,11 @@ export class ValidationService {
             continue;
           }
 
-          const reachEngine = new DaeBltReachabilityEngine(arena);
+          const reachEngine = new DaeBltReachabilityEngine(arena, {
+            budgetMs: this.daeVerificationBudgetMs,
+            sysmlRequirements: sysmlReqs,
+            twinMap,
+          });
           const reachSummary = reachEngine.verify(bltResult);
           const hybridVerifier = new HybridModeConsistencyVerifier(arena);
           const hybridResult = hybridVerifier.verify();
@@ -2395,19 +2434,26 @@ export class ValidationService {
           }
 
           const hasDefinite = allIssues.some((i: any) => i.severity === "definite");
-          const verdict = hasDefinite
-            ? {
-                kind: "violated",
-                witness: { time: 0, state: {} },
-                detail: "Equation is defective for every admissible state (definite singularity).",
-              }
-            : allIssues.length === 0 && unboundedVariables === 0
-              ? { kind: "proven", rigor: "float-sound", detail: "No singularity found; all variables bounded." }
-              : {
-                  kind: "unknown",
-                  reason: "inconclusive-enclosure",
-                  detail: `${allIssues.length} possible issue(s); ${unboundedVariables} unbounded variable(s).`,
-                };
+          let verdict: any;
+          if (reachSummary.verdict?.kind === "violated") {
+            verdict = reachSummary.verdict;
+          } else if (hasDefinite) {
+            verdict = {
+              kind: "violated",
+              witness: { time: 0, state: {} },
+              detail: "Equation is defective for every admissible state (definite singularity).",
+            };
+          } else if (reachSummary.verdict?.kind === "unknown") {
+            verdict = reachSummary.verdict;
+          } else if (allIssues.length === 0 && unboundedVariables === 0 && reachSummary.verdict?.kind === "proven") {
+            verdict = reachSummary.verdict;
+          } else {
+            verdict = {
+              kind: "unknown",
+              reason: "inconclusive-enclosure",
+              detail: `${allIssues.length} possible issue(s); ${unboundedVariables} unbounded variable(s).`,
+            };
+          }
 
           record = {
             isFullyCertified: verdict.kind === "proven",
