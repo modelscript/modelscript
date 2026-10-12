@@ -37,6 +37,11 @@ export interface ZonotopeReachabilityOptions {
   maxOrder?: number;
   expansionOrder?: number;
   requirements?: LinearSafetyRequirement[];
+  budgetMs?: number;
+  /** Maximum bisection depth for automatic refinement of inconclusive sets (default 0) */
+  maxBisectionDepth?: number;
+  /** Whether to run falsification search along boundary/corner trajectories on crossing (default true) */
+  enableFalsification?: boolean;
 }
 
 export interface ZonotopeStepRecord {
@@ -145,6 +150,26 @@ export function matrixVectorMultiply(A: number[][], x: number[]): number[] {
 }
 
 /**
+ * Computes an extreme support vector of a zonotope in coordinate direction +/- e_s.
+ */
+export function getZonotopeExtremeSupportPoint(
+  z: Zonotope,
+  stateIdx: number,
+  maximize: boolean,
+  dim: number,
+): number[] {
+  const pt = [...z.center];
+  for (const g of z.generators) {
+    const s = g[stateIdx] ?? 0;
+    const factor = maximize ? (s >= 0 ? 1 : -1) : s >= 0 ? -1 : 1;
+    for (let i = 0; i < dim; i++) {
+      pt[i] += factor * (g[i] ?? 0);
+    }
+  }
+  return pt;
+}
+
+/**
  * Computes both matrix exponential exp(A * dt) and integral Psi = \int_0^dt exp(A * s) ds
  * using Taylor series with rigorous truncation remainder bounds.
  */
@@ -198,6 +223,8 @@ export class ZonotopeReachabilitySolver {
    * and time-interval curvature enclosures over each step.
    */
   public static solve(options: ZonotopeReachabilityOptions): ZonotopeReachabilityResult {
+    const tStart = performance.now();
+    const budgetMs = options.budgetMs ?? 150;
     const { A, tSpan, requirements = [] } = options;
     const n = A.length;
     const dt = options.dt ?? 0.05;
@@ -205,8 +232,9 @@ export class ZonotopeReachabilitySolver {
     const expansionOrder = options.expansionOrder ?? 6;
 
     // Convert initial set to Zonotope
-    let currentZ =
+    const initialZ0 =
       options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
+    let currentZ = initialZ0;
 
     const { expM, psiM, remainderNorm, psiRemainderNorm } = computeMatrixExponentialAndIntegral(A, dt, expansionOrder);
 
@@ -263,8 +291,13 @@ export class ZonotopeReachabilitySolver {
 
     let hasWitnessViolation = false;
     let hasLimitCrossing = false;
+    let timedOut = false;
 
     while (t < tEnd - 1e-12) {
+      if (performance.now() - tStart > budgetMs) {
+        timedOut = true;
+        break;
+      }
       const tNext = t + dt;
 
       // 1. Homogeneous propagation: exp(A*dt) * Z_k
@@ -366,6 +399,31 @@ export class ZonotopeReachabilitySolver {
 
           if (isWitness) {
             hasWitnessViolation = true;
+          } else if (options.enableFalsification !== false) {
+            const maximize = req.operator === "<=" || req.operator === "<";
+            const candX0 = getZonotopeExtremeSupportPoint(initialZ0, req.stateIndex, maximize, n);
+            let simX = [...candX0];
+            for (let tau = 0; tau < tNext - 1e-12; tau += dt) {
+              const Ax = matrixVectorMultiply(expM, simX);
+              if (options.B && options.U) {
+                const Bu = matrixVectorMultiply(options.B, nomU ?? []);
+                const psiBu = matrixVectorMultiply(psiM, Bu);
+                for (let i = 0; i < n; i++) simX[i] = Ax[i]! + psiBu[i]!;
+              } else {
+                simX = Ax;
+              }
+              const val = simX[req.stateIndex]!;
+              if ((maximize && val > req.limitValue) || (!maximize && val < req.limitValue)) {
+                isWitness = true;
+                witnessVal = val;
+                witnessTime = tau + dt;
+                hasWitnessViolation = true;
+                break;
+              }
+            }
+            if (!isWitness) {
+              hasLimitCrossing = true;
+            }
           } else {
             hasLimitCrossing = true;
           }
@@ -374,11 +432,11 @@ export class ZonotopeReachabilitySolver {
             time: isWitness ? witnessTime : tNext,
             stateIndex: req.stateIndex,
             operator: req.operator,
-            worstCaseValue: worstVal,
+            worstCaseValue: isWitness ? witnessVal : worstVal,
             limitValue: req.limitValue,
             isConcreteWitness: isWitness,
             reason: isWitness
-              ? `At t = ${witnessTime.toFixed(3)}s: nominal witness x[${req.stateIndex}]=${witnessVal.toFixed(4)} strictly violates ${req.operator} ${req.limitValue}`
+              ? `At t = ${witnessTime.toFixed(3)}s: trajectory witness x[${req.stateIndex}]=${witnessVal.toFixed(4)} strictly violates ${req.operator} ${req.limitValue}`
               : `At t in [${t.toFixed(3)}, ${tNext.toFixed(3)}]s: continuous enclosure x[${req.stateIndex}] worst-case ${worstVal.toFixed(4)} crosses ${req.operator} ${req.limitValue}`,
           });
         }
@@ -396,7 +454,48 @@ export class ZonotopeReachabilitySolver {
       });
     }
 
-    const isCertifiedSafe = violations.length === 0;
+    if (!hasWitnessViolation && hasLimitCrossing && (options.maxBisectionDepth ?? 0) > 0) {
+      const remainingBudget = budgetMs - (performance.now() - tStart);
+      if (remainingBudget > 25) {
+        const [z1, z2] = initialZ0.split();
+        const res1 = ZonotopeReachabilitySolver.solve({
+          ...options,
+          initialSet: z1,
+          budgetMs: remainingBudget / 2,
+          maxBisectionDepth: options.maxBisectionDepth! - 1,
+        });
+        if (res1.verdict.kind === "violated") return res1;
+
+        const remainingBudget2 = budgetMs - (performance.now() - tStart);
+        if (remainingBudget2 > 10) {
+          const res2 = ZonotopeReachabilitySolver.solve({
+            ...options,
+            initialSet: z2,
+            budgetMs: remainingBudget2,
+            maxBisectionDepth: options.maxBisectionDepth! - 1,
+          });
+          if (res2.verdict.kind === "violated") return res2;
+
+          if (res1.verdict.kind === "proven" && res2.verdict.kind === "proven") {
+            return {
+              verdict: {
+                kind: "proven",
+                rigor: "float-sound",
+                detail: `Certified safe via automatic zonotope bisection across ${res1.totalSteps + res2.totalSteps} steps (all sub-partitions safe).`,
+              },
+              isCertifiedSafe: true,
+              totalSteps: res1.totalSteps + res2.totalSteps,
+              steps: [...res1.steps, ...res2.steps],
+              continuousEnclosures: [...(res1.continuousEnclosures ?? []), ...(res2.continuousEnclosures ?? [])],
+              violations: [],
+              summary: `Certified safe via automatic bisection partition (depth <= ${options.maxBisectionDepth}).`,
+            };
+          }
+        }
+      }
+    }
+
+    const isCertifiedSafe = violations.length === 0 && !timedOut;
 
     let verdict: VerificationVerdict;
     if (hasWitnessViolation) {
@@ -405,6 +504,12 @@ export class ZonotopeReachabilitySolver {
         kind: "violated",
         witness: { time: firstWitness.time, state: { [firstWitness.stateIndex]: firstWitness.worstCaseValue } },
         detail: `Concrete trajectory witness violated requirement ${firstWitness.operator} ${firstWitness.limitValue}.`,
+      };
+    } else if (timedOut) {
+      verdict = {
+        kind: "unknown",
+        reason: "budget",
+        detail: `Keystroke budget of ${budgetMs}ms exceeded at t=${t.toFixed(3)}s across ${steps.length} steps.`,
       };
     } else if (hasLimitCrossing) {
       verdict = {
@@ -450,6 +555,10 @@ export interface NonlinearZonotopeReachOptions {
   algebraicSet?: Interval[];
   requirements?: LinearSafetyRequirement[];
   budgetMs?: number; // default 150 ms (looser budget for keystroke tier)
+  /** Maximum bisection depth for automatic refinement of inconclusive sets (default 0) */
+  maxBisectionDepth?: number;
+  /** Whether to run falsification search along boundary/corner trajectories on crossing (default true) */
+  enableFalsification?: boolean;
 }
 
 export interface NonlinearZonotopeReachResult {
@@ -487,8 +596,9 @@ export class ConservativeLinearizationSolver {
     const tStart = performance.now();
     const budgetMs = options.budgetMs ?? 150;
     const { dae, tSpan, requirements = [] } = options;
-    let currentZ =
+    const initialZ0 =
       options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
+    let currentZ = initialZ0;
     const n = dae.numDiffStates ?? (dae as any).nx ?? currentZ.dim;
     const dt = options.dt ?? 0.02;
     const maxOrder = options.maxOrder ?? 5;
@@ -716,6 +826,53 @@ export class ConservativeLinearizationSolver {
               reason: `Concrete nominal trajectory witness breached ${req.name ?? `x[${req.stateIndex}]`} ${req.operator} ${req.limitValue} with value ${witnessVal.toFixed(4)} at t=${witnessTime.toFixed(3)}s.`,
             });
             break;
+          } else if (options.enableFalsification !== false) {
+            const maximize = req.operator === "<=" || req.operator === "<";
+            const candX0 = getZonotopeExtremeSupportPoint(initialZ0, req.stateIndex, maximize, n);
+            let simX = [...candX0];
+            let simT = tSpan[0];
+            while (simT < tNext - 1e-12) {
+              const stepH = Math.min(dt, tNext - simT);
+              const sk1 = dae.f(simT, simX, algNom);
+              const sm1 = simX.map((xi, i) => xi + 0.5 * stepH * sk1[i]!);
+              const sk2 = dae.f(simT + 0.5 * stepH, sm1, algNom);
+              const sm2 = simX.map((xi, i) => xi + 0.5 * stepH * sk2[i]!);
+              const sk3 = dae.f(simT + 0.5 * stepH, sm2, algNom);
+              const send = simX.map((xi, i) => xi + stepH * sk3[i]!);
+              const sk4 = dae.f(simT + stepH, send, algNom);
+              simX = simX.map((xi, i) => xi + (stepH / 6.0) * (sk1[i]! + 2 * sk2[i]! + 2 * sk3[i]! + sk4[i]!));
+              simT += stepH;
+
+              const val = simX[req.stateIndex]!;
+              if ((maximize && val > req.limitValue) || (!maximize && val < req.limitValue)) {
+                isWitness = true;
+                hasWitnessViolation = true;
+                violations.push({
+                  time: simT,
+                  stateIndex: req.stateIndex,
+                  operator: req.operator,
+                  worstCaseValue: val,
+                  limitValue: req.limitValue,
+                  isConcreteWitness: true,
+                  reason: `Falsification witness trajectory from initial boundary vertex breached ${req.name ?? `x[${req.stateIndex}]`} ${req.operator} ${req.limitValue} with value ${val.toFixed(4)} at t=${simT.toFixed(3)}s.`,
+                });
+                break;
+              }
+            }
+            if (!isWitness) {
+              hasLimitCrossing = true;
+              violations.push({
+                time: tNext,
+                stateIndex: req.stateIndex,
+                operator: req.operator,
+                worstCaseValue: worstVal,
+                limitValue: req.limitValue,
+                isConcreteWitness: false,
+                reason: `Conservative continuous enclosure [${inv.lo.toFixed(4)}, ${inv.hi.toFixed(4)}] crossed boundary ${req.limitValue} at t=${tNext.toFixed(3)}s (inconclusive).`,
+              });
+            } else {
+              break;
+            }
           } else {
             hasLimitCrossing = true;
             violations.push({
@@ -743,6 +900,48 @@ export class ConservativeLinearizationSolver {
 
       if (hasWitnessViolation) {
         break;
+      }
+    }
+
+    if (!hasWitnessViolation && hasLimitCrossing && (options.maxBisectionDepth ?? 0) > 0) {
+      const remainingBudget = budgetMs - (performance.now() - tStart);
+      if (remainingBudget > 25) {
+        const [zA, zB] = initialZ0.split();
+        const resA = ConservativeLinearizationSolver.solve({
+          ...options,
+          initialSet: zA,
+          budgetMs: remainingBudget / 2,
+          maxBisectionDepth: options.maxBisectionDepth! - 1,
+        });
+        if (resA.verdict.kind === "violated") return resA;
+
+        const remainingBudgetB = budgetMs - (performance.now() - tStart);
+        if (remainingBudgetB > 10) {
+          const resB = ConservativeLinearizationSolver.solve({
+            ...options,
+            initialSet: zB,
+            budgetMs: remainingBudgetB,
+            maxBisectionDepth: options.maxBisectionDepth! - 1,
+          });
+          if (resB.verdict.kind === "violated") return resB;
+
+          if (resA.verdict.kind === "proven" && resB.verdict.kind === "proven") {
+            return {
+              verdict: {
+                kind: "proven",
+                rigor: "float-sound",
+                detail: `Certified safe via automatic zonotope bisection across ${resA.totalSteps + resB.totalSteps} steps (all sub-partitions safe).`,
+              },
+              isCertifiedSafe: true,
+              totalSteps: resA.totalSteps + resB.totalSteps,
+              steps: [...resA.steps, ...resB.steps],
+              continuousEnclosures: [...resA.continuousEnclosures, ...resB.continuousEnclosures],
+              violations: [],
+              durationMs: performance.now() - tStart,
+              summary: `Certified safe via automatic bisection partition (depth <= ${options.maxBisectionDepth}).`,
+            };
+          }
+        }
       }
     }
 

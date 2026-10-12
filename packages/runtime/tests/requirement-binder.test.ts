@@ -161,7 +161,7 @@ end DroneSimulation;
     const witness = res.violations.find((v) => v.isConcreteWitness);
     assert.ok(witness);
     assert.strictEqual(witness.isConcreteWitness, true);
-    assert.ok(witness.reason.includes("Concrete nominal trajectory witness breached"));
+    assert.ok(witness.reason.includes("witness") && witness.reason.includes("breached"));
   });
 
   it("6. assertRequirementsToTheoryCoordinator registers requirements as literals", () => {

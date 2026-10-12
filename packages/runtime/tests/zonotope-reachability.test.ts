@@ -153,6 +153,7 @@ describe("High-Dimensional Zonotope Linear Continuous Reachability", () => {
       nominalInitial: [11.0],
       tSpan: [0, 1.0],
       dt: 0.1,
+      enableFalsification: false,
       requirements: [{ stateIndex: 0, operator: "<=", limitValue: 11.5 }],
     });
 
@@ -163,6 +164,28 @@ describe("High-Dimensional Zonotope Linear Continuous Reachability", () => {
     }
     // Crossings recorded, but no concrete witness
     expect(result.violations.some((v) => v.isConcreteWitness)).toBe(false);
+  });
+
+  it("should return verdict 'violated' when boundary falsification finds witness even if nominal stays safe", () => {
+    // 1D decay: dx/dt = -0.1 x, x(0) in [10, 12], nominal = 11.
+    // Requirement: x <= 11.5. Nominal is 11.0 <= 11.5 (safe),
+    // but boundary vertex x0 = 12.0 violates x <= 11.5. Falsification finds this witness!
+    const A = [[-0.1]];
+    const initialSet = [new Interval(10.0, 12.0)];
+
+    const result = ZonotopeReachabilitySolver.solve({
+      A,
+      initialSet,
+      nominalInitial: [11.0],
+      tSpan: [0, 1.0],
+      dt: 0.1,
+      enableFalsification: true,
+      requirements: [{ stateIndex: 0, operator: "<=", limitValue: 11.5 }],
+    });
+
+    expect(result.isCertifiedSafe).toBe(false);
+    expect(result.verdict.kind).toBe("violated");
+    expect(result.violations.some((v) => v.isConcreteWitness)).toBe(true);
   });
 
   it("should return verdict 'violated' when concrete nominal witness breaches requirement", () => {
