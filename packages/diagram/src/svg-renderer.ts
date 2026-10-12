@@ -388,6 +388,25 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
           `<line x1="0" y1="${curY}" x2="${nw}" y2="${curY}" stroke="${borderColor}" stroke-width="0.5"/>`,
         );
       }
+    } else if (node.attrs?.tab) {
+      const tabW = (node.attrs.tab.width as number) || 120;
+      const tabH = (node.attrs.tab.height as number) || 32;
+      const tabFill = (node.attrs.tab.fill as string) || (isDark ? "#1e293b" : "#f1f5f9");
+      const tabStroke = (node.attrs.tab.stroke as string) || stroke;
+      const tabRx = (node.attrs.tab.rx as number) || 4;
+      bodyParts.push(
+        `<rect x="0" y="0" width="${tabW}" height="${tabH}" rx="${tabRx}" ry="${tabRx}" fill="${escapeXml(tabFill)}" stroke="${escapeXml(tabStroke)}" stroke-width="${strokeWidth}"/>`,
+      );
+      const stText = (node.attrs?.tabStereotype?.text as string) || (stereotype ? `«${stereotype.toLowerCase()}»` : "");
+      if (stText) {
+        bodyParts.push(
+          `<text x="10" y="13" fill="${escapeXml(tabStroke)}" class="node-stereotype" font-size="9" font-style="italic">${escapeXml(stText)}</text>`,
+        );
+      }
+      const titleText = (node.attrs?.tabLabel?.text as string) || labelText;
+      bodyParts.push(
+        `<text x="10" y="25" fill="${textColor}" class="node-title" font-size="11" font-weight="bold">${escapeXml(titleText)}</text>`,
+      );
     } else if (!iconUrl) {
       // Standard Node Label (when no icon is centered)
       if (stereotype) {

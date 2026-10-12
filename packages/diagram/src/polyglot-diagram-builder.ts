@@ -1740,7 +1740,7 @@ export function buildPolyglotDiagram(
     const resolvedAttrs = resolveTemplates(nodeConfig.attrs, sym, compartmentText);
 
     let adjustedHeight = size.height;
-    const adjustedWidth = Math.ceil(Math.max(size.width, nameText.length * 9.5 + 40));
+    let adjustedWidth = Math.ceil(Math.max(size.width, nameText.length * 9.5 + 40));
 
     // Strip separator/compartment for standalone usages that have no compartment text
     // to avoid the green line extending beyond the box
@@ -1752,12 +1752,23 @@ export function buildPolyglotDiagram(
         (resolvedAttrs.compartment as any).display = "none";
       }
       // Also shrink height since there's no compartment slot
-      if (!hasExplicitVectorGlyph) {
+      if (!hasExplicitVectorGlyph && config.role !== "group") {
         adjustedHeight = Math.min(adjustedHeight, 50);
       }
     }
     if (resolvedAttrs?.label && nameText) {
       (resolvedAttrs.label as any).text = nameText;
+    }
+    if (resolvedAttrs?.tabLabel && nameText) {
+      (resolvedAttrs.tabLabel as any).text = nameText;
+    }
+    if (config.role === "group" && resolvedAttrs?.tab) {
+      const tabWidth = Math.max(120, Math.ceil((nameText.length + 4) * 8.5));
+      (resolvedAttrs.tab as any).width = tabWidth;
+      (resolvedAttrs.tab as any).height = 32;
+      (resolvedAttrs.tab as any).fill = (resolvedAttrs.tab as any).fill || "#f1f5f9";
+      (resolvedAttrs.tab as any).stroke = (resolvedAttrs.tab as any).stroke || strokeColor || "#475569";
+      adjustedWidth = Math.max(adjustedWidth, tabWidth + 24);
     }
     if (resolvedAttrs?.separator) {
       (resolvedAttrs.separator as any).x2 = adjustedWidth;

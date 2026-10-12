@@ -1280,8 +1280,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       if (!parentNode) continue;
 
       // Dynamically compute padding to ensure children don't overlap with the parent's
-      // header or compartments.
-      const PAD = { top: 44, left: 24, right: 24, bottom: 24 };
+      // header, tab, or compartments.
+      const PAD = { top: 48, left: 24, right: 24, bottom: 24 };
 
       const childIds = new Set(childNodes.map((c) => c.id));
 
@@ -1365,8 +1365,11 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
         }
       }
 
-      // Expand parent to fit children
-      parentNode.width = Math.max(maxRight, 220);
+      // Expand parent to fit children, respecting any tab width
+      const minParentWidth = (parentNode.attrs?.tab as any)?.width
+        ? Math.round((parentNode.attrs.tab as any).width + 30)
+        : 220;
+      parentNode.width = Math.max(maxRight, minParentWidth);
       parentNode.height = Math.max(maxBottom, 80);
     }
 

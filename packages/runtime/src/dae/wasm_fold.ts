@@ -1363,6 +1363,27 @@ export function foldTargetedParamEquations(
 }
 
 /**
+ * Checks if an arena expression is already a literal holding the exact same value.
+ * Prevents allocating redundant monotonic literal IDs that falsely trigger fixed-point loops.
+ */
+function isExprAlreadyLiteral(arena: DAEBuilder, exprId: number, val: any): boolean {
+  if (exprId < 0) return false;
+  const kind = arena.getExprKind(exprId);
+  if (typeof val === "number") {
+    if (kind === ExprKind.RealLiteral) return arena.getExprRealValue(exprId) === val;
+    if (kind === ExprKind.IntLiteral) return arena.getExprData1(exprId) === Math.trunc(val);
+  } else if (typeof val === "boolean") {
+    if (kind === ExprKind.BoolLiteral) return Boolean(arena.getExprData1(exprId)) === val;
+  } else if (typeof val === "string") {
+    if (kind === ExprKind.StringLiteral) {
+      const strId = arena.getExprData1(exprId);
+      return arena.interner.resolve(strId) === val;
+    }
+  }
+  return false;
+}
+
+/**
  * Fold constant and parameter expressions in the arena to literal values
  * where possible. This is done iteratively until fixed point or maxIterations.
  */
@@ -1608,7 +1629,7 @@ export function foldArenaConstants(
               continue;
             }
 
-            if (varType !== VarType.Enumeration) {
+            if (varType !== VarType.Enumeration && !isExprAlreadyLiteral(arena, rhsExpr, foldedRhs)) {
               let newRhs: number;
               if (Array.isArray(foldedRhs)) {
                 newRhs = arrayValueToArenaExpr(arena, foldedRhs, varType);
@@ -1675,7 +1696,7 @@ export function foldArenaConstants(
                 omcCompatibility,
               );
 
-              if (foldedRhs !== null) {
+              if (foldedRhs !== null && !isExprAlreadyLiteral(arena, bodyEq.rhsExprId, foldedRhs)) {
                 let varType = VarType.Real;
                 if (arena.getExprKind(bodyEq.lhsExprId) === ExprKind.Name) {
                   const varName = arena.interner.resolve(arena.getExprData1(bodyEq.lhsExprId));
@@ -1737,7 +1758,7 @@ export function foldArenaConstants(
                   omcCompatibility,
                 );
 
-                if (foldedRhs !== null) {
+                if (foldedRhs !== null && !isExprAlreadyLiteral(arena, bodyEq.rhsExprId, foldedRhs)) {
                   let varType = VarType.Real;
                   if (arena.getExprKind(bodyEq.lhsExprId) === ExprKind.Name) {
                     const varName = arena.interner.resolve(arena.getExprData1(bodyEq.lhsExprId));
@@ -1800,7 +1821,7 @@ export function foldArenaConstants(
       for (const [attrName, attrExprId] of attrs.entries()) {
         if (attrExprId >= 0) {
           const evalVal = evaluateConstantArenaExpression(arena, attrExprId, paramMap, nameToIdx, 0, db, scopeId);
-          if (evalVal !== null) {
+          if (evalVal !== null && !isExprAlreadyLiteral(arena, attrExprId, evalVal)) {
             const varType = arena.getVarType(i);
             let literalId: number;
             if (varType === VarType.Integer && typeof evalVal === "number") {

@@ -343,4 +343,55 @@ describe("SysML v2 9-View Complete Visual Parity & Swimlanes", () => {
       "Port label must be offset above the line (y = -10)",
     );
   });
+
+  it("should render Package with styled folder tab containing stereotype and title", () => {
+    const fakeIndex = {
+      symbols: new Map([
+        [
+          "s_pkg",
+          {
+            id: "s_pkg",
+            ruleName: "Package",
+            name: "VehicleBehavior",
+            parentId: null,
+            metadata: {},
+          },
+        ],
+        [
+          "s_act",
+          {
+            id: "s_act",
+            ruleName: "ActionDefinition",
+            name: "StartEngine",
+            parentId: "s_pkg",
+            metadata: {},
+          },
+        ],
+      ]),
+      childrenOf: new Map([["s_pkg", ["s_act"]]]),
+    };
+
+    const data = buildSysML2DiagramData(fakeIndex as any, "file:///test.sysml", undefined, "All");
+    const pkgNode = data.nodes.find((n: any) => n.id === "n_s_pkg");
+    assert(pkgNode, "VehicleBehavior package node must exist");
+
+    // Must have tab markup
+    const tabMarkup = pkgNode.markup.find((m: any) => m.selector === "tab");
+    const tabStereoMarkup = pkgNode.markup.find((m: any) => m.selector === "tabStereotype");
+    const tabLabelMarkup = pkgNode.markup.find((m: any) => m.selector === "tabLabel");
+    const bodyLabelMarkup = pkgNode.markup.find((m: any) => m.selector === "label");
+
+    assert(tabMarkup, "Package must have tab markup");
+    assert(tabStereoMarkup, "Package must have tabStereotype markup");
+    assert(tabLabelMarkup, "Package must have tabLabel markup");
+    assert.strictEqual(bodyLabelMarkup, undefined, "Package must not have central body label");
+
+    const attrs = pkgNode.attrs as any;
+    assert.strictEqual(attrs.tab.fill, "#f1f5f9", "Tab fill must be light folder background, not dark stroke");
+    assert.strictEqual(attrs.tabStereotype.text, "«package»", "Stereotype in tab must be «package»");
+    assert.strictEqual(attrs.tabLabel.text, "VehicleBehavior", "Title in tab must be package name");
+    assert(attrs.tab.width >= 120, "Tab width must accommodate title");
+    assert.strictEqual(attrs.tab.height, 32);
+    assert.strictEqual(attrs.label, undefined, "Central body label attrs must be omitted");
+  });
 });
