@@ -467,46 +467,37 @@ export class ArenaSimulator {
 
   private extractEventIndicators() {
     this.eventIndicators = [];
-    // Derive event indicators from when-clause conditions.
-    // For adaptive solvers (Dopri5/BDF), event indicators must be CONTINUOUS functions
-    // that smoothly cross zero — not boolean conditions that jump between 0 and 1.
-    //
-    // Relational conditions are decomposed:
-    //   h < 0   → indicator = lhs - rhs = h - 0 = h  (sign change at h=0, direction = -1)
-    //   a >= b  → indicator = lhs - rhs = a - b       (sign change at a=b, direction = +1)
-    //   etc.
-    //
-    // We always derive indicators from when-clause conditions rather than from the
-    // DAE's eventIndicatorExprIds, because when-clause conditions carry the relational
-    // operator which determines the crossing direction (-1 for Lt/Lte, +1 for Gt/Gte).
-    // The DAE's explicit indicators are generated for ALL relational expressions
-    // (including those outside when-clauses) and lack direction information.
     for (const clause of this.whenClauses) {
-      const { exprId: indicatorExprId, direction } = this.buildContinuousEventIndicator(clause.conditionExprId);
-      this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0, direction });
+      const indicators = this.collectEventIndicators(clause.conditionExprId);
+      for (const ind of indicators) {
+        if (
+          !this.eventIndicators.some(
+            (existing) => existing.exprId === ind.exprId && existing.direction === ind.direction,
+          )
+        ) {
+          this.eventIndicators.push({ exprId: ind.exprId, prevValue: 0, direction: ind.direction });
+        }
+      }
     }
   }
 
   /**
-   * Convert a boolean condition expression into a continuous zero-crossing indicator.
+   * Recursively collect continuous zero-crossing indicators from a condition expression.
    *
-   * For relational expressions (Binary with Lt/Gt/Lte/Gte/Eq/Neq):
-   *   g(t,y) = lhs - rhs
-   * The sign change of g() corresponds to the exact event instant.
-   *
-   * The crossing direction determines which sign transition triggers the event:
-   *   Lt/Lte (e.g., h <= 0): g = h - 0; event fires on positive→negative crossing (dir = -1)
-   *   Gt/Gte (e.g., h >= 0): g = h - 0; event fires on negative→positive crossing (dir = +1)
-   *   Eq/Neq: both directions (dir = 0)
-   *
-   * For non-relational conditions (already continuous or complex), fall back
-   * to using the expression directly (may produce 0/1 jumps, but better than nothing).
+   * Handles relational expressions (Lt, Lte, Gt, Gte, Eq, Neq) by creating `lhs - rhs`
+   * synthetic subtraction expressions with appropriate crossing directions.
+   * Decomposes logical expressions (And, Or, Not) so that every continuous boundary
+   * participating in a compound when-condition is registered as a zero-crossing indicator.
    */
-  private buildContinuousEventIndicator(condExprId: number): { exprId: number; direction: -1 | 0 | 1 } {
+  private collectEventIndicators(condExprId: number, inverted = false): { exprId: number; direction: -1 | 0 | 1 }[] {
     const kind = this.arena.getExprKind(condExprId);
     if (kind === ExprKind.Binary) {
       const op = this.arena.getExprData1(condExprId) as BinOp;
-      // Relational operators: convert to continuous lhs - rhs
+      if (op === BinOp.And || op === BinOp.Or) {
+        const lhsId = this.arena.getExprLeft(condExprId);
+        const rhsId = this.arena.getExprRight(condExprId);
+        return [...this.collectEventIndicators(lhsId, inverted), ...this.collectEventIndicators(rhsId, inverted)];
+      }
       if (
         op === BinOp.Lt ||
         op === BinOp.Lte ||
@@ -517,23 +508,23 @@ export class ArenaSimulator {
       ) {
         const lhsId = this.arena.getExprLeft(condExprId);
         const rhsId = this.arena.getExprRight(condExprId);
-        // Create a synthetic expression: lhs - rhs
         const exprId = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
-        // Determine crossing direction:
-        //   Lt/Lte: condition becomes true when lhs < rhs, i.e., g = lhs - rhs crosses from + to - → dir = -1
-        //   Gt/Gte: condition becomes true when lhs > rhs, i.e., g = lhs - rhs crosses from - to + → dir = +1
-        //   Eq/Neq: any crossing → dir = 0
         let direction: -1 | 0 | 1 = 0;
         if (op === BinOp.Lt || op === BinOp.Lte) {
-          direction = -1;
+          direction = inverted ? 1 : -1;
         } else if (op === BinOp.Gt || op === BinOp.Gte) {
-          direction = 1;
+          direction = inverted ? -1 : 1;
         }
-        return { exprId, direction };
+        return [{ exprId, direction }];
+      }
+    } else if (kind === ExprKind.Unary) {
+      const op = this.arena.getExprData1(condExprId) as UnaryOp;
+      if (op === UnaryOp.Not) {
+        const argId = this.arena.getExprLeft(condExprId);
+        return this.collectEventIndicators(argId, !inverted);
       }
     }
-    // Fall back to the raw condition expression
-    return { exprId: condExprId, direction: 0 };
+    return [{ exprId: condExprId, direction: 0 }];
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1622,17 +1613,13 @@ export class ArenaSimulator {
         eventCb,
       );
     } else if (solver === "tsit5") {
-      rawResult = tsit5(
-        rhsFn,
-        startTime,
-        y0,
-        stopTime,
-        outputTimes,
-        { atol, rtol },
-        eventFns.length > 0 ? eventFns : undefined,
-        eventCb,
-        eventDirs,
-      );
+      rawResult = tsit5(rhsFn, startTime, y0, stopTime, outputTimes, {
+        atol,
+        rtol,
+        eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+        eventCallback: eventCb,
+        eventDirections: eventDirs as any,
+      });
     } else if (solver === "rodas4p") {
       rawResult = rodas4p(rhsFn, startTime, y0, stopTime, outputTimes, { atol, rtol });
     } else if (solver === "trbdf2") {

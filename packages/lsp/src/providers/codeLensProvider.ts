@@ -66,7 +66,7 @@ export function registerCodeLensProvider(context: LspContext) {
                   range,
                   command: {
                     title,
-                    command: "modelscript.openSimulationView",
+                    command: rawKind === "study" ? "modelscript.openSimulationView" : "modelscript.action.simulate",
                     arguments: [uri, name],
                   },
                 });

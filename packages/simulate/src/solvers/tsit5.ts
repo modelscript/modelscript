@@ -169,13 +169,37 @@ export function tsit5(
     }
   }
 
+  const effEventFunctions = eventFunctions ?? options.eventFunctions;
+  const effEventCallback = eventCallback ?? options.eventCallback;
+  const effEventDirections = eventDirections ?? options.eventDirections;
+
+  const computeEventValuesWithProbe = (currentTime: number, currentState: number[]) => {
+    if (!effEventFunctions) return [];
+    return effEventFunctions.map((g, gIdx) => {
+      const gVal = g(currentTime, currentState);
+      if (Math.abs(gVal) < 1e-10) {
+        const dydt = f(currentTime, currentState);
+        const probe = currentState.map((yi, si) => yi + 1e-8 * (dydt[si] ?? 0));
+        const gProbe = g(currentTime + 1e-8, probe);
+        if (Math.abs(gProbe) > 1e-14) {
+          return gProbe > 0 ? 1e-10 : -1e-10;
+        }
+        const reqDir = effEventDirections?.[gIdx] ?? 0;
+        if (reqDir < 0) return 1e-10;
+        if (reqDir > 0) return -1e-10;
+        return 1e-10;
+      }
+      return gVal;
+    });
+  };
+
   // Pre-allocate stage vector
   const yStage = new Array<number>(n);
   const yNew = new Array<number>(n);
 
   let prevEventVals: number[] = [];
-  if (eventFunctions) {
-    prevEventVals = eventFunctions.map((ef) => ef(t, y));
+  if (effEventFunctions && effEventFunctions.length > 0) {
+    prevEventVals = computeEventValuesWithProbe(t, y);
   }
 
   while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
@@ -239,17 +263,17 @@ export function tsit5(
       stats.acceptedSteps++;
 
       // Event detection between t and t+h
-      if (eventFunctions && eventFunctions.length > 0) {
-        const currEventVals = eventFunctions.map((ef) => ef(t + h, yNew));
+      if (effEventFunctions && effEventFunctions.length > 0) {
+        const currEventVals = effEventFunctions.map((ef) => ef(t + h, yNew));
         let eventTriggered = -1;
         let eventDir: 1 | -1 = 1;
 
-        for (let ei = 0; ei < eventFunctions.length; ei++) {
+        for (let ei = 0; ei < effEventFunctions.length; ei++) {
           const vPrev = prevEventVals[ei] ?? 0;
           const vCurr = currEventVals[ei] ?? 0;
-          const expectedDir = eventDirections?.[ei] ?? 0;
+          const expectedDir = effEventDirections?.[ei] ?? 0;
 
-          if (vPrev * vCurr <= 0 && vPrev !== vCurr) {
+          if (vPrev * vCurr < 0) {
             const dir: 1 | -1 = vCurr > vPrev ? 1 : -1;
             if (expectedDir === 0 || expectedDir === dir) {
               eventTriggered = ei;
@@ -269,14 +293,14 @@ export function tsit5(
             const tMid = 0.5 * (tLeft + tRight);
             const thetaMid = (tMid - t) / h;
             const yMid = tsit5Interpolate(y, yNew, k, h, thetaMid);
-            const valMid = eventFunctions[eventTriggered]!(tMid, yMid);
+            const valMid = effEventFunctions[eventTriggered]!(tMid, yMid);
 
             if (Math.abs(valMid) < 1e-10 || tRight - tLeft < 1e-12) {
               yEvent = yMid;
               tRight = tMid;
               break;
             }
-            const valLeft = eventFunctions[eventTriggered]!(tLeft, tsit5Interpolate(y, yNew, k, h, (tLeft - t) / h));
+            const valLeft = effEventFunctions[eventTriggered]!(tLeft, tsit5Interpolate(y, yNew, k, h, (tLeft - t) / h));
             if (valLeft * valMid <= 0) {
               tRight = tMid;
             } else {
@@ -285,15 +309,15 @@ export function tsit5(
             yEvent = yMid;
           }
 
-          if (eventCallback) {
-            y = eventCallback(tRight, yEvent, eventTriggered, eventDir);
+          if (effEventCallback) {
+            y = effEventCallback(tRight, yEvent, eventTriggered, eventDir);
           } else {
             y = yEvent;
           }
           t = tRight;
           k[0] = f(t, y);
           stats.fEvals++;
-          prevEventVals = eventFunctions.map((ef) => ef(t, y));
+          prevEventVals = computeEventValuesWithProbe(t, y);
 
           resultTimes.push(t);
           resultStates.push([...y]);
