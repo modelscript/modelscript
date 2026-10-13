@@ -96,6 +96,7 @@ export class LibraryTreeItem extends vscode.TreeItem {
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
   ) {
     super(info.name, collapsibleState);
+    this.id = info.id;
     this.tooltip = info.compositeName;
     this.description = info.description ?? info.classKind;
     this.contextValue = info.classKind;
@@ -188,6 +189,13 @@ export class LibraryTreeProvider
   /** Set of compositeNames currently being fetched (to avoid duplicate requests). */
   private iconFetchPending = new Set<string>();
 
+  /** Map of child ID -> parent TreeItem */
+  private parentMap = new Map<string, LibraryTreeItem>();
+  /** Map of item ID or compositeName -> TreeItem */
+  private itemMap = new Map<string, LibraryTreeItem>();
+  /** Elements pending refresh */
+  private pendingRefreshElements = new Set<LibraryTreeItem | undefined>();
+
   private refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -197,18 +205,54 @@ export class LibraryTreeProvider
 
   refresh(uri?: string): void {
     if (uri) this.documentUri = uri;
+    this.parentMap.clear();
+    this.itemMap.clear();
     this._onDidChangeTreeData.fire(undefined);
   }
 
   setDocumentUri(uri: string): void {
     if (this.documentUri !== uri) {
       this.documentUri = uri;
+      this.parentMap.clear();
+      this.itemMap.clear();
       this._onDidChangeTreeData.fire(undefined);
     }
   }
 
   getTreeItem(element: LibraryTreeItem): vscode.TreeItem {
+    const name = element.info.compositeName;
+    if (this.iconUriCache.has(name)) {
+      element.iconPath = this.iconUriCache.get(name);
+      element.info.pendingIcon = false;
+    } else if (this.iconCache.has(name)) {
+      const svg = this.iconCache.get(name);
+      if (svg) {
+        element.iconPath = svgToIconUri(svg);
+      } else {
+        element.iconPath = classKindToIcon(element.info.classKind);
+      }
+      element.info.pendingIcon = false;
+    }
     return element;
+  }
+
+  getParent(element: LibraryTreeItem): vscode.ProviderResult<LibraryTreeItem> {
+    const fromMap = this.parentMap.get(element.info.id);
+    if (fromMap) return fromMap;
+
+    const id = element.info.id;
+    if (id.startsWith("__LIB__:") || id.startsWith("__ONTOLOGY__:") || !element.info.compositeName) {
+      return undefined;
+    }
+    const lastDot = element.info.compositeName.lastIndexOf(".");
+    if (lastDot > 0) {
+      const parentName = element.info.compositeName.substring(0, lastDot);
+      return this.itemMap.get(parentName);
+    }
+    if (element.info.language === "modelica") {
+      return this.itemMap.get("__LIB__:Modelica Standard Library");
+    }
+    return undefined;
   }
 
   public onDragStart?: (data: { className: string; classKind: string; iconSvg?: string }) => void;
@@ -255,6 +299,8 @@ export class LibraryTreeProvider
         nodes.map((n) => n.name),
       );
 
+      const nonIconKinds = new Set(["package", "folder", "file", "import", "comment", "ontology"]);
+
       // Apply cached icons to nodes that have them, and mark pending ones for spinner display
       for (const node of nodes) {
         if (this.iconCache.has(node.compositeName)) {
@@ -266,9 +312,10 @@ export class LibraryTreeProvider
           !node.id.startsWith("__OWL_") &&
           node.language !== "owl2" &&
           node.compositeName &&
+          !nonIconKinds.has(node.classKind.toLowerCase()) &&
           !node.icon
         ) {
-          // Icon not yet in cache and not a structural container — show spinner
+          // Icon not yet in cache and not a structural container or package — show spinner
           node.pendingIcon = true;
         }
         if (this.iconUriCache.has(node.compositeName)) {
@@ -284,21 +331,39 @@ export class LibraryTreeProvider
           ),
       );
 
-      // Lazily fetch icons for nodes that don't have them yet.
-      // Exclude virtual library root containers (e.g. __LIB__:Modelica, __ONTOLOGY__:) which are structural groupings.
-      const nodesNeedingIcons = nodes.filter(
-        (n) =>
+      for (const item of items) {
+        this.itemMap.set(item.info.id, item);
+        if (item.info.compositeName) {
+          this.itemMap.set(item.info.compositeName, item);
+        }
+        if (element) {
+          this.parentMap.set(item.info.id, element);
+        }
+      }
+
+      // Lazily fetch icons only for leaf models/blocks/connectors needing them.
+      // Exclude structural containers and packages.
+      const nodesNeedingIcons: TreeNodeInfo[] = [];
+      const itemsNeedingIcons: LibraryTreeItem[] = [];
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (
           !n.id.startsWith("__LIB__:") &&
           !n.id.startsWith("__ONTOLOGY__:") &&
           !n.id.startsWith("__OWL_") &&
           n.language !== "owl2" &&
           n.compositeName &&
+          !nonIconKinds.has(n.classKind.toLowerCase()) &&
           !this.iconCache.has(n.compositeName) &&
-          !this.iconFetchPending.has(n.compositeName),
-      );
+          !this.iconFetchPending.has(n.compositeName)
+        ) {
+          nodesNeedingIcons.push(n);
+          itemsNeedingIcons.push(items[i]);
+        }
+      }
 
       if (nodesNeedingIcons.length > 0) {
-        this.fetchIconsInBackground(nodesNeedingIcons);
+        this.fetchIconsInBackground(nodesNeedingIcons, itemsNeedingIcons);
       }
 
       return items;
@@ -308,19 +373,25 @@ export class LibraryTreeProvider
     }
   }
 
-  private scheduleRefresh(): void {
+  private scheduleRefresh(items?: LibraryTreeItem[]): void {
+    if (items) {
+      for (const item of items) {
+        if (item) this.pendingRefreshElements.add(item);
+      }
+    }
     if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
     this.refreshTimeout = setTimeout(() => {
       this.refreshTimeout = null;
-      this._onDidChangeTreeData.fire(undefined);
+      const elements = Array.from(this.pendingRefreshElements);
+      this.pendingRefreshElements.clear();
+      for (const el of elements) {
+        if (el) this._onDidChangeTreeData.fire(el);
+      }
     }, 120);
   }
 
   private async saveSvgIcon(className: string, svg: string): Promise<vscode.Uri | undefined> {
     if (!svg) return undefined;
-    // In desktop VS Code (file:// scheme), caching icons as local files on disk is supported.
-    // In VS Code Web (vscode-userdata:// or other non-file schemes), the browser DOM cannot load
-    // custom internal schemes, so we must use a data: URI directly.
     if (this.context?.globalStorageUri && this.context.globalStorageUri.scheme === "file") {
       try {
         const iconsDir = vscode.Uri.joinPath(this.context.globalStorageUri, "icons");
@@ -338,13 +409,12 @@ export class LibraryTreeProvider
 
   /**
    * Fetch SVG icons for a batch of nodes in the background.
-   * When icons arrive, cache them and refresh the tree to display them.
+   * When icons arrive, cache them and refresh only those specific tree items.
    */
-  private async fetchIconsInBackground(nodes: TreeNodeInfo[]): Promise<void> {
+  private async fetchIconsInBackground(nodes: TreeNodeInfo[], items: LibraryTreeItem[]): Promise<void> {
     const toFetch = nodes.map((n) => n.compositeName);
     for (const name of toFetch) this.iconFetchPending.add(name);
 
-    let anyFetched = false;
     const concurrency = 6;
 
     for (let i = 0; i < toFetch.length; i += concurrency) {
@@ -361,9 +431,6 @@ export class LibraryTreeProvider
                 console.error(`[library-tree-provider] getClassIcon error for ${className}:`, err);
                 return null;
               });
-            console.log(
-              `[library-tree-provider] getClassIcon for ${className}: ${svg ? `${svg.length} bytes` : "null"}`,
-            );
 
             this.iconCache.set(className, svg || "");
             if (svg) {
@@ -371,7 +438,6 @@ export class LibraryTreeProvider
               if (uri) {
                 this.iconUriCache.set(className, uri);
               }
-              anyFetched = true;
             }
           } finally {
             this.iconFetchPending.delete(className);
@@ -380,8 +446,7 @@ export class LibraryTreeProvider
       );
     }
 
-    // Always refresh the tree after icon fetching completes, so spinners
-    // are replaced with either the actual SVG icon or the codicon fallback.
-    this.scheduleRefresh();
+    // Refresh only the specific items whose icons were fetched
+    this.scheduleRefresh(items);
   }
 }

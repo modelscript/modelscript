@@ -139,7 +139,7 @@ export class DiagramService {
       if (result) {
         (result as any).isLoading = !dependenciesReady;
       }
-      this.connection.console.error(
+      this.connection.console.info(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
       );
 

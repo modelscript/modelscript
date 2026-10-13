@@ -2002,6 +2002,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       byName: new Map<string, SymbolId[]>(),
       childrenOf: new Map<SymbolId | null, SymbolId[]>(),
     };
+    const entries: [string, SymbolIndex | null][] = [];
     for (const [lang, ws] of this.workspaces.entries()) {
       if (!ws) continue;
       const idx =
@@ -2010,19 +2011,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
           : typeof ws.toSymbolIndex === "function"
             ? ws.toSymbolIndex()
             : null;
-      if (!idx) continue;
-      for (const [id, entry] of idx.symbols.entries()) {
-        merged.symbols.set(id, { ...entry, language: entry.language ?? lang });
-      }
-      for (const [name, ids] of idx.byName.entries()) {
-        const existing = merged.byName.get(name) || [];
-        merged.byName.set(name, existing.concat(ids));
-      }
-      for (const [parentId, childIds] of idx.childrenOf.entries()) {
-        const existing = merged.childrenOf.get(parentId) || [];
-        merged.childrenOf.set(parentId, existing.concat(childIds));
-      }
+      entries.push([lang, idx]);
     }
+    this.mergeIndices(merged, entries);
     (merged as any).workspace = this;
     return merged;
   }

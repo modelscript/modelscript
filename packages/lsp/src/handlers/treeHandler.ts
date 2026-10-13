@@ -179,6 +179,18 @@ export function registerTreeHandlers(context: LspContext) {
         return iconCache.get(params.className) || null;
       }
 
+      // Fast-path: root packages and namespaces do not have custom diagram icons
+      const lastPart = params.className.split(".").pop();
+      if (
+        lastPart === "Modelica" ||
+        lastPart === "ModelicaServices" ||
+        lastPart === "ObsoleteModelica4" ||
+        lastPart === "Complex"
+      ) {
+        iconCache.set(params.className, null);
+        return null;
+      }
+
       // Yield to event loop to avoid blocking LSP completely
       await new Promise((r) => setTimeout(r, 0));
 
@@ -189,7 +201,7 @@ export function registerTreeHandlers(context: LspContext) {
       }
 
       const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className);
-      if (!cls) {
+      if (!cls || cls.classKind === "package" || cls.kind === "Package") {
         iconCache.set(params.className, null);
         return null;
       }

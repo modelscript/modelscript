@@ -1900,7 +1900,10 @@ module.exports.default = module.exports;
   const lspDir = path.join(repoRoot, "packages/lsp");
   const browserServerMain = path.join(lspDir, "src/browserServerMain.ts");
   const destBrowserServer = path.join(outDir, "server/dist/browserServerMain.js");
-  if (fs.existsSync(browserServerMain) && !fs.existsSync(destBrowserServer)) {
+  const lspDist = path.join(lspDir, "dist");
+  if (fs.existsSync(path.join(lspDist, "browserServerMain.js"))) {
+    fs.cpSync(lspDist, path.join(outDir, "server/dist"), { recursive: true });
+  } else if (fs.existsSync(browserServerMain)) {
     await esbuild.build({
       entryPoints: [browserServerMain],
       outfile: destBrowserServer,
@@ -1925,7 +1928,7 @@ module.exports.default = module.exports;
 
     const indexerWorker = path.join(lspDir, "src/workers/indexer.worker.ts");
     const destIndexerWorker = path.join(outDir, "server/dist/workers/indexer.worker.js");
-    if (fs.existsSync(indexerWorker) && !fs.existsSync(destIndexerWorker)) {
+    if (fs.existsSync(indexerWorker)) {
       await esbuild.build({
         entryPoints: [indexerWorker],
         outfile: destIndexerWorker,

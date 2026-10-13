@@ -151,7 +151,15 @@ function initDiagramBridge() {
   });
 
   window.addEventListener("mousemove", (e) => {
-    handleDropOrPlace(e.clientX, e.clientY);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).__movePlacementGhost) {
+      const g = initGraph(isDark);
+      if (g) {
+        const p = g.clientToLocal(e.clientX, e.clientY);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__movePlacementGhost(p.x, p.y);
+      }
+    }
   });
 
   setDiagramOptions({

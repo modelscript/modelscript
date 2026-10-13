@@ -2423,6 +2423,15 @@ END-ISO-10303-21;`;
       if (!client) return;
       AnalysisPanel.createOrShowComponentTree(context.extensionUri, client);
     }),
+    commands.registerCommand(
+      "modelscript.showDaeVerificationDetails",
+      (_uri: string, className: string, proof: any) => {
+        const msg = proof?.issues?.length
+          ? `DAE Verification Issues for ${className}:\n` + proof.issues.map((i: any) => `• ${i.message}`).join("\n")
+          : `DAE Verification: No singularity found among bounded variables for ${className || "model"}.`;
+        vscode.window.showInformationMessage(msg);
+      },
+    ),
     // ── MBSE views: Requirements & V&V ──
     commands.registerCommand("modelscript.openRequirements", async () => {
       const editor = vscode.window.activeTextEditor;
