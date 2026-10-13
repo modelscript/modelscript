@@ -105,7 +105,9 @@ export class ModelicaCFGLowerer {
         let condExpr = "";
         if (firstBranchMatch) {
           condExpr = firstBranchMatch[1]?.trim() || "";
-          thenStmts = ModelicaCFGLowerer.parseStatements(firstBranchMatch[2]?.trim() || "", startByte);
+          const thenBody = firstBranchMatch[2] || "";
+          const thenRel = ifText.indexOf(thenBody);
+          thenStmts = ModelicaCFGLowerer.parseStatements(thenBody, startByte + (thenRel >= 0 ? thenRel : 0));
         }
 
         const elseIfs: { condExpr: string; stmts: ModelicaStatement[] }[] = [];
@@ -119,15 +121,17 @@ export class ModelicaCFGLowerer {
             const match = /^\s*([\s\S]*?)\bthen\b([\s\S]*)$/.exec(content);
             if (match) {
               const eCond = match[1]?.trim() || "";
-              const eBody = match[2]?.trim() || "";
+              const eBody = match[2] || "";
+              const eRel = ifText.indexOf(eBody);
               elseIfs.push({
                 condExpr: eCond,
-                stmts: ModelicaCFGLowerer.parseStatements(eBody, startByte),
+                stmts: ModelicaCFGLowerer.parseStatements(eBody, startByte + (eRel >= 0 ? eRel : 0)),
               });
             }
           } else if (token === "else") {
-            const elseBody = content.replace(/\bend\s+if[\s\S]*$/, "").trim();
-            elseStmts = ModelicaCFGLowerer.parseStatements(elseBody, startByte);
+            const elseBody = content.replace(/\bend\s+if[\s\S]*$/, "");
+            const elseRel = ifText.indexOf(elseBody);
+            elseStmts = ModelicaCFGLowerer.parseStatements(elseBody, startByte + (elseRel >= 0 ? elseRel : 0));
           }
           k += 2;
         }
@@ -203,13 +207,15 @@ export class ModelicaCFGLowerer {
           }
         }
 
+        const bodyRel = forMatch ? forText.indexOf(forBodyText) : 0;
+        const loopBodyStart = startByte + (bodyRel >= 0 ? bodyRel : 0);
         statements.push({
           kind: "for",
           loopVar,
           rangeStart,
           rangeEnd,
           rangeStep,
-          loopBody: ModelicaCFGLowerer.parseStatements(forBodyText, startByte),
+          loopBody: ModelicaCFGLowerer.parseStatements(forBodyText, loopBodyStart),
           rawText: forText,
           startByte,
           endByte,
@@ -254,10 +260,14 @@ export class ModelicaCFGLowerer {
         const condExpr = whileMatch ? whileMatch[1]?.trim() || "" : "";
         const whileBodyText = whileMatch ? whileMatch[2]?.trim() || "" : "";
 
+        const whileBodyRel = whileMatch ? whileText.indexOf(whileBodyText) : 0;
         statements.push({
           kind: "while",
           condExpr,
-          whileBody: ModelicaCFGLowerer.parseStatements(whileBodyText, startByte),
+          whileBody: ModelicaCFGLowerer.parseStatements(
+            whileBodyText,
+            startByte + (whileBodyRel >= 0 ? whileBodyRel : 0),
+          ),
           rawText: whileText,
           startByte,
           endByte,
@@ -302,10 +312,11 @@ export class ModelicaCFGLowerer {
         const condExpr = whenMatch ? whenMatch[1]?.trim() || "" : "";
         const whenBodyText = whenMatch ? whenMatch[2]?.trim() || "" : "";
 
+        const whenBodyRel = whenMatch ? whenText.indexOf(whenBodyText) : 0;
         statements.push({
           kind: "when",
           condExpr,
-          whenBody: ModelicaCFGLowerer.parseStatements(whenBodyText, startByte),
+          whenBody: ModelicaCFGLowerer.parseStatements(whenBodyText, startByte + (whenBodyRel >= 0 ? whenBodyRel : 0)),
           rawText: whenText,
           startByte,
           endByte,

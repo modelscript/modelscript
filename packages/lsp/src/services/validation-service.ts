@@ -2184,38 +2184,8 @@ export class ValidationService {
         const algText = algMatch[0];
         const algOffset = match.index + match[0].indexOf(algText);
 
-        // Extract declared variables from the definition body
-        const variables: any[] = [];
-        const varDeclRegex =
-          /\b(input|output)?\s*(Real|Integer|Boolean|String)\s+(?:\[(.*?)\]\s+)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*=\s*([^;]+))?\s*;/g;
-        let vMatch: RegExpExecArray | null;
-        while ((vMatch = varDeclRegex.exec(body)) !== null) {
-          const io = vMatch[1];
-          const type = vMatch[2];
-          const dimStr = vMatch[3];
-          const vName = vMatch[4]!;
-          const initExpr = vMatch[5];
-
-          const isArray = Boolean(dimStr);
-          const arrayDimension = dimStr && /^\d+$/.test(dimStr.trim()) ? Number(dimStr.trim()) : undefined;
-
-          let initialBound: [number, number] | undefined = undefined;
-          if (initExpr && /^-?\d+(?:\.\d+)?$/.test(initExpr.trim())) {
-            const val = Number(initExpr.trim());
-            initialBound = [val, val];
-          }
-
-          variables.push({
-            name: vName,
-            type,
-            isInput: io === "input",
-            isOutput: io === "output",
-            isArray,
-            arrayDimension,
-            initialBound,
-          });
-        }
-
+        // Extract declared variables: prefer CST extraction when classNode is available
+        let variables: any[] = [];
         let statements: any[] = [];
         if (cached?.tree?.rootNode && findCstNodesByType) {
           const classNodes = findCstNodesByType(cached.tree.rootNode, "class_definition");
@@ -2224,12 +2194,58 @@ export class ValidationService {
             return idNode?.text?.trim() === name;
           });
           if (classNode) {
+            variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
             const algSections = findCstNodesByType(classNode, "algorithm_section");
             if (algSections.length > 0) {
               statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
             }
           }
         }
+
+        // Fallback: extract declared variables via regex if CST extraction returned nothing
+        if (variables.length === 0) {
+          const varDeclRegex =
+            /\b(?:(input|output)\s+)?(?:(?:parameter|discrete|constant)\s+)?(Real|Integer|Boolean|String)\s+([^;]+);/g;
+          let vMatch: RegExpExecArray | null;
+          while ((vMatch = varDeclRegex.exec(body)) !== null) {
+            const io = vMatch[1];
+            const type = vMatch[2]!;
+            const declList = vMatch[3]!;
+
+            // Split comma-separated declarations (e.g. "x[5], y = 2")
+            const declItems = declList.split(",");
+            for (const item of declItems) {
+              const itemMatch = /^(?:\[(.*?)\]\s*)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\[(.*?)\])?(?:\s*=\s*([^,]+))?$/.exec(
+                item.trim(),
+              );
+              if (!itemMatch) continue;
+
+              const dimStr = itemMatch[1] || itemMatch[3];
+              const vName = itemMatch[2]!;
+              const initExpr = itemMatch[4];
+
+              const isArray = Boolean(dimStr);
+              const arrayDimension = dimStr && /^\d+$/.test(dimStr.trim()) ? Number(dimStr.trim()) : undefined;
+
+              let initialBound: [number, number] | undefined = undefined;
+              if (initExpr && /^-?\d+(?:\.\d+)?$/.test(initExpr.trim())) {
+                const val = Number(initExpr.trim());
+                initialBound = [val, val];
+              }
+
+              variables.push({
+                name: vName,
+                type,
+                isInput: io === "input",
+                isOutput: io === "output",
+                isArray,
+                arrayDimension,
+                initialBound,
+              });
+            }
+          }
+        }
+
         if (statements.length === 0) {
           statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
         }

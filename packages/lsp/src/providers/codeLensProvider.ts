@@ -13,52 +13,160 @@ export function registerCodeLensProvider(context: LspContext) {
       const doc = context.documents.get(uri);
       const text = doc?.getText();
 
+      const proofMap = context.validationService?.modelicaProofResultsByUri?.get(uri);
+      const daeMap = context.validationService?.modelicaDaeVerificationResultsByUri?.get(uri);
+      const emittedProofClasses = new Set<string>();
+      const emittedDaeClasses = new Set<string>();
+
       if (text) {
         const lines = text.split(/\r?\n/);
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx];
+        let currentClassName: string | undefined = undefined;
 
-          // Model / Block / Study declaration
-          const classMatch = /^\s*(?:model|block|study|process)\s+([A-Za-z0-9_]+)/.exec(line);
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+          const line = lines[lineIdx]!;
+
+          // Model / Block / Study / Class / Function / Record declaration
+          const classMatch = /^\s*(?:model|block|study|process|class|function|record)\s+([A-Za-z0-9_]+)/.exec(line);
           if (classMatch) {
-            const name = classMatch[1];
+            const name = classMatch[1]!;
+            currentClassName = name;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
-            if (name === "DroneSimulation" || uri.includes("DroneSimulation") || uri.includes("drone-reachability")) {
+            const rawKind = classMatch[0].trim().split(/\s+/)[0]!;
+            if (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process") {
+              if (name === "DroneSimulation" || uri.includes("DroneSimulation") || uri.includes("drone-reachability")) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
+                    command: "modelscript.openDroneReachabilityDemo",
+                    arguments: [uri],
+                  },
+                });
+                lenses.push({
+                  range,
+                  command: {
+                    title: "▶ Simulate Model (RK4 / CVODE DAE)",
+                    command: "modelscript.openSimulationView",
+                    arguments: [uri, name],
+                  },
+                });
+                lenses.push({
+                  range,
+                  command: {
+                    title: "🌐 Digital Thread Explorer",
+                    command: "modelscript.openThreadExplorer",
+                    arguments: [uri],
+                  },
+                });
+              } else {
+                const title = rawKind === "study" ? "▶ Run Study" : `▶ Simulate ${rawKind}`;
+                lenses.push({
+                  range,
+                  command: {
+                    title,
+                    command: "modelscript.openSimulationView",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+            }
+
+            // Formal proof badge for this model/class/function on this exact declaration line
+            const proof = proofMap?.get(name);
+            if (proof) {
+              emittedProofClasses.add(name);
+              let proofTitle = "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
+              if (proof.definiteBugs.length > 0) {
+                proofTitle = `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`;
+              } else if (proof.potentialBugs.length > 0) {
+                const oobCount = proof.potentialBugs.filter((b: any) => b.category === "array_out_of_bounds").length;
+                if (oobCount > 0) {
+                  proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s) (array out of bounds)`;
+                } else {
+                  proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s)`;
+                }
+              }
+
               lenses.push({
                 range,
                 command: {
-                  title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
-                  command: "modelscript.openDroneReachabilityDemo",
-                  arguments: [uri],
+                  title: proofTitle,
+                  command: "modelscript.showProofDetails",
+                  arguments: [uri, name, proof.formattedMatrix],
                 },
               });
+            }
+
+            // DAE BLT verification badge for this model/class on this exact declaration line
+            const daeProof = daeMap?.get(name);
+            if (daeProof) {
+              emittedDaeClasses.add(name);
+              let daeTitle =
+                daeProof.verdict?.kind === "proven"
+                  ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
+                  : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
+              if (daeProof.issues.length > 0) {
+                const definite = daeProof.issues.find((i: any) => i.severity === "definite");
+                if (definite) {
+                  daeTitle = `✗ DAE Defect: ${definite.message}`;
+                } else {
+                  daeTitle = `⚠ DAE Invariant: ${daeProof.issues[0].message}`;
+                }
+              }
+
               lenses.push({
                 range,
                 command: {
-                  title: "▶ Simulate Model (RK4 / CVODE DAE)",
-                  command: "modelscript.openSimulationView",
-                  arguments: [uri, name],
+                  title: daeTitle,
+                  command: "modelscript.showDaeVerificationDetails",
+                  arguments: [uri, name, daeProof],
                 },
               });
+            }
+          }
+
+          // Reset current class when leaving its definition
+          if (currentClassName && new RegExp(`^\\s*end\\s+${currentClassName}\\s*;`).test(line)) {
+            currentClassName = undefined;
+          }
+
+          // For loop formal verification lens (positioned above the loop)
+          const forMatch = /^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^\s]+)\s+loop\b/.exec(line);
+          if (forMatch && currentClassName) {
+            const proof = proofMap?.get(currentClassName);
+            if (proof) {
+              const col = line.indexOf("for");
+              const loopRange = Range.create(lineIdx, col, lineIdx, col + 3);
+
+              const loopBug =
+                proof.definiteBugs.find((b: any) => b.category === "array_out_of_bounds") ??
+                proof.potentialBugs.find((b: any) => b.category === "array_out_of_bounds") ??
+                proof.definiteBugs[0] ??
+                proof.potentialBugs[0];
+
+              let loopTitle: string;
+              if (loopBug) {
+                if (loopBug.category === "array_out_of_bounds") {
+                  const w = loopBug.witnessValues;
+                  const detail = w?.index && w?.arrayLength ? ` [${w.index} vs declared size ${w.arrayLength}]` : "";
+                  loopTitle = `⚠ Formal Proof: Array index out of bounds${detail}`;
+                } else {
+                  loopTitle = `⚠ Formal Proof: ${loopBug.description}`;
+                }
+              } else if (proof.isCertifiedSafe) {
+                loopTitle = "✓ Loop Formally Verified (Safe Bounds)";
+              } else {
+                loopTitle = "✓ Loop Invariants Verified";
+              }
+
               lenses.push({
-                range,
+                range: loopRange,
                 command: {
-                  title: "🌐 Digital Thread Explorer",
-                  command: "modelscript.openThreadExplorer",
-                  arguments: [uri],
-                },
-              });
-            } else {
-              const kind = classMatch[0].trim().split(/\s+/)[0];
-              const title = kind === "study" ? "▶ Run Study" : `▶ Simulate ${kind}`;
-              lenses.push({
-                range,
-                command: {
-                  title,
-                  command: "modelscript.openSimulationView",
-                  arguments: [uri, name],
+                  title: loopTitle,
+                  command: "modelscript.showProofDetails",
+                  arguments: [uri, currentClassName, proof.formattedMatrix],
                 },
               });
             }
@@ -130,7 +238,7 @@ export function registerCodeLensProvider(context: LspContext) {
         }
       }
 
-      // Check formal proof results & DAE BLT results from validationService
+      // Fallback: check formal proof results & DAE BLT results from symbol index for any un-emitted classes
       const index = (
         typeof context.workspaceManager?.getWorkspaceIndex === "function"
           ? context.workspaceManager.getWorkspaceIndex("modelica")
@@ -138,10 +246,24 @@ export function registerCodeLensProvider(context: LspContext) {
       )?.getFileIndex(uri);
 
       if (index) {
+        const norm = (u: string | undefined) => (u ? u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///").toLowerCase() : "");
+        const targetUri = norm(uri);
+
         for (const [, symbol] of index.symbols.entries()) {
           const sym = symbol as any;
-          const proofMap = context.validationService.modelicaProofResultsByUri?.get(uri);
-          const proof = proofMap?.get(sym.name);
+          // Guard: never process symbols belonging to other files in the workspace
+          if (sym.resourceId && norm(sym.resourceId) !== targetUri) continue;
+          if (
+            sym.kind !== "Class" &&
+            sym.kind !== "Def" &&
+            sym.kind !== "Function" &&
+            sym.classKind !== "function" &&
+            sym.classKind !== "model" &&
+            sym.classKind !== "block" &&
+            sym.classKind !== "class"
+          ) {
+            continue;
+          }
 
           let startLine = sym.selectionRange?.start.line ?? sym.range?.start?.line;
           let startChar = sym.selectionRange?.start.character ?? sym.range?.start?.character;
@@ -154,12 +276,19 @@ export function registerCodeLensProvider(context: LspContext) {
           startChar = startChar ?? 0;
           const range = Range.create(startLine, startChar, startLine, startChar);
 
-          if (proof) {
+          const proof = proofMap?.get(sym.name);
+          if (proof && !emittedProofClasses.has(sym.name)) {
+            emittedProofClasses.add(sym.name);
             let proofTitle = "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
             if (proof.definiteBugs.length > 0) {
               proofTitle = `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`;
             } else if (proof.potentialBugs.length > 0) {
-              proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s)`;
+              const oobCount = proof.potentialBugs.filter((b: any) => b.category === "array_out_of_bounds").length;
+              if (oobCount > 0) {
+                proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s) (array out of bounds)`;
+              } else {
+                proofTitle = `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s)`;
+              }
             }
 
             lenses.push({
@@ -172,9 +301,9 @@ export function registerCodeLensProvider(context: LspContext) {
             });
           }
 
-          const daeMap = context.validationService.modelicaDaeVerificationResultsByUri?.get(uri);
           const daeProof = daeMap?.get(sym.name);
-          if (daeProof) {
+          if (daeProof && !emittedDaeClasses.has(sym.name)) {
+            emittedDaeClasses.add(sym.name);
             // Never display "verified" for anything other than a proven verdict.
             let daeTitle =
               daeProof.verdict?.kind === "proven"

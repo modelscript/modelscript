@@ -415,4 +415,130 @@ end DaeModel;
       );
     },
   );
+
+  await t.test(
+    "should accurately detect array out of bounds in for loop and position CodeLens above loop without repeating",
+    async () => {
+      const testUri = "file:///workspace/test.mo";
+      const testContent = `model X
+  Real x[5];
+algorithm
+  for i in 1:10 loop
+    x[i] := i;
+  end for;
+end X;
+`;
+      const testDoc = TextDocument.create(testUri, "modelica", 1, testContent);
+
+      const diagnostics: any[] = [];
+      await validationService.postValidateModelicaAbstractInterpretation(testUri, testDoc, diagnostics);
+
+      // 1. Proof must NOT be certified safe
+      const proofMap = validationService.modelicaProofResultsByUri.get(testUri);
+      assert.ok(proofMap, "Must have proofMap for testUri");
+      const proofX = proofMap.get("X");
+      assert.ok(proofX, "Must have proof result for X");
+      assert.strictEqual(proofX.isCertifiedSafe, false, "Must not certify unsafe model as safe");
+
+      // 2. Must emit an array out of bounds diagnostic
+      const oobDiag = diagnostics.find((d) => d.code === "array_out_of_bounds");
+      assert.ok(oobDiag, "Must emit diagnostic for array_out_of_bounds");
+      assert.ok(oobDiag.message.includes("Array element assignment 'x[i] := i'"));
+
+      // 3. Test CodeLens generation with simulated cross-file symbol collision
+      let codeLensHandler: any = null;
+      const testConn: any = {
+        onRequest: (method: string, h: any) => {
+          if (method === "textDocument/codeLens") codeLensHandler = h;
+        },
+      };
+
+      const testWorkspaceManager: any = {
+        getWorkspaceIndex: (lang: string) => {
+          if (lang === "modelica") {
+            return {
+              getFileIndex: (_u: string) => ({
+                symbols: new Map([
+                  // Symbol in current file
+                  [
+                    1,
+                    {
+                      id: 1,
+                      name: "X",
+                      kind: "Class",
+                      startOffset: 0,
+                      startByte: 0,
+                      resourceId: testUri,
+                    },
+                  ],
+                  // Foreign symbols from other workspace files also named "X"
+                  [
+                    2,
+                    {
+                      id: 2,
+                      name: "X",
+                      kind: "Class",
+                      startOffset: 850,
+                      startByte: 850,
+                      resourceId: "file:///other/TestArrayUnknown.mo",
+                    },
+                  ],
+                  [
+                    3,
+                    {
+                      id: 3,
+                      name: "X",
+                      kind: "Class",
+                      startOffset: 1200,
+                      startByte: 1200,
+                      resourceId: "file:///other/ClassMod6.mo",
+                    },
+                  ],
+                ]),
+              }),
+            };
+          }
+          return undefined;
+        },
+      };
+
+      const testContext: any = {
+        connection: testConn,
+        documents: { get: (uri: string) => (uri === testUri ? testDoc : undefined) },
+        workspaceManager: testWorkspaceManager,
+        validationService,
+      };
+
+      registerCodeLensProvider(testContext);
+      const lenses = codeLensHandler({ textDocument: { uri: testUri } });
+
+      // Check model-level lens
+      const modelProofLens = lenses.find(
+        (l: any) => l.range.start.line === 0 && l.command.title.includes("Formal Proof"),
+      );
+      assert.ok(modelProofLens, "Must have Formal Proof badge on model X (line 0)");
+      assert.ok(
+        !modelProofLens.command.title.includes("100% Proven Safe"),
+        "Model lens must not claim 100% Proven Safe",
+      );
+      assert.ok(
+        modelProofLens.command.title.includes("array out of bounds"),
+        "Model lens must identify array out of bounds",
+      );
+
+      // Check loop-level lens above 'for i in 1:10 loop' (line 3)
+      const loopLens = lenses.find(
+        (l: any) => l.range.start.line === 3 && l.command.title.includes("Array index out of bounds"),
+      );
+      assert.ok(loopLens, "Must place formal proof lens directly above the for loop (line 3)");
+
+      // Crucial: check that NO duplicate lenses are placed on line 6 (end X;)
+      const endLineLenses = lenses.filter((l: any) => l.range.start.line === 6);
+      assert.strictEqual(
+        endLineLenses.length,
+        0,
+        `Expected 0 duplicate lenses on line 6 (end X;), but got ${endLineLenses.length}`,
+      );
+    },
+  );
 });
