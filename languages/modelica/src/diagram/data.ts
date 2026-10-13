@@ -64,6 +64,7 @@ import type {
   PropertyTabConfig,
   X6Markup,
 } from "@modelscript/diagram/protocol";
+import { computeSolderDots, solderDotToDiagramNode, type EdgePath } from "@modelscript/diagram/solder-dots";
 import { AnnotationEvaluator } from "./annotation-evaluator.js";
 
 // ── Build diagram data from a class instance ──
@@ -580,18 +581,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         const connectorTransform = computePortPlacement(connector);
         if (!connectorTransform) continue;
 
-        let connectorMarkup = renderIconX6(connectorClassInstance);
-        if (flipX || flipY) {
-          const psx = flipX ? -1 : 1;
-          const psy = flipY ? -1 : 1;
-          const ptx = flipX ? connectorTransform.width * absScaleX : 0;
-          const pty = flipY ? connectorTransform.height * absScaleY : 0;
-          connectorMarkup = {
-            tagName: "g",
-            attrs: { transform: `translate(${ptx}, ${pty}) scale(${psx}, ${psy})` },
-            children: [connectorMarkup],
-          };
-        }
+        const connectorMarkup = renderIconX6(connectorClassInstance);
 
         const a = connectorTransform.rotate * (Math.PI / 180);
         const extCenterOffX = connectorTransform.translateX - connectorTransform.originX + connectorTransform.width / 2;
@@ -603,20 +593,20 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         const portHeight = connectorTransform.height * absScaleY;
         const desiredCenterX = absWidth / 2 + connCenterX * componentTransform.scaleX;
         const desiredCenterY = absHeight / 2 + connCenterY * componentTransform.scaleY;
-        const portX = desiredCenterX - portWidth / 2;
-        const portY = desiredCenterY - portHeight / 2;
 
         ports.push({
           id: connector.name ?? "",
           group: "absolute",
-          args: { x: portX, y: portY, angle: connectorTransform.rotate },
+          args: { x: desiredCenterX, y: desiredCenterY, angle: connectorTransform.rotate },
           markup: {
             tagName: "svg",
             children: [connectorMarkup],
             attrs: {
               magnet: "true",
-              width: connectorTransform.width * absScaleX,
-              height: connectorTransform.height * absScaleY,
+              x: -portWidth / 2,
+              y: -portHeight / 2,
+              width: portWidth,
+              height: portHeight,
               style: `overflow: visible${connectorCondition === undefined ? "; opacity: 0.5" : ""}`,
             },
           },
@@ -725,6 +715,11 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const targetMarker = buildMarker(line?.arrow?.[1], strokeColor, strokeWidth);
 
     const hasExplicitBends = Boolean(line?.points && line.points.length > 2);
+    const explicitLinePoints =
+      line?.points && line.points.length >= 2
+        ? line.points.map((p: IPoint) => convertPoint(p)).map((p: [number, number]) => ({ x: p[0], y: p[1] }))
+        : null;
+
     edges.push({
       id: `${c1.join(".")}-${c2.join(".")}`,
       zIndex: 1,
@@ -746,6 +741,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         .map((p: [number, number]) => ({ x: p[0], y: p[1] })),
       router: hasExplicitBends ? undefined : { name: "port-orthogonal-astar" },
       connector: line?.smooth === Smooth.BEZIER ? "smooth" : undefined,
+      data: explicitLinePoints ? { points: explicitLinePoints } : undefined,
       attrs: {
         line: {
           stroke,
@@ -774,6 +770,59 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   let diagramBackground: X6Markup | null = null;
   if (diagram) {
     diagramBackground = renderDiagramX6(classInstance);
+  }
+
+  // Pre-compute solder dots for edges with known vertices/connections
+  const validEdgePaths: EdgePath[] = [];
+  const knownPortPoints: { x: number; y: number }[] = [];
+  for (const node of nodes) {
+    const portItems = Array.isArray(node.ports) ? node.ports : (node.ports as any)?.items;
+    if (portItems) {
+      for (const p of portItems) {
+        if (p.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
+          knownPortPoints.push({ x: (node.x ?? 0) + p.args.x, y: (node.y ?? 0) + p.args.y });
+        }
+      }
+    }
+  }
+  for (const edge of edges) {
+    const srcNode = nodes.find((n) => n.id === edge.source.cell);
+    const srcPortItems = Array.isArray(srcNode?.ports) ? srcNode.ports : (srcNode?.ports as any)?.items;
+    const srcPort = srcPortItems?.find((p: any) => p.id === edge.source.port);
+    const srcPt =
+      srcNode && srcPort?.args ? { x: (srcNode.x ?? 0) + srcPort.args.x, y: (srcNode.y ?? 0) + srcPort.args.y } : null;
+
+    const tgtNode = nodes.find((n) => n.id === edge.target.cell);
+    const tgtPortItems = Array.isArray(tgtNode?.ports) ? tgtNode.ports : (tgtNode?.ports as any)?.items;
+    const tgtPort = tgtPortItems?.find((p: any) => p.id === edge.target.port);
+    const tgtPt =
+      tgtNode && tgtPort?.args ? { x: (tgtNode.x ?? 0) + tgtPort.args.x, y: (tgtNode.y ?? 0) + tgtPort.args.y } : null;
+
+    const intermediate = edge.vertices ?? [];
+    let pathPoints: { x: number; y: number }[] | null = null;
+    if (srcPt && tgtPt) {
+      pathPoints = [srcPt, ...intermediate, tgtPt];
+    } else if ((edge as any).data?.points) {
+      pathPoints = (edge as any).data.points;
+    }
+
+    if (pathPoints && pathPoints.length >= 2) {
+      validEdgePaths.push({
+        id: edge.id,
+        points: pathPoints,
+        color: (edge.attrs?.line?.stroke as string) || "#1890ff",
+      });
+    }
+  }
+  if (validEdgePaths.length > 0) {
+    const precomputedDots = computeSolderDots(validEdgePaths, {
+      cellSize: 40,
+      tolerance: 3.0,
+      portPoints: knownPortPoints,
+    });
+    for (const dot of precomputedDots) {
+      nodes.push(solderDotToDiagramNode(dot, 3));
+    }
   }
 
   return {
@@ -1244,7 +1293,7 @@ export function evalMacroCondition(
 function findArgsInCst(node: any): any[] {
   const results: any[] = [];
   if (!node) return results;
-  if (Cst.Argument.is(node)) {
+  if (Cst.Argument.is(node) || node.type === "argument" || node.typeId === 134) {
     results.push(node);
     return results;
   }
@@ -1256,7 +1305,7 @@ function findArgsInCst(node: any): any[] {
 
 function findElemModInCst(node: any): any {
   if (!node) return null;
-  if (Cst.ElementModification.is(node)) return node;
+  if (Cst.ElementModification.is(node) || node.type === "element_modification" || node.typeId === 136) return node;
   for (const ch of node.children || []) {
     const found = findElemModInCst(ch);
     if (found) return found;
@@ -1266,7 +1315,7 @@ function findElemModInCst(node: any): any {
 
 function findNameInCst(node: any): any {
   if (!node) return null;
-  if (Cst.Identifier.is(node)) return node;
+  if (Cst.Identifier.is(node) || node.type === "identifier" || node.type === "name") return node;
   for (const ch of node.children || []) {
     const found = findNameInCst(ch);
     if (found) return found;
@@ -1276,7 +1325,7 @@ function findNameInCst(node: any): any {
 
 function findClassModInCst(node: any): any {
   if (!node) return null;
-  if (Cst.ClassModification.is(node)) return node;
+  if (Cst.ClassModification.is(node) || node.type === "class_modification" || node.typeId === 132) return node;
   for (const ch of node.children || []) {
     const found = findClassModInCst(ch);
     if (found) return found;
@@ -1293,12 +1342,13 @@ export function extractCstModifierValue(cstNode: any, paramName: string): string
 
     const nameNode =
       (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ?? findNameInCst(elemMod);
-    if (nameNode && nameNode.text?.trim() === paramName) {
+    const identifier = nameNode?.text?.trim() ?? nameNode?.name ?? nameNode?.value;
+    if (identifier === paramName) {
       const valModNode =
         (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
-        (elemMod.children || []).find((c: any) => Cst.Modification.is(c));
+        (elemMod.children || []).find((c: any) => Cst.Modification.is(c) || c.type === "modification");
       if (valModNode) {
-        const text = valModNode.text?.trim();
+        const text = valModNode.text?.trim() ?? valModNode.value;
         if (text?.startsWith("=")) {
           return text.replace(/^=\s*/, "").trim();
         }
@@ -1368,6 +1418,15 @@ export function evaluateMacroExpression(
     const compCst = (componentInstance as any)?.cstNode ?? (componentInstance as any)?.abstractSyntaxNode;
     compVal = extractCstModifierValue(compCst, name);
   }
+  if (!compVal) {
+    const compText = (componentInstance as any)?.cstNode?.text ?? (componentInstance as any)?.text;
+    if (typeof compText === "string") {
+      const match = compText.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
+      if (match && match[1]) {
+        compVal = match[1].trim();
+      }
+    }
+  }
 
   const namedElement =
     typeof classInstance?.resolveName === "function" ? classInstance.resolveName(name.split(".")) : null;
@@ -1375,7 +1434,20 @@ export function evaluateMacroExpression(
   // 2. Check if the class provides a default value for this parameter
   const elemMod = (namedElement as any)?.modification;
   const elemExpr = elemMod?.expression ?? elemMod?.getModificationArgument?.("start")?.expression;
-  const elemVal = formatPropertyValue(elemExpr) ?? formatPropertyValue((namedElement as any)?.value);
+  let elemVal = formatPropertyValue(elemExpr) ?? formatPropertyValue((namedElement as any)?.value);
+
+  if (!elemVal && namedElement) {
+    const elemCst = (namedElement as any)?.cstNode ?? (namedElement as any)?.abstractSyntaxNode;
+    if (elemCst) {
+      elemVal = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, name);
+      if (!elemVal && typeof elemCst.text === "string") {
+        const matchEq = elemCst.text.match(/=\s*([^;()]+(?:\\([^)]*\\)[^;()]*)*);?/);
+        if (matchEq && matchEq[1]) {
+          elemVal = matchEq[1].replace(/;$/, "").trim();
+        }
+      }
+    }
+  }
 
   const finalVal = compVal ?? elemVal;
 
@@ -1393,6 +1465,10 @@ export function evaluateMacroExpression(
 
   if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith("'") && name.endsWith("'"))) {
     return name.slice(1, -1);
+  }
+
+  if (trimmed.startsWith("%")) {
+    return "";
   }
 
   return name;
@@ -1473,14 +1549,8 @@ function renderTextX6(
     transform && transform.scaleX !== 0 ? Math.abs(transform.scaleY) / Math.abs(transform.scaleX) : 1;
 
   return {
-    tagName: "svg",
+    tagName: "g",
     attrs: {
-      x,
-      y,
-      width,
-      height,
-      viewBox: `${x} ${y} ${width} ${height}`,
-      preserveAspectRatio: "xMidYMid meet",
       overflow: "visible",
     },
     children: [
@@ -1488,7 +1558,7 @@ function renderTextX6(
         tagName: "text",
         textContent,
         attrs: {
-          style: `dominant-baseline: central; fill: ${textColor}; font-family: ${fontName}; font-size: ${fontSize}px; font-style: ${fontStyle}; font-weight: ${fontWeight}; text-decoration: ${textDecoration}; text-anchor: ${textAnchor}; transform: scale(${invScaleRatio}, 1); transform-origin: ${textX}px ${textY}px;`,
+          style: `dominant-baseline: central; fill: ${textColor}; font-family: ${fontName}; font-size: ${fontSize}px; font-style: ${fontStyle}; font-weight: ${fontWeight}; text-decoration: ${textDecoration}; text-anchor: ${textAnchor};`,
           x: textX,
           y: textY,
         },
@@ -1779,19 +1849,16 @@ function unflipText(node: X6Markup, sx: number, sy: number): void {
   for (const child of node.children) {
     if (child.tagName === "text") {
       if (!child.attrs) child.attrs = {};
-      const style = (child.attrs.style as string) || "";
-      const scaleMatch = style.match(/transform:\s*scale\(([^,]+),\s*([^)]+)\)/);
-      if (scaleMatch) {
-        const existingScaleX = parseFloat(scaleMatch[1]);
-        const existingScaleY = parseFloat(scaleMatch[2]);
-        child.attrs.style = style.replace(
-          /transform:\s*scale\([^)]+\)/,
-          `transform: scale(${sx * existingScaleX}, ${sy * existingScaleY})`,
-        );
-      } else {
-        const textX = child.attrs.x ?? 0;
-        const textY = child.attrs.y ?? 0;
-        child.attrs.style = style + `; transform: scale(${sx}, ${sy}); transform-origin: ${textX}px ${textY}px;`;
+      const textX = Number(child.attrs.x ?? 0);
+      const textY = Number(child.attrs.y ?? 0);
+      const existingTransform = (child.attrs["transform"] as string) || "";
+      const scaleTransform = `translate(${textX} ${textY}) scale(${sx} ${sy}) translate(${-textX} ${-textY})`;
+      child.attrs["transform"] = existingTransform ? `${existingTransform} ${scaleTransform}` : scaleTransform;
+      if (child.attrs.style && typeof child.attrs.style === "string") {
+        child.attrs.style = child.attrs.style
+          .replace(/transform-origin:[^;]+;?/g, "")
+          .replace(/transform:\s*scale\([^)]+\);?/g, "")
+          .trim();
       }
     }
     unflipText(child, sx, sy);
@@ -1803,22 +1870,23 @@ function unrotateText(node: X6Markup, rotateAngle: number): void {
   for (const child of node.children) {
     if (child.tagName === "text") {
       if (!child.attrs) child.attrs = {};
-      let style = (child.attrs.style as string) || "";
       const textX = Number(child.attrs.x ?? 0);
       const textY = Number(child.attrs.y ?? 0);
-      const rot = -rotateAngle;
-      child.attrs["transform"] = `rotate(${rot} ${textX} ${textY})`;
-      if (style.includes("rotate(")) {
-        style = style.replace(/rotate\([^)]+\)/, `rotate(${rot}deg)`);
-      } else if (style.includes("transform:")) {
-        style = style.replace(/transform:\s*/, `transform: rotate(${rot}deg) `);
-      } else {
-        style = style + `; transform: rotate(${rot}deg);`;
+      let rot = -rotateAngle % 360;
+      if (rot < 0) rot += 360;
+      // Keep text right-side up and readable from left-to-right or bottom-to-top
+      if (rot > 90 && rot <= 270) {
+        rot = (rot + 180) % 360;
       }
-      if (!style.includes("transform-origin:")) {
-        style = style + ` transform-origin: ${textX}px ${textY}px;`;
+      const existingTransform = (child.attrs["transform"] as string) || "";
+      const rotTransform = `rotate(${rot} ${textX} ${textY})`;
+      child.attrs["transform"] = existingTransform ? `${existingTransform} ${rotTransform}` : rotTransform;
+      if (child.attrs.style && typeof child.attrs.style === "string") {
+        child.attrs.style = child.attrs.style
+          .replace(/transform-origin:[^;]+;?/g, "")
+          .replace(/transform:\s*rotate\([^)]+\);?/g, "")
+          .trim();
       }
-      child.attrs.style = style;
     }
     unrotateText(child, rotateAngle);
   }

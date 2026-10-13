@@ -219,6 +219,7 @@ export interface DiagramEdge {
   animations?: ReactiveAnimationBinding[];
   style?: any;
   labels?: any[];
+  data?: any;
   attrs: {
     line: {
       stroke: string;

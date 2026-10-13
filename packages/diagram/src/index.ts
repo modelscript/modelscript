@@ -871,6 +871,8 @@ export function initGraph(isDark: boolean): Graph | null {
   g.on("node:moved", () => scheduleUpdateSolderDots(g));
   g.on("node:resized", () => scheduleUpdateSolderDots(g));
   g.on("edge:change:vertices", () => scheduleUpdateSolderDots(g));
+  g.on("edge:change:source", () => scheduleUpdateSolderDots(g));
+  g.on("edge:change:target", () => scheduleUpdateSolderDots(g));
   g.on("edge:connected", () => scheduleUpdateSolderDots(g));
   g.on("edge:added", () => scheduleUpdateSolderDots(g));
   g.on("edge:removed", () => scheduleUpdateSolderDots(g));
@@ -1939,7 +1941,12 @@ export function updateSolderDots(g: Graph) {
       portPoints.push(target);
     }
 
-    const vertices = edge.getVertices() || [];
+    const edgeView = (edge as any).findView ? (edge as any).findView(g) : null;
+    const routePoints = edgeView?.routePoints;
+    const vertices =
+      routePoints && routePoints.length > 0
+        ? routePoints.map((p: any) => ({ x: p.x, y: p.y }))
+        : edge.getVertices() || [];
     const points = [source, ...vertices, target];
 
     const stroke = edge.attr("line/stroke") as string | undefined;
