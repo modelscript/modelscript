@@ -1559,76 +1559,83 @@ export declare enum SyntaxKind {
   ExtentExpression = 412,
   PostfixOperation = 413,
   _postfix_operation = 413,
-  PrimaryExpression = 414,
-  FunctionReferenceExpression = 415,
-  FunctionReferenceMember = 416,
-  FunctionReference = 417,
-  FeatureChainMember = 418,
-  OwnedFeatureChain = 419,
-  BaseExpression = 420,
-  _BaseExpression = 420,
-  BodyExpression = 421,
-  ExpressionBodyMember = 422,
-  ExpressionBody = 423,
-  SequenceExpression = 424,
-  FeatureReferenceExpression = 425,
-  FeatureReferenceMember = 426,
-  MetadataAccessExpression = 427,
-  ElementReferenceMember = 428,
-  InvocationExpression = 429,
-  ConstructorExpression = 430,
-  ConstructorResultMember = 431,
-  ConstructorResult = 432,
-  InstantiatedTypeMember = 433,
-  FeatureChain = 434,
-  _FeatureChain = 434,
-  OwnedFeatureChaining = 435,
-  ArgumentList = 436,
-  _ArgumentList = 436,
-  PositionalArgumentList = 437,
-  _PositionalArgumentList = 437,
-  ArgumentMember = 438,
-  Argument = 439,
-  NamedArgumentList = 440,
-  _NamedArgumentList = 440,
-  NamedArgumentMember = 441,
-  NamedArgument = 442,
-  ParameterRedefinition = 443,
-  ArgumentValue = 444,
-  NullExpression = 445,
-  LiteralExpression = 446,
-  _LiteralExpression = 446,
-  LiteralBoolean = 447,
-  BooleanValue = 448,
-  LiteralString = 449,
-  LiteralInteger = 450,
-  LiteralReal = 451,
-  RealValue = 452,
-  Name = 453,
-  GlobalQualification = 454,
-  Qualification = 455,
-  QualifiedName = 456,
-  START = 457,
-  _START = 457,
-  MetaClassificationTestOperator = 634,
-  CastOperator = 635,
-  MetaCastOperator = 636,
-  LiteralInfinity = 671,
-  DECIMALVALUE = 676,
-  DECIMAL_VALUE = 676,
-  EXPVALUE = 677,
-  EXP_VALUE = 677,
-  ID = 678,
-  UNRESTRICTEDNAME = 679,
-  UNRESTRICTED_NAME = 679,
-  STRINGVALUE = 680,
-  STRING_VALUE = 680,
-  REGULARCOMMENT = 681,
-  REGULAR_COMMENT = 681,
-  MLNOTE = 682,
-  ML_NOTE = 682,
-  SLNOTE = 683,
-  SL_NOTE = 683,
+  MeasurementExpression = 414,
+  UnitExpression = 415,
+  _UnitExpression = 415,
+  UnitBinaryExpression = 416,
+  UnitExponentExpression = 417,
+  UnitPrimaryExpression = 418,
+  _UnitPrimaryExpression = 418,
+  PrimaryExpression = 419,
+  FunctionReferenceExpression = 420,
+  FunctionReferenceMember = 421,
+  FunctionReference = 422,
+  FeatureChainMember = 423,
+  OwnedFeatureChain = 424,
+  BaseExpression = 425,
+  _BaseExpression = 425,
+  BodyExpression = 426,
+  ExpressionBodyMember = 427,
+  ExpressionBody = 428,
+  SequenceExpression = 429,
+  FeatureReferenceExpression = 430,
+  FeatureReferenceMember = 431,
+  MetadataAccessExpression = 432,
+  ElementReferenceMember = 433,
+  InvocationExpression = 434,
+  ConstructorExpression = 435,
+  ConstructorResultMember = 436,
+  ConstructorResult = 437,
+  InstantiatedTypeMember = 438,
+  FeatureChain = 439,
+  _FeatureChain = 439,
+  OwnedFeatureChaining = 440,
+  ArgumentList = 441,
+  _ArgumentList = 441,
+  PositionalArgumentList = 442,
+  _PositionalArgumentList = 442,
+  ArgumentMember = 443,
+  Argument = 444,
+  NamedArgumentList = 445,
+  _NamedArgumentList = 445,
+  NamedArgumentMember = 446,
+  NamedArgument = 447,
+  ParameterRedefinition = 448,
+  ArgumentValue = 449,
+  NullExpression = 450,
+  LiteralExpression = 451,
+  _LiteralExpression = 451,
+  LiteralBoolean = 452,
+  BooleanValue = 453,
+  LiteralString = 454,
+  LiteralInteger = 455,
+  LiteralReal = 456,
+  RealValue = 457,
+  Name = 458,
+  GlobalQualification = 459,
+  Qualification = 460,
+  QualifiedName = 461,
+  START = 462,
+  _START = 462,
+  MetaClassificationTestOperator = 639,
+  CastOperator = 640,
+  MetaCastOperator = 641,
+  LiteralInfinity = 685,
+  DECIMALVALUE = 690,
+  DECIMAL_VALUE = 690,
+  EXPVALUE = 691,
+  EXP_VALUE = 691,
+  ID = 692,
+  UNRESTRICTEDNAME = 693,
+  UNRESTRICTED_NAME = 693,
+  STRINGVALUE = 694,
+  STRING_VALUE = 694,
+  REGULARCOMMENT = 695,
+  REGULAR_COMMENT = 695,
+  MLNOTE = 696,
+  ML_NOTE = 696,
+  SLNOTE = 697,
+  SL_NOTE = 697,
   EOF = 1023,
 }
 
@@ -1767,24 +1774,30 @@ export declare enum FieldId {
   select = 66,
   FeatureChain = 67,
   featureChain = 67,
-  Result = 68,
-  result = 68,
-  Chaining = 69,
-  chaining = 69,
-  ChainingFeature = 70,
-  chainingFeature = 70,
-  Argument = 71,
-  argument = 71,
-  NamedArgument = 72,
-  namedArgument = 72,
-  ParameterRedefinition = 73,
-  parameterRedefinition = 73,
-  Value = 74,
-  value = 74,
-  RedefinedFeature = 75,
-  redefinedFeature = 75,
-  Name = 76,
-  name = 76,
+  Value = 68,
+  value = 68,
+  Unit = 69,
+  unit = 69,
+  Left = 70,
+  left = 70,
+  Right = 71,
+  right = 71,
+  Result = 72,
+  result = 72,
+  Chaining = 73,
+  chaining = 73,
+  ChainingFeature = 74,
+  chainingFeature = 74,
+  Argument = 75,
+  argument = 75,
+  NamedArgument = 76,
+  namedArgument = 76,
+  ParameterRedefinition = 77,
+  parameterRedefinition = 77,
+  RedefinedFeature = 78,
+  redefinedFeature = 78,
+  Name = 79,
+  name = 79,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -2540,6 +2553,18 @@ export interface ExtentExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ExtentExpression;
 }
 export declare function isExtentExpression(node: SyntaxNode | null | undefined): node is ExtentExpressionNode;
+export interface MeasurementExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.MeasurementExpression;
+}
+export declare function isMeasurementExpression(node: SyntaxNode | null | undefined): node is MeasurementExpressionNode;
+export interface UnitBinaryExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UnitBinaryExpression;
+}
+export declare function isUnitBinaryExpression(node: SyntaxNode | null | undefined): node is UnitBinaryExpressionNode;
+export interface UnitExponentExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UnitExponentExpression;
+}
+export declare function isUnitExponentExpression(node: SyntaxNode | null | undefined): node is UnitExponentExpressionNode;
 export interface PrimaryExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.PrimaryExpression;
 }
@@ -5927,6 +5952,37 @@ export declare namespace Cst {
     operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
     typeResult(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeResultList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const MeasurementExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is MeasurementExpressionNode;
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    unit(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    unitList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const UnitBinaryExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UnitBinaryExpressionNode;
+    left(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    leftList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    right(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rightList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const UnitExponentExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UnitExponentExpressionNode;
+    base(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    baseList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    exponent(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    exponentList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const PrimaryExpression: {
     readonly typeId: number;

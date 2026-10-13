@@ -3039,6 +3039,7 @@ export const sysml2Language = language({
     [$.FeatureChainMember, $.OwnedFeatureChaining],
     [$._FeatureChain],
     [$._postfix_operation],
+    [$.MeasurementExpression, $.PrimaryExpression],
     // All definition and usage rules share modifier keyword prefixes
     [
       $.DefaultReferenceUsage,
@@ -5487,6 +5488,7 @@ export const sysml2Language = language({
         $.ExponentiationExpression,
         $.UnaryExpression,
         $.ExtentExpression,
+        $.MeasurementExpression,
         $.PrimaryExpression,
         $._BaseExpression,
       ),
@@ -5698,6 +5700,37 @@ export const sysml2Language = language({
         optional(seq(".", field("featureChain", $.FeatureChainMember))),
       ),
 
+    MeasurementExpression: ($) =>
+      prec.left(
+        PREC.PRIMARY,
+        seq(
+          field("value", choice($._LiteralExpression, $.FeatureReferenceExpression)),
+          "[",
+          field("unit", $._UnitExpression),
+          "]",
+        ),
+      ),
+
+    _UnitExpression: ($) => choice($.UnitBinaryExpression, $.UnitExponentExpression, $._UnitPrimaryExpression),
+
+    UnitBinaryExpression: ($) =>
+      prec.left(
+        PREC.MULTIPLICATIVE,
+        seq(field("left", $._UnitExpression), field("operator", choice("*", "/")), field("right", $._UnitExpression)),
+      ),
+
+    UnitExponentExpression: ($) =>
+      prec.right(
+        PREC.EXPONENTIATION,
+        seq(
+          field("base", $._UnitPrimaryExpression),
+          field("operator", choice("^", "**")),
+          field("exponent", choice($.LiteralInteger, seq("-", $.LiteralInteger))),
+        ),
+      ),
+
+    _UnitPrimaryExpression: ($) => choice($.FeatureReferenceExpression, seq("(", $._UnitExpression, ")")),
+
     PrimaryExpression: ($) =>
       prec.left(
         PREC.PRIMARY,
@@ -5857,7 +5890,7 @@ export const sysml2Language = language({
 
     DECIMAL_VALUE: () => token(/[0-9]+/),
     EXP_VALUE: () => token(/[0-9]+[eE][+-]?[0-9]+/),
-    ID: () => token(/[a-zA-Z_][a-zA-Z_0-9]*/),
+    ID: () => token(/[a-zA-Z_][a-zA-Z_0-9\u00B2\u00B3\u00B9\u2070-\u2079]*/),
     UNRESTRICTED_NAME: () => token(/'(?:[^'\\]|\\.)*'/),
     STRING_VALUE: () => token(/"(?:[^"\\]|\\.)*"/),
     REGULAR_COMMENT: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),

@@ -420,6 +420,26 @@ export class ValidationService {
     const wasmLintDiags: any[] = [];
     if (!rootNode) return { syntaxDiags, wasmLintDiags };
 
+    const clampRangeToLine = (r: Range): Range => {
+      if (r.end.line <= r.start.line) {
+        if (r.start.character === r.end.character) {
+          return { start: r.start, end: { line: r.start.line, character: r.start.character + 1 } };
+        }
+        return r;
+      }
+      const nextLineOffset = textDocument.offsetAt({ line: r.start.line + 1, character: 0 });
+      const rawLineText = textDocument.getText({
+        start: r.start,
+        end: textDocument.positionAt(nextLineOffset),
+      });
+      const trimmedLen = rawLineText.trimEnd().length;
+      const clampedChar = trimmedLen > 0 ? r.start.character + trimmedLen : r.start.character + 1;
+      return {
+        start: r.start,
+        end: { line: r.start.line, character: clampedChar },
+      };
+    };
+
     // 1. Native WASM GLR parser diagnostics
     const facade = plugin?.facade ?? rootNode?.tree?.facade ?? this.parserService.facade;
     if (facade && typeof facade.getDiagnostics === "function") {
@@ -445,12 +465,7 @@ export class ValidationService {
                     end: textDocument.positionAt(endOff),
                   };
                 }
-                if (range.start.line === range.end.line && range.start.character === range.end.character) {
-                  range = {
-                    start: range.start,
-                    end: { line: range.start.line, character: range.start.character + 1 },
-                  };
-                }
+                range = clampRangeToLine(range);
                 syntaxDiags.push({
                   severity: DiagnosticSeverity.Error,
                   range,
@@ -507,9 +522,9 @@ export class ValidationService {
           source: "modelscript",
         });
       } else if (node.type === "ERROR") {
-        if (start.line === end.line && start.character === end.character) {
-          end = { line: start.line, character: start.character + 1 };
-        }
+        const clamped = clampRangeToLine({ start, end });
+        start = clamped.start;
+        end = clamped.end;
         const textSnippet = textDocument.getText({ start, end });
         syntaxDiags.push({
           severity: DiagnosticSeverity.Error,

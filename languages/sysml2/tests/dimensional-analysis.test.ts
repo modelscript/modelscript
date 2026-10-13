@@ -178,4 +178,61 @@ test("QUDV Physical Dimensions Calculus", async (t) => {
     const conn2Diag = qe.fetch("lint__connectionDimensionalConsistency", connections[1].id);
     assert.strictEqual(conn2Diag, null, "Connection between compatible Length ports should pass with 0 errors");
   });
+
+  await t.test("enforces 7D units on DroneReachabilitySystem with bracketed units [kg], [m/s], [m²]", async () => {
+    const { parser } = await createWasmParser(sysmlWasm);
+    const ws = createSysML2WorkspaceIndex();
+    loadEmbeddedKerMLStdlib(ws);
+
+    const droneModel = `
+      package DroneReachabilitySystem {
+        import ScalarValues::*;
+        import ISQ::*;
+
+        part def DroneAssembly {
+          // 7D Exponent: [0, 1, 0, 0, 0, 0, 0] (Mass)
+          attribute totalMass : Mass = 45.0 [kg];
+          // 7D Exponent: [1, 0, -1, 0, 0, 0, 0] (Speed)
+          attribute v_max : Speed = 4.0 [m/s];
+          // 7D Exponent: [2, 0, 0, 0, 0, 0, 0] (Area)
+          attribute frontalArea : Area = 0.60 [m²];
+          // Dimensionless scalar: [0, 0, 0, 0, 0, 0, 0]
+          attribute aeroDragCoeff : Real = 0.80;
+        }
+      }
+    `;
+
+    const tree = parser.parse(droneModel);
+    assert.strictEqual(tree.rootNode.hasError(), false, "droneModel should parse with zero syntax errors");
+
+    const uri = "file:///workspace/DroneReachabilitySystem.sysml";
+    ws.register(uri, () => tree.rootNode as any);
+    const unified = ws.toUnified();
+    const qe = createSysML2QueryEngine(unified, tree);
+    const db = qe.toQueryDB();
+
+    const droneAssembly = db.byName("DroneAssembly")[0];
+    assert.ok(droneAssembly, "DroneAssembly part def should be indexed");
+
+    // All 4 attributes should pass dimensional check without diagnostics
+    const totalMass = db.byName("totalMass")[0];
+    assert.ok(totalMass, "totalMass attribute should be indexed");
+    const massDiag = qe.fetch("lint__dimensionalAssignment", totalMass.id);
+    assert.strictEqual(massDiag, null, "totalMass [kg] should have zero dimensional diagnostics");
+
+    const v_max = db.byName("v_max")[0];
+    assert.ok(v_max, "v_max attribute should be indexed");
+    const speedDiag = qe.fetch("lint__dimensionalAssignment", v_max.id);
+    assert.strictEqual(speedDiag, null, "v_max [m/s] should have zero dimensional diagnostics");
+
+    const frontalArea = db.byName("frontalArea")[0];
+    assert.ok(frontalArea, "frontalArea attribute should be indexed");
+    const areaDiag = qe.fetch("lint__dimensionalAssignment", frontalArea.id);
+    assert.strictEqual(areaDiag, null, "frontalArea [m²] should have zero dimensional diagnostics");
+
+    const aeroDragCoeff = db.byName("aeroDragCoeff")[0];
+    assert.ok(aeroDragCoeff, "aeroDragCoeff attribute should be indexed");
+    const dragDiag = qe.fetch("lint__dimensionalAssignment", aeroDragCoeff.id);
+    assert.strictEqual(dragDiag, null, "aeroDragCoeff (Real) should have zero dimensional diagnostics");
+  });
 });

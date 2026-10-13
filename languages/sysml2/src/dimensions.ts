@@ -85,7 +85,6 @@ export const KNOWN_DIMENSIONS: Record<string, DimensionVector> = {
   Mole: AMOUNT,
   Candela: LUMINOUS_INTENSITY,
 
-  // SIDerivedUnits
   Newton: FORCE,
   Pascal: PRESSURE,
   Joule: ENERGY,
@@ -93,6 +92,31 @@ export const KNOWN_DIMENSIONS: Record<string, DimensionVector> = {
   Volt: VOLTAGE,
   Ohm: ELECTRIC_RESISTANCE,
   Hertz: FREQUENCY,
+
+  // SIBaseUnits symbols
+  m: LENGTH,
+  kg: MASS,
+  s: TIME,
+  A: CURRENT,
+  K: TEMPERATURE,
+  mol: AMOUNT,
+  cd: LUMINOUS_INTENSITY,
+  g: MASS,
+
+  // SIDerivedUnits symbols
+  N: FORCE,
+  Pa: PRESSURE,
+  J: ENERGY,
+  W: POWER,
+  V: VOLTAGE,
+  Ω: ELECTRIC_RESISTANCE,
+  Hz: FREQUENCY,
+
+  // Common unit powers
+  "m²": AREA,
+  m2: AREA,
+  "m³": VOLUME,
+  m3: VOLUME,
 };
 
 /** Checks whether two dimension vectors have identical exponents. */
@@ -436,6 +460,23 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
       return { dimension: DIMENSIONLESS };
     }
 
+    case "MeasurementExpression": {
+      const unitNode = node.childForFieldName ? node.childForFieldName("unit") : null;
+      if (unitNode) {
+        return inferUnitDimension(db, unitNode, scopeId);
+      }
+      for (const child of node.children || []) {
+        if (
+          child.type === "UnitBinaryExpression" ||
+          child.type === "UnitExponentExpression" ||
+          child.type === "FeatureReferenceExpression"
+        ) {
+          return inferUnitDimension(db, child, scopeId);
+        }
+      }
+      return { dimension: DIMENSIONLESS };
+    }
+
     case "OwnedExpression":
     case "ExpressionBody":
     case "ResultExpressionMember": {
@@ -489,4 +530,80 @@ function resolveFeatureTypeEntry(db: QueryDB, entry: SymbolEntry): SymbolEntry |
     return String(entry.metadata.typeSpecifier);
   }
   return null;
+}
+
+/**
+ * Infers the dimension of a unit expression (e.g. `kg`, `m/s`, `m²`, `m^2`).
+ */
+export function inferUnitDimension(db: QueryDB, node: any, scopeId?: number | null): DimensionInferenceResult {
+  if (!node) return { dimension: DIMENSIONLESS };
+
+  switch (node.type) {
+    case "UnitBinaryExpression": {
+      const left = node.childForFieldName ? node.childForFieldName("left") : node.children?.[0];
+      const opNode = node.childForFieldName ? node.childForFieldName("operator") : node.children?.[1];
+      const right = node.childForFieldName ? node.childForFieldName("right") : node.children?.[2];
+
+      const leftRes = inferUnitDimension(db, left, scopeId);
+      if (leftRes.error) return leftRes;
+      const rightRes = inferUnitDimension(db, right, scopeId);
+      if (rightRes.error) return rightRes;
+
+      const op = opNode?.text?.trim() || "*";
+      const leftDim = leftRes.dimension || DIMENSIONLESS;
+      const rightDim = rightRes.dimension || DIMENSIONLESS;
+
+      if (op === "/") {
+        return { dimension: subtractDimensions(leftDim, rightDim) };
+      } else {
+        return { dimension: addDimensions(leftDim, rightDim) };
+      }
+    }
+
+    case "UnitExponentExpression": {
+      const base = node.childForFieldName ? node.childForFieldName("base") : node.children?.[0];
+      const expNode = node.childForFieldName ? node.childForFieldName("exponent") : node.children?.[2];
+
+      const baseRes = inferUnitDimension(db, base, scopeId);
+      if (baseRes.error) return baseRes;
+      const baseDim = baseRes.dimension || DIMENSIONLESS;
+
+      const expText = expNode?.text?.trim() || "1";
+      const expVal = parseInt(expText, 10);
+      if (!isNaN(expVal)) {
+        return { dimension: multiplyDimension(baseDim, expVal) };
+      }
+      return { dimension: baseDim };
+    }
+
+    case "FeatureReferenceExpression":
+    default: {
+      const rawText = (node.text?.trim() || "").replace(/^[:.]+/, "").split(".")[0];
+      // Handle superscripts directly (e.g. m², m³)
+      if (rawText.endsWith("²") || rawText.endsWith("\u00B2")) {
+        const baseName = rawText.slice(0, -1);
+        const baseDim = KNOWN_DIMENSIONS[baseName] || (scopeId ? resolveTypeDimension(db, baseName) : null);
+        if (baseDim) return { dimension: multiplyDimension(baseDim, 2) };
+      } else if (rawText.endsWith("³") || rawText.endsWith("\u00B3")) {
+        const baseName = rawText.slice(0, -1);
+        const baseDim = KNOWN_DIMENSIONS[baseName] || (scopeId ? resolveTypeDimension(db, baseName) : null);
+        if (baseDim) return { dimension: multiplyDimension(baseDim, 3) };
+      }
+
+      if (KNOWN_DIMENSIONS[rawText]) {
+        return { dimension: KNOWN_DIMENSIONS[rawText] };
+      }
+
+      const typeDim = resolveTypeDimension(db, rawText);
+      if (typeDim) {
+        return { dimension: typeDim };
+      }
+
+      for (const child of node.children || []) {
+        const res = inferUnitDimension(db, child, scopeId);
+        if (res.error || (res.dimension && !isDimensionless(res.dimension))) return res;
+      }
+      return { dimension: DIMENSIONLESS };
+    }
+  }
 }
