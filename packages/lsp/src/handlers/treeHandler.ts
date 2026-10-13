@@ -16,10 +16,24 @@ export function registerTreeHandlers(context: LspContext) {
       // Use the unified workspace — merges all language indices
       const uw = context.workspaceManager.unifiedWorkspace;
 
-      if (typeof (uw as any)?.ensureChildrenIndexed === "function") {
-        if (!params.parentId || params.parentId.startsWith("__LIB__:")) {
-          (uw as any).ensureChildrenIndexed("");
-        } else {
+      if (!params.parentId) {
+        // Root level: only workspace files and top-level library nodes are shown.
+        // No lazy loading needed.
+      } else if (params.parentId.startsWith("__LIB__:")) {
+        const libName = params.parentId.substring("__LIB__:".length);
+        if (libName === "Modelica Standard Library") {
+          const mws = context.workspaceManager.getWorkspaceIndex("modelica");
+          if (typeof (mws as any)?.ensureChildrenIndexed === "function") {
+            (mws as any).ensureChildrenIndexed("");
+          }
+        } else if (libName.includes("SysML")) {
+          const sws = context.workspaceManager.getWorkspaceIndex("sysml2");
+          if (typeof (sws as any)?.ensureChildrenIndexed === "function") {
+            (sws as any).ensureChildrenIndexed("");
+          }
+        }
+      } else {
+        if (typeof (uw as any)?.ensureChildrenIndexed === "function") {
           (uw as any).ensureChildrenIndexed(params.parentId);
         }
       }
@@ -174,21 +188,15 @@ export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getClassIcon",
     async (params: { className: string; uri?: string }): Promise<string | null> => {
-      if (!params.className) return null;
+      if (
+        !params.className ||
+        params.className.startsWith("__LIB__:") ||
+        params.className.startsWith("__ONTOLOGY__:")
+      ) {
+        return null;
+      }
       if (iconCache.has(params.className)) {
         return iconCache.get(params.className) || null;
-      }
-
-      // Fast-path: root packages and namespaces do not have custom diagram icons
-      const lastPart = params.className.split(".").pop();
-      if (
-        lastPart === "Modelica" ||
-        lastPart === "ModelicaServices" ||
-        lastPart === "ObsoleteModelica4" ||
-        lastPart === "Complex"
-      ) {
-        iconCache.set(params.className, null);
-        return null;
       }
 
       // Yield to event loop to avoid blocking LSP completely
@@ -201,7 +209,7 @@ export function registerTreeHandlers(context: LspContext) {
       }
 
       const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className);
-      if (!cls || cls.classKind === "package" || cls.kind === "Package") {
+      if (!cls) {
         iconCache.set(params.className, null);
         return null;
       }

@@ -135,3 +135,83 @@ test("test-package-icon", async () => {
   assert(svg.includes("<line"), "SVG must include electrical circuit line graphics");
   console.log("test-package-icon passed successfully! SVG length:", svg.length);
 });
+
+test("test-nested-package-icons", async () => {
+  console.log("Starting test-nested-package-icons...");
+  const docManager = new DocumentManager();
+  const wm = new WorkspaceManager(docManager);
+
+  const electricalPath = resolve(repoRoot, "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/package.mo");
+  const electricalText = readFileSync(electricalPath, "utf-8");
+  const analogPath = resolve(repoRoot, "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/Analog/package.mo");
+  const analogText = readFileSync(analogPath, "utf-8");
+  const basicPath = resolve(
+    repoRoot,
+    "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/Analog/Basic/package.mo",
+  );
+  const basicText = readFileSync(basicPath, "utf-8");
+  const iconsPath = resolve(repoRoot, "data/libraries/Modelica/4.1.0/extracted/Modelica/Icons.mo");
+  const iconsText = readFileSync(iconsPath, "utf-8");
+
+  (globalThis as any).sharedFs = {
+    exists: () => true,
+    read: (p: string) => {
+      if (p.includes("Icons")) return iconsText;
+      if (p.includes("Basic")) return basicText;
+      if (p.includes("Analog")) return analogText;
+      return electricalText;
+    },
+  };
+
+  wm.unifiedWorkspace.registerWorkspace("modelica", wm.globalWorkspaceIndex);
+
+  // Register lazy loaders (simulating on-demand lazy indexing without pre-indexing Icons.mo)
+  wm.globalWorkspaceIndex.register(
+    "modelica:/lib/Modelica/Electrical/package.mo",
+    () => (globalThis as any).modelicaParser.parse(electricalText).rootNode,
+    "Modelica",
+  );
+  wm.globalWorkspaceIndex.register(
+    "modelica:/lib/Modelica/Electrical/Analog/package.mo",
+    () => (globalThis as any).modelicaParser.parse(analogText).rootNode,
+    "Modelica.Electrical",
+  );
+  wm.globalWorkspaceIndex.register(
+    "modelica:/lib/Modelica/Electrical/Analog/Basic/package.mo",
+    () => (globalThis as any).modelicaParser.parse(basicText).rootNode,
+    "Modelica.Electrical.Analog",
+  );
+  wm.globalWorkspaceIndex.register(
+    "modelica:/lib/Modelica/Icons.mo",
+    () => (globalThis as any).modelicaParser.parse(iconsText).rootNode,
+    "Modelica",
+  );
+
+  // 1. Resolve Analog package
+  const analogCls = wm.resolveModelicaClassInstance("file:///", "Modelica.Electrical.Analog");
+  assert(analogCls, "Modelica.Electrical.Analog must resolve");
+  assert(analogCls.extendsClassInstances?.length > 0, "Analog must have extendsClassInstances");
+  const analogSvg = getClassIconSvg(analogCls, 20, false);
+  assert(analogSvg && analogSvg.startsWith("<svg"), "Analog SVG must be generated");
+  assert(analogSvg.includes("linearGradient"), "Analog SVG must include cylinder gradient");
+  assert(
+    analogSvg.includes("A 25 25"),
+    "Analog SVG must include rounded corners (radius 25) from Modelica.Icons.Package",
+  );
+  assert(analogSvg.includes("<line"), "Analog SVG must include capacitor line graphics");
+
+  // 2. Resolve Basic package
+  const basicCls = wm.resolveModelicaClassInstance("file:///", "Modelica.Electrical.Analog.Basic");
+  assert(basicCls, "Modelica.Electrical.Analog.Basic must resolve");
+  assert(basicCls.extendsClassInstances?.length > 0, "Basic must have extendsClassInstances");
+  const basicSvg = getClassIconSvg(basicCls, 20, false);
+  assert(basicSvg && basicSvg.startsWith("<svg"), "Basic SVG must be generated");
+  assert(basicSvg.includes("linearGradient"), "Basic SVG must include cylinder gradient");
+  assert(
+    basicSvg.includes("A 25 25"),
+    "Basic SVG must include rounded corners (radius 25) from Modelica.Icons.Package",
+  );
+  assert(basicSvg.includes("<line"), "Basic SVG must include basic component line graphics");
+
+  console.log("test-nested-package-icons passed successfully!");
+});

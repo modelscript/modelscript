@@ -723,6 +723,52 @@ export class WorkspaceManager {
 
     const getSourceText = (resourceId: string): string | null => this.getSourceText(resourceId);
 
+    const createPredefinedPackageInstance = (name = "Package"): any => ({
+      name,
+      kind: "Package",
+      components: [],
+      extendsClassInstances: [],
+      connectEquations: [],
+      annotation: (annName: string) => {
+        if (annName === "Icon") {
+          return {
+            "@type": "Icon",
+            coordinateSystem: {
+              "@type": "coordinateSystem",
+              preserveAspectRatio: false,
+              extent: [
+                [-100, -100],
+                [100, 100],
+              ],
+            },
+            graphics: [
+              {
+                "@type": "Rectangle",
+                lineColor: [200, 200, 200],
+                fillColor: [248, 248, 248],
+                fillPattern: "HorizontalCylinder",
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+                radius: 25,
+              },
+              {
+                "@type": "Rectangle",
+                lineColor: [128, 128, 128],
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+                radius: 25,
+              },
+            ],
+          };
+        }
+        return null;
+      },
+    });
+
     const buildAdapter = (entry: any, db: any, compositeName: string): any => {
       const children = db.childrenOf ? (db.childrenOf(entry.id) ?? []) : [];
       const components: any[] = [];
@@ -848,8 +894,18 @@ export class WorkspaceManager {
                 scopeParts.pop();
               }
             }
+            if (
+              !baseInstance &&
+              (child.name === "Modelica.Icons.Package" ||
+                child.name === "Icons.Package" ||
+                child.name.endsWith(".Icons.Package") ||
+                child.name.endsWith(".Package") ||
+                child.name === "Package")
+            ) {
+              baseInstance = createPredefinedPackageInstance(child.name.split(".").pop() || "Package");
+            }
             if (baseInstance) {
-              extendsClassInstances.push({ classInstance: baseInstance });
+              extendsClassInstances.push({ name: child.name, classInstance: baseInstance });
             }
           }
         } else if (
@@ -1017,16 +1073,16 @@ export class WorkspaceManager {
         e.kind === "Part");
 
     if (className) {
+      if (className.includes("Icons")) {
+        (this.unifiedWorkspace as any)?.ensureFQNIndexed?.("Modelica.Icons");
+        (this.unifiedWorkspace as any)?.ensureFQNIndexed?.("Icons");
+        (this.unifiedWorkspace as any)?.ensureChildrenIndexed?.("Modelica");
+      }
       if (typeof (this.unifiedWorkspace as any)?.ensureFQNIndexed === "function") {
         (this.unifiedWorkspace as any).ensureFQNIndexed(className);
       }
       if (typeof (this.unifiedWorkspace as any)?.ensureChildrenIndexed === "function") {
         (this.unifiedWorkspace as any).ensureChildrenIndexed(className);
-        const parts = className.split(".");
-        for (let p = 0; p < parts.length; p++) {
-          const prefix = parts.slice(0, p + 1).join(".");
-          (this.unifiedWorkspace as any).ensureChildrenIndexed(prefix);
-        }
       }
 
       const idx = this.unifiedWorkspace.toUnifiedPartial();
@@ -1147,7 +1203,16 @@ export class WorkspaceManager {
             ? this.globalSysML2QueryEngine
             : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
-        const db = engine ? (engine.toQueryDB() as any) : fallbackDb;
+        const db = {
+          childrenOf: (id: number) => {
+            const res = engine ? engine.toQueryDB().childrenOf(id) : [];
+            if (res && res.length > 0) return res;
+            return fallbackDb.childrenOf(id);
+          },
+          symbol: (id: number) => (engine ? engine.toQueryDB().symbol(id) : null) ?? fallbackDb.symbol(id),
+          query: (name: string, id: number) => (engine ? engine.toQueryDB().query?.(name, id) : null),
+          cstNode: (id: number) => (engine ? engine.toQueryDB().cstNode?.(id) : null) ?? fallbackDb.cstNode(id),
+        };
         const inst = buildAdapter(entry, db, className);
         if (inst && entry.resourceId) {
           const existing = this.documentInstances.get(entry.resourceId) ?? [];
@@ -1185,7 +1250,16 @@ export class WorkspaceManager {
             ? this.globalSysML2QueryEngine
             : this.globalModelicaQueryEngine;
         if (!engine) engine = this.globalModelicaQueryEngine;
-        const db = engine ? (engine.toQueryDB() as any) : fallbackDb;
+        const db = {
+          childrenOf: (id: number) => {
+            const res = engine ? engine.toQueryDB().childrenOf(id) : [];
+            if (res && res.length > 0) return res;
+            return fallbackDb.childrenOf(id);
+          },
+          symbol: (id: number) => (engine ? engine.toQueryDB().symbol(id) : null) ?? fallbackDb.symbol(id),
+          query: (name: string, id: number) => (engine ? engine.toQueryDB().query?.(name, id) : null),
+          cstNode: (id: number) => (engine ? engine.toQueryDB().cstNode?.(id) : null) ?? fallbackDb.cstNode(id),
+        };
         const inst = buildAdapter(entry, db, entry.name ?? "");
         if (inst) {
           const existing = this.documentInstances.get(uri) ?? [];

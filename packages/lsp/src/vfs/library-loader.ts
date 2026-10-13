@@ -571,21 +571,24 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       }
       fileEntries = unzipSync(zipData);
 
-      try {
-        const db = await openMSLCache();
+      // Cache extracted MSL in IndexedDB in the background so it doesn't block startup requests
+      setTimeout(async () => {
         try {
-          const serializable: Record<string, ArrayBuffer> = {};
-          for (const [name, data] of Object.entries(fileEntries)) {
-            serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+          const db = await openMSLCache();
+          try {
+            const serializable: Record<string, ArrayBuffer> = {};
+            for (const [name, data] of Object.entries(fileEntries!)) {
+              serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+            }
+            await idbPut(db, MSL_VERSION_KEY, serializable);
+            ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
+          } finally {
+            db.close();
           }
-          await idbPut(db, MSL_VERSION_KEY, serializable);
-          ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
-        } finally {
-          db.close();
+        } catch (cacheErr) {
+          ctx.logger.warn(`[msl-cache] IndexedDB write failed: ${cacheErr}`);
         }
-      } catch (cacheErr) {
-        ctx.logger.warn(`[msl-cache] IndexedDB write failed: ${cacheErr}`);
-      }
+      }, 500);
     }
 
     let fileCount = 0;

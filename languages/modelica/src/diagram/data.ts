@@ -15,6 +15,7 @@ import {
   convertPoint,
   convertSmoothPath,
   evaluateCondition,
+  FillPattern,
   formatUnit,
   LinePattern,
   Smooth,
@@ -892,6 +893,51 @@ export function clearIconCache() {
   iconCache.clear();
 }
 
+export const MODELICA_PACKAGE_FALLBACK_INSTANCE: ModelicaClassInstance = {
+  name: "Package",
+  components: [],
+  extendsClassInstances: [],
+  connectEquations: [],
+  annotation: (annName: string) => {
+    if (annName === "Icon") {
+      return {
+        "@type": "Icon",
+        coordinateSystem: {
+          "@type": "coordinateSystem",
+          preserveAspectRatio: false,
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [
+          {
+            "@type": "Rectangle",
+            lineColor: [200, 200, 200],
+            fillColor: [248, 248, 248],
+            fillPattern: FillPattern.HORIZONTAL_CYLINDER,
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+            radius: 25,
+          },
+          {
+            "@type": "Rectangle",
+            lineColor: [128, 128, 128],
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+            radius: 25,
+          },
+        ],
+      };
+    }
+    return null;
+  },
+} as any;
+
 export function renderIconX6(
   classInstance: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
@@ -941,12 +987,26 @@ export function renderIconX6(
   };
 
   const extendsList = classInstance.extendsClassInstances ?? [];
-  const hasExtends = extendsList.some((e: any) => e.classInstance);
+  let renderedBaseIcon = false;
   for (const extendsClassInstance of extendsList) {
     if (extendsClassInstance.classInstance && svg.children) {
       svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports, localDefs));
+      renderedBaseIcon = true;
+    } else if (
+      extendsClassInstance.name &&
+      (extendsClassInstance.name === "Modelica.Icons.Package" ||
+        extendsClassInstance.name === "Icons.Package" ||
+        extendsClassInstance.name.endsWith(".Icons.Package") ||
+        extendsClassInstance.name.endsWith(".Package") ||
+        extendsClassInstance.name === "Package") &&
+      svg.children
+    ) {
+      svg.children.push(renderIconX6(MODELICA_PACKAGE_FALLBACK_INSTANCE, componentInstance, ports, localDefs));
+      renderedBaseIcon = true;
     }
   }
+
+  const hasExtends = extendsList.some((e: any) => e.classInstance) || renderedBaseIcon;
 
   const hasAnnotationFn = typeof classInstance.annotation === "function";
   const ownIcon: IIcon | null = hasExtends

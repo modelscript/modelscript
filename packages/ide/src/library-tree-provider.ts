@@ -64,14 +64,14 @@ const KIND_TO_ICON_MAP: Record<string, string> = {
 // Map classKind to codicon (fallback when no SVG icon is available)
 function classKindToIcon(kind: string): vscode.ThemeIcon {
   if (kind) {
-    if (kind.startsWith("symbol-") || !kind.includes(" ")) {
-      try {
-        return new vscode.ThemeIcon(kind);
-      } catch {}
-    }
     const mapped = KIND_TO_ICON_MAP[kind.toLowerCase()];
     if (mapped) {
       return new vscode.ThemeIcon(mapped);
+    }
+    if (kind.startsWith("symbol-")) {
+      try {
+        return new vscode.ThemeIcon(kind);
+      } catch {}
     }
   }
   return new vscode.ThemeIcon("symbol-misc");
@@ -201,7 +201,14 @@ export class LibraryTreeProvider
   constructor(
     private readonly client: LanguageClient,
     private readonly context?: vscode.ExtensionContext,
-  ) {}
+  ) {
+    const sub = this.client.onNotification("modelscript/projectTreeChanged", () => {
+      this.refresh();
+    });
+    if (this.context) {
+      this.context.subscriptions.push(sub);
+    }
+  }
 
   refresh(uri?: string): void {
     if (uri) this.documentUri = uri;
@@ -290,7 +297,7 @@ export class LibraryTreeProvider
       console.log(
         `[library-tree-provider] getChildren called for element: ${element?.info?.name} (id: ${element?.info?.id})`,
       );
-      const nodes: TreeNodeInfo[] = await this.client.sendRequest("modelscript/getLibraryTree", {
+      const nodes: TreeNodeInfo[] = await this.client.sendRequest<TreeNodeInfo[]>("modelscript/getLibraryTree", {
         uri: this.documentUri ?? "file:///",
         parentId: element?.info.id,
       });
@@ -299,24 +306,13 @@ export class LibraryTreeProvider
         nodes.map((n) => n.name),
       );
 
-      const nonIconKinds = new Set(["package", "folder", "file", "import", "comment", "ontology"]);
+      const nonIconKinds = new Set(["folder", "file", "import", "comment", "ontology"]);
 
-      // Apply cached icons to nodes that have them, and mark pending ones for spinner display
+      // Apply cached icons to nodes that have them
       for (const node of nodes) {
         if (this.iconCache.has(node.compositeName)) {
           const cached = this.iconCache.get(node.compositeName);
           if (cached) node.iconSvg = cached;
-        } else if (
-          !node.id.startsWith("__LIB__:") &&
-          !node.id.startsWith("__ONTOLOGY__:") &&
-          !node.id.startsWith("__OWL_") &&
-          node.language !== "owl2" &&
-          node.compositeName &&
-          !nonIconKinds.has(node.classKind.toLowerCase()) &&
-          !node.icon
-        ) {
-          // Icon not yet in cache and not a structural container or package — show spinner
-          node.pendingIcon = true;
         }
         if (this.iconUriCache.has(node.compositeName)) {
           node.iconUri = this.iconUriCache.get(node.compositeName);
@@ -341,8 +337,8 @@ export class LibraryTreeProvider
         }
       }
 
-      // Lazily fetch icons only for leaf models/blocks/connectors needing them.
-      // Exclude structural containers and packages.
+      // Lazily fetch icons for nodes needing them.
+      // Exclude virtual library root containers and non-icon structural elements.
       const nodesNeedingIcons: TreeNodeInfo[] = [];
       const itemsNeedingIcons: LibraryTreeItem[] = [];
       for (let i = 0; i < nodes.length; i++) {
@@ -353,7 +349,8 @@ export class LibraryTreeProvider
           !n.id.startsWith("__OWL_") &&
           n.language !== "owl2" &&
           n.compositeName &&
-          !nonIconKinds.has(n.classKind.toLowerCase()) &&
+          !nonIconKinds.has((n.classKind || "").toLowerCase()) &&
+          !n.icon &&
           !this.iconCache.has(n.compositeName) &&
           !this.iconFetchPending.has(n.compositeName)
         ) {
@@ -384,8 +381,21 @@ export class LibraryTreeProvider
       this.refreshTimeout = null;
       const elements = Array.from(this.pendingRefreshElements);
       this.pendingRefreshElements.clear();
+      // To refresh items in VS Code, we refresh their parents or root,
+      // because _onDidChangeTreeData.fire(item) tells VS Code to re-fetch the *children* of item!
+      const parentsToRefresh = new Set<LibraryTreeItem | undefined>();
       for (const el of elements) {
-        if (el) this._onDidChangeTreeData.fire(el);
+        if (el) {
+          const parent = this.parentMap.get(el.info.id) ?? (this.getParent(el) as LibraryTreeItem | undefined);
+          parentsToRefresh.add(parent);
+        }
+      }
+      if (parentsToRefresh.has(undefined)) {
+        this._onDidChangeTreeData.fire(undefined);
+      } else {
+        for (const parent of parentsToRefresh) {
+          if (parent) this._onDidChangeTreeData.fire(parent);
+        }
       }
     }, 120);
   }
@@ -419,6 +429,7 @@ export class LibraryTreeProvider
 
     for (let i = 0; i < toFetch.length; i += concurrency) {
       const batch = toFetch.slice(i, i + concurrency);
+      const batchItems = items.slice(i, i + concurrency);
       await Promise.all(
         batch.map(async (className) => {
           try {
@@ -444,9 +455,7 @@ export class LibraryTreeProvider
           }
         }),
       );
+      this.scheduleRefresh(batchItems);
     }
-
-    // Refresh only the specific items whose icons were fetched
-    this.scheduleRefresh(items);
   }
 }

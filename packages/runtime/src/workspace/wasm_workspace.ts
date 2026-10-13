@@ -336,7 +336,25 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     let prefix = "";
     for (let i = 0; i < parts.length; i++) {
       prefix = prefix ? `${prefix}.${parts[i]}` : parts[i];
-      const uri = this.fqnToUri.get(prefix);
+      let uri = this.fqnToUri.get(prefix);
+      if (!uri && prefix.includes(".")) {
+        const pParts = prefix.split(".");
+        for (let j = pParts.length - 1; j >= 1; j--) {
+          const sub = pParts.slice(0, j).join(".");
+          if (this.fqnToUri.has(sub)) {
+            uri = this.fqnToUri.get(sub);
+            break;
+          }
+        }
+      }
+      if (!uri && (prefix === "Modelica.Icons" || prefix.endsWith(".Icons") || prefix === "Icons")) {
+        for (const fUri of this.fileLoaders.keys()) {
+          if (fUri.endsWith("/Icons.mo") || fUri.endsWith("Icons.mo")) {
+            uri = fUri;
+            break;
+          }
+        }
+      }
       if (uri) {
         this.ensureIndexed(uri);
       }
@@ -352,7 +370,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const norm = !parentFQN || parentFQN === "" ? "" : parentFQN;
     for (const [uri, entry] of Array.from(this.fileLoaders.entries())) {
       const entryParent = !entry.parentFQN || entry.parentFQN === "" ? "" : entry.parentFQN;
-      if (entryParent === norm) {
+      if (entryParent === norm || (norm === "Modelica" && (uri.endsWith("/Icons.mo") || uri.endsWith("Icons.mo")))) {
         this.ensureIndexed(uri);
       }
     }
