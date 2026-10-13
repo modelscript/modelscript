@@ -110,6 +110,7 @@ export default defineConfig([
             "languages/csv/tests/*.ts",
             "languages/modelscript/tests/*.ts",
             "apps/api/tests/*.ts",
+            "scripts/benchmark-polyglot-incremental.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

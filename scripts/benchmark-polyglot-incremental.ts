@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParser } from "@modelscript/dsl";
+import { Context } from "@modelscript/modelica";
 import { createWasmParser as createModelicaParser } from "@modelscript/modelica/parser";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import { Context } from "../languages/modelica/src/context.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

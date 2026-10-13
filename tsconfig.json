@@ -6,8 +6,10 @@
     "baseUrl": ".",
     "paths": {
       "@modelscript/dsl": ["./packages/dsl/src/index.ts"],
-      "@modelscript/dsl/*": ["./packages/dsl/src/*"],
+      "@modelscript/dsl/utils": ["./packages/dsl/src/utils/index.ts"],
+      "@modelscript/dsl/*": ["./packages/dsl/src/*", "./packages/dsl/src/*/index.ts"],
       "@modelscript/runtime": ["./packages/runtime/src/index.ts"],
+      "@modelscript/runtime/*": ["./packages/runtime/src/*"],
       "@modelscript/simulate": ["./packages/simulate/src/index.ts"],
       "@modelscript/simulate/*": ["./packages/simulate/src/*"],
       "@modelscript/diagram": ["./packages/diagram/src/index.ts"],
@@ -24,6 +26,7 @@
       "@modelscript/modelica/parser": ["./languages/modelica/src-gen/bindings.js"],
       "@modelscript/modelica/*": ["./languages/modelica/src/*"],
       "@modelscript/sysml2": ["./languages/sysml2/src/index.ts"],
+      "@modelscript/sysml2/factory": ["./languages/sysml2/src/factory.ts"],
       "@modelscript/sysml2/*": ["./languages/sysml2/src/*"],
       "@modelscript/owl2": ["./languages/owl2/src/index.ts"],
       "@modelscript/owl2/*": ["./languages/owl2/src/*"],
@@ -32,8 +35,9 @@
       "@modelscript/step/*": ["./languages/step/src/*"],
       "@modelscript/scad": ["./languages/scad/src/index.ts"],
       "@modelscript/scad/*": ["./languages/scad/src/*"],
-      "@modelscript/csv": ["./languages/csv/src/index.ts"],
-      "@modelscript/csv/*": ["./languages/csv/src/*"],
+      "@modelscript/csv": ["./languages/csv/language.ts"],
+      "@modelscript/csv/language": ["./languages/csv/language.ts"],
+      "@modelscript/csv/*": ["./languages/csv/*", "./languages/csv/src/*"],
       "@modelscript/cfd": ["./languages/cfd/src/index.ts"],
       "@modelscript/cfd/*": ["./languages/cfd/src/*"],
       "@modelscript/fea": ["./languages/fea/src/index.ts"],
@@ -44,5 +48,6 @@
       "@modelscript/modelscript/*": ["./languages/modelscript/src/*"]
     }
   },
-  "include": ["scripts/**/*", "eslint.config.ts"]
+  "include": ["scripts/**/*", "eslint.config.ts"],
+  "exclude": ["scripts/benchmark-polyglot-incremental.ts"]
 }
