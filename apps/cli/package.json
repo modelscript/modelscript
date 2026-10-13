@@ -40,10 +40,12 @@
   "dependencies": {
     "@babel/standalone": "^7.29.7",
     "@modelscript/cad": "*",
+    "@modelscript/cfd": "*",
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
+    "@modelscript/fea": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",

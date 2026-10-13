@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/**
- * End-to-End Test Suite: Native Polyglot Drone Reachability Verification Workspace
- *
- * Verifies zero-python integration across:
- *   - OpenSCAD CAD (B-Rep projected frontal area A = 0.03 m²)
- *   - CalculiX FEA deck (arm stress check sigma <= 180 MPa -> m = 1.2 kg)
- *   - SU2 CFD config (surface drag polar Cd = 0.80)
- *   - Nelson-Oppen SemanticTheoryCoordinator equality propagation
- *   - WASM ZonotopeReachabilitySolver proving safety (peak v = 11.42 <= 12.0 m/s) in < 3ms
- *   - Spurious interval wrapping breach detected at t = 3.42 s
- */
-
 import { expect } from "expect";
 import fs from "node:fs";
 import path from "node:path";
@@ -28,11 +16,11 @@ import {
   SemanticTheoryCoordinator,
   simulateDroneReachability,
   SpatialPhysicsOracle,
-} from "../src/index.js";
+} from "@modelscript/runtime";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const workspaceDir = path.resolve(__dirname, "../../examples/drone-reachability");
+const workspaceDir = path.resolve(__dirname, "../../../packages/examples/drone-reachability");
 
 describe("Native Polyglot Drone Reachability Workspace (Zero-Glue Engine)", () => {
   it("Phase 1: Workspace model files should exist and be valid", () => {
