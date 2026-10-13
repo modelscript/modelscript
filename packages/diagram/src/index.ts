@@ -232,7 +232,18 @@ function getConnectedEdges(
 
 export function initGraph(isDark: boolean): Graph | null {
   ensureDiagramStyles();
-  const container = currentOptions?.container;
+  let container = currentOptions?.container;
+  if (!container && typeof document !== "undefined") {
+    const el = document.getElementById("container");
+    if (el) {
+      container = el;
+      if (!currentOptions) {
+        currentOptions = { container: el, isDark };
+      } else {
+        currentOptions.container = el;
+      }
+    }
+  }
   if (!container) {
     if (graph) return graph;
     return null;
@@ -264,8 +275,13 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   }
 
+  const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
+  const containerH = container.clientHeight > 0 ? container.clientHeight : 600;
+
   const g: Graph = new Graph({
     container,
+    width: containerW,
+    height: containerH,
     async: false,
     autoResize: true,
     background: { color: bgColor },
@@ -1600,6 +1616,11 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
 
   // Only fit view on first render — preserve zoom/pan on subsequent updates
   if (isFirstRender) {
+    const containerW = g.container.clientWidth > 0 ? g.container.clientWidth : 800;
+    const containerH = g.container.clientHeight > 0 ? g.container.clientHeight : 600;
+    g.resize(containerW, containerH);
+    const viewportArea = { x: 0, y: 0, width: containerW, height: containerH };
+
     if (cs) {
       const expandedRect = {
         x: cs.x - cs.width * 0.125,
@@ -1607,10 +1628,10 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
         width: cs.width * 1.25,
         height: cs.height * 1.25,
       };
-      g.zoomToRect(expandedRect);
+      g.zoomToRect(expandedRect, { viewportArea });
     } else {
       try {
-        g.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8 });
+        g.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8, viewportArea });
         g.centerContent();
       } catch {
         // ignore
@@ -1801,7 +1822,11 @@ window.addEventListener("message", (event: MessageEvent) => {
       // Let X6 handle bounds rescaling securely over position callbacks
       setTimeout(() => {
         if (graph) {
-          graph.zoomToFit({ padding: 20 });
+          const containerW =
+            graph.container.clientWidth > 0 ? graph.container.clientWidth : (graph as any).options?.width || 800;
+          const containerH =
+            graph.container.clientHeight > 0 ? graph.container.clientHeight : (graph as any).options?.height || 600;
+          graph.zoomToFit({ padding: 20, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
           graph.centerContent();
         }
       }, 100);

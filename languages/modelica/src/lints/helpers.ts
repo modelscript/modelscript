@@ -1317,6 +1317,15 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
     leafId = id;
   }
 
+  if (
+    db.ast.textEquals(leafId, "Real") ||
+    db.ast.textEquals(leafId, "Integer") ||
+    db.ast.textEquals(leafId, "Boolean") ||
+    db.ast.textEquals(leafId, "String")
+  ) {
+    return 0;
+  }
+
   const leafSpan = db.ast.getTextSpan(leafId);
   const cachedCls = db.ast.getCachedByName(0, leafSpan);
   if (cachedCls >= 0) return cachedCls as u32;

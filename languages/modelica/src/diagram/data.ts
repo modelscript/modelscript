@@ -475,6 +475,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       };
     }
 
+    if (componentTransform.rotate !== 0) {
+      unrotateText(componentMarkup, componentTransform.rotate);
+    }
+
     // Multi-instance array cascading stacked icons (e.g. Resistor R[5])
     const isArrayComponent =
       (component.dimensions && component.dimensions.length > 0) ||
@@ -1791,6 +1795,32 @@ function unflipText(node: X6Markup, sx: number, sy: number): void {
       }
     }
     unflipText(child, sx, sy);
+  }
+}
+
+function unrotateText(node: X6Markup, rotateAngle: number): void {
+  if (!node?.children || rotateAngle === 0) return;
+  for (const child of node.children) {
+    if (child.tagName === "text") {
+      if (!child.attrs) child.attrs = {};
+      let style = (child.attrs.style as string) || "";
+      const textX = Number(child.attrs.x ?? 0);
+      const textY = Number(child.attrs.y ?? 0);
+      const rot = -rotateAngle;
+      child.attrs["transform"] = `rotate(${rot} ${textX} ${textY})`;
+      if (style.includes("rotate(")) {
+        style = style.replace(/rotate\([^)]+\)/, `rotate(${rot}deg)`);
+      } else if (style.includes("transform:")) {
+        style = style.replace(/transform:\s*/, `transform: rotate(${rot}deg) `);
+      } else {
+        style = style + `; transform: rotate(${rot}deg);`;
+      }
+      if (!style.includes("transform-origin:")) {
+        style = style + ` transform-origin: ${textX}px ${textY}px;`;
+      }
+      child.attrs.style = style;
+    }
+    unrotateText(child, rotateAngle);
   }
 }
 

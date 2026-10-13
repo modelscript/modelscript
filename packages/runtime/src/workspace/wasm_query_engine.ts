@@ -979,6 +979,10 @@ export class WasmQueryEngine {
     const tracker = this.activeTracker;
 
     return {
+      ensureFQNIndexed(fqn: string): void {
+        engine.ensureFQNIndexed(fqn);
+      },
+
       symbol(id: SymbolId): SymbolEntry | undefined {
         if (tracker) tracker.recordInput(id);
         return engine.resolveEntry(id);
@@ -1166,6 +1170,38 @@ export class WasmQueryEngine {
       (this.index as any)?.globalWorkspaceIndex;
     if (ws && typeof ws.ensureFQNIndexed === "function") {
       ws.ensureFQNIndexed(fqn);
+      if (typeof ws.toUnifiedPartial === "function" && this.index) {
+        const newIdx = ws.toUnifiedPartial();
+        if (newIdx && newIdx !== this.index) {
+          if (newIdx.symbols && this.index.symbols) {
+            for (const [id, entry] of newIdx.symbols.entries()) {
+              this.index.symbols.set(id, entry);
+            }
+          }
+          if (newIdx.byName && this.index.byName) {
+            for (const [name, ids] of newIdx.byName.entries()) {
+              const existing = this.index.byName.get(name);
+              if (existing) {
+                const merged = Array.from(new Set([...existing, ...ids]));
+                this.index.byName.set(name, merged);
+              } else {
+                this.index.byName.set(name, ids);
+              }
+            }
+          }
+          if (newIdx.childrenOf && this.index.childrenOf) {
+            for (const [parentId, childIds] of newIdx.childrenOf.entries()) {
+              const existing = this.index.childrenOf.get(parentId);
+              if (existing) {
+                const merged = Array.from(new Set([...existing, ...childIds]));
+                this.index.childrenOf.set(parentId, merged);
+              } else {
+                this.index.childrenOf.set(parentId, childIds);
+              }
+            }
+          }
+        }
+      }
     }
   }
 

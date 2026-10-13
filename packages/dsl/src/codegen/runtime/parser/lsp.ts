@@ -740,7 +740,8 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
 
     }
 
-    if ((rangeEnd == 0 || (nodeStart <= rangeEnd && nodeEnd >= rangeStart)) && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
+    let shouldLint = rangeEnd == 0 || (nodeStart <= rangeEnd && nodeEnd >= rangeStart && (nodeEnd - nodeStart <= (rangeEnd - rangeStart) * 8 + 512));
+    if (shouldLint && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 

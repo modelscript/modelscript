@@ -1012,10 +1012,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 3010,
     message: (target) => `Unit mismatch in component binding '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let classNode: u32 = getEnclosingClass(db, node, $);
-
       const compUnit = getComponentUnit(db, node, $);
       if (compUnit == null) return;
+
+      let classNode: u32 = getEnclosingClass(db, node, $);
 
       let declNode = node;
       if (db.ast.getType(node) == $.component_declaration) {

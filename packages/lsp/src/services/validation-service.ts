@@ -255,6 +255,19 @@ export class ValidationService {
     if (this.dependenciesReady) {
       (globalThis as any).clearDiagramCache?.();
       (globalThis as any).clearIconCache?.();
+      if (this.documentManager?.documents) {
+        for (const doc of this.documentManager.documents.all()) {
+          const eff = doc.uri.startsWith("modelscript-lib://global")
+            ? "file://" + doc.uri.substring("modelscript-lib://global".length)
+            : doc.uri;
+          this.lastIndexedText.delete(doc.uri);
+          this.lastIndexedText.delete(eff);
+          this.lastSemanticDiagnostics.delete(doc.uri);
+          this.lastSemanticDiagnostics.delete(eff);
+          this.validateTextDocument(doc);
+        }
+      }
+      this.sendProjectTreeChanged();
     }
   }
 

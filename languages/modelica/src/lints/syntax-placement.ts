@@ -1594,6 +1594,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       if (classCount > 1) return;
 
       for (const comp of db.ast.getAncestors(node, $.component_clause)) {
+        if (!hasTypePrefix(db, comp, "constant", $)) return;
         for (const el of db.ast.getAncestors(comp, $.element)) {
           if (isElementReplaceable(db, el, $)) return;
         }

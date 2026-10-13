@@ -627,6 +627,19 @@ end Manufacturing;
 `,
     },
     rlc: {
+      "modelscript.json": JSON.stringify(
+        {
+          name: "@modelscript/example-rlc",
+          version: "1.0.0",
+          title: "RLC Circuit",
+          description: "RLC circuit with Modelica Standard Library components",
+          dependencies: {
+            Modelica: "4.1.0",
+          },
+        },
+        null,
+        2,
+      ),
       "RLC.mo": [
         'model RLC "RLC circuit with MSL components"',
         "  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)",

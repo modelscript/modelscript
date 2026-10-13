@@ -1054,11 +1054,22 @@ export function resolveSimpleNameHelper(
   visited.add(classId);
 
   const unspecializedId = db.baseOf(classId) ?? classId;
-  const scope = db.query<ScopeData | null>("scopeData", unspecializedId);
+  let scope = db.query<ScopeData | null>("scopeData", unspecializedId);
   if (!scope) return null;
 
   // 1. Direct elements
-  const directId = scope.directByName[name];
+  let directId = scope.directByName[name];
+  if (directId === undefined && db.ensureFQNIndexed) {
+    const classEntry = db.symbol(unspecializedId);
+    if (classEntry) {
+      const fqn = getSymbolQualifiedName(db, classEntry.id);
+      if (fqn) {
+        db.ensureFQNIndexed(fqn + "." + name);
+        scope = db.query<ScopeData | null>("scopeData", unspecializedId);
+        directId = scope?.directByName[name];
+      }
+    }
+  }
   if (directId !== undefined) return db.symbol(directId);
 
   // 2. Inherited elements
@@ -2410,9 +2421,7 @@ export const classDefinitionQueries: Record<string, any> = {
       for (const child of children) {
         if (child.kind === "Extends") {
           // Resolve the base class
-          const baseName = child.name;
-          const baseEntries = db.byName(baseName);
-          const baseClass = baseEntries?.[0];
+          const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id) ?? db.byName(child.name)?.[0];
           if (baseClass && !visited.has(baseClass.id)) {
             visited.add(baseClass.id);
             // Extract broken names from extends clause modifications
@@ -2427,7 +2436,7 @@ export const classDefinitionQueries: Record<string, any> = {
               }
             }
             // Recursively get all elements of the base class
-            const baseElements = db.childrenOf(baseClass.id);
+            const baseElements = db.query<SymbolEntry[]>("allElements", baseClass.id) ?? db.childrenOf(baseClass.id);
             for (const inherited of baseElements) {
               if (
                 inherited.name &&
@@ -2826,6 +2835,21 @@ export const classDefinitionQueries: Record<string, any> = {
    */
   resolveName: (db: QueryDB, self: SymbolEntry) => {
     return (qualifiedName: string, skipInherited = false): SymbolEntry | null => {
+      if (db.ensureFQNIndexed) {
+        if (qualifiedName.includes(".")) {
+          db.ensureFQNIndexed(qualifiedName.startsWith(".") ? qualifiedName.slice(1) : qualifiedName);
+        }
+        let enc: SymbolEntry | null = self;
+        while (enc) {
+          const encFQN = getSymbolQualifiedName(db, enc.id);
+          if (encFQN) {
+            db.ensureFQNIndexed(
+              encFQN + "." + (qualifiedName.startsWith(".") ? qualifiedName.slice(1) : qualifiedName),
+            );
+          }
+          enc = enc.parentId !== null ? (db.symbol(enc.parentId) ?? null) : null;
+        }
+      }
       const parts = qualifiedName.split(".");
       if (parts.length === 0) return null;
 
@@ -2863,11 +2887,22 @@ export const classDefinitionQueries: Record<string, any> = {
             return null;
           }
         }
-        const targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+        let targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
           "resolveSimpleName",
           current.id,
         );
-        const nextPart = targetResolver?.(part, false, false);
+        let nextPart = targetResolver?.(part, false, false);
+        if (!nextPart && db.ensureFQNIndexed) {
+          const curFQN = getSymbolQualifiedName(db, current.id);
+          if (curFQN) {
+            db.ensureFQNIndexed(curFQN + "." + part);
+            targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+              "resolveSimpleName",
+              current.id,
+            );
+            nextPart = targetResolver?.(part, false, false);
+          }
+        }
         if (!nextPart) return null;
         current = nextPart;
       }
@@ -3188,6 +3223,9 @@ export const extendsClauseQueries: Record<string, any> = {
   resolvedBaseClass: (db: QueryDB, self: SymbolEntry) => {
     const baseName = self.name;
     if (!baseName) return null;
+    if (db.ensureFQNIndexed && baseName.includes(".")) {
+      db.ensureFQNIndexed(baseName.startsWith(".") ? baseName.slice(1) : baseName);
+    }
     // Use resolveName from the enclosing class for proper scope resolution
     if (self.parentId !== null) {
       const resolveName = db.query<(n: string, skip?: boolean) => SymbolEntry | null>("resolveName", self.parentId);
@@ -3230,6 +3268,10 @@ export const extendsClauseQueries: Record<string, any> = {
     }
     if (self.parentId !== null && isScopeEncapsulated(db, self.parentId)) {
       return null;
+    }
+    if (baseName.includes(".")) {
+      const qRes = resolveQualified(db, baseName.startsWith(".") ? baseName.slice(1) : baseName);
+      if (qRes && (qRes.kind === "Class" || qRes.kind === "Package")) return qRes;
     }
     // Fallback to global lookup, filtering out Reference and Extends entries
     const entries = db.byName(baseName);

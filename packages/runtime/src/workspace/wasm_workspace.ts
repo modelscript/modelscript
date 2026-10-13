@@ -1088,6 +1088,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.ensureIndexed(uri);
       }
     }
+    (this.unifiedIndex as any).workspace = this;
+    (this.unifiedIndex as any).workspaceIndex = this;
     return this.unifiedIndex;
   }
 
@@ -1105,6 +1107,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
   toUnifiedPartial(): SymbolIndex {
     (this.unifiedIndex as any).workspace = this;
+    (this.unifiedIndex as any).workspaceIndex = this;
     return this.unifiedIndex;
   }
 
@@ -1983,10 +1986,14 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (this.workspaces.size === 1) {
       for (const ws of this.workspaces.values()) {
         if (ws && typeof ws.toUnifiedPartial === "function") {
-          return ws.toUnifiedPartial();
+          const res = ws.toUnifiedPartial();
+          (res as any).workspace = this;
+          return res;
         }
         if (ws && typeof ws.toSymbolIndex === "function") {
-          return ws.toSymbolIndex();
+          const res = ws.toSymbolIndex();
+          (res as any).workspace = this;
+          return res;
         }
       }
     }

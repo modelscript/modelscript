@@ -630,9 +630,8 @@ export class WorkspaceManager {
         fsPath = decodeURIComponent(fsPath);
       } catch {}
       if (fsPath.startsWith("file://")) fsPath = fsPath.substring("file://".length);
-      if (typeof process !== "undefined" && process.versions?.node) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { readFileSync, existsSync } = require("fs");
+      if (typeof process !== "undefined" && process.versions?.node && nodeRequire) {
+        const { readFileSync, existsSync } = nodeRequire("fs");
         if (existsSync(fsPath)) return readFileSync(fsPath, "utf-8");
       }
     } catch {
@@ -667,6 +666,15 @@ export class WorkspaceManager {
             tree = parser.parse(text);
             this.documentManager?.documentTrees?.set(entry.resourceId, tree);
           } catch {}
+        } else {
+          const sc = (globalThis as any).sharedContext ?? this.documentManager?.sharedContext;
+          if (sc && typeof sc.parse === "function") {
+            try {
+              const ext = entry.resourceId?.endsWith(".sysml") ? ".sysml" : ".mo";
+              tree = sc.parse(ext, text);
+              this.documentManager?.documentTrees?.set(entry.resourceId, tree);
+            } catch {}
+          }
         }
       }
     }
@@ -726,15 +734,17 @@ export class WorkspaceManager {
       for (const child of children) {
         if (child.kind === "Component" || child.kind === "Variable") {
           const childClassId = db.query ? db.query("classInstance", child.id) : null;
+          let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
+          if (!typeSpec && db.query) {
+            try {
+              typeSpec = db.query("typeSpecifier", child.id);
+            } catch {}
+          }
           const childClassEntry = childClassId ? db.symbol(childClassId) : null;
-          let componentClassInstance = childClassEntry ? buildAdapter(childClassEntry, db, childClassEntry.name) : null;
+          let componentClassInstance = childClassEntry
+            ? buildAdapter(childClassEntry, db, typeSpec || childClassEntry.name)
+            : null;
           if (!componentClassInstance) {
-            let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
-            if (!typeSpec && db.query) {
-              try {
-                typeSpec = db.query("typeSpecifier", child.id);
-              } catch {}
-            }
             if (!typeSpec) {
               const compCst = (child.cstNode || (db.cstNode ? db.cstNode(child.id) : null)) as any;
               let p = compCst?.parent;
@@ -811,9 +821,26 @@ export class WorkspaceManager {
               // Try resolving relative to package hierarchy from compositeName or resourceId
               const scopeParts = (compositeName ? compositeName.split(".") : []).slice(0, -1);
               if (scopeParts.length === 0 && entry.resourceId) {
+                try {
+                  const text = getSourceText(entry.resourceId);
+                  if (text) {
+                    const withinMatch = text.slice(0, 1000).match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+                    if (withinMatch && withinMatch[1]) {
+                      scopeParts.push(...withinMatch[1].trim().split("."));
+                    }
+                  }
+                } catch {}
+              }
+              if (scopeParts.length === 0 && entry.resourceId) {
                 const clean = entry.resourceId.replace(/^[a-z]+:\/*(?:lib\/)?/, "").replace(/\/[^/]+$/, "");
-                scopeParts.push(...clean.split("/").filter(Boolean));
-                if (scopeParts[0]?.startsWith("Modelica")) scopeParts[0] = "Modelica";
+                const segments = clean.split("/").filter(Boolean);
+                const mIdx = segments.findIndex((s) => s === "Modelica" || s.startsWith("Modelica"));
+                if (mIdx !== -1) {
+                  scopeParts.push(...segments.slice(mIdx));
+                  if (scopeParts[0]?.startsWith("Modelica")) scopeParts[0] = "Modelica";
+                } else {
+                  scopeParts.push(...segments);
+                }
               }
               while (scopeParts.length > 0 && !baseInstance) {
                 const qualifiedParentName = `${scopeParts.join(".")}.${child.name}`;

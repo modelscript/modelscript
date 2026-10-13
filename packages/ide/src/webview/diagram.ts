@@ -24,11 +24,16 @@ function escapeHtml(str: unknown): string {
 }
 
 // Add global binding for close button
-window.addEventListener("DOMContentLoaded", () => {
+function initPropertiesClose() {
   document.getElementById("properties-close")?.addEventListener("click", () => {
     document.getElementById("properties-panel")?.classList.remove("open");
   });
-});
+}
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initPropertiesClose);
+} else {
+  initPropertiesClose();
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.() ?? {
@@ -68,7 +73,7 @@ function enqueueDiagramAction(action: any) {
 }
 
 // Global initialization
-window.addEventListener("DOMContentLoaded", () => {
+function initDiagramBridge() {
   const container = document.getElementById("container");
   if (!container) return;
 
@@ -169,7 +174,13 @@ window.addEventListener("DOMContentLoaded", () => {
     onRedo: () => vscode.postMessage({ type: "redo" }),
     onMessage: (msg) => vscode.postMessage(msg),
   });
-});
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initDiagramBridge);
+} else {
+  initDiagramBridge();
+}
 
 // The diagram.ts bridge no longer needs its own message listener.
 // All message types (diagramData, loading, stopLoading, startPlacement,
