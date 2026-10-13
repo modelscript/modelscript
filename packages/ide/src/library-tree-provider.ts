@@ -381,13 +381,19 @@ export class LibraryTreeProvider
       this.refreshTimeout = null;
       const elements = Array.from(this.pendingRefreshElements);
       this.pendingRefreshElements.clear();
-      // To refresh items in VS Code, we refresh their parents or root,
-      // because _onDidChangeTreeData.fire(item) tells VS Code to re-fetch the *children* of item!
+
       const parentsToRefresh = new Set<LibraryTreeItem | undefined>();
       for (const el of elements) {
         if (el) {
-          const parent = this.parentMap.get(el.info.id) ?? (this.getParent(el) as LibraryTreeItem | undefined);
-          parentsToRefresh.add(parent);
+          if (!el.info.hasChildren) {
+            // Leaf items: fire on the item directly so VS Code updates its icon in-place
+            // without rebuilding the parent list or re-triggering getChildren.
+            this._onDidChangeTreeData.fire(el);
+          } else {
+            // Container items: refresh the parent to update the container's row icon.
+            const parent = this.parentMap.get(el.info.id) ?? (this.getParent(el) as LibraryTreeItem | undefined);
+            parentsToRefresh.add(parent);
+          }
         }
       }
       if (parentsToRefresh.has(undefined)) {
@@ -397,7 +403,7 @@ export class LibraryTreeProvider
           if (parent) this._onDidChangeTreeData.fire(parent);
         }
       }
-    }, 120);
+    }, 80);
   }
 
   private async saveSvgIcon(className: string, svg: string): Promise<vscode.Uri | undefined> {
@@ -425,13 +431,13 @@ export class LibraryTreeProvider
     const toFetch = nodes.map((n) => n.compositeName);
     for (const name of toFetch) this.iconFetchPending.add(name);
 
-    const concurrency = 6;
+    const concurrency = 12;
 
     for (let i = 0; i < toFetch.length; i += concurrency) {
       const batch = toFetch.slice(i, i + concurrency);
       const batchItems = items.slice(i, i + concurrency);
       await Promise.all(
-        batch.map(async (className) => {
+        batch.map(async (className, idx) => {
           try {
             const svg = await this.client
               .sendRequest<string | null>("modelscript/getClassIcon", {
@@ -448,6 +454,12 @@ export class LibraryTreeProvider
               const uri = await this.saveSvgIcon(className, svg);
               if (uri) {
                 this.iconUriCache.set(className, uri);
+              }
+              const item = batchItems[idx];
+              if (item) {
+                item.info.iconSvg = svg;
+                item.iconPath = uri ?? svgToIconUri(svg);
+                item.info.pendingIcon = false;
               }
             }
           } finally {
