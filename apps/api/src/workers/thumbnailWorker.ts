@@ -9,7 +9,13 @@ import { LibraryDatabase } from "../database.js";
 const _filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
 
-const database = new LibraryDatabase();
+let _database: LibraryDatabase | null = null;
+function getDatabase(): LibraryDatabase {
+  if (!_database) {
+    _database = new LibraryDatabase();
+  }
+  return _database;
+}
 
 interface ThumbnailTask {
   artifactId: number;
@@ -104,7 +110,7 @@ async function doGenerateThumbnail(artifactId: number): Promise<string | null> {
 
     await browser.close();
 
-    database.updateArtifactThumbnail(artifactId, thumbnailUrlLight);
+    getDatabase().updateArtifactThumbnail(artifactId, thumbnailUrlLight);
     console.log(`[Thumbnail Worker] Successfully updated database for artifact ${artifactId}`);
 
     return thumbnailUrlLight;

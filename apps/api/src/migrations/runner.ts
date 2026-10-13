@@ -90,26 +90,41 @@ export class SqliteMigrationRunner {
       },
     };
 
+    const checkStmt = this.#db.prepare(`
+      SELECT 1 FROM _modelscript_migrations WHERE name = ?
+    `);
+
     const recordStmt = this.#db.prepare(`
-      INSERT INTO _modelscript_migrations (name, checksum, execution_ms)
+      INSERT OR IGNORE INTO _modelscript_migrations (name, checksum, execution_ms)
       VALUES (?, ?, ?)
     `);
 
+    let actuallyAppliedCount = 0;
     for (const migration of pending) {
       const startTime = Date.now();
       const checksum = crypto.createHash("sha256").update(migration.name).digest("hex");
+      let applied = false;
 
       const tx = this.#db.transaction(() => {
+        // Concurrency guard: check if another process applied this migration in the interim
+        const already = checkStmt.get(migration.name);
+        if (already) {
+          return;
+        }
         migration.up(context);
         const duration = Date.now() - startTime;
         recordStmt.run(migration.name, checksum, duration);
+        applied = true;
       });
       tx();
-      console.log(`[MigrationRunner] Applied migration: ${migration.name} (${Date.now() - startTime}ms)`);
+      if (applied) {
+        actuallyAppliedCount++;
+        console.log(`[MigrationRunner] Applied migration: ${migration.name} (${Date.now() - startTime}ms)`);
+      }
     }
 
     this.verifyIntegrity();
-    return { appliedCount: pending.length };
+    return { appliedCount: actuallyAppliedCount };
   }
 
   async runPending(
