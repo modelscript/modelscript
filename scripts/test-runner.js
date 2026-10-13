@@ -73,6 +73,18 @@ export function runTests(argv = process.argv.slice(2)) {
       if (!process.env.TEST_CONCURRENCY) {
         concurrency = val;
       }
+    } else if (arg.startsWith("--shard=")) {
+      // Nx pass-through flag for sharding projects across CI jobs: absorb so Node does not reject it
+    } else if (arg === "--shard") {
+      // Nx pass-through flag for sharding projects across CI jobs: absorb so Node does not reject it
+      i++;
+    } else if (arg.startsWith("--parallel=") || arg.startsWith("--projects=") || arg.startsWith("--output-style=")) {
+      // Nx pass-through orchestration flags: absorb
+    } else if (arg === "--parallel" || arg === "--projects" || arg === "--output-style") {
+      // Nx pass-through orchestration flags: absorb
+      i++;
+    } else if (arg === "--skip-nx-cache" || arg === "--verbose") {
+      // Nx pass-through boolean flags: absorb
     } else if (arg.startsWith("--import=")) {
       customArgs.push(arg);
       hasImport = true;
