@@ -56,6 +56,20 @@ export interface FalsificationResult {
   traceRecord?: CanonicalTraceRecord;
 }
 
+function findViolatingTimeIndex(times: number[], violationTime?: number): number | undefined {
+  if (violationTime === undefined || times.length === 0) return undefined;
+  let bestIdx = 0;
+  let bestDiff = Math.abs(times[0]! - violationTime);
+  for (let i = 1; i < times.length; i++) {
+    const diff = Math.abs(times[i]! - violationTime);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
 export class RequirementFalsifier {
   /**
    * Evaluates a batch of parameter sets either using `simulateBatch` if provided,
@@ -173,7 +187,7 @@ export class RequirementFalsifier {
             falsificationTime = evalRes.violationTime;
             if (evalRes.robustness < 0) {
               violatingTraj = traj;
-              violatingIndex = (evalRes as any).violationIndex ?? (evalRes as any).violationTime;
+              violatingIndex = findViolatingTimeIndex(traj.times, evalRes.violationTime);
             }
           }
         }
@@ -190,7 +204,7 @@ export class RequirementFalsifier {
           falsificationTime = evalRes.violationTime;
           if (evalRes.robustness < 0) {
             violatingTraj = traj!;
-            violatingIndex = (evalRes as any).violationIndex ?? (evalRes as any).violationTime;
+            violatingIndex = findViolatingTimeIndex(traj!.times, evalRes.violationTime);
           }
         }
         return evalRes.robustness;
@@ -317,7 +331,7 @@ export class RequirementFalsifier {
             signals: traj.signals,
             parameters: bestParams || candidateParams[i]!,
             minRobustness,
-            violatingTimeIndex: (evalRes as any).violationIndex ?? (evalRes as any).violationTime,
+            violatingTimeIndex: findViolatingTimeIndex(traj.times, evalRes.violationTime),
           });
 
           return {
@@ -418,7 +432,7 @@ export class RequirementFalsifier {
           signals: traj.signals,
           parameters: bestParams || pRec,
           minRobustness,
-          violatingTimeIndex: (evalRes as any).violationIndex ?? (evalRes as any).violationTime,
+          violatingTimeIndex: findViolatingTimeIndex(traj.times, evalRes.violationTime),
         });
 
         return {

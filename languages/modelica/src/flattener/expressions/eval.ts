@@ -813,9 +813,41 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         const children = db.childrenOf(fnSym.id) || [];
         for (const c of children) {
           if (c.kind === "Component" && (db as QueryDB).query("causality", c.id) === "output") {
-            const dims = normalizeDims((db as QueryDB).query<any>("arrayDimensions", c.id));
+            const rawDims = (db as QueryDB).query<any>("arrayDimensions", c.id);
+            const dims = normalizeDims(rawDims);
             if (dims) {
               return dims;
+            }
+            if (rawDims && Array.isArray(rawDims)) {
+              const inputs = children.filter(
+                (ch) => ch.kind === "Component" && (db as QueryDB).query("causality", ch.id) === "input",
+              );
+              const resolved: number[] = [];
+              let allResolved = true;
+              for (const rd of rawDims) {
+                const norm = normalizeDims([rd]);
+                if (norm && norm[0]! > 0) {
+                  resolved.push(norm[0]!);
+                  continue;
+                }
+                const dimText = rd?.text?.trim();
+                if (dimText) {
+                  const inputIdx = inputs.findIndex((inp) => inp.name === dimText);
+                  if (inputIdx >= 0) {
+                    const argExprId = inputIdx === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + inputIdx);
+                    const evalVal = evalDaeExpr(argExprId, dae);
+                    if (typeof evalVal === "number" && evalVal > 0) {
+                      resolved.push(Math.round(evalVal));
+                      continue;
+                    }
+                  }
+                }
+                allResolved = false;
+                break;
+              }
+              if (allResolved && resolved.length === rawDims.length) {
+                return resolved;
+              }
             }
           }
         }
@@ -897,7 +929,8 @@ export function evalDaeExpr(
               if (bindingId !== undefined && bindingId >= 0 && bindingId !== exprId) {
                 return evalDaeExpr(bindingId, dae, visitedExprs, visitedVars);
               }
-              if (!dae.isVarFixed(varIdx)) {
+              const startAttr = dae.getVarAttr(varIdx, "start");
+              if (startAttr === undefined || startAttr < 0) {
                 return null;
               }
               const startVal = dae.getVarStartValue(varIdx);

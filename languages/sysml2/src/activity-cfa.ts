@@ -314,7 +314,7 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
     let caseIdx = 1;
     while ((cm = caseRegex.exec(block.body)) !== null) {
       const guardStr = (cm[1] ?? cm[2])!.trim();
-      const targetStr = cm[3]!.trim();
+      const _targetStr = cm[3]!.trim();
       const targetName = `${decideName}_case_${caseIdx++}`;
       nodes.push({
         name: targetName,
@@ -840,7 +840,7 @@ export function extractActivityGraphsFromText(sysmlSource: string): Map<string, 
  */
 export function analyzeInterproceduralCfa(
   input: Map<string, ActivityGraph> | ActivityGraph[] | QueryDB,
-  rootActivityName?: string,
+  _rootActivityName?: string,
 ): InterproceduralCfaResult {
   const activityMap = new Map<string, ActivityGraph>();
   if (input instanceof Map) {
@@ -912,12 +912,14 @@ export function analyzeInterproceduralCfa(
 
   for (const actName of activityMap.keys()) {
     if (!visited.has(actName)) {
+      path.length = 0;
+      recStack.clear();
       detectCycle(actName);
     }
   }
 
   // 3. Pin Contract Checking & Soundness Propagation
-  for (const [callerName, graph] of activityMap) {
+  for (const [_callerName, graph] of activityMap) {
     for (const node of graph.nodes) {
       if (!node.calleeTypeName) continue;
 

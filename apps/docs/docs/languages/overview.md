@@ -6,17 +6,18 @@ ModelScript breaks down domain silos by providing first-class compiler and langu
 
 ## Language Support Matrix
 
-| Language     | Directory            | Standard / Dialect            | Primary Domain                      | Parser Technology        |
-| :----------- | :------------------- | :---------------------------- | :---------------------------------- | :----------------------- |
-| **Modelica** | `languages/modelica` | Modelica 3.x                  | 1D Multi-Domain Physical Simulation | WASM GLR (`parser.wasm`) |
-| **SysML v2** | `languages/sysml2`   | SysML v2 / KerML              | Systems Architecture & Requirements | WASM GLR (`parser.wasm`) |
-| **STEP**     | `languages/step`     | ISO 10303-21/203/214/242      | 3D CAD B-Rep Product Data           | WASM GLR (`parser.wasm`) |
-| **OWL2**     | `languages/owl2`     | OWL 2 Functional-Style        | Ontological Knowledge & Taxonomies  | WASM GLR (`parser.wasm`) |
-| **CSV**      | `languages/csv`      | RFC 4180 / Sensor CSV         | Telemetry & Calibration Datasets    | WASM GLR (`parser.wasm`) |
-| **CFD**      | `languages/cfd`      | SU2 / OpenFOAM dialects       | Fluid Dynamics & Flow Boundaries    | WASM GLR (`parser.wasm`) |
-| **FEA**      | `languages/fea`      | Bulk Data (.bdf) / Code_Aster | Structural Stress & Finite Elements | WASM GLR (`parser.wasm`) |
-| **OpenSCAD** | `languages/scad`     | OpenSCAD CSG                  | Programmatic 3D Solid Geometry      | WASM GLR (`parser.wasm`) |
-| **SSP**      | `languages/ssp`      | Modelica Assoc. SSP 1.0       | Co-Simulation System Packaging      | WASM GLR / XML Parser    |
+| Language     | Directory            | Standard / Dialect             | Primary Domain                      | Parser Technology           |
+| :----------- | :------------------- | :----------------------------- | :---------------------------------- | :-------------------------- |
+| **Modelica** | `languages/modelica` | Modelica 3.x                   | 1D Multi-Domain Physical Simulation | WASM GLR (`parser.wasm`)    |
+| **SysML v2** | `languages/sysml2`   | SysML v2 / KerML               | Systems Architecture & Requirements | WASM GLR (`parser.wasm`)    |
+| **STEP**     | `languages/step`     | ISO 10303-21/203/214/242       | 3D CAD B-Rep Product Data           | WASM GLR (`parser.wasm`)    |
+| **OWL2**     | `languages/owl2`     | OWL 2 Functional-Style         | Ontological Knowledge & Taxonomies  | WASM GLR (`parser.wasm`)    |
+| **CSV**      | `languages/csv`      | RFC 4180 / Sensor CSV          | Telemetry & Calibration Datasets    | WASM GLR (`parser.wasm`)    |
+| **CFD**      | `languages/cfd`      | SU2 / OpenFOAM dialects        | Fluid Dynamics & Flow Boundaries    | WASM GLR (`parser.wasm`)    |
+| **FEA**      | `languages/fea`      | Bulk Data (.bdf) / Code_Aster  | Structural Stress & Finite Elements | WASM GLR (`parser.wasm`)    |
+| **OpenSCAD** | `languages/scad`     | OpenSCAD CSG                   | Programmatic 3D Solid Geometry      | WASM GLR (`parser.wasm`)    |
+| **SSP**      | `languages/ssp`      | Modelica Assoc. SSP 1.0        | Co-Simulation System Packaging      | WASM GLR / XML Parser       |
+| **PSCAD**    | `languages/pscad`    | PSCAD v4.6/v5.x (.pscx, .pswx) | Power Systems & EMT Transients      | XML Streaming AST / Netlist |
 
 ---
 
@@ -51,16 +52,17 @@ flowchart TD
 
 ---
 
-## The 9-Domain Computable Digital Thread
+## The 10-Domain Computable Digital Thread
 
 Rather than maintaining distinct files in isolation, ModelScript indexes these languages into a shared, linear-memory alignment hypergraph (`@modelscript/runtime/interop/thread_hypergraph`):
 
 1. **Architecture & Requirements**: SysML v2 part usages define requirements and structural hierarchies.
 2. **Physical Dynamics**: Modelica models define differential algebraic equations and power-conserving connections.
-3. **Geometric CAD**: STEP (ISO 10303) solids define mass properties, bounding volumes, and kinematic visual components.
-4. **Continuum Fields**: CFD and FEA dialects define boundary flow conditions and structural stress limits.
-5. **Ontologies & Taxonomies**: OWL2 knowledge bases formalize domain axioms and component classifications.
-6. **Telemetry & Calibration**: CSV streams feed empirical sensor data into parameter estimation and trade studies.
-7. **Packaging & Co-Simulation**: SSP topologies define FMI multi-model orchestration.
+3. **Power Grid & EMT Transients**: PSCAD projects define companion-circuit networks, Bergeron traveling-wave lines, and IEEE 2800 IBR grid code ride-through.
+4. **Geometric CAD**: STEP (ISO 10303) solids define mass properties, bounding volumes, and kinematic visual components.
+5. **Continuum Fields**: CFD and FEA dialects define boundary flow conditions and structural stress limits.
+6. **Ontologies & Taxonomies**: OWL2 knowledge bases formalize domain axioms and component classifications.
+7. **Telemetry & Calibration**: CSV streams feed empirical sensor data into parameter estimation and trade studies.
+8. **Packaging & Co-Simulation**: SSP topologies define FMI multi-model orchestration.
 
 Because the digital thread is **computable**, modifying a geometry file or parameter triggers automatic Salsa cache invalidation, TGG synchronization, and Nelson-Oppen verification across all connected domains.

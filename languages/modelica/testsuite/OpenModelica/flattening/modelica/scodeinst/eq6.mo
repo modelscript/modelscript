@@ -1,7 +1,6 @@
 // name: eq6.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 package P

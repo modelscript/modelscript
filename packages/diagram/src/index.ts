@@ -2148,6 +2148,7 @@ export * from "./property-sheet-controller.js";
 export * from "./property-validator.js";
 export * from "./protocol.js";
 export type { ReactiveAnimationBinding, X6Markup } from "./protocol.js";
+export * from "./pscad-diagram-builder.js";
 export * from "./svg-renderer.js";
 export * from "./swimlane-layout.js";
 export * from "./telemetry.js";

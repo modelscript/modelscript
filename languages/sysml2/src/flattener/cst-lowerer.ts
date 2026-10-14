@@ -304,7 +304,8 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   if (type === "FeatureReferenceExpression" || type === "Name" || type === "ID" || type === "QualifiedName") {
     let rawName = node.text.trim();
     if (prefix && localNames) {
-      const root = rawName.split(".")[0]!;
+      const dotIdx = rawName.indexOf(".");
+      const root = dotIdx === -1 ? rawName : rawName.slice(0, dotIdx);
       if (localNames.has(root)) {
         rawName = prefix + rawName;
       }
@@ -323,8 +324,12 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   // Fallback variable reference
   if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(rawText)) {
     let name = rawText;
-    if (prefix && localNames && localNames.has(name.split(".")[0]!)) {
-      name = prefix + name;
+    if (prefix && localNames) {
+      const dotIdx = name.indexOf(".");
+      const root = dotIdx === -1 ? name : name.slice(0, dotIdx);
+      if (localNames.has(root)) {
+        name = prefix + name;
+      }
     }
     const nameId = arena.interner.intern(name);
     return arena.addName(nameId);
@@ -341,6 +346,7 @@ export class SysML2CstFlattener {
   private portDefs = new Map<string, PortMeta>();
   private compDefs = new Map<string, any>();
   private activePorts = new Map<string, ActivePortInstance>();
+  private connections: { p1: string; p2: string }[] = [];
   private parameters: string[] = [];
   private states: string[] = [];
   private derivatives: string[] = [];
@@ -385,6 +391,9 @@ export class SysML2CstFlattener {
     if (rootDefNode) {
       this.elaborateComponent(rootDefNode, "", this.overrides);
     }
+
+    // 4. Resolve global connection topology and Kirchhoff port conservation
+    this.processGlobalConnections();
 
     return {
       arena: this.arena,
@@ -490,9 +499,37 @@ export class SysML2CstFlattener {
 
   /**
    * Elaborates a component definition: attributes, ports, subparts, inheritance, equations.
+   * Uses visitedDefs set to prevent unbounded recursion on circular inheritance cycles.
    */
-  private elaborateComponent(compNode: any, prefix: string, overrides: Record<string, number>): void {
+  private elaborateComponent(
+    compNode: any,
+    prefix: string,
+    overrides: Record<string, number>,
+    visitedDefs = new Set<string>(),
+  ): void {
+    const compNameNode = findFirstDescendant(compNode, "Name") || findFirstDescendant(compNode, "ID");
+    const compName = compNameNode?.text?.trim() || "";
+    const visitKey = `${prefix}::${compName}`;
+    if (visitedDefs.has(visitKey)) return;
+    visitedDefs.add(visitKey);
+
     const localNames = new Set<string>();
+
+    // Collect all state variables referenced via der(x) in CST equations (zero-regex)
+    const derStateNames = new Set<string>();
+    const invNodes = findCstDescendants(compNode, "InvocationExpression");
+    for (const inv of invNodes) {
+      const fnNode = findFirstDescendant(inv, "ID") || inv.childForFieldName?.("instantiatedType");
+      if (fnNode?.text?.trim() === "der") {
+        const argNode = findFirstDescendant(inv, "Argument") || findFirstDescendant(inv, "FeatureReferenceExpression");
+        const argText = argNode?.text?.trim();
+        if (argText) {
+          const dotIdx = argText.indexOf(".");
+          const baseName = dotIdx === -1 ? argText : argText.slice(0, dotIdx);
+          derStateNames.add(baseName);
+        }
+      }
+    }
 
     // 1. Process Inheritance (:>)
     const subclassificationNodes = findCstChildren(compNode, "OwnedSubclassification");
@@ -500,8 +537,8 @@ export class SysML2CstFlattener {
       const superName = sc.text.replace(/^[:>\s]+/, "").trim();
       const superDefNode = this.compDefs.get(superName);
       if (superDefNode && superDefNode !== compNode) {
-        // Inherit members of superclass first
-        this.elaborateComponent(superDefNode, prefix, overrides);
+        // Inherit members of superclass first with cycle guard
+        this.elaborateComponent(superDefNode, prefix, overrides, visitedDefs);
       }
     }
 
@@ -576,7 +613,7 @@ export class SysML2CstFlattener {
       const causality = isInput ? Causality.Input : isOutput ? Causality.Output : Causality.Local;
 
       // Check if state variable: der(attrName) referenced in equations
-      const isState = new RegExp(`\\bder\\s*\\(\\s*${attrName}\\s*\\)`).test(compNode.text);
+      const isState = derStateNames.has(attrName);
       const isParam = !isState && (isInput || valNode !== null || overrides[attrName] !== undefined);
       const variability = isParam ? Variability.Parameter : Variability.Continuous;
 
@@ -612,11 +649,11 @@ export class SysML2CstFlattener {
       const typeNode = findFirstDescendant(pu, "FeatureTyping");
       const subTypeName = typeNode?.text?.replace(/^[:\s]+/, "").trim() || "";
 
-      // Extract multiplicity: e.g. [4]
+      // Extract multiplicity: e.g. [4], [1..4], [0..4]
       let multiplicity = 1;
       const multNode = findFirstDescendant(pu, "OwnedMultiplicity") || findFirstDescendant(pu, "MultiplicityRange");
       if (multNode) {
-        const numMatch = multNode.text.match(/\[\s*(\d+)\s*\]/);
+        const numMatch = multNode.text.match(/\[\s*(?:\d+\s*\.\.\s*)?(\d+)\s*\]/);
         if (numMatch) {
           multiplicity = parseInt(numMatch[1]!, 10);
         }
@@ -631,11 +668,11 @@ export class SysML2CstFlattener {
           // Instantiate array elements: wheels[1], wheels[2], ..., wheels[N]
           for (let i = 1; i <= multiplicity; i++) {
             const subPrefix = `${prefix}${partName}[${i}].`;
-            this.elaborateComponent(subCompDef, subPrefix, subOverrides);
+            this.elaborateComponent(subCompDef, subPrefix, subOverrides, new Set<string>());
           }
         } else {
           const subPrefix = `${prefix}${partName}.`;
-          this.elaborateComponent(subCompDef, subPrefix, subOverrides);
+          this.elaborateComponent(subCompDef, subPrefix, subOverrides, new Set<string>());
         }
       }
     }
@@ -643,7 +680,7 @@ export class SysML2CstFlattener {
     // 5. Process Equations & Assert Constraints
     this.elaborateEquations(compNode, prefix, localNames);
 
-    // 6. Process Connections & Port Balancing
+    // 6. Collect Connections
     this.elaborateConnections(compNode, prefix);
   }
 
@@ -700,40 +737,100 @@ export class SysML2CstFlattener {
         refNodes = findCstDescendants(cu, "FeatureReferenceExpression");
       }
       if (refNodes.length >= 2) {
-        const p1Raw = refNodes[0].text.trim();
-        const p2Raw = refNodes[1].text.trim();
+        for (let i = 0; i < refNodes.length - 1; i++) {
+          const p1Raw = refNodes[i].text.trim();
+          const p2Raw = refNodes[i + 1].text.trim();
 
-        const p1 = prefix + p1Raw;
-        const p2 = prefix + p2Raw;
+          const p1 = prefix + p1Raw;
+          const p2 = prefix + p2Raw;
 
-        const port1 = this.activePorts.get(p1);
-        const port2 = this.activePorts.get(p2);
+          this.connections.push({ p1, p2 });
+        }
+      }
+    }
+  }
 
-        if (port1 && port2) {
-          // 1. Potential attributes equal: p1.v == p2.v
-          for (const pot of port1.potentialAttrs) {
-            const v1Name = this.arena.interner.intern(`${p1}.${pot}`);
-            const v2Name = this.arena.interner.intern(`${p2}.${pot}`);
+  /**
+   * Post-processes all connections across the model using a Disjoint Set (Union-Find)
+   * to strictly balance Kirchhoff potential equalities and multi-port sum-to-zero flow conservation.
+   */
+  private processGlobalConnections(): void {
+    const unionMap = new Map<string, string>();
+    const findRoot = (x: string): string => {
+      let curr = x;
+      while (unionMap.has(curr)) curr = unionMap.get(curr)!;
+      return curr;
+    };
+    const union = (a: string, b: string) => {
+      const ra = findRoot(a);
+      const rb = findRoot(b);
+      if (ra !== rb) unionMap.set(rb, ra);
+    };
+
+    for (const conn of this.connections) {
+      const port1 = this.activePorts.get(conn.p1);
+      const port2 = this.activePorts.get(conn.p2);
+
+      if (port1 && port2) {
+        // 1. Potential attributes equal: p1.v == p2.v
+        for (const pot of port1.potentialAttrs) {
+          if (port2.potentialAttrs.includes(pot)) {
+            const v1Name = this.arena.interner.intern(`${conn.p1}.${pot}`);
+            const v2Name = this.arena.interner.intern(`${conn.p2}.${pot}`);
             const v1Expr = this.arena.addName(v1Name);
             const v2Expr = this.arena.addName(v2Name);
             this.arena.addEquation(EqKind.Simple, v1Expr, v2Expr);
           }
+        }
 
-          // 2. Flow conservation: sum of currents = 0 (accounting for conjugation)
-          for (const fl of port1.flowAttrs) {
-            const i1Name = this.arena.interner.intern(`${p1}.${fl}`);
-            const i2Name = this.arena.interner.intern(`${p2}.${fl}`);
-            const i1Expr = this.arena.addName(i1Name);
-            const i2Expr = this.arena.addName(i2Name);
-
-            // If port1 is conjugated, flow direction is inverted
-            const signedI1 = port1.isConjugated ? this.arena.addUnaryExpr(UnaryOp.Negate, i1Expr) : i1Expr;
-            const signedI2 = port2.isConjugated ? this.arena.addUnaryExpr(UnaryOp.Negate, i2Expr) : i2Expr;
-
-            const sumExpr = this.arena.addBinaryExpr(BinOp.Add, signedI1, signedI2);
-            const zeroExpr = this.arena.addRealLiteral(0.0);
-            this.arena.addEquation(EqKind.Simple, sumExpr, zeroExpr);
+        // 2. Group flow terminals into the same junction equivalence class
+        for (const fl of port1.flowAttrs) {
+          if (port2.flowAttrs.includes(fl)) {
+            union(`${conn.p1}.${fl}`, `${conn.p2}.${fl}`);
           }
+        }
+      } else {
+        // Direct scalar variable connection
+        const n1 = this.arena.interner.intern(conn.p1);
+        const n2 = this.arena.interner.intern(conn.p2);
+        const e1 = this.arena.addName(n1);
+        const e2 = this.arena.addName(n2);
+        this.arena.addEquation(EqKind.Simple, e1, e2);
+      }
+    }
+
+    // Group flow pins by junction root
+    const junctionGroups = new Map<string, string[]>();
+    for (const port of this.activePorts.values()) {
+      for (const fl of port.flowAttrs) {
+        const pinName = `${port.fullName}.${fl}`;
+        const root = findRoot(pinName);
+        if (!junctionGroups.has(root)) junctionGroups.set(root, []);
+        junctionGroups.get(root)!.push(pinName);
+      }
+    }
+
+    // Emit single Kirchhoff flow sum-to-zero conservation equation per junction (with conjugation sign)
+    for (const pins of junctionGroups.values()) {
+      if (pins.length >= 2) {
+        let sumExpr: number | null = null;
+        for (const pinName of pins) {
+          const dotIdx = pinName.lastIndexOf(".");
+          const portFullName = dotIdx !== -1 ? pinName.slice(0, dotIdx) : pinName;
+          const port = this.activePorts.get(portFullName);
+          const nameId = this.arena.interner.intern(pinName);
+          const exprId = this.arena.addName(nameId);
+          const signedExpr = port?.isConjugated ? this.arena.addUnaryExpr(UnaryOp.Negate, exprId) : exprId;
+
+          if (sumExpr === null) {
+            sumExpr = signedExpr;
+          } else {
+            sumExpr = this.arena.addBinaryExpr(BinOp.Add, sumExpr, signedExpr);
+          }
+        }
+        if (sumExpr !== null) {
+          const zeroExpr = this.arena.addRealLiteral(0.0);
+          this.arena.addEquation(EqKind.Simple, sumExpr, zeroExpr);
         }
       }
     }

@@ -1,7 +1,6 @@
 // name: Final1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model Final1

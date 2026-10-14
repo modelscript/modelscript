@@ -1,7 +1,6 @@
 // name: mod6.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 

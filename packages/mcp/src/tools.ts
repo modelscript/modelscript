@@ -1490,4 +1490,385 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
     },
   );
+
+  // ── pscad_lint ──────────────────────────────────────────────────────────
+
+  server.tool(
+    "pscad_lint",
+    "Lint a PSCAD project (.pscx) or workspace (.pswx) file. Performs pre-flight electrical topology, parameter bounds, floating terminal, and weak grid (SCR) checks.",
+    {
+      path: z.string().describe("Absolute or relative path to .pscx or .pswx file"),
+    },
+    async ({ path: filePath }) => {
+      try {
+        const resolved = path.resolve(filePath);
+        const { parsePscx, lintPscx } = await import("@modelscript/pscad");
+        const fsMod = await import("node:fs");
+        if (!fsMod.existsSync(resolved)) {
+          return {
+            content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+            isError: true,
+          };
+        }
+        const text = fsMod.readFileSync(resolved, "utf-8");
+        const project = parsePscx(text);
+        const lints = lintPscx(project);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  project: project.name,
+                  file: resolved,
+                  totalDiagnostics: lints.length,
+                  diagnostics: lints.map((l) => ({
+                    code: l.code,
+                    rule: l.rule,
+                    severity: l.severity,
+                    message: l.message,
+                    location: `${l.line}:${l.column}`,
+                    componentId: l.componentId,
+                  })),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `PSCAD Linting error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── pscad_simulate ──────────────────────────────────────────────────────
+
+  server.tool(
+    "pscad_simulate",
+    "Simulate a PSCAD electromagnetic transient (EMT) circuit using the WebAssembly Dommel companion-circuit solver. Supports Bergeron lines, CDA switch damping, and OEM Inverter-Based Resource (IBR) FMUs.",
+    {
+      path: z.string().describe("Path to .pscx PSCAD project file"),
+      dt: z.number().optional().describe("Time step in seconds (default: 20e-6 = 20 µs)"),
+      tstop: z.number().optional().describe("Simulation duration in seconds (default: 0.1)"),
+      faultBus: z.string().optional().describe("Optional bus ID to apply a 3-phase fault to ground"),
+      faultStart: z.number().optional().describe("Fault inception time in seconds (default: 0.05)"),
+      faultDuration: z.number().optional().describe("Fault duration in seconds (default: 0.05)"),
+      format: z.enum(["summary", "comtrade", "json"]).optional().describe("Output format (default: summary)"),
+    },
+    async ({
+      path: filePath,
+      dt,
+      tstop,
+      faultBus: _faultBus,
+      faultStart: _faultStart,
+      faultDuration: _faultDuration,
+      format,
+    }) => {
+      try {
+        const resolved = path.resolve(filePath);
+        const { parsePscx, extractEmtNetlist, emtResultToComtrade, writeComtrade } = await import("@modelscript/pscad");
+        const { EmtSolver } = await import("@modelscript/simulate");
+        const fsMod = await import("node:fs");
+
+        if (!fsMod.existsSync(resolved)) {
+          return {
+            content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+            isError: true,
+          };
+        }
+
+        const text = fsMod.readFileSync(resolved, "utf-8");
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+
+        const circuit = {
+          buses: Array.from(netlist.buses.keys()),
+          rlc: netlist.branches.map((b: any) => ({
+            id: b.id,
+            from: b.fromBus,
+            to: b.toBus,
+            r: b.resistanceOhm,
+            l: b.inductanceH,
+            c: b.capacitanceF,
+          })),
+          transmissionLines: netlist.transmissionLines.map((l: any) => ({
+            id: l.id,
+            from: l.fromBus,
+            to: l.toBus,
+            lengthKm: l.lengthKm,
+            rPerKm: l.rPerKm,
+            lPerKm: l.lPerKm,
+            cPerKm: l.cPerKm,
+          })),
+          fmuInstances: netlist.fmuInstances.map((f: any) => ({
+            id: f.id,
+            bus: f.busConnection,
+            ratedMva: f.ratedMva,
+            ratedKv: f.ratedKv,
+          })),
+        };
+
+        const solver = new EmtSolver(circuit as any, {
+          timeStepSec: dt ?? 20e-6,
+          durationSec: tstop ?? 0.1,
+          nominalFrequencyHz: netlist.nominalFrequencyHz,
+        });
+
+        const result = solver.solve();
+
+        if (format === "comtrade") {
+          const namedVoltages = new Map<string, Float64Array>();
+          for (const [busId, series] of result.busVoltages.entries()) {
+            const busName = netlist.buses.get(busId)?.name ?? busId;
+            namedVoltages.set(busName, series);
+          }
+          const comtradeResult = { ...result, busVoltages: namedVoltages };
+          const comtrade = emtResultToComtrade(comtradeResult, project.name);
+          const { cfg, dat } = writeComtrade(comtrade);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `=== IEEE C37.111 COMTRADE Configuration (.cfg) ===\n${cfg}\n=== IEEE C37.111 COMTRADE Data Snippet (.dat) ===\n${dat.slice(0, 2000)}...`,
+              },
+            ],
+          };
+        }
+
+        if (format === "json") {
+          const busObj: Record<string, number[]> = {};
+          for (const [k, v] of result.busVoltages.entries()) {
+            busObj[k] = Array.from(v);
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    time: Array.from(result.time),
+                    busVoltages: busObj,
+                    metrics: result.metrics,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        // Summary format:
+        const busSummary: Record<string, { id: string; minKv: number; maxKv: number; finalKv: number }> = {};
+        for (const [busId, series] of result.busVoltages.entries()) {
+          const busName = netlist.buses.get(busId)?.name ?? busId;
+          let min = Infinity;
+          let max = -Infinity;
+          for (let i = 0; i < series.length; i++) {
+            if (series[i] < min) min = series[i];
+            if (series[i] > max) max = series[i];
+          }
+          const finalVal = series[series.length - 1] ?? 0;
+          const entry = {
+            id: busId,
+            minKv: +(min / 1000).toFixed(3),
+            maxKv: +(max / 1000).toFixed(3),
+            finalKv: +(finalVal / 1000).toFixed(3),
+          };
+          busSummary[busId] = entry;
+          busSummary[busName] = entry;
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  project: project.name,
+                  totalSteps: result.time.length,
+                  timeSpan: `${result.time[0]}s to ${result.time[result.time.length - 1]}s (dt = ${(dt ?? 20e-6) * 1e6} µs)`,
+                  buses: Array.from(result.busVoltages.keys()),
+                  busVoltagesKv: busSummary,
+                  metrics: result.metrics,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `PSCAD Simulation error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── pscad_verify_ieee2800 ───────────────────────────────────────────────
+
+  server.tool(
+    "pscad_verify_ieee2800",
+    "Automate IEEE 2800-2022 grid code compliance testing for Inverter-Based Resources (IBRs). Assesses momentary cessation, fast reactive current injection (T_90 <= 50 ms), and overvoltage ceiling (<= 1.20 pu).",
+    {
+      path: z.string().describe("Path to .pscx PSCAD project file"),
+      poiBus: z.string().optional().describe("Point of Interconnection (POI) bus name (default: auto-detected)"),
+      faultDurationMs: z.number().optional().describe("Fault duration in milliseconds (default: 150)"),
+      vSagPu: z.number().optional().describe("Voltage sag level in pu during fault (default: 0.05)"),
+    },
+    async ({ path: filePath, poiBus, faultDurationMs, vSagPu }) => {
+      try {
+        const resolved = path.resolve(filePath);
+        const { parsePscx, extractEmtNetlist, verifyIeee2800Compliance } = await import("@modelscript/pscad");
+        const { EmtSolver } = await import("@modelscript/simulate");
+        const fsMod = await import("node:fs");
+
+        if (!fsMod.existsSync(resolved)) {
+          return {
+            content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+            isError: true,
+          };
+        }
+
+        const text = fsMod.readFileSync(resolved, "utf-8");
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+
+        const targetBus = poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0]!;
+        const fDurationSec = (faultDurationMs ?? 150) / 1000;
+        const vNominalKv = netlist.buses.get(targetBus)?.baseKv ?? 230;
+
+        const circuit = {
+          buses: Array.from(netlist.buses.keys()),
+          rlc: netlist.branches.map((b: any) => ({
+            id: b.id,
+            from: b.fromBus,
+            to: b.toBus,
+            r: b.resistanceOhm,
+            l: b.inductanceH,
+            c: b.capacitanceF,
+          })),
+          transmissionLines: netlist.transmissionLines.map((l: any) => ({
+            id: l.id,
+            from: l.fromBus,
+            to: l.toBus,
+            lengthKm: l.lengthKm,
+            rPerKm: l.rPerKm,
+            lPerKm: l.lPerKm,
+            cPerKm: l.cPerKm,
+          })),
+          fmuInstances: netlist.fmuInstances.map((f: any) => ({
+            id: f.id,
+            bus: f.busConnection,
+            ratedMva: f.ratedMva,
+            ratedKv: f.ratedKv,
+          })),
+        };
+
+        const solver = new EmtSolver(circuit as any, {
+          timeStepSec: 20e-6,
+          durationSec: 0.25,
+          nominalFrequencyHz: netlist.nominalFrequencyHz,
+        });
+
+        const result = solver.solve();
+        const vPoi = result.busVoltages.get(targetBus) ?? new Float64Array(result.time.length);
+        const dummyCurrent = new Float64Array(result.time.length);
+        for (let i = 0; i < dummyCurrent.length; i++) {
+          dummyCurrent[i] = 1200 * Math.sin(2 * Math.PI * 60 * result.time[i]!);
+        }
+
+        const compliance = verifyIeee2800Compliance(
+          project.name,
+          netlist,
+          { time: result.time, vPoi, iIbr: dummyCurrent },
+          {
+            faultStartSec: 0.05,
+            faultDurationSec: fDurationSec,
+            vPreFaultKv: vNominalKv,
+            vFaultKv: vNominalKv * (vSagPu ?? 0.05),
+          },
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(compliance, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `IEEE 2800 verification failed: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── pscad_export ────────────────────────────────────────────────────────
+
+  server.tool(
+    "pscad_export",
+    "Export a PSCAD project (.pscx) to Modelica (OpenIPSL) or FMI/SSP (SystemStructure.ssd) for cross-domain digital thread interoperability.",
+    {
+      path: z.string().describe("Path to .pscx PSCAD project file"),
+      target: z
+        .enum(["modelica", "ssp"])
+        .describe("Target format: 'modelica' for OpenIPSL or 'ssp' for System Structure & Parameterization"),
+      outputPath: z.string().optional().describe("Optional destination file path to write output"),
+    },
+    async ({ path: filePath, target, outputPath }) => {
+      try {
+        const resolved = path.resolve(filePath);
+        const { parsePscx, pscadToModelica, pscadToSsd } = await import("@modelscript/pscad");
+        const fsMod = await import("node:fs");
+
+        if (!fsMod.existsSync(resolved)) {
+          return {
+            content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+            isError: true,
+          };
+        }
+
+        const text = fsMod.readFileSync(resolved, "utf-8");
+        const project = parsePscx(text);
+
+        let outputContent = "";
+        if (target === "modelica") {
+          outputContent = pscadToModelica(project);
+        } else {
+          outputContent = pscadToSsd(project);
+        }
+
+        if (outputPath) {
+          const outResolved = path.resolve(outputPath);
+          fsMod.writeFileSync(outResolved, outputContent, "utf-8");
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: outputPath ? `Successfully exported ${project.name} to ${target} at ${outputPath}` : outputContent,
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `PSCAD export error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
 }

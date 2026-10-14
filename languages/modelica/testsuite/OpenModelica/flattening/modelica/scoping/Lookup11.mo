@@ -1,7 +1,6 @@
 // name:     Lookup11
 // keywords: scoping, fully qualified, cref, #2738
 // status:   correct
-// xfail:    true
 //
 // Checks that the elaboration respects the full qualification on crefs.
 //

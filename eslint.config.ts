@@ -109,6 +109,7 @@ export default defineConfig([
             "languages/fea/tests/*.ts",
             "languages/csv/tests/*.ts",
             "languages/modelscript/tests/*.ts",
+            "languages/pscad/tests/*.ts",
             "apps/api/tests/*.ts",
             "scripts/benchmark-polyglot-incremental.ts",
           ],

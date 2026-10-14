@@ -1,7 +1,6 @@
 // name:     Circuit1
 // keywords:
 // status:   correct
-// xfail:    true
 //
 // This is the example from the report.  It is here to have a somewhat
 // larger test.

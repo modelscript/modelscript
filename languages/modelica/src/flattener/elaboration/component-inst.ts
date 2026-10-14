@@ -5234,6 +5234,42 @@ export function instantiateElements(
                         }
                       }
                     }
+                    if (
+                      (variability === Variability.Parameter || variability === Variability.Constant) &&
+                      dae.getExprKind(loweredId) === ExprKind.Call
+                    ) {
+                      const fnNameId = dae.getExprData1(loweredId);
+                      const fnName = dae.interner.resolve(fnNameId);
+                      const argCount = dae.getExprRight(loweredId);
+                      const firstArg = dae.getExprLeft(loweredId);
+                      const evalArgs: any[] = [];
+                      let allArgsOk = true;
+                      for (let aIdx = 0; aIdx < argCount; aIdx++) {
+                        const aId = aIdx === 0 ? firstArg : dae.getExprLeft(loweredId + aIdx);
+                        const val = evalDaeExpr(aId, dae);
+                        if (val !== null && val !== undefined) {
+                          evalArgs.push(val);
+                        } else {
+                          allArgsOk = false;
+                          break;
+                        }
+                      }
+                      if (allArgsOk && fnName) {
+                        try {
+                          const evalRes = evaluateArenaFunctionCall(
+                            dae,
+                            fnNameId,
+                            evalArgs,
+                            flattener.db,
+                            flattener.currentRootClassId,
+                          );
+                          if (evalRes) {
+                            const evaluatedKey = prefix ? `${prefix}.${name}` : name;
+                            flattener.evaluatedConstantArrays.set(evaluatedKey, evalRes);
+                          }
+                        } catch {}
+                      }
+                    }
                   }
                 }
               }
@@ -5339,7 +5375,6 @@ export function instantiateElements(
                           }
                         }
                       }
-                      if (resolvedDims[i]! > 0) continue;
                     }
                     if (fnObj) {
                       const argParts = splitTopLevelArgs(argsText);

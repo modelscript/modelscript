@@ -1,7 +1,6 @@
 // name: BuiltinAttribute19
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

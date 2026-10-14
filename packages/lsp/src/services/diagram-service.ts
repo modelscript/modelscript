@@ -65,6 +65,37 @@ export class DiagramService {
     // text editor of diagnostic updates. Instead, build the diagram from the
     // most recently indexed AST (at worst ~300ms stale).
 
+    // PSCAD — generate AntV X6 diagram data directly
+    if (/\.(pscx|pswx|psmx)($|\?|#)/i.test(params.uri)) {
+      try {
+        let text = this.documentManager.documents.get(params.uri)?.getText();
+        if (!text) {
+          const filePath = params.uri.startsWith("file://") ? fileURLToPath(params.uri) : params.uri;
+          if (fs.existsSync(filePath)) {
+            text = fs.readFileSync(filePath, "utf-8");
+          }
+        }
+        if (text) {
+          const { parsePscx } = await import("@modelscript/pscad");
+          const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
+          const project = parsePscx(text);
+          const rawDiagram = buildPscadDiagram(project);
+          const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
+          const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
+          return {
+            nodes,
+            edges,
+            coordinateSystem: { x: 0, y: 0, width: 1200, height: 800 },
+            cells: rawDiagram.cells,
+            metadata: rawDiagram.metadata,
+          };
+        }
+      } catch (err: any) {
+        this.connection.console.error(`[diagram] Failed to build PSCAD diagram for ${params.uri}: ${err.message}`);
+      }
+      return null;
+    }
+
     // Non-Modelica (SysML2 or generic DSL) — delegate directly to dispatch
     if (!params.uri.endsWith(".mo")) {
       if (params.sidecarContent) {

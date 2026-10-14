@@ -1,4 +1,3 @@
-// xfail:    true
 model BaseProperties
   parameter Integer a;
   parameter Integer b = 1;

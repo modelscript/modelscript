@@ -6521,14 +6521,28 @@ export function lowerCSTExpression(
           // Vector/Matrix / Scalar
           const leftElems = getArrayCtorElements(effectiveLeftId, dae);
           const isMatrix = leftElems.length > 0 && dae.getExprKind(leftElems[0]!) === ExprKind.ArrayCtor;
+          let castRight = rightId;
+          if (!isRealExpr(castRight, dae)) {
+            castRight = castToRealExpr(castRight, dae);
+          }
           if (isMatrix) {
             const rows = leftElems.map((r) => {
               const rElems = getArrayCtorElements(r, dae);
-              return dae.addArrayCtorExpr(rElems.map((e) => dae.addBinaryExpr(BinOp.Div, e, rightId)));
+              return dae.addArrayCtorExpr(
+                rElems.map((e) => {
+                  const castE = !isRealExpr(e, dae) ? castToRealExpr(e, dae) : e;
+                  return dae.addBinaryExpr(BinOp.Div, castE, castRight);
+                }),
+              );
             });
             return dae.addArrayCtorExpr(rows);
           } else {
-            return dae.addArrayCtorExpr(leftElems.map((e) => dae.addBinaryExpr(BinOp.Div, e, rightId)));
+            return dae.addArrayCtorExpr(
+              leftElems.map((e) => {
+                const castE = !isRealExpr(e, dae) ? castToRealExpr(e, dae) : e;
+                return dae.addBinaryExpr(BinOp.Div, castE, castRight);
+              }),
+            );
           }
         }
       }
@@ -7549,19 +7563,32 @@ export function lowerCSTExpression(
               startPosition: stmtNode.startPosition,
               endPosition: stmtNode.endPosition,
             };
-            const joinSep = flattener?.options?.omcCompatibility ? "," : ", ";
             const subStrs = p.subscripts.map(
               (s) => s.scalarText ?? (s.values[0] !== undefined ? String(s.values[0]) : s.text),
             );
-            const refStr = rawParts
-              .map((x, idx) =>
-                idx === pi
-                  ? `${x.ident}[${subStrs.join(joinSep)}]`
-                  : x.hasSubscripts
-                    ? `${x.ident}[${x.subscripts.map((s) => s.scalarText ?? (s.values[0] !== undefined ? String(s.values[0]) : s.text)).join(joinSep)}]`
-                    : x.ident,
-              )
-              .join(".");
+            const delim = (dae.extensionMetadata as any)?.isOldFrontend ? "," : ", ";
+            const rawRefText = node?.text?.trim();
+            const refStr = (dae.extensionMetadata as any)?.isOldFrontend
+              ? rawParts
+                  .map((x, idx) =>
+                    idx === pi
+                      ? `${x.ident}[${subStrs.join(delim)}]`
+                      : x.hasSubscripts
+                        ? `${x.ident}[${x.subscripts.map((s) => s.scalarText ?? (s.values[0] !== undefined ? String(s.values[0]) : s.text)).join(delim)}]`
+                        : x.ident,
+                  )
+                  .join(".")
+              : rawRefText && rawRefText.startsWith(rawParts[0]?.ident ?? "")
+                ? rawRefText
+                : rawParts
+                    .map((x, idx) =>
+                      idx === pi
+                        ? `${x.ident}[${subStrs.join(delim)}]`
+                        : x.hasSubscripts
+                          ? `${x.ident}[${x.subscripts.map((s) => s.scalarText ?? (s.values[0] !== undefined ? String(s.values[0]) : s.text)).join(delim)}]`
+                          : x.ident,
+                    )
+                    .join(".");
             const actualCount =
               pi < rawParts.length - 1 ? rawParts[rawParts.length - 1].subscripts.length : p.subscripts.length;
             dae.diagnostics.push({

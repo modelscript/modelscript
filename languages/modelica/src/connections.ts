@@ -1467,7 +1467,8 @@ export class ModelicaPortBalancer {
           }
         }
       } else {
-        const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number; eqIdx: number }[] = [];
+        const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number; eqIdx: number; connOrder?: number }[] =
+          [];
         potentialEqs.forEach((eq) =>
           allEqs.push({
             kind: eq.kind,
@@ -1475,6 +1476,7 @@ export class ModelicaPortBalancer {
             rhs: eq.rhs,
             varIdx: dae.getVarIdxByName(eq.str),
             eqIdx: (eq as any).eqIdx ?? 99999,
+            connOrder: (eq as any).connOrder ?? 99999,
           }),
         );
         flowSumEqs.forEach((eq) =>
@@ -1501,6 +1503,15 @@ export class ModelicaPortBalancer {
         if (options?.omcCompatibility) {
           allEqs.sort((a, b) => {
             if (a.eqIdx !== b.eqIdx) return a.eqIdx - b.eqIdx;
+            if (
+              a.connOrder !== undefined &&
+              b.connOrder !== undefined &&
+              a.connOrder !== b.connOrder &&
+              a.connOrder < 99999 &&
+              b.connOrder < 99999
+            ) {
+              return a.connOrder - b.connOrder;
+            }
             const nameA = dae.getExprKind(a.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.lhs)) : "";
             const nameB = dae.getExprKind(b.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(b.lhs)) : "";
             if (nameA !== nameB) return nameA.localeCompare(nameB);

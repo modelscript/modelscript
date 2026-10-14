@@ -1,7 +1,6 @@
 // name: FuncBuiltinHomotopy
 // keywords: homotopy
 // status: correct
-// xfail:    true
 //
 // Tests the builtin homotopy operator.
 //

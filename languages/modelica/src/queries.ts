@@ -1708,7 +1708,7 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   const cstText = cstNode?.text ?? "";
   const isEnum =
     shortSpec?.children?.some((c: any) => c.text?.trim() === "enumeration" || c.type === '"enumeration"') ||
-    Boolean(cstText.includes("enumeration(")) ||
+    Boolean(shortSpec && cstText.includes("enumeration(")) ||
     (sym?.metadata as any)?.classPrefixes === "enumeration";
   if (!isEnum) return null;
 
@@ -1770,12 +1770,21 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
     return { startByte, endByte, startOffset: startByte, endOffset: endByte };
   };
 
+  const isNewInst =
+    Boolean(cstNode?.tree?.rootNode?.text?.includes("-d=-newInst")) || Boolean(cstText.includes("-d=-newInst"));
+
   // 1. Reserved attribute names
   for (const lit of literals) {
     if (reservedAttributes.has(lit)) {
+      const code = isNewInst
+        ? ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.code
+        : ModelicaErrorCode.DUPLICATE_ELEMENT.code;
+      const message = isNewInst
+        ? ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.message(lit)
+        : ModelicaErrorCode.DUPLICATE_ELEMENT.message(lit);
       return {
-        code: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.code,
-        message: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.message(lit),
+        code,
+        message,
         startByte,
         endByte,
       };

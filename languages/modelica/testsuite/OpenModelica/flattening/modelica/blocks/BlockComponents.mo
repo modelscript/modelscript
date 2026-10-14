@@ -1,7 +1,6 @@
 // name: BlockComponents
 // keywords: block
 // status: correct
-// xfail:    true
 //
 // Tests declaration and instantiation of a block with components in it
 //

@@ -11,7 +11,7 @@ end SubscriptTooMany1;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/scodeinst/SubscriptTooMany1.mo:7:3-7:19:writable] Error: Wrong number of subscripts in x[2, 2] (2 subscripts for 1 dimensions).
+// [OpenModelica/flattening/modelica/scodeinst/SubscriptTooMany1.mo:6:3-6:19:writable] Error: Wrong number of subscripts in x[2, 2] (2 subscripts for 1 dimensions).
 //
 // Execution failed!
 // endResult

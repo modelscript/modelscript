@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="IEEE9Bus_IBR" version="5.0.0" type="normal">
+  <param name="time_step" value="20.0"/>
+  <param name="time_duration" value="0.1"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001" />
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <!-- Generator 1 at Bus 1 -->
+        <User classid="UserCmp" defn="source_3p" id="G1" x="80" y="150" orient="0">
+          <param name="Name" value="HydroGen_1"/>
+          <param name="V" value="16.5"/>
+          <param name="MVA" value="250.0"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <!-- Step-up Transformer T1: 16.5 kV to 230 kV -->
+        <User classid="UserCmp" defn="xfmr-3p" id="T1" x="220" y="150" orient="0">
+          <param name="Name" value="StepUpTransformer"/>
+          <param name="MVA" value="250.0"/>
+          <param name="V1" value="16.5"/>
+          <param name="V2" value="230.0"/>
+          <param name="X" value="0.0576"/>
+          <port name="P" pos="[-30, 0]"/>
+          <port name="S" pos="[30, 0]"/>
+        </User>
+
+        <!-- Bus 1 (16.5 kV) and Bus 2 (230 kV) -->
+        <Bus name="Bus1" id="B1" x="110" y="150" length="80" vbase="16.5"/>
+        <Bus name="Bus2" id="B2" x="320" y="150" length="80" vbase="230.0"/>
+
+        <!-- Transmission Line 2-3 -->
+        <User classid="UserCmp" defn="tline_3p" id="L1" x="460" y="150" orient="0">
+          <param name="Name" value="TransmissionLine_2_3"/>
+          <param name="Length" value="50.0"/>
+          <param name="R" value="0.035"/>
+          <param name="L" value="0.0012"/>
+          <param name="C" value="1.2e-8"/>
+          <port name="in" pos="[-40, 0]"/>
+          <port name="out" pos="[40, 0]"/>
+        </User>
+
+        <!-- Bus 3 (230 kV) -->
+        <Bus name="Bus3" id="B3" x="560" y="150" length="80" vbase="230.0"/>
+
+        <!-- Solar IBR Inverter FMU at Bus 3 -->
+        <User classid="UserCmp" defn="inverter_fmu" id="INV1" x="680" y="150" orient="0">
+          <param name="Name" value="Solar_Inverter_100MW"/>
+          <param name="fmu_path" value="resources/SolarInverter.fmu"/>
+          <param name="MVA" value="100.0"/>
+          <param name="V" value="230.0"/>
+          <port name="term" pos="[-20, 0]"/>
+        </User>
+
+        <!-- Wires -->
+        <Wire>
+          <vertex x="100" y="150"/>
+          <vertex x="190" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="250" y="150"/>
+          <vertex x="320" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="400" y="150"/>
+          <vertex x="420" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="500" y="150"/>
+          <vertex x="560" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="640" y="150"/>
+          <vertex x="660" y="150"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

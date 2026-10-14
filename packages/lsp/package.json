@@ -111,6 +111,7 @@
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",
     "@modelscript/owl2": "*",
+    "@modelscript/pscad": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
     "@modelscript/step": "*",

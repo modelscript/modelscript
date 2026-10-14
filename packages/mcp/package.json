@@ -41,6 +41,7 @@
     "@modelscript/exchange": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/pscad": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
     "@modelscript/sysml2": "*",

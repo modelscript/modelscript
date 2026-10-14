@@ -1,7 +1,6 @@
 // name: DimSize1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model DimSize1

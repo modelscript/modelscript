@@ -563,3 +563,205 @@ export function numericReadoutBadgeGlyph(options?: {
     },
   ];
 }
+
+/**
+ * IEEE Standard 2-Winding Transformer Glyph (Overlapping Circles).
+ */
+export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#90caf9";
+  const strokeWidth = options?.strokeWidth ?? 2;
+  const fill = options?.fill ?? "none";
+
+  return [
+    // Primary Winding Circle
+    {
+      tagName: "circle",
+      selector: "primaryWinding",
+      attrs: {
+        cx: 24,
+        cy: 30,
+        r: 16,
+        fill,
+        stroke,
+        strokeWidth,
+      },
+    },
+    // Secondary Winding Circle
+    {
+      tagName: "circle",
+      selector: "secondaryWinding",
+      attrs: {
+        cx: 44,
+        cy: 30,
+        r: 16,
+        fill,
+        stroke,
+        strokeWidth,
+      },
+    },
+    // Primary Lead
+    {
+      tagName: "line",
+      selector: "primaryLead",
+      attrs: {
+        x1: 8,
+        y1: 30,
+        x2: 0,
+        y2: 30,
+        stroke,
+        strokeWidth,
+      },
+    },
+    // Secondary Lead
+    {
+      tagName: "line",
+      selector: "secondaryLead",
+      attrs: {
+        x1: 60,
+        y1: 30,
+        x2: 68,
+        y2: 30,
+        stroke,
+        strokeWidth,
+      },
+    },
+  ];
+}
+
+/**
+ * Synchronous Generator / AC Source Glyph (Circle with Sine Wave).
+ */
+export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#ffd54f";
+  const strokeWidth = options?.strokeWidth ?? 2;
+  const fill = options?.fill ?? "rgba(255, 213, 79, 0.08)";
+
+  return [
+    // Outer Circle
+    {
+      tagName: "circle",
+      selector: "genCircle",
+      attrs: {
+        cx: 30,
+        cy: 30,
+        r: 24,
+        fill,
+        stroke,
+        strokeWidth,
+      },
+    },
+    // Sine Wave ~
+    {
+      tagName: "path",
+      selector: "genSine",
+      attrs: {
+        d: "M 18,30 Q 24,20 30,30 Q 36,40 42,30",
+        fill: "none",
+        stroke,
+        strokeWidth: 2,
+      },
+    },
+  ];
+}
+
+/**
+ * Inverter-Based Resource (IBR) Glyph (Split AC/DC Box).
+ */
+export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#69f0ae";
+  const strokeWidth = options?.strokeWidth ?? 2;
+  const fill = options?.fill ?? "rgba(105, 240, 174, 0.08)";
+
+  return [
+    // Outer Box
+    {
+      tagName: "rect",
+      selector: "ibrBox",
+      attrs: {
+        x: 4,
+        y: 4,
+        width: 52,
+        height: 52,
+        rx: 4,
+        ry: 4,
+        fill,
+        stroke,
+        strokeWidth,
+      },
+    },
+    // Diagonal Divider
+    {
+      tagName: "line",
+      selector: "ibrDivider",
+      attrs: {
+        x1: 4,
+        y1: 56,
+        x2: 56,
+        y2: 4,
+        stroke,
+        strokeWidth: 1.5,
+      },
+    },
+    // DC Symbol = (Top-Left)
+    {
+      tagName: "line",
+      selector: "dcLine1",
+      attrs: { x1: 14, y1: 18, x2: 26, y2: 18, stroke, strokeWidth: 1.5 },
+    },
+    {
+      tagName: "line",
+      selector: "dcLine2",
+      attrs: { x1: 14, y1: 22, x2: 26, y2: 22, stroke, strokeWidth: 1.5, strokeDasharray: "2,2" },
+    },
+    // AC Symbol ~ (Bottom-Right)
+    {
+      tagName: "path",
+      selector: "acSine",
+      attrs: {
+        d: "M 32,42 Q 38,36 42,42 Q 46,48 50,42",
+        fill: "none",
+        stroke,
+        strokeWidth: 1.5,
+      },
+    },
+  ];
+}
+
+/**
+ * High-Voltage Busbar Glyph.
+ */
+export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number }): X6Markup[] {
+  const length = options?.length ?? 80;
+  const vbase = options?.voltageBaseKv ?? 230;
+  const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
+
+  return [
+    {
+      tagName: "rect",
+      selector: "busbar",
+      attrs: {
+        x: 0,
+        y: 0,
+        width: length,
+        height: 6,
+        fill: color,
+        rx: 2,
+        ry: 2,
+      },
+    },
+    {
+      tagName: "text",
+      selector: "busLabel",
+      attrs: {
+        text: `${vbase} kV`,
+        fill: color,
+        fontSize: 9,
+        fontWeight: "bold",
+        fontFamily: "monospace",
+        refX: length / 2,
+        refY: -4,
+        textAnchor: "middle",
+      },
+    },
+  ];
+}

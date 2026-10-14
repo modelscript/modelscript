@@ -1,7 +1,6 @@
 // name:     SubScript1
 // keywords: SubScript,unknown
 // status:   correct
-// xfail:    true
 //
 // checks if subscripts are correct when containing an expression with a parameter
 //

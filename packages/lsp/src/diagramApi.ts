@@ -1653,6 +1653,42 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     ) {
       return backends.owl2;
     }
+    if (uri.endsWith(".pscx") || uri.endsWith(".pswx") || uri.endsWith(".psmx")) {
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const { parsePscx } = await import("@modelscript/pscad");
+            const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
+            const fs = await import("node:fs");
+            const { fileURLToPath } = await import("node:url");
+            const filePath = params.uri.startsWith("file://") ? fileURLToPath(params.uri) : params.uri;
+            if (fs.existsSync(filePath)) {
+              const text = fs.readFileSync(filePath, "utf-8");
+              const project = parsePscx(text);
+              const rawDiagram = buildPscadDiagram(project);
+              const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
+              const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
+              return {
+                nodes,
+                edges,
+                coordinateSystem: { x: 0, y: 0, width: 1200, height: 800 },
+                cells: rawDiagram.cells,
+                metadata: rawDiagram.metadata,
+              } as any;
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        },
+        async getComponentProperties() {
+          return null;
+        },
+        async applyEdits(params: DiagramApplyEditsParams) {
+          return { seq: params.seq, edits: [], renderHint: "none" as const };
+        },
+      };
+    }
     return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);
   }
 

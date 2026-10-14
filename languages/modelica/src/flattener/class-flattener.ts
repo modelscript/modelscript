@@ -26,7 +26,7 @@ import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
 import { ModelicaPortBalancer } from "../connections.js";
 import { AnnotationEvaluator } from "../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../errors.js";
-import { isScopeEncapsulated, validateEnumeration } from "../queries.js";
+import { getShortClassSpecifierNode, isScopeEncapsulated, validateEnumeration } from "../queries.js";
 
 import {
   checkBalance,
@@ -347,8 +347,9 @@ export class ModelicaFlattener {
     return false;
   }
 
-  isClassPartial(classId?: SymbolId | null): boolean {
-    if (!classId || classId < 0) return false;
+  isClassPartial(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
+    if (!classId || classId < 0 || visited.has(classId)) return false;
+    visited.add(classId);
     const sym = this.db.symbol(classId);
     if (!sym || (sym.kind !== "Class" && sym.kind !== "Package" && sym.kind !== "Function")) return false;
     const meta = (sym.metadata as any) || {};
@@ -361,6 +362,20 @@ export class ModelicaFlattener {
       const text = (pfxNode?.text ?? cst.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       if (/\bpartial\b/.test(text.slice(0, 100)) || /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(text)) {
         return true;
+      }
+      const shortSpec = getShortClassSpecifierNode(cst);
+      if (shortSpec) {
+        const typeSpecNode = shortSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "name");
+        const typeName: string = typeSpecNode?.text?.trim();
+        if (typeName) {
+          const resolved =
+            this.db.query<(n: string) => any>("resolveName", classId)?.(typeName) ??
+            this.db.query<(n: string) => any>("resolveSimpleName", classId)?.(typeName) ??
+            this.db.byName(typeName)?.[0];
+          if (resolved?.id) {
+            return this.isClassPartial(resolved.id, visited);
+          }
+        }
       }
     }
     return false;
@@ -1633,8 +1648,10 @@ export class ModelicaFlattener {
     }
 
     // Check 4: Class specialization violation for short class specifiers and redeclarations
+    const checkedClassSyms = new Set<SymbolId>();
     for (const child of this.db.childrenOf(rootClassId)) {
       if (child.kind === "Class") {
+        checkedClassSyms.add(child.id);
         const violation = this.checkTypeAliasSpecialization(child.id);
         if (violation) {
           dae.diagnostics.push({
@@ -1644,6 +1661,23 @@ export class ModelicaFlattener {
             range: violation.range,
           });
           return dae;
+        }
+      }
+    }
+    if (rootSym?.resourceId) {
+      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
+      for (const s of allSyms) {
+        if (s.resourceId === rootSym.resourceId && s.kind === "Class" && !checkedClassSyms.has(s.id)) {
+          const violation = this.checkTypeAliasSpecialization(s.id);
+          if (violation) {
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.CLASS_SPECIALIZATION_VIOLATION.code,
+              message: `Class specialization violation: .${violation.targetName} is ${violation.kindDesc}, not a type.`,
+              range: violation.range,
+            });
+            return dae;
+          }
         }
       }
     }
@@ -2049,13 +2083,6 @@ export class ModelicaFlattener {
         !this.useLocalDirection &&
         !this.classHasRedeclare(rootClassId) &&
         !this.classHasUnsupportedWasmFeatures(rootClassId));
-    console.log("DEBUG FLATTENER:", {
-      hasWasmFlattener,
-      isStrictWasm,
-      allowWasm,
-      classNodePtr,
-      backend: this.options.backend,
-    });
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -2146,11 +2173,7 @@ export class ModelicaFlattener {
             typeof (dae.exports as any).flattener_getIfRecordCount === "function"
               ? (dae.exports as any).flattener_getIfRecordCount(wasmFlattener)
               : 0;
-          if (
-            (varCount > 0 || disabledCount > 0 || isStrictWasm) &&
-            (wasmErrorCode === 0 || isStrictWasm) &&
-            !hybridAlgorithmGate
-          ) {
+          if ((varCount > 0 || disabledCount > 0 || isStrictWasm) && wasmErrorCode === 0 && !hybridAlgorithmGate) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
             const exAlg = dae.exports as any;

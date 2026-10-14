@@ -310,6 +310,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "sysml <action>",
+      "OMG SysML v2 engineering toolkit: standard interchange (.sysmlx), validation, and container export",
+      () => import("./commands/sysml.js"),
+      "SysML",
+    ),
+  )
+  .command(
+    lazy(
       "reqif <action>",
       "Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter",
       () => import("./commands/reqif.js"),
@@ -450,6 +458,14 @@ await yargs(rawArgs)
       "GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits",
       () => import("./commands/archive.js"),
       "Archive",
+    ),
+  )
+  .command(
+    lazy(
+      "pscad <action> [files..]",
+      "Inspect, lint, diff, and simulate PSCAD projects (.pscx)",
+      () => import("./commands/pscad.js"),
+      "PscadCommand",
     ),
   )
   .strictCommands()

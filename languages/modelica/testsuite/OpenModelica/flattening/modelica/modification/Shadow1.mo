@@ -1,7 +1,6 @@
 // name:     Shadow1
 // keywords: modification,shadow
 // status:   correct
-// xfail:    true
 //
 // Modifications override declarations but not equations.
 

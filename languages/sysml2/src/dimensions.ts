@@ -7,6 +7,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
+import { findCstDescendants, findFirstDescendant } from "./flattener/cst-lowerer.js";
 
 export type DimensionVector = readonly [
   L: number, // Length [m]
@@ -282,6 +283,98 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     case "LiteralInfinity":
       return { dimension: DIMENSIONLESS };
 
+    case "InvocationExpression": {
+      const fnNameNode = findFirstDescendant(node, "ID") || node.childForFieldName?.("type");
+      const fnName = fnNameNode?.text?.trim() || "";
+
+      // der(x): d/dt of x -> dimension of x minus TIME
+      if (fnName === "der") {
+        const argNode =
+          findFirstDescendant(node, "Argument") || findFirstDescendant(node, "FeatureReferenceExpression");
+        if (argNode) {
+          const argRes = inferExpressionDimension(db, argNode, scopeId);
+          if (argRes.error) return argRes;
+          const argDim = argRes.dimension || DIMENSIONLESS;
+          return { dimension: subtractDimensions(argDim, TIME) };
+        }
+        return { dimension: DIMENSIONLESS };
+      }
+
+      // sqrt(x): square root of x -> each dimension exponent divided by 2
+      if (fnName === "sqrt") {
+        const argNode =
+          findFirstDescendant(node, "Argument") || findFirstDescendant(node, "FeatureReferenceExpression");
+        if (argNode) {
+          const argRes = inferExpressionDimension(db, argNode, scopeId);
+          if (argRes.error) return argRes;
+          const argDim = argRes.dimension || DIMENSIONLESS;
+          return { dimension: multiplyDimension(argDim, 0.5) };
+        }
+        return { dimension: DIMENSIONLESS };
+      }
+
+      // abs(x), sign(x)
+      if (fnName === "abs" || fnName === "sign") {
+        const argNode =
+          findFirstDescendant(node, "Argument") || findFirstDescendant(node, "FeatureReferenceExpression");
+        if (argNode) {
+          return inferExpressionDimension(db, argNode, scopeId);
+        }
+        return { dimension: DIMENSIONLESS };
+      }
+
+      // min(a, b), max(a, b)
+      if (fnName === "min" || fnName === "max") {
+        const argNodes = findCstDescendants(node, "Argument");
+        if (argNodes.length >= 2) {
+          const leftRes = inferExpressionDimension(db, argNodes[0], scopeId);
+          if (leftRes.error) return leftRes;
+          const rightRes = inferExpressionDimension(db, argNodes[1], scopeId);
+          if (rightRes.error) return rightRes;
+          const leftDim = leftRes.dimension || DIMENSIONLESS;
+          const rightDim = rightRes.dimension || DIMENSIONLESS;
+          if (!areDimensionsEqual(leftDim, rightDim)) {
+            return {
+              error: {
+                message: `Dimensional mismatch: arguments to '${fnName}' must have identical physical dimensions, got '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
+                startByte: node.startByte,
+                endByte: node.endByte,
+              },
+            };
+          }
+          return { dimension: leftDim };
+        }
+      }
+
+      // Transcendental functions: sin, cos, tan, asin, acos, atan, exp, log, ln
+      if (["sin", "cos", "tan", "asin", "acos", "atan", "exp", "log", "ln"].includes(fnName)) {
+        const argNode =
+          findFirstDescendant(node, "Argument") || findFirstDescendant(node, "FeatureReferenceExpression");
+        if (argNode) {
+          const argRes = inferExpressionDimension(db, argNode, scopeId);
+          if (argRes.error) return argRes;
+          const argDim = argRes.dimension || DIMENSIONLESS;
+          if (!isDimensionless(argDim)) {
+            return {
+              error: {
+                message: `Dimensional mismatch: argument to transcendental function '${fnName}' must be dimensionless, got '${getDimensionLabel(argDim)}'.`,
+                startByte: node.startByte,
+                endByte: node.endByte,
+              },
+            };
+          }
+        }
+        return { dimension: DIMENSIONLESS };
+      }
+
+      // Fallback for custom calculations or function calls
+      for (const child of node.children || []) {
+        const res = inferExpressionDimension(db, child, scopeId);
+        if (res.error || (res.dimension && !isDimensionless(res.dimension))) return res;
+      }
+      return { dimension: DIMENSIONLESS };
+    }
+
     case "AdditiveExpression": {
       const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
       const operators: string[] = node.childrenForFieldName
@@ -371,7 +464,7 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
 
     case "RelationalExpression": {
       const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
-      const operators: string[] = node.childrenForFieldName
+      const _operators: string[] = node.childrenForFieldName
         ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || ">")
         : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };

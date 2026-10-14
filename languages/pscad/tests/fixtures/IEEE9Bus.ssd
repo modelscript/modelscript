@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                                name="IEEE9Bus_IBR"
+                                version="1.0"
+                                description="Multi-Vendor IBR Grid System generated from PSCAD project IEEE9Bus_IBR">
+  <ssd:System name="IEEE9Bus_IBR">
+    <ssd:Elements>
+      <ssd:Component name="GridPassiveNetwork" source="resources/GridNetwork.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="B1_v" kind="output"><ssc:Real unit="kV" /></ssd:Connector>
+          <ssd:Connector name="B1_i" kind="input"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="B2_v" kind="output"><ssc:Real unit="kV" /></ssd:Connector>
+          <ssd:Connector name="B2_i" kind="input"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="B3_v" kind="output"><ssc:Real unit="kV" /></ssd:Connector>
+          <ssd:Connector name="B3_i" kind="input"><ssc:Real unit="A" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Solar_Inverter_100MW" source="resources/SolarInverter.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="v_poi" kind="input"><ssc:Real unit="kV" /></ssd:Connector>
+          <ssd:Connector name="i_inj" kind="output"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="p_mw" kind="parameter"><ssc:Real value="90" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="GridPassiveNetwork" startConnector="B3_v" endElement="Solar_Inverter_100MW" endConnector="v_poi" />
+      <ssd:Connection startElement="Solar_Inverter_100MW" startConnector="i_inj" endElement="GridPassiveNetwork" endConnector="B3_i" />
+    </ssd:Connections>
+  </ssd:System>
+</ssd:SystemStructureDescription>

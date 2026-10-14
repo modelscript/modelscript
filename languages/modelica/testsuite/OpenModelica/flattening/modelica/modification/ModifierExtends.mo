@@ -1,7 +1,6 @@
 // name: ModifierExtends
 // keywords: modifier
 // status: correct
-// xfail:    true
 //
 // Tests modification of extends clauses
 //

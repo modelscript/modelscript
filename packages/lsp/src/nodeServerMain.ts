@@ -20,6 +20,7 @@ import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import owl2LangFallback from "@modelscript/owl2/language";
+import { pscadLanguage } from "@modelscript/pscad";
 import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
 import scadLangFallback from "@modelscript/scad/language";
 import { stepLanguage, StepWorkspaceIndex } from "@modelscript/step";
@@ -319,6 +320,7 @@ export function startNodeServer(input?: any, output?: any) {
               actionHandlers = modelicaActionHandlers;
             } else if (item.id === "sysml2" || item.id === "sysml") {
               langDef = sysml2LangFallback;
+              handlers = sysml2LangFallback.lsp?.handlers;
             } else if (item.id === "step") {
               langDef = stepLanguage;
               handlers = stepLanguage.lsp?.handlers;
@@ -372,6 +374,29 @@ export function startNodeServer(input?: any, output?: any) {
     } catch {
       // Optional in decoupled environments
     }
+  }
+
+  // Register built-in PSCAD language support
+  try {
+    globalLanguageRegistry.register({
+      id: "pscad",
+      name: "PSCAD",
+      extensions: [".pscx", ".pswx", ".psmx"],
+      languageDef: pscadLanguage,
+      actionHandlers: {
+        lint_pscad_project: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parsePscx, lintPscx } = await import("@modelscript/pscad");
+          const project = parsePscx(text);
+          return lintPscx(project);
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered PSCAD language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register PSCAD plugin: ${err.message}`);
   }
 
   // Helper to load user languages from registry directory (~/.modelscript/languages/)

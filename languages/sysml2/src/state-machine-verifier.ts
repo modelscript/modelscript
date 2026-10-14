@@ -102,6 +102,22 @@ function cstToExprNode(node: any): ExprNode | undefined {
     return { kind: "const", value: parseFloat(node.text) };
   }
 
+  // CST InvocationExpression: sin(x), cos(x), sqrt(x), sqr(x)
+  if (node.type === "InvocationExpression") {
+    const fnNameNode = findFirstDescendant(node, "ID") || node.childForFieldName?.("type");
+    const fnName = fnNameNode?.text?.trim()?.toLowerCase();
+    const argNode = findFirstDescendant(node, "Argument") || findFirstDescendant(node, "FeatureReferenceExpression");
+    if (argNode && fnName) {
+      const arg = cstToExprNode(argNode);
+      if (arg) {
+        if (fnName === "sin") return { kind: "sin", child: arg };
+        if (fnName === "cos") return { kind: "cos", child: arg };
+        if (fnName === "sqrt") return { kind: "sqrt", child: arg };
+        if (fnName === "sqr") return { kind: "sqr", child: arg };
+      }
+    }
+  }
+
   // Function calls: sin(x), cos(x), sqrt(x), sqr(x)
   if (node.childCount >= 3 && (node.child ? node.child(1)?.text === "(" : node.children[1]?.text === "(")) {
     const fnName = (node.child ? node.child(0)?.text : node.children[0]?.text)?.toLowerCase();
@@ -111,6 +127,27 @@ function cstToExprNode(node: any): ExprNode | undefined {
       if (fnName === "cos") return { kind: "cos", child: arg };
       if (fnName === "sqrt") return { kind: "sqrt", child: arg };
       if (fnName === "sqr") return { kind: "sqr", child: arg };
+    }
+  }
+
+  // Field-based AdditiveExpression or MultiplicativeExpression
+  if (node.type === "AdditiveExpression" || node.type === "MultiplicativeExpression") {
+    const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+    const operators: string[] = node.childrenForFieldName
+      ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || "+")
+      : [];
+    if (operands.length >= 2 && operators.length >= 1) {
+      let current = cstToExprNode(operands[0]);
+      for (let i = 0; i < operators.length && i + 1 < operands.length; i++) {
+        const next = cstToExprNode(operands[i + 1]);
+        if (!current || !next) return undefined;
+        const op = operators[i];
+        if (op === "+") current = { kind: "add", left: current, right: next };
+        else if (op === "-") current = { kind: "sub", left: current, right: next };
+        else if (op === "*") current = { kind: "mul", left: current, right: next };
+        else if (op === "/") current = { kind: "div", left: current, right: next };
+      }
+      if (current) return current;
     }
   }
 
@@ -125,7 +162,12 @@ function cstToExprNode(node: any): ExprNode | undefined {
       if (op === "*") return { kind: "mul", left, right };
       if (op === "/") return { kind: "div", left, right };
       if (op === "^" || op === "**") {
-        if (right.kind === "const" && right.value === 2) return { kind: "sqr", child: left };
+        if (right.kind === "const") {
+          if (right.value === 2) return { kind: "sqr", child: left };
+          if (right.value === 3) return { kind: "mul", left, right: { kind: "sqr", child: left } };
+          if (right.value === 4) return { kind: "sqr", child: { kind: "sqr", child: left } };
+          if (right.value === 0.5) return { kind: "sqrt", child: left };
+        }
       }
     }
   }

@@ -54,17 +54,45 @@ function parseCondition(condText: string): ParsedCondition | null {
     .trim()
     .replace(/^\(|\)$/g, "")
     .trim();
+
+  // 1. var - var? op const: e.g. counter < 10, i - j <= 5
   const m = clean.match(
     /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*-\s*([A-Za-z_][A-Za-z0-9_]*))?\s*(<=|<|>=|>|==)\s*(-?\d+(?:\.\d+)?)$/,
   );
-  if (!m) return null;
+  if (m) {
+    return {
+      lhsVar: m[1]!,
+      rhsVar: m[2],
+      operator: m[3] as "<" | "<=" | ">" | ">=" | "==",
+      constant: parseFloat(m[4]!),
+    };
+  }
 
-  return {
-    lhsVar: m[1]!,
-    rhsVar: m[2],
-    operator: m[3] as "<" | "<=" | ">" | ">=" | "==",
-    constant: parseFloat(m[4]!),
-  };
+  // 2. const op var: e.g. 10 > counter, 0 <= i
+  const mRev = clean.match(/^(-?\d+(?:\.\d+)?)\s*(<=|<|>=|>|==)\s*([A-Za-z_][A-Za-z0-9_]*)$/);
+  if (mRev) {
+    const rawOp = mRev[2]!;
+    const flippedOp: "<" | "<=" | ">" | ">=" | "==" =
+      rawOp === "<" ? ">" : rawOp === "<=" ? ">=" : rawOp === ">" ? "<" : rawOp === ">=" ? "<=" : "==";
+    return {
+      lhsVar: mRev[3]!,
+      operator: flippedOp,
+      constant: parseFloat(mRev[1]!),
+    };
+  }
+
+  // 3. var op var: e.g. i < n, i <= limit (equivalent to i - limit <= 0)
+  const mVar = clean.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(<=|<|>=|>|==)\s*([A-Za-z_][A-Za-z0-9_]*)$/);
+  if (mVar && mVar[1] !== mVar[3]) {
+    return {
+      lhsVar: mVar[1]!,
+      rhsVar: mVar[3]!,
+      operator: mVar[2] as "<" | "<=" | ">" | ">=" | "==",
+      constant: 0,
+    };
+  }
+
+  return null;
 }
 
 interface StateUpdate {
@@ -271,7 +299,6 @@ export class LoopInvariantAnalyzer {
         for (const inv of loop.invariants) {
           const parsedInv = parseCondition(inv);
           if (parsedInv && varIndices.has(parsedInv.lhsVar)) {
-            const vIdx = varIndices.get(parsedInv.lhsVar)!;
             const b = currentBounds.get(parsedInv.lhsVar)!;
             if (
               (parsedInv.operator === "<=" && b.upper > parsedInv.constant) ||

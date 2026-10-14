@@ -1,6 +1,5 @@
 // name: CevalBinding3
 // status: correct
-// xfail:    true
 //
 // Simple test of component bindings.
 //

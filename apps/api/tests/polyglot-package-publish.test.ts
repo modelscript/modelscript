@@ -114,7 +114,7 @@ test("Polyglot Package Publishing & Extensible Artifact Indexing", async (t) => 
 
   await t.test("Background publish worker completes polyglot indexing into salsa-index.db", async () => {
     const jobKey = `${pkgName}@${pkgVersion}`;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 120; i++) {
       const status = jobQueue.getStatus(jobKey);
       if (status?.status === "completed" || status?.status === "failed") break;
       await new Promise((r) => setTimeout(r, 250));

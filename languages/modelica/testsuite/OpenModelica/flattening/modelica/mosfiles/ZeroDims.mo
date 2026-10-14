@@ -1,4 +1,3 @@
-// xfail:    true
 
 model ZeroDims
   model ZeroDim

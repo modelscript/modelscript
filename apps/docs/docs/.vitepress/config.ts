@@ -208,6 +208,7 @@ export default defineConfig({
             { text: "Overview & Matrix", link: "/languages/overview" },
             { text: "Modelica", link: "/languages/modelica" },
             { text: "SysML v2 / KerML", link: "/languages/sysml2" },
+            { text: "PSCAD Power Systems", link: "/languages/pscad" },
             { text: "STEP CAD (ISO 10303)", link: "/languages/step" },
             { text: "OWL2 Ontology", link: "/languages/owl2" },
             { text: "CSV Telemetry", link: "/languages/csv" },

@@ -630,6 +630,13 @@ export class ValidationService {
       return;
     }
 
+    // Handle PSCAD files (.pscx, .pswx, .psmx)
+    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|pswx|psmx)($|\?|#)/i.test(uri);
+    if (isPscad) {
+      await this.validatePscadDocument(textDocument, plugin);
+      return;
+    }
+
     // 2. Uniform Parsing Pipeline
     const langId = plugin?.id ?? (textDocument.languageId || "modelica");
     const parser = plugin?.parser ?? this.parserService.getParser(langId);
@@ -1453,6 +1460,53 @@ export class ValidationService {
     this.workspaceManager.documentContexts.set(textDocument.uri, context);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
     this.sendProjectTreeChanged();
+  }
+
+  private async validatePscadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const pscadDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[pscad] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { parsePscx, lintPscx } = await import("@modelscript/pscad");
+      const project = parsePscx(text);
+      const lints = lintPscx(project);
+
+      for (const lint of lints) {
+        const line = Math.max(0, (lint.line ?? 1) - 1);
+        const col = Math.max(0, (lint.column ?? 1) - 1);
+        pscadDiagnostics.push({
+          severity: lint.severity === "warning" ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
+          range: {
+            start: { line, character: col },
+            end: { line, character: col + 10 },
+          },
+          code: lint.code,
+          message: `[${lint.code}] ${lint.message}`,
+          source: "pscad",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: project } },
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[pscad] Error validating PSCAD document ${textDocument.uri}: ${err.message}`);
+      pscadDiagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        },
+        message: `PSCAD Parse Error: ${err.message}`,
+        source: "pscad",
+      });
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, pscadDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: pscadDiagnostics });
   }
 
   private async validateCfdDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {

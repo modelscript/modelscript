@@ -112,13 +112,31 @@ function parseIntBytes(src: usize, len: u32): i32 {
   let text = SourceTextView.at(src, len);
   let charCount = text.charCount;
   let res: i32 = 0;
-  for (let i: u32 = 0; i < charCount; i++) {
+  let hasDigit = false;
+  let i: u32 = 0;
+  while (i < charCount && text.charAt(i) == 32) i++;
+  let isNeg = false;
+  if (i < charCount) {
+    let c = text.charAt(i);
+    if (c == 45) { isNeg = true; i++; }
+    else if (c == 43) { i++; }
+  }
+  while (i < charCount) {
     let b = text.charAt(i);
     if (b >= 48 && b <= 57) {
       res = res * 10 + ((b - 48) as i32);
+      hasDigit = true;
+    } else if (b == 32) {
+      while (i < charCount && text.charAt(i) == 32) i++;
+      if (i < charCount) return 0;
+      break;
+    } else {
+      return 0;
     }
+    i++;
   }
-  return res;
+  if (!hasDigit) return 0;
+  return isNeg ? -res : res;
 }
 
 function parseRealBytes(src: usize, len: u32): f64 {
@@ -1465,6 +1483,19 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
   if (scopeStackPtr != 0) {
     let modVal = changetype<ScopeStack>(scopeStackPtr).lookup(nameId);
     if (modVal != 0xffffffff) {
+      if (prefixPathId != 0) {
+        let pNameId = pool.concatIds(prefixPathId, nameId);
+        let pvi = dae.lookupVariableByName(pNameId);
+        if (pvi >= 0) {
+          let varAcc = VarAccessor.at(dae.getVarData(), pvi as u32);
+          if (varAcc.variability == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL);
+        }
+      }
+      let vi = dae.lookupVariableByName(nameId);
+      if (vi >= 0) {
+        let varAcc = VarAccessor.at(dae.getVarData(), vi as u32);
+        if (varAcc.variability == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL);
+      }
       let ek = dae.getExprKind(modVal);
       if (ek == ExprKind.IntLiteral) return dae.getExprData1(modVal) as i32;
       if (ek == ExprKind.RealLiteral) return dae.getExprRealValue(modVal) as i32;
@@ -1475,6 +1506,8 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
     let prefixedNameId = pool.concatIds(prefixPathId, nameId);
     let pvIdx = dae.lookupVariableByName(prefixedNameId);
     if (pvIdx >= 0) {
+      let varAcc = VarAccessor.at(dae.getVarData(), pvIdx as u32);
+      if (varAcc.variability == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL);
       let val = dae.getVarStartValue(pvIdx as u32);
       return val as i32;
     }
@@ -1482,6 +1515,8 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
 
   let vIdx = dae.lookupVariableByName(nameId);
   if (vIdx >= 0) {
+    let varAcc = VarAccessor.at(dae.getVarData(), vIdx as u32);
+    if (varAcc.variability == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL);
     let val = dae.getVarStartValue(vIdx as u32);
     return val as i32;
   }
@@ -4499,7 +4534,11 @@ export class WasmExprVisitor {
       return dSize as i32;
     }
 
-    let p = locParseInt(nodeLoc);
+    let p = 0;
+    let nt = locType(nodeLoc);
+    if (nt == SyntaxType.UNSIGNED_INTEGER || nt == SyntaxType.TOKEN_UNSIGNED_INT_ALT) {
+      p = locParseInt(nodeLoc);
+    }
     if (p > 0 && locIsNull(locFindMatchingDescendant(nodeLoc, "end")) && locIsNull(locFindMatchingDescendant(nodeLoc, "-")) && locIsNull(locFindMatchingDescendant(nodeLoc, "+"))) {
       this.currentDimEnd = prevEnd;
       return p;
@@ -4510,11 +4549,19 @@ export class WasmExprVisitor {
     if (eid != 0xffffffff) {
       let k = this.dae.getExprKind(eid);
       if (k == ExprKind.IntLiteral) return this.dae.getExprData1(eid) as i32;
-      if (k == ExprKind.RealLiteral) return this.dae.getExprRealValue(eid) as i32;
+      if (k == ExprKind.RealLiteral) {
+        if (this.flattenerPtr != 0) {
+          changetype<ModelicaFlattener>(this.flattenerPtr).setErrorAt(WasmBailReason.SimpleEquationExpr, nodeLoc);
+        }
+        return -1;
+      }
       if (k == ExprKind.BoolLiteral) return this.dae.getExprData1(eid) as i32;
     }
     if (p > 0) return p;
-    return 1;
+    if (this.flattenerPtr != 0) {
+      changetype<ModelicaFlattener>(this.flattenerPtr).setErrorAt(WasmBailReason.SimpleEquationExpr, nodeLoc);
+    }
+    return -1;
   }
 
   collectIntSubscriptElements(argLoc: u64, out: ChunkedUint32Array, dSize: u32): void {
@@ -8157,17 +8204,20 @@ export class ModelicaFlattener {
       if (locIsNull(idLoc)) idLoc = typeSpecLoc;
       typeNameId = locIntern(pool, idLoc);
 
-      if (locMatches(idLoc, "Real") ||
-          locMatches(idLoc, "TypeReal")) {
+      let hasDefinedClass = false;
+      if (locMatches(idLoc, "TypeReal") || locMatches(idLoc, "TypeInteger") || locMatches(idLoc, "TypeBoolean") || locMatches(idLoc, "TypeString")) {
+        hasDefinedClass = !locIsNull(this.findClassLoc(this.currentClassLoc, typeNameId, pool));
+      }
+      if (!hasDefinedClass && (locMatches(idLoc, "Real") || locMatches(idLoc, "TypeReal"))) {
         varType = VarType.Real;
         isPrimitive = true;
-      } else if (locMatches(idLoc, "Integer") || locMatches(idLoc, "TypeInteger")) {
+      } else if (!hasDefinedClass && (locMatches(idLoc, "Integer") || locMatches(idLoc, "TypeInteger"))) {
         varType = VarType.Integer;
         isPrimitive = true;
-      } else if (locMatches(idLoc, "Boolean") || locMatches(idLoc, "TypeBoolean")) {
+      } else if (!hasDefinedClass && (locMatches(idLoc, "Boolean") || locMatches(idLoc, "TypeBoolean"))) {
         varType = VarType.Boolean;
         isPrimitive = true;
-      } else if (locMatches(idLoc, "String") || locMatches(idLoc, "TypeString")) {
+      } else if (!hasDefinedClass && (locMatches(idLoc, "String") || locMatches(idLoc, "TypeString"))) {
         varType = VarType.String;
         isPrimitive = true;
       } else if (locMatches(idLoc, "enumeration") || locMatches(typeSpecLoc, "enumeration") || !locIsNull(locFindDescendant(typeSpecLoc, SyntaxType.ENUM_LIST))) {
@@ -8202,19 +8252,15 @@ export class ModelicaFlattener {
               if (locIsNull(extNameLoc)) extNameLoc = locFindDescendant(extClause, SyntaxType.IDENTIFIER);
               if (!locIsNull(extNameLoc)) {
                 let isPrimitiveExt = locMatches(extNameLoc, "Real") ||
-                  locMatches(extNameLoc, "TypeReal") ||
                   locMatches(extNameLoc, "Integer") ||
-                  locMatches(extNameLoc, "TypeInteger") ||
                   locMatches(extNameLoc, "Boolean") ||
-                  locMatches(extNameLoc, "TypeBoolean") ||
-                  locMatches(extNameLoc, "String") ||
-                  locMatches(extNameLoc, "TypeString");
+                  locMatches(extNameLoc, "String");
                 if (isPrimitiveExt) {
                   isPrimitive = true;
-                  if (locMatches(extNameLoc, "Real") || locMatches(extNameLoc, "TypeReal")) varType = VarType.Real;
-                  else if (locMatches(extNameLoc, "Integer") || locMatches(extNameLoc, "TypeInteger")) varType = VarType.Integer;
-                  else if (locMatches(extNameLoc, "Boolean") || locMatches(extNameLoc, "TypeBoolean")) varType = VarType.Boolean;
-                  else if (locMatches(extNameLoc, "String") || locMatches(extNameLoc, "TypeString")) varType = VarType.String;
+                  if (locMatches(extNameLoc, "Real")) varType = VarType.Real;
+                  else if (locMatches(extNameLoc, "Integer")) varType = VarType.Integer;
+                  else if (locMatches(extNameLoc, "Boolean")) varType = VarType.Boolean;
+                  else if (locMatches(extNameLoc, "String")) varType = VarType.String;
                 }
                 let extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_MODIFICATION);
                 if (locIsNull(extModLoc)) extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
@@ -8246,6 +8292,12 @@ export class ModelicaFlattener {
                   break;
                 }
               }
+            }
+            if (!isPrimitive) {
+              if (locMatches(idLoc, "TypeReal")) { varType = VarType.Real; isPrimitive = true; }
+              else if (locMatches(idLoc, "TypeInteger")) { varType = VarType.Integer; isPrimitive = true; }
+              else if (locMatches(idLoc, "TypeBoolean")) { varType = VarType.Boolean; isPrimitive = true; }
+              else if (locMatches(idLoc, "TypeString")) { varType = VarType.String; isPrimitive = true; }
             }
             break;
           }
@@ -8734,6 +8786,9 @@ export class ModelicaFlattener {
       else if (nDims == 3) totalElements = dim1 * dim2 * dim3;
 
       if (isExplicitZero || totalElements == 0) {
+        if (!isExplicitZero && totalElements == 0) {
+          this.setErrorAt(WasmBailReason.DeclarationDimensions, declLoc);
+        }
         return 0;
       }
       if (dim1 == 0) {

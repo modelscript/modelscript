@@ -38,6 +38,7 @@ export * from "../src/wasm/formal/octagon";
 export * from "../src/wasm/dae/interval_eval";
 export * from "../src/wasm/formal/sat";
 export * from "../src/wasm/formal/zonotope";
+export * from "../src/wasm/solvers/wasm_emt";
 
 
 // We will use Typed Arrays instead of Map/Set for much higher performance

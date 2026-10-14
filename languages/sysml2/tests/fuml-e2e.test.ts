@@ -14,7 +14,7 @@ test("SysML v2 Discrete Execution & Standard Library E2E Suite", async (t) => {
 
     const unified = ws.toUnified();
     const names = Array.from(unified.symbols.values()).map((s) => s.name);
-    assert.strictEqual(unified.symbols.size, 125);
+    assert.strictEqual(unified.symbols.size, 675);
 
     assert.ok(names.includes("Base"), "Should include Base package");
     assert.ok(names.includes("Control"), "Should include Control package");

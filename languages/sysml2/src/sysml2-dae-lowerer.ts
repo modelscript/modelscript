@@ -24,6 +24,7 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParserSync } from "../src-gen/bindings.js";
@@ -34,8 +35,16 @@ export function getSysmlParser(): any {
   if (cachedSysmlParser) return cachedSysmlParser;
   try {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const wasmPath = path.resolve(currentDir, "../dist/parser.wasm");
-    cachedSysmlParser = createWasmParserSync(wasmPath)?.parser;
+    const candidatePaths = [
+      path.resolve(currentDir, "../dist/parser.wasm"),
+      path.resolve(currentDir, "../parser.wasm"),
+      path.resolve(currentDir, "../../dist/parser.wasm"),
+      path.resolve(currentDir, "../../parser.wasm"),
+    ];
+    const wasmPath = candidatePaths.find((p) => fs.existsSync(p));
+    if (wasmPath) {
+      cachedSysmlParser = createWasmParserSync(wasmPath)?.parser;
+    }
   } catch {
     // Parser fallback
   }
@@ -207,8 +216,7 @@ export class SysmlExprParser {
 
   private parsePower(): number {
     let left = this.parseUnary();
-    let op: string | null;
-    while ((op = this.matchOp("^", "**"))) {
+    while (this.matchOp("^", "**")) {
       const right = this.parseUnary();
       left = this.arena.addBinaryExpr(BinOp.Pow, left, right);
     }
@@ -982,7 +990,6 @@ export class SysML2DaeLowerer {
     }
 
     // 5. Connect Port Conservation & Kirchhoff Balancing
-    const flowJunctions = new Map<string, string[]>(); // flowAttrName -> [pin1, pin2, ...]
     const unionMap = new Map<string, string>();
     const findRoot = (x: string): string => {
       let curr = x;

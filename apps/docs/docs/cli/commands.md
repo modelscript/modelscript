@@ -224,3 +224,51 @@ msx pr-diff <source-ref> <target-ref> [options]
 ```bash
 msx pr-diff main HEAD --models
 ```
+
+---
+
+## `msx pscad`
+
+Comprehensive management, simulation, and verification for PSCAD™ (`.pscx`, `.pswx`, `.psmx`) power system models.
+
+```bash
+msx pscad <action> <files...> [options]
+```
+
+### Actions
+
+- `lint`: Performs static pre-flight electrical topology and parameter bounds checks (`M6001`–`M6004`).
+- `diagram`: Generates a standalone SVG schematic or Single-Line Diagram (SLD).
+- `diff`: Computes semantic and visual diffs between two PSCAD project revisions.
+- `sim`: Executes a high-speed WebAssembly Dommel companion-circuit EMT simulation.
+- `verify-ieee2800`: Evaluates ride-through, fast reactive current injection, and overvoltage ceilings against IEEE 2800-2022.
+- `export-modelica`: Translates PSCAD networks into standard `Modelica.Electrical.Analog` models.
+- `export-ssp`: Packages the system and inverter FMUs into an SSP `SystemStructure.ssd` container.
+
+### Options
+
+- `--step <duration>`: EMT simulation time step (e.g. `20us`, `50us`, `1ms`, default: `20us`).
+- `--tstop <seconds>`: Simulation study stop time in seconds.
+- `--out <file>`: Destination output path for SVGs, Modelica, or SSP exports.
+
+### Examples
+
+```bash
+# Lint a PSCAD project for floating nodes and parameter errors
+msx pscad lint IEEE9Bus.pscx
+
+# Export high-resolution SVG Single-Line Diagram
+msx pscad diagram IEEE9Bus.pscx --out=schematic.svg
+
+# Compare two project versions and highlight visual modifications
+msx pscad diff v1/IEEE9Bus.pscx v2/IEEE9Bus.pscx
+
+# Run 20 µs fixed-step EMT transient simulation
+msx pscad sim IEEE9Bus.pscx --step=20us --tstop=0.5
+
+# Run automated IEEE 2800-2022 IBR grid compliance audit
+msx pscad verify-ieee2800 IEEE9Bus.pscx
+
+# Convert PSCAD project to Modelica OpenIPSL
+msx pscad export-modelica IEEE9Bus.pscx --out=IEEE9Bus.mo
+```

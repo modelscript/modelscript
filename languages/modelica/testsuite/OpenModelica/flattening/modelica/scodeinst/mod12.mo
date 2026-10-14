@@ -1,7 +1,6 @@
 // name: mod12.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

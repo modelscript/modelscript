@@ -18,8 +18,10 @@ import {
   isDimensionless,
   resolveTypeDimension,
 } from "./dimensions.js";
+import { SysML2ErrorCode } from "./errors.js";
 import { LoopInvariantAnalyzer } from "./loop-invariant-analyzer.js";
 import { emitAxioms } from "./reasoner-bridge.js";
+import { checkConnectionTypeCompatibility, checkFeatureAssignmentType } from "./type-checker.js";
 import { sysml2Writeback } from "./writeback.js";
 
 import {
@@ -1507,13 +1509,18 @@ const importModel = {
 const definitionLints = {
   definitionNaming: (_db: QueryDB, self: SymbolEntry) => {
     if (self.name && /^[a-z]/.test(self.name)) {
-      return warning(`Definition '${self.name}' should start with an uppercase letter`, { field: "declaredName" });
+      return warning(SysML2ErrorCode.DEFINITION_NAMING.message(self.name), {
+        code: SysML2ErrorCode.DEFINITION_NAMING.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
   emptyDefinition: (db: QueryDB, self: SymbolEntry) => {
     if (db.childrenOf(self.id).length === 0) {
-      return info(`Definition '${self.name}' has no members`);
+      return info(SysML2ErrorCode.EMPTY_DEFINITION.message(self.name), {
+        code: SysML2ErrorCode.EMPTY_DEFINITION.code,
+      });
     }
     return null;
   },
@@ -1524,7 +1531,10 @@ const definitionLints = {
       if (!child.name || child.name === "<anonymous>") continue;
       const prev = seen.get(child.name);
       if (prev) {
-        return warning(`Duplicate member '${child.name}' in '${self.name}'`, { field: "declaredName" });
+        return warning(SysML2ErrorCode.DUPLICATE_MEMBER.message(child.name, self.name), {
+          code: SysML2ErrorCode.DUPLICATE_MEMBER.code,
+          field: "declaredName",
+        });
       }
       seen.set(child.name, child);
     }
@@ -1544,7 +1554,8 @@ const definitionLints = {
         const target = targets.find((t) => t.kind === "Definition");
         if (!target) break;
         if (visited.has(target.name)) {
-          return error(`Circular specialization: '${self.name}' transitively specializes itself`, {
+          return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+            code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
             field: "declaredName",
           });
         }
@@ -1564,7 +1575,10 @@ const definitionLints = {
 const usageLints = {
   usageNaming: (_db: QueryDB, self: SymbolEntry) => {
     if (self.name && self.name !== self.ruleName && /^[A-Z]/.test(self.name)) {
-      return warning(`Usage '${self.name}' should start with a lowercase letter`, { field: "declaredName" });
+      return warning(SysML2ErrorCode.USAGE_NAMING.message(self.name), {
+        code: SysML2ErrorCode.USAGE_NAMING.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -1581,10 +1595,11 @@ const usageLints = {
     const upper = parseBound(upperStr);
 
     if (!isNaN(lower) && !isNaN(upper) && lower > upper) {
-      return error(
-        `Invalid multiplicity bounds: lower bound (${lowerStr}) cannot be greater than upper bound (${upperStr}).`,
-        { startByte: self.startByte, endByte: self.endByte },
-      );
+      return error(SysML2ErrorCode.INVALID_MULTIPLICITY_BOUNDS.message(lowerStr, upperStr), {
+        code: SysML2ErrorCode.INVALID_MULTIPLICITY_BOUNDS.code,
+        startByte: self.startByte,
+        endByte: self.endByte,
+      });
     }
 
     return null;
@@ -1627,6 +1642,7 @@ const usageLints = {
     const inferRes = inferExpressionDimension(db, exprNode, self.parentId);
     if (inferRes.error) {
       return error(inferRes.error.message, {
+        code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
         startByte: inferRes.error.startByte ?? self.startByte,
         endByte: inferRes.error.endByte ?? self.endByte,
       });
@@ -1634,13 +1650,22 @@ const usageLints = {
 
     if (inferRes.dimension && !areDimensionsEqual(targetDim, inferRes.dimension)) {
       return error(
-        `Dimensional mismatch: cannot assign value of dimension '${getDimensionLabel(inferRes.dimension)}' to feature '${self.name || "<anonymous>"}' with declared dimension '${getDimensionLabel(targetDim)}'.`,
-        { startByte: self.startByte, endByte: self.endByte },
+        SysML2ErrorCode.DIMENSIONAL_MISMATCH.message(
+          self.name || "<anonymous>",
+          getDimensionLabel(targetDim),
+          getDimensionLabel(inferRes.dimension),
+        ),
+        {
+          code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
+          startByte: self.startByte,
+          endByte: self.endByte,
+        },
       );
     }
 
     return null;
   },
+  typeMismatchAssignment: (db: QueryDB, self: SymbolEntry) => checkFeatureAssignmentType(db, self),
 };
 
 /** Lint rules for Constraint Definition/Usage — report violated constraints */
@@ -1648,7 +1673,9 @@ const constraintLints = {
   constraintViolated: (db: QueryDB, self: SymbolEntry) => {
     const result = evaluateConstraintBody(db, self);
     if (result === false) {
-      return error(`Constraint '${self.name || "<anonymous>"}' evaluates to false`);
+      return error(SysML2ErrorCode.CONSTRAINT_VIOLATED.message(self.name || "<anonymous>"), {
+        code: SysML2ErrorCode.CONSTRAINT_VIOLATED.code,
+      });
     }
     return null;
   },
@@ -1675,6 +1702,7 @@ const constraintLints = {
     const inferRes = inferExpressionDimension(db, exprNode, self.parentId ?? self.id);
     if (inferRes.error) {
       return error(inferRes.error.message, {
+        code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
         startByte: inferRes.error.startByte ?? self.startByte,
         endByte: inferRes.error.endByte ?? self.endByte,
       });
@@ -1700,7 +1728,8 @@ const requirementLints = {
     const subjects = db.childrenOf(self.id).filter((c) => c.ruleName === "SubjectUsage");
     const satisfied = db.childrenOf(self.id).filter((c) => c.ruleName === "SatisfyRequirementUsage");
     if (subjects.length === 0 && satisfied.length === 0 && self.name && self.kind === "Definition") {
-      return info(`Requirement '${self.name}' should have a specified subject or satisfy relation`, {
+      return info(SysML2ErrorCode.MISSING_SUBJECT.message(self.name), {
+        code: SysML2ErrorCode.MISSING_SUBJECT.code,
         field: "declaredName",
       });
     }
@@ -1712,8 +1741,9 @@ const requirementLints = {
     if (self.name) visited.add(self.name);
 
     for (const satisfy of satisfyUsages) {
-      if (!satisfy.name) continue;
-      let current = satisfy.name;
+      const targetName = getRelationshipTargetName(db, satisfy);
+      if (!targetName) continue;
+      let current = targetName;
       const chain = new Set<string>([current]);
 
       while (current) {
@@ -1724,16 +1754,17 @@ const requirementLints = {
         if (!reqTarget) break;
 
         if (visited.has(reqTarget.name)) {
-          return error(`Circular satisfaction: '${self.name}' transitively satisfies itself`, {
+          return error(SysML2ErrorCode.CYCLIC_SATISFACTION.message(self.name), {
+            code: SysML2ErrorCode.CYCLIC_SATISFACTION.code,
             field: "declaredName",
           });
         }
 
-        const nextSatisfies = db
-          .childrenOf(reqTarget.id)
-          .filter((c) => c.ruleName === "SatisfyRequirementUsage" && c.name);
+        const nextSatisfies = db.childrenOf(reqTarget.id).filter((c) => c.ruleName === "SatisfyRequirementUsage");
         if (nextSatisfies.length === 0) break;
-        current = nextSatisfies[0].name;
+        const nextTarget = getRelationshipTargetName(db, nextSatisfies[0]);
+        if (!nextTarget) break;
+        current = nextTarget;
         if (chain.has(current)) break;
         chain.add(current);
       }
@@ -1744,7 +1775,10 @@ const requirementLints = {
   requirementConstraintViolated: (db: QueryDB, self: SymbolEntry) => {
     const result = evaluateConstraintsMet(db, self);
     if (result === false) {
-      return error(`Requirement '${self.name}' has constraint(s) that evaluate to false`, { field: "declaredName" });
+      return error(SysML2ErrorCode.REQUIREMENT_CONSTRAINT_VIOLATED.message(self.name), {
+        code: SysML2ErrorCode.REQUIREMENT_CONSTRAINT_VIOLATED.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -1768,7 +1802,10 @@ const satisfyRequirementLints = {
     const targets = db.byName(targetName);
     const reqTarget = targets.find((t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage");
     if (targets.length > 0 && !reqTarget) {
-      return error(`Target '${targetName}' is not a Requirement`, { field: "declaredName" });
+      return error(SysML2ErrorCode.TARGET_NOT_REQUIREMENT.message(targetName), {
+        code: SysML2ErrorCode.TARGET_NOT_REQUIREMENT.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -1917,7 +1954,10 @@ const allocationLints = {
       const targetName = refs[1].name!;
       const resolved = resolveFeatureInScope(db, self.parentId, targetName);
       if (!resolved) {
-        return error(`Allocation target '${targetName}' could not be resolved`, { field: "declaredName" });
+        return error(SysML2ErrorCode.ALLOCATION_TARGET_UNRESOLVED.message(targetName), {
+          code: SysML2ErrorCode.ALLOCATION_TARGET_UNRESOLVED.code,
+          field: "declaredName",
+        });
       }
     }
     return null;
@@ -1928,7 +1968,10 @@ const allocationLints = {
       const sourceName = refs[0].name!;
       const resolved = resolveFeatureInScope(db, self.parentId, sourceName);
       if (!resolved) {
-        return error(`Allocation source '${sourceName}' could not be resolved`, { field: "declaredName" });
+        return error(SysML2ErrorCode.ALLOCATION_SOURCE_UNRESOLVED.message(sourceName), {
+          code: SysML2ErrorCode.ALLOCATION_SOURCE_UNRESOLVED.code,
+          field: "declaredName",
+        });
       }
     }
     return null;
@@ -1960,8 +2003,17 @@ const allocationLints = {
             !areDimensionsEqual(sourceDim, targetDim)
           ) {
             return error(
-              `Dimensional mismatch in allocation between '${sourceName}' (${getDimensionLabel(sourceDim)}) and '${targetName}' (${getDimensionLabel(targetDim)}).`,
-              { startByte: self.startByte, endByte: self.endByte },
+              SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.message(
+                sourceName,
+                getDimensionLabel(sourceDim),
+                targetName,
+                getDimensionLabel(targetDim),
+              ),
+              {
+                code: SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.code,
+                startByte: self.startByte,
+                endByte: self.endByte,
+              },
             );
           }
         }
@@ -2001,8 +2053,17 @@ const connectionLints = {
             !areDimensionsEqual(sourceDim, targetDim)
           ) {
             return error(
-              `Dimensional mismatch in connection between '${sourceName}' (${getDimensionLabel(sourceDim)}) and '${targetName}' (${getDimensionLabel(targetDim)}).`,
-              { startByte: self.startByte, endByte: self.endByte },
+              SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.message(
+                sourceName,
+                getDimensionLabel(sourceDim),
+                targetName,
+                getDimensionLabel(targetDim),
+              ),
+              {
+                code: SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.code,
+                startByte: self.startByte,
+                endByte: self.endByte,
+              },
             );
           }
         }
@@ -2010,11 +2071,13 @@ const connectionLints = {
     }
     return null;
   },
+  connectionTypeCompatibility: (db: QueryDB, self: SymbolEntry) => checkConnectionTypeCompatibility(db, self),
   interfaceContract: (db: QueryDB, self: SymbolEntry) => {
     const res = verifyAllInterfaceContracts(db, self.name);
     if (!res.isSatisfied && res.violations.length > 0) {
       const v = res.violations[0]!;
-      return error(`Broken interface contract on '${self.name}': ${v.reason}`, {
+      return error(SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.message(self.name, v.reason), {
+        code: SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.code,
         startByte: self.startByte,
         endByte: self.endByte,
       });
@@ -2330,13 +2393,18 @@ const packageTraceabilityModel = {
 const packageTraceabilityLints = {
   packageNaming: (_db: QueryDB, self: SymbolEntry) => {
     if (self.name && /^[a-z]/.test(self.name)) {
-      return warning(`Package '${self.name}' should start with an uppercase letter`, { field: "declaredName" });
+      return warning(SysML2ErrorCode.PACKAGE_NAMING.message(self.name), {
+        code: SysML2ErrorCode.PACKAGE_NAMING.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
   emptyPackage: (db: QueryDB, self: SymbolEntry) => {
     if (db.childrenOf(self.id).length === 0) {
-      return info(`Package '${self.name}' has no members`);
+      return info(SysML2ErrorCode.EMPTY_PACKAGE.message(self.name), {
+        code: SysML2ErrorCode.EMPTY_PACKAGE.code,
+      });
     }
     return null;
   },
@@ -2362,7 +2430,8 @@ const packageTraceabilityLints = {
     if (!consistency.isConsistent) {
       const core = consistency.minimalConflictCore;
       const detail = core && core.length > 0 ? `: conflicting axioms [${core.map((a: any) => a.type).join(", ")}]` : "";
-      return error(`Ontological inconsistency detected in '${self.name || "package"}'${detail}`, {
+      return error(SysML2ErrorCode.ONTOLOGICAL_INCONSISTENCY.message(self.name || "package", detail), {
+        code: SysML2ErrorCode.ONTOLOGICAL_INCONSISTENCY.code,
         field: "declaredName",
       });
     }

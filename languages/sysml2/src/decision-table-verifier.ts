@@ -63,22 +63,22 @@ export function toNonlinearConstraint(g: GuardConstraint): NonlinearConstraint {
 /**
  * Negates a single constraint into an array of equivalent non-linear inequalities.
  */
-function negateNlConstraint(c: NonlinearConstraint): NonlinearConstraint[] {
+function negateNlConstraint(c: NonlinearConstraint, eps = 1e-5): NonlinearConstraint[] {
   if (c.rel === "<=") {
-    return [{ expr: c.expr, rel: ">=", rhs: c.rhs }];
+    return [{ expr: c.expr, rel: ">=", rhs: c.rhs + eps }];
   } else if (c.rel === ">=") {
-    return [{ expr: c.expr, rel: "<=", rhs: c.rhs }];
+    return [{ expr: c.expr, rel: "<=", rhs: c.rhs - eps }];
   } else {
     return [
-      { expr: c.expr, rel: "<=", rhs: c.rhs },
-      { expr: c.expr, rel: ">=", rhs: c.rhs },
+      { expr: c.expr, rel: "<=", rhs: c.rhs - eps },
+      { expr: c.expr, rel: ">=", rhs: c.rhs + eps },
     ];
   }
 }
 
 function negateGuard(g: GuardConstraint, eps = 1e-5): NonlinearConstraint[] {
   if (g.nonlinear) {
-    return negateNlConstraint(g.nonlinear);
+    return negateNlConstraint(g.nonlinear, eps);
   }
   const varName = g.variable;
   if (g.operator === "<") {

@@ -1,7 +1,6 @@
 // name: inst5.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Check that instances are cloned properly, so that modifiers don't "stick" to
 // a class.

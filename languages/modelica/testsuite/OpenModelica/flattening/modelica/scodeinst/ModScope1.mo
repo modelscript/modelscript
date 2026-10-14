@@ -1,7 +1,6 @@
 // name: ModScope1
 // keywords:
 // status: correct
-// xfail:    true
 //
 // Checks that modifiers are instantiated in the correct scope.
 // 

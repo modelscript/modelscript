@@ -199,3 +199,5 @@ export function emitVerificationDiagnostics(
 
   return diagnostics;
 }
+
+export { getSysmlParser } from "./sysml2-dae-lowerer.js";

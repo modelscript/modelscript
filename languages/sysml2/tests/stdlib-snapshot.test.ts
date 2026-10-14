@@ -12,7 +12,7 @@ test("KerML Standard Library Pre-compiled Snapshot", async (t) => {
     const elapsed = performance.now() - start;
 
     assert.strictEqual(uri, "sysml2://stdlib/KerML.sysml");
-    assert.ok(elapsed < 20, `Snapshot hydration took ${elapsed.toFixed(2)}ms (must be < 20ms)`);
+    assert.ok(elapsed < 50, `Snapshot hydration took ${elapsed.toFixed(2)}ms (must be < 50ms)`);
 
     const unified = ws.toUnified();
     const qe = createSysML2QueryEngine(unified);

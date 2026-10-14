@@ -1,7 +1,6 @@
 // name:     Extends1
 // keywords: extends
 // status:   correct
-// xfail:    true
 //
 // Testing extends clauses
 

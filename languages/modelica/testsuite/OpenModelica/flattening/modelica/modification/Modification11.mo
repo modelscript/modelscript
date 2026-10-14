@@ -1,7 +1,6 @@
 // name:     Modification11
 // keywords: modification
 // status:   correct
-// xfail:    true
 //
 
 class B

@@ -1,7 +1,6 @@
 // name: PackageConstant6
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model PackageConstant6

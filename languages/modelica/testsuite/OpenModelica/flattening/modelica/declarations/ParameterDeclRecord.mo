@@ -1,7 +1,6 @@
 // name: ParameterDeclRecord
 // keywords: parameter
 // status: correct
-// xfail:    true
 //
 // Tests the parameter prefix on a record type
 //

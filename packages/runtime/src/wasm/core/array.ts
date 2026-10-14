@@ -541,6 +541,8 @@ let g_matrixViewBuf: usize = 0;
  * Unmanaged zero-overhead view over a 2D dense row-major f64 matrix in linear memory.
  * Provides type-safe row/col indexing and row-swapping with zero GC allocations.
  */
+const DENSE_MATRIX_VIEW_STRIDE: usize = 32;
+
 @unmanaged
 export class DenseMatrixView {
   rows: u32;
@@ -549,10 +551,10 @@ export class DenseMatrixView {
 
   @inline static wrap(data: UnmanagedFloat64Array, rows: u32, cols: u32): DenseMatrixView {
     if (g_matrixViewBuf == 0) {
-      g_matrixViewBuf = atomicChunkAlloc(MATRIX_VIEW_SLOTS * sizeof<DenseMatrixView>());
+      g_matrixViewBuf = atomicChunkAlloc(MATRIX_VIEW_SLOTS * (DENSE_MATRIX_VIEW_STRIDE as u32));
     }
     let slot = (g_matrixViewIdx++) & MATRIX_VIEW_MASK;
-    let m = changetype<DenseMatrixView>(g_matrixViewBuf + slot * sizeof<DenseMatrixView>());
+    let m = changetype<DenseMatrixView>(g_matrixViewBuf + (slot as usize) * DENSE_MATRIX_VIEW_STRIDE);
     m.rows = rows;
     m.cols = cols;
     m.data = data;
@@ -589,6 +591,7 @@ export class DenseMatrixView {
 
 const INT32_MATRIX_VIEW_SLOTS: u32 = 16;
 const INT32_MATRIX_VIEW_MASK: u32 = INT32_MATRIX_VIEW_SLOTS - 1;
+const INT32_MATRIX_VIEW_STRIDE: usize = 32;
 let g_int32MatrixViewIdx: u32 = 0;
 let g_int32MatrixViewBuf: usize = 0;
 
@@ -604,10 +607,10 @@ export class DenseInt32MatrixView {
 
   @inline static wrap(data: UnmanagedInt32Array, rows: u32, cols: u32): DenseInt32MatrixView {
     if (g_int32MatrixViewBuf == 0) {
-      g_int32MatrixViewBuf = atomicChunkAlloc(INT32_MATRIX_VIEW_SLOTS * sizeof<DenseInt32MatrixView>());
+      g_int32MatrixViewBuf = atomicChunkAlloc(INT32_MATRIX_VIEW_SLOTS * (INT32_MATRIX_VIEW_STRIDE as u32));
     }
     let slot = (g_int32MatrixViewIdx++) & INT32_MATRIX_VIEW_MASK;
-    let m = changetype<DenseInt32MatrixView>(g_int32MatrixViewBuf + slot * sizeof<DenseInt32MatrixView>());
+    let m = changetype<DenseInt32MatrixView>(g_int32MatrixViewBuf + (slot as usize) * INT32_MATRIX_VIEW_STRIDE);
     m.rows = rows;
     m.cols = cols;
     m.data = data;

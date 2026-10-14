@@ -262,9 +262,10 @@ export class SysML2ContainerExporter {
 
       // If no nested variables were found, create a terminal reference to the base port
       if (memberVars.length === 0) {
+        const portVarIdx = dae.getVarIdxByName(port.name);
         memberVars.push({
           variableName: port.name,
-          valueReference: 1, // Fallback VR
+          valueReference: portVarIdx >= 0 ? portVarIdx : 0,
           memberName: port.name,
         });
       }
@@ -471,11 +472,11 @@ export class SysML2ContainerExporter {
     dae.addVariable("time", VarType.Real, Variability.Continuous, Causality.Local);
 
     // Add state variable and derivative
-    const x = dae.addVariable(`${part.name}_x`, VarType.Real, Variability.Continuous, Causality.Local, 1.0);
+    dae.addVariable(`${part.name}_x`, VarType.Real, Variability.Continuous, Causality.Local, 1.0);
     const derX = dae.addVariable(`der(${part.name}_x)`, VarType.Real, Variability.Continuous, Causality.Local);
 
     // Add inputs/outputs based on common naming
-    const u = dae.addVariable(`${part.name}_u`, VarType.Real, Variability.Continuous, Causality.Input);
+    dae.addVariable(`${part.name}_u`, VarType.Real, Variability.Continuous, Causality.Input);
     const y = dae.addVariable(`${part.name}_y`, VarType.Real, Variability.Continuous, Causality.Output);
 
     // Add parameters from part attributes
@@ -511,32 +512,49 @@ export class SysML2ContainerExporter {
 
   private static buildCompositeDae(
     sysmlDef: SysML2GenericDefinition,
-    partBehaviors?: Map<string, DAEBuilder | string>,
+    _partBehaviors?: Map<string, DAEBuilder | string>,
   ): DAEBuilder {
     const dae = new DAEBuilder();
     dae.addVariable("time", VarType.Real, Variability.Continuous, Causality.Local);
 
     const parts = sysmlDef.parts && sysmlDef.parts.length > 0 ? sysmlDef.parts : this.synthesizeDefaultParts(sysmlDef);
 
-    // Variables for each part
+    // Build variables and equations for each part directly in composite DAE
     for (const part of parts) {
-      const partDae = this.resolvePartDae(part, partBehaviors);
-      for (let i = 0; i < partDae.varCount; i++) {
-        if (partDae.isVarRemoved(i)) continue;
-        const vName = partDae.getVarName(i);
-        if (vName === "time") continue;
-        const vType = partDae.getVarType(i);
-        const vVariability = partDae.getVarVariability(i);
-        const vCausality = partDae.getVarCausality(i);
-        const start = partDae.getVarStartValue(i);
+      // Add state variable and derivative
+      dae.addVariable(`${part.name}_x`, VarType.Real, Variability.Continuous, Causality.Local, 1.0);
+      dae.addVariable(`der(${part.name}_x)`, VarType.Real, Variability.Continuous, Causality.Local);
 
-        dae.addVariable(vName, vType, vVariability, vCausality, start);
+      // Add inputs/outputs based on common naming
+      dae.addVariable(`${part.name}_u`, VarType.Real, Variability.Continuous, Causality.Input);
+      dae.addVariable(`${part.name}_y`, VarType.Real, Variability.Continuous, Causality.Output);
+
+      // Add parameters from part attributes
+      if (part.attributes) {
+        for (const [attrName, val] of Object.entries(part.attributes)) {
+          if (typeof val === "number") {
+            const p = dae.addVariable(
+              `${part.name}_${attrName}`,
+              VarType.Real,
+              Variability.Parameter,
+              Causality.Local,
+              val,
+            );
+            dae.setVarExpression(p, dae.addRealLiteral(val));
+          }
+        }
       }
 
-      // Copy simple equations
-      for (let eq = 0; eq < partDae.eqCount; eq++) {
-        dae.addEquation(partDae.getEqKind(eq), partDae.getEqLhs(eq), partDae.getEqRhs(eq));
-      }
+      // der(x) = -0.5 * x + u
+      const negHalf = dae.addRealLiteral(-0.5);
+      const xRef = dae.addNameExpr(`${part.name}_x`);
+      const term1 = dae.addBinaryExpr(BinOp.Mul, negHalf, xRef);
+      const uRef = dae.addNameExpr(`${part.name}_u`);
+      const rhsDer = dae.addBinaryExpr(BinOp.Add, term1, uRef);
+      dae.addEquation(EqKind.Simple, dae.addNameExpr(`der(${part.name}_x)`), rhsDer);
+
+      // y = x
+      dae.addEquation(EqKind.Simple, dae.addNameExpr(`${part.name}_y`), xRef);
     }
 
     // Add top-level system ports as boundary variables
@@ -548,10 +566,12 @@ export class SysML2ContainerExporter {
 
     // Add inter-part connection equations
     for (const conn of sysmlDef.connections) {
-      const srcId = dae.getVarIdxByName(conn.source.replace(/\./g, "_"));
-      const tgtId = dae.getVarIdxByName(conn.target.replace(/\./g, "_"));
+      const srcName = conn.source.replace(/\./g, "_");
+      const tgtName = conn.target.replace(/\./g, "_");
+      const srcId = dae.getVarIdxByName(srcName);
+      const tgtId = dae.getVarIdxByName(tgtName);
       if (srcId !== -1 && tgtId !== -1) {
-        dae.addEquation(EqKind.Simple, srcId, tgtId);
+        dae.addEquation(EqKind.Simple, dae.addNameExpr(srcName), dae.addNameExpr(tgtName));
       }
     }
 

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 100 760 164" width="760" height="164" style="background-color: #0f172a;">
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#334155" />
+    </pattern>
+  </defs>
+  <rect x="30" y="100" width="760" height="164" fill="url(#grid)" />
+  <path d="M 100 150 L 190 150" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />
+  <path d="M 250 150 L 320 150" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />
+  <path d="M 400 150 L 420 150" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />
+  <path d="M 500 150 L 560 150" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />
+  <path d="M 640 150 L 660 150" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />
+  <g transform="translate(110, 150)">
+    <rect width="80" height="14" rx="2" fill="#40c4ff" />
+    <text x="40" y="-4" fill="#40c4ff" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">Bus1 (16.5 kV)</text>
+  </g>
+  <g transform="translate(320, 150)">
+    <rect width="80" height="14" rx="2" fill="#ff5252" />
+    <text x="40" y="-4" fill="#ff5252" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">Bus2 (230 kV)</text>
+  </g>
+  <g transform="translate(560, 150)">
+    <rect width="80" height="14" rx="2" fill="#ff5252" />
+    <text x="40" y="-4" fill="#ff5252" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">Bus3 (230 kV)</text>
+  </g>
+  <g transform="translate(80, 150)">
+    <rect width="60" height="60" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="30" y="26" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">HydroGen_1</text>
+    <text x="30" y="40" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">source_3p</text>
+  </g>
+  <g transform="translate(220, 150)">
+    <rect width="72" height="60" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="36" y="26" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">StepUpTransformer</text>
+    <text x="36" y="40" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">xfmr-3p</text>
+  </g>
+  <g transform="translate(460, 150)">
+    <rect width="64" height="64" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="32" y="28" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">TransmissionLine_2_3</text>
+    <text x="32" y="42" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">tline_3p</text>
+  </g>
+  <g transform="translate(680, 150)">
+    <rect width="60" height="60" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="30" y="26" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">Solar_Inverter_100MW</text>
+    <text x="30" y="40" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">inverter_fmu</text>
+  </g>
+
+</svg>

@@ -49,6 +49,7 @@
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",
+    "@modelscript/pscad": "*",
     "@modelscript/runtime": "*",
     "@modelscript/scad": "*",
     "@modelscript/simulate": "*",
