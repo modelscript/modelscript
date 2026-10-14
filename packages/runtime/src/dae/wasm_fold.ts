@@ -562,7 +562,7 @@ export function evaluateConstantArenaExpression(
       return null;
     }
 
-    if (funcName === "/*Real*/" || funcName === "Real") {
+    if (funcName === "/*Real*/" || funcName === "Real" || funcName.startsWith("/*Real[")) {
       const val = evaluateConstantArenaExpression(
         arena,
         getCallArg(0),
@@ -1574,8 +1574,9 @@ export function foldArenaConstants(
             arena.getExprKind(
               arena.getExprData1(rhsExpr) !== 0 ? arena.getExprData1(rhsExpr) : arena.getExprLeft(rhsExpr),
             ) === ExprKind.Call);
-        const currentEqFoldMap = isCall ? paramMap : eqFoldMap;
-        const currentOnlyConstants = isCall ? false : omcCompatibility;
+        const isGen = Boolean((arena as any).extensionMetadata?.isGen);
+        const currentEqFoldMap = isCall && (!omcCompatibility || isGen) ? paramMap : eqFoldMap;
+        const currentOnlyConstants = isCall && (!omcCompatibility || isGen) ? false : omcCompatibility;
         const lhsKind = lhsExpr >= 0 ? arena.getExprKind(lhsExpr) : -1;
         if (
           rhsExpr >= 0 &&

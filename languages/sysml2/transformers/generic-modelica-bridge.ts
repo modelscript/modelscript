@@ -212,10 +212,26 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
     }
   }
 
+  const superclasses: string[] = [];
+  const extendsClauses = findNodes(root, "extends_clause");
+  for (const ec of extendsClauses) {
+    const nameNode =
+      ec.childForFieldName?.("name") ||
+      ec.childForFieldName?.("type_specifier") ||
+      findNodes(ec, "name")[0] ||
+      findNodes(ec, "type_specifier")[0] ||
+      findNodes(ec, "identifier")[0];
+    const typeSpec = nameNode?.text?.trim();
+    if (typeSpec && !superclasses.includes(typeSpec)) {
+      superclasses.push(typeSpec);
+    }
+  }
+
   return {
     name,
     kind: "part def",
     isAbstract,
+    superclasses: superclasses.length > 0 ? superclasses : undefined,
     attributes,
     ports,
     parts,
@@ -406,10 +422,20 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     }
   }
 
+  const superclasses: string[] = [];
+  const subclassificationNodes = findNodes(targetNode, "OwnedSubclassification");
+  for (const sc of subclassificationNodes) {
+    const scName = sc.text.replace(/^[:>\s]+/, "").trim();
+    if (scName && !superclasses.includes(scName)) {
+      superclasses.push(scName);
+    }
+  }
+
   return {
     name,
     kind: "part def",
     isAbstract,
+    superclasses: superclasses.length > 0 ? superclasses : undefined,
     attributes,
     ports,
     parts,
@@ -783,7 +809,8 @@ export class GenericModelicaBridge {
   static emitSysML2(sysml: SysML2GenericDefinition): string {
     const lines: string[] = [];
     const kind = sysml.isAbstract ? "abstract part def" : "part def";
-    lines.push(`${kind} ${sysml.name} {`);
+    const superStr = sysml.superclasses && sysml.superclasses.length > 0 ? ` :> ${sysml.superclasses.join(", ")}` : "";
+    lines.push(`${kind} ${sysml.name}${superStr} {`);
 
     for (const attr of sysml.attributes) {
       const valStr = attr.defaultValue !== undefined ? ` = ${attr.defaultValue}` : "";

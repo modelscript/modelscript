@@ -24,6 +24,23 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createWasmParserSync } from "../src-gen/bindings.js";
+import { SysML2CstFlattener } from "./flattener/cst-lowerer.js";
+
+let cachedSysmlParser: any = null;
+export function getSysmlParser(): any {
+  if (cachedSysmlParser) return cachedSysmlParser;
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    const wasmPath = path.resolve(currentDir, "../dist/parser.wasm");
+    cachedSysmlParser = createWasmParserSync(wasmPath)?.parser;
+  } catch {
+    // Parser fallback
+  }
+  return cachedSysmlParser;
+}
 
 export interface LoweredActionDae {
   arena: DAEBuilder;
@@ -100,7 +117,7 @@ export function tokenizeSysml(input: string): SysML2Token[] {
 /**
  * Expression parser generating DAE arena ExprIds.
  */
-class SysmlExprParser {
+export class SysmlExprParser {
   private pos = 0;
 
   constructor(
@@ -557,6 +574,42 @@ export class SysML2DaeLowerer {
   }
 
   /**
+   * Lowers a parsed CST root node or source string directly into the DAE arena via SysML2CstFlattener.
+   */
+  public static lowerCst(
+    sourceOrRootNode: string | any,
+    existingArena?: DAEBuilder,
+    options?: { overrides?: Record<string, number>; rootComponentName?: string },
+  ): LoweredConstraintDae & { rootName: string } {
+    let root = sourceOrRootNode;
+    let sourceText: string | undefined;
+    if (typeof sourceOrRootNode === "string") {
+      sourceText = sourceOrRootNode;
+      const parser = getSysmlParser();
+      if (!parser) throw new Error("SysML v2 parser not available");
+      const tree = parser.parse(sourceOrRootNode);
+      root = tree?.rootNode;
+    }
+    const arena = existingArena ?? new DAEBuilder();
+    const flattener = new SysML2CstFlattener({
+      arena,
+      sourceText,
+      overrides: options?.overrides,
+      rootComponentName: options?.rootComponentName,
+    });
+    const res = flattener.flatten(root);
+    return {
+      arena: res.arena,
+      name: res.rootName,
+      rootName: res.rootName,
+      parameters: res.parameters,
+      states: res.states,
+      derivatives: res.derivatives,
+      eqCount: res.eqCount,
+    };
+  }
+
+  /**
    * Lowers a physical SysML v2 Constraint or Part definition with differential and algebraic equations into a DAEBuilder.
    */
   public static async lowerConstraint(sysmlSource: string, existingArena?: DAEBuilder): Promise<LoweredConstraintDae> {
@@ -565,6 +618,30 @@ export class SysML2DaeLowerer {
     } catch {}
 
     const arena = existingArena ?? new DAEBuilder();
+
+    // Fast-path: Native WASM GLR CST flattener
+    const parser = getSysmlParser();
+    if (parser) {
+      try {
+        const tree = parser.parse(sysmlSource);
+        if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+          const flattener = new SysML2CstFlattener({ arena });
+          const cstRes = flattener.flatten(tree.rootNode);
+          if (cstRes.eqCount > 0) {
+            return {
+              arena: cstRes.arena,
+              name: cstRes.rootName,
+              parameters: cstRes.parameters,
+              states: cstRes.states,
+              derivatives: cstRes.derivatives,
+              eqCount: cstRes.eqCount,
+            };
+          }
+        }
+      } catch {
+        // Fallback to legacy lowering on parse/elaboration error
+      }
+    }
 
     // 1. Strip comments (linear scan without polynomial backtracking)
     let strippedComments = "";

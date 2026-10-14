@@ -1189,18 +1189,37 @@ function runTestCaseCore(
           code: cd.code,
           message: cd.message,
           resource: testCase.file,
-          range: cd.range
-            ? {
-                startPosition: {
+          range: (() => {
+            let startPosition = cd.range
+              ? {
                   row: cd.range.start.line,
                   column: lspPositionToUtf8Column(cd.range.start.line, cd.range.start.character),
-                },
-                endPosition: {
+                }
+              : null;
+            let endPosition = cd.range
+              ? {
                   row: cd.range.end.line,
                   column: lspPositionToUtf8Column(cd.range.end.line, cd.range.end.character),
-                },
+                }
+              : null;
+            let startCharOffset = cd.startCharOffset ?? cd.startOffset;
+            let endCharOffset = cd.endCharOffset ?? cd.endOffset;
+            if (typeof startCharOffset === "number" && typeof endCharOffset === "number") {
+              let s = startCharOffset;
+              while (s < endCharOffset && /\s/.test(testCase.source[s])) {
+                s++;
               }
-            : null,
+              let e = endCharOffset;
+              while (e > s && /\s/.test(testCase.source[e - 1])) {
+                e--;
+              }
+              if (s !== startCharOffset || e !== endCharOffset) {
+                startPosition = byteToPosition(s);
+                endPosition = byteToPosition(e);
+              }
+            }
+            return startPosition && endPosition ? { startPosition, endPosition } : null;
+          })(),
         });
       }
     }

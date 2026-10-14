@@ -358,53 +358,51 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
     if (isRecordSym(sym) && isRecordUsed(sym)) {
       const fn = flattener.generateRecordConstructorFor(sym, dae, rootClassId);
       if (fn) {
-        const qualName = getSymbolQualifiedName(db, sym.id);
-        const baseName = sym.name;
-        if (flattener.calledFunctionSignatures && flattener.calledFunctionSignatures.size > 0) {
-          for (const [callName, sigs] of flattener.calledFunctionSignatures.entries()) {
-            if (
-              callName === baseName ||
-              callName === qualName ||
-              (dae.name && callName === `${dae.name}.${baseName}`)
-            ) {
-              for (const sig of sigs) {
-                const specFnName = `${callName}$${sig.types.join("$")}`;
-                if (!dae.functions.has(specFnName)) {
-                  const specFn = new DAEBuilder(dae.interner, specFnName, "");
-                  specFn.classKind = "function";
-                  specFn.description = `Specialized record constructor for ${specFnName}`;
-                  if (flattener.isOperatorRecordSym(sym)) {
-                    (specFn as any).isOperatorRecord = true;
-                    specFn.extensionMetadata.isOperatorRecord = true;
+        const qualName = getSymbolQualifiedName(db, sym.id) || sym.name;
+        const compNames =
+          flattener.instantiatedRecordComponents?.get(qualName) ??
+          flattener.instantiatedRecordComponents?.get(sym.name);
+        if (compNames && compNames.size > 0) {
+          for (const compName of compNames) {
+            const specFnName = `${qualName}$${compName}`;
+            const specSimpleName = `${sym.name}$${compName}`;
+            if (!dae.functions.has(specFnName)) {
+              const specFn = new DAEBuilder(dae.interner, specFnName, "");
+              specFn.classKind = "function";
+              specFn.description = `Automatically generated record constructor for ${specFnName}`;
+              if (flattener.isOperatorRecordSym(sym)) {
+                (specFn as any).isOperatorRecord = true;
+                specFn.extensionMetadata.isOperatorRecord = true;
+              }
+              for (let i = 0; i < fn.varCount; i++) {
+                const vName = fn.getVarName(i);
+                if (vName === "res") continue;
+                const vType = fn.getVarType(i);
+                const vCausality = fn.getVarCausality(i);
+                const vProt = fn.isVarProtected(i);
+                const vShape = fn.getVarShape(i);
+                const vCustom = fn.getVarCustomType(i);
+                const vExpr = fn.getVarExpression(i);
+                const specVarIdx = specFn.addVariable(vName, vType, Variability.Continuous, vCausality);
+                if (vProt) specFn.setVarProtected(specVarIdx, true);
+                if (vCustom) specFn.setVarCustomType(specVarIdx, vCustom);
+                if (vShape.length > 0) specFn.setVarShape(specVarIdx, vShape);
+                if (vExpr !== undefined && vExpr >= 0) {
+                  const ek = fn.getExprKind(vExpr);
+                  if (ek === ExprKind.RealLiteral) {
+                    specFn.setVarExpression(specVarIdx, specFn.addRealLiteral(fn.getExprRealValue(vExpr)));
+                  } else if (ek === ExprKind.IntLiteral) {
+                    specFn.setVarExpression(specVarIdx, specFn.addIntLiteral(fn.getExprData1(vExpr)));
+                  } else if (ek === ExprKind.BoolLiteral) {
+                    specFn.setVarExpression(specVarIdx, specFn.addBoolLiteral(fn.getExprData1(vExpr) !== 0));
                   }
-                  for (let i = 0; i < fn.varCount; i++) {
-                    const vName = fn.getVarName(i);
-                    if (vName === "res") continue;
-                    const vType = fn.getVarType(i);
-                    const vCausality = fn.getVarCausality(i);
-                    const vProt = fn.isVarProtected(i);
-                    const vShape = fn.getVarShape(i);
-                    const vCustom = fn.getVarCustomType(i);
-                    const vExpr = fn.getVarExpression(i);
-                    const specVarIdx = specFn.addVariable(vName, vType, Variability.Continuous, vCausality);
-                    if (vProt) specFn.setVarProtected(specVarIdx, true);
-                    if (vCustom) specFn.setVarCustomType(specVarIdx, vCustom);
-                    if (vShape.length > 0) specFn.setVarShape(specVarIdx, vShape);
-                    if (vExpr >= 0) {
-                      const ek = fn.getExprKind(vExpr);
-                      if (ek === ExprKind.RealLiteral) {
-                        specFn.setVarExpression(specVarIdx, specFn.addRealLiteral(fn.getExprRealValue(vExpr)));
-                      } else if (ek === ExprKind.IntLiteral) {
-                        specFn.setVarExpression(specVarIdx, specFn.addIntLiteral(fn.getExprData1(vExpr)));
-                      } else if (ek === ExprKind.BoolLiteral) {
-                        specFn.setVarExpression(specVarIdx, specFn.addBoolLiteral(fn.getExprData1(vExpr) !== 0));
-                      }
-                    }
-                  }
-                  const specResIdx = specFn.addVariable("res", VarType.Real, Variability.Continuous, Causality.Output);
-                  specFn.setVarCustomType(specResIdx, specFnName);
-                  dae.addFunction(specFnName, specFn);
                 }
+              }
+              const specResIdx = specFn.addVariable("res", VarType.Real, Variability.Continuous, Causality.Output);
+              specFn.setVarCustomType(specResIdx, specSimpleName);
+              dae.addFunction(specFnName, specFn);
+              if (specSimpleName !== specFnName) {
+                dae.addFunction(specSimpleName, specFn);
               }
             }
           }
@@ -462,6 +460,7 @@ export function flattenFunction(
   fn.classKind = "function";
   (fn as any).symId = fnSymId;
   (fn as any).flattener = flattener;
+  (fn as any).enclosingScopeId = enclosingScopeId ?? fnParentId ?? db.symbol(fnSymId)?.parentId;
   (fn as any).isBeingFlattened = true;
   fn.extensionMetadata.isOldFrontend = Boolean(
     parentDae?.extensionMetadata?.isOldFrontend ?? (flattener.options as any)?.isOldFrontend,
@@ -810,7 +809,8 @@ export function flattenFunction(
     }
 
     flattener.extractClassEquations(targetSymId, "", fn);
-    foldArenaConstants(fn, db, targetSymId, true);
+    const foldScope = enclosingScopeId ?? fnParentId ?? targetSymId;
+    foldArenaConstants(fn, db, foldScope, true);
 
     flattener.checkCyclicFunctionComponents(fn, targetSymId);
     // Check if function returns an ExternalObject (and is not its constructor)

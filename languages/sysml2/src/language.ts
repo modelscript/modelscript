@@ -288,18 +288,178 @@ const definitionStructuralQueries = {
   },
 };
 
+/**
+ * Helper to resolve a multi-segment qualified path A::B::C::D.
+ */
+function resolveQualifiedPath(db: QueryDB, roots: SymbolEntry[], segments: string[]): SymbolEntry | null {
+  let currentSet = roots;
+  for (const seg of segments) {
+    const nextSet: SymbolEntry[] = [];
+    for (const curr of currentSet) {
+      // 1. Direct children
+      for (const child of db.childrenOf(curr.id)) {
+        if (child.name === seg) {
+          nextSet.push(child);
+        }
+      }
+      // 2. Inherited children from superclassifiers
+      for (const scChild of db.childrenOf(curr.id)) {
+        if (scChild.ruleName === "OwnedSubclassification" && scChild.name) {
+          const superTargets = db.byName(scChild.name);
+          for (const st of superTargets) {
+            for (const child of db.childrenOf(st.id)) {
+              if (child.name === seg) nextSet.push(child);
+            }
+          }
+        }
+      }
+    }
+    if (nextSet.length === 0) return null;
+    currentSet = nextSet;
+  }
+  return currentSet[0] ?? null;
+}
+
+/**
+ * Resolve a feature reference name within a scope.
+ * Searches: (1) multi-segment qualified names, (2) direct scope children, (3) inherited members, (4) imported members/namespaces, (5) global byName.
+ */
+const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string): SymbolEntry | null => {
+  // 1. Multi-segment qualified name lookup (e.g. "ScalarValues::Real", "A::B::C::D")
+  if (name.includes("::")) {
+    const parts = name.split("::");
+    const rootName = parts[0];
+    const rest = parts.slice(1);
+
+    const rootCandidates: SymbolEntry[] = [];
+
+    // Search lexical scope chain for the root segment
+    if (scopeId !== null) {
+      let cur: number | null = scopeId;
+      while (cur !== null) {
+        const p = db.symbol(cur);
+        if (!p) break;
+        for (const ch of db.childrenOf(p.id)) {
+          if (ch.name === rootName) rootCandidates.push(ch);
+        }
+        cur = p.parentId;
+      }
+    }
+
+    // Also include top-level packages matching rootName
+    for (const cand of db.byName(rootName)) {
+      if (!rootCandidates.some((r) => r.id === cand.id)) {
+        rootCandidates.push(cand);
+      }
+    }
+
+    const resolved = resolveQualifiedPath(db, rootCandidates, rest);
+    if (resolved) return resolved;
+  }
+
+  // 2. Search enclosing scope's children, inheritance, and imports up the scope chain
+  if (scopeId !== null) {
+    let current: number | null = scopeId;
+    while (current !== null) {
+      const parent = db.symbol(current);
+      if (!parent) break;
+      const children = db.childrenOf(parent.id);
+
+      // (a) Search direct non-import children
+      for (const child of children) {
+        if (child.kind !== "Import" && child.name === name) return child;
+      }
+
+      // (b) Search inherited members from superclassifiers (:>)
+      const visitedSuper = new Set<string>();
+      const superQueue: string[] = [];
+      for (const child of children) {
+        if (child.ruleName === "OwnedSubclassification" && child.name) {
+          superQueue.push(child.name);
+        }
+      }
+      while (superQueue.length > 0) {
+        const superName = superQueue.shift()!;
+        if (visitedSuper.has(superName)) continue;
+        visitedSuper.add(superName);
+
+        const superTargets = db.byName(superName);
+        for (const st of superTargets) {
+          for (const member of db.childrenOf(st.id)) {
+            if (member.kind !== "Import" && member.name === name) return member;
+          }
+          // Transitive inheritance
+          for (const grandChild of db.childrenOf(st.id)) {
+            if (grandChild.ruleName === "OwnedSubclassification" && grandChild.name) {
+              superQueue.push(grandChild.name);
+            }
+          }
+        }
+      }
+
+      // (c) Search imports in this scope
+      for (const child of children) {
+        if (child.kind === "Import" && child.name) {
+          const importTarget = child.name;
+
+          // Case i: Namespace wildcard import (e.g. "ScalarValues::*" or "ScalarValues")
+          if (importTarget.endsWith("::*") || importTarget.endsWith("::**") || !importTarget.includes("::")) {
+            const rawPkg = importTarget.replace(/::\*+$/, "");
+            const pkgBaseName = rawPkg.split("::").pop() || rawPkg;
+            const pkgs = db.byName(pkgBaseName);
+            for (const p of pkgs) {
+              for (const member of db.childrenOf(p.id)) {
+                if (member.name === name) return member;
+              }
+            }
+          }
+
+          // Case ii: Membership import (e.g. "ScalarValues::Real" or "ISQ::Time")
+          if (importTarget.endsWith("::" + name) || importTarget === name) {
+            const parts = importTarget.split("::");
+            if (parts.length > 1) {
+              const pkgName = parts[parts.length - 2];
+              const pkgs = db.byName(pkgName);
+              for (const p of pkgs) {
+                for (const member of db.childrenOf(p.id)) {
+                  if (member.name === name) return member;
+                }
+              }
+            } else {
+              const candidates = db.byName(name);
+              if (candidates && candidates.length > 0) return candidates[0];
+            }
+          }
+        }
+      }
+
+      current = parent.parentId;
+    }
+  }
+
+  // 3. Fallback: global name lookup (restricted to root definitions and standard types)
+  const globals = db.byName(name);
+  if (!globals || globals.length === 0) return null;
+
+  if (scopeId === null) return globals[0];
+
+  const standardTypes = new Set(["Real", "Integer", "Boolean", "String", "Natural", "Complex", "Rational", "Anything"]);
+  if (standardTypes.has(name)) return globals[0];
+
+  const rootGlobal = globals.find((g) => g.parentId === null || g.kind === "Package");
+  return rootGlobal ?? null;
+};
+
 /** Queries for all Usage rules */
 const usageQueries = {
   inferredSuperClasses: (db: QueryDB, self: SymbolEntry) => packageTraceabilityQueries.inferredSuperClasses(db, self),
   ownedFeatures: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id).filter((c) => c.kind === "Usage"),
   resolvedType: (db: QueryDB, self: SymbolEntry) => {
-    // Find child OwnedFeatureTyping ref entries and resolve the type name
+    // Find child OwnedFeatureTyping ref entries and resolve the type in scope
     for (const child of db.childrenOf(self.id)) {
       if (child.ruleName === "OwnedFeatureTyping" && child.name) {
-        const targets = db.byName(child.name);
-        for (const t of targets) {
-          if (t.kind === "Definition" || t.kind === "Enumeration" || t.kind === "Class") return t;
-        }
+        const resolved = resolveFeatureInScope(db, self.parentId, child.name);
+        if (resolved) return resolved;
       }
     }
     return null;
@@ -398,93 +558,12 @@ type CSTNode = import("@modelscript/dsl").CSTNode;
  * Resolve a feature reference name within a scope.
  * Searches: (1) qualified names, (2) direct scope children, (3) imported members/namespaces, (4) global byName.
  */
-const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string): SymbolEntry | null => {
-  // 1. Direct qualified name lookup (e.g. "ScalarValues::Real" or "ISQ::Time")
-  if (name.includes("::")) {
-    const parts = name.split("::");
-    const pkgName = parts[0];
-    const memberName = parts[parts.length - 1];
-    const pkgCandidates = db.byName(pkgName);
-    for (const pkg of pkgCandidates) {
-      for (const child of db.childrenOf(pkg.id)) {
-        if (child.name === memberName) return child;
-      }
-    }
-  }
-
-  // 2. Search enclosing scope's children and imports up the scope chain
-  if (scopeId !== null) {
-    let current: number | null = scopeId;
-    while (current !== null) {
-      const parent = db.symbol(current);
-      if (!parent) break;
-      const children = db.childrenOf(parent.id);
-
-      // (a) Search direct non-import children
-      for (const child of children) {
-        if (child.kind !== "Import" && child.name === name) return child;
-      }
-
-      // (b) Search imports in this scope
-      for (const child of children) {
-        if (child.kind === "Import" && child.name) {
-          const importTarget = child.name;
-
-          // Case i: Namespace wildcard import (e.g. "ScalarValues::*" or "ScalarValues")
-          if (importTarget.endsWith("::*") || importTarget.endsWith("::**") || !importTarget.includes("::")) {
-            const rawPkg = importTarget.replace(/::\*+$/, "");
-            const pkgBaseName = rawPkg.split("::").pop() || rawPkg;
-            const pkgs = db.byName(pkgBaseName);
-            for (const p of pkgs) {
-              for (const member of db.childrenOf(p.id)) {
-                if (member.name === name) return member;
-              }
-            }
-          }
-
-          // Case ii: Membership import (e.g. "ScalarValues::Real" or "ISQ::Time")
-          if (importTarget.endsWith("::" + name) || importTarget === name) {
-            const parts = importTarget.split("::");
-            if (parts.length > 1) {
-              const pkgName = parts[parts.length - 2];
-              const pkgs = db.byName(pkgName);
-              for (const p of pkgs) {
-                for (const member of db.childrenOf(p.id)) {
-                  if (member.name === name) return member;
-                }
-              }
-            } else {
-              const candidates = db.byName(name);
-              if (candidates && candidates.length > 0) return candidates[0];
-            }
-          }
-        }
-      }
-
-      current = parent.parentId;
-    }
-  }
-
-  // 3. Fallback: global name lookup
-  const globals = db.byName(name);
-  return globals?.[0] ?? null;
-};
-
 /**
  * Resolve the type entry for a feature usage.
- * Reads the OwnedFeatureTyping child's name and resolves via resolveFeatureInScope or db.byName().
+ * Reads the OwnedFeatureTyping child's name and resolves via resolveFeatureInScope.
  */
 const resolveTypeOf = (db: QueryDB, entry: SymbolEntry): SymbolEntry | null => {
-  // Look for OwnedFeatureTyping children to get the type name
-  for (const child of db.childrenOf(entry.id)) {
-    if (child.ruleName === "OwnedFeatureTyping" && child.name) {
-      const resolved = resolveFeatureInScope(db, entry.parentId, child.name);
-      if (resolved) return resolved;
-      const typeEntries = db.byName(child.name);
-      if (typeEntries.length > 0) return typeEntries[0];
-    }
-  }
-  return null;
+  return usageQueries.resolvedType(db, entry);
 };
 
 /**

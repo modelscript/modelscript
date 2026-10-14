@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DpllTSolver, Interval, type ExprNode, type NonlinearConstraint, type QueryDB } from "@modelscript/runtime";
+import { findFirstDescendant } from "./flattener/cst-lowerer.js";
+import { getSysmlParser } from "./sysml2-dae-lowerer.js";
 
 /**
  * Diagnostic emitted when a state machine transition hazard is identified.
@@ -63,9 +65,122 @@ export function extractVariables(node: ExprNode, out: Set<string>): void {
 }
 
 /**
+ * Converts a CST expression node into an ExprNode for formal solvers (DPLL(T) / HC4-Revise).
+ */
+function cstToExprNode(node: any): ExprNode | undefined {
+  if (!node) return undefined;
+  while (
+    node &&
+    (node.type === "OwnedExpression" ||
+      node.type === "SequenceExpression" ||
+      node.type === "ResultExpressionMember" ||
+      node.type === "_Expression" ||
+      node.type === "_BaseExpression")
+  ) {
+    const inner =
+      node.childForFieldName?.("ownedRelatedElement") ||
+      (node.childCount > 0 ? (node.child ? node.child(0) : node.children[0]) : null);
+    if (inner && inner !== node) {
+      node = inner;
+    } else {
+      break;
+    }
+  }
+
+  // Parenthesized: ( expr )
+  if (node.childCount >= 3) {
+    const first = node.child ? node.child(0) : node.children[0];
+    const last = node.child ? node.child(node.childCount - 1) : node.children[node.childCount - 1];
+    if (first?.text === "(" && last?.text === ")") {
+      const inner = node.child ? node.child(1) : node.children[1];
+      return cstToExprNode(inner);
+    }
+  }
+
+  // Number literal
+  if (/^\d+(?:\.\d+)?$/.test(node.text)) {
+    return { kind: "const", value: parseFloat(node.text) };
+  }
+
+  // Function calls: sin(x), cos(x), sqrt(x), sqr(x)
+  if (node.childCount >= 3 && (node.child ? node.child(1)?.text === "(" : node.children[1]?.text === "(")) {
+    const fnName = (node.child ? node.child(0)?.text : node.children[0]?.text)?.toLowerCase();
+    const arg = cstToExprNode(node.child ? node.child(2) : node.children[2]);
+    if (arg) {
+      if (fnName === "sin") return { kind: "sin", child: arg };
+      if (fnName === "cos") return { kind: "cos", child: arg };
+      if (fnName === "sqrt") return { kind: "sqrt", child: arg };
+      if (fnName === "sqr") return { kind: "sqr", child: arg };
+    }
+  }
+
+  // Binary expression
+  if (node.childCount >= 3) {
+    const op = node.child ? node.child(1)?.text : node.children[1]?.text;
+    const left = cstToExprNode(node.child ? node.child(0) : node.children[0]);
+    const right = cstToExprNode(node.child ? node.child(2) : node.children[2]);
+    if (left && right && op) {
+      if (op === "+") return { kind: "add", left, right };
+      if (op === "-") return { kind: "sub", left, right };
+      if (op === "*") return { kind: "mul", left, right };
+      if (op === "/") return { kind: "div", left, right };
+      if (op === "^" || op === "**") {
+        if (right.kind === "const" && right.value === 2) return { kind: "sqr", child: left };
+      }
+    }
+  }
+
+  // Unary expression
+  if (node.childCount === 2) {
+    const op = node.child ? node.child(0)?.text : node.children[0]?.text;
+    const operand = cstToExprNode(node.child ? node.child(1) : node.children[1]);
+    if (op === "-" && operand) {
+      if (operand.kind === "const") return { kind: "const", value: -operand.value };
+      return { kind: "neg", child: operand };
+    }
+    if (op === "+" && operand) return operand;
+  }
+
+  // Variable identifier
+  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(node.text)) {
+    return { kind: "var", name: node.text };
+  }
+
+  return undefined;
+}
+
+/**
  * Parses an arithmetic expression supporting +, -, *, /, ^2, sin, cos, sqrt.
  */
 function parseArithmeticExpression(str: string): ExprNode | undefined {
+  const trimmed = str.trim();
+  // Fast-path: Native WASM GLR parser
+  const parser = getSysmlParser();
+  if (parser) {
+    try {
+      const tree = parser.parse(`calc def __E { return ${trimmed}; }`);
+      if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+        const retNode =
+          findFirstDescendant(tree.rootNode, "ReturnStatement") ||
+          findFirstDescendant(tree.rootNode, "ResultExpressionMember");
+        if (retNode) {
+          const exprChild =
+            retNode.childCount > 1
+              ? retNode.child
+                ? retNode.child(1)
+                : retNode.children[1]
+              : retNode.child
+                ? retNode.child(0)
+                : retNode.children[0];
+          const node = cstToExprNode(exprChild);
+          if (node) return node;
+        }
+      }
+    } catch {
+      // Fallback to legacy tokenizer
+    }
+  }
+
   const tokens: string[] = [];
   const regex = /\s*([a-zA-Z_][a-zA-Z0-9_.]*|\d+(?:\.\d+)?|\+|-|\*|\/|\^|\(|\))\s*/g;
   let match: RegExpExecArray | null;

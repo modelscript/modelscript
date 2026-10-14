@@ -21,8 +21,13 @@ import {
 import { ModelicaErrorCode } from "../../errors.js";
 import { castToRealExpr, evalDaeExpr, getExprDims, isRealExpr } from "./eval.js";
 
-export function exprReferencesRuntimeParameter(exprId: number, dae: DAEBuilder): boolean {
-  if (exprId < 0) return false;
+export function exprReferencesRuntimeParameter(
+  exprId: number,
+  dae: DAEBuilder,
+  visited: Set<number> = new Set(),
+): boolean {
+  if (exprId < 0 || visited.has(exprId)) return false;
+  visited.add(exprId);
   const k = dae.getExprKind(exprId);
   if (k === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
@@ -38,19 +43,76 @@ export function exprReferencesRuntimeParameter(exprId: number, dae: DAEBuilder):
     }
     return false;
   }
-  const l = dae.getExprLeft(exprId);
-  const r = dae.getExprRight(exprId);
-  const d1 = dae.getExprData1(exprId);
-  if (l >= 0 && exprReferencesRuntimeParameter(l, dae)) return true;
-  if (r >= 0 && exprReferencesRuntimeParameter(r, dae)) return true;
-  if (k === ExprKind.Call || k === ExprKind.Der || k === ExprKind.IfElse) {
-    if (d1 >= 0 && exprReferencesRuntimeParameter(d1, dae)) return true;
+  if (
+    k === ExprKind.IntLiteral ||
+    k === ExprKind.RealLiteral ||
+    k === ExprKind.BoolLiteral ||
+    k === ExprKind.StringLiteral ||
+    k === ExprKind.Colon ||
+    k === ExprKind.EnumLiteral
+  ) {
+    return false;
+  }
+  if (k === ExprKind.Binary) {
+    const l = dae.getExprLeft(exprId);
+    const r = dae.getExprRight(exprId);
+    return (
+      (l >= 0 && exprReferencesRuntimeParameter(l, dae, visited)) ||
+      (r >= 0 && exprReferencesRuntimeParameter(r, dae, visited))
+    );
+  }
+  if (k === ExprKind.Unary || k === ExprKind.Negate) {
+    const l = dae.getExprLeft(exprId);
+    return l >= 0 && exprReferencesRuntimeParameter(l, dae, visited);
+  }
+  if (k === ExprKind.IfElse) {
+    const cond = dae.getExprData1(exprId);
+    const thenE = dae.getExprLeft(exprId);
+    const elseE = dae.getExprRight(exprId);
+    return (
+      (cond >= 0 && exprReferencesRuntimeParameter(cond, dae, visited)) ||
+      (thenE >= 0 && exprReferencesRuntimeParameter(thenE, dae, visited)) ||
+      (elseE >= 0 && exprReferencesRuntimeParameter(elseE, dae, visited))
+    );
+  }
+  if (k === ExprKind.Der || k === ExprKind.Pre) {
+    const arg = dae.getExprData1(exprId);
+    return arg >= 0 && exprReferencesRuntimeParameter(arg, dae, visited);
+  }
+  if (k === ExprKind.Subscript) {
+    const base = dae.getExprData1(exprId);
+    const idx = dae.getExprLeft(exprId);
+    return (
+      (base >= 0 && exprReferencesRuntimeParameter(base, dae, visited)) ||
+      (idx >= 0 && exprReferencesRuntimeParameter(idx, dae, visited))
+    );
+  }
+  if (k === ExprKind.ArrayCtor || k === ExprKind.Tuple) {
+    const count = dae.getExprData1(exprId);
+    const first = dae.getExprLeft(exprId);
+    for (let i = 0; i < count; i++) {
+      if (exprReferencesRuntimeParameter(first + i, dae, visited)) return true;
+    }
+    return false;
+  }
+  if (k === ExprKind.Call) {
+    const first = dae.getExprLeft(exprId);
+    const count = dae.getExprRight(exprId);
+    for (let i = 0; i < count; i++) {
+      if (exprReferencesRuntimeParameter(first + i, dae, visited)) return true;
+    }
+    return false;
   }
   return false;
 }
 
-export function exprReferencesEnumParameter(exprId: number, dae: DAEBuilder): boolean {
-  if (exprId < 0) return false;
+export function exprReferencesEnumParameter(
+  exprId: number,
+  dae: DAEBuilder,
+  visited: Set<number> = new Set(),
+): boolean {
+  if (exprId < 0 || visited.has(exprId)) return false;
+  visited.add(exprId);
   const k = dae.getExprKind(exprId);
   if (k === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
@@ -64,13 +126,65 @@ export function exprReferencesEnumParameter(exprId: number, dae: DAEBuilder): bo
     }
     return false;
   }
-  const l = dae.getExprLeft(exprId);
-  const r = dae.getExprRight(exprId);
-  const d1 = dae.getExprData1(exprId);
-  if (l >= 0 && exprReferencesEnumParameter(l, dae)) return true;
-  if (r >= 0 && exprReferencesEnumParameter(r, dae)) return true;
-  if (k === ExprKind.Call || k === ExprKind.Der || k === ExprKind.IfElse) {
-    if (d1 >= 0 && exprReferencesEnumParameter(d1, dae)) return true;
+  if (
+    k === ExprKind.IntLiteral ||
+    k === ExprKind.RealLiteral ||
+    k === ExprKind.BoolLiteral ||
+    k === ExprKind.StringLiteral ||
+    k === ExprKind.Colon ||
+    k === ExprKind.EnumLiteral
+  ) {
+    return false;
+  }
+  if (k === ExprKind.Binary) {
+    const l = dae.getExprLeft(exprId);
+    const r = dae.getExprRight(exprId);
+    return (
+      (l >= 0 && exprReferencesEnumParameter(l, dae, visited)) ||
+      (r >= 0 && exprReferencesEnumParameter(r, dae, visited))
+    );
+  }
+  if (k === ExprKind.Unary || k === ExprKind.Negate) {
+    const l = dae.getExprLeft(exprId);
+    return l >= 0 && exprReferencesEnumParameter(l, dae, visited);
+  }
+  if (k === ExprKind.IfElse) {
+    const cond = dae.getExprData1(exprId);
+    const thenE = dae.getExprLeft(exprId);
+    const elseE = dae.getExprRight(exprId);
+    return (
+      (cond >= 0 && exprReferencesEnumParameter(cond, dae, visited)) ||
+      (thenE >= 0 && exprReferencesEnumParameter(thenE, dae, visited)) ||
+      (elseE >= 0 && exprReferencesEnumParameter(elseE, dae, visited))
+    );
+  }
+  if (k === ExprKind.Der || k === ExprKind.Pre) {
+    const arg = dae.getExprData1(exprId);
+    return arg >= 0 && exprReferencesEnumParameter(arg, dae, visited);
+  }
+  if (k === ExprKind.Subscript) {
+    const base = dae.getExprData1(exprId);
+    const idx = dae.getExprLeft(exprId);
+    return (
+      (base >= 0 && exprReferencesEnumParameter(base, dae, visited)) ||
+      (idx >= 0 && exprReferencesEnumParameter(idx, dae, visited))
+    );
+  }
+  if (k === ExprKind.ArrayCtor || k === ExprKind.Tuple) {
+    const count = dae.getExprData1(exprId);
+    const first = dae.getExprLeft(exprId);
+    for (let i = 0; i < count; i++) {
+      if (exprReferencesEnumParameter(first + i, dae, visited)) return true;
+    }
+    return false;
+  }
+  if (k === ExprKind.Call) {
+    const first = dae.getExprLeft(exprId);
+    const count = dae.getExprRight(exprId);
+    for (let i = 0; i < count; i++) {
+      if (exprReferencesEnumParameter(first + i, dae, visited)) return true;
+    }
+    return false;
   }
   return false;
 }
@@ -259,8 +373,38 @@ export function mulWithSimplification(leftId: number, rightId: number, dae: DAEB
   if (rK === ExprKind.RealLiteral && dae.getExprRealValue(rightId) === 1.0) return leftId;
   if (lK === ExprKind.IntLiteral && dae.getExprData1(leftId) === 1) return rightId;
   if (rK === ExprKind.IntLiteral && dae.getExprData1(rightId) === 1) return leftId;
-  if (isMinusOne(leftId, dae)) return dae.addUnaryExpr(UnaryOp.Negate, rightId);
-  if (isMinusOne(rightId, dae)) return dae.addUnaryExpr(UnaryOp.Negate, leftId);
+  if (isMinusOne(leftId, dae)) return negateExpr(rightId, dae);
+  if (isMinusOne(rightId, dae)) return negateExpr(leftId, dae);
+
+  const lIsDiv = lK === ExprKind.Binary && dae.getExprData1(leftId) === BinOp.Div;
+  const rIsDiv = rK === ExprKind.Binary && dae.getExprData1(rightId) === BinOp.Div;
+  if (lIsDiv && rIsDiv) {
+    const lNum = dae.getExprLeft(leftId);
+    const lDen = dae.getExprRight(leftId);
+    const rNum = dae.getExprLeft(rightId);
+    const rDen = dae.getExprRight(rightId);
+    const newNum = mulWithSimplification(lNum, rNum, dae);
+    const rDenKind = dae.getExprKind(rDen);
+    let newDen: number;
+    if (rDenKind === ExprKind.Call || rDenKind === ExprKind.Name) {
+      newDen = mulWithSimplification(rDen, lDen, dae);
+    } else {
+      newDen = mulWithSimplification(lDen, rDen, dae);
+    }
+    return dae.addBinaryExpr(BinOp.Div, newNum, newDen);
+  }
+  if (lIsDiv) {
+    const lNum = dae.getExprLeft(leftId);
+    const lDen = dae.getExprRight(leftId);
+    const newNum = mulWithSimplification(lNum, rightId, dae);
+    return dae.addBinaryExpr(BinOp.Div, newNum, lDen);
+  }
+  if (rIsDiv) {
+    const rNum = dae.getExprLeft(rightId);
+    const rDen = dae.getExprRight(rightId);
+    const newNum = mulWithSimplification(leftId, rNum, dae);
+    return dae.addBinaryExpr(BinOp.Div, newNum, rDen);
+  }
 
   const lReal = isRealExpr(leftId, dae);
   const rReal = isRealExpr(rightId, dae);

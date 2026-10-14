@@ -50,6 +50,7 @@ import {
 } from "../expressions/index.js";
 import { getElementDiagRange } from "../support/range-utils.js";
 import type { ComponentInstanceData } from "../types.js";
+import { collectExtendsMods } from "./component-inst.js";
 
 export function isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
   if (callId < 0 || dae.getExprKind(callId) !== ExprKind.Call) return false;
@@ -361,8 +362,10 @@ export function extractClassEquations(
           const matchingArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === child.name);
           const compInst = db.query<ComponentInstanceData>("componentInstance", child.id);
           const compMods = compInst?.modification?.args || [];
+          const classExtendsMods = compClassId ? collectExtendsMods(flattener, compClassId) : [];
           const childSubMod = {
             args: [
+              ...classExtendsMods,
               ...compMods,
               ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
               ...(matchingArg?.nestedArgs || matchingArg?.args || []),
@@ -528,7 +531,12 @@ export function extractClassEquations(
 
               if (sVal === null || eVal === null || stVal === null) {
                 let formattedRangeText = rangeText;
-                if (colonNodes.length === 2) {
+                const isOldInst = Boolean(
+                  dae.extensionMetadata?.isOldFrontend ||
+                  flattener?.options?.isOldFrontend ||
+                  (dae.extensionMetadata as any)?.hasOldInstOption,
+                );
+                if (!isOldInst && colonNodes.length === 2) {
                   const n0Text = colonNodes[0]?.text?.trim() ?? "";
                   const n1Text = colonNodes[1]?.text?.trim() ?? "";
                   const v1Idx = dae.getVarIdxByName(prefix ? `${prefix}.${n1Text}` : n1Text);
@@ -866,17 +874,43 @@ export function extractClassEquations(
           if (flattener.db) {
             const findClassUsedAsComponent = (exprNode: any, scopeId: any): { name: string; node: any } | null => {
               if (!exprNode) return null;
+              if (exprNode.type === "for_indices" || exprNode.type === "for_index") {
+                return null;
+              }
               if (exprNode.type === "primary" && exprNode.children?.some((c: any) => c.type === "function_call_args")) {
+                const callee = exprNode.childForFieldName?.("callee") ?? exprNode.children?.[0];
+                const calleeName = callee?.text?.trim();
                 const callArgs = exprNode.children.find((c: any) => c.type === "function_call_args");
+                if (calleeName === "size") {
+                  const funcArgs = callArgs?.children?.find((c: any) => c.type === "function_arguments");
+                  const nonFirst =
+                    funcArgs?.children?.filter((c: any) => c.type === "function_arguments_non_first") || [];
+                  for (const nf of nonFirst) {
+                    const res = findClassUsedAsComponent(nf, scopeId);
+                    if (res) return res;
+                  }
+                  return null;
+                }
                 return findClassUsedAsComponent(callArgs, scopeId);
               }
               if (exprNode.type === "function_call" || exprNode.type === "call_expression") {
+                const callee = exprNode.childForFieldName?.("callee") ?? exprNode.children?.[0];
+                const calleeName = callee?.text?.trim();
                 for (const arg of exprNode.children || []) {
                   if (
                     arg.type === "function_arguments" ||
                     arg.type === "function_call_args" ||
                     arg.type === "arguments"
                   ) {
+                    if (calleeName === "size") {
+                      const nonFirst =
+                        arg.children?.filter((c: any) => c.type === "function_arguments_non_first") || [];
+                      for (const nf of nonFirst) {
+                        const res = findClassUsedAsComponent(nf, scopeId);
+                        if (res) return res;
+                      }
+                      continue;
+                    }
                     for (const c of arg.children || []) {
                       const res = findClassUsedAsComponent(c, scopeId);
                       if (res) return res;
@@ -1395,7 +1429,7 @@ export function extractClassEquations(
             if (hasLeftDims && hasRightDims) {
               dimsMismatch =
                 effectiveLhsDims!.length !== effectiveRhsDims!.length ||
-                effectiveLhsDims!.some((d, i) => d !== effectiveRhsDims![i]);
+                effectiveLhsDims!.some((d, i) => d !== effectiveRhsDims![i] && d !== -1 && effectiveRhsDims![i] !== -1);
             } else if (hasLeftDims && !hasRightDims && isDefinitelyScalarExpr(expandedRhs, dae)) {
               dimsMismatch = true;
             } else if (!hasLeftDims && hasRightDims && isDefinitelyScalarExpr(expandedLhs, dae)) {
@@ -3243,6 +3277,12 @@ export function extractClassEquations(
               (c: any) => c.text?.trim() === "initial" || c.type === '"initial"' || c.type === "initial",
             );
           for (const kid of node.children || []) {
+            if (
+              dae.extensionMetadata?.isOldFrontend &&
+              dae.diagnostics.some((d) => d.code === ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code)
+            ) {
+              break;
+            }
             if (dae.diagnostics.some((d) => d.message.includes("Function argument delayTime"))) {
               break;
             }
@@ -3296,7 +3336,7 @@ export function extractClassEquations(
         const shortMod = db.query<any>("effectiveModification", classId);
         const shortArgs = shortMod?.args ?? [];
         const combinedMods = {
-          args: [...(parentMods?.args ?? []), ...shortArgs],
+          args: [...shortArgs, ...(parentMods?.args ?? [])],
           ownerClassId: parentMods?.ownerClassId ?? classId,
         };
         if (!curVisited.has(matches[0].id)) {

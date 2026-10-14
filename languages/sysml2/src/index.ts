@@ -18,6 +18,7 @@ export * from "./exporters/nuxmv-exporter.js";
 export * from "./exporters/smtlib-exporter.js";
 export * from "./factory.js";
 export * from "./falsification-engine.js";
+export * from "./flattener/index.js";
 export * from "./fuml-bridge.js";
 export * from "./hybrid-flowpipe-bridge.js";
 export * from "./language.js";

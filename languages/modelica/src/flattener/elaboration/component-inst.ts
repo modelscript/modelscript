@@ -904,7 +904,9 @@ export function instantiateElements(
           dae.classKind === "function" &&
           !compInst.isProtected &&
           compInst.causality !== "input" &&
-          compInst.causality !== "output"
+          compInst.causality !== "output" &&
+          compInst.variability !== "constant" &&
+          compInst.variability !== "parameter"
         ) {
           let clauseNode: any = elemCst;
           while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
@@ -1857,6 +1859,7 @@ export function instantiateElements(
         if (
           isFinalComp &&
           matchingParentArg &&
+          !matchingParentArg.isRedeclaration &&
           (matchingParentArg.value != null ||
             (matchingParentArg.nestedArgs && matchingParentArg.nestedArgs.length > 0) ||
             matchingParentArg.modText)
@@ -2137,6 +2140,31 @@ export function instantiateElements(
         if (isRecordTarget && classTarget) {
           flattener.usedRecordSymIds?.add(classTarget.id);
           if (classTarget.name) flattener.usedRecordNames?.add(classTarget.name);
+          const hasArgs = Boolean(
+            (compInst?.modification?.args && compInst.modification.args.length > 0) ||
+            (parentMods?.args &&
+              parentMods.args.some((a: any) => a.name === compInst.name && a.modification?.args?.length > 0)),
+          );
+          if (hasArgs && compInst.name) {
+            if (!flattener.instantiatedRecordComponents) {
+              flattener.instantiatedRecordComponents = new Map<string, Set<string>>();
+            }
+            const qTarget = getSymbolQualifiedName(flattener.db, classTarget.id) || classTarget.name;
+            let s = flattener.instantiatedRecordComponents.get(qTarget);
+            if (!s) {
+              s = new Set<string>();
+              flattener.instantiatedRecordComponents.set(qTarget, s);
+            }
+            s.add(compInst.name);
+            if (classTarget.name && classTarget.name !== qTarget) {
+              let s2 = flattener.instantiatedRecordComponents.get(classTarget.name);
+              if (!s2) {
+                s2 = new Set<string>();
+                flattener.instantiatedRecordComponents.set(classTarget.name, s2);
+              }
+              s2.add(compInst.name);
+            }
+          }
         }
         const isUserClass =
           classTarget &&
@@ -2338,31 +2366,34 @@ export function instantiateElements(
                 resolved = flattener.db.childrenOf(currentScope.id).find((c) => c.name === part) ?? null;
               }
               if (resolved && flattener.isClassPartial(resolved.id)) {
-                let clauseNode: any = elemCst;
-                while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
-                  clauseNode = clauseNode.parent;
-                }
-                const compRange = clauseNode
-                  ? {
-                      startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                      endByte: clauseNode.endIndex ?? clauseNode.endByte,
-                      startPosition: clauseNode.startPosition,
-                      endPosition: clauseNode.endPosition,
-                    }
-                  : elemCst
+                const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+                if (!isOldFrontend) {
+                  let clauseNode: any = elemCst;
+                  while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
+                    clauseNode = clauseNode.parent;
+                  }
+                  const compRange = clauseNode
                     ? {
-                        startByte: elemCst.startIndex ?? elemCst.startByte,
-                        endByte: elemCst.endIndex ?? elemCst.endByte,
-                        startPosition: elemCst.startPosition,
-                        endPosition: elemCst.endPosition,
+                        startByte: clauseNode.startIndex ?? clauseNode.startByte,
+                        endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                        startPosition: clauseNode.startPosition,
+                        endPosition: clauseNode.endPosition,
                       }
-                    : undefined;
-                dae.diagnostics.push({
-                  severity: "error",
-                  code: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.code,
-                  message: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.message(part),
-                  range: compRange,
-                });
+                    : elemCst
+                      ? {
+                          startByte: elemCst.startIndex ?? elemCst.startByte,
+                          endByte: elemCst.endIndex ?? elemCst.endByte,
+                          startPosition: elemCst.startPosition,
+                          endPosition: elemCst.endPosition,
+                        }
+                      : undefined;
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.code,
+                    message: ModelicaErrorCode.PARTIAL_LOOKUP_DISALLOWED.message(part),
+                    range: compRange,
+                  });
+                }
                 hasPartialLookup = true;
                 break;
               }
@@ -2898,7 +2929,7 @@ export function instantiateElements(
             }
             const resolvedDims = [...arrayDims];
             for (let i = 0; i < resolvedDims.length; i++) {
-              if (resolvedDims[i]! <= 0) {
+              if (resolvedDims[i]! < 0) {
                 const dimName = dimNames[i];
                 if (dimName) {
                   const prefixedDim = prefix ? `${prefix}.${dimName}` : dimName;
@@ -2909,7 +2940,7 @@ export function instantiateElements(
                     const exprId = dae.getVarExpression(varIdx);
                     evalVal = evalDaeExpr(exprId, dae);
                   }
-                  if (typeof evalVal !== "number" || evalVal <= 0) {
+                  if (typeof evalVal !== "number" || evalVal < 0) {
                     const arg = parentMods?.args?.find((a: any) => a.name === dimName);
                     if (arg?.value) {
                       if (arg.value.kind === "literal" && typeof arg.value.value === "number") {
@@ -2920,10 +2951,17 @@ export function instantiateElements(
                       }
                     }
                   }
-                  if (typeof evalVal !== "number" || evalVal <= 0) {
-                    evalVal = evaluateCSTNumber(dimName, undefined, undefined, flattener.db, dae, prefix);
+                  if (typeof evalVal !== "number" || evalVal < 0) {
+                    evalVal = evaluateCSTNumber(
+                      dimName,
+                      undefined,
+                      flattener.currentClassId ?? undefined,
+                      flattener.db,
+                      dae,
+                      prefix,
+                    );
                   }
-                  if (typeof evalVal === "number" && evalVal > 0) {
+                  if (typeof evalVal === "number" && evalVal >= 0) {
                     resolvedDims[i] = evalVal;
                   } else if (flattener.options.omcCompatibility) {
                     const sizeMatch = dimName.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
@@ -2980,7 +3018,7 @@ export function instantiateElements(
                         flattener.currentClassId &&
                         (flattener.db.symbol(flattener.currentClassId)?.metadata as any)?.classKind === "function",
                       );
-                    if (!isFunc) {
+                    if (!isFunc && resolvedDims[i]! < 0) {
                       const startB = elemCst?.startIndex ?? elemCst?.startByte;
                       const endB = elemCst?.endIndex ?? elemCst?.endByte;
                       const arrayName = (dae.extensionMetadata as any)?.hasOldInstOption
@@ -5043,7 +5081,7 @@ export function instantiateElements(
           }
           const resolvedDims = [...arrayDims];
           for (let i = 0; i < resolvedDims.length; i++) {
-            if (resolvedDims[i]! <= 0) {
+            if (resolvedDims[i]! < 0) {
               const dimName = dimNames[i];
               if (dimName) {
                 const prefixedDim = prefix ? `${prefix}.${dimName}` : dimName;
@@ -5054,7 +5092,7 @@ export function instantiateElements(
                   const exprId = dae.getVarExpression(varIdx);
                   evalVal = evalDaeExpr(exprId, dae);
                 }
-                if (typeof evalVal !== "number" || evalVal <= 0) {
+                if (typeof evalVal !== "number" || evalVal < 0) {
                   const arg = parentMods?.args?.find((a: any) => a.name === dimName);
                   if (arg?.value) {
                     if (arg.value.kind === "literal" && typeof arg.value.value === "number") {
@@ -5064,10 +5102,17 @@ export function instantiateElements(
                       if (!isNaN(num)) evalVal = num;
                     }
                   }
-                  if (typeof evalVal !== "number" || evalVal <= 0) {
-                    evalVal = evaluateCSTNumber(dimName, undefined, undefined, flattener.db, dae, prefix);
+                  if (typeof evalVal !== "number" || evalVal < 0) {
+                    evalVal = evaluateCSTNumber(
+                      dimName,
+                      undefined,
+                      flattener.currentClassId ?? undefined,
+                      flattener.db,
+                      dae,
+                      prefix,
+                    );
                   }
-                  if (typeof evalVal !== "number" || evalVal <= 0) {
+                  if (typeof evalVal !== "number" || evalVal < 0) {
                     if (rawDims && rawDims[i]?.cstBytes) {
                       const scopeSym = flattener.currentRootClassId
                         ? flattener.db.symbol(flattener.currentRootClassId)
@@ -5081,7 +5126,7 @@ export function instantiateElements(
                         const loweredId = flattener.lowerExpr(dimCst, dae, prefix);
                         if (loweredId >= 0) {
                           const ev = evalDaeExpr(loweredId, dae);
-                          if (typeof ev === "number" && ev > 0) {
+                          if (typeof ev === "number" && ev >= 0) {
                             evalVal = ev;
                           }
                         }
@@ -5089,7 +5134,7 @@ export function instantiateElements(
                     }
                   }
                 }
-                if (typeof evalVal === "number" && evalVal > 0) {
+                if (typeof evalVal === "number" && evalVal >= 0) {
                   resolvedDims[i] = evalVal;
                 } else if (flattener.options.omcCompatibility && dimName && !isFunctionInputWithColon) {
                   const sizeMatch = dimName.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
@@ -5140,7 +5185,7 @@ export function instantiateElements(
                       }
                     }
                   }
-                  if (dae.classKind !== "function" && !_isEnclosingFunction) {
+                  if (dae.classKind !== "function" && !_isEnclosingFunction && resolvedDims[i]! < 0) {
                     let clauseNode: any = elemCst;
                     while (clauseNode && clauseNode.type !== "component_clause") {
                       clauseNode = clauseNode.parent;
@@ -6381,7 +6426,25 @@ export function validateComponentBasicAttributes(
                     }
                   }
                   if (tDims && tDims.length >= subs.length) {
-                    actualShape = tDims.slice(subs.length);
+                    const remainingDims: number[] = [];
+                    for (let sIdx = 0; sIdx < subs.length; sIdx++) {
+                      if (subs[sIdx]!.includes(":")) {
+                        let sliceDim = tDims[sIdx]!;
+                        const parts = subs[sIdx]!.split(":");
+                        if (parts.length === 2) {
+                          const startVal = parseInt(parts[0]!.trim(), 10);
+                          const endVal = parseInt(parts[1]!.trim(), 10);
+                          if (!isNaN(startVal) && !isNaN(endVal)) {
+                            sliceDim = endVal - startVal + 1;
+                          }
+                        }
+                        remainingDims.push(sliceDim);
+                      }
+                    }
+                    for (let sIdx = subs.length; sIdx < tDims.length; sIdx++) {
+                      remainingDims.push(tDims[sIdx]!);
+                    }
+                    actualShape = remainingDims;
                   }
                 }
               } else if (/^[a-zA-Z_]\w*$/.test(valText)) {
@@ -6452,15 +6515,59 @@ export function validateComponentBasicAttributes(
                 message: "From here:",
                 range: notifRange,
               });
-              dae.diagnostics.push({
-                severity: "error",
-                code: ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.code,
-                message: ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
+              const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend || flattener.options.isOldFrontend);
+              let errorMessage: string;
+              let errorCode: number = ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.code;
+              if (isOldFrontend && valText.startsWith("{") && valText.endsWith("}")) {
+                const outerElems = parseArrayLiteralElements(valText);
+                if (compDims.length >= 2) {
+                  let mismatchRow: { rowText: string; innerElems: string[] } | null = null;
+                  for (const rowText of outerElems) {
+                    if (rowText.startsWith("{") && rowText.endsWith("}")) {
+                      const innerElems = parseArrayLiteralElements(rowText);
+                      if (innerElems.length !== compDims[1]) {
+                        mismatchRow = { rowText, innerElems };
+                      }
+                    }
+                  }
+                  if (mismatchRow) {
+                    const elemType = mismatchRow.innerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim()))
+                      ? "Integer"
+                      : "Real";
+                    errorCode = ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code;
+                    errorMessage = `Array dimension mismatch, expression ${mismatchRow.rowText} has type ${elemType}[${mismatchRow.innerElems.length}], expected array dimensions [${compDims[1]}].`;
+                  } else {
+                    errorMessage = ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
+                      arg.name,
+                      formattedText,
+                      compDims.join(", "),
+                      actualShape.join(", "),
+                    );
+                  }
+                } else if (compDims.length === 1 && outerElems.length !== compDims[0]) {
+                  const elemType = outerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim())) ? "Integer" : "Real";
+                  errorCode = ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code;
+                  errorMessage = `Array dimension mismatch, expression ${valText} has type ${elemType}[${outerElems.length}], expected array dimensions [${compDims[0]}].`;
+                } else {
+                  errorMessage = ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
+                    arg.name,
+                    formattedText,
+                    compDims.join(", "),
+                    actualShape.join(", "),
+                  );
+                }
+              } else {
+                errorMessage = ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.message(
                   arg.name,
                   formattedText,
                   compDims.join(", "),
                   actualShape.join(", "),
-                ),
+                );
+              }
+              dae.diagnostics.push({
+                severity: "error",
+                code: errorCode,
+                message: errorMessage,
                 range: errorRange,
               });
               return true;
@@ -6533,15 +6640,24 @@ export function collectExtendsMods(
       Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
       specShort.children?.find((c: any) => c.type === "type_specifier");
     const typeName = typeSpec?.text?.trim();
+    let targetClass: any = null;
     if (typeName) {
       const matches = flattener.db.byName(typeName);
       if (matches.length > 0 && matches[0].kind === "Class") {
-        result.push(...collectExtendsMods(flattener, matches[0].id, visited));
+        targetClass = matches[0];
+        result.push(...collectExtendsMods(flattener, targetClass.id, visited));
       }
     }
     const shortMod = flattener.db.query<any>("effectiveModification", classId);
     if (shortMod?.args) {
-      result.push(...shortMod.args.map((a: any) => ({ ...a, isExtendsMod: true })));
+      result.push(
+        ...shortMod.args.map((a: any) => ({
+          ...a,
+          isExtendsMod: true,
+          extendsTargetClassId: targetClass?.id ?? classId,
+          ownerClassId: classId,
+        })),
+      );
     }
   }
 

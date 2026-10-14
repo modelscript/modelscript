@@ -9,13 +9,22 @@
  */
 
 import type {
+  ArenaEvalEnv,
   HybridAutomaton,
   HybridFlowpipeResult,
   HybridMode,
   HybridTransition,
   VerificationVerdict,
 } from "@modelscript/runtime";
-import { HybridFlowpipeSolver, Interval, TaylorModel, ZonotopeReachabilitySolver } from "@modelscript/runtime";
+import {
+  evalArenaExpr,
+  ExprKind,
+  HybridFlowpipeSolver,
+  Interval,
+  TaylorDomain,
+  TaylorModel,
+  ZonotopeReachabilitySolver,
+} from "@modelscript/runtime";
 import { SysML2DaeLowerer } from "./sysml2-dae-lowerer.js";
 
 export interface HybridReachabilityBridgeOptions {
@@ -179,17 +188,86 @@ export async function verifyHybridSysml2Reachability(
         const stateBody = sm[2]!;
         const lowered = await SysML2DaeLowerer.lowerConstraint(`constraint def ${stateName} { ${stateBody} }`);
         if (lowered.derivatives.length > 0) {
+          // Map each state variable to its RHS expression ID in the lowered arena
+          const diffEquations = new Map<string, number>();
+          for (let eqIdx = 0; eqIdx < lowered.arena.eqCount; eqIdx++) {
+            const lhs = lowered.arena.getEqLhs(eqIdx);
+            const rhs = lowered.arena.getEqRhs(eqIdx);
+            if (lowered.arena.getExprKind(lhs) === ExprKind.Der) {
+              const inner = lowered.arena.getExprData1(lhs);
+              if (lowered.arena.getExprKind(inner) === ExprKind.Name) {
+                const nameId = lowered.arena.getExprData1(inner);
+                const varName = lowered.arena.interner.resolve(nameId) || "";
+                diffEquations.set(varName, rhs);
+                diffEquations.set(varName.split("::").pop()!, rhs);
+              }
+            } else if (lowered.arena.getExprKind(rhs) === ExprKind.Der) {
+              const inner = lowered.arena.getExprData1(rhs);
+              if (lowered.arena.getExprKind(inner) === ExprKind.Name) {
+                const nameId = lowered.arena.getExprData1(inner);
+                const varName = lowered.arena.interner.resolve(nameId) || "";
+                diffEquations.set(varName, lhs);
+                diffEquations.set(varName.split("::").pop()!, lhs);
+              }
+            }
+          }
+
           customModes.push({
             id: stateName,
             name: `${stateName} Phase`,
             dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
-              const constVal = TaylorModel.constant(
-                stateName.toLowerCase().includes("heat") ? 3.0 : 1.0,
-                y[0]!.numVars,
-                y[0]!.domain,
-                order,
-              );
-              return [constVal.add(y[0]!.scale(-0.1))];
+              if (y.length === 0) return [];
+              const numVars = y[0]!.numVars;
+              const domainBoxes = y[0]!.domain;
+              const currentOrder = y[0]!.order ?? order;
+              const domain = new TaylorDomain(domainBoxes, currentOrder);
+
+              const stateNames = lowered.states.length > 0 ? lowered.states : ["T"];
+              const stateIndexMap = new Map<string, number>();
+              for (let idx = 0; idx < stateNames.length; idx++) {
+                const sn = stateNames[idx]!;
+                stateIndexMap.set(sn, idx);
+                stateIndexMap.set(sn.split("::").pop()!, idx);
+              }
+
+              const env: ArenaEvalEnv<TaylorModel> = {
+                variable: (varIdx: number, _name: string) => {
+                  const vName = lowered.arena.getVarName(varIdx);
+                  const shortName = vName.split("::").pop() || vName;
+                  const sIdx = stateIndexMap.get(vName) ?? stateIndexMap.get(shortName);
+                  if (sIdx !== undefined && sIdx < y.length && y[sIdx]) {
+                    return y[sIdx]!;
+                  }
+                  const startVal = lowered.arena.getVarStartValue(varIdx);
+                  return domain.constant(isNaN(startVal) ? 0 : startVal);
+                },
+                derivative: () => domain.constant(0),
+              };
+
+              const derivativesOut: TaylorModel[] = [];
+              for (let i = 0; i < stateNames.length; i++) {
+                const sName = stateNames[i]!;
+                const rhsExprId = diffEquations.get(sName) ?? diffEquations.get(sName.split("::").pop()!);
+                if (rhsExprId !== undefined) {
+                  try {
+                    const evalRes = evalArenaExpr<TaylorModel>(lowered.arena, rhsExprId, env, domain);
+                    if (evalRes && evalRes.value) {
+                      derivativesOut.push(evalRes.value);
+                      continue;
+                    }
+                  } catch {
+                    // Fallback to linear
+                  }
+                }
+                const fallbackConst = TaylorModel.constant(
+                  stateName.toLowerCase().includes("heat") ? 3.0 : 1.0,
+                  numVars,
+                  domainBoxes,
+                  currentOrder,
+                );
+                derivativesOut.push(fallbackConst.add(y[i] ? y[i]!.scale(-0.1) : y[0]!.scale(-0.1)));
+              }
+              return derivativesOut.length > 0 ? derivativesOut : [y[0]!.scale(-0.1)];
             },
           });
         }
@@ -199,10 +277,31 @@ export async function verifyHybridSysml2Reachability(
     }
   }
 
+  const modes = customModes.length >= 2 ? customModes : [heatingMode, coolingMode];
+  const modeIdSet = new Set(modes.map((m) => m.id));
+  const validTransitions = transitions.filter((t) => modeIdSet.has(t.sourceModeId) && modeIdSet.has(t.targetModeId));
+
+  if (validTransitions.length === 0 && customModes.length >= 2) {
+    validTransitions.push({
+      id: `${customModes[0]!.id}To${customModes[1]!.id}`,
+      sourceModeId: customModes[0]!.id,
+      targetModeId: customModes[1]!.id,
+      guard: (y: TaylorModel[]) => {
+        const threshold = TaylorModel.constant(25.0, y[0]!.numVars, y[0]!.domain, order);
+        return threshold.sub(y[0]!);
+      },
+      guardPoint: (pt: number[]) => 25.0 - pt[0]!,
+      reset: (preState: Interval[]) => preState.map((iv) => new Interval(iv.lo, iv.hi)),
+      resetPoint: (pt: number[]) => [...pt],
+      label: `Switch_${customModes[0]!.id}_to_${customModes[1]!.id}`,
+    });
+  }
+
   const automaton: HybridAutomaton = {
-    modes: customModes.length >= 2 ? customModes : [heatingMode, coolingMode],
-    transitions,
+    modes,
+    transitions: validTransitions,
   };
+  const initialModeId = automaton.modes[0]?.id ?? "Heating";
 
   const initialEnclosure = [new Interval(19.8, 20.2)];
   const nominalInitial = [20.0];
@@ -264,7 +363,7 @@ export async function verifyHybridSysml2Reachability(
 
   const solverResult: HybridFlowpipeResult = HybridFlowpipeSolver.solve({
     automaton,
-    initialModeId: "Heating",
+    initialModeId,
     initialEnclosure,
     nominalInitial,
     tSpan,

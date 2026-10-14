@@ -2,6 +2,8 @@
 
 import type { QueryDB } from "@modelscript/runtime";
 import { type ExtractedConstraint, extractSysML2Constraints } from "../constraint-extractor.js";
+import { findCstDescendants, findFirstDescendant } from "../flattener/cst-lowerer.js";
+import { getSysmlParser } from "../sysml2-dae-lowerer.js";
 
 export interface SmtFunctionDef {
   name: string;
@@ -206,6 +208,75 @@ function astToSmt(node: AstNode): string {
   }
 }
 
+/**
+ * Converts a CST expression node into an SMT-LIB2 prefix S-expression string.
+ */
+function cstToSmt(node: any): string | null {
+  if (!node) return null;
+  // Unwrap wrapper nodes
+  while (
+    node &&
+    (node.type === "OwnedExpression" ||
+      node.type === "SequenceExpression" ||
+      node.type === "ResultExpressionMember" ||
+      node.type === "_Expression" ||
+      node.type === "_BaseExpression")
+  ) {
+    const inner =
+      node.childForFieldName?.("ownedRelatedElement") ||
+      (node.childCount > 0 ? (node.child ? node.child(0) : node.children[0]) : null);
+    if (inner && inner !== node) {
+      node = inner;
+    } else {
+      break;
+    }
+  }
+
+  // Parenthesized: ( expr )
+  if (node.childCount >= 3) {
+    const first = node.child ? node.child(0) : node.children[0];
+    const last = node.child ? node.child(node.childCount - 1) : node.children[node.childCount - 1];
+    if (first?.text === "(" && last?.text === ")") {
+      const inner = node.child ? node.child(1) : node.children[1];
+      return cstToSmt(inner);
+    }
+  }
+
+  // Binary expression
+  if (node.childCount >= 3) {
+    const op = node.child ? node.child(1)?.text : node.children[1]?.text;
+    const left = cstToSmt(node.child ? node.child(0) : node.children[0]);
+    const right = cstToSmt(node.child ? node.child(2) : node.children[2]);
+    if (left !== null && right !== null && op) {
+      if (op === "^" || op === "**") {
+        if (right === "2" || right === "2.0") return `(* ${left} ${left})`;
+      }
+      return `(${op} ${left} ${right})`;
+    }
+  }
+
+  // Unary expression
+  if (node.childCount === 2) {
+    const op = node.child ? node.child(0)?.text : node.children[0]?.text;
+    const operand = cstToSmt(node.child ? node.child(1) : node.children[1]);
+    if (op === "-" && operand !== null) return `(- ${operand})`;
+    if (op === "+" && operand !== null) return operand;
+  }
+
+  // Number literal
+  if (/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(node.text)) {
+    const v = parseFloat(node.text);
+    return Number.isInteger(v) ? `${v}.0` : String(v);
+  }
+
+  // Identifier
+  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(node.text)) {
+    return node.text.replace(/\./g, "_");
+  }
+
+  return null;
+}
+
 export function infixArithmeticToSmt(expr: string): string {
   const trimmed = expr.trim();
   if (!trimmed) return "0.0";
@@ -222,6 +293,33 @@ export function infixArithmeticToSmt(expr: string): string {
     return Number.isInteger(num) ? `${num}.0` : String(num);
   }
 
+  // Fast-path: Native WASM GLR parser
+  const parser = getSysmlParser();
+  if (parser) {
+    try {
+      const tree = parser.parse(`calc def __E { return ${trimmed}; }`);
+      if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+        const retNode =
+          findFirstDescendant(tree.rootNode, "ReturnStatement") ||
+          findFirstDescendant(tree.rootNode, "ResultExpressionMember");
+        if (retNode) {
+          const exprChild =
+            retNode.childCount > 1
+              ? retNode.child
+                ? retNode.child(1)
+                : retNode.children[1]
+              : retNode.child
+                ? retNode.child(0)
+                : retNode.children[0];
+          const smt = cstToSmt(exprChild);
+          if (smt) return smt;
+        }
+      }
+    } catch {
+      // Fallback to legacy tokenizer
+    }
+  }
+
   const tokens = tokenizeArithmetic(trimmed);
   if (tokens.length === 0) return trimmed;
   try {
@@ -233,6 +331,23 @@ export function infixArithmeticToSmt(expr: string): string {
 }
 
 export function extractVariablesFromArithmetic(expr: string): string[] {
+  const parser = getSysmlParser();
+  if (parser) {
+    try {
+      const tree = parser.parse(`calc def __E { return ${expr.trim()}; }`);
+      if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+        const vars: string[] = [];
+        const idents = findCstDescendants(tree.rootNode, "Identification") || [];
+        for (const idNode of idents) {
+          if (idNode.text && idNode.text !== "__E") vars.push(idNode.text.replace(/\./g, "_"));
+        }
+        if (vars.length > 0) return vars;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
   const tokens = tokenizeArithmetic(expr);
   const vars: string[] = [];
   for (const t of tokens) {

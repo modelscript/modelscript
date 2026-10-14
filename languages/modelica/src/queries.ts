@@ -1773,11 +1773,11 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   // 1. Reserved attribute names
   for (const lit of literals) {
     if (reservedAttributes.has(lit)) {
-      const range = getLitRange(lit);
       return {
-        code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
-        message: ModelicaErrorCode.DUPLICATE_ELEMENT.message(lit),
-        ...range,
+        code: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.code,
+        message: ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.message(lit),
+        startByte,
+        endByte,
       };
     }
   }

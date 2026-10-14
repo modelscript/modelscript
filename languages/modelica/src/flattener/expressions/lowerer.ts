@@ -552,14 +552,66 @@ export function lowerCSTExpression(
                 cur = cur.parent;
               }
               if (isWhenClause) {
-                const diagRange = getElementDiagRange(cur ?? node);
-                dae.diagnostics.push({
-                  severity: "error",
-                  code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
-                  message: `Argument 1 of pre must be a discrete expression, but ${vName} is continuous.`,
-                  range: diagRange,
-                });
-                return -1;
+                let isAssignedInWhen = false;
+                let root: any = node;
+                while (root && root.parent) {
+                  root = root.parent;
+                }
+                if (root) {
+                  const leafName = vName.includes(".") ? vName.split(".").pop()! : vName;
+                  const re = new RegExp(`\\b${leafName}\\b`);
+                  const stack = [root];
+                  while (stack.length > 0) {
+                    const n = stack.pop();
+                    if (!n) continue;
+                    if (n.type === "when_statement" || n.type === "when_equation") {
+                      const text = n.text ?? "";
+                      if (re.test(text)) {
+                        const innerStack = [...(n.children || [])];
+                        while (innerStack.length > 0) {
+                          const inNode = innerStack.pop();
+                          if (!inNode) continue;
+                          if (
+                            inNode.type === "assignment_statement" ||
+                            inNode.type === "statement" ||
+                            inNode.type === "statement_or_procedure" ||
+                            inNode.type === "simple_equation" ||
+                            inNode.type === "some_equation"
+                          ) {
+                            const inText = inNode.text ?? "";
+                            const assignIdx = inText.indexOf(":=");
+                            const eqIdx = inText.indexOf("=");
+                            const opIdx = assignIdx >= 0 ? assignIdx : eqIdx;
+                            if (opIdx >= 0) {
+                              const lhs = inText.slice(0, opIdx);
+                              if (re.test(lhs)) {
+                                isAssignedInWhen = true;
+                                break;
+                              }
+                            }
+                          }
+                          for (const c of inNode.children || []) {
+                            innerStack.push(c);
+                          }
+                        }
+                      }
+                      if (isAssignedInWhen) break;
+                    }
+                    for (const child of n.children || []) {
+                      stack.push(child);
+                    }
+                  }
+                }
+                if (!isAssignedInWhen) {
+                  const diagRange = getElementDiagRange(cur ?? node);
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+                    message: `Argument 1 of pre must be a discrete expression, but ${vName} is continuous.`,
+                    range: diagRange,
+                  });
+                  return -1;
+                }
               }
             }
           }
@@ -1166,7 +1218,18 @@ export function lowerCSTExpression(
 
     if (db && flattener && cleanFnName) {
       let calledFnSym: any = null;
-      if (flattener.currentClassId) {
+      const fnEncScope = (flattener as any)?.currentFunctionEnclosingScope as SymbolId | null;
+      if (fnEncScope && !cleanFnName.includes(".")) {
+        const encScopeFn = db.query<(n: string) => SymbolEntry | null>("resolveName", fnEncScope)?.(cleanFnName);
+        if (
+          encScopeFn &&
+          (encScopeFn.kind === "Class" || encScopeFn.kind === "Function") &&
+          flattener.isFunctionSym?.(encScopeFn)
+        ) {
+          calledFnSym = encScopeFn;
+        }
+      }
+      if (!calledFnSym && flattener.currentClassId) {
         const resolver =
           db.query<any>("resolveName", flattener.currentClassId) ??
           db.query<any>("resolveSimpleName", flattener.currentClassId);
@@ -1193,6 +1256,44 @@ export function lowerCSTExpression(
       }
       const isOuterFn = isOuterFunctionSymbol(db, calledFnSym);
       const hasInnerMatch = isOuterFn && hasMatchingInnerFunction(db, flattener, calledFnSym?.name ?? cleanFnName);
+      if (calledFnSym && flattener.isClassPartial?.(calledFnSym.id)) {
+        const currentParentMods = flattener?.currentParentMods;
+        const redeclArg = currentParentMods?.args?.findLast
+          ? currentParentMods.args.findLast(
+              (a: any) =>
+                !a.isBreak &&
+                (a.name === cleanFnName || a.name === cleanFnName.split(".").pop()) &&
+                (a.isRedeclaration || a.redeclaredTypeSpecifier),
+            )
+          : currentParentMods?.args?.find(
+              (a: any) =>
+                !a.isBreak &&
+                (a.name === cleanFnName || a.name === cleanFnName.split(".").pop()) &&
+                (a.isRedeclaration || a.redeclaredTypeSpecifier),
+            );
+        if (redeclArg?.redeclaredTypeSpecifier) {
+          const ownerScopeId = redeclArg.ownerClassId ?? currentParentMods?.ownerClassId ?? flattener?.currentClassId;
+          const redeclTarget =
+            (ownerScopeId
+              ? db.query<(n: string) => SymbolEntry | null>(
+                  "resolveName",
+                  ownerScopeId,
+                )?.(redeclArg.redeclaredTypeSpecifier)
+              : null) ??
+            (flattener?.currentClassId
+              ? db.query<(n: string) => SymbolEntry | null>(
+                  "resolveName",
+                  flattener.currentClassId,
+                )?.(redeclArg.redeclaredTypeSpecifier)
+              : null) ??
+            db
+              .byName(redeclArg.redeclaredTypeSpecifier)
+              .find((e: any) => (e.kind === "Class" || e.kind === "Function") && flattener.isFunctionSym?.(e));
+          if (redeclTarget) {
+            calledFnSym = redeclTarget;
+          }
+        }
+      }
       if (calledFnSym && flattener.isClassPartial?.(calledFnSym.id) && !(isOuterFn && hasInnerMatch)) {
         let callRange: any = undefined;
         if (node) {
@@ -1227,26 +1328,28 @@ export function lowerCSTExpression(
       }
 
       if (calledFnSym && flattener.failedFunctionIds?.has(calledFnSym.id)) {
-        const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend || flattener?.options?.isOldFrontend);
-        if (isOldFrontend && (dae.extensionMetadata as any)?.hasOldInstOption) {
-          let cur: any = node;
-          while (
-            cur &&
-            cur.type !== "component_clause" &&
-            cur.type !== "simple_equation" &&
-            cur.type !== "statement" &&
-            cur.type !== "assignment_statement"
-          ) {
-            cur = cur.parent;
+        if (flattener.invalidInterfaceFunctionIds?.has(calledFnSym.id)) {
+          const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend || flattener?.options?.isOldFrontend);
+          if (isOldFrontend && (dae.extensionMetadata as any)?.hasOldInstOption) {
+            let cur: any = node;
+            while (
+              cur &&
+              cur.type !== "component_clause" &&
+              cur.type !== "simple_equation" &&
+              cur.type !== "statement" &&
+              cur.type !== "assignment_statement"
+            ) {
+              cur = cur.parent;
+            }
+            const diagRange = getElementDiagRange(cur ?? node);
+            const scopeName = flattener.currentClassId ? (db.symbol(flattener.currentClassId)?.name ?? "") : "";
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.CLASS_NOT_FOUND.code,
+              message: `Class ${cleanFnName} not found in scope ${scopeName} (looking for a function or record).`,
+              range: diagRange,
+            });
           }
-          const diagRange = getElementDiagRange(cur ?? node);
-          const scopeName = flattener.currentClassId ? (db.symbol(flattener.currentClassId)?.name ?? "") : "";
-          dae.diagnostics.push({
-            severity: "error",
-            code: ModelicaErrorCode.CLASS_NOT_FOUND.code,
-            message: `Class ${cleanFnName} not found in scope ${scopeName} (looking for a function or record).`,
-            range: diagRange,
-          });
         }
         return -1;
       }
@@ -2080,8 +2183,13 @@ export function lowerCSTExpression(
         clause = clause.parent;
       }
       const diagRange = getElementDiagRange(clause ?? node);
+      const isOldFrontend = Boolean(
+        dae.extensionMetadata?.isOldFrontend ||
+        flattener?.options?.isOldFrontend ||
+        (dae.extensionMetadata as any)?.hasOldInstOption,
+      );
 
-      if (!inAllowedContext) {
+      if (!inAllowedContext && !isOldFrontend) {
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.DIMENSION_NOT_PARAMETER.code,
@@ -2149,7 +2257,7 @@ export function lowerCSTExpression(
             }
           }
 
-          if (totalDims.length > 0 || !isConnector) {
+          if ((!isOldFrontend && totalDims.length > 0) || !isConnector) {
             const dimStr = totalDims.length > 0 ? `[${totalDims.join(",")}]` : "";
             const actualTypeStr = `${currentType ?? "Unknown"}${dimStr}`;
             dae.diagnostics.push({
@@ -3509,14 +3617,21 @@ export function lowerCSTExpression(
 
       // 1. Check if parentMods redeclared this function (e.g. RedeclareFunction1.mo)
       const currentParentMods = flattener?.currentParentMods;
-      const redeclArg = currentParentMods?.args?.find(
-        (a: any) =>
-          !a.isBreak &&
-          (a.name === cleanFnName || (parts.length === 1 && a.name === parts[0])) &&
-          (a.isRedeclaration || a.redeclaredTypeSpecifier),
-      );
+      const redeclArg = currentParentMods?.args?.findLast
+        ? currentParentMods.args.findLast(
+            (a: any) =>
+              !a.isBreak &&
+              (a.name === cleanFnName || (parts.length === 1 && a.name === parts[0])) &&
+              (a.isRedeclaration || a.redeclaredTypeSpecifier),
+          )
+        : currentParentMods?.args?.find(
+            (a: any) =>
+              !a.isBreak &&
+              (a.name === cleanFnName || (parts.length === 1 && a.name === parts[0])) &&
+              (a.isRedeclaration || a.redeclaredTypeSpecifier),
+          );
       if (redeclArg?.redeclaredTypeSpecifier) {
-        const ownerScopeId = currentParentMods?.ownerClassId ?? flattener?.currentClassId;
+        const ownerScopeId = redeclArg.ownerClassId ?? currentParentMods?.ownerClassId ?? flattener?.currentClassId;
         const redeclTarget =
           (ownerScopeId
             ? db.query<(n: string) => SymbolEntry | null>(
@@ -6385,6 +6500,37 @@ export function lowerCSTExpression(
             }
           }
         }
+        const leftDims = getExprDims(leftId, dae, flattener?.db, flattener);
+        const rightDims = getExprDims(rightId, dae, flattener?.db, flattener);
+        let effectiveLeftId = leftId;
+        let effectiveLeftKind = leftKind;
+        if (effectiveLeftKind !== ExprKind.ArrayCtor && leftDims && leftDims.length > 0) {
+          const lName =
+            dae.getExprKind(effectiveLeftId) === ExprKind.Name
+              ? dae.interner.resolve(dae.getExprData1(effectiveLeftId))
+              : null;
+          if (lName && !(dae.classKind === "function" && flattener?.currentBindingCompName === lName)) {
+            const exp = expandVarToArrayCtor(lName, dae);
+            if (exp !== null) {
+              effectiveLeftId = exp;
+              effectiveLeftKind = dae.getExprKind(effectiveLeftId);
+            }
+          }
+        }
+        if (effectiveLeftKind === ExprKind.ArrayCtor && (!rightDims || rightDims.length === 0)) {
+          // Vector/Matrix / Scalar
+          const leftElems = getArrayCtorElements(effectiveLeftId, dae);
+          const isMatrix = leftElems.length > 0 && dae.getExprKind(leftElems[0]!) === ExprKind.ArrayCtor;
+          if (isMatrix) {
+            const rows = leftElems.map((r) => {
+              const rElems = getArrayCtorElements(r, dae);
+              return dae.addArrayCtorExpr(rElems.map((e) => dae.addBinaryExpr(BinOp.Div, e, rightId)));
+            });
+            return dae.addArrayCtorExpr(rows);
+          } else {
+            return dae.addArrayCtorExpr(leftElems.map((e) => dae.addBinaryExpr(BinOp.Div, e, rightId)));
+          }
+        }
       }
       if (binOp === BinOp.Mul) {
         const isOne = (id: number): boolean => {
@@ -7403,7 +7549,7 @@ export function lowerCSTExpression(
               startPosition: stmtNode.startPosition,
               endPosition: stmtNode.endPosition,
             };
-            const joinSep = ", ";
+            const joinSep = flattener?.options?.omcCompatibility ? "," : ", ";
             const subStrs = p.subscripts.map(
               (s) => s.scalarText ?? (s.values[0] !== undefined ? String(s.values[0]) : s.text),
             );
@@ -7424,6 +7570,17 @@ export function lowerCSTExpression(
               message: ModelicaErrorCode.ARRAY_SUBSCRIPT_COUNT_MISMATCH.message(refStr, actualCount, expectedDimCount),
               range: r,
             });
+            if (flattener?.options?.omcCompatibility && (dae.extensionMetadata as any)?.isOldFrontend) {
+              const scopeName = flattener?.currentRootClassId
+                ? (flattener.db.symbol(flattener.currentRootClassId)?.name ?? "")
+                : "";
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+                message: ModelicaErrorCode.VARIABLE_NOT_FOUND.message(refStr, scopeName),
+                range: r,
+              });
+            }
             return -1;
           }
         }

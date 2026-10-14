@@ -388,6 +388,55 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
 export function inferArenaExprShapeAndType(dae: DAEBuilder, exprId: number): { shape: number[]; typeName: string } {
   if (exprId < 0) return { shape: [], typeName: "Real" };
   const exprKind = dae.getExprKind(exprId);
+  if (exprKind === ExprKind.Call) {
+    const fnName = dae.interner.resolve(dae.getExprData1(exprId));
+    if (fnName === "fill") {
+      const argCount = dae.getExprRight(exprId);
+      const valArg = dae.getExprLeft(exprId);
+      const valInfo = inferArenaExprShapeAndType(dae, valArg);
+      const callShape: number[] = [];
+      for (let i = 1; i < argCount; i++) {
+        const dimArg = dae.getExprLeft(exprId + i);
+        const dimVal = evalDaeExpr(dimArg, dae);
+        if (typeof dimVal === "number" && dimVal > 0) {
+          callShape.push(dimVal);
+        } else {
+          callShape.push(1);
+        }
+      }
+      return { shape: [...callShape, ...valInfo.shape], typeName: valInfo.typeName };
+    }
+    if (fnName === "zeros" || fnName === "ones") {
+      const argCount = dae.getExprRight(exprId);
+      const callShape: number[] = [];
+      for (let i = 0; i < argCount; i++) {
+        const dimArg = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+        const dimVal = evalDaeExpr(dimArg, dae);
+        if (typeof dimVal === "number" && dimVal > 0) {
+          callShape.push(dimVal);
+        } else {
+          callShape.push(1);
+        }
+      }
+      return { shape: callShape, typeName: "Real" };
+    }
+    const dims = getExprDims(exprId, dae);
+    if (dims && dims.length > 0) {
+      let vType = VarType.Real;
+      if (isRealExpr(exprId, dae)) {
+        vType = VarType.Real;
+      } else {
+        vType = inferArenaExprVarType(dae, exprId);
+      }
+      const typeNames: Record<number, string> = {
+        [VarType.Real]: "Real",
+        [VarType.Integer]: "Integer",
+        [VarType.Boolean]: "Boolean",
+        [VarType.String]: "String",
+      };
+      return { shape: dims, typeName: typeNames[vType] ?? "Real" };
+    }
+  }
   if (exprKind === ExprKind.Binary) {
     const lInfo = inferArenaExprShapeAndType(dae, dae.getExprLeft(exprId));
     const rInfo = inferArenaExprShapeAndType(dae, dae.getExprRight(exprId));
@@ -541,8 +590,22 @@ export function castToRealExpr(exprId: number, dae: DAEBuilder): number {
   return dae.addCallExpr("/*Real*/", [exprId]);
 }
 
+function normalizeDims(rawDims: any[] | null | undefined): number[] | null {
+  if (!rawDims || rawDims.length === 0) return null;
+  const res: number[] = [];
+  for (const d of rawDims) {
+    if (typeof d === "number" && d > 0) res.push(d);
+    else if (d?.kind === "literal" && typeof d.value === "number" && d.value > 0) res.push(d.value);
+    else if (typeof d?.value === "number" && d.value > 0) res.push(d.value);
+    else return null;
+  }
+  return res.length > 0 ? res : null;
+}
+
 export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener?: any): number[] | null {
   if (exprId < 0) return null;
+  db = db ?? (dae as any).db ?? (dae as any).flattener?.db ?? (dae as any).parentDae?.db;
+  flattener = flattener ?? (dae as any).flattener;
   const storedShape = (dae as any).exprArrayShapes?.get(exprId);
   if (storedShape && storedShape.length > 0) return storedShape;
   const kind = dae.getExprKind(exprId);
@@ -605,18 +668,35 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
           if (s.kind === "Component") {
             const fullName = db.query("symbolFullName", s.id) ?? s.name;
             if (fullName === vName || s.name === vName) {
-              const dims = db.query("arrayDimensions", s.id);
-              if (dims && dims.length > 0 && dims.every((d: any) => typeof d === "number" && d > 0)) return dims;
+              const rawDims = db.query("arrayDimensions", s.id);
+              const dims = normalizeDims(rawDims);
+              if (dims) return dims;
               const typeSpec = db.query("typeSpecifier", s.id);
               if (typeSpec) {
                 const typeMatches = db.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
                 for (const tm of typeMatches) {
                   if (tm.kind === "Class") {
-                    const tDims = db.query("arrayDimensions", tm.id);
-                    if (tDims && tDims.length > 0 && tDims.every((d: any) => typeof d === "number" && d > 0)) {
+                    const rawTDims = db.query("arrayDimensions", tm.id);
+                    const tDims = normalizeDims(rawTDims);
+                    if (tDims) {
                       return tDims;
                     }
                   }
+                }
+              }
+            }
+          } else if (s.kind === "Class" || (s.metadata as any)?.classKind === "type") {
+            const cst = db.cstNode(s.id) as any;
+            if (cst) {
+              const txt = cst.text ?? "";
+              const enumMatch = txt.match(/enumeration\s*\(([^)]*)\)/);
+              if (enumMatch) {
+                const literals = enumMatch[1]
+                  .split(",")
+                  .map((str: string) => str.trim())
+                  .filter((str: string) => str.length > 0);
+                if (literals.length > 0) {
+                  return [literals.length];
                 }
               }
             }
@@ -702,6 +782,19 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       const dims = inner.split(",").map((s) => Number(s.trim()));
       if (dims.every((d) => !isNaN(d) && d >= 0)) return dims;
     }
+    if (
+      fnName === "superSample" ||
+      fnName === "subSample" ||
+      fnName === "shiftSample" ||
+      fnName === "backSample" ||
+      fnName === "previous" ||
+      fnName === "sample" ||
+      fnName === "hold" ||
+      SCALAR_VECTORIZABLE_FUNCTIONS.has(fnName)
+    ) {
+      const aId = dae.getExprLeft(exprId);
+      return getExprDims(aId, dae, db, flattener);
+    }
     const fnObj =
       dae.getFunction?.(fnName) ??
       (flattener?.currentPrefix ? dae.getFunction?.(`${flattener.currentPrefix}.${fnName}`) : undefined);
@@ -720,8 +813,8 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         const children = db.childrenOf(fnSym.id) || [];
         for (const c of children) {
           if (c.kind === "Component" && (db as QueryDB).query("causality", c.id) === "output") {
-            const dims = (db as QueryDB).query<number[] | null>("arrayDimensions", c.id);
-            if (dims && dims.length > 0 && dims.every((d: any) => typeof d === "number" && d > 0)) {
+            const dims = normalizeDims((db as QueryDB).query<any>("arrayDimensions", c.id));
+            if (dims) {
               return dims;
             }
           }
@@ -818,38 +911,42 @@ export function evalDaeExpr(
             visitedVars.delete(varIdx);
           }
         }
-        if (dae.classKind === "function" && (dae as any).flattener?.currentClassId) {
+        if (dae.classKind === "function") {
           const flat = (dae as any).flattener;
-          const db = flat.db;
-          const parentChild = db
-            ?.childrenOf(flat.currentClassId)
-            ?.find((c: any) => c.name === name && c.kind === "Component");
-          if (parentChild) {
-            const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
-            if (v === "constant" || v === "parameter") {
-              const compMod: any = db.query("effectiveModification", parentChild.id);
-              const bExpr = compMod?.bindingExpression;
-              if (bExpr?.text) {
-                const bText = bExpr.text.trim();
-                if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
-                  const elems = parseArrayLiteralElements(bText);
-                  const parsedElems: any[] = [];
-                  let allOk = true;
-                  for (const e of elems) {
-                    const num = Number(e.trim());
-                    if (!isNaN(num)) {
-                      parsedElems.push(num);
-                    } else {
-                      allOk = false;
-                      break;
+          const db = (dae as any).db ?? flat?.db;
+          const scopeId =
+            (dae as any).enclosingScopeId ??
+            ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??
+            flat?.currentClassId;
+          if (scopeId && db) {
+            const parentChild = db.childrenOf(scopeId)?.find((c: any) => c.name === name && c.kind === "Component");
+            if (parentChild) {
+              const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
+              if (v === "constant" || v === "parameter") {
+                const compMod: any = db.query("effectiveModification", parentChild.id);
+                const bExpr = compMod?.bindingExpression;
+                if (bExpr?.text) {
+                  const bText = bExpr.text.trim();
+                  if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
+                    const elems = parseArrayLiteralElements(bText);
+                    const parsedElems: any[] = [];
+                    let allOk = true;
+                    for (const e of elems) {
+                      const num = Number(e.trim());
+                      if (!isNaN(num)) {
+                        parsedElems.push(num);
+                      } else {
+                        allOk = false;
+                        break;
+                      }
                     }
+                    if (allOk) return parsedElems;
                   }
-                  if (allOk) return parsedElems;
+                  const num = Number(bText);
+                  if (!isNaN(num)) return num;
+                  if (bText === "true") return true;
+                  if (bText === "false") return false;
                 }
-                const num = Number(bText);
-                if (!isNaN(num)) return num;
-                if (bText === "true") return true;
-                if (bText === "false") return false;
               }
             }
           }
@@ -1015,7 +1112,7 @@ export function evalDaeExpr(
           if (aVal === null) return null;
           args.push(aVal);
         }
-        if (cleanFn === "/*Real*/" || cleanFn === "Real") {
+        if (cleanFn.startsWith("/*Real[") || cleanFn === "/*Real*/" || cleanFn === "Real") {
           if (typeof args[0] === "number") return args[0];
           if (Array.isArray(args[0])) return args[0].map((x: any) => (typeof x === "number" ? Number(x) : x));
           return null;
@@ -1187,16 +1284,20 @@ export function exprContainsNonConstantRef(exprId: number, dae: DAEBuilder, visi
       }
       return false;
     }
-    if (dae.classKind === "function" && (dae as any).flattener?.currentClassId) {
+    if (dae.classKind === "function") {
       const flat = (dae as any).flattener;
-      const db = flat.db;
-      const parentChild = db
-        ?.childrenOf(flat.currentClassId)
-        ?.find((c: any) => c.name === name && c.kind === "Component");
-      if (parentChild) {
-        const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
-        if (v === "constant" || v === "parameter") {
-          return false;
+      const db = (dae as any).db ?? flat?.db;
+      const scopeId =
+        (dae as any).enclosingScopeId ??
+        ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??
+        flat?.currentClassId;
+      if (scopeId && db) {
+        const parentChild = db.childrenOf(scopeId)?.find((c: any) => c.name === name && c.kind === "Component");
+        if (parentChild) {
+          const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
+          if (v === "constant" || v === "parameter") {
+            return false;
+          }
         }
       }
     }

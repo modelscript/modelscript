@@ -1359,15 +1359,19 @@ function parseIntSlice(text: SourceTextView, startChar: u32, endChar: u32): i32 
     if (b != 32 && b != 9 && b != 10 && b != 13) break;
     endChar--;
   }
-  if (startChar >= endChar) return 0;
+  if (startChar >= endChar) return -1;
   let val: i32 = 0;
+  let hasDigits = false;
   for (let i = startChar; i < endChar; i++) {
     let b = text.charAt(i);
     if (b >= 48 && b <= 57) {
       val = val * 10 + ((b - 48) as i32);
+      hasDigits = true;
+    } else {
+      return -1;
     }
   }
-  return val;
+  return hasDigits ? val : -1;
 }
 
 function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextView, startChar: u32, endChar: u32, prefixPathId: u32 = 0, scopeStackPtr: usize = 0): i32 {
@@ -1381,7 +1385,7 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
     if (b != 32 && b != 9 && b != 10 && b != 13) break;
     endChar--;
   }
-  if (startChar >= endChar) return 0;
+  if (startChar >= endChar) return -1;
 
   // Strip fully enclosing parentheses: (expr)
   if (text.charAt(startChar) == 40 && text.charAt(endChar - 1) == 41) { // '(' and ')'
@@ -1412,6 +1416,7 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
         if (prevChar != 43 && prevChar != 45 && prevChar != 42 && prevChar != 47 && prevChar != 40 && prevChar != 91) {
           let leftVal = evalDimExpr(dae, pool, text, startChar, i as u32, prefixPathId, scopeStackPtr);
           let rightVal = evalDimExpr(dae, pool, text, (i + 1) as u32, endChar, prefixPathId, scopeStackPtr);
+          if (leftVal < 0 || rightVal < 0) return -1;
           return b == 43 ? leftVal + rightVal : leftVal - rightVal;
         }
       }
@@ -1428,7 +1433,8 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
       if (b == 42 || b == 47) { // '*' or '/'
         let leftVal = evalDimExpr(dae, pool, text, startChar, i as u32, prefixPathId, scopeStackPtr);
         let rightVal = evalDimExpr(dae, pool, text, (i + 1) as u32, endChar, prefixPathId, scopeStackPtr);
-        return b == 42 ? leftVal * rightVal : (rightVal != 0 ? leftVal / rightVal : 0);
+        if (leftVal < 0 || rightVal < 0) return -1;
+        return b == 42 ? leftVal * rightVal : (rightVal != 0 ? leftVal / rightVal : -1);
       }
     }
   }
@@ -1480,7 +1486,7 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
     return val as i32;
   }
 
-  return 0;
+  return -1;
 }
 
 function parseRangePart(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextView, startChar: u32, endChar: u32, prefixPathId: u32 = 0, scopeStackPtr: usize = 0): i32 {
@@ -1540,6 +1546,7 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64, dae: DaeBuilder | null = nu
         } else {
           val = parseIntSlice(text, sliceStart, i);
         }
+        if (val < 0) return 0xffffffffffffffff;
         if (val == 0) g_hasExplicitZeroDim = true;
       }
       if (commaCount == 0) d1 = val > 0 ? (val as u32) : 0;
@@ -1558,6 +1565,7 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64, dae: DaeBuilder | null = nu
       } else {
         val = parseIntSlice(text, sliceStart, endIdx);
       }
+      if (val < 0) return 0xffffffffffffffff;
       if (val == 0) g_hasExplicitZeroDim = true;
     }
     if (commaCount == 0) d1 = val > 0 ? (val as u32) : 0;
@@ -4367,6 +4375,28 @@ export class WasmExprVisitor {
       this.tempBuffer.length = subStart;
 
       if (currentNameId != 0) {
+        let expectedNDims: u32 = 0;
+        let targetId = currentNameId;
+        let d1 = this.getArrayShapeDim(targetId, 1);
+        if (d1 == 0 && this.scopeStackPtr != 0) {
+          let prefixId = changetype<ScopeStack>(this.scopeStackPtr).currentPrefixPathId;
+          if (prefixId != 0) {
+            let prefixedId = pool.concatIds(prefixId, currentNameId);
+            d1 = this.getArrayShapeDim(prefixedId, 1);
+            if (d1 > 0) targetId = prefixedId;
+          }
+        }
+        if (d1 > 0) {
+          let d2 = this.getArrayShapeDim(targetId, 2);
+          let d3 = this.getArrayShapeDim(targetId, 3);
+          expectedNDims = d3 > 0 ? 3 : (d2 > 0 ? 2 : 1);
+        }
+        if (expectedNDims > 0 && (subCount as u32) != expectedNDims) {
+          if (this.flattenerPtr != 0) {
+            changetype<ModelicaFlattener>(this.flattenerPtr).setErrorAt(WasmBailReason.SimpleEquationExpr, nodeLoc);
+          }
+          return 0;
+        }
         if (subCount >= 3 && sub1 > 0 && sub2 > 0 && sub3 > 0) {
           return concatArrayIndex3D(pool, currentNameId, sub1 as u32, sub2 as u32, sub3 as u32);
         } else if (subCount >= 2 && sub1 > 0 && sub2 > 0) {
@@ -4711,7 +4741,7 @@ export class WasmExprVisitor {
         if (!locIsNull(pkgLoc)) {
           let compDecl = findComponentDeclInClass(pkgLoc, compId, pool);
           if (!locIsNull(compDecl)) {
-            let declSub = locFindDescendant(compDecl, SyntaxType.ARRAY_SUBSCRIPTS);
+            let declSub = locFindChild(compDecl, SyntaxType.ARRAY_SUBSCRIPTS);
             if (!locIsNull(declSub)) {
               let dims = parseArrayDimensionsLoc(declSub, this.dae, pool);
               d1 = (dims >> 32) as u32;
@@ -8028,6 +8058,26 @@ export class ModelicaFlattener {
     return 0;
   }
 
+  findDeclarationSubscripts(declLoc: u64): u64 {
+    if (locIsNull(declLoc)) return 0;
+    let ch = locFirstChild(declLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.MODIFICATION || t == SyntaxType.MODIFICATION_EXPRESSION || t == SyntaxType._MODIFICATION_) {
+        return 0;
+      }
+      if (t == SyntaxType.ARRAY_SUBSCRIPTS && locLen(ch) > 0) {
+        return ch;
+      }
+      if (t == SyntaxType._ARRAY_SUBSCRIPTS_ && locLen(ch) > 0) {
+        let sub = locFindChild(ch, SyntaxType.ARRAY_SUBSCRIPTS);
+        return !locIsNull(sub) ? sub : ch;
+      }
+      ch = locNextSibling(ch);
+    }
+    return 0;
+  }
+
   findShortClassSpecifier(specLoc: u64, maxDepth: i32 = 4): u64 {
     if (locIsNull(specLoc) || maxDepth <= 0) return 0;
     let curr = locFirstChild(specLoc);
@@ -8493,7 +8543,7 @@ export class ModelicaFlattener {
       }
     }
 
-    let declSubscripts = locFindDescendant(declLoc, SyntaxType.ARRAY_SUBSCRIPTS);
+    let declSubscripts = this.findDeclarationSubscripts(declLoc);
     let declDims = parseArrayDimensionsLoc(declSubscripts, this.dae, pool, prefixPathId, this.scopeStackPtr);
     let declHasExplicitZero = g_hasExplicitZeroDim;
     let declNDims = g_lastParsedNDims;
@@ -9291,7 +9341,7 @@ export class ModelicaFlattener {
           let compNameId = locIntern(pool, idLoc);
           let fullVarNameId = prefixPathId != 0 ? pool.concatIds(prefixPathId, compNameId) : compNameId;
 
-          let declSubscriptsLoc = locFindDescendant(ch, SyntaxType.ARRAY_SUBSCRIPTS);
+          let declSubscriptsLoc = this.findDeclarationSubscripts(ch);
           let declDims = parseArrayDimensionsLoc(declSubscriptsLoc, this.dae, pool, prefixPathId, this.scopeStack.currentEnvPtr);
           let dim1: u32 = 0;
           if (declDims != 0xffffffffffffffff && declDims != 0) {

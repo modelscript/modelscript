@@ -3,12 +3,15 @@
 import {
   ActivityEdgeKind,
   ActivityNodeKind,
+  DAEBuilder,
+  executeArenaStatements,
   PinDirection,
   WasmFumlEngine,
   type QueryDB,
   type SymbolEntry,
 } from "@modelscript/runtime";
 import { extractActivityGraphFromQueryDB, extractActivityGraphFromText, type ActivityGraph } from "./activity-cfa.js";
+import { SysmlExprParser, tokenizeSysml } from "./sysml2-dae-lowerer.js";
 
 export interface ParsedActionElement {
   name: string;
@@ -81,8 +84,8 @@ export class SysML2FumlBridge {
         behavior = (_inputs, context) => {
           for (const asgn of act.assignments) {
             try {
-              // Arithmetic evaluation supporting context variable references
-              const evaluated = evaluateExpression(asgn.expr, context);
+              // Bytecode-driven evaluation via DAEBuilder arena execution
+              const evaluated = evaluateDiscreteAssignment(asgn.target, asgn.expr, context);
               context[asgn.target] = evaluated;
             } catch {
               // Fallback
@@ -158,27 +161,42 @@ export class SysML2FumlBridge {
 }
 
 /**
- * Safe discrete expression evaluator for fUML assignments.
+ * Bytecode-driven discrete expression evaluator for fUML assignments using DAEBuilder arena execution.
  */
-function evaluateExpression(expr: string, context: Record<string, any>): any {
+function evaluateDiscreteAssignment(target: string, expr: string, context: Record<string, any>): any {
   const trimmed = expr.trim();
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
+  if (!Number.isNaN(Number(trimmed)) && trimmed !== "") return Number(trimmed);
 
-  // Replace context variable names with their values
-  let sanitized = trimmed;
-  for (const [key, val] of Object.entries(context)) {
-    if (typeof val === "number" || typeof val === "boolean") {
-      const varRegex = new RegExp(`\\b${key}\\b`, "g");
-      sanitized = sanitized.replace(varRegex, String(val));
+  try {
+    const arena = new DAEBuilder();
+    const tokens = tokenizeSysml(trimmed);
+    const parser = new SysmlExprParser(tokens, arena);
+    const rhsExprId = parser.parse();
+
+    const targetNameId = arena.interner.intern(target);
+    const targetExprId = arena.addName(targetNameId);
+    const stmtIdx = arena.addAssignmentStmt(targetExprId, rhsExprId);
+
+    // Populate variable values in linear array indexed by interner string ID
+    const valuesByStringId = new Float64Array(arena.interner.size + 32);
+    for (const [key, val] of Object.entries(context)) {
+      if (typeof val === "number") {
+        const id = arena.interner.intern(key);
+        if (id < valuesByStringId.length) valuesByStringId[id] = val;
+      } else if (typeof val === "boolean") {
+        const id = arena.interner.intern(key);
+        if (id < valuesByStringId.length) valuesByStringId[id] = val ? 1 : 0;
+      }
     }
-  }
 
-  // Evaluate simple arithmetic expression (+, -, *, /, %, numbers, parentheses)
-  if (/^[\d\s+\-*/%().]+$/.test(sanitized)) {
-    // eslint-disable-next-line no-new-func
-    return Function(`"use strict"; return (${sanitized});`)();
-  }
+    // Execute the assignment statement in DAE arena bytecode
+    executeArenaStatements(arena, stmtIdx, 1, valuesByStringId);
 
-  return expr;
+    const result = valuesByStringId[targetNameId];
+    return typeof context[target] === "boolean" ? Boolean(result) : result;
+  } catch {
+    return expr;
+  }
 }

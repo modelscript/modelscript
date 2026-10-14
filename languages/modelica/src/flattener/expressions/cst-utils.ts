@@ -967,13 +967,15 @@ export function evaluateCSTNumber(
   const floatNum = parseFloat(text);
   if (!isNaN(floatNum) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
 
-  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*,\s*(\d+)\s*\)$/);
-  if (sizeMatch && dae) {
-    const arrName = sizeMatch[1];
-    const dim = parseInt(sizeMatch[2], 10);
-    const resolvedName = resolveScopedName(arrName, prefix, dae);
-    const dimSize = getDaeArrayDimSize(dae, arrName, resolvedName, dim);
-    if (dimSize !== null && dimSize > 0) return dimSize;
+  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*(?:,\s*(\d+))?\s*\)$/);
+  if (sizeMatch) {
+    const arrName = sizeMatch[1]!;
+    const dim = sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 1;
+    if (dae) {
+      const resolvedName = resolveScopedName(arrName, prefix, dae);
+      const dimSize = getDaeArrayDimSize(dae, arrName, resolvedName, dim);
+      if (dimSize !== null && dimSize > 0) return dimSize;
+    }
     if (db) {
       let sym: any = null;
       if (scopeId) {
@@ -985,6 +987,15 @@ export function evaluateCSTNumber(
       }
       const syms = sym ? [sym] : db.byName(arrName);
       for (const s of syms) {
+        if (dim === 1) {
+          const targetMeta = s.metadata as any;
+          const node = db.cstNode(s.id);
+          const isEnum = targetMeta?.isEnumeration || Boolean(node?.text?.includes("enumeration("));
+          if (isEnum) {
+            const lits = extractEnumLiteralsFromCst(node, targetMeta);
+            if (lits) return lits.length;
+          }
+        }
         const dims = db.query("arrayDimensions", s.id);
         if (dims && dims.length >= dim) {
           const d = dims[dim - 1];
@@ -1206,15 +1217,7 @@ export function resolveScopedName(
             const db = (state as any)?.db ?? (dae as any).db ?? flattener?.db;
             const currentClassId = flattener?.currentClassId ?? (dae as any).currentClassId;
             const currentRootClassId = flattener?.currentRootClassId ?? (dae as any).currentRootClassId;
-            const currentClassSym = currentClassId && db ? db.symbol(currentClassId) : null;
-            const isInnerClass = Boolean(
-              currentClassId &&
-              currentRootClassId &&
-              currentClassId !== currentRootClassId &&
-              currentClassSym?.parentId &&
-              db?.symbol(currentClassSym.parentId)?.kind === "Class",
-            );
-            if (isInnerClass) {
+            if (currentClassId && currentRootClassId && currentClassId !== currentRootClassId) {
               if (recordDiagnostics) {
                 if (!state.outerNonConstantAccess) {
                   state.outerNonConstantAccess = [];

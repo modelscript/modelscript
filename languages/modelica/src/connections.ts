@@ -1015,7 +1015,7 @@ export class ModelicaPortBalancer {
               targets.push(vIdx);
             }
           }
-          const ordered = [...targets, source];
+          const ordered = options?.isOldFrontend ? [source, ...targets] : [...targets, source];
           sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[0]!));
           for (let i = 1; i < ordered.length; i++) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ordered[i]!));

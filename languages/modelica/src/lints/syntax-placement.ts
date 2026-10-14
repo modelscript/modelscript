@@ -233,7 +233,10 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         if (db.ast.getType(cls) == $.class_definition) {
           if (isClassKind(db, cls, "function")) {
             if (!isElementProtected(db, node, $)) {
-              const isIO = hasTypePrefix(db, node, "input", $) || hasTypePrefix(db, node, "output", $);
+              const isIO =
+                hasTypePrefix(db, node, "input", $) ||
+                hasTypePrefix(db, node, "output", $) ||
+                hasTypePrefix(db, node, "constant", $);
               if (!isIO) {
                 let varId: u32 = 0;
                 for (const decl of db.ast.getDescendants(node, $.declaration)) {
@@ -991,7 +994,8 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         let isDirect = true;
         for (const anc of db.ast.getAncestors(mod, 0)) {
           if (anc == node) break;
-          if (db.ast.getType(anc) == $.element_modification) {
+          const at = db.ast.getType(anc);
+          if (at == $.element_modification || at == $.element_redeclaration || at == $.element_replaceable) {
             isDirect = false;
             break;
           }
@@ -1101,7 +1105,8 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         let isDirect = true;
         for (const anc of db.ast.getAncestors(mod, 0)) {
           if (anc == node) break;
-          if (db.ast.getType(anc) == $.element_modification) {
+          const at = db.ast.getType(anc);
+          if (at == $.element_modification || at == $.element_redeclaration || at == $.element_replaceable) {
             isDirect = false;
             break;
           }
@@ -1342,7 +1347,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
           db.diagnostic(parentDecl != 0 ? parentDecl : compDecl != 0 ? compDecl : redecl);
           return;
         }
@@ -1352,7 +1357,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
           db.diagnostic(parentDecl != 0 ? parentDecl : compDecl != 0 ? compDecl : redecl);
           return;
         }
@@ -1408,8 +1413,13 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
-          db.diagnostic(targetEl, redeclName);
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
+          let diagNode = targetEl;
+          for (const cc of db.ast.getDescendants(targetEl, $.component_clause)) {
+            diagNode = cc;
+            break;
+          }
+          db.diagnostic(diagNode, redeclName);
           return;
         }
       }
@@ -1418,8 +1428,13 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         const redeclName = getRedeclName(db, redecl, $);
         if (redeclName == 0) continue;
         const targetEl = findTargetElementInClass(db, targetClass, redeclName, $);
-        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $) && !isElementReplaceable(db, targetEl, $)) {
-          db.diagnostic(targetEl, redeclName);
+        if (targetEl != 0 && hasTypePrefix(db, targetEl, "constant", $)) {
+          let diagNode = targetEl;
+          for (const cc of db.ast.getDescendants(targetEl, $.component_clause)) {
+            diagNode = cc;
+            break;
+          }
+          db.diagnostic(diagNode, redeclName);
           return;
         }
       }

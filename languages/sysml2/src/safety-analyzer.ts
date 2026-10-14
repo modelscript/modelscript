@@ -195,9 +195,70 @@ export function enumerateAllMinimalCutSets(
 }
 
 /**
+ * Evaluates a boolean logic expression (e.g. "F1 || (F2 && F3)") against an active set of fault IDs.
+ */
+export function evaluateBooleanFaultLogic(expression: string, active: Set<string>): boolean {
+  const tokens: string[] = [];
+  const regex = /\s*([a-zA-Z_][a-zA-Z0-9_.]*|&&|\|\||!|\(|\)|and|or|not)\s*/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(expression)) !== null) {
+    tokens.push(match[1]!);
+  }
+  if (tokens.length === 0) return false;
+
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const consume = () => tokens[pos++];
+
+  function parseOr(): boolean {
+    let left = parseAnd();
+    while (peek() === "||" || peek()?.toLowerCase() === "or") {
+      consume();
+      const right = parseAnd();
+      left = left || right;
+    }
+    return left;
+  }
+
+  function parseAnd(): boolean {
+    let left = parseNot();
+    while (peek() === "&&" || peek()?.toLowerCase() === "and") {
+      consume();
+      const right = parseNot();
+      left = left && right;
+    }
+    return left;
+  }
+
+  function parseNot(): boolean {
+    if (peek() === "!" || peek()?.toLowerCase() === "not") {
+      consume();
+      return !parseNot();
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): boolean {
+    const t = peek();
+    if (t === "(") {
+      consume();
+      const val = parseOr();
+      if (peek() === ")") consume();
+      return val;
+    }
+    if (t) {
+      consume();
+      return active.has(t);
+    }
+    return false;
+  }
+
+  return parseOr();
+}
+
+/**
  * Extracts declared failure modes and hazards from SysML v2 symbols in the QueryDB.
- * Employs structured AST/QueryDB traversal based on typing, stereotypes, and metadata,
- * gracefully falling back to lexical name heuristics when unannotated.
+ * Employs structured AST/QueryDB traversal based on typing, stereotypes, and metadata.
  */
 export function extractSysML2FailureModes(queryDB: QueryDB): {
   failureModes: FailureMode[];
@@ -305,10 +366,33 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
 
       const causeSet = new Set(linkedCauses.filter((c) => c !== "causes" && c !== "cause"));
 
+      const gateType = String(
+        sym.metadata?.logic || sym.metadata?.gate || sym.metadata?.causesHazardLogic || "",
+      ).toLowerCase();
+      const votingK = sym.metadata?.kOfN ?? sym.metadata?.threshold ?? (sym.metadata?.voting as any)?.k;
+
       let causesHazard: (active: Set<string>) => boolean;
       let description = sym.metadata?.description as string | undefined;
 
-      if (causeSet.size > 0) {
+      if (sym.metadata?.expression || sym.metadata?.condition) {
+        const expr = String(sym.metadata.expression || sym.metadata.condition);
+        causesHazard = (active) => evaluateBooleanFaultLogic(expr, active);
+      } else if (votingK !== undefined && typeof votingK === "number" && causeSet.size > 0) {
+        causesHazard = (active) => {
+          let count = 0;
+          for (const cause of causeSet) {
+            if (active.has(cause)) count++;
+          }
+          return count >= votingK;
+        };
+      } else if (gateType === "or" && causeSet.size > 0) {
+        causesHazard = (active) => {
+          for (const cause of causeSet) {
+            if (active.has(cause)) return true;
+          }
+          return false;
+        };
+      } else if (causeSet.size > 0) {
         causesHazard = (active) => {
           for (const cause of causeSet) {
             if (!active.has(cause)) return false;
@@ -327,38 +411,6 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
         description,
         causesHazard,
       });
-    }
-  }
-
-  // 2. Fallback to name heuristics if structured extraction yielded no failure modes
-  if (failureModes.length === 0) {
-    for (const sym of symbols) {
-      const name = sym.name || "";
-      const lower = name.toLowerCase();
-      if (lower.includes("fail") || lower.includes("loss") || lower.includes("fault")) {
-        failureModes.push({
-          id: name,
-          name,
-          component: getComponentName(sym.parentId),
-        });
-      }
-    }
-  }
-
-  // Fallback to name heuristics if structured extraction yielded no hazards
-  if (hazards.length === 0) {
-    for (const sym of symbols) {
-      const name = sym.name || "";
-      const lower = name.toLowerCase();
-      if (lower.includes("hazard") || lower.includes("critical")) {
-        const diagMsg = `Hazard '${name}' has no associated failure mode causal rules or physics evaluator.`;
-        hazards.push({
-          id: name,
-          name,
-          description: diagMsg,
-          causesHazard: () => false,
-        });
-      }
     }
   }
 
