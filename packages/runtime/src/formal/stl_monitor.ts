@@ -162,8 +162,11 @@ export class StlMonitor {
     }
 
     const rhoProfile = this.evalRobustnessProfile(formula, trace);
-    const initialRho = rhoProfile[0]!;
-    const isSatisfied = initialRho >= 0;
+    const initialRawRho = rhoProfile[0]!;
+    const isSatisfied =
+      formula.kind === "predicate" && (formula.op === ">" || formula.op === "<")
+        ? initialRawRho > 0
+        : initialRawRho >= 0;
 
     // Scan for minimum robustness and violation intervals
     let minRho = Infinity;
@@ -173,7 +176,10 @@ export class StlMonitor {
     let vStart = 0;
 
     for (let i = 0; i < N; i++) {
-      const val = rhoProfile[i]!;
+      const rawVal = rhoProfile[i]!;
+      const violated = rawVal < 0;
+      const val = Math.abs(rawVal) === Number.MIN_VALUE ? 0 : rawVal;
+      rhoProfile[i] = val;
       const t = trace.time[i]!;
 
       if (val < minRho) {
@@ -181,7 +187,7 @@ export class StlMonitor {
         worstTime = t;
       }
 
-      if (val < 0) {
+      if (violated) {
         if (!inViolation) {
           inViolation = true;
           vStart = t;
@@ -198,6 +204,7 @@ export class StlMonitor {
       violationIntervals.push([vStart, trace.time[N - 1]!]);
     }
 
+    const initialRho = rhoProfile[0]!;
     let explanation: string | undefined;
     if (!isSatisfied) {
       explanation =
@@ -232,10 +239,16 @@ export class StlMonitor {
 
         for (let i = 0; i < N; i++) {
           const val = sig[i]!;
-          if (op === ">=" || op === ">") {
+          if (op === ">=") {
             rho[i] = val - th;
-          } else {
+          } else if (op === ">") {
+            const diff = val - th;
+            rho[i] = diff === 0 ? -Number.MIN_VALUE : diff;
+          } else if (op === "<=") {
             rho[i] = th - val;
+          } else {
+            const diff = th - val;
+            rho[i] = diff === 0 ? -Number.MIN_VALUE : diff;
           }
         }
         return rho;
@@ -244,7 +257,12 @@ export class StlMonitor {
       case "not": {
         const childRho = this.evalRobustnessProfile(formula.child, trace);
         const rho = new Float64Array(N);
-        for (let i = 0; i < N; i++) rho[i] = -childRho[i]!;
+        for (let i = 0; i < N; i++) {
+          const c = childRho[i]!;
+          if (c === -Number.MIN_VALUE) rho[i] = 0;
+          else if (c === 0) rho[i] = -Number.MIN_VALUE;
+          else rho[i] = -c;
+        }
         return rho;
       }
 
@@ -269,7 +287,11 @@ export class StlMonitor {
         const aRho = this.evalRobustnessProfile(formula.antecedent, trace);
         const bRho = this.evalRobustnessProfile(formula.consequent, trace);
         const rho = new Float64Array(N);
-        for (let i = 0; i < N; i++) rho[i] = Math.max(-aRho[i]!, bRho[i]!);
+        for (let i = 0; i < N; i++) {
+          const c = aRho[i]!;
+          const notA = c === -Number.MIN_VALUE ? 0 : c === 0 ? -Number.MIN_VALUE : -c;
+          rho[i] = Math.max(notA, bRho[i]!);
+        }
         return rho;
       }
 
@@ -301,7 +323,8 @@ export class StlMonitor {
             head++;
           }
 
-          rho[i] = head < tail ? childRho[deque[head]!]! : childRho[N - 1]!;
+          const fallbackIdx = right > 0 ? Math.min(right - 1, N - 1) : 0;
+          rho[i] = head < tail ? childRho[deque[head]!]! : childRho[fallbackIdx]!;
         }
         return rho;
       }
@@ -334,7 +357,8 @@ export class StlMonitor {
             head++;
           }
 
-          rho[i] = head < tail ? childRho[deque[head]!]! : childRho[N - 1]!;
+          const fallbackIdx = right > 0 ? Math.min(right - 1, N - 1) : 0;
+          rho[i] = head < tail ? childRho[deque[head]!]! : childRho[fallbackIdx]!;
         }
         return rho;
       }

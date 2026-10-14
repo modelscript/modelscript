@@ -25,7 +25,7 @@ import { symbolicContainsVar } from "./linalg";
  * Substitutes a real scalar value for a variable ID in an expression.
  */
 export function symbolicSubstituteVal(dae: DaeBuilder, exprId: u32, targetVar: u32, val: f64): u32 {
-  if (exprId >= dae.exprCount) return exprId;
+  if (exprId == 0xffffffff || exprId >= dae.exprCount) return exprId;
   let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
   let kind = exprData.get(offset + EXPR_KIND);
@@ -43,16 +43,25 @@ export function symbolicSubstituteVal(dae: DaeBuilder, exprId: u32, targetVar: u
     kind == ExprKind.RealLiteral ||
     kind == ExprKind.BoolLiteral ||
     kind == ExprKind.StringLiteral ||
-    kind == ExprKind.EnumLiteral
+    kind == ExprKind.EnumLiteral ||
+    kind == ExprKind.Colon
   ) {
     return exprId;
   }
 
-  if (kind == ExprKind.Negate || kind == ExprKind.Unary) {
+  if (kind == ExprKind.Negate) {
     let operand = exprData.get(offset + EXPR_LEFT);
     let subOp = symbolicSubstituteVal(dae, operand, targetVar, val);
     let neg = dae.addExpression(ExprKind.Negate, 0, subOp, 0xffffffff);
     return cas_simplify(dae, neg);
+  }
+
+  if (kind == ExprKind.Unary) {
+    let op = exprData.get(offset + EXPR_DATA1);
+    let operand = exprData.get(offset + EXPR_LEFT);
+    let subOp = symbolicSubstituteVal(dae, operand, targetVar, val);
+    let un = dae.addExpression(ExprKind.Unary, op, subOp, 0xffffffff);
+    return cas_simplify(dae, un);
   }
 
   if (kind == ExprKind.Binary) {
@@ -67,19 +76,39 @@ export function symbolicSubstituteVal(dae: DaeBuilder, exprId: u32, targetVar: u
 
   if (kind == ExprKind.Call) {
     let funcId = exprData.get(offset + EXPR_DATA1);
-    let u = exprData.get(offset + EXPR_LEFT);
-    let subU = symbolicSubstituteVal(dae, u, targetVar, val);
-    let call = dae.addExpression(ExprKind.Call, funcId, subU, 1);
+    let u = exprData.get(offset + EXPR_LEFT) as u32;
+    let argCount = exprData.get(offset + EXPR_RIGHT) as u32;
+    if (argCount == 0 || u == 0xffffffff) return exprId;
+    if (argCount == 1) {
+      let subU = symbolicSubstituteVal(dae, u, targetVar, val);
+      let call = dae.addExpression(ExprKind.Call, funcId, subU, 1);
+      return cas_simplify(dae, call);
+    }
+    let subArgs = new Uint32Array(argCount);
+    subArgs[0] = symbolicSubstituteVal(dae, u, targetVar, val);
+    for (let a: u32 = 1; a < argCount; a++) {
+      let slotIdx = exprId + a;
+      let argExpr: u32 = u + a;
+      if (slotIdx < dae.exprCount && exprData.get(slotIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Tuple) {
+        argExpr = exprData.get(slotIdx * EXPR_STRIDE + EXPR_LEFT) as u32;
+      }
+      subArgs[a] = symbolicSubstituteVal(dae, argExpr, targetVar, val);
+    }
+    let call = dae.addExpression(ExprKind.Call, funcId, subArgs[0], argCount as i32);
+    for (let a: u32 = 1; a < argCount; a++) {
+      dae.addExpression(ExprKind.Tuple, 0, subArgs[a], 0xffffffff);
+    }
     return cas_simplify(dae, call);
   }
 
   if (kind == ExprKind.IfElse) {
-    let cond = exprData.get(offset + EXPR_DATA1);
-    let thenExpr = exprData.get(offset + EXPR_LEFT);
-    let elseExpr = exprData.get(offset + EXPR_RIGHT);
+    let cond = exprData.get(offset + EXPR_DATA1) as u32;
+    let thenExpr = exprData.get(offset + EXPR_LEFT) as u32;
+    let elseExpr = exprData.get(offset + EXPR_RIGHT) as u32;
+    let subCond = symbolicSubstituteVal(dae, cond, targetVar, val);
     let subThen = symbolicSubstituteVal(dae, thenExpr, targetVar, val);
     let subElse = symbolicSubstituteVal(dae, elseExpr, targetVar, val);
-    let ife = dae.addExpression(ExprKind.IfElse, cond, subThen, subElse);
+    let ife = dae.addExpression(ExprKind.IfElse, subCond, subThen, subElse);
     return cas_simplify(dae, ife);
   }
 

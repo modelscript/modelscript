@@ -291,15 +291,6 @@ export function isolateSymbolically(dae: DaeBuilder, eqIdx: u32, targetVarId: u3
     if (res != 0xffffffff) return cas_simplify(dae, res);
   }
 
-  // Residual peeling: (LHS - RHS) = 0
-  let residual = dae.addBinaryExpr(BinOp.Sub as u16, lhs, rhs);
-  let totalCount = countVarOccurrences(dae, residual, targetVarId);
-  if (totalCount == 1) {
-    let zero = dae.addRealLiteral(0.0);
-    let res = invertSingleOccurrence(dae, residual, targetVarId, zero);
-    if (res != 0xffffffff) return cas_simplify(dae, res);
-  }
-
   return 0xffffffff;
 }
 

@@ -2370,12 +2370,21 @@ export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: nu
           const den = arena.addBinaryExpr(BinOp.Mul, right, right);
           return arena.addBinaryExpr(BinOp.Div, num, den);
         }
-        case BinOp.Pow: {
+        case BinOp.Pow:
+        case BinOp.ElemPow: {
           const dLeft = differentiateArenaExpressionWrt(arena, left, wrtVarId);
+          const dRight = differentiateArenaExpressionWrt(arena, right, wrtVarId);
           const v_minus_1 = arena.addBinaryExpr(BinOp.Sub, right, arena.addRealLiteral(1.0));
           const u_pow_v_minus_1 = arena.addBinaryExpr(BinOp.Pow, left, v_minus_1);
           const v_mul_u_pow = arena.addBinaryExpr(BinOp.Mul, right, u_pow_v_minus_1);
-          return arena.addBinaryExpr(BinOp.Mul, v_mul_u_pow, dLeft);
+          const term1 = arena.addBinaryExpr(BinOp.Mul, v_mul_u_pow, dLeft);
+          if (arena.getExprKind(dRight) === ExprKind.RealLiteral && arena.getExprRealValue(dRight) === 0) {
+            return term1;
+          }
+          const u_pow_v = arena.addBinaryExpr(BinOp.Pow, left, right);
+          const ln_u = arena.addCallExpr("log", [left]);
+          const term2 = arena.addBinaryExpr(BinOp.Mul, arena.addBinaryExpr(BinOp.Mul, u_pow_v, ln_u), dRight);
+          return arena.addBinaryExpr(BinOp.Add, term1, term2);
         }
         default:
           return arena.addRealLiteral(0.0);
@@ -2495,12 +2504,21 @@ function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number
           const den = arena.addBinaryExpr(BinOp.Mul, right, right);
           return arena.addBinaryExpr(BinOp.Div, num, den);
         }
-        case BinOp.Pow: {
+        case BinOp.Pow:
+        case BinOp.ElemPow: {
           const dLeft = differentiateArenaExpressionWrtSet(arena, left, wrtVarIds);
+          const dRight = differentiateArenaExpressionWrtSet(arena, right, wrtVarIds);
           const v_minus_1 = arena.addBinaryExpr(BinOp.Sub, right, arena.addRealLiteral(1.0));
           const u_pow_v_minus_1 = arena.addBinaryExpr(BinOp.Pow, left, v_minus_1);
           const v_mul_u_pow = arena.addBinaryExpr(BinOp.Mul, right, u_pow_v_minus_1);
-          return arena.addBinaryExpr(BinOp.Mul, v_mul_u_pow, dLeft);
+          const term1 = arena.addBinaryExpr(BinOp.Mul, v_mul_u_pow, dLeft);
+          if (arena.getExprKind(dRight) === ExprKind.RealLiteral && arena.getExprRealValue(dRight) === 0) {
+            return term1;
+          }
+          const u_pow_v = arena.addBinaryExpr(BinOp.Pow, left, right);
+          const ln_u = arena.addCallExpr("log", [left]);
+          const term2 = arena.addBinaryExpr(BinOp.Mul, arena.addBinaryExpr(BinOp.Mul, u_pow_v, ln_u), dRight);
+          return arena.addBinaryExpr(BinOp.Add, term1, term2);
         }
         default:
           return arena.addRealLiteral(0.0);
@@ -2696,6 +2714,11 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
       if (lhs >= 0 && rhs >= 0 && dae.getExprKind(lhs) === ExprKind.Name && dae.getExprKind(rhs) === ExprKind.Name) {
         const name1 = dae.getExprData1(lhs);
         const name2 = dae.getExprData1(rhs);
+        const vIdx1 = dae.lookupVariable(name1);
+        const vIdx2 = dae.lookupVariable(name2);
+        if ((vIdx1 >= 0 && dae.isVarFlow(vIdx1)) || (vIdx2 >= 0 && dae.isVarFlow(vIdx2))) {
+          continue;
+        }
         union(name1, name2);
       }
     }
@@ -2803,9 +2826,11 @@ export function inferArenaExprVarType(dae: WasmDaeBridge, exprId: number): VarTy
       return uop === UnaryOp.Not ? VarType.Boolean : inferArenaExprVarType(dae, dae.getExprLeft(exprId));
     }
     case ExprKind.Negate:
-    case ExprKind.Der:
-    case ExprKind.Pre:
       return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    case ExprKind.Der:
+      return VarType.Real;
+    case ExprKind.Pre:
+      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
     case ExprKind.IfElse:
       return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
     case ExprKind.ArrayCtor:

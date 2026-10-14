@@ -117,7 +117,7 @@ function flatElements(exprId: number, arena: DAEBuilder): number[] {
     const firstElemId = arena.getExprLeft(exprId);
     const elements: number[] = [];
     for (let i = 0; i < count; i++) {
-      const elemExprId = arena.getExprLeft(firstElemId + i);
+      const elemExprId = i === 0 ? firstElemId : arena.getExprLeft(exprId + i);
       elements.push(...flatElements(elemExprId, arena));
     }
     return elements;
@@ -146,8 +146,9 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
     case ExprKind.Negate:
     case ExprKind.Der:
     case ExprKind.Pre: {
-      const operand = arena.getExprLeft(exprId);
-      if (kind === ExprKind.Der) {
+      const operand =
+        kind === ExprKind.Der || kind === ExprKind.Pre ? arena.getExprData1(exprId) : arena.getExprLeft(exprId);
+      if (kind === ExprKind.Der && operand >= 0) {
         if (arena.getExprKind(operand) === ExprKind.Name) {
           const varName = arena.interner.resolve(arena.getExprData1(operand));
           names.add(`der(${varName})`);
@@ -167,8 +168,8 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       const firstArgId = arena.getExprLeft(exprId);
       const argCount = arena.getExprRight(exprId);
 
-      if (funcName === "der" && argCount === 1) {
-        const argExprId = arena.getExprLeft(firstArgId);
+      if (funcName === "der" && argCount === 1 && firstArgId >= 0) {
+        const argExprId = firstArgId;
         if (arena.getExprKind(argExprId) === ExprKind.Name) {
           const varName = arena.interner.resolve(arena.getExprData1(argExprId));
           names.add(`der(${varName})`);
@@ -176,7 +177,7 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       }
 
       for (let i = 0; i < argCount; i++) {
-        const argExprId = arena.getExprLeft(firstArgId + i);
+        const argExprId = i === 0 ? firstArgId : arena.getExprLeft(exprId + i);
         collectExprVarNames(argExprId, arena, names);
       }
       break;
@@ -186,8 +187,8 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       const firstSubId = arena.getExprLeft(exprId);
       const subCount = arena.getExprRight(exprId);
 
-      if (subCount === 1) {
-        const indexExprId = arena.getExprLeft(firstSubId);
+      if (subCount === 1 && firstSubId >= 0) {
+        const indexExprId = firstSubId;
         if (arena.getExprKind(indexExprId) === ExprKind.IntLiteral) {
           const val = arena.getExprData1(indexExprId);
           if (arena.getExprKind(baseExprId) === ExprKind.Name) {
@@ -199,7 +200,7 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
 
       collectExprVarNames(baseExprId, arena, names);
       for (let i = 0; i < subCount; i++) {
-        const subExprId = arena.getExprLeft(firstSubId + i);
+        const subExprId = i === 0 ? firstSubId : arena.getExprLeft(exprId + i);
         collectExprVarNames(subExprId, arena, names);
       }
       break;
@@ -209,7 +210,7 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       const count = arena.getExprData1(exprId);
       const firstElemId = arena.getExprLeft(exprId);
       for (let i = 0; i < count; i++) {
-        const elemExprId = arena.getExprLeft(firstElemId + i);
+        const elemExprId = i === 0 ? firstElemId : arena.getExprLeft(exprId + i);
         collectExprVarNames(elemExprId, arena, names);
       }
       break;
@@ -538,8 +539,8 @@ function extractDerName(exprId: number, arena: DAEBuilder): string | null {
   if (exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Der) {
-    const operand = arena.getExprLeft(exprId);
-    if (arena.getExprKind(operand) === ExprKind.Name) {
+    const operand = arena.getExprData1(exprId);
+    if (operand >= 0 && arena.getExprKind(operand) === ExprKind.Name) {
       return arena.interner.resolve(arena.getExprData1(operand));
     }
   } else if (kind === ExprKind.Call) {
@@ -547,8 +548,8 @@ function extractDerName(exprId: number, arena: DAEBuilder): string | null {
     const funcName = arena.interner.resolve(nameId);
     const firstArgId = arena.getExprLeft(exprId);
     const argCount = arena.getExprRight(exprId);
-    if (funcName === "der" && argCount === 1) {
-      const argExprId = arena.getExprLeft(firstArgId);
+    if (funcName === "der" && argCount === 1 && firstArgId >= 0) {
+      const argExprId = firstArgId;
       if (arena.getExprKind(argExprId) === ExprKind.Name) {
         return arena.interner.resolve(arena.getExprData1(argExprId));
       }
@@ -645,8 +646,10 @@ function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<numb
   switch (kind) {
     case ExprKind.Unary:
     case ExprKind.Negate:
-    case ExprKind.Pre:
       collectExprNameIds(arena, left, nameIds);
+      break;
+    case ExprKind.Pre:
+      collectExprNameIds(arena, data1, nameIds);
       break;
     case ExprKind.Binary:
       collectExprNameIds(arena, left, nameIds);
@@ -667,7 +670,10 @@ function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<numb
     }
     case ExprKind.Subscript:
       collectExprNameIds(arena, data1, nameIds);
-      collectExprNameIds(arena, left, nameIds);
+      if (right > 0) collectExprNameIds(arena, left, nameIds);
+      for (let i = 1; i < right; i++) {
+        collectExprNameIds(arena, arena.getExprLeft(exprId + i), nameIds);
+      }
       break;
     case ExprKind.ArrayCtor: {
       const count = data1;
@@ -704,7 +710,8 @@ function containsHomotopyCall(arena: DAEBuilder, exprId: number): boolean {
     const firstArgId = arena.getExprLeft(exprId);
     const argCount = arena.getExprRight(exprId);
     for (let i = 0; i < argCount; i++) {
-      if (containsHomotopyCall(arena, firstArgId + i)) return true;
+      const argId = i === 0 ? firstArgId : arena.getExprLeft(exprId + i);
+      if (containsHomotopyCall(arena, argId)) return true;
     }
     return false;
   }
@@ -713,8 +720,11 @@ function containsHomotopyCall(arena: DAEBuilder, exprId: number): boolean {
       containsHomotopyCall(arena, arena.getExprLeft(exprId)) || containsHomotopyCall(arena, arena.getExprRight(exprId))
     );
   }
-  if (kind === ExprKind.Negate || kind === ExprKind.Unary || kind === ExprKind.Der) {
+  if (kind === ExprKind.Negate || kind === ExprKind.Unary) {
     return containsHomotopyCall(arena, arena.getExprLeft(exprId));
+  }
+  if (kind === ExprKind.Der || kind === ExprKind.Pre) {
+    return containsHomotopyCall(arena, arena.getExprData1(exprId));
   }
   if (kind === ExprKind.IfElse) {
     return (
@@ -1732,6 +1742,18 @@ function runArcLengthHomotopy(
     }
 
     if (correctorConverged) {
+      // Compute secant tangent vector from accepted step before overwriting z and lambda
+      const newV = new Float64Array(nSolve + 1);
+      let normSq = 0;
+      for (let i = 0; i < nSolve; i++) {
+        const dz = zCurr[i]! - z[i]!;
+        newV[i] = dz;
+        normSq += dz * dz;
+      }
+      const dLambda = lambdaCurr - lambda;
+      newV[nSolve] = dLambda;
+      normSq += dLambda * dLambda;
+
       // Step accepted! Update path point
       for (let i = 0; i < nSolve; i++) z[i] = zCurr[i]!;
       lambda = lambdaCurr;
@@ -1760,9 +1782,13 @@ function runArcLengthHomotopy(
         }
       }
 
-      // Compute new tangent vector: augJ * newV = [0; ...; 0; 1]
-      const newV = new Float64Array(nSolve + 1);
-      newV[nSolve] = 1.0;
+      if (normSq > 1e-24) {
+        const invNorm = 1.0 / Math.sqrt(normSq);
+        for (let i = 0; i <= nSolve; i++) newV[i] = newV[i]! * invNorm;
+      } else {
+        newV.fill(0);
+        newV[nSolve] = 1.0;
+      }
       let dot = 0;
       for (let i = 0; i <= nSolve; i++) dot += newV[i]! * v[i]!;
       if (dot < 0) {

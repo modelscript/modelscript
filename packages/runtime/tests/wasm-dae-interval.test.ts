@@ -85,12 +85,12 @@ describe("WebAssembly Arena-Native DAE Interval & Singularity Evaluator", () => 
     const xVar = wasm.dae_addVariable(daePtr, 1, 0, 0, 0, 0.0, 0);
     const xExpr = wasm.dae_addName(daePtr, xVar);
 
-    // sqrt(x): funcId = 2
-    const sqrtExpr = wasm.dae_addCall(daePtr, 2, xExpr, 1);
-    // log(x): funcId = 6
-    const logExpr = wasm.dae_addCall(daePtr, 6, xExpr, 1);
-    // tan(x): funcId = 11
-    const tanExpr = wasm.dae_addCall(daePtr, 11, xExpr, 1);
+    // sqrt(x): BuiltinMathFunc.Sqrt = 13
+    const sqrtExpr = wasm.dae_addCall(daePtr, 13, xExpr, 1);
+    // log(x): BuiltinMathFunc.Log = 11
+    const logExpr = wasm.dae_addCall(daePtr, 11, xExpr, 1);
+    // tan(x): BuiltinMathFunc.Tan = 2
+    const tanExpr = wasm.dae_addCall(daePtr, 2, xExpr, 1);
 
     const loPtr = wasm.__new(8, 0);
     const hiPtr = wasm.__new(8, 0);

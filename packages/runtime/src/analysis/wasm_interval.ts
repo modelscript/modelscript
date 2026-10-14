@@ -98,10 +98,11 @@ export class WasmIntervalEngine {
       outHiOffset << 3,
     );
 
+    const outMemF64 = new Float64Array(this.instance.memory.buffer);
     const outLo = new Float64Array(nodeCount);
     const outHi = new Float64Array(nodeCount);
-    outLo.set(memF64.subarray(outLoOffset, outLoOffset + nodeCount));
-    outHi.set(memF64.subarray(outHiOffset, outHiOffset + nodeCount));
+    outLo.set(outMemF64.subarray(outLoOffset, outLoOffset + nodeCount));
+    outHi.set(outMemF64.subarray(outHiOffset, outHiOffset + nodeCount));
 
     return { lo: outLo, hi: outHi };
   }
@@ -146,15 +147,16 @@ export class WasmIntervalEngine {
       outHiOffset << 3,
     );
 
+    const outMemF64 = new Float64Array(this.instance.memory.buffer);
     const cv = new Float64Array(nodeCount);
     const cc = new Float64Array(nodeCount);
     const lo = new Float64Array(nodeCount);
     const hi = new Float64Array(nodeCount);
 
-    cv.set(memF64.subarray(outCvOffset, outCvOffset + nodeCount));
-    cc.set(memF64.subarray(outCcOffset, outCcOffset + nodeCount));
-    lo.set(memF64.subarray(outLoOffset, outLoOffset + nodeCount));
-    hi.set(memF64.subarray(outHiOffset, outHiOffset + nodeCount));
+    cv.set(outMemF64.subarray(outCvOffset, outCvOffset + nodeCount));
+    cc.set(outMemF64.subarray(outCcOffset, outCcOffset + nodeCount));
+    lo.set(outMemF64.subarray(outLoOffset, outLoOffset + nodeCount));
+    hi.set(outMemF64.subarray(outHiOffset, outHiOffset + nodeCount));
 
     return { cv, cc, lo, hi };
   }
@@ -175,7 +177,7 @@ export class WasmIntervalEngine {
       throw new Error("WasmIntervalEngine: WASM bnb_solveGlobalMin not initialized");
     }
 
-    const memF64 = new Float64Array(this.instance.memory.buffer);
+    let memF64 = new Float64Array(this.instance.memory.buffer);
     const initLoOffset = 1024 >> 3;
     const initHiOffset = initLoOffset + nVars;
     const outSolOffset = initHiOffset + nVars;
@@ -194,6 +196,7 @@ export class WasmIntervalEngine {
       tol,
     );
 
+    memF64 = new Float64Array(this.instance.memory.buffer);
     const bestSolution = new Float64Array(nVars);
     bestSolution.set(memF64.subarray(outSolOffset, outSolOffset + nVars));
 
@@ -461,11 +464,24 @@ export function evaluateTapeMcCormick(
       case TapeOpKind.Mul: {
         const l = result[data1] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
         const r = result[data2] ?? { cv: 0, cc: 0, lo: 0, hi: 0 };
-        const cv1 = l.lo * r.cv + l.cv * r.lo - l.lo * r.lo;
-        const cv2 = l.hi * r.cv + l.cv * r.hi - l.hi * r.hi;
-        const cc1 = l.hi * r.cc + l.cv * r.lo - l.hi * r.lo;
-        const cc2 = l.cv * r.hi + l.lo * r.cc - l.lo * r.hi;
-        result.push({ cv: Math.max(cv1, cv2), cc: Math.min(cc1, cc2), lo: iv.lo, hi: iv.hi });
+        const al1 = Math.min(l.lo * r.cv, l.lo * r.cc);
+        const al2 = Math.min(r.lo * l.cv, r.lo * l.cc);
+        const cv1 = al1 + al2 - l.lo * r.lo;
+        const au1 = Math.min(l.hi * r.cv, l.hi * r.cc);
+        const au2 = Math.min(r.hi * l.cv, r.hi * l.cc);
+        const cv2 = au1 + au2 - l.hi * r.hi;
+        const bl1 = Math.max(l.hi * r.cv, l.hi * r.cc);
+        const bl2 = Math.max(r.lo * l.cv, r.lo * l.cc);
+        const cc1 = bl1 + bl2 - l.hi * r.lo;
+        const bu1 = Math.max(l.lo * r.cv, l.lo * r.cc);
+        const bu2 = Math.max(r.hi * l.cv, r.hi * l.cc);
+        const cc2 = bu1 + bu2 - l.lo * r.hi;
+        result.push({
+          cv: Math.max(iv.lo, cv1, cv2),
+          cc: Math.min(iv.hi, cc1, cc2),
+          lo: iv.lo,
+          hi: iv.hi,
+        });
         break;
       }
       case TapeOpKind.Neg: {
@@ -633,7 +649,7 @@ export function solveSBB(
   queue.push({ box: new Map(initialBox), lowerBound: rootLB });
 
   const midpoint = boxMidpoint(initialBox, variables);
-  if (constraintTapes.length === 0 || isBoxFeasible(midpoint, initialBox)) {
+  if (isBoxFeasible(midpoint, initialBox) && areConstraintsSatisfied(midpoint, constraintTapes)) {
     const midObj = evaluateObjective(objectiveTape, midpoint);
     if (midObj < upperBound) {
       upperBound = midObj;
@@ -641,7 +657,11 @@ export function solveSBB(
     }
   }
   const localResult = localNewtonSolve(objectiveTape, constraintTapes, variables, midpoint, maxNewtonIter);
-  if (localResult !== null && isBoxFeasible(localResult.point, initialBox)) {
+  if (
+    localResult !== null &&
+    isBoxFeasible(localResult.point, initialBox) &&
+    areConstraintsSatisfied(localResult.point, constraintTapes)
+  ) {
     const objVal = evaluateObjective(objectiveTape, localResult.point);
     if (objVal < upperBound) {
       upperBound = objVal;
@@ -657,7 +677,7 @@ export function solveSBB(
     if (node.lowerBound >= upperBound - absTol) continue;
 
     const mid = boxMidpoint(node.box, variables);
-    if (constraintTapes.length === 0 || isBoxFeasible(mid, node.box)) {
+    if (isBoxFeasible(mid, node.box) && areConstraintsSatisfied(mid, constraintTapes)) {
       const midObj = evaluateObjective(objectiveTape, mid);
       if (midObj < upperBound) {
         upperBound = midObj;
@@ -671,7 +691,11 @@ export function solveSBB(
     if (tighterLB >= upperBound - absTol) continue;
 
     const local = localNewtonSolve(objectiveTape, constraintTapes, variables, mid, maxNewtonIter);
-    if (local !== null && isBoxFeasible(local.point, node.box)) {
+    if (
+      local !== null &&
+      isBoxFeasible(local.point, node.box) &&
+      areConstraintsSatisfied(local.point, constraintTapes)
+    ) {
       const objVal = evaluateObjective(objectiveTape, local.point);
       if (objVal < upperBound) {
         upperBound = objVal;
@@ -766,6 +790,20 @@ function isBoxFeasible(point: Map<string, number>, box: DomainBox): boolean {
   return true;
 }
 
+function areConstraintsSatisfied(
+  point: Map<string, number>,
+  constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[],
+  tol = 1e-7,
+): boolean {
+  for (const ct of constraintTapes) {
+    const res = evaluateObjective(ct, point);
+    if (!Number.isFinite(res) || Math.abs(res) > tol) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function findWidestDimension(box: DomainBox, variables: string[]): string | null {
   let widest: string | null = null;
   let maxWidth = 0;
@@ -808,45 +846,49 @@ function localNewtonSolve(
         point.set(v, (point.get(v) ?? 0) - stepSize * g);
       }
     }
-  } else {
-    for (let iter = 0; iter < maxIter; iter++) {
-      let totalResidual = 0;
-      const R = new Array(nConstraints).fill(0) as number[];
-      const J: number[][] = [];
-      for (let i = 0; i < nConstraints; i++) {
-        J[i] = new Array(n).fill(0) as number[];
+    return { point };
+  }
+
+  if (nConstraints !== n) {
+    return null;
+  }
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let maxResidual = 0;
+    const R = new Array(nConstraints).fill(0) as number[];
+    const J: number[][] = [];
+    for (let i = 0; i < nConstraints; i++) {
+      J[i] = new Array(n).fill(0) as number[];
+    }
+
+    for (let row = 0; row < nConstraints; row++) {
+      const ct = constraintTapes[row];
+      if (!ct) continue;
+      const t = evaluateTapeForward(ct.ops, point);
+      R[row] = t[ct.outputIndex] ?? 0;
+      const absR = Math.abs(R[row] ?? 0);
+      if (absR > maxResidual) maxResidual = absR;
+
+      const grads = evaluateTapeReverse(ct.ops, t, ct.outputIndex);
+      const jRow = J[row];
+      if (!jRow) continue;
+      for (let col = 0; col < n; col++) {
+        const vn = variables[col];
+        if (vn) jRow[col] = grads.get(vn) ?? 0;
       }
+    }
 
-      for (let row = 0; row < nConstraints; row++) {
-        const ct = constraintTapes[row];
-        if (!ct) continue;
-        const t = evaluateTapeForward(ct.ops, point);
-        R[row] = t[ct.outputIndex] ?? 0;
-        totalResidual += Math.abs(R[row] ?? 0);
+    if (maxResidual < 1e-10) return { point };
 
-        const grads = evaluateTapeReverse(ct.ops, t, ct.outputIndex);
-        const jRow = J[row];
-        if (!jRow) continue;
-        for (let col = 0; col < n; col++) {
-          const vn = variables[col];
-          if (vn) jRow[col] = grads.get(vn) ?? 0;
-        }
-      }
-
-      if (totalResidual < 1e-10) return { point };
-
-      if (nConstraints === n) {
-        const negR = R.map((r) => -(r ?? 0));
-        const dz = solveLULocal(J, negR, n);
-        for (let i = 0; i < n; i++) {
-          const vn = variables[i];
-          if (vn) point.set(vn, (point.get(vn) ?? 0) + (dz[i] ?? 0));
-        }
-      }
+    const negR = R.map((r) => -(r ?? 0));
+    const dz = solveLULocal(J, negR, n);
+    for (let i = 0; i < n; i++) {
+      const vn = variables[i];
+      if (vn) point.set(vn, (point.get(vn) ?? 0) + (dz[i] ?? 0));
     }
   }
 
-  return { point };
+  return areConstraintsSatisfied(point, constraintTapes, 1e-7) ? { point } : null;
 }
 
 function solveLULocal(A: number[][], b: number[], n: number): number[] {

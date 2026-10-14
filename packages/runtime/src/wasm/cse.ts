@@ -57,10 +57,41 @@ export function eliminateCommonSubexpressions(dae: DaeBuilder): u32 {
     let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
 
+    let leftIsExpr =
+      kind == ExprKind.Binary ||
+      kind == ExprKind.Unary ||
+      kind == ExprKind.Negate ||
+      kind == ExprKind.IfElse ||
+      kind == ExprKind.Call ||
+      kind == ExprKind.Subscript ||
+      kind == ExprKind.ArrayCtor ||
+      kind == ExprKind.Tuple ||
+      kind == ExprKind.Range ||
+      kind == ExprKind.Comprehension ||
+      kind == ExprKind.Object;
+
+    let rightIsExpr =
+      kind == ExprKind.Binary ||
+      kind == ExprKind.IfElse ||
+      kind == ExprKind.Range;
+
+    let data1IsExpr =
+      kind == ExprKind.Der ||
+      kind == ExprKind.Pre ||
+      kind == ExprKind.IfElse ||
+      kind == ExprKind.Subscript ||
+      kind == ExprKind.Range;
+
+    let canonData1 = data1;
+    if (data1IsExpr && data1 < i) {
+      canonData1 = canonicalMap.get(data1) as u32;
+      dae.getExprData().set(offset + EXPR_DATA1, canonData1);
+    }
+
     // Canonicalize child pointers
     let canonLeft = left;
-    let leftHash: u64 = 0;
-    if (left < i) {
+    let leftHash: u64 = left as u64;
+    if (leftIsExpr && left < i) {
       canonLeft = canonicalMap.get(left) as u32;
       dae.getExprData().set(offset + EXPR_LEFT, canonLeft);
       let loL = (nodeHashes.get(canonLeft * 2 + 0) as u64) & 0xffffffff;
@@ -69,8 +100,8 @@ export function eliminateCommonSubexpressions(dae: DaeBuilder): u32 {
     }
 
     let canonRight = right;
-    let rightHash: u64 = 0;
-    if (right < i) {
+    let rightHash: u64 = right as u64;
+    if (rightIsExpr && right < i) {
       canonRight = canonicalMap.get(right) as u32;
       dae.getExprData().set(offset + EXPR_RIGHT, canonRight);
       let loR = (nodeHashes.get(canonRight * 2 + 0) as u64) & 0xffffffff;
@@ -78,7 +109,7 @@ export function eliminateCommonSubexpressions(dae: DaeBuilder): u32 {
       rightHash = (hiR << 32) | loR;
     }
 
-    let h = computeExprHash(kind, data1, leftHash, rightHash);
+    let h = computeExprHash(kind, canonData1, leftHash, rightHash);
     let existingCanon = hashMap.get(h);
 
     if (existingCanon != 0) {

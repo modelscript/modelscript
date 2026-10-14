@@ -6,38 +6,12 @@ import {
   UnaryOp,
   Variability,
   EqKind,
+  BuiltinMathFunc,
 } from "./builder";
 import { ExprAccessor, EqAccessor, VarAccessor } from "./accessors";
 import { cas_getRealValue, cas_isZero, cas_isOne, cas_isConstant } from "./cas";
 
-/**
- * Built-in Math Functions for constant evaluation.
- * Must stay in sync with the funcId dispatch table in eval.ts.
- */
-export enum BuiltinMathFunc {
-  Sin = 0,
-  Cos = 1,
-  Tan = 2,
-  Asin = 3,
-  Acos = 4,
-  Atan = 5,
-  Atan2 = 6,
-  Sinh = 7,
-  Cosh = 8,
-  Tanh = 9,
-  Exp = 10,
-  Log = 11,
-  Log10 = 12,
-  Sqrt = 13,
-  Abs = 14,
-  Sign = 15,
-  Min = 16,
-  Max = 17,
-  Floor = 18,
-  Ceil = 19,
-  Fmod = 20,
-  Pow = 21
-}
+export { BuiltinMathFunc };
 
 /**
  * Evaluates an elementary math function on constant real inputs.
@@ -94,8 +68,15 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   }
 
   let e = ExprAccessor.at(dae.getExprData(), exprId);
+  let kind = e.kind;
+  let data1u = e.data1u;
+  let left = e.left;
+  let right = e.right;
+  let unaryOp = e.unaryOp;
+  let binOp = e.binOp;
+  let funcId = e.funcId as i32;
 
-  if (e.kind == ExprKind.RealLiteral) {
+  if (kind == ExprKind.RealLiteral) {
     staticResult.isConstant = true;
     staticResult.valReal    = e.realValue;
     staticResult.valInt     = staticResult.valReal as i32;
@@ -104,7 +85,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
 
-  if (e.kind == ExprKind.IntLiteral) {
+  if (kind == ExprKind.IntLiteral) {
     staticResult.isConstant = true;
     staticResult.valInt     = e.intValue;
     staticResult.valReal    = staticResult.valInt as f64;
@@ -113,7 +94,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
 
-  if (e.kind == ExprKind.BoolLiteral) {
+  if (kind == ExprKind.BoolLiteral) {
     staticResult.isConstant = true;
     staticResult.valBool    = e.intValue != 0;
     staticResult.valInt     = staticResult.valBool ? 1 : 0;
@@ -122,8 +103,18 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
 
-  if (e.kind == ExprKind.Name) {
-    let varId = e.varId;
+  if (kind == ExprKind.Name) {
+    let varId = data1u;
+    if (varId >= dae.varCount) {
+      let lookedUp = dae.lookupVariableByName(varId);
+      if (lookedUp >= 0) varId = lookedUp as u32;
+    } else {
+      let vCheck = VarAccessor.at(dae.getVarData(), varId);
+      if (vCheck.variability != Variability.Constant && vCheck.variability != Variability.Parameter) {
+        let lookedUp = dae.lookupVariableByName(data1u);
+        if (lookedUp >= 0) varId = lookedUp as u32;
+      }
+    }
     if (varId < dae.varCount) {
       let v = VarAccessor.at(dae.getVarData(), varId);
       if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
@@ -140,8 +131,8 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
 
-  if (e.kind == ExprKind.Negate) {
-    let res = evalConstantExpr(dae, e.left, visitedDepth + 1);
+  if (kind == ExprKind.Negate) {
+    let res = evalConstantExpr(dae, left, visitedDepth + 1);
     if (!res.isConstant) return res;
     staticResult.isConstant = true;
     staticResult.valReal    = -res.valReal;
@@ -151,11 +142,11 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
 
-  if (e.kind == ExprKind.Unary) {
-    let res = evalConstantExpr(dae, e.left, visitedDepth + 1);
+  if (kind == ExprKind.Unary) {
+    let res = evalConstantExpr(dae, left, visitedDepth + 1);
     if (!res.isConstant) return res;
 
-    if (e.unaryOp == UnaryOp.Not) {
+    if (unaryOp == UnaryOp.Not) {
       staticResult.isConstant = true;
       staticResult.valBool    = !res.valBool;
       staticResult.valInt     = staticResult.valBool ? 1 : 0;
@@ -171,10 +162,8 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     return staticResult;
   }
 
-  if (e.kind == ExprKind.Binary) {
-    let op = e.binOp;
-    let left = e.left;
-    let right = e.right;
+  if (kind == ExprKind.Binary) {
+    let op = binOp;
 
     let resLeft = evalConstantExpr(dae, left, visitedDepth + 1);
     if (!resLeft.isConstant) { staticResult.isConstant = false; return staticResult; }
@@ -232,29 +221,37 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     }
   }
 
-  if (e.kind == ExprKind.IfElse) {
-    let condRes = evalConstantExpr(dae, e.data1u, visitedDepth + 1);
+  if (kind == ExprKind.IfElse) {
+    let condRes = evalConstantExpr(dae, data1u, visitedDepth + 1);
     if (condRes.isConstant) {
-      return evalConstantExpr(dae, condRes.valBool ? e.left : e.right, visitedDepth + 1);
+      let branchId = condRes.valBool ? left : right;
+      return evalConstantExpr(dae, branchId, visitedDepth + 1);
     }
   }
 
-  if (e.kind == ExprKind.Call) {
-    let funcId     = e.funcId as i32;
-    let firstArgId = e.left;
-    let argCount   = e.right;
+  if (kind == ExprKind.Call) {
+    let firstArgId = left;
+    let argCount   = right;
 
     if (argCount >= 1) {
       let res1 = evalConstantExpr(dae, firstArgId, visitedDepth + 1);
       if (res1.isConstant) {
+        let arg1_val: f64 = res1.valReal;
         let res2_val: f64 = 0.0;
         if (argCount >= 2) {
-          let res2 = evalConstantExpr(dae, firstArgId + 1, visitedDepth + 1);
+          let secondArgId = firstArgId + 1;
+          if (exprId + 1 < dae.exprCount) {
+            let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
+            if (nextAcc.kind == ExprKind.Tuple) {
+              secondArgId = nextAcc.left;
+            }
+          }
+          let res2 = evalConstantExpr(dae, secondArgId, visitedDepth + 1);
           if (!res2.isConstant) { staticResult.isConstant = false; return staticResult; }
           res2_val = res2.valReal;
         }
         staticResult.isConstant = true;
-        staticResult.valReal    = evalMathBuiltin(funcId, res1.valReal, res2_val);
+        staticResult.valReal    = evalMathBuiltin(funcId, arg1_val, res2_val);
         staticResult.valInt     = staticResult.valReal as i32;
         staticResult.valBool    = staticResult.valReal != 0.0;
         staticResult.valType    = 0;
@@ -288,21 +285,26 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100): u32
     for (let i: u32 = 0; i < dae.varCount; i++) {
       let v = VarAccessor.at(dae.getVarData(), i);
       if (v.variability != Variability.Constant && v.variability != Variability.Parameter) continue;
+      let vNameId = v.nameId;
 
       for (let eqIdx: u32 = 0; eqIdx < dae.eqCount; eqIdx++) {
         let eq = EqAccessor.at(dae.getEqData(), eqIdx);
         if (!eq.isSimple) continue;
 
         let lhsId = eq.lhs;
+        let rhsId = eq.rhs;
         if (lhsId < dae.exprCount) {
           let lhsExpr = ExprAccessor.at(dae.getExprData(), lhsId);
-          if (lhsExpr.isName && lhsExpr.varId == i) {
-            let evalRes = evalConstantExpr(dae, eq.rhs);
-            if (evalRes.isConstant) {
-              let oldStart = dae.getVarStartValue(i);
-              if (oldStart != evalRes.valReal) {
-                dae.setVarStartValue(i, evalRes.valReal);
-                changed = true;
+          if (lhsExpr.isName) {
+            let lhsVarId = lhsExpr.varId;
+            if (lhsVarId == i || lhsVarId == vNameId || dae.lookupVariableByName(lhsVarId) == (i as i32)) {
+              let evalRes = evalConstantExpr(dae, rhsId);
+              if (evalRes.isConstant) {
+                let oldStart = dae.getVarStartValue(i);
+                if (oldStart != evalRes.valReal) {
+                  dae.setVarStartValue(i, evalRes.valReal);
+                  changed = true;
+                }
               }
             }
           }
@@ -317,14 +319,19 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100): u32
 
       let rhsId = eq.rhs;
       if (rhsId < dae.exprCount) {
-        let evalRhs = evalConstantExpr(dae, rhsId);
-        if (evalRhs.isConstant) {
-          let newRhs = evalRhs.valType == 1
-            ? dae.addIntLiteral(evalRhs.valInt)
-            : dae.addRealLiteral(evalRhs.valReal);
-          if (newRhs != rhsId) {
-            eq.rhs = newRhs;
-            changed = true;
+        let rhsAcc = ExprAccessor.at(dae.getExprData(), rhsId);
+        if (!rhsAcc.isLiteral) {
+          let evalRhs = evalConstantExpr(dae, rhsId);
+          if (evalRhs.isConstant) {
+            let newRhs = evalRhs.valType == 1
+              ? dae.addIntLiteral(evalRhs.valInt)
+              : evalRhs.valType == 2
+                ? dae.addExpression(ExprKind.BoolLiteral, evalRhs.valBool ? 1 : 0)
+                : dae.addRealLiteral(evalRhs.valReal);
+            if (newRhs != rhsId) {
+              EqAccessor.at(dae.getEqData(), eqIdx).rhs = newRhs;
+              changed = true;
+            }
           }
         }
       }

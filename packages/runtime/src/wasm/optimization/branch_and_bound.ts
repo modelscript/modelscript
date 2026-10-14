@@ -85,6 +85,16 @@ export function bnb_solveGlobalMin(
     varVals[i] = 0.5 * (rootBox.lo[i] + rootBox.hi[i]);
   }
 
+  // Evaluate exact objective at root midpoint
+  tape_evaluateInterval(
+    tape,
+    changetype<usize>(varVals),
+    changetype<usize>(varVals),
+    loPtr,
+    hiPtr,
+  );
+  let rootMidVal = loBuf[targetTapeNode];
+
   // Initial McCormick pass
   tape_evaluateMcCormick(
     tape,
@@ -98,7 +108,7 @@ export function bnb_solveGlobalMin(
   );
 
   rootBox.lowerBound = cvBuf[targetTapeNode];
-  let bestUB = ccBuf[targetTapeNode];
+  let bestUB = Math.min(rootMidVal, ccBuf[targetTapeNode]);
 
   for (let i: u32 = 0; i < nVars; i++) {
     outBestSolution[i] = varVals[i];
@@ -156,6 +166,14 @@ export function bnb_solveGlobalMin(
     for (let i: u32 = 0; i < nVars; i++) {
       varVals[i] = 0.5 * (box1.lo[i] + box1.hi[i]);
     }
+    tape_evaluateInterval(
+      tape,
+      changetype<usize>(varVals),
+      changetype<usize>(varVals),
+      loPtr,
+      hiPtr,
+    );
+    let midVal1 = loBuf[targetTapeNode];
     tape_evaluateMcCormick(
       tape,
       changetype<usize>(varVals),
@@ -167,7 +185,7 @@ export function bnb_solveGlobalMin(
       hiPtr,
     );
     box1.lowerBound = cvBuf[targetTapeNode];
-    let ub1 = ccBuf[targetTapeNode];
+    let ub1 = Math.min(midVal1, ccBuf[targetTapeNode]);
     if (ub1 < bestUB) {
       bestUB = ub1;
       for (let i: u32 = 0; i < nVars; i++) {
@@ -182,6 +200,14 @@ export function bnb_solveGlobalMin(
     for (let i: u32 = 0; i < nVars; i++) {
       varVals[i] = 0.5 * (box2.lo[i] + box2.hi[i]);
     }
+    tape_evaluateInterval(
+      tape,
+      changetype<usize>(varVals),
+      changetype<usize>(varVals),
+      loPtr,
+      hiPtr,
+    );
+    let midVal2 = loBuf[targetTapeNode];
     tape_evaluateMcCormick(
       tape,
       changetype<usize>(varVals),
@@ -193,7 +219,7 @@ export function bnb_solveGlobalMin(
       hiPtr,
     );
     box2.lowerBound = cvBuf[targetTapeNode];
-    let ub2 = ccBuf[targetTapeNode];
+    let ub2 = Math.min(midVal2, ccBuf[targetTapeNode]);
     if (ub2 < bestUB) {
       bestUB = ub2;
       for (let i: u32 = 0; i < nVars; i++) {

@@ -69,8 +69,18 @@ function interpolate1D(table: number[][], colIdx: number, u: number): number {
   return y0 + t * (y1 - y0);
 }
 
+const MSL_C_NAME_MAP: Record<string, string> = {
+  "Modelica.Utilities.Strings.length": "ModelicaStrings_length",
+  "Modelica.Utilities.Strings.compare": "ModelicaStrings_compare",
+  "Modelica.Utilities.Strings.Advanced.skipWhiteSpace": "ModelicaStrings_skipWhiteSpace",
+  "Modelica.Utilities.Strings.Advanced.scanReal": "ModelicaStrings_scanReal",
+  "Modelica.Utilities.Strings.Advanced.scanInteger": "ModelicaStrings_scanInteger",
+  "Modelica.Utilities.Strings.Advanced.scanString": "ModelicaStrings_scanString",
+};
+
 /** Check if a function name belongs to the MSL C FFI utility suite. */
 export function isMslCFunction(funcName: string): boolean {
+  if (MSL_C_NAME_MAP[funcName]) return true;
   return (
     funcName.startsWith("ModelicaStrings_") ||
     funcName.startsWith("ModelicaStandardTables_") ||
@@ -80,7 +90,8 @@ export function isMslCFunction(funcName: string): boolean {
 
 /** Evaluate an MSL C FFI function with concrete argument values. */
 export function evaluateMslCFunction(funcName: string, args: any[]): any {
-  switch (funcName) {
+  const resolvedName = MSL_C_NAME_MAP[funcName] ?? funcName;
+  switch (resolvedName) {
     // ── ModelicaStrings ──
     case "ModelicaStrings_length": {
       const str = String(args[0] ?? "");

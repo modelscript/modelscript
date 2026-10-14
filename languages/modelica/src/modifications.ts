@@ -20,7 +20,7 @@
  * - Redeclaration modifications: `redeclare type T = NewType`
  */
 
-import type { SpecializationArgs } from "@modelscript/runtime";
+import type { SpecializationArgs, SymbolId } from "@modelscript/runtime";
 
 // ---------------------------------------------------------------------------
 // Modification Data Types
@@ -35,7 +35,12 @@ import type { SpecializationArgs } from "@modelscript/runtime";
  * - A pre-evaluated literal (for common cases like `= 100`)
  */
 export type ModificationValue =
-  | { readonly kind: "expression"; readonly cstBytes: readonly [number, number]; readonly text?: string }
+  | {
+      readonly kind: "expression";
+      readonly cstBytes: readonly [number, number];
+      readonly text?: string;
+      readonly evaluationScopeId?: SymbolId | null;
+    }
   | { readonly kind: "break"; readonly target?: string }
   | { readonly kind: "literal"; readonly value: number | string | boolean };
 

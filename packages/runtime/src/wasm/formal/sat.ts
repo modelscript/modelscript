@@ -667,7 +667,9 @@ export class WasmCdclSolver {
         this.backtrack(btLevel);
 
         if (learned.length == 1) {
-          this.clauses.push(learned);
+          let unitClause = new Array<i32>(1);
+          unitClause[0] = learned[0];
+          this.clauses.push(unitClause);
           let cIdx = this.clauses.length - 1;
           this.enqueue(learned[0], cIdx);
         } else {

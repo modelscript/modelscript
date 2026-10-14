@@ -287,7 +287,7 @@ export function executeArenaStatements(
             if (numArgs > 0) {
               argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
               for (let a = 1; a < numArgs; a++) {
-                const tupleExprId = firstArg + a;
+                const tupleExprId = callExprId + a;
                 const argExprId = arena.getExprLeft(tupleExprId);
                 argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
               }
@@ -320,7 +320,7 @@ export function executeArenaStatements(
           if (numArgs > 0) {
             argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
             for (let a = 1; a < numArgs; a++) {
-              const tupleExprId = firstArg + a;
+              const tupleExprId = sourceExprId + a;
               const argExprId = arena.getExprLeft(tupleExprId);
               argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
             }
@@ -709,7 +709,7 @@ export async function executeArenaStatementsAsync(
             if (numArgs > 0) {
               argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
               for (let a = 1; a < numArgs; a++) {
-                const tupleExprId = firstArg + a;
+                const tupleExprId = callExprId + a;
                 const argExprId = arena.getExprLeft(tupleExprId);
                 argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
               }
@@ -742,7 +742,7 @@ export async function executeArenaStatementsAsync(
           if (numArgs > 0) {
             argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
             for (let a = 1; a < numArgs; a++) {
-              const tupleExprId = firstArg + a;
+              const tupleExprId = sourceExprId + a;
               const argExprId = arena.getExprLeft(tupleExprId);
               argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
             }
@@ -1402,7 +1402,7 @@ export function executeArenaCEvalStatements(
             );
             if (firstArgVal !== null) argValues.push(firstArgVal);
             for (let a = 1; a < numArgs; a++) {
-              const tupleExprId = firstArg + a;
+              const tupleExprId = sourceExprId + a;
               const argExprId = arena.getExprLeft(tupleExprId);
               const val = evaluateArenaExpression(arena, argExprId, env, db, scopeId, undefined, false, functionLookup);
               if (val !== null) argValues.push(val);
@@ -1491,7 +1491,13 @@ function collectExprVarNames(arena: DAEBuilder, exprId: number, names: Set<strin
     }
     case ExprKind.Subscript: {
       collectExprVarNames(arena, arena.getExprData1(exprId), names);
-      collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+      const subCount = arena.getExprRight(exprId);
+      if (subCount > 0) {
+        collectExprVarNames(arena, arena.getExprLeft(exprId), names);
+        for (let i = 1; i < subCount; i++) {
+          collectExprVarNames(arena, arena.getExprLeft(exprId + i), names);
+        }
+      }
       break;
     }
   }
@@ -1566,23 +1572,13 @@ export function evaluateArenaFunctionCall(
           targetFid = dae.interner.intern(qual);
         }
       }
-      console.log("functionLookup inside CEval:", calledName, "args:", JSON.stringify(args));
-      const res = evaluateArenaFunctionCall(
+      return evaluateArenaFunctionCall(
         found ? (targetDae.getFunction(targetFid) ? targetDae : (targetDae as any).parentDae) : targetDae,
         targetFid,
         args,
         db,
         scopeId,
       );
-      console.log(
-        "functionLookup inside CEval:",
-        calledName,
-        "targetFid name:",
-        dae.interner.resolve(targetFid),
-        "res:",
-        res,
-      );
-      return res;
     };
 
     const outputs: string[] = [];
@@ -1888,6 +1884,10 @@ export function evaluateArenaFunctionCall(
             return typeof v === "number" ? v : 0;
           });
           const cResult = fn(...resolvedArgs);
+          if (outName) env.set(outName, cResult);
+        } else if (cFuncName && isMslCFunction(cFuncName)) {
+          const resolvedArgs = cArgNames.map((argName) => env.get(argName));
+          const cResult = evaluateMslCFunction(cFuncName, resolvedArgs);
           if (outName) env.set(outName, cResult);
         } else {
           return null;

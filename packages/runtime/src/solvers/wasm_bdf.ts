@@ -218,6 +218,7 @@ export function bdf(
   let jacobianMatrix: number[][] | null = null;
   let luMatrix: { L: number[][]; U: number[][]; P: number[] } | null = null;
   let lastJacobianH = 0;
+  let lastAlpha0 = 0;
   let newtonFailCount = 0;
 
   // Current BDF order
@@ -253,6 +254,7 @@ export function bdf(
       const a2 = (r * r) / (1 + r);
       alpha = [a0, a1, a2];
     }
+    const alpha0 = alpha[0] ?? 1;
 
     // ── Compute predictor (explicit extrapolation from history) ──
     const yPred = new Array(n) as number[];
@@ -277,7 +279,12 @@ export function bdf(
     }
 
     // Form the iteration matrix: M = alpha_0*I - h*J and compute LU
-    if (luMatrix === null || needNewJacobian || Math.abs(h - lastJacobianH) > 1e-15) {
+    if (
+      luMatrix === null ||
+      needNewJacobian ||
+      Math.abs(h - lastJacobianH) > 1e-15 ||
+      Math.abs(alpha0 - lastAlpha0) > 1e-15
+    ) {
       const iterMatrix = new Array(n) as number[][];
       for (let i = 0; i < n; i++) {
         const iterRow = new Array(n) as number[];
@@ -286,11 +293,12 @@ export function bdf(
         if (!jRow) continue;
         for (let j = 0; j < n; j++) {
           const jVal = jRow[j] ?? 0;
-          iterRow[j] = (i === j ? (alpha[0] ?? 1) : 0) - h * jVal;
+          iterRow[j] = (i === j ? alpha0 : 0) - h * jVal;
         }
       }
       luMatrix = luDecompose(iterMatrix, n);
       lastJacobianH = h;
+      lastAlpha0 = alpha0;
     }
 
     // ── Newton iteration ──
@@ -322,7 +330,17 @@ export function bdf(
       let residualNorm = 0;
       for (let i = 0; i < n; i++) {
         const sc = atol + rtol * Math.abs(yNewton[i] ?? 0);
-        residualNorm = Math.max(residualNorm, Math.abs(residual[i] ?? 0) / sc);
+        const rVal = Math.abs(residual[i] ?? 0) / sc;
+        if (!Number.isFinite(rVal)) {
+          residualNorm = Infinity;
+          break;
+        }
+        residualNorm = Math.max(residualNorm, rVal);
+      }
+
+      if (!Number.isFinite(residualNorm)) {
+        converged = false;
+        break;
       }
 
       if (residualNorm < 1.0) {
@@ -336,8 +354,18 @@ export function bdf(
       const delta = luSolve(luMatrix, negResidual, n);
 
       // Update Newton iterate
+      let deltaFinite = true;
       for (let i = 0; i < n; i++) {
-        yNewton[i] = (yNewton[i] ?? 0) + (delta[i] ?? 0);
+        const d = delta[i] ?? 0;
+        if (!Number.isFinite(d)) {
+          deltaFinite = false;
+          break;
+        }
+        yNewton[i] = (yNewton[i] ?? 0) + d;
+      }
+      if (!deltaFinite) {
+        converged = false;
+        break;
       }
     }
 
@@ -362,20 +390,31 @@ export function bdf(
       for (let i = 0; i < n; i++) {
         const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNewton[i] ?? 0));
         const est = 0.5 * h * Math.abs((fNew[i] ?? 0) - (fCurrent[i] ?? 0));
-        err = Math.max(err, est / sc);
+        const ratio = est / sc;
+        if (!Number.isFinite(ratio)) {
+          err = Infinity;
+          break;
+        }
+        err = Math.max(err, ratio);
       }
     } else {
       for (let i = 0; i < n; i++) {
         const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNewton[i] ?? 0));
         const est = (1.0 / 3.0) * Math.abs((yNewton[i] ?? 0) - (yPred[i] ?? 0));
-        err = Math.max(err, est / sc);
+        const ratio = est / sc;
+        if (!Number.isFinite(ratio)) {
+          err = Infinity;
+          break;
+        }
+        err = Math.max(err, ratio);
       }
     }
 
-    if (err > 1.0) {
+    if (!Number.isFinite(err) || err > 1.0) {
       // Step rejected — reduce step size
       result.rejectedSteps++;
-      const factor = Math.max(0.2, 0.9 * Math.pow(err, -1.0 / (effectiveOrder + 1)));
+      const factor =
+        Number.isFinite(err) && err > 0 ? Math.max(0.2, 0.9 * Math.pow(err, -1.0 / (effectiveOrder + 1))) : 0.25;
       h *= factor;
       continue;
     }

@@ -369,10 +369,10 @@ export class ZonotopeReachabilitySolver {
 
         if (req.operator === "<=" || req.operator === "<") {
           worstVal = inv.hi;
-          if (worstVal > req.limitValue) crossed = true;
+          if (req.operator === "<=" ? worstVal > req.limitValue : worstVal >= req.limitValue) crossed = true;
         } else if (req.operator === ">=" || req.operator === ">") {
           worstVal = inv.lo;
-          if (worstVal < req.limitValue) crossed = true;
+          if (req.operator === ">=" ? worstVal < req.limitValue : worstVal <= req.limitValue) crossed = true;
         }
 
         if (crossed) {
@@ -384,17 +384,23 @@ export class ZonotopeReachabilitySolver {
           let witnessTime = tNext;
 
           if (req.operator === "<=" || req.operator === "<") {
-            if (nomValNext > req.limitValue) {
+            const nextViolates = req.operator === "<=" ? nomValNext > req.limitValue : nomValNext >= req.limitValue;
+            const currViolates =
+              req.operator === "<=" ? nomValCurrent > req.limitValue : nomValCurrent >= req.limitValue;
+            if (nextViolates) {
               isWitness = true;
-            } else if (nomValCurrent > req.limitValue) {
+            } else if (currViolates) {
               isWitness = true;
               witnessVal = nomValCurrent;
               witnessTime = t;
             }
           } else if (req.operator === ">=" || req.operator === ">") {
-            if (nomValNext < req.limitValue) {
+            const nextViolates = req.operator === ">=" ? nomValNext < req.limitValue : nomValNext <= req.limitValue;
+            const currViolates =
+              req.operator === ">=" ? nomValCurrent < req.limitValue : nomValCurrent <= req.limitValue;
+            if (nextViolates) {
               isWitness = true;
-            } else if (nomValCurrent < req.limitValue) {
+            } else if (currViolates) {
               isWitness = true;
               witnessVal = nomValCurrent;
               witnessTime = t;
@@ -417,7 +423,15 @@ export class ZonotopeReachabilitySolver {
                 simX = Ax;
               }
               const val = simX[req.stateIndex]!;
-              if ((maximize && val > req.limitValue) || (!maximize && val < req.limitValue)) {
+              const violates =
+                req.operator === "<="
+                  ? val > req.limitValue
+                  : req.operator === "<"
+                    ? val >= req.limitValue
+                    : req.operator === ">="
+                      ? val < req.limitValue
+                      : val <= req.limitValue;
+              if (violates) {
                 isWitness = true;
                 witnessVal = val;
                 witnessTime = tau + dt;
@@ -803,10 +817,10 @@ export class ConservativeLinearizationSolver {
         let worstVal = inv.mid;
         if (req.operator === "<=" || req.operator === "<") {
           worstVal = inv.hi;
-          if (worstVal > req.limitValue) crossed = true;
+          if (req.operator === "<=" ? worstVal > req.limitValue : worstVal >= req.limitValue) crossed = true;
         } else if (req.operator === ">=" || req.operator === ">") {
           worstVal = inv.lo;
-          if (worstVal < req.limitValue) crossed = true;
+          if (req.operator === ">=" ? worstVal < req.limitValue : worstVal <= req.limitValue) crossed = true;
         }
 
         if (crossed) {
@@ -814,9 +828,9 @@ export class ConservativeLinearizationSolver {
           const witnessVal = nextNomX[req.stateIndex]!;
           const witnessTime = tNext;
           if (req.operator === "<=" || req.operator === "<") {
-            if (witnessVal > req.limitValue) isWitness = true;
+            if (req.operator === "<=" ? witnessVal > req.limitValue : witnessVal >= req.limitValue) isWitness = true;
           } else if (req.operator === ">=" || req.operator === ">") {
-            if (witnessVal < req.limitValue) isWitness = true;
+            if (req.operator === ">=" ? witnessVal < req.limitValue : witnessVal <= req.limitValue) isWitness = true;
           }
 
           if (isWitness) {
@@ -849,7 +863,15 @@ export class ConservativeLinearizationSolver {
               simT += stepH;
 
               const val = simX[req.stateIndex]!;
-              if ((maximize && val > req.limitValue) || (!maximize && val < req.limitValue)) {
+              const violates =
+                req.operator === "<="
+                  ? val > req.limitValue
+                  : req.operator === "<"
+                    ? val >= req.limitValue
+                    : req.operator === ">="
+                      ? val < req.limitValue
+                      : val <= req.limitValue;
+              if (violates) {
                 isWitness = true;
                 hasWitnessViolation = true;
                 violations.push({

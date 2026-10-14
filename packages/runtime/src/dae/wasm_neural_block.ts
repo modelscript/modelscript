@@ -813,7 +813,7 @@ export class ArenaCTRNNBlock {
     let seed = this.config.seed ?? 42;
 
     const pseudoRandom = () => {
-      seed = (seed * 9301 + 49297) % 233280;
+      seed = (((seed * 9301 + 49297) % 233280) + 233280) % 233280;
       return seed / 233280;
     };
 

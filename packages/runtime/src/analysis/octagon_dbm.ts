@@ -25,6 +25,9 @@ export const OCTAGON_INF = 0x3fffffff;
 export class OctagonDBM {
   private dim: number;
   private matrix: Int32Array;
+  private wasmPtr = 0;
+  private wasmByteCap = 0;
+  private wasmInstance: Record<string, any> | null = null;
 
   constructor(public readonly numVars: number) {
     this.dim = numVars * 2;
@@ -57,7 +60,7 @@ export class OctagonDBM {
   }
 
   /**
-   * Floyd-Warshall transitive closure — propagates all derived bounds.
+   * Floyd-Warshall transitive closure + Octagon strong closure — propagates all derived bounds.
    */
   close(): void {
     const dim = this.dim;
@@ -73,10 +76,36 @@ export class OctagonDBM {
         for (let j = 0; j < dim; j++) {
           const kj = matrix[kRow + j]!;
           if (kj < OCTAGON_INF) {
-            const newBound = ik + kj;
+            const newBound = Math.max(-OCTAGON_INF, ik + kj);
             if (newBound < matrix[iRow + j]!) {
               matrix[iRow + j] = newBound;
             }
+          }
+        }
+      }
+    }
+
+    // Tighten unary bounds: M[i, i ^ 1] = 2 * floor(M[i, i ^ 1] / 2)
+    for (let i = 0; i < dim; i++) {
+      const idx = i * dim + (i ^ 1);
+      const u = matrix[idx]!;
+      if (u < OCTAGON_INF) {
+        matrix[idx] = Math.max(-OCTAGON_INF, 2 * Math.floor(u / 2));
+      }
+    }
+
+    // Strong closure: propagate unary bounds to all pairs
+    for (let i = 0; i < dim; i++) {
+      const iRow = i * dim;
+      const ui = matrix[iRow + (i ^ 1)]!;
+      if (ui >= OCTAGON_INF) continue;
+
+      for (let j = 0; j < dim; j++) {
+        const uj = matrix[(j ^ 1) * dim + j]!;
+        if (uj < OCTAGON_INF) {
+          const strongBound = Math.max(-OCTAGON_INF, Math.floor((ui + uj) / 2));
+          if (strongBound < matrix[iRow + j]!) {
+            matrix[iRow + j] = strongBound;
           }
         }
       }
@@ -91,12 +120,17 @@ export class OctagonDBM {
     if (typeof wasmExports.octagon_close_i32 === "function" && typeof wasmExports.__new === "function") {
       const dim = this.dim;
       const bytes = dim * dim * 4;
-      const ptr = wasmExports.__new(bytes, 0);
+      if (this.wasmInstance !== wasmExports || this.wasmByteCap < bytes || this.wasmPtr === 0) {
+        this.wasmPtr = wasmExports.__new(bytes, 0);
+        this.wasmByteCap = bytes;
+        this.wasmInstance = wasmExports;
+      }
       const mem = wasmExports.memory as WebAssembly.Memory;
-      const view = new Int32Array(mem.buffer, ptr, dim * dim);
+      const view = new Int32Array(mem.buffer, this.wasmPtr, dim * dim);
       view.set(this.matrix);
-      wasmExports.octagon_close_i32(ptr, dim);
-      this.matrix.set(view);
+      wasmExports.octagon_close_i32(this.wasmPtr, dim);
+      const outView = new Int32Array(mem.buffer, this.wasmPtr, dim * dim);
+      this.matrix.set(outView);
       return;
     }
     this.close();
@@ -282,11 +316,12 @@ export class OctagonDBM {
           res.matrix[i * dim + j] = aVal;
         } else {
           if (thresholds && thresholds.length > 0) {
+            const scale = (i ^ 1) === j ? 2 : 1;
             let nextT = OCTAGON_INF;
             for (let t = 0; t < thresholds.length; t++) {
-              const th2 = thresholds[t]! * 2;
-              if (th2 >= bVal) {
-                nextT = th2;
+              const th = thresholds[t]! * scale;
+              if (th >= bVal) {
+                nextT = th;
                 break;
               }
             }

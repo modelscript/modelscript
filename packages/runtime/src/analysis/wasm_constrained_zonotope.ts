@@ -355,17 +355,30 @@ export class ConstrainedZonotope {
     // Number of unreduced generators to keep
     const numKeep = maxGenerators - n;
 
-    // Compute generator norms
+    // Identify generators that appear with non-zero coefficients in equality constraints A \xi = b
+    const inEquality = new Array<boolean>(p).fill(false);
+    for (const row of this.A) {
+      for (let j = 0; j < p; j++) {
+        if (Math.abs(row[j] ?? 0) > 1e-15) {
+          inEquality[j] = true;
+        }
+      }
+    }
+
+    // Compute generator norms; prioritize keeping equality-constrained generators first
     const generatorMetrics = this.generators.map((g, idx) => {
       let normSq = 0;
       for (let i = 0; i < n; i++) {
         normSq += (g[i] ?? 0) * (g[i] ?? 0);
       }
-      return { idx, norm: Math.sqrt(normSq), g };
+      return { idx, norm: Math.sqrt(normSq), inEq: inEquality[idx]!, g };
     });
 
-    // Sort descending by norm
-    generatorMetrics.sort((a, b) => b.norm - a.norm);
+    // Sort: equality-constrained generators first, then descending by norm
+    generatorMetrics.sort((a, b) => {
+      if (a.inEq !== b.inEq) return a.inEq ? -1 : 1;
+      return b.norm - a.norm;
+    });
 
     const keptIndices = generatorMetrics.slice(0, numKeep).map((m) => m.idx);
     const reducedIndices = generatorMetrics.slice(numKeep).map((m) => m.idx);
@@ -389,24 +402,59 @@ export class ConstrainedZonotope {
 
     // Update constraints for the kept generators (unconstrained for the box generators)
     const newA: number[][] = [];
-    for (const row of this.A) {
-      const newRow = new Array<number>(newGenerators.length).fill(0);
-      for (let k = 0; k < numKeep; k++) {
-        newRow[k] = row[keptIndices[k]!] ?? 0;
+    const newB: number[] = [];
+    const newC: number[][] = [];
+    const newD: number[] = [];
+
+    for (let r = 0; r < this.A.length; r++) {
+      const row = this.A[r]!;
+      const rhs = this.b[r] ?? 0;
+      let reducedSlack = 0;
+      for (const rIdx of reducedIndices) {
+        reducedSlack += Math.abs(row[rIdx] ?? 0);
       }
-      newA.push(newRow);
+
+      if (reducedSlack <= 1e-15) {
+        const newRow = new Array<number>(newGenerators.length).fill(0);
+        for (let k = 0; k < numKeep; k++) {
+          newRow[k] = row[keptIndices[k]!] ?? 0;
+        }
+        newA.push(newRow);
+        newB.push(rhs);
+      } else {
+        // Convert equality with reduced generators into two relaxed inequalities:
+        //   +A_{r,K} \xi_K <= +b_r + \sum_{j \in R} |A_{r,j}|
+        //   -A_{r,K} \xi_K <= -b_r + \sum_{j \in R} |A_{r,j}|
+        const posRow = new Array<number>(newGenerators.length).fill(0);
+        const negRow = new Array<number>(newGenerators.length).fill(0);
+        for (let k = 0; k < numKeep; k++) {
+          const val = row[keptIndices[k]!] ?? 0;
+          posRow[k] = val;
+          negRow[k] = -val;
+        }
+        newC.push(posRow);
+        newD.push(rhs + reducedSlack);
+        newC.push(negRow);
+        newD.push(-rhs + reducedSlack);
+      }
     }
 
-    const newC: number[][] = [];
-    for (const row of this.C) {
+    for (let r = 0; r < this.C.length; r++) {
+      const row = this.C[r]!;
+      const rhs = this.d[r] ?? 0;
+      let reducedSlack = 0;
+      for (const rIdx of reducedIndices) {
+        reducedSlack += Math.abs(row[rIdx] ?? 0);
+      }
       const newRow = new Array<number>(newGenerators.length).fill(0);
       for (let k = 0; k < numKeep; k++) {
         newRow[k] = row[keptIndices[k]!] ?? 0;
       }
       newC.push(newRow);
+      newD.push(rhs + reducedSlack);
     }
 
-    return new ConstrainedZonotope([...this.center], newGenerators, newA, [...this.b], newC, [...this.d]);
+    return new ConstrainedZonotope([...this.center], newGenerators, newA, newB, newC, newD);
   }
 }
 
@@ -596,6 +644,24 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     if (T[numRows]![numCols]! < -1e-5) {
       return { status: "INFEASIBLE", value: -Infinity, xi: [] };
     }
+
+    // Pivot out any zero-level artificial variables still remaining in the basis
+    for (let r = 0; r < numRows; r++) {
+      if (basic[r]! >= numStructuralVars) {
+        let enterCol = -1;
+        let maxAbs = 1e-9;
+        for (let c = 0; c < numStructuralVars; c++) {
+          const absVal = Math.abs(T[r]![c]!);
+          if (absVal > maxAbs) {
+            maxAbs = absVal;
+            enterCol = c;
+          }
+        }
+        if (enterCol !== -1) {
+          pivot(r, enterCol);
+        }
+      }
+    }
   }
 
   // Phase II: Maximize \sum_{j=0}^{p-1} w[j] * \zeta_j
@@ -631,6 +697,11 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     let minRatio = Infinity;
     for (let r = 0; r < numRows; r++) {
       const coeff = T[r]![enterCol]!;
+      if (basic[r]! >= numStructuralVars && Math.abs(coeff) > 1e-9) {
+        minRatio = 0;
+        leaveRow = r;
+        break;
+      }
       if (coeff > 1e-9) {
         const ratio = Math.max(0, T[r]![numCols]!) / coeff;
         if (ratio < minRatio - 1e-12) {

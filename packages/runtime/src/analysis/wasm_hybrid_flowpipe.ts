@@ -763,11 +763,11 @@ export class HybridFlowpipeSolver {
   private static checkRequirement(tube: Interval, req: FlowpipeRequirement): { holds: boolean; worstValue: number } {
     if (req.operator === "<=" || req.operator === "<") {
       const worst = tube.hi;
-      return { holds: worst <= req.limitValue, worstValue: worst };
+      return { holds: req.operator === "<=" ? worst <= req.limitValue : worst < req.limitValue, worstValue: worst };
     }
     if (req.operator === ">=" || req.operator === ">") {
       const worst = tube.lo;
-      return { holds: worst >= req.limitValue, worstValue: worst };
+      return { holds: req.operator === ">=" ? worst >= req.limitValue : worst > req.limitValue, worstValue: worst };
     }
     return { holds: true, worstValue: tube.mid };
   }

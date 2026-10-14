@@ -192,7 +192,12 @@ export class RoaringBitmap {
       let word = load<u64>(ptr + ((wIdx as usize) << 3));
       if ((word & ((1 as u64) << bIdx)) != 0) {
         store<u64>(ptr + ((wIdx as usize) << 3), word & ~((1 as u64) << bIdx));
-        this.setChunkCount(cIdx, count - 1);
+        let newCount: u16 = count - 1;
+        if (newCount == 0) {
+          this._removeChunkAt(cIdx);
+        } else {
+          this.setChunkCount(cIdx, newCount);
+        }
       }
     } else {
       let aIdx = this._binarySearchArray(ptr, count as u32, val);
@@ -201,9 +206,22 @@ export class RoaringBitmap {
           let nextVal = load<u16>(ptr + (((i + 1) as usize) << 1));
           store<u16>(ptr + ((i as usize) << 1), nextVal);
         }
-        this.setChunkCount(cIdx, count - 1);
+        let newCount: u16 = count - 1;
+        if (newCount == 0) {
+          this._removeChunkAt(cIdx);
+        } else {
+          this.setChunkCount(cIdx, newCount);
+        }
       }
     }
+  }
+
+  private _removeChunkAt(cIdx: u32): void {
+    let last = (this.numChunks as u32) - 1;
+    for (let i = cIdx; i < last; i++) {
+      memory.copy(this.chunks + ((i as usize) * 12), this.chunks + (((i + 1) as usize) * 12), 12);
+    }
+    this.numChunks--;
   }
 
   /**
@@ -219,7 +237,7 @@ export class RoaringBitmap {
 
   @inline
   isEmpty(): bool {
-    return this.numChunks == 0;
+    return this.cardinality() == 0;
   }
 
   clear(): void {
@@ -251,15 +269,35 @@ export class RoaringBitmap {
   }
 
   /**
-   * Computes the union (this OR other) and stores the result in outBm.
+   * Computes the union (this OR other) and stores the result in outBm without allocating a temporary ChunkedUint32Array.
    */
   or(other: RoaringBitmap, outBm: RoaringBitmap): void {
-    outBm.clear();
-    this.copyTo(outBm);
-    let tempBuf = createChunkedUint32Array(256);
-    other.toArray(tempBuf);
-    for (let i: u32 = 0; i < tempBuf.length; i++) {
-      outBm.add(tempBuf.get(i));
+    if (changetype<usize>(outBm) != changetype<usize>(this)) {
+      outBm.clear();
+      this.copyTo(outBm);
+    }
+    for (let c: u32 = 0; c < (other.numChunks as u32); c++) {
+      let key = (other.getChunkKey(c) as u32) << 16;
+      let type = other.getContainerType(c);
+      let count = other.getChunkCount(c) as u32;
+      let ptr = other.getChunkPointer(c);
+
+      if (type == CONTAINER_BITMAP) {
+        for (let w: u32 = 0; w < BITMAP_WORDS; w++) {
+          let word = load<u64>(ptr + ((w as usize) << 3));
+          let baseVal = key | (w << 6);
+          while (word != 0) {
+            let bitIdx = ctz<u64>(word) as u32;
+            outBm.add(baseVal | bitIdx);
+            word &= word - 1;
+          }
+        }
+      } else {
+        for (let i: u32 = 0; i < count; i++) {
+          let val = load<u16>(ptr + ((i as usize) << 1)) as u32;
+          outBm.add(key | val);
+        }
+      }
     }
   }
 

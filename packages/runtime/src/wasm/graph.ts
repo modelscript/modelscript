@@ -1394,15 +1394,27 @@ class ConnectorAPI {
   }
 
   @inline addStreamConnection(h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
-    let eh1 = this.dae.addExpression(ExprKind.Name, h1VarId);
-    let eh2 = this.dae.addExpression(ExprKind.Name, h2VarId);
-    let emdot1 = this.dae.addExpression(ExprKind.Name, mdot1VarId);
+    let h1Name = h1VarId < this.dae.varCount ? this.dae.getVarNameId(h1VarId) : h1VarId;
+    let h2Name = h2VarId < this.dae.varCount ? this.dae.getVarNameId(h2VarId) : h2VarId;
+    let mdot1Name = mdot1VarId < this.dae.varCount ? this.dae.getVarNameId(mdot1VarId) : mdot1VarId;
+    let mdot2Name = mdot2VarId < this.dae.varCount ? this.dae.getVarNameId(mdot2VarId) : mdot2VarId;
+
+    let eh1 = this.dae.addExpression(ExprKind.Name, h1Name);
+    let eh2 = this.dae.addExpression(ExprKind.Name, h2Name);
+    let emdot1 = this.dae.addExpression(ExprKind.Name, mdot1Name);
+    let emdot2 = this.dae.addExpression(ExprKind.Name, mdot2Name);
     let zeroReal = this.dae.addRealLiteral(0.0);
 
     let cond1 = this.dae.addExpression(ExprKind.Binary, BinOp.Gt as u32, emdot1, zeroReal);
     let ifExpr1 = this.dae.addExpression(ExprKind.IfElse, cond1, eh2, eh1);
-    this.dae.addEquation(EqKind.Simple, eh1, ifExpr1, FLAG_EQ_STREAM_CONNECT as u32);
-    return 0;
+    let eqId = this.dae.addEquation(EqKind.Simple, eh1, ifExpr1, FLAG_EQ_STREAM_CONNECT as u32);
+
+    if (mdot2Name != mdot1Name && h2Name != h1Name) {
+      let cond2 = this.dae.addExpression(ExprKind.Binary, BinOp.Gt as u32, emdot2, zeroReal);
+      let ifExpr2 = this.dae.addExpression(ExprKind.IfElse, cond2, eh1, eh2);
+      this.dae.addEquation(EqKind.Simple, eh2, ifExpr2, FLAG_EQ_STREAM_CONNECT as u32);
+    }
+    return eqId;
   }
 
   @inline expandConnector(busVarId: u32, memberNameHash: u32, varType: u32 = 0): u32 {

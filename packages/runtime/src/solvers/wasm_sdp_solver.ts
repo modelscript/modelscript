@@ -238,12 +238,19 @@ export class SdpSolver {
   public static solve(problem: SdpProblem, maxIter = 50, tol = 1e-5): SdpResult {
     const { n, m, C, A, b } = problem;
 
-    // Initialise X = I_n, S = I_n, y = 0
+    // Initialise X = I_n
     let X: number[][] = [];
     for (let i = 0; i < n; i++) {
       const row = new Array<number>(n).fill(0);
       row[i] = 1.0;
       X.push(row);
+    }
+
+    let cNorm = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        cNorm = Math.max(cNorm, Math.abs(C[i]?.[j] ?? 0));
+      }
     }
 
     let iterations = 0;
@@ -266,9 +273,10 @@ export class SdpSolver {
         break;
       }
 
-      // Projected gradient step on X:
-      // X <- X + alpha * \sum rp_i * A_i
+      // Projected primal-dual gradient step on X:
+      // X <- X + alpha * \sum rp_i * A_i - objStep * C
       const alpha = 0.1 / (1 + iter * 0.1);
+      const objStep = cNorm > 0 ? (0.01 * alpha) / (1 + iter * 0.5) : 0;
       for (let k = 0; k < m; k++) {
         const coeff = alpha * rp[k]!;
         for (let i = 0; i < n; i++) {
@@ -277,12 +285,28 @@ export class SdpSolver {
           }
         }
       }
+      if (objStep > 0) {
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            X[i]![j]! -= objStep * (C[i]?.[j] ?? 0);
+          }
+        }
+      }
 
       // Robust spectral projection to positive semidefinite cone
       X = SdpSolver.projectPsdCone(X, 1e-6);
     }
 
-    const isFeasible = SdpSolver.isPsd(X);
+    // Recompute final constraint residual after last cone projection
+    let finalResidual = 0;
+    for (let i = 0; i < m; i++) {
+      const val = b[i]! - SdpSolver.innerProduct(A[i]!, X);
+      finalResidual = Math.max(finalResidual, Math.abs(val));
+    }
+    residual = finalResidual;
+
+    const isFeasible =
+      SdpSolver.isPsd(X) && Number.isFinite(residual) && (m === 0 || residual <= Math.max(tol * 1000, 1.0));
     const primalObj = SdpSolver.innerProduct(C, X);
 
     return {

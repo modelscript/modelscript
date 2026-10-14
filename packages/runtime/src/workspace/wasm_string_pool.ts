@@ -155,7 +155,12 @@ export class WasmStringPool implements IStringInterner {
   }
 
   private _ensureScratch(size: number): number {
-    const allocFn = this.wasmExports?.alloc ?? this.wasmExports?.dae_alloc ?? this.wasmExports?.arena_alloc;
+    const allocFn =
+      this.wasmExports?.alloc ??
+      this.wasmExports?.dae_alloc ??
+      this.wasmExports?.arena_alloc ??
+      this.wasmExports?.atomicChunkAlloc ??
+      (typeof this.wasmExports?.__new === "function" ? (n: number) => this.wasmExports.__new(n, 0) : undefined);
     if (!allocFn || !this.wasmExports?.memory) return 0;
     if (this.scratchCapacity < size) {
       if (this.scratchPtr && this.wasmExports.free) {
@@ -246,22 +251,11 @@ export class WasmStringPool implements IStringInterner {
     // WASM memory resolution if active
     if (this.wasmExports?.stringPool_getLength && this.poolPtr && this.wasmExports?.memory) {
       const len = this.wasmExports.stringPool_getLength(this.poolPtr, id);
-      if (len > 0) {
-        if (this.wasmExports.stringPool_copyOut) {
-          const scratch = this._ensureScratch(len);
-          if (scratch) {
-            this.wasmExports.stringPool_copyOut(this.poolPtr, id, scratch);
-            const mem = new Uint8Array(this.wasmExports.memory.buffer, scratch, len);
-            const str = this.utf8Decoder.decode(mem);
-            this.reverse[id] = str;
-            this.table.set(str, id);
-            if (str.length < 16) this.shortTable.set(str, id);
-            return str;
-          }
-        }
-        if (this.wasmExports.stringPool_getOffset) {
-          const offset = this.wasmExports.stringPool_getOffset(this.poolPtr, id);
-          const mem = new Uint8Array(this.wasmExports.memory.buffer, offset, len);
+      if (len > 0 && this.wasmExports.stringPool_copyOut) {
+        const scratch = this._ensureScratch(len);
+        if (scratch) {
+          this.wasmExports.stringPool_copyOut(this.poolPtr, id, scratch);
+          const mem = new Uint8Array(this.wasmExports.memory.buffer, scratch, len);
           const str = this.utf8Decoder.decode(mem);
           this.reverse[id] = str;
           this.table.set(str, id);
@@ -285,15 +279,20 @@ export class WasmStringPool implements IStringInterner {
     const cachedId = this.pathCache.get(key);
     if (cachedId !== undefined) return cachedId;
 
+    const prefixStr = this.resolve(prefixId);
+    const nameStr = this.resolve(nameId);
+    const fullPath = `${prefixStr}.${nameStr}`;
+
     if (this.wasmExports?.stringPool_concatIds && this.poolPtr) {
       const id = this.wasmExports.stringPool_concatIds(this.poolPtr, prefixId, nameId);
+      this.reverse[id] = fullPath;
+      this.table.set(fullPath, id);
+      if (fullPath.length < 16) this.shortTable.set(fullPath, id);
       this.pathCache.set(key, id);
       return id;
     }
 
-    const prefixStr = this.resolve(prefixId);
-    const nameStr = this.resolve(nameId);
-    const id = this.intern(`${prefixStr}.${nameStr}`);
+    const id = this.intern(fullPath);
     this.pathCache.set(key, id);
     return id;
   }

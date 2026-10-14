@@ -52,15 +52,28 @@ export function containsDerivative(arena: DAEBuilder, exprId: number): boolean {
       return false;
     case ExprKind.Unary:
     case ExprKind.Negate:
-    case ExprKind.Pre:
       return containsDerivative(arena, arena.getExprLeft(exprId));
+    case ExprKind.Pre:
+      return (
+        containsDerivative(arena, arena.getExprData1(exprId)) || containsDerivative(arena, arena.getExprLeft(exprId))
+      );
     case ExprKind.Call:
     case ExprKind.ArrayCtor:
     case ExprKind.Tuple: {
-      const count = kind === ExprKind.Call ? arena.getExprRight(exprId) : arena.getExprData1(exprId);
+      const rightVal = arena.getExprRight(exprId);
+      const data1Val = arena.getExprData1(exprId);
+      const count = kind === ExprKind.Call ? rightVal : rightVal > 0 ? rightVal : data1Val;
       const first = arena.getExprLeft(exprId);
-      for (let j = 0; j < count; j++) {
-        if (containsDerivative(arena, first + j)) return true;
+      if (count > 0 && first >= 0) {
+        if (containsDerivative(arena, first)) return true;
+        for (let j = 1; j < count; j++) {
+          const slotIdx = exprId + j;
+          const argExpr =
+            slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+              ? arena.getExprLeft(slotIdx)
+              : first + j;
+          if (containsDerivative(arena, argExpr)) return true;
+        }
       }
       return false;
     }
@@ -171,12 +184,35 @@ export function pantelidesIndexReductionArena(
 export class WasmPantelides {
   constructor(private wasmInstance: any) {}
 
-  reduceIndex(daePtr: number, bltPtr: number = 0): { structuralIndex: number; dummyDerivativeCount: number } {
-    if (typeof this.wasmInstance?.exports?.runPantelidesIndexReduction === "function") {
-      this.wasmInstance.exports.runPantelidesIndexReduction(daePtr, bltPtr);
-      const structuralIndex = this.wasmInstance.exports.getPantelidesStructuralIndex?.() ?? 1;
-      const dummyDerivativeCount = this.wasmInstance.exports.getPantelidesDummyDerivativeCount?.() ?? 0;
+  reduceIndex(
+    daePtr: number,
+    bltPtr: number = 0,
+  ): {
+    structuralIndex: number;
+    dummyDerivativeCount: number;
+    generatedEquations?: number;
+    dummyDerivatives?: number[];
+  } {
+    const exports = this.wasmInstance?.exports ?? this.wasmInstance;
+    if (typeof exports?.runPantelidesIndexReduction === "function") {
+      exports.runPantelidesIndexReduction(daePtr, bltPtr);
+      const structuralIndex = exports.getPantelidesStructuralIndex?.() ?? 1;
+      const dummyDerivativeCount = exports.getPantelidesDummyDerivativeCount?.() ?? 0;
       return { structuralIndex, dummyDerivativeCount };
+    }
+    if (typeof exports?.dae_createPantelides === "function" && typeof exports?.dae_runPantelides === "function") {
+      const pantPtr = exports.dae_createPantelides(daePtr, bltPtr);
+      const generatedEquations = exports.dae_runPantelides(pantPtr, 0);
+      const structuralIndex = exports.dae_getPantelidesIndex?.(pantPtr) ?? 1;
+      const dummyDerivativeCount = exports.dae_getDummyDerivativeCount?.(pantPtr) ?? 0;
+      const dummyDerivatives: number[] = [];
+      if (typeof exports.dae_getDummyDerivativeVar === "function") {
+        for (let i = 0; i < dummyDerivativeCount; i++) {
+          const v = exports.dae_getDummyDerivativeVar(pantPtr, i);
+          if (v >= 0) dummyDerivatives.push(v);
+        }
+      }
+      return { structuralIndex, dummyDerivativeCount, generatedEquations, dummyDerivatives };
     }
     return { structuralIndex: 1, dummyDerivativeCount: 0 };
   }

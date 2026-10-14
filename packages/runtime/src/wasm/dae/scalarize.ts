@@ -219,7 +219,13 @@ function cloneExprScalarized(
     return outDae.addExpression(ExprKind.Der, clonedInner);
   }
 
-  if (kind == ExprKind.Unary || kind == ExprKind.Negate || kind == ExprKind.Pre) {
+  if (kind == ExprKind.Pre) {
+    let inner = data1 != 0 && data1 != 0xffffffff ? data1 : left;
+    let clonedInner = cloneExprScalarized(srcDae, outDae, inner, varBaseMapping, varElemCounts, currentElemIndex);
+    return outDae.addExpression(ExprKind.Pre, clonedInner, 0xffffffff, 0xffffffff);
+  }
+
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
     let clonedLeft = cloneExprScalarized(srcDae, outDae, left, varBaseMapping, varElemCounts, currentElemIndex);
     return outDae.addExpression(kind, data1, clonedLeft, right);
   }
@@ -237,12 +243,42 @@ function cloneExprScalarized(
     return outDae.addIfElse(clonedCond, clonedThen, clonedElse);
   }
 
+  if (kind == ExprKind.Subscript) {
+    let baseExprId = data1;
+    let firstSubId = left;
+    if (baseExprId < srcDae.exprCount && srcDae.getExprData().get(baseExprId * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
+      let srcVarId = srcDae.getExprData().get(baseExprId * EXPR_STRIDE + EXPR_DATA1) as u32;
+      if (srcVarId < srcDae.varCount && firstSubId < srcDae.exprCount) {
+        let subKind = srcDae.getExprData().get(firstSubId * EXPR_STRIDE + EXPR_KIND);
+        if (subKind == ExprKind.IntLiteral) {
+          let idxVal = srcDae.getExprData().get(firstSubId * EXPR_STRIDE + EXPR_DATA1);
+          let elemIdx: u32 = idxVal > 0 ? (idxVal - 1) as u32 : 0;
+          let baseId = varBaseMapping.get(srcVarId) as u32;
+          let totalElems = varElemCounts.get(srcVarId) as u32;
+          let elemOffset = elemIdx < totalElems ? elemIdx : 0;
+          return outDae.addName(baseId + elemOffset);
+        }
+      }
+    }
+    return cloneExprScalarized(srcDae, outDae, baseExprId, varBaseMapping, varElemCounts, currentElemIndex);
+  }
+
   if (kind == ExprKind.Call) {
     let argCount = right;
     let firstArg = left;
-    let newFirstArg = outDae.exprCount;
-    for (let a: u32 = 0; a < argCount; a++) {
-      cloneExprScalarized(srcDae, outDae, firstArg + a, varBaseMapping, varElemCounts, currentElemIndex);
+    if (argCount == 0) {
+      return outDae.addCall(data1 as i32, 0xffffffff, 0);
+    }
+    let newFirstArg = cloneExprScalarized(srcDae, outDae, firstArg, varBaseMapping, varElemCounts, currentElemIndex);
+    for (let a: u32 = 1; a < argCount; a++) {
+      let argExprId = firstArg + a;
+      if (exprId + a < srcDae.exprCount) {
+        let nextKind = srcDae.getExprData().get((exprId + a) * EXPR_STRIDE + EXPR_KIND);
+        if (nextKind == ExprKind.Tuple) {
+          argExprId = srcDae.getExprData().get((exprId + a) * EXPR_STRIDE + EXPR_LEFT) as u32;
+        }
+      }
+      cloneExprScalarized(srcDae, outDae, argExprId, varBaseMapping, varElemCounts, currentElemIndex);
     }
     return outDae.addCall(data1 as i32, newFirstArg, argCount);
   }

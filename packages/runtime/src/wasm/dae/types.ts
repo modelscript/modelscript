@@ -240,3 +240,29 @@ export enum VarAttrKind {
   Quantity = 8,
   Description = 9,
 }
+
+export enum BuiltinMathFunc {
+  Sin = 0,
+  Cos = 1,
+  Tan = 2,
+  Asin = 3,
+  Acos = 4,
+  Atan = 5,
+  Atan2 = 6,
+  Sinh = 7,
+  Cosh = 8,
+  Tanh = 9,
+  Exp = 10,
+  Log = 11,
+  Log10 = 12,
+  Sqrt = 13,
+  Abs = 14,
+  Sign = 15,
+  Min = 16,
+  Max = 17,
+  Floor = 18,
+  Ceil = 19,
+  Fmod = 20,
+  Pow = 21,
+}
+

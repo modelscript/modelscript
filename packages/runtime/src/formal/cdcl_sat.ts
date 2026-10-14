@@ -559,6 +559,10 @@ export class CdclSatSolver {
         } else {
           // Unit propagation: firstLit must be true!
           if (!this.enqueue(firstLit, cIdx)) {
+            for (let k = i + 1; k < watchList.length; k++) {
+              remainingWatches.push(watchList[k]!);
+            }
+            this.watchers.set(falseLit, remainingWatches);
             return cIdx;
           }
         }
@@ -623,11 +627,19 @@ export class CdclSatSolver {
 
     // Compute backjump level (highest decision level among other literals in learned clause)
     let backtrackLevel = 0;
+    let maxIdx = 1;
     for (let i = 1; i < learned.length; i++) {
       const lvl = this.decisionLevel.get(litToVar(learned[i]!)) ?? 0;
       if (lvl > backtrackLevel) {
         backtrackLevel = lvl;
+        maxIdx = i;
       }
+    }
+
+    if (learned.length > 2 && maxIdx !== 1) {
+      const tmp = learned[1]!;
+      learned[1] = learned[maxIdx]!;
+      learned[maxIdx] = tmp;
     }
 
     this.decayVarActivity();

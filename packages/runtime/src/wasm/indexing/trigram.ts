@@ -150,7 +150,7 @@ export function trigram_clear(): void {
   if (changetype<usize>(t_trigramPostings) != 0) {
     t_trigramPostings.clear();
     t_trigramScores.clear();
-    t_trigramHeadMap.init(1024);
+    t_trigramHeadMap.clear();
     t_trigramPostingCount = 1;
   }
 }

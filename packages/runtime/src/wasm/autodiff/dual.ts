@@ -16,6 +16,7 @@ import {
 } from "../dae/builder";
 import { BuiltinMathFunc } from "../dae/fold";
 import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
+import { atomicChunkAlloc } from "../arena";
 
 /**
  * Unmanaged Dual number structure (16 bytes: val f64, dot f64) for
@@ -49,6 +50,22 @@ import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 export class Dual {
   val: f64;
   dot: f64;
+
+  private static poolPtr: usize = 0;
+  private static poolIdx: u32 = 0;
+
+  @inline
+  static temp(): Dual {
+    if (Dual.poolPtr == 0) {
+      Dual.poolPtr = atomicChunkAlloc(256 * 16);
+    }
+    let idx = Dual.poolIdx;
+    Dual.poolIdx = (idx + 1) & 255;
+    let d = changetype<Dual>(Dual.poolPtr + ((idx as usize) << 4));
+    d.val = 0.0;
+    d.dot = 0.0;
+    return d;
+  }
 
   @inline
   static at(ptr: usize, index: u32): Dual {
@@ -312,8 +329,9 @@ export function dualMod(a: Dual, b: Dual, out: Dual): void {
     out.dot = 0.0;
     return;
   }
-  out.val = a.val - Math.floor(a.val / b.val) * b.val;
-  out.dot = a.dot;
+  let q = Math.floor(a.val / b.val);
+  out.val = a.val - q * b.val;
+  out.dot = a.dot - q * b.dot;
 }
 
 @inline
@@ -323,8 +341,9 @@ export function dualRem(a: Dual, b: Dual, out: Dual): void {
     out.dot = 0.0;
     return;
   }
-  out.val = a.val - Math.trunc(a.val / b.val) * b.val;
-  out.dot = a.dot;
+  let q = Math.trunc(a.val / b.val);
+  out.val = a.val - q * b.val;
+  out.dot = a.dot - q * b.dot;
 }
 
 @inline
@@ -371,12 +390,17 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
   }
 
   if (kind == ExprKind.Name) {
-    let varId = exprData.get(offset + EXPR_DATA1) as u32;
-    if (varId == 0xffffffff || varId >= dae.varCount) {
+    let rawId = exprData.get(offset + EXPR_DATA1) as u32;
+    if (rawId == 0xffffffff) {
       outDual.set(0.0, 0.0);
       return;
     }
-    outDual.copyFrom(Dual.at(dualVarsPtr, varId));
+    let resolvedId = rawId < dae.varCount ? (rawId as i32) : dae.lookupVariableByName(rawId);
+    if (resolvedId < 0 || (resolvedId as u32) >= dae.varCount) {
+      outDual.set(0.0, 0.0);
+      return;
+    }
+    outDual.copyFrom(Dual.at(dualVarsPtr, resolvedId as u32));
     return;
   }
 
@@ -384,7 +408,12 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
     let inner = exprData.get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && exprData.get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
       let varId = exprData.get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
-      outDual.copyFrom(Dual.at(dualVarsPtr, varId));
+      if (varId < dae.varCount) {
+        outDual.copyFrom(Dual.at(dualVarsPtr, varId));
+        return;
+      }
+    } else if (inner < dae.varCount) {
+      outDual.copyFrom(Dual.at(dualVarsPtr, inner));
       return;
     }
     outDual.set(0.0, 0.0);
@@ -393,7 +422,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
 
   if (kind == ExprKind.Negate) {
     let left = exprData.get(offset + EXPR_LEFT) as u32;
-    let localDual = new Dual();
+    let localDual = Dual.temp();
     evalDualExpr(left, dae, dualVarsPtr, localDual);
     dualNeg(localDual, outDual);
     return;
@@ -402,7 +431,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
   if (kind == ExprKind.Unary) {
     let op = exprData.get(offset + EXPR_DATA1) as u16;
     let left = exprData.get(offset + EXPR_LEFT) as u32;
-    let localDual = new Dual();
+    let localDual = Dual.temp();
     evalDualExpr(left, dae, dualVarsPtr, localDual);
 
     if (op == UnaryOp.Negate) {
@@ -420,8 +449,8 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
     let leftId = exprData.get(offset + EXPR_LEFT) as u32;
     let rightId = exprData.get(offset + EXPR_RIGHT) as u32;
 
-    let lDual = new Dual();
-    let rDual = new Dual();
+    let lDual = Dual.temp();
+    let rDual = Dual.temp();
     evalDualExpr(leftId, dae, dualVarsPtr, lDual);
     evalDualExpr(rightId, dae, dualVarsPtr, rDual);
 
@@ -462,7 +491,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
     let thenId = exprData.get(offset + EXPR_LEFT) as u32;
     let elseId = exprData.get(offset + EXPR_RIGHT) as u32;
 
-    let condDual = new Dual();
+    let condDual = Dual.temp();
     evalDualExpr(condId, dae, dualVarsPtr, condDual);
     if (condDual.val != 0.0) {
       evalDualExpr(thenId, dae, dualVarsPtr, outDual);
@@ -474,7 +503,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
 
   if (kind == ExprKind.Pre) {
     let argId = exprData.get(offset + EXPR_DATA1) as u32;
-    let argDual = new Dual();
+    let argDual = Dual.temp();
     evalDualExpr(argId, dae, dualVarsPtr, argDual);
     // 'pre' returns previous discrete value, derivative is 0
     outDual.set(argDual.val, 0.0);
@@ -484,9 +513,9 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
   if (kind == ExprKind.Call) {
     let funcId = exprData.get(offset + EXPR_DATA1) as u32;
     let arg0Id = exprData.get(offset + EXPR_LEFT) as u32;
-    let arg1Id = exprData.get(offset + EXPR_RIGHT) as u32;
+    let rightVal = exprData.get(offset + EXPR_RIGHT) as u32;
 
-    let arg0 = new Dual();
+    let arg0 = Dual.temp();
     evalDualExpr(arg0Id, dae, dualVarsPtr, arg0);
 
     if (funcId == BuiltinMathFunc.Sin) {
@@ -558,8 +587,13 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
       return;
     }
 
-    // 2-argument functions
-    let arg1 = new Dual();
+    // 2-argument functions: resolve arg1Id from either trailing Tuple slot or EXPR_RIGHT
+    let arg1Id = rightVal;
+    let nextSlot = exprId + 1;
+    if (nextSlot < dae.exprCount && exprData.get(nextSlot * EXPR_STRIDE + EXPR_KIND) == ExprKind.Tuple) {
+      arg1Id = exprData.get(nextSlot * EXPR_STRIDE + EXPR_LEFT) as u32;
+    }
+    let arg1 = Dual.temp();
     evalDualExpr(arg1Id, dae, dualVarsPtr, arg1);
 
     if (funcId == BuiltinMathFunc.Atan2) {
@@ -609,8 +643,8 @@ export function evalDualEquationResidual(eqId: u32, dae: DaeBuilder, dualVarsPtr
   let lhsId = eqData.get(offset + EQ_LHS) as u32;
   let rhsId = eqData.get(offset + EQ_RHS) as u32;
 
-  let lhsDual = new Dual();
-  let rhsDual = new Dual();
+  let lhsDual = Dual.temp();
+  let rhsDual = Dual.temp();
 
   evalDualExpr(lhsId, dae, dualVarsPtr, lhsDual);
   evalDualExpr(rhsId, dae, dualVarsPtr, rhsDual);
@@ -634,7 +668,7 @@ export function evalDualJacobianColumn(
   let seedDual = Dual.at(dualVarsPtr, seedVarId);
   seedDual.dot = 1.0;
 
-  let resDual = new Dual();
+  let resDual = Dual.temp();
   let eqIndices = changetype<UnmanagedUint32Array>(eqIndicesPtr);
   let outCol = changetype<UnmanagedFloat64Array>(outColPtr);
 
@@ -655,7 +689,7 @@ export function evalDualJacobianColumn(
 export function dae_evalDualExpr(daePtr: u32, exprId: u32, dualVarsPtr: u32, outValPtr: u32, outDotPtr: u32): void {
   if (daePtr == 0) return;
   let dae = changetype<DaeBuilder>(daePtr);
-  let res = new Dual();
+  let res = Dual.temp();
   evalDualExpr(exprId, dae, dualVarsPtr as usize, res);
   if (outValPtr != 0) store<f64>(outValPtr as usize, res.val);
   if (outDotPtr != 0) store<f64>(outDotPtr as usize, res.dot);
@@ -670,7 +704,7 @@ export function dae_evalDualEquationResidual(
 ): void {
   if (daePtr == 0) return;
   let dae = changetype<DaeBuilder>(daePtr);
-  let res = new Dual();
+  let res = Dual.temp();
   evalDualEquationResidual(eqId, dae, dualVarsPtr as usize, res);
   if (outValPtr != 0) store<f64>(outValPtr as usize, res.val);
   if (outDotPtr != 0) store<f64>(outDotPtr as usize, res.dot);

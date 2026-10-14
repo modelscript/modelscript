@@ -162,13 +162,45 @@ export class StarSet {
     const m = this.numBasisVectors;
     const intervals: Interval[] = [];
 
+    // Tighten per-predicate bounds using isolated rows of C \alpha <= d
+    const effectiveBounds: Interval[] = Array.from({ length: m }, (_, j) => {
+      const b = this.alphaBounds[j];
+      return b ? new Interval(b.lo, b.hi) : new Interval(-1, 1);
+    });
+
+    for (let k = 0; k < this.C.length; k++) {
+      const row = this.C[k]!;
+      const bound = this.d[k]!;
+
+      let singleAlphaIdx = -1;
+      let nonZeroCount = 0;
+      for (let j = 0; j < m; j++) {
+        if (Math.abs(row[j] ?? 0) > 1e-12) {
+          singleAlphaIdx = j;
+          nonZeroCount++;
+          if (nonZeroCount > 1) break;
+        }
+      }
+
+      if (nonZeroCount === 1 && singleAlphaIdx >= 0) {
+        const cVal = row[singleAlphaIdx]!;
+        const alphaLimit = bound / cVal;
+        const b = effectiveBounds[singleAlphaIdx]!;
+        if (cVal > 0) {
+          b.hi = Math.min(b.hi, alphaLimit);
+        } else {
+          b.lo = Math.max(b.lo, alphaLimit);
+        }
+      }
+    }
+
     for (let i = 0; i < n; i++) {
       let minVal = this.center[i]!;
       let maxVal = this.center[i]!;
 
       for (let j = 0; j < m; j++) {
         const coeff = this.basis[j]![i] ?? 0;
-        const b = this.alphaBounds[j] ?? new Interval(-1, 1);
+        const b = effectiveBounds[j]!;
 
         if (coeff >= 0) {
           minVal += coeff * b.lo;
@@ -176,38 +208,6 @@ export class StarSet {
         } else {
           minVal += coeff * b.hi;
           maxVal += coeff * b.lo;
-        }
-      }
-
-      // Filter with simple coordinate-aligned constraints
-      for (let k = 0; k < this.C.length; k++) {
-        const row = this.C[k]!;
-        const bound = this.d[k]!;
-
-        // Check if constraint isolates variable j
-        for (let j = 0; j < m; j++) {
-          const gen_ji = this.basis[j]![i] ?? 0;
-          if (Math.abs(gen_ji) > 1e-12) {
-            let isIsolated = true;
-            for (let other = 0; other < m; other++) {
-              if (other !== j && Math.abs(row[other]!) > 1e-12) {
-                isIsolated = false;
-                break;
-              }
-            }
-            if (isIsolated && Math.abs(row[j]!) > 1e-12) {
-              const alphaLimit = bound / row[j]!;
-              if (row[j]! > 0) {
-                const impliedMax = this.center[i]! + gen_ji * alphaLimit;
-                if (gen_ji > 0) maxVal = Math.min(maxVal, impliedMax);
-                else minVal = Math.max(minVal, impliedMax);
-              } else {
-                const impliedMin = this.center[i]! + gen_ji * alphaLimit;
-                if (gen_ji > 0) minVal = Math.max(minVal, impliedMin);
-                else maxVal = Math.min(maxVal, impliedMin);
-              }
-            }
-          }
         }
       }
 

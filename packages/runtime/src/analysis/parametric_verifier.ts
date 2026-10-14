@@ -81,7 +81,9 @@ export function verifyParametricBound(
   } else {
     // For lower bound (f(p) >= limit), solve SBB directly
     const sbbResult: SbbResult = solveSBB(objectiveTape, [], variables, initialBox, options);
-    worstCaseValue = Math.min(rootInterval.lo, sbbResult.objectiveValue);
+    worstCaseValue = Number.isFinite(sbbResult.lowerBound)
+      ? Math.max(rootInterval.lo, sbbResult.lowerBound)
+      : rootInterval.lo;
     nodesExplored = sbbResult.nodesExplored;
     optimal = sbbResult.optimal;
     for (const [k, v] of sbbResult.solution.entries()) {

@@ -86,7 +86,9 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
   let touched = changetype<UnmanagedInt32Array>(touchedPtr);
 
   // Allocate max estimation buffers for L and U values
-  let maxNnz = A.nnz * 4 + n * 4;
+  let maxNnz = A.nnz * 4 + n * 8;
+  if (n * n > maxNnz) maxNnz = n * n;
+  if (maxNnz < 16) maxNnz = 16;
   lu.lValuesPtr = atomicChunkAlloc(maxNnz * 8);
   lu.uValuesPtr = atomicChunkAlloc(maxNnz * 8);
   let lValues = lu.lValues;
@@ -157,6 +159,16 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
 
       lu.permInv.set(pK, pivotRow as i32);
       lu.permInv.set(pPiv, k as i32);
+
+      // Permute row indices k <-> pivotRow in previously factored columns of L
+      for (let p: u32 = 0; p < lnnz; p++) {
+        let rIdx = lu.lRowIndices.get(p) as u32;
+        if (rIdx == k) {
+          lu.lRowIndices.set(p, pivotRow as i32);
+        } else if (rIdx == pivotRow) {
+          lu.lRowIndices.set(p, k as i32);
+        }
+      }
     }
 
     let pivotVal = denseX[k];
@@ -164,7 +176,7 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     // 4. Store U factor column k (rows 0..k)
     for (let r: u32 = 0; r <= k; r++) {
       let val = denseX[r];
-      if (Math.abs(val) > 1e-15 || r == k) {
+      if ((Math.abs(val) > 1e-15 || r == k) && unnz < maxNnz) {
         lu.uRowIndices.push(r as i32);
         uValues[unnz] = val;
         unnz++;
@@ -173,13 +185,15 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     lu.uColPtr.push(unnz as i32);
 
     // 5. Store L factor column k (rows k..n-1, normalized by pivotVal)
-    lu.lRowIndices.push(k as i32);
-    lValues[lnnz] = 1.0; // Unit diagonal
-    lnnz++;
+    if (lnnz < maxNnz) {
+      lu.lRowIndices.push(k as i32);
+      lValues[lnnz] = 1.0; // Unit diagonal
+      lnnz++;
+    }
 
     for (let r: u32 = k + 1; r < n; r++) {
       let val = denseX[r];
-      if (Math.abs(val) > 1e-15) {
+      if (Math.abs(val) > 1e-15 && lnnz < maxNnz) {
         let lVal = val / pivotVal;
         lu.lRowIndices.push(r as i32);
         lValues[lnnz] = lVal;

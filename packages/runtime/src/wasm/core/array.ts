@@ -203,7 +203,10 @@ export class ChunkedArray<T> {
 
     // Fast-path: Small copies (<= 128 elements) are sequentially looped from the first chunk.
     // Avoids the overhead of chunk math and memory.copy intrinsics for trivial payload sizes.
-    if (count <= 128) {
+    if (count <= 128 && src.allocatedChunks > 0) {
+      if (this.allocatedChunks == 0) {
+        this.addChunk();
+      }
       let srcChunk = load<usize>(src.directory);
       let destChunk = load<usize>(this.directory);
       for (let i: u32 = 0; i < count; i++) {

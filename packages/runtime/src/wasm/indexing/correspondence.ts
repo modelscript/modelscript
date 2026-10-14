@@ -213,10 +213,18 @@ export class CorrespondenceIndex {
     let slotPlusOne = this.sourceToSlot.get(sourceNodeId as u64);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
-    if (this.isRemoved(slot)) return 0;
+    if (this.isRemoved(slot)) {
+      this.sourceToSlot.set(sourceNodeId as u64, 0);
+      return 0;
+    }
     this.markRemoved(slot);
     let offset = slot * CORR_STRIDE;
-    return this.data.get(offset + CORR_TARGET);
+    let targetNodeId = this.data.get(offset + CORR_TARGET);
+    this.sourceToSlot.set(sourceNodeId as u64, 0);
+    if (targetNodeId != 0) {
+      this.targetToSlot.set(targetNodeId as u64, 0);
+    }
+    return targetNodeId;
   }
 
   @inline
@@ -224,10 +232,18 @@ export class CorrespondenceIndex {
     let slotPlusOne = this.targetToSlot.get(targetNodeId as u64);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
-    if (this.isRemoved(slot)) return 0;
+    if (this.isRemoved(slot)) {
+      this.targetToSlot.set(targetNodeId as u64, 0);
+      return 0;
+    }
     this.markRemoved(slot);
     let offset = slot * CORR_STRIDE;
-    return this.data.get(offset + CORR_SOURCE);
+    let sourceNodeId = this.data.get(offset + CORR_SOURCE);
+    this.targetToSlot.set(targetNodeId as u64, 0);
+    if (sourceNodeId != 0) {
+      this.sourceToSlot.set(sourceNodeId as u64, 0);
+    }
+    return sourceNodeId;
   }
 
   @inline
@@ -308,8 +324,9 @@ export class CorrespondenceIndex {
   @inline
   reset(): void {
     this.count = 0;
-    if (this.sourceToSlot != null) this.sourceToSlot.init();
-    if (this.targetToSlot != null) this.targetToSlot.init();
+    if (changetype<usize>(this.data) != 0) this.data.clear();
+    if (changetype<usize>(this.sourceToSlot) != 0) this.sourceToSlot.clear();
+    if (changetype<usize>(this.targetToSlot) != 0) this.targetToSlot.clear();
   }
 }
 

@@ -22,26 +22,29 @@ import { deflateRaw, inflateRaw } from "pako";
  * Parse central directory entries from a raw ZIP byte buffer.
  */
 export function readZipEntries(zipData: Uint8Array): ContainerEntryMeta[] {
-  const view = new DataView(zipData.buffer, zipData.byteOffset, zipData.byteLength);
   const entries: ContainerEntryMeta[] = [];
+  if (!zipData || zipData.byteLength < 22) return entries;
+  const view = new DataView(zipData.buffer, zipData.byteOffset, zipData.byteLength);
 
   // 1. Locate End of Central Directory (EOCD) signature (0x06054b50)
   let eocdOffset = -1;
-  for (let i = zipData.length - 22; i >= 0; i--) {
+  const minEocd = Math.max(0, zipData.byteLength - 65557);
+  for (let i = zipData.byteLength - 22; i >= minEocd; i--) {
     if (view.getUint32(i, true) === 0x06054b50) {
       eocdOffset = i;
       break;
     }
   }
-  if (eocdOffset === -1) return entries;
+  if (eocdOffset === -1 || eocdOffset + 22 > zipData.byteLength) return entries;
 
   const cdOffset = view.getUint32(eocdOffset + 16, true);
   const cdSize = view.getUint32(eocdOffset + 12, true);
-  const cdEnd = cdOffset + cdSize;
+  if (cdOffset > zipData.byteLength) return entries;
+  const cdEnd = Math.min(cdOffset + cdSize, zipData.byteLength);
   const decoder = new TextDecoder("utf-8");
 
   let pos = cdOffset;
-  while (pos < cdEnd && pos + 46 <= zipData.length) {
+  while (pos < cdEnd && pos + 46 <= zipData.byteLength) {
     if (view.getUint32(pos, true) !== 0x02014b50) break;
 
     const compressionMethod = view.getUint16(pos + 10, true);
@@ -52,6 +55,7 @@ export function readZipEntries(zipData: Uint8Array): ContainerEntryMeta[] {
     const commentLength = view.getUint16(pos + 32, true);
     const localHeaderOffset = view.getUint32(pos + 42, true);
 
+    if (pos + 46 + fileNameLength > zipData.byteLength) break;
     const nameBytes = zipData.subarray(pos + 46, pos + 46 + fileNameLength);
     const name = decoder.decode(nameBytes);
     const isDirectory = name.endsWith("/") || (zipData[pos + 38] & 0x10) !== 0;
@@ -65,7 +69,9 @@ export function readZipEntries(zipData: Uint8Array): ContainerEntryMeta[] {
       offset: localHeaderOffset,
     });
 
-    pos += 46 + fileNameLength + extraLength + commentLength;
+    const nextPos = pos + 46 + fileNameLength + extraLength + commentLength;
+    if (nextPos <= pos) break;
+    pos = nextPos;
   }
 
   return entries;
@@ -75,26 +81,29 @@ export function readZipEntries(zipData: Uint8Array): ContainerEntryMeta[] {
  * Extract a single entry's binary content from a ZIP byte buffer.
  */
 export function readZipEntry(zipData: Uint8Array, targetPath: string): Uint8Array | null {
+  if (!zipData || zipData.byteLength < 22) return null;
   const normalizedTarget = targetPath.replace(/^[./\\]+/, "");
   const view = new DataView(zipData.buffer, zipData.byteOffset, zipData.byteLength);
 
   // Find in central directory
   let eocdOffset = -1;
-  for (let i = zipData.length - 22; i >= 0; i--) {
+  const minEocd = Math.max(0, zipData.byteLength - 65557);
+  for (let i = zipData.byteLength - 22; i >= minEocd; i--) {
     if (view.getUint32(i, true) === 0x06054b50) {
       eocdOffset = i;
       break;
     }
   }
-  if (eocdOffset === -1) return null;
+  if (eocdOffset === -1 || eocdOffset + 22 > zipData.byteLength) return null;
 
   const cdOffset = view.getUint32(eocdOffset + 16, true);
   const cdSize = view.getUint32(eocdOffset + 12, true);
-  const cdEnd = cdOffset + cdSize;
+  if (cdOffset > zipData.byteLength) return null;
+  const cdEnd = Math.min(cdOffset + cdSize, zipData.byteLength);
   const decoder = new TextDecoder("utf-8");
 
   let pos = cdOffset;
-  while (pos < cdEnd && pos + 46 <= zipData.length) {
+  while (pos < cdEnd && pos + 46 <= zipData.byteLength) {
     if (view.getUint32(pos, true) !== 0x02014b50) break;
 
     const compressionMethod = view.getUint16(pos + 10, true);
@@ -104,12 +113,13 @@ export function readZipEntry(zipData: Uint8Array, targetPath: string): Uint8Arra
     const commentLength = view.getUint16(pos + 32, true);
     const localHeaderOffset = view.getUint32(pos + 42, true);
 
+    if (pos + 46 + fileNameLength > zipData.byteLength) break;
     const nameBytes = zipData.subarray(pos + 46, pos + 46 + fileNameLength);
     const name = decoder.decode(nameBytes).replace(/^[./\\]+/, "");
 
     if (name === normalizedTarget) {
       // Read local header to get payload start
-      if (localHeaderOffset + 30 > zipData.length) return null;
+      if (localHeaderOffset + 30 > zipData.byteLength) return null;
       if (view.getUint32(localHeaderOffset, true) !== 0x04034b50) return null;
 
       const localNameLen = view.getUint16(localHeaderOffset + 26, true);
@@ -117,7 +127,7 @@ export function readZipEntry(zipData: Uint8Array, targetPath: string): Uint8Arra
       const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
       const dataEnd = dataStart + compressedSize;
 
-      if (dataEnd > zipData.length) return null;
+      if (dataStart > zipData.byteLength || dataEnd > zipData.byteLength) return null;
       const compressedData = zipData.subarray(dataStart, dataEnd);
 
       if (compressionMethod === 0) {
@@ -132,7 +142,9 @@ export function readZipEntry(zipData: Uint8Array, targetPath: string): Uint8Arra
       return null;
     }
 
-    pos += 46 + fileNameLength + extraLength + commentLength;
+    const nextPos = pos + 46 + fileNameLength + extraLength + commentLength;
+    if (nextPos <= pos) break;
+    pos = nextPos;
   }
 
   return null;
@@ -251,16 +263,23 @@ export function createZipArchive(
 
 // ── DOM-Free XML Helpers ─────────────────────────────────────────────
 
+function escapeXmlRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Extract attribute value from tag in XML string. */
 export function extractXmlAttr(xml: string, tag: string, attr: string): string | null {
-  const regex = new RegExp(`<${tag}(?=[\\s/>])[^>]*\\b${attr}\\s*=\\s*"([^"]*)"`, "i");
+  const escapedTag = escapeXmlRegExp(tag);
+  const escapedAttr = escapeXmlRegExp(attr);
+  const regex = new RegExp(`<${escapedTag}(?=[\\s/>])[^>]*\\b${escapedAttr}\\s*=\\s*"([^"]*)"`, "i");
   const match = xml.match(regex);
   return match?.[1] ?? null;
 }
 
 /** Extract attribute value from raw attribute string. */
 export function extractXmlAttrFromStr(attrStr: string, attrName: string): string | null {
-  const regex = new RegExp(`\\b${attrName}\\s*=\\s*"([^"]*)"`, "i");
+  const escapedAttr = escapeXmlRegExp(attrName);
+  const regex = new RegExp(`\\b${escapedAttr}\\s*=\\s*"([^"]*)"`, "i");
   const match = attrStr.match(regex);
   return match?.[1] ?? null;
 }
@@ -268,11 +287,15 @@ export function extractXmlAttrFromStr(attrStr: string, attrName: string): string
 /** Extract matching XML tags with attribute strings and bodies. */
 export function extractXmlTags(xml: string, tag: string): { attrs: string; body: string }[] {
   const results: { attrs: string; body: string }[] = [];
-  const regex = new RegExp(`<${tag}(?=[\\s/>])([^>]*)>([\\s\\S]*?)<\\/${tag}>|<${tag}(?=[\\s/>])([^>]*)\\/>`, "gi");
+  const escapedTag = escapeXmlRegExp(tag);
+  const regex = new RegExp(
+    `<${escapedTag}(?=[\\s/>])([^>]*?)\\/>|<${escapedTag}(?=[\\s/>])([^>]*)>([\\s\\S]*?)<\\/${escapedTag}\\s*>`,
+    "gi",
+  );
   let match: RegExpExecArray | null;
   while ((match = regex.exec(xml)) !== null) {
-    const attrs = match[1] ?? match[3] ?? "";
-    const body = match[2] ?? "";
+    const attrs = match[1] ?? match[2] ?? "";
+    const body = match[3] ?? "";
     results.push({ attrs, body });
   }
   return results;

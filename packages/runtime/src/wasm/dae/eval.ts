@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DaeBuilder, ExprKind, BinOp, UnaryOp } from "./builder";
+import { DaeBuilder, ExprKind, BinOp, UnaryOp, BuiltinMathFunc } from "./builder";
 import { ExprAccessor, EqAccessor } from "./accessors";
 import { UnmanagedFloat64Array } from "../core/array";
 
@@ -12,23 +12,29 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
   if (exprId == 0xffffffff || exprId >= dae.exprCount) return 0.0;
 
   let e = ExprAccessor.at(dae.getExprData(), exprId);
+  let kind = e.kind;
 
-  if (e.kind == ExprKind.RealLiteral) {
+  if (kind == ExprKind.RealLiteral) {
     return e.realValue;
   }
 
-  if (e.kind == ExprKind.IntLiteral || e.kind == ExprKind.BoolLiteral || e.kind == ExprKind.EnumLiteral) {
+  if (kind == ExprKind.IntLiteral || kind == ExprKind.BoolLiteral || kind == ExprKind.EnumLiteral) {
     return e.intValue as f64;
   }
 
-  if (e.kind == ExprKind.Name) {
+  if (kind == ExprKind.Name) {
     let varId = e.varId;
-    if (varId == 0xffffffff || varId >= dae.varCount) return 0.0;
+    if (varId == 0xffffffff) return 0.0;
+    if (varId >= dae.varCount) {
+      let lookedUp = dae.lookupVariableByName(varId);
+      if (lookedUp < 0) return 0.0;
+      varId = lookedUp as u32;
+    }
     return changetype<UnmanagedFloat64Array>(varValuesPtr)[varId];
   }
 
-  if (e.kind == ExprKind.Unary || e.kind == ExprKind.Negate) {
-    let isNot = e.unaryOp == UnaryOp.Not;
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+    let isNot = kind == ExprKind.Unary && e.unaryOp == UnaryOp.Not;
     let left = e.left;
     let val = evalExpr(left, dae, varValuesPtr);
     if (isNot) {
@@ -37,7 +43,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
     return -val;
   }
 
-  if (e.kind == ExprKind.Binary) {
+  if (kind == ExprKind.Binary) {
     let op = e.binOp;
     let left = e.left;
     let right = e.right;
@@ -59,7 +65,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
     if (op == BinOp.Or)  return lVal != 0.0 || rVal != 0.0 ? 1.0 : 0.0;
   }
 
-  if (e.kind == ExprKind.IfElse) {
+  if (kind == ExprKind.IfElse) {
     let cond = e.data1u;
     let left = e.left;
     let right = e.right;
@@ -69,33 +75,54 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
       : evalExpr(right, dae, varValuesPtr);
   }
 
-  if (e.kind == ExprKind.Call) {
+  if (kind == ExprKind.Call) {
     let left = e.left;
     let right = e.right;
     let funcId = e.funcId as i32;
-    let v1 = evalExpr(left,  dae, varValuesPtr);
-    let v2 = evalExpr(right, dae, varValuesPtr);
+    let v1 = evalExpr(left, dae, varValuesPtr);
 
-    if (funcId ==  1) return Math.abs(v1);
-    if (funcId ==  2) return Math.sqrt(v1);
-    if (funcId ==  3) return Math.sin(v1);
-    if (funcId ==  4) return Math.cos(v1);
-    if (funcId ==  5) return Math.exp(v1);
-    if (funcId ==  6) return Math.log(v1);
-    if (funcId ==  7) return Math.floor(v1);
-    if (funcId ==  8) return Math.ceil(v1);
-    if (funcId ==  9) return Math.min(v1, v2);
-    if (funcId == 10) return Math.max(v1, v2);
-    if (funcId == 11) return Math.tan(v1);
-    if (funcId == 12) return Math.asin(v1);
-    if (funcId == 13) return Math.acos(v1);
-    if (funcId == 14) return Math.atan(v1);
-    if (funcId == 15) return Math.atan2(v1, v2);
-    if (funcId == 16) return Math.sinh(v1);
-    if (funcId == 17) return Math.cosh(v1);
-    if (funcId == 18) return Math.tanh(v1);
-    if (funcId == 19) return Math.log10(v1);
-    if (funcId == 20) return v1 > 0.0 ? 1.0 : v1 < 0.0 ? -1.0 : 0.0; // sign
+    if (funcId == BuiltinMathFunc.Sin)   return Math.sin(v1);
+    if (funcId == BuiltinMathFunc.Cos)   return Math.cos(v1);
+    if (funcId == BuiltinMathFunc.Tan)   return Math.tan(v1);
+    if (funcId == BuiltinMathFunc.Asin)  return Math.asin(v1);
+    if (funcId == BuiltinMathFunc.Acos)  return Math.acos(v1);
+    if (funcId == BuiltinMathFunc.Atan)  return Math.atan(v1);
+    if (funcId == BuiltinMathFunc.Sinh)  return Math.sinh(v1);
+    if (funcId == BuiltinMathFunc.Cosh)  return Math.cosh(v1);
+    if (funcId == BuiltinMathFunc.Tanh)  return Math.tanh(v1);
+    if (funcId == BuiltinMathFunc.Exp)   return Math.exp(v1);
+    if (funcId == BuiltinMathFunc.Log)   return Math.log(v1);
+    if (funcId == BuiltinMathFunc.Log10) return Math.log10(v1);
+    if (funcId == BuiltinMathFunc.Sqrt)  return Math.sqrt(v1);
+    if (funcId == BuiltinMathFunc.Abs)   return Math.abs(v1);
+    if (funcId == BuiltinMathFunc.Sign)  return v1 > 0.0 ? 1.0 : v1 < 0.0 ? -1.0 : 0.0;
+    if (funcId == BuiltinMathFunc.Floor) return Math.floor(v1);
+    if (funcId == BuiltinMathFunc.Ceil)  return Math.ceil(v1);
+
+    if (
+      funcId == BuiltinMathFunc.Atan2 ||
+      funcId == BuiltinMathFunc.Min ||
+      funcId == BuiltinMathFunc.Max ||
+      funcId == BuiltinMathFunc.Fmod ||
+      funcId == BuiltinMathFunc.Pow
+    ) {
+      let secondArgId = right;
+      if (exprId + 1 < dae.exprCount) {
+        let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
+        if (nextAcc.kind == ExprKind.Tuple) {
+          secondArgId = nextAcc.left;
+        }
+      }
+      if (secondArgId >= dae.exprCount && left + 1 < dae.exprCount) {
+        secondArgId = left + 1;
+      }
+      let v2 = evalExpr(secondArgId, dae, varValuesPtr);
+      if (funcId == BuiltinMathFunc.Atan2) return Math.atan2(v1, v2);
+      if (funcId == BuiltinMathFunc.Min)   return Math.min(v1, v2);
+      if (funcId == BuiltinMathFunc.Max)   return Math.max(v1, v2);
+      if (funcId == BuiltinMathFunc.Fmod)  return v2 != 0.0 ? v1 % v2 : 0.0;
+      if (funcId == BuiltinMathFunc.Pow)   return Math.pow(v1, v2);
+    }
   }
 
   return 0.0;

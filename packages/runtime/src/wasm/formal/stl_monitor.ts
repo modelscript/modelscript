@@ -40,9 +40,10 @@ export function stl_eval_always(
       head++;
     }
 
+    let fallbackIdx: i32 = right > 0 ? (right - 1 < n - 1 ? right - 1 : n - 1) : 0;
     let minVal = head < tail
       ? load<f64>(valPtr + (<usize>deque[head] << 3))
-      : load<f64>(valPtr + (<usize>(n - 1) << 3));
+      : load<f64>(valPtr + (<usize>fallbackIdx << 3));
 
     store<f64>(outPtr + (<usize>i << 3), minVal);
   }
@@ -81,9 +82,10 @@ export function stl_eval_eventually(
       head++;
     }
 
+    let fallbackIdx: i32 = right > 0 ? (right - 1 < n - 1 ? right - 1 : n - 1) : 0;
     let maxVal = head < tail
       ? load<f64>(valPtr + (<usize>deque[head] << 3))
-      : load<f64>(valPtr + (<usize>(n - 1) << 3));
+      : load<f64>(valPtr + (<usize>fallbackIdx << 3));
 
     store<f64>(outPtr + (<usize>i << 3), maxVal);
   }

@@ -403,6 +403,8 @@ export function stub_clearFile(fileId: u32): void {
     // 3. Clear stub memory & push onto free-list
     stub.clear();
     t_stubNameHashes.set(stubId, 0);
+    t_stubNextByName.set(stubId, 0);
+    t_stubNextInFile.set(stubId, 0);
 
     t_stubNextSibling.set(stubId, t_stubFreeListHead);
     t_stubFreeListHead = stubId;
@@ -410,6 +412,9 @@ export function stub_clearFile(fileId: u32): void {
     stubId = nextInFile;
   }
   t_stubsByFile.set(fileId as u64, 0);
+  if (changetype<usize>(t_fileParentFqnMap) != 0) {
+    t_fileParentFqnMap.set(fileId as u64, 0);
+  }
 }
 
 /**
@@ -422,11 +427,11 @@ export function stub_clearAll(): void {
     t_stubNextByName.clear();
     t_stubNextSibling.clear();
     t_stubNextInFile.clear();
-    t_stubsByNameHash.init();
-    t_stubsByParent.init();
-    t_stubsByFile.init();
-    t_fileParentFqnMap.init();
-    t_fqnToStubMap.init();
+    t_stubsByNameHash.clear();
+    t_stubsByParent.clear();
+    t_stubsByFile.clear();
+    t_fileParentFqnMap.clear();
+    t_fqnToStubMap.clear();
     t_stubCount = 1;
     t_stubFreeListHead = 0;
   }

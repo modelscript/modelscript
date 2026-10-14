@@ -37,8 +37,14 @@ function extractVariablesFromNode(node: ExprNode, out: Set<string>): void {
     case "sub":
     case "mul":
     case "div":
+    case "pow":
       extractVariablesFromNode(node.left, out);
       extractVariablesFromNode(node.right, out);
+      break;
+    case "call":
+      for (const arg of node.args) {
+        extractVariablesFromNode(arg, out);
+      }
       break;
   }
 }
@@ -80,6 +86,18 @@ function exprNodeToPolynomial(node: ExprNode, allVars: string[]): Polynomial | n
       const child = exprNodeToPolynomial(node.child, allVars);
       if (!child) return null;
       return child.mul(child);
+    }
+    case "pow": {
+      if (node.right.kind === "const" && Number.isInteger(node.right.value) && node.right.value >= 0) {
+        const base = exprNodeToPolynomial(node.left, allVars);
+        if (!base) return null;
+        let acc = new Polynomial([new Term(1, new Map())], allVars);
+        for (let i = 0; i < node.right.value; i++) {
+          acc = acc.mul(base);
+        }
+        return acc;
+      }
+      return null;
     }
     default:
       return null;
@@ -266,7 +284,7 @@ export class DpllTSolver {
   private solveTheoryBox(
     box: Map<string, Interval>,
     constraints: NonlinearConstraint[],
-  ): { isSat: boolean; resultBox?: Map<string, Interval> } {
+  ): { isSat: boolean; budgetExceeded?: boolean; resultBox?: Map<string, Interval> } {
     // 1. Gröbner basis preprocessing for polynomial equality constraints
     const groebnerValid = this.preprocessPolynomialEqualities(box, constraints);
     if (!groebnerValid) {
@@ -285,7 +303,7 @@ export class DpllTSolver {
     }
 
     if (this.subdivisions >= this.maxSubdivisions) {
-      return { isSat: true, resultBox: box }; // Bounded limit reached
+      return { isSat: false, budgetExceeded: true, resultBox: box };
     }
 
     // Bisect widest variable
@@ -302,7 +320,18 @@ export class DpllTSolver {
     // Right branch: [mid, hi]
     const rightBox = this.cloneBox(box);
     rightBox.set(varName, new Interval(mid, currentInv.hi));
-    return this.solveTheoryBox(rightBox, constraints);
+    const rightRes = this.solveTheoryBox(rightBox, constraints);
+    if (rightRes.isSat) return rightRes;
+
+    if (leftRes.budgetExceeded || rightRes.budgetExceeded) {
+      return {
+        isSat: false,
+        budgetExceeded: true,
+        resultBox: leftRes.resultBox ?? rightRes.resultBox,
+      };
+    }
+
+    return { isSat: false };
   }
 
   /**
@@ -312,13 +341,15 @@ export class DpllTSolver {
     const effectiveBox = initialBox ?? this.initialBox;
     const box = effectiveBox ? this.cloneBox(effectiveBox) : new Map<string, Interval>();
 
-    if (box.size === 0 && this.theoryLits.size > 0) {
+    if (this.theoryLits.size > 0) {
       const discoveredVars = new Set<string>();
       for (const c of this.theoryLits.values()) {
         extractVariablesFromNode(c.expr, discoveredVars);
       }
       for (const v of discoveredVars) {
-        box.set(v, new Interval(-1e5, 1e5));
+        if (!box.has(v)) {
+          box.set(v, new Interval(-1e5, 1e5));
+        }
       }
     }
 
@@ -498,9 +529,20 @@ export class DpllTSolver {
         }
 
         // 3b. Fall back to Gröbner preprocessing + HC4 interval contraction
+        this.subdivisions = 0;
         const theoryRes = this.solveTheoryBox(boxCopy, activeConstraints);
 
         if (!theoryRes.isSat) {
+          if (theoryRes.budgetExceeded) {
+            return {
+              status: "UNKNOWN",
+              solutionBox: theoryRes.resultBox,
+              conflictsEncountered: this.conflicts,
+              subdivisions: this.subdivisions,
+              summary: `Subdivision limit (${this.maxSubdivisions}) reached before achieving delta=${this.delta}.`,
+            };
+          }
+
           this.conflicts++;
           const conflictClause = activeLits.map((l) => -l);
           if (!this.sat.addClause(conflictClause)) {

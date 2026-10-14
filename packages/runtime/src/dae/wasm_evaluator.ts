@@ -1661,7 +1661,18 @@ export function evaluateArenaExpression(
               if (visitedVars.has(rootIdx)) return null;
               visitedVars.add(rootIdx);
               try {
-                obj = evaluateArenaExpression(dae, bindExpr, parameters, db, scopeId, visitedVars, onlyConstants);
+                obj = evaluateArenaExpression(
+                  dae,
+                  bindExpr,
+                  parameters,
+                  db,
+                  scopeId,
+                  visitedVars,
+                  onlyConstants,
+                  functionLookup,
+                  callerDae,
+                  instancePrefix,
+                );
               } finally {
                 visitedVars.delete(rootIdx);
               }
@@ -1820,6 +1831,9 @@ export function evaluateArenaExpression(
         scopeId,
         visitedVars,
         onlyConstants,
+        functionLookup,
+        callerDae,
+        instancePrefix,
       );
       if (operand === null) return null;
 
@@ -1839,6 +1853,8 @@ export function evaluateArenaExpression(
         visitedVars,
         onlyConstants,
         functionLookup,
+        callerDae,
+        instancePrefix,
       );
       const right = evaluateArenaExpression(
         dae,
@@ -1849,6 +1865,8 @@ export function evaluateArenaExpression(
         visitedVars,
         onlyConstants,
         functionLookup,
+        callerDae,
+        instancePrefix,
       );
       if (left === null || right === null) return null;
 
@@ -1959,6 +1977,8 @@ export function evaluateArenaExpression(
         visitedVars,
         onlyConstants,
         functionLookup,
+        callerDae,
+        instancePrefix,
       );
       if (typeof cond === "boolean") {
         return cond
@@ -1971,6 +1991,8 @@ export function evaluateArenaExpression(
               visitedVars,
               onlyConstants,
               functionLookup,
+              callerDae,
+              instancePrefix,
             )
           : evaluateArenaExpression(
               dae,
@@ -1981,6 +2003,8 @@ export function evaluateArenaExpression(
               visitedVars,
               onlyConstants,
               functionLookup,
+              callerDae,
+              instancePrefix,
             );
       }
       return null;
@@ -2005,6 +2029,8 @@ export function evaluateArenaExpression(
             visitedVars,
             onlyConstants,
             functionLookup,
+            callerDae,
+            instancePrefix,
           );
         }
       }
@@ -2067,6 +2093,8 @@ export function evaluateArenaExpression(
                     visitedVars,
                     onlyConstants,
                     functionLookup,
+                    callerDae,
+                    instancePrefix,
                   );
                   if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
                     const s = shape[dim - 1];
@@ -2103,6 +2131,8 @@ export function evaluateArenaExpression(
                     visitedVars,
                     onlyConstants,
                     functionLookup,
+                    callerDae,
+                    instancePrefix,
                   );
                   if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
                     return shape[dim - 1] ?? null;
@@ -2132,6 +2162,8 @@ export function evaluateArenaExpression(
                 visitedVars,
                 onlyConstants,
                 functionLookup,
+                callerDae,
+                instancePrefix,
               );
               if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
                 return shape[dim - 1] ?? null;
@@ -2142,7 +2174,18 @@ export function evaluateArenaExpression(
       }
 
       const args = argIds.map((id) =>
-        evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants, functionLookup),
+        evaluateArenaExpression(
+          dae,
+          id,
+          parameters,
+          db,
+          scopeId,
+          visitedVars,
+          onlyConstants,
+          functionLookup,
+          callerDae,
+          instancePrefix,
+        ),
       );
       if (args.some((a) => a === null)) return null;
 
@@ -2213,6 +2256,8 @@ export function evaluateArenaExpression(
         visitedVars,
         onlyConstants,
         functionLookup,
+        callerDae,
+        instancePrefix,
       );
       if (typeof childVal === "number") return -childVal;
       return null;
@@ -2227,7 +2272,18 @@ export function evaluateArenaExpression(
       const firstElem = dae.getExprLeft(exprId);
       const elemIds = getSequenceElements(dae, exprId, count, firstElem);
       const elements = elemIds.map((id) =>
-        evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants, functionLookup),
+        evaluateArenaExpression(
+          dae,
+          id,
+          parameters,
+          db,
+          scopeId,
+          visitedVars,
+          onlyConstants,
+          functionLookup,
+          callerDae,
+          instancePrefix,
+        ),
       );
       if (elements.some((e) => e === null)) return null;
       return elements as ArenaValue[];
@@ -2243,10 +2299,25 @@ export function evaluateArenaExpression(
         visitedVars,
         onlyConstants,
         functionLookup,
+        callerDae,
+        instancePrefix,
       );
       const stepId = dae.getExprLeft(exprId);
       const step =
-        stepId >= 0 ? evaluateArenaExpression(dae, stepId, parameters, db, scopeId, visitedVars, onlyConstants) : 1;
+        stepId >= 0
+          ? evaluateArenaExpression(
+              dae,
+              stepId,
+              parameters,
+              db,
+              scopeId,
+              visitedVars,
+              onlyConstants,
+              functionLookup,
+              callerDae,
+              instancePrefix,
+            )
+          : 1;
       const stop = evaluateArenaExpression(
         dae,
         dae.getExprRight(exprId),
@@ -2255,6 +2326,9 @@ export function evaluateArenaExpression(
         scopeId,
         visitedVars,
         onlyConstants,
+        functionLookup,
+        callerDae,
+        instancePrefix,
       );
 
       if (typeof start === "number" && typeof step === "number" && typeof stop === "number") {
@@ -2271,7 +2345,18 @@ export function evaluateArenaExpression(
 
     case ExprKind.Subscript: {
       const baseId = dae.getExprData1(exprId);
-      const base = evaluateArenaExpression(dae, baseId, parameters, db, scopeId, visitedVars, onlyConstants);
+      const base = evaluateArenaExpression(
+        dae,
+        baseId,
+        parameters,
+        db,
+        scopeId,
+        visitedVars,
+        onlyConstants,
+        functionLookup,
+        callerDae,
+        instancePrefix,
+      );
       if (!Array.isArray(base)) {
         return null;
       }
@@ -2285,7 +2370,18 @@ export function evaluateArenaExpression(
         if (!Array.isArray(current)) {
           return null;
         }
-        const idx = evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants);
+        const idx = evaluateArenaExpression(
+          dae,
+          id,
+          parameters,
+          db,
+          scopeId,
+          visitedVars,
+          onlyConstants,
+          functionLookup,
+          callerDae,
+          instancePrefix,
+        );
         if (typeof idx !== "number" || idx < 1 || idx > current.length) {
           return null;
         }
@@ -2307,6 +2403,9 @@ export function evaluateArenaExpression(
           scopeId,
           visitedVars,
           onlyConstants,
+          functionLookup,
+          callerDae,
+          instancePrefix,
         );
         if (firstName && firstVal !== null) fields.set(firstName, firstVal);
         for (let i = 1; i < fieldCount; i++) {
@@ -2319,6 +2418,9 @@ export function evaluateArenaExpression(
             scopeId,
             visitedVars,
             onlyConstants,
+            functionLookup,
+            callerDae,
+            instancePrefix,
           );
           if (fieldName && fieldVal !== null) fields.set(fieldName, fieldVal);
         }

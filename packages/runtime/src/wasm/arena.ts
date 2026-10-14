@@ -355,7 +355,9 @@ export function resetGeneration(gen: u8): void {
       let maxChunk1 = S().gen1_active_chunk < S().gen1_chunk_count ? S().gen1_active_chunk : S().gen1_chunk_count - 1;
       for (let i: u32 = 0; i <= maxChunk1; i++) {
         let chunkStart = S().gen1_chunks[i];
-        let fillBytes = (i == S().gen1_active_chunk) ? (S().gen1_offset - chunkStart) : AST_CHUNK_SIZE;
+        let fillBytes: u32 = (i == S().gen1_active_chunk)
+          ? (S().gen1_offset >= chunkStart ? S().gen1_offset - chunkStart : 0)
+          : AST_CHUNK_SIZE;
         if (fillBytes > 0 && fillBytes <= AST_CHUNK_SIZE) memory.fill(chunkStart as usize, 0, fillBytes as usize);
       }
       S().gen1_active_chunk = 0;
@@ -369,7 +371,9 @@ export function resetGeneration(gen: u8): void {
       let maxChunk0 = S().gen0_active_chunk < S().gen0_chunk_count ? S().gen0_active_chunk : S().gen0_chunk_count - 1;
       for (let i: u32 = 0; i <= maxChunk0; i++) {
         let chunkStart = S().gen0_chunks[i];
-        let fillBytes = (i == S().gen0_active_chunk) ? (S().gen0_offset - chunkStart) : AST_CHUNK_SIZE;
+        let fillBytes: u32 = (i == S().gen0_active_chunk)
+          ? (S().gen0_offset >= chunkStart ? S().gen0_offset - chunkStart : 0)
+          : AST_CHUNK_SIZE;
         if (fillBytes > 0 && fillBytes <= AST_CHUNK_SIZE) memory.fill(chunkStart as usize, 0, fillBytes as usize);
       }
       S().gen0_active_chunk = 0;
@@ -383,7 +387,9 @@ export function resetGeneration(gen: u8): void {
       let maxChunk2 = S().gen2_active_chunk < S().gen2_chunk_count ? S().gen2_active_chunk : S().gen2_chunk_count - 1;
       for (let i: u32 = 0; i <= maxChunk2; i++) {
         let chunkStart = S().gen2_chunks[i];
-        let fillBytes = (i == S().gen2_active_chunk) ? (S().gen2_offset - chunkStart) : AST_CHUNK_SIZE;
+        let fillBytes: u32 = (i == S().gen2_active_chunk)
+          ? (S().gen2_offset >= chunkStart ? S().gen2_offset - chunkStart : 0)
+          : AST_CHUNK_SIZE;
         if (fillBytes > 0 && fillBytes <= AST_CHUNK_SIZE) memory.fill(chunkStart as usize, 0, fillBytes as usize);
       }
       S().gen2_active_chunk = 0;

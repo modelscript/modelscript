@@ -75,16 +75,78 @@ export class FrontCodedDictionary {
     this.tempDecodeBuf = createChunkedUint8Array(512);
   }
 
+  private _equalsId(id: u32, strPtr: usize, strLen: u32): bool {
+    if (id == 0 || id > this.stringCount) return false;
+    if (this.stringLengths.get(id) != strLen) return false;
+
+    let bIdx = (id - 1) / FRONT_CODING_BLOCK_SIZE;
+    let localIdx = (id - 1) % FRONT_CODING_BLOCK_SIZE;
+    let offset = this.blockOffsets.get(bIdx);
+
+    let hLenLo = this.blockData.get(offset) as u32;
+    let hLenHi = this.blockData.get(offset + 1) as u32;
+    let headerLen = hLenLo | (hLenHi << 8);
+    offset += 2;
+
+    if (localIdx == 0) {
+      if (headerLen != strLen) return false;
+      for (let i: u32 = 0; i < strLen; i++) {
+        if (this.blockData.get(offset + i) != load<u8>(strPtr + (i as usize))) return false;
+      }
+      return true;
+    }
+
+    this.tempDecodeBuf.clear();
+    for (let i: u32 = 0; i < headerLen; i++) {
+      this.tempDecodeBuf.push(this.blockData.get(offset + i));
+    }
+    offset += headerLen;
+
+    let currentLen = headerLen;
+    for (let step: u32 = 1; step <= localIdx; step++) {
+      let pLo = this.blockData.get(offset) as u32;
+      let pHi = this.blockData.get(offset + 1) as u32;
+      let prefixLen = pLo | (pHi << 8);
+      offset += 2;
+
+      let sLo = this.blockData.get(offset) as u32;
+      let sHi = this.blockData.get(offset + 1) as u32;
+      let suffixLen = sLo | (sHi << 8);
+      offset += 2;
+
+      currentLen = prefixLen + suffixLen;
+      for (let i: u32 = 0; i < suffixLen; i++) {
+        let b = this.blockData.get(offset + i);
+        let writePos = prefixLen + i;
+        if (writePos < this.tempDecodeBuf.length) {
+          this.tempDecodeBuf.set(writePos, b);
+        } else {
+          this.tempDecodeBuf.push(b);
+        }
+      }
+      offset += suffixLen;
+    }
+
+    if (currentLen != strLen) return false;
+    for (let i: u32 = 0; i < strLen; i++) {
+      if (this.tempDecodeBuf.get(i) != load<u8>(strPtr + (i as usize))) return false;
+    }
+    return true;
+  }
+
   /**
    * Adds a string into the front-coded dictionary.
-   * If the string hash is already known, returns the existing 1-indexed ID.
+   * If the string hash is already known and byte-equal, returns the existing 1-indexed ID.
    */
   addString(strPtr: usize, strLen: u32, hash64: u64): u32 {
     if (strLen == 0) return 0;
 
-    // Fast O(1) deduplication check
+    // Fast O(1) deduplication check with byte-equality verification against hash collisions
     if (hash64 != 0 && this.hashToId.has(hash64)) {
-      return this.hashToId.get(hash64) as u32;
+      let existingId = this.hashToId.get(hash64) as u32;
+      if (this._equalsId(existingId, strPtr, strLen)) {
+        return existingId;
+      }
     }
 
     let id = ++this.stringCount;

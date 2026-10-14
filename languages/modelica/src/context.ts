@@ -209,9 +209,6 @@ export class Context {
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
         let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
-        if (!tree && this.#trees.size === 1) {
-          tree = this.#trees.values().next().value;
-        }
         if (!tree && entry?.resourceId) {
           try {
             const text = this.#fs.read(entry.resourceId);
@@ -219,6 +216,16 @@ export class Context {
             this.#trees.set(entry.resourceId, tree);
           } catch {
             // ignore
+          }
+        }
+        if (!tree && !entry?.resourceId && this.#trees.size === 1) {
+          const candidate = this.#trees.values().next().value;
+          if (
+            candidate?.rootNode &&
+            candidate.rootNode.startIndex <= startByte &&
+            candidate.rootNode.endIndex >= endByte
+          ) {
+            tree = candidate;
           }
         }
         if (!tree) {

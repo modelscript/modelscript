@@ -70,6 +70,11 @@ export class Interval {
   }
 
   @inline
+  isEmpty(): bool {
+    return this.lo > this.hi;
+  }
+
+  @inline
   copyFrom(other: Interval): void {
     this.lo = other.lo;
     this.hi = other.hi;

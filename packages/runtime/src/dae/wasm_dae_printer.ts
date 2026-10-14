@@ -1714,16 +1714,26 @@ export class ArenaDAEPrinter {
           const condId = builder.getStmtData1(idx);
           walkExprCalls(builder, condId);
           const thenCount = builder.getStmtLeft(idx);
-          const elseCount = builder.getStmtRight(idx);
+          const branchCount = builder.getStmtRight(idx);
           let next = idx + 1;
           for (let i = 0; i < thenCount; i++) next = walkStmtCalls(builder, next);
-          for (let i = 0; i < elseCount; i++) next = walkStmtCalls(builder, next);
+          for (let b = 0; b < branchCount; b++) {
+            if (builder.getStmtKind(next) === StmtKind.Block) {
+              const bCond = builder.getStmtData1(next);
+              if (bCond >= 0) walkExprCalls(builder, bCond);
+              const bStmtCount = builder.getStmtLeft(next);
+              next++;
+              for (let j = 0; j < bStmtCount; j++) next = walkStmtCalls(builder, next);
+            } else {
+              next = walkStmtCalls(builder, next);
+            }
+          }
           return next;
         }
         case StmtKind.For: {
-          const iterId = builder.getStmtData1(idx);
-          walkExprCalls(builder, iterId);
-          const bodyCount = builder.getStmtLeft(idx);
+          const rangeId = builder.getStmtLeft(idx);
+          walkExprCalls(builder, rangeId);
+          const bodyCount = builder.getStmtRight(idx);
           let next = idx + 1;
           for (let i = 0; i < bodyCount; i++) next = walkStmtCalls(builder, next);
           return next;
@@ -1740,8 +1750,20 @@ export class ArenaDAEPrinter {
           const condId = builder.getStmtData1(idx);
           walkExprCalls(builder, condId);
           const bodyCount = builder.getStmtLeft(idx);
+          const elseWhenCount = builder.getStmtRight(idx);
           let next = idx + 1;
           for (let i = 0; i < bodyCount; i++) next = walkStmtCalls(builder, next);
+          for (let b = 0; b < elseWhenCount; b++) {
+            if (builder.getStmtKind(next) === StmtKind.Block) {
+              const bCond = builder.getStmtData1(next);
+              if (bCond >= 0) walkExprCalls(builder, bCond);
+              const bStmtCount = builder.getStmtLeft(next);
+              next++;
+              for (let j = 0; j < bStmtCount; j++) next = walkStmtCalls(builder, next);
+            } else {
+              next = walkStmtCalls(builder, next);
+            }
+          }
           return next;
         }
         default:

@@ -105,6 +105,7 @@ function prodErr(a: number, b: number, p: number): number {
 
 /** a*b rounded toward -Infinity (interval convention 0 * ±Infinity = 0). */
 function mulDown(a: number, b: number): number {
+  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
   if (a === 0 || b === 0) return 0;
   const p = a * b;
   if (!twoProdSafe(a, b, p)) {
@@ -116,6 +117,7 @@ function mulDown(a: number, b: number): number {
 
 /** a*b rounded toward +Infinity. */
 function mulUp(a: number, b: number): number {
+  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
   if (a === 0 || b === 0) return 0;
   const p = a * b;
   if (!twoProdSafe(a, b, p)) {
@@ -210,12 +212,14 @@ export function ivPowInt(a: Interval, n: number): Interval {
 
 function powUp(x: number, n: number): number {
   const r = Math.pow(x, n);
-  return Number.isFinite(r) ? upN(r, LIBM_SLACK_ULPS + n) : r;
+  if (!Number.isFinite(r)) return r === -Infinity && Number.isFinite(x) ? -Number.MAX_VALUE : r;
+  return upN(r, LIBM_SLACK_ULPS + n);
 }
 
 function powDown(x: number, n: number): number {
   const r = Math.pow(x, n);
-  return Number.isFinite(r) ? downN(r, LIBM_SLACK_ULPS + n) : r;
+  if (!Number.isFinite(r)) return r === Infinity && Number.isFinite(x) ? Number.MAX_VALUE : r;
+  return downN(r, LIBM_SLACK_ULPS + n);
 }
 
 // ── Elementary functions ──

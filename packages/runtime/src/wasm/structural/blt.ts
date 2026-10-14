@@ -152,16 +152,17 @@ export class BltEngine {
 
       // Iterative DFS of expression tree
       while (exprStack.length > 0) {
-        let exprId = exprStack.pop();
+        let exprId = exprStack.pop() as u32;
         let side = sideStack.pop();
-        if (exprId == 0xffffffff) continue;
+        if (exprId == 0xffffffff || exprId >= this.dae.exprCount) continue;
 
         let exprOffset = exprId * EXPR_STRIDE;
         let kind = this.dae.getExprData().get(exprOffset + EXPR_KIND);
 
         if (kind == ExprKind.Name) {
-          let varId = this.dae.getExprData().get(exprOffset + EXPR_DATA1);
-          if ((varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
+          let rawId = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          let varId: i32 = rawId < this.dae.varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
+          if (varId >= 0 && (varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
             seenVars.set(varId, 1);
             this.eqDepVars.push(varId);
 
@@ -170,7 +171,7 @@ export class BltEngine {
             // 1: Symbolically Isolatable (single elementary function/transcendental)
             // 2: Non-isolatable fallback
             let priority: u8 = 2;
-            if (side == 0 && lhsIsName && exprId == lhsId) {
+            if (side == 0 && lhsIsName && exprId == (lhsId as u32)) {
               priority = 0; // LHS explicit assignment: x = ...
             } else if (lhsIsName) {
               priority = 0; // RHS variable in simple LHS assignment
@@ -179,18 +180,112 @@ export class BltEngine {
             }
             this.eqDepWeights.push(priority);
           }
+          continue;
         }
 
-        let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT);
-        let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT);
-
-        if (left != 0xffffffff) {
-          exprStack.push(left);
-          sideStack.push(side);
+        if (
+          kind == ExprKind.IntLiteral ||
+          kind == ExprKind.RealLiteral ||
+          kind == ExprKind.BoolLiteral ||
+          kind == ExprKind.StringLiteral ||
+          kind == ExprKind.EnumLiteral ||
+          kind == ExprKind.Colon
+        ) {
+          continue;
         }
-        if (right != 0xffffffff) {
-          exprStack.push(right);
-          sideStack.push(side);
+
+        if (kind == ExprKind.Der || kind == ExprKind.Pre) {
+          let inner = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          if (inner != 0xffffffff && inner < this.dae.exprCount) {
+            exprStack.push(inner as i32);
+            sideStack.push(side);
+          }
+          if (left != 0xffffffff && left < this.dae.exprCount) {
+            exprStack.push(left as i32);
+            sideStack.push(side);
+          }
+          continue;
+        }
+
+        if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          if (left != 0xffffffff) {
+            exprStack.push(left as i32);
+            sideStack.push(side);
+          }
+          continue;
+        }
+
+        if (kind == ExprKind.Binary) {
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          if (left != 0xffffffff) {
+            exprStack.push(left as i32);
+            sideStack.push(side);
+          }
+          if (right != 0xffffffff) {
+            exprStack.push(right as i32);
+            sideStack.push(side);
+          }
+          continue;
+        }
+
+        if (kind == ExprKind.IfElse || kind == ExprKind.Range) {
+          let data1 = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          if (data1 != 0xffffffff) {
+            exprStack.push(data1 as i32);
+            sideStack.push(side);
+          }
+          if (left != 0xffffffff) {
+            exprStack.push(left as i32);
+            sideStack.push(side);
+          }
+          if (right != 0xffffffff) {
+            exprStack.push(right as i32);
+            sideStack.push(side);
+          }
+          continue;
+        }
+
+        if (kind == ExprKind.Subscript || kind == ExprKind.Call || kind == ExprKind.ArrayCtor || kind == ExprKind.Tuple) {
+          if (kind == ExprKind.Subscript) {
+            let baseExpr = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+            if (baseExpr != 0xffffffff) {
+              exprStack.push(baseExpr as i32);
+              sideStack.push(side);
+            }
+          }
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let rightVal = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          let data1Val = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          let count: u32 =
+            kind == ExprKind.Call || kind == ExprKind.Subscript
+              ? rightVal
+              : rightVal > 0 && rightVal != 0xffffffff
+                ? rightVal
+                : data1Val;
+          if (count > 0 && count != 0xffffffff && left != 0xffffffff) {
+            exprStack.push(left as i32);
+            sideStack.push(side);
+            for (let a: u32 = 1; a < count; a++) {
+              let slotIdx = exprId + a;
+              if (slotIdx < this.dae.exprCount) {
+                let slotOffset = slotIdx * EXPR_STRIDE;
+                let slotKind = this.dae.getExprData().get(slotOffset + EXPR_KIND);
+                let argExpr = slotKind == ExprKind.Tuple
+                  ? (this.dae.getExprData().get(slotOffset + EXPR_LEFT) as u32)
+                  : left + a;
+                if (argExpr != 0xffffffff && argExpr < this.dae.exprCount) {
+                  exprStack.push(argExpr as i32);
+                  sideStack.push(side);
+                }
+              }
+            }
+          }
+          continue;
         }
       }
 
@@ -285,6 +380,7 @@ export class BltEngine {
       for (let i: u32 = start as u32; i < (end as u32); i++) {
         let w = this.eqDepVars.get(i);
         if (w == (varIdx as i32)) continue; // ignore self-dependency in graph traversal
+        if (this.matchVarToEq.get(w) < 0) continue; // skip unmatched variables
 
         if (this.indexMap.get(w) == -1) {
           this.strongConnect(w);
@@ -300,8 +396,8 @@ export class BltEngine {
     }
 
     if (this.lowlinkMap.get(varIdx) == this.indexMap.get(varIdx)) {
-      this.sccBlockPtrs.push(this.sccBlockEqs.length);
-      
+      let blockStart = this.sccBlockEqs.length;
+
       let w: i32;
       let blockSize = 0;
       do {
@@ -313,15 +409,18 @@ export class BltEngine {
           blockSize++;
         }
       } while (w != (varIdx as i32));
-      
-      this.sccCount++;
 
-      // Phase 3: 1x1 Scalar Equation Block
-      if (blockSize == 1) {
-        // 1x1 scalar block is matched to varIdx; equations remain in original form
-      } else if (blockSize > 1) {
-        // Phase 4: Algebraic Loop Tearing for non-linear coupled systems
-        this.tearAlgebraicLoop(this.sccBlockEqs.length - blockSize, blockSize);
+      if (blockSize > 0) {
+        this.sccBlockPtrs.push(this.sccBlockEqs.length);
+        this.sccCount++;
+
+        // Phase 3: 1x1 Scalar Equation Block
+        if (blockSize == 1) {
+          // 1x1 scalar block is matched to varIdx; equations remain in original form
+        } else if (blockSize > 1) {
+          // Phase 4: Algebraic Loop Tearing for non-linear coupled systems
+          this.tearAlgebraicLoop(blockStart, blockSize);
+        }
       }
     }
   }
@@ -406,8 +505,6 @@ export class BltEngine {
         this.strongConnect(i);
       }
     }
-    
-    this.sccBlockPtrs.set(this.sccCount, this.sccBlockEqs.length);
   }
 
   /**

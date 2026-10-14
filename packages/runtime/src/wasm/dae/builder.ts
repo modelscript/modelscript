@@ -22,7 +22,7 @@ export {
   NULL_ID,
   // Enums
   VarType, Variability, Causality,
-  EqKind, ExprKind, BinOp, UnaryOp, StmtKind, VarAttrKind,
+  EqKind, ExprKind, BinOp, UnaryOp, StmtKind, VarAttrKind, BuiltinMathFunc,
 } from "./types";
 
 // Local imports for use within this file
@@ -119,9 +119,16 @@ export class DaeBuilder {
   snapshotStmtCount: u32;
   snapshotClockCount: u32;
   snapshotWhenCount: u32;
+  snapshotWhenBodyEqCount: u32;
   snapshotForCount: u32;
+  snapshotForBodyEqCount: u32;
   snapshotIfCount: u32;
+  snapshotIfBranchEqCount: u32;
   snapshotSmCount: u32;
+  snapshotStateCount: u32;
+  snapshotStateEqCount: u32;
+  snapshotStateVarCount: u32;
+  snapshotTransitionCount: u32;
   snapshotEventIndicatorCount: u32;
 
   // Method Accessors for backwards compatibility
@@ -223,9 +230,16 @@ export class DaeBuilder {
     this.snapshotStmtCount = 0;
     this.snapshotClockCount = 0;
     this.snapshotWhenCount = 0;
+    this.snapshotWhenBodyEqCount = 0;
     this.snapshotForCount = 0;
+    this.snapshotForBodyEqCount = 0;
     this.snapshotIfCount = 0;
+    this.snapshotIfBranchEqCount = 0;
     this.snapshotSmCount = 0;
+    this.snapshotStateCount = 0;
+    this.snapshotStateEqCount = 0;
+    this.snapshotStateVarCount = 0;
+    this.snapshotTransitionCount = 0;
     this.snapshotEventIndicatorCount = 0;
   }
 
@@ -860,9 +874,16 @@ export class DaeBuilder {
     this.snapshotStmtCount = this.stmtCount;
     this.snapshotClockCount = this.clockCount;
     this.snapshotWhenCount = this.whenCount;
+    this.snapshotWhenBodyEqCount = this.whenBodyEqCount;
     this.snapshotForCount = this.forCount;
+    this.snapshotForBodyEqCount = this.forBodyEqCount;
     this.snapshotIfCount = this.ifCount;
+    this.snapshotIfBranchEqCount = this.ifBranchEqCount;
     this.snapshotSmCount = this.smCount;
+    this.snapshotStateCount = this.stateCount;
+    this.snapshotStateEqCount = this.stateEqCount;
+    this.snapshotStateVarCount = this.stateVarCount;
+    this.snapshotTransitionCount = this.transitionCount;
     this.snapshotEventIndicatorCount = this.eventIndicatorCount;
   }
 
@@ -871,8 +892,19 @@ export class DaeBuilder {
    */
   @inline
   rollback(): void {
+    const oldVarCount = this.varCount;
     this.varCount = this.snapshotVarCount;
     this.getVarData().length = this.varCount * VAR_STRIDE;
+
+    if (this.varCount < oldVarCount) {
+      const idxMap = this.getNameIndex();
+      idxMap.clear();
+      const vData = this.getVarData();
+      for (let i: u32 = 0; i < this.varCount; i++) {
+        const nameId = vData.get(i * VAR_STRIDE + VAR_NAME);
+        idxMap.set(nameId, i);
+      }
+    }
     
     this.eqCount = this.snapshotEqCount;
     this.getEqData().length = this.eqCount * EQ_STRIDE;
@@ -884,11 +916,36 @@ export class DaeBuilder {
     this.getStmtData().length = this.stmtCount * STMT_STRIDE;
 
     this.clockCount = this.snapshotClockCount;
+    this.getClocksData().length = this.clockCount * CLOCK_STRIDE;
+
     this.whenCount = this.snapshotWhenCount;
+    this.getWhenMeta().length = this.whenCount * WHEN_STRIDE;
+    this.whenBodyEqCount = this.snapshotWhenBodyEqCount;
+    this.getWhenBodyEqs().length = this.whenBodyEqCount;
+
     this.forCount = this.snapshotForCount;
+    this.getForMeta().length = this.forCount * FOR_STRIDE;
+    this.forBodyEqCount = this.snapshotForBodyEqCount;
+    this.getForBodyEqs().length = this.forBodyEqCount;
+
     this.ifCount = this.snapshotIfCount;
+    this.getIfMeta().length = this.ifCount * IF_STRIDE;
+    this.ifBranchEqCount = this.snapshotIfBranchEqCount;
+    this.getIfBranchEqs().length = this.ifBranchEqCount;
+
     this.smCount = this.snapshotSmCount;
+    this.getStateMachines().length = this.smCount * SM_STRIDE;
+    this.stateCount = this.snapshotStateCount;
+    this.getStateData().length = this.stateCount * STATE_STRIDE;
+    this.stateEqCount = this.snapshotStateEqCount;
+    this.getStateEqs().length = this.stateEqCount;
+    this.stateVarCount = this.snapshotStateVarCount;
+    this.getStateVars().length = this.stateVarCount;
+    this.transitionCount = this.snapshotTransitionCount;
+    this.getTransitions().length = this.transitionCount * TRANSITION_STRIDE;
+
     this.eventIndicatorCount = this.snapshotEventIndicatorCount;
+    this.getEventIndicators().length = this.eventIndicatorCount;
   }
 }
 
@@ -896,7 +953,7 @@ export class DaeBuilder {
 // Exported C/WASM Bridge Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DAE_BUILDER_SIZE: u32 = 256;
+const DAE_BUILDER_SIZE: u32 = 512;
 
 export function dae_createBuilder(): u32 {
   let ptr = atomicChunkAlloc(DAE_BUILDER_SIZE);

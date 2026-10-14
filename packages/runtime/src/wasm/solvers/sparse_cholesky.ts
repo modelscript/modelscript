@@ -194,16 +194,12 @@ export class SparseCholesky {
         let r = this.lRowIndices.get(p) as u32;
         if (r == j) {
           lValues[p] = 1.0; // Unit diagonal
+          denseCol[j] = 0.0;
         } else if (r > j) {
           let val = denseCol[r];
           lValues[p] = val / dJ;
+          denseCol[r] = 0.0;
         }
-      }
-
-      // Reset dense workspace for next column
-      for (let p: u32 = cStart; p < cEnd; p++) {
-        let r = ccs.rowIndices.get(p) as u32;
-        if (r >= j) denseCol[r] = 0.0;
       }
     }
 

@@ -732,7 +732,9 @@ export function instantiateElements(
       if (compInst?.variability === "constant") {
         const mod = compInst.modification;
         if (mod?.bindingExpression) {
-          const scopeSym = flattener.currentRootClassId ? flattener.db.symbol(flattener.currentRootClassId) : undefined;
+          const targetScopeId =
+            (mod.bindingExpression as any)?.evaluationScopeId ?? elemId ?? flattener.currentRootClassId;
+          const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
           const bindExpr = mod.bindingExpression as any;
           const bindCst = bindExpr?.cstBytes
             ? (flattener.db.cstNodeRange(bindExpr.cstBytes[0], bindExpr.cstBytes[1], scopeSym ?? undefined) as any)
@@ -1386,14 +1388,7 @@ export function instantiateElements(
               }
             }
 
-            if (
-              variability === Variability.Constant &&
-              prefix &&
-              !parentMods?.isRecord &&
-              parentMods?.parentVariability !== Variability.Constant
-            ) {
-              continue;
-            }
+            // Allow constants inside components to be instantiated in DAE
             if (variability === Variability.Constant && bText && /^[a-zA-Z_]\w*$/.test(bText)) {
               const targetConst = resolveScopedName(bText, prefix, dae);
               const targetIdx = dae.getVarIdxByName(targetConst);
@@ -3503,14 +3498,7 @@ export function instantiateElements(
             }
           }
         }
-        if (
-          variability === Variability.Constant &&
-          prefix &&
-          !parentMods?.isRecord &&
-          parentMods?.parentVariability !== Variability.Constant
-        ) {
-          continue;
-        }
+        // Allow constants inside components to be instantiated in DAE
         const isEvaluated = flattener.db.query<boolean>("isEvaluate", elemId);
         if (!flattener.options.omcCompatibility && isEvaluated && variability === Variability.Parameter) {
           variability = Variability.Constant;
@@ -4191,9 +4179,14 @@ export function instantiateElements(
 
               if (exprId === null) {
                 if (effectiveBinding.cstBytes) {
-                  const scopeSym = flattener.currentRootClassId
-                    ? flattener.db.symbol(flattener.currentRootClassId)
-                    : undefined;
+                  const targetScopeId =
+                    (effectiveBinding as any)?.evaluationScopeId ??
+                    effectiveParentArg?.evaluationScopeId ??
+                    effectiveClassArg?.evaluationScopeId ??
+                    elemId ??
+                    flattener.currentClassId ??
+                    flattener.currentRootClassId;
+                  const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
                   const bindCst = flattener.db.cstNodeRange(
                     effectiveBinding.cstBytes[0],
                     effectiveBinding.cstBytes[1],
@@ -5031,9 +5024,14 @@ export function instantiateElements(
               let rCount = rowsCount;
               let cCount = colsCount;
               if (effectiveBinding.cstBytes) {
-                const scopeSym = flattener.currentRootClassId
-                  ? flattener.db.symbol(flattener.currentRootClassId)
-                  : undefined;
+                const targetScopeId =
+                  (effectiveBinding as any)?.evaluationScopeId ??
+                  effectiveParentArg?.evaluationScopeId ??
+                  effectiveClassArg?.evaluationScopeId ??
+                  elemId ??
+                  flattener.currentClassId ??
+                  flattener.currentRootClassId;
+                const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
                 const bindCst = flattener.db.cstNodeRange(
                   effectiveBinding.cstBytes[0],
                   effectiveBinding.cstBytes[1],
@@ -5114,9 +5112,12 @@ export function instantiateElements(
                   }
                   if (typeof evalVal !== "number" || evalVal < 0) {
                     if (rawDims && rawDims[i]?.cstBytes) {
-                      const scopeSym = flattener.currentRootClassId
-                        ? flattener.db.symbol(flattener.currentRootClassId)
-                        : undefined;
+                      const targetScopeId =
+                        (rawDims[i] as any)?.evaluationScopeId ??
+                        elemId ??
+                        flattener.currentClassId ??
+                        flattener.currentRootClassId;
+                      const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
                       const dimCst = flattener.db.cstNodeRange(
                         rawDims[i].cstBytes[0],
                         rawDims[i].cstBytes[1],
@@ -5209,9 +5210,14 @@ export function instantiateElements(
                 }
               }
               if (resolvedDims[i]! <= 0 && effectiveBinding?.cstBytes && !isFunctionInputWithColon) {
-                const scopeSym = flattener.currentRootClassId
-                  ? flattener.db.symbol(flattener.currentRootClassId)
-                  : undefined;
+                const targetScopeId =
+                  (effectiveBinding as any)?.evaluationScopeId ??
+                  effectiveParentArg?.evaluationScopeId ??
+                  effectiveClassArg?.evaluationScopeId ??
+                  elemId ??
+                  flattener.currentClassId ??
+                  flattener.currentRootClassId;
+                const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
                 const bindCst = flattener.db.cstNodeRange(
                   effectiveBinding.cstBytes[0],
                   effectiveBinding.cstBytes[1],
@@ -5300,9 +5306,14 @@ export function instantiateElements(
                   let rowsCount = 0;
                   let colsCount = 0;
                   if (effectiveBinding.cstBytes) {
-                    const scopeSym = flattener.currentRootClassId
-                      ? flattener.db.symbol(flattener.currentRootClassId)
-                      : undefined;
+                    const targetScopeId =
+                      (effectiveBinding as any)?.evaluationScopeId ??
+                      effectiveParentArg?.evaluationScopeId ??
+                      effectiveClassArg?.evaluationScopeId ??
+                      elemId ??
+                      flattener.currentClassId ??
+                      flattener.currentRootClassId;
+                    const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
                     const bindCst = flattener.db.cstNodeRange(
                       effectiveBinding.cstBytes[0],
                       effectiveBinding.cstBytes[1],

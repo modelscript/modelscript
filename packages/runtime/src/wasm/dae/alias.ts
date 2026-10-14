@@ -110,17 +110,28 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
           let rhsVarIdx = dae.lookupVariableByName(rhsNameId);
 
           if (lhsVarIdx >= 0 && rhsVarIdx >= 0) {
+            if (kind == EqKind.Connect && (dae.isVarFlow(lhsVarIdx as u32) || dae.isVarFlow(rhsVarIdx as u32))) {
+              continue;
+            }
             let lhsType = dae.getVarData().get((lhsVarIdx as u32) * VAR_STRIDE + VAR_TYPE);
             let rhsType = dae.getVarData().get((rhsVarIdx as u32) * VAR_STRIDE + VAR_TYPE);
 
             if (lhsType == rhsType) {
               // Both are valid variables of the same type, merge them
               uf.union(lhsVarIdx as u32, rhsVarIdx as u32);
-              dae.addAlias(lhsVarIdx as u32, rhsNameId);
             }
           }
         }
       }
+    }
+  }
+
+  // Record canonical alias targets for all non-root variables
+  for (let v: u32 = 0; v < varCount; v++) {
+    let rootIdx = uf.find(v);
+    if (rootIdx != v) {
+      let rootNameId = dae.getVarData().get(rootIdx * VAR_STRIDE + VAR_NAME) as u32;
+      dae.addAlias(v, rootNameId);
     }
   }
 

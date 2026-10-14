@@ -456,12 +456,11 @@ export class TaylorModel {
     const cross2 = mulInterval(p2Range, this.remainder);
     const crossRem = mulInterval(this.remainder, other.remainder);
 
-    let totalRemainder = addInterval(this.remainder, other.remainder); // base
-    totalRemainder = addInterval(excessRemainder, cross1);
+    let totalRemainder = addInterval(excessRemainder, cross1);
     totalRemainder = addInterval(totalRemainder, cross2);
     totalRemainder = addInterval(totalRemainder, crossRem);
 
-    res.remainder = totalRemainder;
+    res.remainder = addInterval(res.remainder, totalRemainder);
     return res;
   }
 
@@ -1116,11 +1115,11 @@ export class TaylorModelFlowpipeSolver {
   private static checkRequirement(tube: Interval, req: FlowpipeRequirement): { holds: boolean; worstValue: number } {
     if (req.operator === "<=" || req.operator === "<") {
       const worst = tube.hi;
-      return { holds: worst <= req.limitValue, worstValue: worst };
+      return { holds: req.operator === "<=" ? worst <= req.limitValue : worst < req.limitValue, worstValue: worst };
     }
     if (req.operator === ">=" || req.operator === ">") {
       const worst = tube.lo;
-      return { holds: worst >= req.limitValue, worstValue: worst };
+      return { holds: req.operator === ">=" ? worst >= req.limitValue : worst > req.limitValue, worstValue: worst };
     }
     return { holds: true, worstValue: tube.mid };
   }

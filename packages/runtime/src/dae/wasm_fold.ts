@@ -1093,7 +1093,7 @@ export function substituteArenaConstants(
         }
       }
       if (k === ExprKind.Subscript) {
-        const baseId = arena.getExprLeft(data1);
+        const baseId = arena.getExprData1(data1);
         if (baseId >= 0 && arena.getExprKind(baseId) === ExprKind.Name) {
           const name = arena.interner.resolve(arena.getExprData1(baseId));
           const idx = nameToIdx ? nameToIdx.get(name) : arena.getVarIdxByName(name);
@@ -2167,7 +2167,7 @@ function getRecordFields(dae: DAEBuilder, exprId: number): string[] | null {
     }
   }
   if (kind === ExprKind.Subscript) {
-    return getRecordFields(dae, dae.getExprLeft(exprId));
+    return getRecordFields(dae, dae.getExprData1(exprId));
   }
   if (kind === ExprKind.IfElse) {
     return getRecordFields(dae, dae.getExprLeft(exprId)) || getRecordFields(dae, dae.getExprRight(exprId));
@@ -2251,9 +2251,14 @@ function getFieldExpr(
       return out.addUnaryExpr(op, inner);
     }
     case ExprKind.Subscript: {
-      const target = getFieldExpr(dae, out, dae.getExprLeft(exprId), field, cloneExpr);
-      const sub = cloneExpr ? cloneExpr(dae.getExprRight(exprId), "", null) : dae.getExprRight(exprId);
-      return out.addExpression(ExprKind.Subscript, 0, target, sub);
+      const target = getFieldExpr(dae, out, dae.getExprData1(exprId), field, cloneExpr);
+      const subCount = dae.getExprRight(exprId);
+      const subs: number[] = [];
+      for (let i = 0; i < subCount; i++) {
+        const rawSub = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+        subs.push(cloneExpr ? cloneExpr(rawSub, "", null) : rawSub);
+      }
+      return out.addSubscriptExpr(target, subs);
     }
     default:
       return cloneExpr ? cloneExpr(exprId, "", null) : exprId;

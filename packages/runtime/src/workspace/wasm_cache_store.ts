@@ -53,6 +53,74 @@ export class MemoryQueryCacheStore implements QueryCacheStore {
   }
 }
 
+export function serializeMemo(memo: Memo): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    ...memo,
+    dependencies:
+      memo.dependencies instanceof Set
+        ? Array.from(memo.dependencies)
+        : Array.isArray(memo.dependencies)
+          ? memo.dependencies
+          : [],
+  };
+  if (memo.byNameLookups !== undefined) {
+    out.byNameLookups =
+      memo.byNameLookups instanceof Set
+        ? Array.from(memo.byNameLookups)
+        : Array.isArray(memo.byNameLookups)
+          ? memo.byNameLookups
+          : [];
+  }
+  if ((memo as any).lookups !== undefined) {
+    out.lookups =
+      (memo as any).lookups instanceof Set
+        ? Array.from((memo as any).lookups)
+        : Array.isArray((memo as any).lookups)
+          ? (memo as any).lookups
+          : [];
+  }
+  if (memo.reverseDependencies !== undefined) {
+    out.reverseDependencies =
+      memo.reverseDependencies instanceof Set
+        ? Array.from(memo.reverseDependencies)
+        : Array.isArray(memo.reverseDependencies)
+          ? memo.reverseDependencies
+          : [];
+  }
+  return out;
+}
+
+export function deserializeMemo(raw: any): Memo {
+  if (!raw || typeof raw !== "object") return raw;
+  const memo: any = { ...raw };
+  if (Array.isArray(raw.dependencies)) {
+    memo.dependencies = raw.dependencies;
+  } else if (raw.dependencies instanceof Set) {
+    memo.dependencies = Array.from(raw.dependencies);
+  } else {
+    memo.dependencies = [];
+  }
+  if (raw.byNameLookups !== undefined) {
+    memo.byNameLookups =
+      raw.byNameLookups instanceof Set
+        ? raw.byNameLookups
+        : new Set(Array.isArray(raw.byNameLookups) ? raw.byNameLookups : []);
+  }
+  if (raw.lookups !== undefined) {
+    memo.lookups = raw.lookups instanceof Set ? raw.lookups : new Set(Array.isArray(raw.lookups) ? raw.lookups : []);
+    if (memo.byNameLookups === undefined) {
+      memo.byNameLookups = memo.lookups;
+    }
+  }
+  if (raw.reverseDependencies !== undefined) {
+    memo.reverseDependencies =
+      raw.reverseDependencies instanceof Set
+        ? raw.reverseDependencies
+        : new Set(Array.isArray(raw.reverseDependencies) ? raw.reverseDependencies : []);
+  }
+  return memo as Memo;
+}
+
 /**
  * IndexedDB-backed implementation of QueryCacheStore for browser environments.
  */
@@ -68,8 +136,9 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
   private async getDB(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise;
 
-    this.dbPromise = new Promise((resolve, reject) => {
+    this.dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
       if (typeof indexedDB === "undefined") {
+        this.dbPromise = null;
         return reject(new Error("IndexedDB is not available in this environment."));
       }
 
@@ -87,8 +156,12 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
       };
 
       request.onerror = (event) => {
+        this.dbPromise = null;
         reject((event.target as IDBOpenDBRequest).error);
       };
+    }).catch((err) => {
+      this.dbPromise = null;
+      throw err;
     });
 
     return this.dbPromise;
@@ -101,7 +174,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
       const store = transaction.objectStore(this.storeName);
       const request = store.get(key);
 
-      request.onsuccess = () => resolve(request.result as Memo | undefined);
+      request.onsuccess = () => resolve(request.result !== undefined ? deserializeMemo(request.result) : undefined);
       request.onerror = () => reject(request.error);
     });
   }
@@ -124,7 +197,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
         const request = store.get(key);
         request.onsuccess = () => {
           if (request.result !== undefined) {
-            result.set(key, request.result);
+            result.set(key, deserializeMemo(request.result));
           }
           completed++;
           if (completed === keys.length) resolve(result);
@@ -292,7 +365,7 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
               const data = (await response.json()) as { memos: Record<string, Memo> };
               if (data && data.memos) {
                 for (const [k, v] of Object.entries(data.memos)) {
-                  result.set(Number(k), v);
+                  result.set(Number(k), deserializeMemo(v));
                 }
               }
             }

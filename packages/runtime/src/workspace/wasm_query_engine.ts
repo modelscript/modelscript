@@ -139,6 +139,23 @@ function shallowEqual(a: unknown, b: unknown, depth = 0): boolean {
   return true;
 }
 
+function stableStringifyArgs(args: Record<string, unknown>, hashOverride?: string): string {
+  if (hashOverride !== undefined) return hashOverride;
+  return JSON.stringify(args, (_key, value) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.keys(value)
+          .sort()
+          .reduce(
+            (acc, k) => {
+              acc[k] = (value as Record<string, unknown>)[k];
+              return acc;
+            },
+            {} as Record<string, unknown>,
+          )
+      : value,
+  );
+}
+
 // -- Canonical QueryEngine Implementation --
 
 export class WasmQueryEngine {
@@ -178,6 +195,8 @@ export class WasmQueryEngine {
 
   private inputReverseDependencies = new Map<SymbolId, Set<number>>();
   private byNameReverseDependencies = new Map<string, Set<number>>();
+  private byNameRevisions = new Map<string, Revision>();
+  private symbolNames = new Map<SymbolId, string>();
 
   private correspondenceIndex?: any;
   private correspondenceSlotMap?: Map<SymbolId, number>;
@@ -228,8 +247,19 @@ export class WasmQueryEngine {
     if (volatileIds.size === 0) return;
 
     for (const key of this.memos.keys()) {
-      const queryId = Math.floor(key / 10000000) % 1000;
+      const queryId = Math.floor(key / 100000) % 1000;
       if (volatileIds.has(queryId)) {
+        this.memos.delete(key);
+      }
+    }
+  }
+
+  public invalidateByName(name: string): void {
+    if (!name) return;
+    this.byNameRevisions.set(name, this.currentRevision);
+    const dependentKeys = this.byNameReverseDependencies.get(name);
+    if (dependentKeys) {
+      for (const key of dependentKeys) {
         this.memos.delete(key);
       }
     }
@@ -297,8 +327,9 @@ export class WasmQueryEngine {
     this.cacheStore = options?.cacheStore;
     this.maxMemos = options?.maxMemos ?? 2_000_000;
 
-    for (const id of this.index.symbols.keys()) {
+    for (const [id, entry] of this.index.symbols.entries()) {
       this.inputRevisions.set(id, 0);
+      this.symbolNames.set(id, entry.name);
     }
   }
 
@@ -338,20 +369,25 @@ export class WasmQueryEngine {
     const aId = this.getArgsId(argsHash);
     const absSymbolId = Math.abs(symbolId);
     const signBit = symbolId < 0 ? 1 : 0;
-    return (absSymbolId % 10000000) * 100000000 + (qId % 1000) * 100000 + (aId % 10000) * 10 + signBit;
+    const compactSym = ((absSymbolId >>> 24) & 0x1f) * 2_000_000 + ((absSymbolId & 0x00ff_ffff) % 2_000_000);
+    return compactSym * 100_000_000 + (qId % 1000) * 100_000 + (aId % 10_000) * 10 + signBit;
   }
 
   private symbolIdFromKey(key: number): SymbolId {
-    const absSymbolId = Math.floor(key / 100000000);
+    const compactSym = Math.floor(key / 100_000_000);
+    const domain = Math.floor(compactSym / 2_000_000);
+    const localSeq = compactSym % 2_000_000;
+    const absSymbolId = domain > 0 ? (((domain & 0x1f) << 24) | localSeq) >>> 0 : localSeq;
     const signBit = key % 10;
     return signBit === 1 ? -absSymbolId : absSymbolId;
   }
 
   public resolveEntry(id: SymbolId): SymbolEntry | undefined {
-    if (id < 0) {
-      return this.virtualEntries.get(id) ?? this.index.symbols.get(id);
+    const resolvedId = typeof id === "object" && id !== null && "id" in (id as any) ? (id as any).id : id;
+    if (resolvedId < 0) {
+      return this.virtualEntries.get(resolvedId) ?? this.index.symbols.get(resolvedId);
     }
-    return this.index.symbols.get(id);
+    return this.index.symbols.get(resolvedId);
   }
 
   public *allEntries(): IterableIterator<SymbolEntry> {
@@ -445,8 +481,13 @@ export class WasmQueryEngine {
     return this.fetch(queryName, id) as T;
   }
 
-  public queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
-    const argsHash = JSON.stringify(args, Object.keys(args).sort());
+  public queryWith<T = unknown>(
+    queryName: string,
+    id: SymbolId,
+    args: Record<string, unknown>,
+    hashOverride?: string,
+  ): T {
+    const argsHash = stableStringifyArgs(args, hashOverride);
     return this.fetch(queryName, id, argsHash, args) as T;
   }
 
@@ -461,16 +502,48 @@ export class WasmQueryEngine {
     structuralChangedIds?: Set<SymbolId>,
   ): void {
     const changedIds = explicitChangedIds ? new Set<SymbolId>(explicitChangedIds) : new Set<SymbolId>();
+    const changedNames = new Set<string>();
+
     if (!explicitChangedIds || explicitChangedIds.size === 0) {
-      for (const [id, entry] of newIndex.symbols) {
-        const old = this.index.symbols.get(id);
-        if (!old || old.startByte !== entry.startByte || old.endByte !== entry.endByte) {
+      if (this.index !== newIndex) {
+        for (const [id, oldEntry] of this.index.symbols) {
+          if (!newIndex.symbols.has(id)) {
+            changedIds.add(id);
+            if (oldEntry.name) changedNames.add(oldEntry.name);
+          }
+        }
+      }
+      for (const [id, prevName] of this.symbolNames) {
+        if (!newIndex.symbols.has(id)) {
           changedIds.add(id);
+          if (prevName) changedNames.add(prevName);
+        }
+      }
+      for (const [id, entry] of newIndex.symbols) {
+        const old = this.index !== newIndex ? this.index.symbols.get(id) : undefined;
+        const prevName = old?.name ?? this.symbolNames.get(id);
+        if (!old && prevName === undefined) {
+          changedIds.add(id);
+          if (entry.name) changedNames.add(entry.name);
+        } else if (
+          (old &&
+            (old.startByte !== entry.startByte ||
+              old.endByte !== entry.endByte ||
+              old.name !== entry.name ||
+              old.kind !== entry.kind ||
+              old.parentId !== entry.parentId ||
+              old.ruleName !== entry.ruleName)) ||
+          (prevName !== undefined && prevName !== entry.name)
+        ) {
+          changedIds.add(id);
+          if (entry.name) changedNames.add(entry.name);
+          if (prevName) changedNames.add(prevName);
         }
       }
     }
+
     this.index = newIndex;
-    this.invalidate(changedIds, structuralChangedIds);
+    this.invalidate(changedIds, structuralChangedIds, changedNames);
   }
 
   public async preflight(symbolIds: SymbolId[], queryNames?: string[]): Promise<void> {
@@ -502,7 +575,11 @@ export class WasmQueryEngine {
     }
   }
 
-  public invalidate(changedSymbolIds: Set<SymbolId> | SymbolId[], structuralChangedIds?: Set<SymbolId>): void {
+  public invalidate(
+    changedSymbolIds: Set<SymbolId> | SymbolId[],
+    structuralChangedIds?: Set<SymbolId>,
+    changedNames?: Set<string>,
+  ): void {
     this.currentRevision++;
     const ids = changedSymbolIds instanceof Set ? changedSymbolIds : new Set(changedSymbolIds);
 
@@ -511,6 +588,26 @@ export class WasmQueryEngine {
       const domain = getSymbolDomain(id);
       if (domain !== LanguageDomainId.Default) {
         this.incrementDomainRevision(domain);
+      }
+      const entry = this.index.symbols.get(id);
+      const prevName = this.symbolNames.get(id);
+      if (entry) {
+        if (prevName === undefined) {
+          if (entry.name) this.invalidateByName(entry.name);
+        } else if (prevName !== entry.name) {
+          if (entry.name) this.invalidateByName(entry.name);
+          if (prevName) this.invalidateByName(prevName);
+        }
+        this.symbolNames.set(id, entry.name);
+      } else if (prevName) {
+        this.invalidateByName(prevName);
+        this.symbolNames.delete(id);
+      }
+    }
+
+    if (changedNames) {
+      for (const name of changedNames) {
+        this.invalidateByName(name);
       }
     }
 
@@ -521,6 +618,10 @@ export class WasmQueryEngine {
           for (const key of dependentKeys) {
             this.memos.delete(key);
           }
+        }
+        const entry = this.index.symbols.get(id);
+        if (entry?.name) {
+          this.invalidateByName(entry.name);
         }
       }
     }
@@ -876,6 +977,9 @@ export class WasmQueryEngine {
         if (dep.kind === "input") {
           const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
           if (rev > memo.verified_at) return false;
+        } else if (dep.kind === "byName") {
+          const rev = this.byNameRevisions.get(dep.name) ?? 0;
+          if (rev > memo.verified_at) return false;
         } else if (dep.kind === "domain") {
           const rev = this.domainRevisions.get(dep.domain) ?? 0;
           if (rev > memo.verified_at) return false;
@@ -917,8 +1021,21 @@ export class WasmQueryEngine {
     const key = this.memoKey(queryName, symbolId, argsHash);
 
     // Cycle detection
-    for (const frame of this.executionStack) {
+    for (let i = 0; i < this.executionStack.length; i++) {
+      const frame = this.executionStack[i]!;
       if (frame.key === key) {
+        const recoveryFn =
+          typeof rawQuery === "object" && rawQuery !== null && typeof (rawQuery as any).recovery === "function"
+            ? (rawQuery as any).recovery
+            : undefined;
+        if (recoveryFn) {
+          const participants = [
+            ...this.executionStack.slice(i).map((f) => ({ queryName: f.queryName, symbolId: f.symbolId })),
+            { queryName, symbolId },
+          ];
+          const cycleDb = Object.assign(this.createTrackedDB(), { participants });
+          return recoveryFn(cycleDb, entry, args);
+        }
         return undefined; // Graceful cycle fallback
       }
     }
@@ -963,6 +1080,13 @@ export class WasmQueryEngine {
         if (!set) {
           set = new Set();
           this.inputReverseDependencies.set(dep.symbolId, set);
+        }
+        set.add(key);
+      } else if (dep.kind === "byName") {
+        let set = this.byNameReverseDependencies.get(dep.name);
+        if (!set) {
+          set = new Set();
+          this.byNameReverseDependencies.set(dep.name, set);
         }
         set.add(key);
       }
@@ -1046,7 +1170,12 @@ export class WasmQueryEngine {
         if (tracker) tracker.recordByName(name);
         const ids = engine.index.byName.get(name);
         if (!ids) return [];
-        return ids.map((id: SymbolId) => engine.resolveEntry(id)).filter(Boolean) as SymbolEntry[];
+        return ids
+          .map((id: SymbolId) => {
+            if (tracker) tracker.recordInput(id);
+            return engine.resolveEntry(id);
+          })
+          .filter(Boolean) as SymbolEntry[];
       },
 
       allEntries(): SymbolEntry[] {
@@ -1095,8 +1224,8 @@ export class WasmQueryEngine {
         return engine.hasDomainChanged(domain, sinceRevision);
       },
 
-      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
-        const argsHash = JSON.stringify(args, Object.keys(args).sort());
+      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T {
+        const argsHash = stableStringifyArgs(args, hashOverride);
         return engine.fetch(queryName, id, argsHash, args) as T;
       },
 
@@ -1542,8 +1671,8 @@ export class WasmQueryEngine {
         return engine.hasDomainChanged(domain, sinceRevision);
       },
 
-      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
-        const argsHash = JSON.stringify(args, Object.keys(args).sort());
+      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T {
+        const argsHash = stableStringifyArgs(args, hashOverride);
         return engine.fetch(queryName, id, argsHash, args) as T;
       },
 

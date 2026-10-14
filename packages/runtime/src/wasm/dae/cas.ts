@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { DaeBuilder, ExprKind, BinOp, UnaryOp } from "./builder";
+import { DaeBuilder, ExprKind, BinOp, UnaryOp, BuiltinMathFunc } from "./builder";
 import { ExprAccessor } from "./accessors";
+
+export { BuiltinMathFunc };
 
 /**
  * Computer Algebra System (CAS) & Symbolic Simplification Engine in WASM.
@@ -13,7 +15,9 @@ import { ExprAccessor } from "./accessors";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function cas_getRealValue(dae: DaeBuilder, exprId: u32): f64 {
-  return ExprAccessor.at(dae.getExprData(), exprId).realValue;
+  let e = ExprAccessor.at(dae.getExprData(), exprId);
+  if (e.kind == ExprKind.IntLiteral) return e.intValue as f64;
+  return e.realValue;
 }
 
 export function cas_isZero(dae: DaeBuilder, exprId: u32): boolean {
@@ -48,11 +52,13 @@ export function cas_isConstant(dae: DaeBuilder, exprId: u32): boolean {
 export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
   if (exprId >= dae.exprCount) return exprId;
   let e = ExprAccessor.at(dae.getExprData(), exprId);
+  let kind = e.kind;
+  let op = e.binOp;
+  let unaryOp = e.unaryOp;
+  let leftId = e.left;
+  let rightId = e.right;
 
-  if (e.kind == ExprKind.Binary) {
-    let op = e.binOp;
-    let leftId = e.left;
-    let rightId = e.right;
+  if (kind == ExprKind.Binary) {
     let left  = cas_simplify(dae, leftId);
     let right = cas_simplify(dae, rightId);
 
@@ -90,49 +96,32 @@ export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
     return dae.addExpression(ExprKind.Binary, op, left, right);
   }
 
-  if (e.kind == ExprKind.Unary || e.kind == ExprKind.Negate) {
-    let sub = cas_simplify(dae, e.left);
+  if (kind == ExprKind.Unary && unaryOp == UnaryOp.Not) {
+    let sub = cas_simplify(dae, leftId);
+    let subAcc = ExprAccessor.at(dae.getExprData(), sub);
+    if (subAcc.kind == ExprKind.BoolLiteral) {
+      return dae.addBoolLiteral(subAcc.intValue == 0);
+    }
+    if (subAcc.kind == ExprKind.Unary && subAcc.unaryOp == UnaryOp.Not) {
+      return subAcc.left;
+    }
+    return sub == leftId ? exprId : dae.addExpression(ExprKind.Unary, UnaryOp.Not, sub, 0xffffffff);
+  }
+
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+    let sub = cas_simplify(dae, leftId);
     if (cas_isConstant(dae, sub)) {
       return dae.addRealLiteral(-cas_getRealValue(dae, sub));
     }
     // -(-x) → x
-    let subKind = ExprAccessor.at(dae.getExprData(), sub).kind;
-    if (subKind == ExprKind.Negate || subKind == ExprKind.Unary) {
-      return ExprAccessor.at(dae.getExprData(), sub).left;
+    let subAcc = ExprAccessor.at(dae.getExprData(), sub);
+    if (subAcc.kind == ExprKind.Negate || (subAcc.kind == ExprKind.Unary && subAcc.unaryOp == UnaryOp.Negate)) {
+      return subAcc.left;
     }
     return dae.addExpression(ExprKind.Negate, 0, sub, 0xffffffff);
   }
 
   return exprId;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Built-in Math Function Enum
-// ─────────────────────────────────────────────────────────────────────────────
-
-export enum BuiltinMathFunc {
-  Sin = 0,
-  Cos = 1,
-  Tan = 2,
-  Asin = 3,
-  Acos = 4,
-  Atan = 5,
-  Atan2 = 6,
-  Sinh = 7,
-  Cosh = 8,
-  Tanh = 9,
-  Exp = 10,
-  Log = 11,
-  Log10 = 12,
-  Sqrt = 13,
-  Abs = 14,
-  Sign = 15,
-  Min = 16,
-  Max = 17,
-  Floor = 18,
-  Ceil = 19,
-  Fmod = 20,
-  Pow = 21,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,10 +135,18 @@ export enum BuiltinMathFunc {
 export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32): u32 {
   if (exprId >= dae.exprCount) return dae.addRealLiteral(0.0);
   let e = ExprAccessor.at(dae.getExprData(), exprId);
+  let kind = e.kind;
+  let data1 = e.data1;
+  let left = e.left;
+  let right = e.right;
+  let unaryOp = e.unaryOp;
+  let binOp = e.binOp;
+  let funcId = e.funcId as i32;
+  let varId = e.varId;
 
   // d(x)/dx = 1, d(y)/dx = 0
-  if (e.kind == ExprKind.Name) {
-    return e.varId == targetVarId ? dae.addRealLiteral(1.0) : dae.addRealLiteral(0.0);
+  if (kind == ExprKind.Name) {
+    return varId == targetVarId ? dae.addRealLiteral(1.0) : dae.addRealLiteral(0.0);
   }
 
   // d(const)/dx = 0
@@ -157,10 +154,10 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
     return dae.addRealLiteral(0.0);
   }
 
-  if (e.kind == ExprKind.Binary) {
-    let op = e.binOp;
-    let u  = e.left;
-    let v  = e.right;
+  if (kind == ExprKind.Binary) {
+    let op = binOp;
+    let u  = left;
+    let v  = right;
     let du = cas_differentiate(dae, u, targetVarId);
     let dv = cas_differentiate(dae, v, targetVarId);
 
@@ -210,9 +207,8 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
     }
   }
 
-  if (e.kind == ExprKind.Call) {
-    let funcId = e.funcId as i32;
-    let u  = e.left;
+  if (kind == ExprKind.Call) {
+    let u  = left;
     let du = cas_differentiate(dae, u, targetVarId);
     if (cas_isZero(dae, du)) return dae.addRealLiteral(0.0);
 
@@ -280,15 +276,19 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
     }
   }
 
-  if (e.kind == ExprKind.IfElse) {
+  if (kind == ExprKind.IfElse) {
     // d/dx if(c, t, e) = if(c, d/dx t, d/dx e)
-    let dThen = cas_differentiate(dae, e.left,  targetVarId);
-    let dElse = cas_differentiate(dae, e.right, targetVarId);
-    return cas_simplify(dae, dae.addExpression(ExprKind.IfElse, e.data1, dThen, dElse));
+    let dThen = cas_differentiate(dae, left,  targetVarId);
+    let dElse = cas_differentiate(dae, right, targetVarId);
+    return cas_simplify(dae, dae.addExpression(ExprKind.IfElse, data1, dThen, dElse));
   }
 
-  if (e.kind == ExprKind.Negate || e.kind == ExprKind.Unary) {
-    let du = cas_differentiate(dae, e.left, targetVarId);
+  if (kind == ExprKind.Unary && unaryOp == UnaryOp.Not) {
+    return dae.addRealLiteral(0.0);
+  }
+
+  if (kind == ExprKind.Negate || kind == ExprKind.Unary) {
+    let du = cas_differentiate(dae, left, targetVarId);
     return cas_simplify(dae, dae.addExpression(ExprKind.Negate, 0, du, 0xffffffff));
   }
 

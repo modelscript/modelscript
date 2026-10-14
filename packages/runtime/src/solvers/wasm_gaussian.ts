@@ -84,41 +84,56 @@ export class WasmGaussian {
    */
   solveLinearSystem(A: Float64Array[] | Float64Array, b: Float64Array): Float64Array {
     const n = b.length;
-    if (this.wasmInstance?.exports?.luFactor && this.wasmInstance?.exports?.luSolve && this.wasmInstance?.memory) {
-      const matrixBytes = n * n * 8;
-      const matrixPtr = 1024;
-      const pivPtr = (matrixPtr + matrixBytes + 7) & ~7;
-      const scalePtr = (pivPtr + n * 4 + 7) & ~7;
-      const bPtr = (scalePtr + n * 8 + 7) & ~7;
-      const scratchPtr = (bPtr + n * 8 + 7) & ~7;
-      const totalBytes = (scratchPtr + n * 8 + 7) & ~7;
+    const exports = this.wasmInstance?.exports ?? this.wasmInstance;
+    const memory: WebAssembly.Memory | undefined = this.wasmInstance?.memory ?? exports?.memory;
 
-      if (
-        totalBytes > this.wasmInstance.memory.buffer.byteLength &&
-        typeof this.wasmInstance.memory.grow === "function"
-      ) {
-        const pagesNeeded = Math.ceil((totalBytes - this.wasmInstance.memory.buffer.byteLength) / 65536);
-        this.wasmInstance.memory.grow(pagesNeeded);
-      }
+    if (typeof exports?.luFactor === "function" && typeof exports?.luSolve === "function" && memory) {
+      const matrixBytes = (n * n * 8 + 7) & ~7;
+      const pivBytes = (n * 4 + 7) & ~7;
+      const scaleBytes = (n * 8 + 7) & ~7;
+      const bBytes = (n * 8 + 7) & ~7;
+      const scratchBytes = (n * 8 + 7) & ~7;
+      const blockBytes = matrixBytes + pivBytes + scaleBytes + bBytes + scratchBytes;
 
-      const memF64 = new Float64Array(this.wasmInstance.memory.buffer);
-      const matrixOffset = matrixPtr >> 3;
-      if (Array.isArray(A)) {
-        for (let i = 0; i < n; i++) {
-          memF64.set(A[i]!, matrixOffset + i * n);
+      const hasAlloc = typeof exports.alloc === "function";
+      const basePtr = hasAlloc ? (exports.alloc(blockBytes) + 7) & ~7 : 1024;
+      const matrixPtr = basePtr;
+      const pivPtr = matrixPtr + matrixBytes;
+      const scalePtr = pivPtr + pivBytes;
+      const bPtr = scalePtr + scaleBytes;
+      const scratchPtr = bPtr + bBytes;
+      const totalBytes = scratchPtr + scratchBytes;
+
+      try {
+        if (!hasAlloc && totalBytes > memory.buffer.byteLength && typeof memory.grow === "function") {
+          const pagesNeeded = Math.ceil((totalBytes - memory.buffer.byteLength) / 65536);
+          memory.grow(pagesNeeded);
         }
-      } else {
-        memF64.set(A, matrixOffset);
-      }
 
-      memF64.set(b, bPtr >> 3);
+        let memF64 = new Float64Array(memory.buffer);
+        const matrixOffset = matrixPtr >>> 3;
+        if (Array.isArray(A)) {
+          for (let i = 0; i < n; i++) {
+            memF64.set(A[i]!, matrixOffset + i * n);
+          }
+        } else {
+          memF64.set(A, matrixOffset);
+        }
 
-      const ok = this.wasmInstance.exports.luFactor(matrixPtr, pivPtr, scalePtr, n);
-      if (ok) {
-        this.wasmInstance.exports.luSolve(matrixPtr, pivPtr, scalePtr, bPtr, scratchPtr, n);
-        const sol = new Float64Array(n);
-        sol.set(memF64.subarray(bPtr >> 3, (bPtr >> 3) + n));
-        return sol;
+        memF64.set(b, bPtr >>> 3);
+
+        const ok = exports.luFactor(matrixPtr, pivPtr, scalePtr, n);
+        if (ok) {
+          exports.luSolve(matrixPtr, pivPtr, scalePtr, bPtr, scratchPtr, n);
+          memF64 = new Float64Array(memory.buffer);
+          const sol = new Float64Array(n);
+          sol.set(memF64.subarray(bPtr >>> 3, (bPtr >>> 3) + n));
+          return sol;
+        }
+      } finally {
+        if (hasAlloc && typeof exports.free === "function") {
+          exports.free(basePtr);
+        }
       }
     }
 
@@ -303,7 +318,11 @@ export function evaluateTapeGaussian(
   const TAPE_STRIDE = 4;
 
   function getCov(nameA: string | undefined, nameB: string | undefined): number {
-    if (!covariance || !nameA || !nameB || nameA === nameB) return 0;
+    if (!nameA || !nameB) return 0;
+    if (nameA === nameB) {
+      return covariance?.get(nameA)?.get(nameB) ?? distributions.get(nameA)?.variance ?? 0;
+    }
+    if (!covariance) return 0;
     return covariance.get(nameA)?.get(nameB) ?? covariance.get(nameB)?.get(nameA) ?? 0;
   }
 

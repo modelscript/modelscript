@@ -512,12 +512,30 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         }
         this.unifiedIndex.childrenOf.delete(id);
         if (entry) {
+          const parentIdKey = entry.parentId ?? 0;
+          const parentChildren = this.unifiedIndex.childrenOf.get(parentIdKey);
+          if (parentChildren) {
+            this.unifiedIndex.childrenOf.set(
+              parentIdKey,
+              parentChildren.filter((symId) => symId !== id),
+            );
+          }
           const list = this.unifiedIndex.byName.get(entry.name);
           if (list) {
             this.unifiedIndex.byName.set(
               entry.name,
               list.filter((symId) => symId !== id),
             );
+          }
+          if (_parentFQN && entry.name) {
+            const fqn = `${_parentFQN}.${entry.name}`;
+            const fqnList = this.unifiedIndex.byName.get(fqn);
+            if (fqnList) {
+              this.unifiedIndex.byName.set(
+                fqn,
+                fqnList.filter((symId) => symId !== id),
+              );
+            }
           }
           if (entry.name && entry.name.includes(":")) {
             const localName = entry.name.split(":").pop()!;
@@ -541,6 +559,36 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
     }
 
+    const cleanupDeletedSymbols = () => {
+      for (const oldId of oldSymbolsToDelete) {
+        this.globalChangedIds.add(oldId);
+        this.globalStructuralChangedIds.add(oldId);
+        const entry = this.unifiedIndex.symbols.get(oldId);
+        if (entry && entry.parentId !== null) {
+          this.globalChangedIds.add(entry.parentId);
+          this.globalStructuralChangedIds.add(entry.parentId);
+          const parentChildren = this.unifiedIndex.childrenOf.get(entry.parentId);
+          if (parentChildren) {
+            this.unifiedIndex.childrenOf.set(
+              entry.parentId,
+              parentChildren.filter((id) => id !== oldId),
+            );
+          }
+        }
+        if (entry) {
+          this.unifiedIndex.symbols.delete(oldId);
+          const byNameList = this.unifiedIndex.byName.get(entry.name);
+          if (byNameList) {
+            this.unifiedIndex.byName.set(
+              entry.name,
+              byNameList.filter((id) => id !== oldId),
+            );
+          }
+        }
+        this.unifiedIndex.childrenOf.delete(oldId);
+      }
+    };
+
     const newIds: SymbolId[] = [];
 
     if (uri.endsWith(".csv")) {
@@ -556,9 +604,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         }
       }
 
-      const matchKey = `root:Class:${normalizedName}:SourceFile`;
+      const parentKey = parentId === null ? "root" : String(parentId);
+      const matchKey = `${parentKey}:Class:${normalizedName}:SourceFile`;
       let symId: SymbolId;
-      const existingEntry = oldEntriesByKey.get(matchKey);
+      const existingEntry =
+        oldEntriesByKey.get(matchKey) ?? oldEntriesByKey.get(`root:Class:${normalizedName}:SourceFile`);
       const rootStart = rootNode.startOffset ?? rootNode.startByte ?? rootNode.startIndex ?? 0;
       const rootEnd = rootNode.endOffset ?? rootNode.endByte ?? rootNode.endIndex ?? 0;
       if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
@@ -605,18 +655,18 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this.unifiedIndex.symbols.set(symId, rootEntry);
 
       const nameList = this.unifiedIndex.byName.get(normalizedName) || [];
-      nameList.push(symId);
+      if (!nameList.includes(symId)) nameList.push(symId);
       this.unifiedIndex.byName.set(normalizedName, nameList);
 
       if (_parentFQN) {
         const fqn = `${_parentFQN}.${normalizedName}`;
         const fqnList = this.unifiedIndex.byName.get(fqn) || [];
-        fqnList.push(symId);
+        if (!fqnList.includes(symId)) fqnList.push(symId);
         this.unifiedIndex.byName.set(fqn, fqnList);
       }
 
       const parentChildList = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
-      parentChildList.push(symId);
+      if (!parentChildList.includes(symId)) parentChildList.push(symId);
       this.unifiedIndex.childrenOf.set(parentId ?? 0, parentChildList);
 
       const rootNodeText = typeof rootNode.text === "string" ? rootNode.text : "";
@@ -665,11 +715,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           this.unifiedIndex.symbols.set(childId, virtualEntry);
 
           const list = this.unifiedIndex.byName.get(name) || [];
-          list.push(childId);
+          if (!list.includes(childId)) list.push(childId);
           this.unifiedIndex.byName.set(name, list);
 
           const childList = this.unifiedIndex.childrenOf.get(symId) || [];
-          childList.push(childId);
+          if (!childList.includes(childId)) childList.push(childId);
           this.unifiedIndex.childrenOf.set(symId, childList);
         };
 
@@ -684,6 +734,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         }
       }
 
+      cleanupDeletedSymbols();
       this.fileSymbols.set(uri, newIds);
       this._version++;
       this._structuralRevision++;
@@ -769,11 +820,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             };
             this.unifiedIndex.symbols.set(extSymId, extEntry);
             const list = this.unifiedIndex.byName.get(extName) || [];
-            list.push(extSymId);
+            if (!list.includes(extSymId)) list.push(extSymId);
             this.unifiedIndex.byName.set(extName, list);
 
             const childList = this.unifiedIndex.childrenOf.get(parentId) || [];
-            childList.push(extSymId);
+            if (!childList.includes(extSymId)) childList.push(extSymId);
             this.unifiedIndex.childrenOf.set(parentId, childList);
           }
         }
@@ -866,7 +917,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.unifiedIndex.symbols.set(symId, entry);
 
         const list = this.unifiedIndex.byName.get(name) || [];
-        list.push(symId);
+        if (!list.includes(symId)) list.push(symId);
         this.unifiedIndex.byName.set(name, list);
 
         if (name && name.includes(":")) {
@@ -890,7 +941,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         }
 
         const childList = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
-        childList.push(symId);
+        if (!childList.includes(symId)) childList.push(symId);
         this.unifiedIndex.childrenOf.set(parentId ?? 0, childList);
       }
 
@@ -926,26 +977,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
     walk(rootNode, initialParentId);
 
-    for (const oldId of oldSymbolsToDelete) {
-      this.globalChangedIds.add(oldId);
-      this.globalStructuralChangedIds.add(oldId);
-      const entry = this.unifiedIndex.symbols.get(oldId);
-      if (entry && entry.parentId !== null) {
-        this.globalChangedIds.add(entry.parentId);
-        this.globalStructuralChangedIds.add(entry.parentId);
-      }
-      if (entry) {
-        this.unifiedIndex.symbols.delete(oldId);
-        const byNameList = this.unifiedIndex.byName.get(entry.name);
-        if (byNameList) {
-          this.unifiedIndex.byName.set(
-            entry.name,
-            byNameList.filter((id) => id !== oldId),
-          );
-        }
-      }
-      this.unifiedIndex.childrenOf.delete(oldId);
-    }
+    cleanupDeletedSymbols();
 
     this.fileSymbols.set(uri, newIds);
     this._version++;
@@ -1259,6 +1291,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.uriToId.delete(uri);
         this.idToUri.delete(fileId);
       }
+      this.fileDirtyRanges.delete(uri);
+      this.fileStructuralRevisions.delete(uri);
+      this.fileLoaders.delete(uri);
+      for (const [fqn, mappedUri] of this.fqnToUri.entries()) {
+        if (mappedUri === uri) {
+          this.fqnToUri.delete(fqn);
+        }
+      }
       const symIds = this.fileSymbols.get(uri);
       if (symIds) {
         for (const id of symIds) {
@@ -1270,7 +1310,29 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
               if (filtered.length > 0) this.unifiedIndex.byName.set(entry.name, filtered);
               else this.unifiedIndex.byName.delete(entry.name);
             }
+            const pKey = entry.parentId ?? null;
+            const pChildren = this.unifiedIndex.childrenOf.get(pKey);
+            if (pChildren) {
+              const filteredChildren = pChildren.filter((x) => x !== id);
+              if (filteredChildren.length > 0) {
+                this.unifiedIndex.childrenOf.set(pKey, filteredChildren);
+              } else {
+                this.unifiedIndex.childrenOf.delete(pKey);
+              }
+            }
+            if (pKey !== 0) {
+              const zeroChildren = this.unifiedIndex.childrenOf.get(0);
+              if (zeroChildren) {
+                const filteredZero = zeroChildren.filter((x) => x !== id);
+                if (filteredZero.length > 0) {
+                  this.unifiedIndex.childrenOf.set(0, filteredZero);
+                } else {
+                  this.unifiedIndex.childrenOf.delete(0);
+                }
+              }
+            }
           }
+          this.unifiedIndex.childrenOf.delete(id);
           this.unifiedIndex.symbols.delete(id);
         }
         this.fileSymbols.delete(uri);
@@ -1283,6 +1345,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this.idToUri.clear();
       this.nextFileId = 1;
       this.fileSymbols.clear();
+      this.fileDirtyRanges.clear();
+      this.fileStructuralRevisions.clear();
+      this.fileLoaders.clear();
+      this.fqnToUri.clear();
       this.unifiedIndex.symbols.clear();
       this.unifiedIndex.byName.clear();
       this.unifiedIndex.childrenOf.clear();
@@ -1353,10 +1419,22 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         if (entry) {
           const list = this.unifiedIndex.byName.get(entry.name);
           if (list) {
-            this.unifiedIndex.byName.set(
-              entry.name,
-              list.filter((symId) => symId !== id),
-            );
+            const filtered = list.filter((symId) => symId !== id);
+            if (filtered.length > 0) {
+              this.unifiedIndex.byName.set(entry.name, filtered);
+            } else {
+              this.unifiedIndex.byName.delete(entry.name);
+            }
+          }
+          const pKey = entry.parentId ?? 0;
+          const pChildren = this.unifiedIndex.childrenOf.get(pKey);
+          if (pChildren) {
+            const filteredChildren = pChildren.filter((symId) => symId !== id);
+            if (filteredChildren.length > 0) {
+              this.unifiedIndex.childrenOf.set(pKey, filteredChildren);
+            } else {
+              this.unifiedIndex.childrenOf.delete(pKey);
+            }
           }
         }
         this.unifiedIndex.symbols.delete(id);
@@ -1369,12 +1447,16 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       newIds.push(entry.id);
 
       const list = this.unifiedIndex.byName.get(entry.name) || [];
-      list.push(entry.id);
+      if (!list.includes(entry.id)) {
+        list.push(entry.id);
+      }
       this.unifiedIndex.byName.set(entry.name, list);
 
       const parentId = entry.parentId ?? 0;
       const childList = this.unifiedIndex.childrenOf.get(parentId) || [];
-      childList.push(entry.id);
+      if (!childList.includes(entry.id)) {
+        childList.push(entry.id);
+      }
       this.unifiedIndex.childrenOf.set(parentId, childList);
 
       if (entry.id >= this.nextSymbolId) {
@@ -1432,8 +1514,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       if (!entry || !entry.resourceId) return null;
       const text = this.getDocumentText(entry.resourceId);
       if (text === undefined) return null;
-      const start = entry.startOffset ?? startByte;
-      const end = entry.endOffset ?? endByte;
+      const start = startByte !== undefined ? startByte : (entry.startOffset ?? entry.startByte);
+      const end = endByte !== undefined ? endByte : (entry.endOffset ?? entry.endByte);
       return text.substring(start, end);
     };
 

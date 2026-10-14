@@ -729,6 +729,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         kind: "expression",
         cstBytes: [expr.startOffset ?? expr.startIndex, expr.endOffset ?? expr.endIndex],
         text: expr.text,
+        evaluationScopeId: scopeId,
       };
   }
 

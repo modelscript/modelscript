@@ -166,19 +166,92 @@ export function createTornBlock(
  * Checks if an expression tree contains a reference to target variable ID.
  */
 function exprContainsVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): bool {
-  if (exprId >= dae.exprCount) return false;
+  if (exprId == 0xffffffff || exprId >= dae.exprCount) return false;
   let offset = exprId * EXPR_STRIDE;
   let kind = dae.getExprData().get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Name) {
-    return (dae.getExprData().get(offset + EXPR_DATA1) as u32) == targetVarId;
+    let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (rawId == targetVarId) return true;
+    if (rawId >= dae.varCount) {
+      let resolved = dae.lookupVariableByName(rawId);
+      return resolved >= 0 && (resolved as u32) == targetVarId;
+    }
+    return false;
   }
 
-  let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
-  let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+  if (
+    kind == ExprKind.IntLiteral ||
+    kind == ExprKind.RealLiteral ||
+    kind == ExprKind.BoolLiteral ||
+    kind == ExprKind.StringLiteral ||
+    kind == ExprKind.EnumLiteral ||
+    kind == ExprKind.Colon
+  ) {
+    return false;
+  }
 
-  if (left != 0xffffffff && exprContainsVar(dae, left, targetVarId)) return true;
-  if (right != 0xffffffff && exprContainsVar(dae, right, targetVarId)) return true;
+  if (kind == ExprKind.Der || kind == ExprKind.Pre) {
+    let data1 = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    if (data1 != 0xffffffff && data1 < dae.exprCount && exprContainsVar(dae, data1, targetVarId)) return true;
+    if (left != 0xffffffff && left < dae.exprCount && exprContainsVar(dae, left, targetVarId)) return true;
+    return false;
+  }
+
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    return left != 0xffffffff && exprContainsVar(dae, left, targetVarId);
+  }
+
+  if (kind == ExprKind.Binary) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    if (left != 0xffffffff && exprContainsVar(dae, left, targetVarId)) return true;
+    if (right != 0xffffffff && exprContainsVar(dae, right, targetVarId)) return true;
+    return false;
+  }
+
+  if (kind == ExprKind.IfElse || kind == ExprKind.Range) {
+    let data1 = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    if (data1 != 0xffffffff && exprContainsVar(dae, data1, targetVarId)) return true;
+    if (left != 0xffffffff && exprContainsVar(dae, left, targetVarId)) return true;
+    if (right != 0xffffffff && exprContainsVar(dae, right, targetVarId)) return true;
+    return false;
+  }
+
+  if (kind == ExprKind.Subscript || kind == ExprKind.Call || kind == ExprKind.ArrayCtor || kind == ExprKind.Tuple) {
+    if (kind == ExprKind.Subscript) {
+      let baseExpr = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+      if (baseExpr != 0xffffffff && exprContainsVar(dae, baseExpr, targetVarId)) return true;
+    }
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let rightVal = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    let data1Val = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let count: u32 =
+      kind == ExprKind.Call || kind == ExprKind.Subscript
+        ? rightVal
+        : rightVal > 0 && rightVal != 0xffffffff
+          ? rightVal
+          : data1Val;
+    if (count > 0 && count != 0xffffffff && left != 0xffffffff) {
+      if (exprContainsVar(dae, left, targetVarId)) return true;
+      for (let a: u32 = 1; a < count; a++) {
+        let slotIdx = exprId + a;
+        if (slotIdx < dae.exprCount) {
+          let slotOffset = slotIdx * EXPR_STRIDE;
+          let slotKind = dae.getExprData().get(slotOffset + EXPR_KIND);
+          let argExpr = slotKind == ExprKind.Tuple
+            ? (dae.getExprData().get(slotOffset + EXPR_LEFT) as u32)
+            : left + a;
+          if (argExpr != 0xffffffff && exprContainsVar(dae, argExpr, targetVarId)) return true;
+        }
+      }
+    }
+    return false;
+  }
 
   return false;
 }
@@ -267,7 +340,7 @@ export function solveTornBlock(
 
     // 3. Check convergence
     let normR = vectorNormInf(rPtr, k);
-    if (normR < tol) break;
+    if (!isNaN(normR) && normR < tol) return true;
 
     // 4. Construct k x k Reduced Jacobian J_tear via perturbation
     for (let j: u32 = 0; j < k; j++) {
@@ -315,11 +388,16 @@ export function solveTornBlock(
       for (let i: u32 = 0; i < k; i++) {
         let resEq = torn.getResidualEqIndices().get(i) as u32;
         let resNew = Math.abs(evalEquationResidual(resEq, dae, varValuesPtr));
+        if (isNaN(resNew)) {
+          maxNewRes = Infinity;
+          break;
+        }
         if (resNew > maxNewRes) maxNewRes = resNew;
       }
 
       if (maxNewRes < normR) {
         stepAccepted = true;
+        if (maxNewRes < tol) return true;
         break;
       }
 
@@ -342,10 +420,22 @@ export function solveTornBlock(
         varValues[tearV] = xOrig - delta;
       }
       evalInnerChain(dae, torn, varValuesPtr);
+
+      let finalRes: f64 = 0.0;
+      for (let i: u32 = 0; i < k; i++) {
+        let resEq = torn.getResidualEqIndices().get(i) as u32;
+        let resNew = Math.abs(evalEquationResidual(resEq, dae, varValuesPtr));
+        if (isNaN(resNew)) {
+          finalRes = Infinity;
+          break;
+        }
+        if (resNew > finalRes) finalRes = resNew;
+      }
+      if (finalRes < tol) return true;
     }
   }
 
-  return true;
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

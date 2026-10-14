@@ -19,36 +19,82 @@ import { cas_simplify, cas_differentiate, cas_isZero, cas_isOne, cas_isConstant,
  * Checks if a symbolic expression contains a specific variable ID.
  */
 export function symbolicContainsVar(dae: DaeBuilder, exprId: u32, targetVar: u32): boolean {
-  if (exprId >= dae.exprCount) return false;
+  if (exprId == 0xffffffff || exprId >= dae.exprCount) return false;
   let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
   let kind = exprData.get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Name) {
-    let varId = exprData.get(offset + EXPR_DATA1);
-    return varId == targetVar;
+    let varId = exprData.get(offset + EXPR_DATA1) as u32;
+    if (varId == targetVar) return true;
+    if (varId >= dae.varCount) {
+      let resolved = dae.lookupVariableByName(varId);
+      return resolved >= 0 && (resolved as u32) == targetVar;
+    }
+    return false;
   }
 
-  if (kind == ExprKind.Binary) {
-    let left = exprData.get(offset + EXPR_LEFT);
-    let right = exprData.get(offset + EXPR_RIGHT);
+  if (kind == ExprKind.Binary || kind == ExprKind.Range) {
+    let data1 = exprData.get(offset + EXPR_DATA1) as u32;
+    let left = exprData.get(offset + EXPR_LEFT) as u32;
+    let right = exprData.get(offset + EXPR_RIGHT) as u32;
+    if (kind == ExprKind.Range && data1 != 0xffffffff && symbolicContainsVar(dae, data1, targetVar)) return true;
     return symbolicContainsVar(dae, left, targetVar) || symbolicContainsVar(dae, right, targetVar);
   }
 
-  if (kind == ExprKind.Unary || kind == ExprKind.Negate || kind == ExprKind.Der || kind == ExprKind.Pre) {
-    let operand = exprData.get(offset + EXPR_LEFT);
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+    let operand = exprData.get(offset + EXPR_LEFT) as u32;
     return symbolicContainsVar(dae, operand, targetVar);
   }
 
+  if (kind == ExprKind.Der || kind == ExprKind.Pre) {
+    let data1 = exprData.get(offset + EXPR_DATA1) as u32;
+    let left = exprData.get(offset + EXPR_LEFT) as u32;
+    if (data1 != 0xffffffff && data1 < dae.exprCount && symbolicContainsVar(dae, data1, targetVar)) return true;
+    if (left != 0xffffffff && left < dae.exprCount && symbolicContainsVar(dae, left, targetVar)) return true;
+    return false;
+  }
+
   if (kind == ExprKind.IfElse) {
-    let cond = exprData.get(offset + EXPR_DATA1);
-    let thenExpr = exprData.get(offset + EXPR_LEFT);
-    let elseExpr = exprData.get(offset + EXPR_RIGHT);
+    let cond = exprData.get(offset + EXPR_DATA1) as u32;
+    let thenExpr = exprData.get(offset + EXPR_LEFT) as u32;
+    let elseExpr = exprData.get(offset + EXPR_RIGHT) as u32;
     return (
       symbolicContainsVar(dae, cond, targetVar) ||
       symbolicContainsVar(dae, thenExpr, targetVar) ||
       symbolicContainsVar(dae, elseExpr, targetVar)
     );
+  }
+
+  if (kind == ExprKind.Subscript || kind == ExprKind.Call || kind == ExprKind.ArrayCtor || kind == ExprKind.Tuple) {
+    if (kind == ExprKind.Subscript) {
+      let baseExpr = exprData.get(offset + EXPR_DATA1) as u32;
+      if (baseExpr != 0xffffffff && symbolicContainsVar(dae, baseExpr, targetVar)) return true;
+    }
+    let left = exprData.get(offset + EXPR_LEFT) as u32;
+    let rightVal = exprData.get(offset + EXPR_RIGHT) as u32;
+    let data1Val = exprData.get(offset + EXPR_DATA1) as u32;
+    let count: u32 =
+      kind == ExprKind.Call || kind == ExprKind.Subscript
+        ? rightVal
+        : rightVal > 0 && rightVal != 0xffffffff
+          ? rightVal
+          : data1Val;
+    if (count > 0 && count != 0xffffffff && left != 0xffffffff) {
+      if (symbolicContainsVar(dae, left, targetVar)) return true;
+      for (let a: u32 = 1; a < count; a++) {
+        let slotIdx = exprId + a;
+        if (slotIdx < dae.exprCount) {
+          let slotOffset = slotIdx * EXPR_STRIDE;
+          let slotKind = exprData.get(slotOffset + EXPR_KIND);
+          let argExpr = slotKind == ExprKind.Tuple
+            ? (exprData.get(slotOffset + EXPR_LEFT) as u32)
+            : left + a;
+          if (argExpr != 0xffffffff && symbolicContainsVar(dae, argExpr, targetVar)) return true;
+        }
+      }
+    }
+    return false;
   }
 
   return false;
@@ -70,7 +116,7 @@ export function symbolicContainsAnyVar(dae: DaeBuilder, exprId: u32, varIdxs: In
  * Substitutes 0 for a specific variable ID in an expression.
  */
 export function symbolicSubstituteZero(dae: DaeBuilder, exprId: u32, targetVar: u32): u32 {
-  if (exprId >= dae.exprCount) return exprId;
+  if (exprId == 0xffffffff || exprId >= dae.exprCount) return exprId;
   let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
   let kind = exprData.get(offset + EXPR_KIND);
@@ -83,7 +129,14 @@ export function symbolicSubstituteZero(dae: DaeBuilder, exprId: u32, targetVar: 
     return exprId;
   }
 
-  if (kind == ExprKind.IntLiteral || kind == ExprKind.RealLiteral || kind == ExprKind.BoolLiteral || kind == ExprKind.StringLiteral || kind == ExprKind.EnumLiteral) {
+  if (
+    kind == ExprKind.IntLiteral ||
+    kind == ExprKind.RealLiteral ||
+    kind == ExprKind.BoolLiteral ||
+    kind == ExprKind.StringLiteral ||
+    kind == ExprKind.EnumLiteral ||
+    kind == ExprKind.Colon
+  ) {
     return exprId;
   }
 
@@ -113,6 +166,38 @@ export function symbolicSubstituteZero(dae: DaeBuilder, exprId: u32, targetVar: 
     if (subLeft == left && subRight == right) return exprId;
     let bin = dae.addExpression(ExprKind.Binary, op, subLeft, subRight);
     return cas_simplify(dae, bin);
+  }
+
+  if (kind == ExprKind.Call) {
+    let funcId = exprData.get(offset + EXPR_DATA1);
+    let u = exprData.get(offset + EXPR_LEFT) as u32;
+    let argCount = exprData.get(offset + EXPR_RIGHT) as u32;
+    if (argCount == 0 || u == 0xffffffff) return exprId;
+    if (argCount == 1) {
+      let subU = symbolicSubstituteZero(dae, u, targetVar);
+      if (subU == u) return exprId;
+      let call = dae.addExpression(ExprKind.Call, funcId, subU, 1);
+      return cas_simplify(dae, call);
+    }
+    let changed = false;
+    let subArgs = new Uint32Array(argCount);
+    subArgs[0] = symbolicSubstituteZero(dae, u, targetVar);
+    if (subArgs[0] != u) changed = true;
+    for (let a: u32 = 1; a < argCount; a++) {
+      let slotIdx = exprId + a;
+      let argExpr: u32 = u + a;
+      if (slotIdx < dae.exprCount && exprData.get(slotIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Tuple) {
+        argExpr = exprData.get(slotIdx * EXPR_STRIDE + EXPR_LEFT) as u32;
+      }
+      subArgs[a] = symbolicSubstituteZero(dae, argExpr, targetVar);
+      if (subArgs[a] != argExpr) changed = true;
+    }
+    if (!changed) return exprId;
+    let call = dae.addExpression(ExprKind.Call, funcId, subArgs[0], argCount as i32);
+    for (let a: u32 = 1; a < argCount; a++) {
+      dae.addExpression(ExprKind.Tuple, 0, subArgs[a], 0xffffffff);
+    }
+    return cas_simplify(dae, call);
   }
 
   if (kind == ExprKind.IfElse) {

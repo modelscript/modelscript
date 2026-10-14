@@ -12,7 +12,7 @@ import {
   ExprKind,
   EqKind,
 } from "../dae/builder";
-import { evalEquationResidual } from "../dae/eval";
+import { evalExpr, evalEquationResidual } from "../dae/eval";
 import { luFactor, luSolve, vectorNormInf } from "./matrix";
 import { atomicChunkAlloc } from "../arena";
 import { UnmanagedFloat64Array, UnmanagedUint32Array, DenseMatrixView } from "../core/array";
@@ -86,8 +86,64 @@ export class BdfSolver {
     this.stateIndicesPtr = atomicChunkAlloc(n * 4);
     this.derivIndicesPtr = atomicChunkAlloc(n * 4);
 
-    let scratchSize = (n * 8) + (n * 8) + (n * n * 8) + ((n * 4 + 7) & ~7) + (n * 8) + (n * 8) + 128;
+    let scratchSize = (n * 8) + (n * 8) + (n * n * 8) + ((n * 4 + 7) & ~7) + (n * 8) + (n * 8) + (n * 8) + 128;
     this.scratchPtr = atomicChunkAlloc(scratchSize);
+  }
+}
+
+/**
+ * Evaluates explicit ODE/DAE equations in the DAE arena to update derivative and algebraic values in varValues.
+ */
+@inline
+function evalBdfEquations(solver: BdfSolver, dae: DaeBuilder, varValuesPtr: u32): void {
+  let eqCount = dae.eqCount;
+  if (eqCount == 0) return;
+
+  let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr);
+  let n = solver.nStates;
+  let stateIndices = solver.stateIndices;
+  let derivIndices = solver.derivIndices;
+
+  for (let eqIdx: u32 = 0; eqIdx < eqCount; eqIdx++) {
+    let eqOffset = eqIdx * EQ_STRIDE;
+    let eqKind = dae.getEqData().get(eqOffset + EQ_KIND);
+    if (eqKind != EqKind.Simple) continue;
+
+    let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
+    let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
+    if (lhs >= dae.exprCount || rhs >= dae.exprCount) continue;
+
+    let lhsOffset = lhs * EXPR_STRIDE;
+    let lhsKind = dae.getExprData().get(lhsOffset + EXPR_KIND);
+
+    if (lhsKind == ExprKind.Der) {
+      let inner = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
+      let targetStateVar: u32 = inner;
+      if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
+        targetStateVar = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      }
+      let rhsVal = evalExpr(rhs, dae, varValuesPtr);
+      for (let i: u32 = 0; i < n; i++) {
+        if (stateIndices[i] == targetStateVar) {
+          varValues[derivIndices[i]] = rhsVal;
+          break;
+        }
+      }
+    } else if (lhsKind == ExprKind.Name) {
+      let targetVar = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
+      if (targetVar < dae.varCount) {
+        let isState = false;
+        for (let i: u32 = 0; i < n; i++) {
+          if (stateIndices[i] == targetVar) {
+            isState = true;
+            break;
+          }
+        }
+        if (!isState) {
+          varValues[targetVar] = evalExpr(rhs, dae, varValuesPtr);
+        }
+      }
+    }
   }
 }
 
@@ -131,6 +187,19 @@ export function stepMultiOrderBDF(
   let stateIndices = solver.stateIndices;
   let derivIndices = solver.derivIndices;
 
+  // Initialize Nordsieck history from initial state values on first step
+  if (solver.stepCount == 0) {
+    evalBdfEquations(solver, dae, varValuesPtr);
+    for (let i: u32 = 0; i < n; i++) {
+      let sIdx = stateIndices[i];
+      let dIdx = derivIndices[i];
+      if (hist[i] == 0.0 && (varValues[sIdx] != 0.0 || varValues[dIdx] != 0.0)) {
+        hist[i] = varValues[sIdx];
+        hist[n + i] = dt * varValues[dIdx];
+      }
+    }
+  }
+
   // 1. Predictor: Extrapolate Nordsieck history
   bdfPredict(solver);
 
@@ -142,7 +211,7 @@ export function stepMultiOrderBDF(
   }
 
   // 2. Newton-Raphson Corrector Loop for Stiff DAE:
-  // G(y) = y_n - y_pred - (h / alpha0) * f(t, y) = 0
+  // G(y) = (y_n - y_pred) - (h * f(t, y) - h * y_pred') / alpha0 = 0
   let alpha0 = getBdfAlpha0(q);
   let h_alpha0 = dt / alpha0;
 
@@ -153,10 +222,12 @@ export function stepMultiOrderBDF(
   let pivSize = (n * 4 + 7) & ~7;
   let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + n * 8;
+  let fBasePtr = luScratchPtr + n * 8;
 
   let r = changetype<UnmanagedFloat64Array>(rPtr);
   let dy = changetype<UnmanagedFloat64Array>(dyPtr);
   let negR = changetype<UnmanagedFloat64Array>(luScratchPtr);
+  let fBaseArr = changetype<UnmanagedFloat64Array>(fBasePtr);
   let jMat = DenseMatrixView.at(jPtr, n, n);
 
   let tol: f64 = solver.atol;
@@ -167,6 +238,8 @@ export function stepMultiOrderBDF(
   while (iter < maxIter) {
     iter++;
 
+    evalBdfEquations(solver, dae, varValuesPtr);
+
     // Evaluate residual vector G(y)
     let maxRes: f64 = 0.0;
     for (let i: u32 = 0; i < n; i++) {
@@ -175,9 +248,11 @@ export function stepMultiOrderBDF(
 
       let currY = varValues[sIdx];
       let predY = hist[i];
+      let predScaledDeriv = hist[n + i];
       let fVal = varValues[dIdx];
+      fBaseArr[i] = fVal;
 
-      let gVal = (currY - predY) - h_alpha0 * fVal;
+      let gVal = (currY - predY) - (dt * fVal - predScaledDeriv) / alpha0;
       r[i] = gVal;
       if (Math.abs(gVal) > maxRes) maxRes = Math.abs(gVal);
     }
@@ -190,18 +265,24 @@ export function stepMultiOrderBDF(
       let origVal = varValues[sIdx];
 
       varValues[sIdx] = origVal + eps;
+      evalBdfEquations(solver, dae, varValuesPtr);
 
       for (let row: u32 = 0; row < n; row++) {
         let dIdx = derivIndices[row];
         let fPert = varValues[dIdx];
-
-        varValues[sIdx] = origVal;
-        let fBase = varValues[dIdx];
+        let fBase = fBaseArr[row];
         let df_dy = (fPert - fBase) / eps;
 
         let jVal: f64 = (row == c ? 1.0 : 0.0) - h_alpha0 * df_dy;
         jMat.set(row, c, jVal);
       }
+
+      varValues[sIdx] = origVal;
+    }
+
+    // Restore unperturbed derivative values
+    for (let i: u32 = 0; i < n; i++) {
+      varValues[derivIndices[i]] = fBaseArr[i];
     }
 
     // Solve J * dy = -r
@@ -212,12 +293,18 @@ export function stepMultiOrderBDF(
     if (luFactor(jPtr as u32, pivPtr as u32, scalePtr as u32, n)) {
       luSolve(jPtr as u32, pivPtr as u32, scalePtr as u32, luScratchPtr as u32, dyPtr as u32, n);
       for (let i: u32 = 0; i < n; i++) {
-        let sIdx = stateIndices[i];
-        let yOld = varValues[sIdx];
-        varValues[sIdx] = yOld + negR[i];
+        let delta = negR[i];
+        if (!isNaN(delta)) {
+          let sIdx = stateIndices[i];
+          varValues[sIdx] = varValues[sIdx] + delta;
+        }
       }
+    } else {
+      break;
     }
   }
+
+  evalBdfEquations(solver, dae, varValuesPtr);
 
   // 3. Update Nordsieck History with Difference Correction
   for (let i: u32 = 0; i < n; i++) {

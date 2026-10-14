@@ -257,10 +257,19 @@ export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
     if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
-      let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1);
-      let res = evalEquationResidual(i, dae, varValuesPtr);
-      let stateVal = varValues[stateVarIdx];
-      varValues[stateVarIdx] = stateVal + dt * res;
+      let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
+      if (
+        stateVarIdx >= dae.varCount &&
+        stateVarIdx < dae.exprCount &&
+        dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name
+      ) {
+        stateVarIdx = dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_DATA1) as u32;
+      }
+      if (stateVarIdx < dae.varCount) {
+        let res = evalEquationResidual(i, dae, varValuesPtr);
+        let stateVal = varValues[stateVarIdx];
+        varValues[stateVarIdx] = stateVal + dt * res;
+      }
     }
   }
 
@@ -282,6 +291,9 @@ export function stepRK4(
   k4Ptr: u32,
   dt: f64
 ): void {
+  let numVars = dae.varCount;
+  if (numVars == 0) return;
+
   let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
   let temp = changetype<UnmanagedFloat64Array>(tempPtr as usize);
   let k1Arr = changetype<UnmanagedFloat64Array>(k1Ptr as usize);
@@ -290,45 +302,42 @@ export function stepRK4(
   let k4Arr = changetype<UnmanagedFloat64Array>(k4Ptr as usize);
 
   // 1. Compute k1 = f(y_n)
-  for (let i: u32 = 0; i < dae.eqCount; i++) {
-    let k1 = evalEquationResidual(i, dae, varValuesPtr);
-    k1Arr[i] = k1;
-    let y0 = varValues[i];
-    temp[i] = y0 + 0.5 * dt * k1;
+  computeDerivatives(dae, varValuesPtr, k1Ptr);
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = varValues[v];
+    temp[v] = y0 + 0.5 * dt * k1Arr[v];
   }
+  solveAlgebraicConstraints(dae, tempPtr);
 
   // 2. Compute k2 = f(y_n + 0.5*dt*k1)
-  for (let i: u32 = 0; i < dae.eqCount; i++) {
-    let k2 = evalEquationResidual(i, dae, tempPtr);
-    k2Arr[i] = k2;
-    let y0 = varValues[i];
-    temp[i] = y0 + 0.5 * dt * k2;
+  computeDerivatives(dae, tempPtr, k2Ptr);
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = varValues[v];
+    temp[v] = y0 + 0.5 * dt * k2Arr[v];
   }
+  solveAlgebraicConstraints(dae, tempPtr);
 
   // 3. Compute k3 = f(y_n + 0.5*dt*k2)
-  for (let i: u32 = 0; i < dae.eqCount; i++) {
-    let k3 = evalEquationResidual(i, dae, tempPtr);
-    k3Arr[i] = k3;
-    let y0 = varValues[i];
-    temp[i] = y0 + dt * k3;
+  computeDerivatives(dae, tempPtr, k3Ptr);
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = varValues[v];
+    temp[v] = y0 + dt * k3Arr[v];
   }
+  solveAlgebraicConstraints(dae, tempPtr);
 
   // 4. Compute k4 = f(y_n + dt*k3)
-  for (let i: u32 = 0; i < dae.eqCount; i++) {
-    let k4 = evalEquationResidual(i, dae, tempPtr);
-    k4Arr[i] = k4;
-  }
+  computeDerivatives(dae, tempPtr, k4Ptr);
 
   // 5. Final update: y_{n+1} = y_n + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
-  for (let i: u32 = 0; i < dae.eqCount; i++) {
-    let y0 = varValues[i];
-    let k1 = k1Arr[i];
-    let k2 = k2Arr[i];
-    let k3 = k3Arr[i];
-    let k4 = k4Arr[i];
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = varValues[v];
+    let k1 = k1Arr[v];
+    let k2 = k2Arr[v];
+    let k3 = k3Arr[v];
+    let k4 = k4Arr[v];
 
     let yNext = y0 + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
-    varValues[i] = yNext;
+    varValues[v] = yNext;
   }
 
   // 6. Algebraic Constraint Enforcement
@@ -436,6 +445,13 @@ export function computeDerivatives(dae: DaeBuilder, varValuesPtr: u32, kOutPtr: 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
     if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
       let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
+      if (
+        stateVarIdx >= numVars &&
+        stateVarIdx < dae.exprCount &&
+        dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name
+      ) {
+        stateVarIdx = dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_DATA1) as u32;
+      }
       if (stateVarIdx < numVars) {
         let res = evalEquationResidual(i, dae, varValuesPtr);
         kOut[stateVarIdx] = res;

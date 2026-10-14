@@ -347,7 +347,14 @@ export class DaeFlowpipeSolver {
       for (const r of requirements) {
         const tube = (r.variable === "x" ? xs : zs)[r.index];
         if (!tube) continue;
-        const holds = r.operator === "<=" || r.operator === "<" ? tube.hi <= r.limitValue : tube.lo >= r.limitValue;
+        const holds =
+          r.operator === "<="
+            ? tube.hi <= r.limitValue
+            : r.operator === "<"
+              ? tube.hi < r.limitValue
+              : r.operator === ">="
+                ? tube.lo >= r.limitValue
+                : tube.lo > r.limitValue;
         if (!holds) breaches.push(`${r.variable}[${r.index}] ${r.operator} ${r.limitValue} at t=${time}`);
       }
     };

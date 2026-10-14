@@ -31,7 +31,7 @@ import {
   VarType, Variability, Causality, ExprKind, EqKind, StmtKind, BinOp, UnaryOp,
 } from "./types";
 
-const ACCESSOR_SLOTS: u32 = 64;
+const ACCESSOR_SLOTS: u32 = 1024;
 const ACCESSOR_MASK: u32 = ACCESSOR_SLOTS - 1;
 
 let g_varAccessorIdx: u32 = 0;

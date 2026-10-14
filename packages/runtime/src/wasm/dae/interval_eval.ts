@@ -15,7 +15,7 @@
  *   - Modelica min/max bound violations
  */
 
-import { DaeBuilder, ExprKind, BinOp, UnaryOp } from "./builder";
+import { DaeBuilder, ExprKind, BinOp, UnaryOp, BuiltinMathFunc } from "./builder";
 import { ExprAccessor, EqAccessor } from "./accessors";
 import { UnmanagedFloat64Array } from "../core/array";
 import {
@@ -134,24 +134,39 @@ export function evalExprInterval(
   }
 
   let e = ExprAccessor.at(dae.getExprData(), exprId);
+  let kind = e.kind;
+  let data1u = e.data1u;
+  let left = e.left;
+  let right = e.right;
+  let op = e.binOp;
+  let unaryOp = e.unaryOp;
+  let funcId = e.funcId as i32;
 
   // ── Literals ──
-  if (e.kind == ExprKind.RealLiteral) {
+  if (kind == ExprKind.RealLiteral) {
     out.setPoint(e.realValue);
     return;
   }
 
-  if (e.kind == ExprKind.IntLiteral || e.kind == ExprKind.BoolLiteral || e.kind == ExprKind.EnumLiteral) {
+  if (kind == ExprKind.IntLiteral || kind == ExprKind.BoolLiteral || kind == ExprKind.EnumLiteral) {
     out.setPoint(e.intValue as f64);
     return;
   }
 
   // ── Variable Reference ──
-  if (e.kind == ExprKind.Name) {
-    let varId = e.varId;
-    if (varId == 0xffffffff || varId >= dae.varCount) {
+  if (kind == ExprKind.Name) {
+    let varId = data1u;
+    if (varId == 0xffffffff) {
       out.setPoint(0.0);
       return;
+    }
+    if (varId >= dae.varCount) {
+      let lookedUp = dae.lookupVariableByName(varId);
+      if (lookedUp < 0) {
+        out.setPoint(0.0);
+        return;
+      }
+      varId = lookedUp as u32;
     }
     let lo: f64 = NEG_INF;
     let hi: f64 = INF;
@@ -166,9 +181,8 @@ export function evalExprInterval(
   }
 
   // ── Unary Operations ──
-  if (e.kind == ExprKind.Unary || e.kind == ExprKind.Negate) {
-    let isNot = e.unaryOp == UnaryOp.Not;
-    let left = e.left;
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+    let isNot = kind == ExprKind.Unary && unaryOp == UnaryOp.Not;
     evalExprInterval(left, dae, varBoundsLoPtr, varBoundsHiPtr, out);
     if (isNot) {
       if (out.lo == 0.0 && out.hi == 0.0) {
@@ -185,11 +199,7 @@ export function evalExprInterval(
   }
 
   // ── Binary Operations ──
-  if (e.kind == ExprKind.Binary) {
-    let op = e.binOp;
-    let left = e.left;
-    let right = e.right;
-
+  if (kind == ExprKind.Binary) {
     let mark = markScratchInterval();
     let lRes = getScratchInterval();
     let rRes = getScratchInterval();
@@ -214,10 +224,16 @@ export function evalExprInterval(
         iaDiv(lRes, rRes, out);
       }
     } else if (op == BinOp.Pow || op == BinOp.ElemPow) {
-      if (lRes.hi < 0.0) {
-        recordIssue(ISSUE_KIND_POW_DOMAIN, SEVERITY_DEFINITE, exprId, 0xffffffff, lRes.lo, lRes.hi);
-      } else if (lRes.lo < 0.0) {
-        recordIssue(ISSUE_KIND_POW_DOMAIN, SEVERITY_POSSIBLE, exprId, 0xffffffff, lRes.lo, lRes.hi);
+      let isExactIntExp = rRes.lo == rRes.hi && !isNaN(rRes.lo) && Math.floor(rRes.lo) == rRes.lo;
+      if (!isExactIntExp) {
+        if (lRes.hi < 0.0) {
+          recordIssue(ISSUE_KIND_POW_DOMAIN, SEVERITY_DEFINITE, exprId, 0xffffffff, lRes.lo, lRes.hi);
+        } else if (lRes.lo < 0.0) {
+          recordIssue(ISSUE_KIND_POW_DOMAIN, SEVERITY_POSSIBLE, exprId, 0xffffffff, lRes.lo, lRes.hi);
+        }
+      } else if (rRes.lo < 0.0 && lRes.containsZero()) {
+        let sev = (lRes.lo == 0.0 && lRes.hi == 0.0) ? SEVERITY_DEFINITE : SEVERITY_POSSIBLE;
+        recordIssue(ISSUE_KIND_DIV_BY_ZERO, sev, exprId, 0xffffffff, lRes.lo, lRes.hi);
       }
       iaPow(lRes, rRes, out);
     } else if (op == BinOp.Lt) {
@@ -269,10 +285,8 @@ export function evalExprInterval(
   }
 
   // ── Conditional (IfElse) ──
-  if (e.kind == ExprKind.IfElse) {
-    let cond = e.data1u;
-    let left = e.left;
-    let right = e.right;
+  if (kind == ExprKind.IfElse) {
+    let cond = data1u;
 
     let mark = markScratchInterval();
     let condRes = getScratchInterval();
@@ -295,21 +309,35 @@ export function evalExprInterval(
   }
 
   // ── Math & Transcendental Function Calls ──
-  if (e.kind == ExprKind.Call) {
-    let left = e.left;
-    let right = e.right;
-    let funcId = e.funcId as i32;
-
+  if (kind == ExprKind.Call) {
     let mark = markScratchInterval();
     let lRes = getScratchInterval();
     let rRes = getScratchInterval();
 
     evalExprInterval(left, dae, varBoundsLoPtr, varBoundsHiPtr, lRes);
-    if ((funcId == 9 || funcId == 10 || funcId == 15) && right != 0xffffffff && right < dae.exprCount) {
-      evalExprInterval(right, dae, varBoundsLoPtr, varBoundsHiPtr, rRes);
+    if (
+      funcId == BuiltinMathFunc.Min ||
+      funcId == BuiltinMathFunc.Max ||
+      funcId == BuiltinMathFunc.Atan2 ||
+      funcId == BuiltinMathFunc.Fmod ||
+      funcId == BuiltinMathFunc.Pow
+    ) {
+      let secondArgId = right;
+      if (exprId + 1 < dae.exprCount) {
+        let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
+        if (nextAcc.kind == ExprKind.Tuple) {
+          secondArgId = nextAcc.left;
+        }
+      }
+      if (secondArgId >= dae.exprCount && left + 1 < dae.exprCount) {
+        secondArgId = left + 1;
+      }
+      if (secondArgId != 0xffffffff && secondArgId < dae.exprCount) {
+        evalExprInterval(secondArgId, dae, varBoundsLoPtr, varBoundsHiPtr, rRes);
+      }
     }
 
-    if (funcId == 1) { // abs
+    if (funcId == BuiltinMathFunc.Abs) {
       if (lRes.lo >= 0.0) {
         out.copyFrom(lRes);
       } else if (lRes.hi <= 0.0) {
@@ -317,7 +345,7 @@ export function evalExprInterval(
       } else {
         out.set(0.0, Math.max(-lRes.lo, lRes.hi));
       }
-    } else if (funcId == 2) { // sqrt
+    } else if (funcId == BuiltinMathFunc.Sqrt) {
       if (lRes.hi < 0.0) {
         recordIssue(ISSUE_KIND_SQRT_NEGATIVE, SEVERITY_DEFINITE, exprId, 0xffffffff, lRes.lo, lRes.hi);
         out.setEmpty();
@@ -327,13 +355,13 @@ export function evalExprInterval(
       } else {
         iaSqrt(lRes, out);
       }
-    } else if (funcId == 3) { // sin
+    } else if (funcId == BuiltinMathFunc.Sin) {
       iaSin(lRes, out);
-    } else if (funcId == 4) { // cos
+    } else if (funcId == BuiltinMathFunc.Cos) {
       iaCos(lRes, out);
-    } else if (funcId == 5) { // exp
+    } else if (funcId == BuiltinMathFunc.Exp) {
       iaExp(lRes, out);
-    } else if (funcId == 6 || funcId == 19) { // log, log10
+    } else if (funcId == BuiltinMathFunc.Log || funcId == BuiltinMathFunc.Log10) {
       if (lRes.hi <= 0.0) {
         recordIssue(ISSUE_KIND_LOG_NONPOS, SEVERITY_DEFINITE, exprId, 0xffffffff, lRes.lo, lRes.hi);
         out.setEmpty();
@@ -343,19 +371,19 @@ export function evalExprInterval(
       } else {
         iaLog(lRes, out);
       }
-      if (funcId == 19 && !out.containsZero()) {
+      if (funcId == BuiltinMathFunc.Log10 && !out.isEmpty()) {
         let invLn10 = 1.0 / Math.log(10.0);
         out.set(out.lo * invLn10, out.hi * invLn10);
       }
-    } else if (funcId == 7) { // floor
+    } else if (funcId == BuiltinMathFunc.Floor) {
       out.set(Math.floor(lRes.lo), Math.floor(lRes.hi));
-    } else if (funcId == 8) { // ceil
+    } else if (funcId == BuiltinMathFunc.Ceil) {
       out.set(Math.ceil(lRes.lo), Math.ceil(lRes.hi));
-    } else if (funcId == 9) { // min
+    } else if (funcId == BuiltinMathFunc.Min) {
       out.set(Math.min(lRes.lo, rRes.lo), Math.min(lRes.hi, rRes.hi));
-    } else if (funcId == 10) { // max
+    } else if (funcId == BuiltinMathFunc.Max) {
       out.set(Math.max(lRes.lo, rRes.lo), Math.max(lRes.hi, rRes.hi));
-    } else if (funcId == 11) { // tan
+    } else if (funcId == BuiltinMathFunc.Tan) {
       let width = lRes.hi - lRes.lo;
       if (width >= Math.PI) {
         recordIssue(ISSUE_KIND_TAN_SINGULARITY, SEVERITY_DEFINITE, exprId, 0xffffffff, lRes.lo, lRes.hi);
@@ -371,10 +399,12 @@ export function evalExprInterval(
         }
       }
       iaTan(lRes, out);
-    } else if (funcId == 20) { // sign
+    } else if (funcId == BuiltinMathFunc.Sign) {
       if (lRes.lo > 0.0) out.setPoint(1.0);
       else if (lRes.hi < 0.0) out.setPoint(-1.0);
       else out.set(-1.0, 1.0);
+    } else if (funcId == BuiltinMathFunc.Pow) {
+      iaPow(lRes, rRes, out);
     } else {
       out.setEntire();
     }
@@ -384,8 +414,8 @@ export function evalExprInterval(
   }
 
   // ── Der Operator ──
-  if (e.kind == ExprKind.Der) {
-    let inner = e.data1u;
+  if (kind == ExprKind.Der) {
+    let inner = data1u;
     evalExprInterval(inner, dae, varBoundsLoPtr, varBoundsHiPtr, out);
     return;
   }

@@ -127,6 +127,66 @@ export class Hc4Contractor {
         if (mLo <= mHi) lo = -1.0;
         return outwardRoundInterval(lo, hi);
       }
+      case "pow": {
+        const l = Hc4Contractor.evalInterval(node.left, box);
+        const r = Hc4Contractor.evalInterval(node.right, box);
+        if (r.lo === r.hi && Number.isInteger(r.lo)) {
+          const n = r.lo;
+          if (n === 0) return new Interval(1, 1);
+          if (n === 1) return l;
+          if (n === 2) return Hc4Contractor.evalInterval({ kind: "sqr", child: node.left }, box);
+          if (n > 0) {
+            if (n % 2 === 0) {
+              if (l.lo >= 0) return outwardRoundInterval(Math.pow(l.lo, n), Math.pow(l.hi, n));
+              if (l.hi <= 0) return outwardRoundInterval(Math.pow(l.hi, n), Math.pow(l.lo, n));
+              return outwardRoundInterval(0, Math.max(Math.pow(l.lo, n), Math.pow(l.hi, n)));
+            }
+            return outwardRoundInterval(Math.pow(l.lo, n), Math.pow(l.hi, n));
+          }
+          const posPow = Hc4Contractor.evalInterval(
+            { kind: "pow", left: node.left, right: { kind: "const", value: -n } },
+            box,
+          );
+          return Interval.divOutward(new Interval(1, 1), posPow);
+        }
+        if (l.hi <= 0) return new Interval(NaN, NaN);
+        const logLo = l.lo <= 0 ? -Infinity : Math.log(l.lo);
+        const logHi = Math.log(l.hi);
+        const prod = Interval.mulOutward(r, new Interval(logLo, logHi));
+        return outwardRoundInterval(Math.max(0, Math.exp(prod.lo)), Math.exp(prod.hi));
+      }
+      case "call": {
+        const fn = node.fn.toLowerCase();
+        const arg0 = node.args[0];
+        if (!arg0) return new Interval(-Infinity, Infinity);
+        if (fn === "sin") return Hc4Contractor.evalInterval({ kind: "sin", child: arg0 }, box);
+        if (fn === "cos") return Hc4Contractor.evalInterval({ kind: "cos", child: arg0 }, box);
+        if (fn === "sqrt") return Hc4Contractor.evalInterval({ kind: "sqrt", child: arg0 }, box);
+        if (fn === "sqr") return Hc4Contractor.evalInterval({ kind: "sqr", child: arg0 }, box);
+        if (fn === "pow" && node.args[1]) {
+          return Hc4Contractor.evalInterval({ kind: "pow", left: arg0, right: node.args[1] }, box);
+        }
+        const c = Hc4Contractor.evalInterval(arg0, box);
+        if (fn === "abs") {
+          if (c.lo >= 0) return new Interval(c.lo, c.hi);
+          if (c.hi <= 0) return new Interval(-c.hi, -c.lo);
+          return new Interval(0, Math.max(-c.lo, c.hi));
+        }
+        if (fn === "exp") {
+          return outwardRoundInterval(Math.max(0, Math.exp(c.lo)), Math.exp(c.hi));
+        }
+        if (fn === "log" || fn === "ln") {
+          if (c.hi <= 0) return new Interval(NaN, NaN);
+          return outwardRoundInterval(c.lo <= 0 ? -Infinity : Math.log(c.lo), Math.log(c.hi));
+        }
+        if (fn === "atan") {
+          return outwardRoundInterval(Math.atan(c.lo), Math.atan(c.hi));
+        }
+        if (fn === "tanh") {
+          return outwardRoundInterval(Math.max(-1, Math.tanh(c.lo)), Math.min(1, Math.tanh(c.hi)));
+        }
+        return new Interval(-Infinity, Infinity);
+      }
     }
   }
 
@@ -184,6 +244,10 @@ export class Hc4Contractor {
         const leftVal = Hc4Contractor.evalInterval(node.left, box);
         const rightVal = Hc4Contractor.evalInterval(node.right, box);
 
+        if ((rightVal.lo === 0 && rightVal.hi === 0) || (leftVal.lo === 0 && leftVal.hi === 0)) {
+          if (target.lo > 0 || target.hi < 0) return false;
+        }
+
         // if rightVal doesn't contain 0
         if (rightVal.lo > 0 || rightVal.hi < 0) {
           const p1 = target.lo / rightVal.lo;
@@ -226,6 +290,10 @@ export class Hc4Contractor {
         // z = left / right => left = z * right, right = left / z
         const leftVal = Hc4Contractor.evalInterval(node.left, box);
         const rightVal = Hc4Contractor.evalInterval(node.right, box);
+
+        if (rightVal.lo === 0 && rightVal.hi === 0) {
+          return false;
+        }
 
         // Contract left: left ∈ target * rightVal
         if (rightVal.lo > 0 || rightVal.hi < 0) {
@@ -340,6 +408,63 @@ export class Hc4Contractor {
 
         if (bestLo > bestHi) return false;
         return Hc4Contractor.contractNode(node.child, new Interval(bestLo, bestHi), box);
+      }
+      case "pow": {
+        const rVal = Hc4Contractor.evalInterval(node.right, box);
+        if (rVal.lo === rVal.hi && Number.isInteger(rVal.lo)) {
+          const n = rVal.lo;
+          if (n === 0) return target.lo <= 1 && target.hi >= 1;
+          if (n === 1) return Hc4Contractor.contractNode(node.left, target, box);
+          if (n === 2) return Hc4Contractor.contractNode({ kind: "sqr", child: node.left }, target, box);
+          if (n > 0 && n % 2 === 0) {
+            if (target.hi < 0) return false;
+            const maxRoot = Math.pow(Math.max(0, target.hi), 1 / n);
+            const minRoot = target.lo > 0 ? Math.pow(target.lo, 1 / n) : 0;
+            const childCurrent = Hc4Contractor.evalInterval(node.left, box);
+            let childTarget: Interval;
+            if (childCurrent.lo >= 0) childTarget = new Interval(minRoot, maxRoot);
+            else if (childCurrent.hi <= 0) childTarget = new Interval(-maxRoot, -minRoot);
+            else childTarget = new Interval(-maxRoot, maxRoot);
+            return Hc4Contractor.contractNode(node.left, childTarget, box);
+          }
+          if (n > 0) {
+            const loRoot = Math.sign(target.lo) * Math.pow(Math.abs(target.lo), 1 / n);
+            const hiRoot = Math.sign(target.hi) * Math.pow(Math.abs(target.hi), 1 / n);
+            return Hc4Contractor.contractNode(node.left, new Interval(loRoot, hiRoot), box);
+          }
+        }
+        return true;
+      }
+      case "call": {
+        const fn = node.fn.toLowerCase();
+        const arg0 = node.args[0];
+        if (!arg0) return true;
+        if (fn === "sin") return Hc4Contractor.contractNode({ kind: "sin", child: arg0 }, target, box);
+        if (fn === "cos") return Hc4Contractor.contractNode({ kind: "cos", child: arg0 }, target, box);
+        if (fn === "sqrt") return Hc4Contractor.contractNode({ kind: "sqrt", child: arg0 }, target, box);
+        if (fn === "sqr") return Hc4Contractor.contractNode({ kind: "sqr", child: arg0 }, target, box);
+        if (fn === "pow" && node.args[1]) {
+          return Hc4Contractor.contractNode({ kind: "pow", left: arg0, right: node.args[1] }, target, box);
+        }
+        if (fn === "abs") {
+          if (target.hi < 0) return false;
+          const maxAbs = Math.max(0, target.hi);
+          const minAbs = Math.max(0, target.lo);
+          const childCurrent = Hc4Contractor.evalInterval(arg0, box);
+          if (childCurrent.lo >= 0) return Hc4Contractor.contractNode(arg0, new Interval(minAbs, maxAbs), box);
+          if (childCurrent.hi <= 0) return Hc4Contractor.contractNode(arg0, new Interval(-maxAbs, -minAbs), box);
+          return Hc4Contractor.contractNode(arg0, new Interval(-maxAbs, maxAbs), box);
+        }
+        if (fn === "exp") {
+          if (target.hi <= 0) return false;
+          const loLog = target.lo <= 0 ? -Infinity : Math.log(target.lo);
+          const hiLog = Math.log(target.hi);
+          return Hc4Contractor.contractNode(arg0, new Interval(loLog, hiLog), box);
+        }
+        if (fn === "log" || fn === "ln") {
+          return Hc4Contractor.contractNode(arg0, new Interval(Math.exp(target.lo), Math.exp(target.hi)), box);
+        }
+        return true;
       }
       default:
         return true;

@@ -95,46 +95,54 @@ export class SolversBridge {
    * Evaluates an expression with dual numbers in WASM linear memory.
    */
   evalDualExpr(daePtr: number, exprId: number, dualVars: Float64Array): { val: number; dot: number } {
-    const mem64 = new Float64Array(this.memory.buffer);
-    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(dualVars.byteLength) : 65536;
+    const totalBytes = dualVars.byteLength + 16;
+    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(totalBytes) : 65536;
     const outValPtr = dualVarsPtr + dualVars.byteLength;
     const outDotPtr = outValPtr + 8;
 
-    mem64.set(dualVars, dualVarsPtr >> 3);
+    try {
+      let mem64 = new Float64Array(this.memory.buffer);
+      mem64.set(dualVars, dualVarsPtr >>> 3);
 
-    this.wasmExports.dae_evalDualExpr(daePtr, exprId, dualVarsPtr, outValPtr, outDotPtr);
+      this.wasmExports.dae_evalDualExpr(daePtr, exprId, dualVarsPtr, outValPtr, outDotPtr);
 
-    const val = mem64[outValPtr >> 3] ?? 0;
-    const dot = mem64[outDotPtr >> 3] ?? 0;
+      mem64 = new Float64Array(this.memory.buffer);
+      const val = mem64[outValPtr >>> 3] ?? 0;
+      const dot = mem64[outDotPtr >>> 3] ?? 0;
 
-    if (this.wasmExports.free) {
-      this.wasmExports.free(dualVarsPtr);
+      return { val, dot };
+    } finally {
+      if (this.wasmExports.free) {
+        this.wasmExports.free(dualVarsPtr);
+      }
     }
-
-    return { val, dot };
   }
 
   /**
    * Evaluates an equation residual with dual numbers in WASM linear memory.
    */
   evalDualEquationResidual(daePtr: number, eqId: number, dualVars: Float64Array): { val: number; dot: number } {
-    const mem64 = new Float64Array(this.memory.buffer);
-    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(dualVars.byteLength) : 65536;
+    const totalBytes = dualVars.byteLength + 16;
+    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(totalBytes) : 65536;
     const outValPtr = dualVarsPtr + dualVars.byteLength;
     const outDotPtr = outValPtr + 8;
 
-    mem64.set(dualVars, dualVarsPtr >> 3);
+    try {
+      let mem64 = new Float64Array(this.memory.buffer);
+      mem64.set(dualVars, dualVarsPtr >>> 3);
 
-    this.wasmExports.dae_evalDualEquationResidual(daePtr, eqId, dualVarsPtr, outValPtr, outDotPtr);
+      this.wasmExports.dae_evalDualEquationResidual(daePtr, eqId, dualVarsPtr, outValPtr, outDotPtr);
 
-    const val = mem64[outValPtr >> 3] ?? 0;
-    const dot = mem64[outDotPtr >> 3] ?? 0;
+      mem64 = new Float64Array(this.memory.buffer);
+      const val = mem64[outValPtr >>> 3] ?? 0;
+      const dot = mem64[outDotPtr >>> 3] ?? 0;
 
-    if (this.wasmExports.free) {
-      this.wasmExports.free(dualVarsPtr);
+      return { val, dot };
+    } finally {
+      if (this.wasmExports.free) {
+        this.wasmExports.free(dualVarsPtr);
+      }
     }
-
-    return { val, dot };
   }
 
   /**
@@ -142,36 +150,43 @@ export class SolversBridge {
    */
   evalDualJacobianColumn(daePtr: number, eqIndices: number[], dualVars: Float64Array, seedVarId: number): Float64Array {
     const nEqs = eqIndices.length;
-    const mem32 = new Uint32Array(this.memory.buffer);
-    const mem64 = new Float64Array(this.memory.buffer);
-
     const eqIndicesBytes = nEqs * 4;
     const dualVarsBytes = dualVars.byteLength;
     const outColBytes = nEqs * 8;
 
     const eqIndicesPtr = this.wasmExports.alloc ? this.wasmExports.alloc(eqIndicesBytes) : 65536;
-    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(dualVarsBytes) : eqIndicesPtr + eqIndicesBytes;
-    const outColPtr = this.wasmExports.alloc ? this.wasmExports.alloc(outColBytes) : dualVarsPtr + dualVarsBytes;
+    const dualVarsPtr = this.wasmExports.alloc
+      ? this.wasmExports.alloc(dualVarsBytes)
+      : (eqIndicesPtr + eqIndicesBytes + 7) & ~7;
+    const outColPtr = this.wasmExports.alloc
+      ? this.wasmExports.alloc(outColBytes)
+      : (dualVarsPtr + dualVarsBytes + 7) & ~7;
 
-    for (let i = 0; i < nEqs; i++) {
-      mem32[(eqIndicesPtr >> 2) + i] = eqIndices[i] ?? 0;
+    try {
+      const mem32 = new Uint32Array(this.memory.buffer);
+      let mem64 = new Float64Array(this.memory.buffer);
+
+      for (let i = 0; i < nEqs; i++) {
+        mem32[(eqIndicesPtr >>> 2) + i] = eqIndices[i] ?? 0;
+      }
+      mem64.set(dualVars, dualVarsPtr >>> 3);
+
+      this.wasmExports.dae_evalDualJacobianColumn(daePtr, nEqs, eqIndicesPtr, dualVarsPtr, seedVarId, outColPtr);
+
+      mem64 = new Float64Array(this.memory.buffer);
+      const result = new Float64Array(nEqs);
+      for (let i = 0; i < nEqs; i++) {
+        result[i] = mem64[(outColPtr >>> 3) + i] ?? 0;
+      }
+
+      return result;
+    } finally {
+      if (this.wasmExports.free) {
+        this.wasmExports.free(eqIndicesPtr);
+        this.wasmExports.free(dualVarsPtr);
+        this.wasmExports.free(outColPtr);
+      }
     }
-    mem64.set(dualVars, dualVarsPtr >> 3);
-
-    this.wasmExports.dae_evalDualJacobianColumn(daePtr, nEqs, eqIndicesPtr, dualVarsPtr, seedVarId, outColPtr);
-
-    const result = new Float64Array(nEqs);
-    for (let i = 0; i < nEqs; i++) {
-      result[i] = mem64[(outColPtr >> 3) + i] ?? 0;
-    }
-
-    if (this.wasmExports.free) {
-      this.wasmExports.free(eqIndicesPtr);
-      this.wasmExports.free(dualVarsPtr);
-      this.wasmExports.free(outColPtr);
-    }
-
-    return result;
   }
 
   async simulateDaeWithSundials(
