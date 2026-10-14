@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-function, @typescript-eslint/prefer-for-of, @typescript-eslint/array-type, @typescript-eslint/no-non-null-assertion, no-empty */
 // ts-check
-import { Connection, Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
+import { Connection, Diagnostic, DiagnosticSeverity, Range } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { DocumentManager } from "./document-manager.js";
 import { ParserService } from "./parser-service.js";
