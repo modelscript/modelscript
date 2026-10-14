@@ -174,6 +174,19 @@ Build all packages in dependency order via Nx:
 npm run build
 ```
 
+#### Building the VS Code Extension (.vsix)
+
+```bash
+# Build the complete standalone IDE extension into apps/ide/dist/extension/
+npm run build:ide:extension
+
+# Package the complete IDE extension into a deployable .vsix bundle (~121 MB)
+npm run package:ide:extension
+
+# Or generate a lightweight syntax-only extension into dist/extension/
+npm run build:extension
+```
+
 ### Running (Development)
 
 Start development services concurrently:

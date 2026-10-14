@@ -16,13 +16,15 @@ npm run build
 
 ### Common Commands
 
-| Command          | Description                              |
-| ---------------- | ---------------------------------------- |
-| `npm run dev`    | Start all services (API, Web, IDE, Docs) |
-| `npm run build`  | Build all packages                       |
-| `npm test`       | Run tests                                |
-| `npm run lint`   | Run linters                              |
-| `npm run format` | Format with Prettier                     |
+| Command                         | Description                                       |
+| ------------------------------- | ------------------------------------------------- |
+| `npm run dev`                   | Start all services (API, Web, IDE, Docs)          |
+| `npm run build`                 | Build all packages                                |
+| `npm run build:ide:extension`   | Build complete VS Code IDE extension directory    |
+| `npm run package:ide:extension` | Package complete VS Code extension bundle (.vsix) |
+| `npm test`                      | Run tests                                         |
+| `npm run lint`                  | Run linters                                       |
+| `npm run format`                | Format with Prettier                              |
 
 ## Making a Release
 

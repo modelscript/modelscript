@@ -1297,6 +1297,12 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   pkg.browser = "./dist/browserClientMain.js";
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
   fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
+  fs.writeFileSync(
+    path.join(outDir, "LICENSE.md"),
+    "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright (C) 2026 ModelScript Contributors\n",
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(outDir, "README.md"), `# ${pkg.displayName}\n\n${pkg.description}\n`, "utf-8");
 
   // 3. Write language configs and syntaxes
   for (const lang of languages) {
