@@ -202,13 +202,41 @@ export function registerTreeHandlers(context: LspContext) {
       // Yield to event loop to avoid blocking LSP completely
       await new Promise((r) => setTimeout(r, 0));
 
+      // Check if unified index has this symbol with metadata.iconSvg (e.g. PSCAD components)
+      const uw = context.workspaceManager.unifiedWorkspace;
+      const unified =
+        typeof uw?.toTreeIndex === "function"
+          ? uw.toTreeIndex()
+          : typeof uw?.toUnifiedPartial === "function"
+            ? uw.toUnifiedPartial()
+            : uw?.toUnified?.();
+      if (unified) {
+        let symIds = unified.byName.get(params.className);
+        if (!symIds || symIds.length === 0) {
+          const parts = params.className.split(".");
+          const leaf = parts[parts.length - 1];
+          symIds = unified.byName.get(leaf);
+        }
+        if (symIds && symIds.length > 0) {
+          for (const id of symIds) {
+            const entry = unified.symbols.get(id);
+            if (entry?.metadata?.iconSvg) {
+              iconCache.set(params.className, entry.metadata.iconSvg);
+              return entry.metadata.iconSvg;
+            }
+          }
+        }
+      }
+
       const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;
       if (!getIconSvg) {
         iconCache.set(params.className, null);
         return null;
       }
 
-      const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className);
+      const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className, {
+        iconOnly: true,
+      });
       if (!cls) {
         iconCache.set(params.className, null);
         return null;

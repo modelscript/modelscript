@@ -630,8 +630,8 @@ export class ValidationService {
       return;
     }
 
-    // Handle PSCAD files (.pscx, .pswx, .psmx)
-    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|pswx|psmx)($|\?|#)/i.test(uri);
+    // Handle PSCAD files (.pscx, .pslx, .pswx, .psmx)
+    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(uri);
     if (isPscad) {
       await this.validatePscadDocument(textDocument, plugin);
       return;
@@ -1492,6 +1492,13 @@ export class ValidationService {
         tree: { rootNode: { text, data: project } },
         classCache: new Map(),
       });
+
+      // Index symbols for Library Tree panel and navigation
+      const pscadWs = this.workspaceManager.getWorkspaceIndex("pscad");
+      if (pscadWs && typeof (pscadWs as any).indexFile === "function") {
+        (pscadWs as any).indexFile(textDocument.uri, text);
+        this.sendProjectTreeChanged();
+      }
     } catch (err: any) {
       this.connection.console.error(`[pscad] Error validating PSCAD document ${textDocument.uri}: ${err.message}`);
       pscadDiagnostics.push({

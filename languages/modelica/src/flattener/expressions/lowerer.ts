@@ -652,6 +652,17 @@ export function lowerCSTExpression(
     }
 
     const argsNode = node.child(1);
+    if (node.text?.includes("atan(inclination_internal)")) {
+      const dump = (n: any, indent = 0): string => {
+        if (!n) return "";
+        let s = " ".repeat(indent) + `${n.type}: "${n.text}"\n`;
+        for (let i = 0; i < (n.childCount || 0); i++) {
+          s += dump(n.child(i), indent + 2);
+        }
+        return s;
+      };
+      console.log("DUMP ARGSNODE for " + node.text + ":\n" + dump(argsNode));
+    }
     let argExprIds: number[] = [];
     const argNodes: any[] = [];
     const namedArgs = new Map<string, number>();
@@ -1142,6 +1153,16 @@ export function lowerCSTExpression(
         state.isInsidePrevious = prevInsidePrevious;
       }
     }
+    if (node.text?.includes("atan(inclination_internal)")) {
+      console.log(
+        "AFTER collectArgs for",
+        fnName,
+        "argExprIds=",
+        argExprIds,
+        "namedArgs=",
+        Array.from(namedArgs.entries()),
+      );
+    }
     if (fnName === "integer" && argExprIds.length === 1) {
       const a0 = argExprIds[0];
       const kind = dae.getExprKind(a0);
@@ -1244,7 +1265,7 @@ export function lowerCSTExpression(
       if (!calledFnSym) {
         const parts = cleanFnName.split(".");
         const fnBase = parts[parts.length - 1];
-        calledFnSym = db.byName(fnBase).find((e: any) => {
+        const candidates = db.byName(fnBase).filter((e: any) => {
           if (e.kind !== "Class" && e.kind !== "Function") return false;
           if (!flattener.isFunctionSym?.(e)) return false;
           if (parts.length > 1) {
@@ -1252,6 +1273,25 @@ export function lowerCSTExpression(
             return qual === cleanFnName || qual.endsWith("." + cleanFnName);
           }
           return parts.length === 1;
+        });
+        if (candidates.length > 0) {
+          if (parts.length === 1) {
+            calledFnSym =
+              candidates.find((e: any) => getSymbolQualifiedName(db, e.id) === `Modelica.Math.${fnBase}`) ??
+              candidates.find((e: any) => !getSymbolQualifiedName(db, e.id).includes("ComplexMath")) ??
+              (SCALAR_VECTORIZABLE_FUNCTIONS.has(fnBase) ? null : candidates[0]);
+          } else {
+            calledFnSym = candidates[0];
+          }
+        }
+      }
+      if (cleanFnName === "atan" || cleanFnName === "cos") {
+        console.log("calledFnSym for", cleanFnName, ":", {
+          id: calledFnSym?.id,
+          name: calledFnSym?.name,
+          qual: calledFnSym ? getSymbolQualifiedName(db, calledFnSym.id) : null,
+          isPartial: calledFnSym ? flattener.isClassPartial?.(calledFnSym.id) : null,
+          inFailed: calledFnSym ? flattener.failedFunctionIds?.has(calledFnSym.id) : null,
         });
       }
       const isOuterFn = isOuterFunctionSymbol(db, calledFnSym);
@@ -3599,6 +3639,15 @@ export function lowerCSTExpression(
       fnName = (fnDae as any).aliasTo;
       fnDae = undefined;
     }
+    if (fnDae && flattener && db) {
+      const currentScope = flattener.currentClassId ?? flattener.currentRootClassId;
+      const resolved = currentScope
+        ? db.query<(n: string) => SymbolEntry | null>("resolveName", currentScope)?.(cleanFnName)
+        : null;
+      if (resolved && (flattener.isExternalObject?.(resolved.id) || flattener.isRecordSym?.(resolved))) {
+        fnDae = undefined;
+      }
+    }
     if (
       !fnDae &&
       flattener &&
@@ -3679,7 +3728,9 @@ export function lowerCSTExpression(
           if (
             memberFn &&
             (memberFn.kind === "Class" || memberFn.kind === "Function") &&
-            flattener.isFunctionSym?.(memberFn)
+            (flattener.isFunctionSym?.(memberFn) ||
+              flattener.isExternalObject?.(memberFn.id) ||
+              flattener.isRecordSym?.(memberFn))
           ) {
             matchingFnSym = memberFn;
             const prefixQual = getSymbolQualifiedName(db, prefixSym.id);
@@ -3703,12 +3754,14 @@ export function lowerCSTExpression(
             (encScopeFn.kind === "Class" || encScopeFn.kind === "Function") &&
             flattener.isFunctionSym?.(encScopeFn)
           ) {
-            matchingFnSym = encScopeFn;
-            const encScopeSym = db.symbol(fnEncScope);
-            if (encScopeSym && (encScopeSym.kind === "Class" || encScopeSym.kind === "Package")) {
-              const encScopeQual = getSymbolQualifiedName(db, fnEncScope);
-              specializedQualifiedName = `${encScopeQual}.${cleanFnName}`;
-              enclosingScopeId = fnEncScope;
+            const encScopeQual = getSymbolQualifiedName(db, fnEncScope);
+            if (!(SCALAR_VECTORIZABLE_FUNCTIONS.has(cleanFnName) && encScopeQual.includes("ComplexMath"))) {
+              matchingFnSym = encScopeFn;
+              const encScopeSym = db.symbol(fnEncScope);
+              if (encScopeSym && (encScopeSym.kind === "Class" || encScopeSym.kind === "Package")) {
+                specializedQualifiedName = `${encScopeQual}.${cleanFnName}`;
+                enclosingScopeId = fnEncScope;
+              }
             }
           }
         }
@@ -3736,7 +3789,10 @@ export function lowerCSTExpression(
               (inScopeFn.kind === "Class" || inScopeFn.kind === "Function") &&
               flattener.isFunctionSym?.(inScopeFn)
             ) {
-              matchingFnSym = inScopeFn;
+              const inScopeQual = getSymbolQualifiedName(db, inScopeFn.id);
+              if (!(SCALAR_VECTORIZABLE_FUNCTIONS.has(cleanFnName) && inScopeQual.includes("ComplexMath"))) {
+                matchingFnSym = inScopeFn;
+              }
               let qualScopeId = flattener?.currentClassId;
               if (qualScopeId) {
                 const scopeSym = db.symbol(qualScopeId);
@@ -3785,7 +3841,7 @@ export function lowerCSTExpression(
       // 4. Fallback to existing search
       const isEncapsulatedScope = flattener?.currentClassId ? isScopeEncapsulated(db, flattener.currentClassId) : false;
       if (!matchingFnSym && !isEncapsulatedScope) {
-        matchingFnSym = db.byName(fnBase).find((e: any) => {
+        const candidates = db.byName(fnBase).filter((e: any) => {
           if (e.kind !== "Class") return false;
           if (parts.length > 1) {
             const qual = getSymbolQualifiedName(db, e.id);
@@ -3793,6 +3849,27 @@ export function lowerCSTExpression(
           }
           return parts.length === 1;
         });
+        if (candidates.length > 0) {
+          if (parts.length === 1) {
+            matchingFnSym =
+              candidates.find((e: any) => getSymbolQualifiedName(db, e.id) === `Modelica.Math.${fnBase}`) ??
+              candidates.find((e: any) => !getSymbolQualifiedName(db, e.id).includes("ComplexMath")) ??
+              (SCALAR_VECTORIZABLE_FUNCTIONS.has(fnBase) ? null : candidates[0]);
+          } else {
+            matchingFnSym = candidates[0];
+          }
+        }
+        if (cleanFnName === "atan" || cleanFnName === "cos") {
+          console.log("MATCHING FNSYM for", cleanFnName, ":", {
+            id: matchingFnSym?.id,
+            kind: matchingFnSym?.kind,
+            qual: matchingFnSym ? getSymbolQualifiedName(db, matchingFnSym.id) : null,
+            candidatesCount: candidates.length,
+            allCandidates: db
+              .byName(fnBase)
+              .map((c: any) => ({ id: c.id, kind: c.kind, qual: getSymbolQualifiedName(db, c.id) })),
+          });
+        }
       }
 
       if (matchingFnSym && flattener.isExternalObject?.(matchingFnSym.id)) {
@@ -3878,6 +3955,11 @@ export function lowerCSTExpression(
           return dae.addCallExpr(fnName, argExprIds);
         }
         const qualifiedFnName = specializedQualifiedName ?? getSymbolQualifiedName(db, matchingFnSym.id);
+        if (fnBase === "cos") {
+          console.log(
+            `MATH COS: qualifiedFnName=${qualifiedFnName}, specialized=${specializedQualifiedName}, symId=${matchingFnSym.id}, symName=${matchingFnSym.name}`,
+          );
+        }
         flattener.calledFunctionSymIds?.add(matchingFnSym.id);
         const isRecursiveCall = Boolean(flattener.activeFlatteningFunctionIds?.has(matchingFnSym.id));
         const fn = isRecursiveCall
@@ -3889,6 +3971,7 @@ export function lowerCSTExpression(
         (fn as any).symId = matchingFnSym.id;
         if (fn.diagnostics.some((d: any) => d.severity === "error")) {
           for (const d of fn.diagnostics) {
+            (d as any).fromFunction = true;
             if (!dae.diagnostics.some((existing: any) => existing.message === d.message)) {
               dae.diagnostics.push(d);
             }
@@ -4474,7 +4557,12 @@ export function lowerCSTExpression(
             db,
             flattener?.currentRootClassId ?? undefined,
           );
-          if (outVal !== null && outVal !== undefined) {
+          if (typeof outVal === "number" && Number.isNaN(outVal)) {
+            console.log(
+              `CEval returned NaN! fnName=${fnName}, args=${JSON.stringify(constArgs)}, nodeText=${node?.text}`,
+            );
+          }
+          if (outVal !== null && outVal !== undefined && !(typeof outVal === "number" && Number.isNaN(outVal))) {
             (fnDae as any).wasCalled = true;
             let outputCount = 0;
             let firstOutputType: VarType | null = null;
@@ -4818,6 +4906,9 @@ export function lowerCSTExpression(
     }
 
     if (db && fnName) {
+      if (fnName === "atan" || fnName === "cos" || cleanFnName === "atan") {
+        console.log("REACHED LINE 4870:", { fnName, cleanFnName, argExprIds });
+      }
       let fnSym: any = null;
       if (flattener?.currentRootClassId) {
         const resolver =
@@ -4826,7 +4917,21 @@ export function lowerCSTExpression(
         if (resolver) fnSym = resolver(fnName);
       }
       if (!fnSym) {
-        fnSym = db.byName(fnName).find((s: any) => s.kind === "Function" || s.kind === "Class");
+        fnSym = db.byName(fnName).find((s: any) => {
+          if (s.kind !== "Function" && s.kind !== "Class") return false;
+          if (SCALAR_VECTORIZABLE_FUNCTIONS.has(fnName)) {
+            const qual = getSymbolQualifiedName(db, s.id);
+            if (qual.includes("ComplexMath")) return false;
+          }
+          return true;
+        });
+      }
+      if (fnName === "atan" || fnName === "cos" || cleanFnName === "atan") {
+        console.log("RESOLVED FNSYM AT 4870:", {
+          fnName,
+          fnSym,
+          isPartial: fnSym ? flattener?.isClassPartial(fnSym.id) : null,
+        });
       }
       const isOuterFn = isOuterFunctionSymbol(db, fnSym);
       const hasInnerMatch = isOuterFn && hasMatchingInnerFunction(db, flattener, fnSym?.name ?? fnName);
@@ -8078,13 +8183,7 @@ export function lowerCSTExpression(
       const leafTypeName = enumTypeName.includes(".") ? enumTypeName.split(".").pop()! : enumTypeName;
       const typeTargets = db.byName(leafTypeName);
       for (const candidate of typeTargets) {
-        const cstText = (db.cstNode(candidate.id) as any)?.text ?? "";
-        const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-        const literals: string[] | null = enumMatch
-          ? enumMatch[1].split(",").map((s) => s.trim().split(/\s+/)[0])
-          : Array.isArray(candidate.metadata?.literals)
-            ? candidate.metadata.literals
-            : null;
+        const literals = extractEnumLiteralsFromCst(db.cstNode(candidate.id) as any, candidate.metadata);
         if (literals) {
           const idx = literals.indexOf(litName);
           if (idx >= 0) {

@@ -14,9 +14,9 @@ import { parsePscx } from "./parser/pscx-parser.js";
 
 export const pscadLanguage = language({
   name: "pscad",
-  fileExtensions: [".pscx", ".pswx", ".psmx"],
+  fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx"],
   lsp: {
-    fileExtensions: [".pscx", ".pswx", ".psmx"],
+    fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     icons: {
       light: "./assets/pscad/icon-light.png",
       dark: "./assets/pscad/icon-dark.png",

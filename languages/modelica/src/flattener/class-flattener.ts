@@ -834,7 +834,7 @@ export class ModelicaFlattener {
       arrayMode: options?.arrayMode ?? (omcCompatibility ? "scalarize" : "preserve"),
       functionInlining: options?.functionInlining ?? false,
       omcCompatibility,
-      eliminateAliases: options?.eliminateAliases ?? !omcCompatibility,
+      eliminateAliases: options?.eliminateAliases ?? false,
       useWasmKernel:
         backend === "wasm" || backend === "hybrid" || backend === "diff" || Boolean(options?.useWasmKernel),
       scalarizeBindings: options?.scalarizeBindings ?? false,
@@ -866,7 +866,7 @@ export class ModelicaFlattener {
           this.options.arrayMode = "scalarize";
         }
         if (options.eliminateAliases === undefined) {
-          this.options.eliminateAliases = !options.omcCompatibility;
+          this.options.eliminateAliases = false;
         }
       }
       if (options.eliminateAliases !== undefined) this.options.eliminateAliases = options.eliminateAliases;

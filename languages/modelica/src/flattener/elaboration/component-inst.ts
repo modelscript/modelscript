@@ -751,7 +751,43 @@ export function instantiateElements(
 
     if (parentMods?.args) {
       for (const arg of parentMods.args) {
-        if (arg?.name) declaredNames.add(arg.name);
+        if (arg?.name) {
+          declaredNames.add(arg.name);
+          if (prefix && arg.value?.text) {
+            const fullName = `${prefix}.${arg.name}`;
+            const rawText = arg.value.text.trim();
+            if (rawText.startsWith("{") && rawText.endsWith("}")) {
+              const elems = parseArrayLiteralElements(rawText);
+              if (elems.length > 0) {
+                if (elems[0]?.trim().startsWith("{") && elems[0]?.trim().endsWith("}")) {
+                  const inner = parseArrayLiteralElements(elems[0].trim());
+                  (dae as any).setNamedArrayShape?.(fullName, [elems.length, inner.length]);
+                } else {
+                  (dae as any).setNamedArrayShape?.(fullName, [elems.length]);
+                }
+              }
+            } else if (rawText.startsWith("[") && rawText.endsWith("]")) {
+              const rows = splitTopLevel(rawText.slice(1, -1), ";");
+              if (rows.length > 0) {
+                const cols = splitTopLevel(rows[0]!, ",");
+                (dae as any).setNamedArrayShape?.(fullName, [rows.length, cols.length]);
+              }
+            }
+          }
+        }
+      }
+      if (prefix) {
+        const tableShape = (dae as any).getNamedArrayShape?.(`${prefix}.table`);
+        if (tableShape && tableShape.length >= 2) {
+          const colsCount = tableShape[1];
+          const hasExplicitCols = parentMods.args.some((a: any) => a.name === "columns");
+          if (!hasExplicitCols && colsCount >= 2) {
+            const numOutputs = colsCount - 1;
+            (dae as any).setNamedArrayShape?.(`${prefix}.columns`, [numOutputs]);
+            (dae as any).setNamedArrayShape?.(`${prefix}.y`, [numOutputs]);
+            (dae as any).setNamedArrayShape?.(`${prefix}.p_offset`, [numOutputs]);
+          }
+        }
       }
     }
     (dae as any).flattener = flattener;
@@ -1230,9 +1266,18 @@ export function instantiateElements(
               const vIdx = dae.getVarIdxByName(prefix ? `${prefix}.${varName}` : varName);
               if (vIdx >= 0) {
                 const exprId = dae.getVarExpression(vIdx);
-                if (exprId !== undefined && exprId >= 0 && dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
-                  const b = dae.getExprData1(exprId) !== 0;
-                  condVal = isNeg ? !b : b;
+                if (exprId !== undefined && exprId >= 0) {
+                  if (dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
+                    const b = dae.getExprData1(exprId) !== 0;
+                    condVal = isNeg ? !b : b;
+                  } else {
+                    const evaluated = evalDaeExpr(exprId, dae);
+                    if (typeof evaluated === "boolean") {
+                      condVal = isNeg ? !evaluated : evaluated;
+                    } else if (typeof evaluated === "number") {
+                      condVal = isNeg ? evaluated === 0 : evaluated !== 0;
+                    }
+                  }
                 }
               }
             }
@@ -1555,19 +1600,6 @@ export function instantiateElements(
                     continue;
                   }
                   let attrExprId: number | null = null;
-                  if ((arg.value as any)?.cstBytes && flattener.db) {
-                    const valNode = flattener.db.cstNodeRange(
-                      (arg.value as any).cstBytes[0],
-                      (arg.value as any).cstBytes[1],
-                      flattener.db.symbol(elemId) ?? undefined,
-                    ) as any;
-                    if (valNode) {
-                      flattener.lowerExpr(valNode, dae, prefix);
-                      if (dae.diagnostics.some((d: any) => d.severity === "error")) {
-                        continue;
-                      }
-                    }
-                  }
                   if (arg.name === "stateSelect") {
                     const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
                     let litName: string | null = null;
@@ -4561,13 +4593,14 @@ export function instantiateElements(
               if (
                 !isRecordParamOrConst &&
                 dae.classKind !== "function" &&
-                variability === Variability.Continuous &&
-                arrayDims &&
-                arrayDims.length > 0 &&
-                !dae.extensionMetadata?.scalarizeBindings
+                dae.classKind !== "record" &&
+                (variability === Variability.Continuous || variability === Variability.Discrete) &&
+                ((arrayDims && arrayDims.length > 0 && !dae.extensionMetadata?.scalarizeBindings) ||
+                  (exprId !== null && exprId >= 0 && exprContainsNameRef(exprId, dae)))
               ) {
-                // Continuous array binding is emitted as an equation, not a variable expression
-                if (!effectiveBinding?.text && exprId !== null && exprId >= 0) {
+                // Continuous or discrete variable binding referencing another variable is emitted as an equation,
+                // not a static parameter variable expression.
+                if (exprId !== null && exprId >= 0) {
                   const lhsExprId = dae.addNameExpr(dae.getVarName(varIdx));
                   dae.addEquation(EqKind.Simple, lhsExprId, exprId);
                 }
@@ -4612,19 +4645,6 @@ export function instantiateElements(
                   continue;
                 }
                 let attrExprId: number | null = null;
-                if ((arg.value as any)?.cstBytes && flattener.db) {
-                  const valNode = flattener.db.cstNodeRange(
-                    (arg.value as any).cstBytes[0],
-                    (arg.value as any).cstBytes[1],
-                    flattener.db.symbol(elemId) ?? undefined,
-                  ) as any;
-                  if (valNode) {
-                    flattener.lowerExpr(valNode, dae, prefix);
-                    if (dae.diagnostics.some((d: any) => d.severity === "error")) {
-                      continue;
-                    }
-                  }
-                }
                 if (arg.value?.kind === "literal") {
                   if (typeof arg.value.value === "number") {
                     attrExprId =
@@ -4968,6 +4988,13 @@ export function instantiateElements(
           arrayDims = rawDimsInitial.map((d: any) =>
             d.kind === "literal" && typeof d.value === "number" ? d.value : -1,
           );
+        }
+        const preRegisteredShape =
+          (dae as any).getNamedArrayShape?.(fullCompName) ??
+          (prefix ? (dae as any).getNamedArrayShape?.(`${prefix}.${compInst.name}`) : null) ??
+          (dae as any).getNamedArrayShape?.(compInst.name);
+        if (preRegisteredShape && preRegisteredShape.length > 0) {
+          arrayDims = preRegisteredShape;
         }
         const isFunctionInputWithColon =
           dae.classKind === "function" &&

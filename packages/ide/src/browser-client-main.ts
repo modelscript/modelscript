@@ -228,15 +228,18 @@ class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
+    console.log("[ModelicaFileSystemProvider] stat called for:", uri.toString());
     const cached = this.cache.get(uri.toString());
     if (cached) {
       return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: cached.length };
     }
     if (!client) {
+      console.warn("[ModelicaFileSystemProvider] stat: client is not defined!");
       throw vscode.FileSystemError.FileNotFound(uri);
     }
     try {
       const res: any = await client.sendRequest("modelscript/getVirtualFile", { uri: uri.toString() });
+      console.log("[ModelicaFileSystemProvider] stat response:", uri.toString(), JSON.stringify(res));
       if (res && res.exists) {
         if (res.isDirectory) {
           return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
@@ -250,14 +253,21 @@ class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+    console.log("[ModelicaFileSystemProvider] readFile called for:", uri.toString());
     const cached = this.cache.get(uri.toString());
     if (cached) return cached;
 
     if (!client) {
+      console.warn("[ModelicaFileSystemProvider] readFile: client is not defined!");
       throw vscode.FileSystemError.FileNotFound(uri);
     }
     try {
       const res: any = await client.sendRequest("modelscript/getVirtualFile", { uri: uri.toString() });
+      console.log(
+        "[ModelicaFileSystemProvider] readFile response:",
+        uri.toString(),
+        res ? { exists: res.exists, length: res.content?.length } : null,
+      );
       if (res && res.exists && typeof res.content === "string") {
         const data = new TextEncoder().encode(res.content);
         this.cache.set(uri.toString(), data);
@@ -860,6 +870,9 @@ export async function activate(context: vscode.ExtensionContext) {
   treeProvider.onDragStart = (data) => {
     diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
   };
+  diagramProvider.onDidOpenDocument = (uri) => {
+    treeProvider.setDocumentUri(uri);
+  };
   let treeView: vscode.TreeView<any> | undefined;
   try {
     treeView = vscode.window.createTreeView("modelscript.libraryTree", {
@@ -1268,7 +1281,12 @@ export async function activate(context: vscode.ExtensionContext) {
                     ? "sysml2.diagramEditor"
                     : filePath.endsWith(".mo")
                       ? "modelica.diagramEditor"
-                      : DiagramEditorProvider.viewType;
+                      : filePath.endsWith(".pscx") ||
+                          filePath.endsWith(".pslx") ||
+                          filePath.endsWith(".pswx") ||
+                          filePath.endsWith(".psmx")
+                        ? "pscad.diagramEditor"
+                        : DiagramEditorProvider.viewType;
           try {
             await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType);
           } catch {
@@ -1541,6 +1559,105 @@ export async function activate(context: vscode.ExtensionContext) {
         console.error("[owl2] Failed to navigate to declaration:", e);
       }
     }),
+    commands.registerCommand("modelscript.openModel", async (firstArg: any) => {
+      console.log("[modelscript.openModel] CALLED with firstArg:", JSON.stringify(firstArg));
+      if (!client) {
+        console.warn("[modelscript.openModel] client is undefined or not ready!");
+        return;
+      }
+      let className: string | undefined;
+      let targetUri: string | undefined;
+
+      if (typeof firstArg === "string") {
+        className = firstArg;
+      } else if (firstArg && typeof firstArg === "object") {
+        const itemFromMap =
+          (firstArg.id ? treeProvider.getItem(firstArg.id) : undefined) ||
+          (firstArg.tooltip ? treeProvider.getItem(firstArg.tooltip) : undefined);
+        className =
+          itemFromMap?.info?.compositeName ||
+          firstArg.info?.compositeName ||
+          firstArg.info?.name ||
+          (typeof firstArg.compositeName === "string" ? firstArg.compositeName : undefined) ||
+          (typeof firstArg.className === "string" ? firstArg.className : undefined) ||
+          (typeof firstArg.id === "string" &&
+          !firstArg.id.startsWith("__LIB__:") &&
+          !firstArg.id.startsWith("__ONTOLOGY__:")
+            ? firstArg.id
+            : undefined) ||
+          (typeof firstArg.tooltip === "string" && !firstArg.tooltip.startsWith("__LIB__:")
+            ? firstArg.tooltip
+            : undefined) ||
+          (typeof firstArg.label === "string" ? firstArg.label : firstArg.label?.label);
+        targetUri = firstArg.uri || firstArg.info?.uri || itemFromMap?.info?.uri;
+      }
+      if (className?.startsWith("__LIB__:") || className?.startsWith("__ONTOLOGY__:")) {
+        className = undefined;
+      }
+      console.log("[modelscript.openModel] Resolved className:", className, "targetUri:", targetUri);
+      if (!className && !targetUri) {
+        vscode.window.showWarningMessage("Please select a valid model or class to open.");
+        return;
+      }
+
+      try {
+        let uriToOpen = targetUri;
+        let line = 0;
+        let character = 0;
+
+        // If targetUri is already known, we can open the document immediately!
+        if (uriToOpen) {
+          const docUri = vscode.Uri.parse(uriToOpen);
+          console.log("[modelscript.openModel] Fast-path opening text document:", docUri.toString());
+          const doc = await vscode.workspace.openTextDocument(docUri);
+
+          // Locate declaration in document text
+          const lastName = className ? className.split(".").pop() || "" : "";
+          if (lastName) {
+            const text = doc.getText();
+            const regex = new RegExp(
+              `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
+            );
+            const match = regex.exec(text);
+            if (match && match.index !== undefined) {
+              const pos = doc.positionAt(match.index);
+              line = pos.line;
+              character = pos.character;
+            }
+          }
+
+          const pos = new vscode.Position(line, character);
+          await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos), preview: false });
+          console.log("[modelscript.openModel] Fast-path document opened successfully:", docUri.toString());
+          return;
+        }
+
+        // Fall back to querying language server for location
+        const resultPromise = client.sendRequest<{ uri: string; line?: number; character?: number } | null>(
+          "modelscript/getClassLocation",
+          { className },
+        );
+        // Timeout after 4s so UI never freezes
+        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
+        const result = await Promise.race([resultPromise, timeoutPromise]);
+
+        console.log("[modelscript.openModel] getClassLocation result:", JSON.stringify(result));
+        if (result && result.uri) {
+          const docUri = vscode.Uri.parse(result.uri);
+          console.log("[modelscript.openModel] Opening text document with URI:", docUri.toString());
+          const doc = await vscode.workspace.openTextDocument(docUri);
+          const pos = new vscode.Position(result.line ?? 0, result.character ?? 0);
+          await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos), preview: false });
+          console.log("[modelscript.openModel] Successfully opened document:", docUri.toString());
+        } else {
+          console.warn("[modelscript.openModel] No URI returned for:", className);
+          vscode.window.showWarningMessage(`Could not find declaration for '${className}'.`);
+        }
+      } catch (e: any) {
+        console.error(`[openModel] Failed to open '${className}':`, e);
+        vscode.window.showErrorMessage(`Failed to open '${className}': ${e?.message || e}`);
+      }
+    }),
     commands.registerCommand("modelscript.owl2.refreshClassHierarchy", () => {
       treeProvider.refresh();
     }),
@@ -1791,8 +1908,16 @@ END-ISO-10303-21;`;
           uri = candidate.uri.toString();
           if (!inputs.documentText) inputs.documentText = candidate.getText();
           if (!inputs.name) {
+            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
             const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) inputs.name = m[1];
+            if (m) {
+              inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+            }
+          } else if (!inputs.name.includes(".")) {
+            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+            if (wm && wm[1]?.trim()) {
+              inputs.name = `${wm[1].trim()}.${inputs.name}`;
+            }
           }
         }
       }
@@ -1812,9 +1937,16 @@ END-ISO-10303-21;`;
       if (!inputs.documentText && editor?.document) {
         inputs.documentText = editor.document.getText();
       }
-      if (!inputs.name && inputs.documentText) {
-        const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-        if (m) inputs.name = m[1];
+      if (inputs.documentText) {
+        const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+        if (!inputs.name) {
+          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+          if (m) {
+            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+          }
+        } else if (!inputs.name.includes(".") && wm && wm[1]?.trim()) {
+          inputs.name = `${wm[1].trim()}.${inputs.name}`;
+        }
       }
       try {
         await vscode.window.withProgress(
@@ -1910,8 +2042,16 @@ END-ISO-10303-21;`;
           uri = candidate.uri.toString();
           if (!inputs.documentText) inputs.documentText = candidate.getText();
           if (!inputs.name) {
+            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
             const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) inputs.name = m[1];
+            if (m) {
+              inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+            }
+          } else if (!inputs.name.includes(".")) {
+            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+            if (wm && wm[1]?.trim()) {
+              inputs.name = `${wm[1].trim()}.${inputs.name}`;
+            }
           }
         }
       }
@@ -1931,9 +2071,16 @@ END-ISO-10303-21;`;
       if (!inputs.documentText && editor?.document) {
         inputs.documentText = editor.document.getText();
       }
-      if (!inputs.name && inputs.documentText) {
-        const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-        if (m) inputs.name = m[1];
+      if (inputs.documentText) {
+        const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+        if (!inputs.name) {
+          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+          if (m) {
+            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
+          }
+        } else if (!inputs.name.includes(".") && wm && wm[1]?.trim()) {
+          inputs.name = `${wm[1].trim()}.${inputs.name}`;
+        }
       }
       try {
         const lang = editor?.document.languageId ?? "modelica";
@@ -2044,6 +2191,13 @@ END-ISO-10303-21;`;
             .split("/")
             .pop()
             ?.replace(/\.[^.]+$/, "") ?? "Model";
+      }
+      if (editor?.document && !name.includes(".")) {
+        const text = editor.document.getText();
+        const wm = text.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+        if (wm && wm[1]?.trim()) {
+          name = `${wm[1].trim()}.${name}`;
+        }
       }
 
       vscode.window.withProgress(
@@ -3082,6 +3236,11 @@ end ${studyName};
     "scad.diagramEditor",
     "owl2.diagramEditor",
     "csv.diagramEditor",
+    "pscad.diagramEditor",
+    "cfd.diagramEditor",
+    "fea.diagramEditor",
+    "ssp.diagramEditor",
+    "modelscript.diagramEditor",
   ];
   for (const vt of diagramViewTypes) {
     context.subscriptions.push(
@@ -3421,7 +3580,7 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const moFiles = await workspace.findFiles(
-        "**/*.{mo,mos,sysml,sysml2,step,stp,p21,owl,ttl,ofn,csv,js,ts,msim}",
+        "**/*.{mo,mos,sysml,sysml2,step,stp,p21,owl,ttl,ofn,csv,js,ts,msim,pscx,pslx,pswx,psmx}",
         "**/{node_modules,dist,.git,testsuite,packages/core/testsuite}/**",
       );
       console.log(`[workspace-scan] Found ${moFiles.length} files matching ModelScript workspace rules`);

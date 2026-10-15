@@ -28,6 +28,8 @@ export interface PscxComponent {
   definitionName: string;
   instanceName?: string | undefined;
   position: Point2D;
+  width?: number | undefined;
+  height?: number | undefined;
   rotation?: number | undefined; // 0, 90, 180, 270
   mirror?: boolean | undefined;
   parameters: Record<string, string | number>;
@@ -49,6 +51,14 @@ export interface PscxBus {
   phaseCount: number; // 1 or 3
 }
 
+export interface PscxSticky {
+  id: string;
+  position: Point2D;
+  width: number;
+  height: number;
+  text: string;
+}
+
 export interface PscxModule {
   id: string;
   name: string;
@@ -56,6 +66,7 @@ export interface PscxModule {
   components: PscxComponent[];
   buses: PscxBus[];
   wires: PscxWire[];
+  stickies?: PscxSticky[] | undefined;
 }
 
 export interface PscxProjectSettings {
@@ -69,6 +80,7 @@ export interface PscxProjectSettings {
 export interface PscxProject {
   name: string;
   version: string;
+  projectType?: "case" | "library" | undefined;
   settings: PscxProjectSettings;
   rootModule: PscxModule;
   subModules: Map<string, PscxModule>;

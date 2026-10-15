@@ -11,3 +11,4 @@ export * from "./projections/modelica.js";
 export * from "./projections/ssp.js";
 export * from "./types.js";
 export * from "./verification/ieee2800.js";
+export * from "./workspace-index.js";

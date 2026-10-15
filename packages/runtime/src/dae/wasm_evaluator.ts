@@ -8,6 +8,7 @@
 
 import type { QueryDB, SymbolEntry, SymbolId } from "../runtime.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
+import { evalTimeTableTmax, evalTimeTableTmin, evalTimeTableValue, getOrCreateCachedTable } from "./wasm_table.js";
 
 /**
  * Dual numbers for forward-mode automatic differentiation.
@@ -351,6 +352,21 @@ export function evaluateArenaDualExpression(
           case "pow":
             return arg0.pow(arg1);
         }
+      }
+
+      if (
+        funcName.includes("getTimeTableValue") ||
+        funcName.includes("CombiTimeTable_getValue") ||
+        funcName.includes("getTable1DValue")
+      ) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        const icolDual = argIds.length > 1 ? evaluateArenaDualExpression(arena, argIds[1]!, dualVarsByStringId) : null;
+        const timeDual = argIds.length > 2 ? evaluateArenaDualExpression(arena, argIds[2]!, dualVarsByStringId) : null;
+        const icol = icolDual ? icolDual.val : 1;
+        const timeIn = timeDual ? timeDual.val : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return Dual.constant(evalTimeTableValue(cached, icol, timeIn));
       }
 
       return Dual.constant(0);
@@ -698,6 +714,21 @@ export function evaluateArenaDualFlat(
         }
       }
 
+      if (
+        funcName.includes("getTimeTableValue") ||
+        funcName.includes("CombiTimeTable_getValue") ||
+        funcName.includes("getTable1DValue")
+      ) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        const icol = argIds.length > 1 ? evaluateArenaRuntime(arena, argIds[1]!, valuesByStringId) : 1;
+        const timeIn = argIds.length > 2 ? evaluateArenaRuntime(arena, argIds[2]!, valuesByStringId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        stack[sp] = evalTimeTableValue(cached, icol, timeIn);
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+
       stack[sp] = 0.0;
       stack[sp + 1] = 0.0;
       return true;
@@ -864,7 +895,8 @@ export function evaluateArenaRuntime(
 
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);
-      const funcName = arena.interner.resolve(funcNameId);
+      const rawFuncName = arena.interner.resolve(funcNameId) ?? "";
+      const funcName = rawFuncName.replace(/^(Modelica\.)?Math\./, "");
       const argCount = arena.getExprRight(exprId);
       const firstArgId = arena.getExprLeft(exprId);
 
@@ -1027,6 +1059,37 @@ export function evaluateArenaRuntime(
           result = funcName === "product" ? result * val : result + val;
         }
         return result;
+      }
+
+      if (
+        funcName.includes("getTimeTableValue") ||
+        funcName.includes("CombiTimeTable_getValue") ||
+        funcName.includes("getTable1DValue")
+      ) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        const icol =
+          argIds.length > 1 ? evaluateArenaRuntime(arena, argIds[1]!, valuesByStringId, preValuesByStringId) : 1;
+        const timeIn =
+          argIds.length > 2 ? evaluateArenaRuntime(arena, argIds[2]!, valuesByStringId, preValuesByStringId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return evalTimeTableValue(cached, icol, timeIn);
+      }
+
+      if (funcName.includes("getTimeTableTmin")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return evalTimeTableTmin(cached);
+      }
+
+      if (funcName.includes("getTimeTableTmax")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return evalTimeTableTmax(cached);
+      }
+
+      if (funcName.includes("getNextTimeEvent")) {
+        return 1e100;
       }
 
       return 0;

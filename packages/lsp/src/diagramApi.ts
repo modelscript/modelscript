@@ -1653,7 +1653,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     ) {
       return backends.owl2;
     }
-    if (uri.endsWith(".pscx") || uri.endsWith(".pswx") || uri.endsWith(".psmx")) {
+    if (uri.endsWith(".pscx") || uri.endsWith(".pslx") || uri.endsWith(".pswx") || uri.endsWith(".psmx")) {
       return {
         async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
           try {

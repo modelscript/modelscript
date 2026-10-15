@@ -463,7 +463,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "pscad <action> [files..]",
-      "Inspect, lint, diff, and simulate PSCAD projects (.pscx)",
+      "Inspect, lint, diff, and simulate PSCAD projects (.pscx, .pslx)",
       () => import("./commands/pscad.js"),
       "PscadCommand",
     ),

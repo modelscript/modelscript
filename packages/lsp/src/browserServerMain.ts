@@ -261,6 +261,7 @@ workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { prior
 import { cfdLanguage } from "@modelscript/cfd";
 import { feaLanguage } from "@modelscript/fea";
 import modelicaLangFallback from "@modelscript/modelica/language";
+import { PscadWorkspaceIndex, pscadLanguage } from "@modelscript/pscad";
 import scadLangFallback from "@modelscript/scad/language";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -283,6 +284,9 @@ import { DiagramService } from "./services/diagram-service.js";
 import { HierarchyService } from "./services/hierarchy-service.js";
 import { ParserService } from "./services/parser-service.js";
 import { ValidationService } from "./services/validation-service.js";
+const pscadWsIndex = new PscadWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("pscad", pscadWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("pscad", pscadWsIndex, { priority: 2, name: "pscad" });
 
 const moWs = workspaceManager.getWorkspaceIndex("modelica");
 if (moWs) {
@@ -588,6 +592,23 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "FEA",
       extensions: [".fea", ".inp", ".inpt", ".bdf"],
       languageDef: feaLanguage,
+    });
+
+    globalLanguageRegistry.register({
+      id: "pscad",
+      name: "PSCAD",
+      extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
+      languageDef: pscadLanguage,
+      actionHandlers: {
+        lint_pscad_project: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parsePscx, lintPscx } = await import("@modelscript/pscad");
+          const project = parsePscx(text);
+          return lintPscx(project);
+        },
+      },
+      disposables: [],
     });
     connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
   };

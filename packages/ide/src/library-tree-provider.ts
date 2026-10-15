@@ -27,7 +27,8 @@ interface TreeNodeInfo {
 
 const KIND_TO_ICON_MAP: Record<string, string> = {
   model: "symbol-class",
-  block: "symbol-event",
+  block: "circuit-board",
+  component: "circuit-board",
   connector: "symbol-interface",
   record: "symbol-struct",
   type: "symbol-type-parameter",
@@ -68,13 +69,13 @@ function classKindToIcon(kind: string): vscode.ThemeIcon {
     if (mapped) {
       return new vscode.ThemeIcon(mapped);
     }
-    if (kind.startsWith("symbol-")) {
+    if (kind.startsWith("symbol-") || kind === "circuit-board" || kind === "package") {
       try {
         return new vscode.ThemeIcon(kind);
       } catch {}
     }
   }
-  return new vscode.ThemeIcon("symbol-misc");
+  return new vscode.ThemeIcon("circuit-board");
 }
 
 // Convert raw SVG string to a data URI that VS Code can use as an icon
@@ -116,14 +117,9 @@ export class LibraryTreeItem extends vscode.TreeItem {
       } else if (info.classKind === "ontology") {
         this.iconPath = new vscode.ThemeIcon("symbol-namespace", new vscode.ThemeColor("charts.cyan"));
       } else if (info.icon) {
-        this.iconPath = new vscode.ThemeIcon(info.icon);
+        const iconName = info.icon === "class" ? "symbol-class" : info.icon;
+        this.iconPath = new vscode.ThemeIcon(iconName);
       } else {
-        this.iconPath = classKindToIcon(info.classKind);
-      }
-    } else if (info.icon) {
-      try {
-        this.iconPath = new vscode.ThemeIcon(info.icon);
-      } catch {
         this.iconPath = classKindToIcon(info.classKind);
       }
     } else if (info.iconUri && info.iconUri.scheme !== "vscode-userdata") {
@@ -131,6 +127,13 @@ export class LibraryTreeItem extends vscode.TreeItem {
     } else if (info.iconSvg) {
       const iconUri = svgToIconUri(info.iconSvg);
       this.iconPath = iconUri;
+    } else if (info.icon) {
+      const iconName = info.icon === "class" ? "symbol-class" : info.icon;
+      try {
+        this.iconPath = new vscode.ThemeIcon(iconName);
+      } catch {
+        this.iconPath = classKindToIcon(info.classKind);
+      }
     } else if (info.pendingIcon) {
       // Show a spinner while the icon is being fetched in the background
       this.iconPath = new vscode.ThemeIcon("loading~spin");
@@ -152,14 +155,14 @@ export class LibraryTreeItem extends vscode.TreeItem {
         arguments: [info.compositeName],
       };
     } else {
-      // For leaf items that can be added to a diagram, double-click triggers addToDiagram.
-      const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology"]);
-      const isAddable = !nonAddableKinds.has(info.classKind.toLowerCase());
-      if (isAddable && !info.hasChildren) {
+      // Leaf models and definitions: double-click / click opens in editor
+      const nonOpenableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology"]);
+      const isOpenable = !nonOpenableKinds.has(info.classKind?.toLowerCase());
+      if (isOpenable && !info.hasChildren && !info.id.startsWith("__LIB__:") && !info.id.startsWith("__ONTOLOGY__:")) {
         this.command = {
-          command: "modelscript.addToDiagram",
-          title: "Add to Diagram",
-          arguments: [info.compositeName, info.classKind, info.iconSvg],
+          command: "modelscript.openModel",
+          title: "Open Model in Editor",
+          arguments: [{ className: info.compositeName || info.name, uri: info.uri }],
         };
       }
     }
@@ -239,8 +242,15 @@ export class LibraryTreeProvider
         element.iconPath = classKindToIcon(element.info.classKind);
       }
       element.info.pendingIcon = false;
+    } else if (element.info.iconSvg) {
+      element.iconPath = svgToIconUri(element.info.iconSvg);
+      element.info.pendingIcon = false;
     }
     return element;
+  }
+
+  getItem(idOrName: string): LibraryTreeItem | undefined {
+    return this.itemMap.get(idOrName);
   }
 
   getParent(element: LibraryTreeItem): vscode.ProviderResult<LibraryTreeItem> {
@@ -310,6 +320,9 @@ export class LibraryTreeProvider
 
       // Apply cached icons to nodes that have them
       for (const node of nodes) {
+        if (node.iconSvg && !this.iconCache.has(node.compositeName)) {
+          this.iconCache.set(node.compositeName, node.iconSvg);
+        }
         if (this.iconCache.has(node.compositeName)) {
           const cached = this.iconCache.get(node.compositeName);
           if (cached) node.iconSvg = cached;
@@ -350,7 +363,7 @@ export class LibraryTreeProvider
           n.language !== "owl2" &&
           n.compositeName &&
           !nonIconKinds.has((n.classKind || "").toLowerCase()) &&
-          !n.icon &&
+          !n.iconSvg &&
           !this.iconCache.has(n.compositeName) &&
           !this.iconFetchPending.has(n.compositeName)
         ) {
@@ -431,7 +444,7 @@ export class LibraryTreeProvider
     const toFetch = nodes.map((n) => n.compositeName);
     for (const name of toFetch) this.iconFetchPending.add(name);
 
-    const concurrency = 12;
+    const concurrency = 2;
 
     for (let i = 0; i < toFetch.length; i += concurrency) {
       const batch = toFetch.slice(i, i + concurrency);
@@ -468,6 +481,8 @@ export class LibraryTreeProvider
         }),
       );
       this.scheduleRefresh(batchItems);
+      // Yield to event loop between batches so user interactions are never blocked
+      await new Promise((r) => setTimeout(r, 20));
     }
   }
 }

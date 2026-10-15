@@ -278,6 +278,7 @@ export function extractClassEquations(
   }
   curVisited.add(classId);
 
+  const classEntry = db.symbol(classId);
   if (flattener.pendingArrayBindings.has(prefix)) {
     const pending = flattener.pendingArrayBindings.get(prefix)!;
     for (const item of pending) {
@@ -286,7 +287,6 @@ export function extractClassEquations(
     flattener.pendingArrayBindings.delete(prefix);
   }
 
-  const classEntry = db.symbol(classId);
   const children = db.childrenOf(classId);
   for (const child of children) {
     if (child.kind === "Component") {
@@ -415,9 +415,7 @@ export function extractClassEquations(
     try {
       const walk = (node: any, substitutions?: Map<string, number | string>, isInitial?: boolean): void => {
         if (!node) return;
-        if (process.env.DEBUG_TUPLE && node.type) {
-          console.log("WALK NODE:", node.type, node.text?.slice(0, 30));
-        }
+
         if (
           (node !== cst && node.type === "class_definition") ||
           node.type === "extends_clause" ||
@@ -480,6 +478,17 @@ export function extractClassEquations(
             }
           }
 
+          if (prefix.includes("timeTableTorqueInclination")) {
+            console.log(
+              "FOR_EQ indicesNode:",
+              indicesNode?.text,
+              "forIndexNodes:",
+              forIndexNodes.length,
+              "bodyNodes:",
+              bodyNodes.map((b: any) => b.text),
+            );
+          }
+
           const getForIndexValues = (fIndex: any, currentSubs: Map<string, number | string>): (number | string)[] => {
             const rangeNode =
               Cst.ForIndex.range(fIndex) || fIndex.children?.find?.((c: any) => c.type === "expression");
@@ -496,8 +505,9 @@ export function extractClassEquations(
               return [1];
             }
 
+            const prevDiagCount = dae.diagnostics.length;
             flattener.lowerExpr(rangeNode, dae, prefix, currentSubs);
-            if (dae.diagnostics.some((d: any) => d.severity === "error")) {
+            if (dae.diagnostics.slice(prevDiagCount).some((d: any) => d.severity === "error")) {
               return [];
             }
 
@@ -617,6 +627,16 @@ export function extractClassEquations(
             const vals = getForIndexValues(fIndex, substitutions || new Map());
             return acc * Math.max(1, vals.length);
           }, 1);
+          if (prefix.includes("timeTableTorqueInclination")) {
+            console.log(
+              "FOR_EQ totalEstimated:",
+              totalEstimated,
+              "arrayMode:",
+              flattener.options.arrayMode,
+              "vals:",
+              forIndexNodes.map((f: any) => getForIndexValues(f, substitutions || new Map())),
+            );
+          }
           if (totalEstimated > 5000 && flattener.options.arrayMode === "preserve") {
             return;
           }
@@ -626,6 +646,16 @@ export function extractClassEquations(
 
         // If equations: if cond then ... elseif cond then ... else ... end if;
         if (Cst.IfEquation.is(node) || node.type === "if_equation") {
+          const isTable = prefix.includes("timeTableTorqueInclination");
+          const isSupport = node.text?.includes("useSupport");
+          if (isTable || isSupport) {
+            console.log(`=== if_equation in ${prefix} ===`);
+            console.log("node text:", node.text?.slice(0, 100));
+            console.log(
+              "child types:",
+              (node.children || []).map((c: any) => c.type),
+            );
+          }
           interface IfBranch {
             conditionNode?: any;
             equationNodes: any[];
@@ -706,6 +736,18 @@ export function extractClassEquations(
                 }
               }
               const evaluated = evalDaeExpr(condExprId, dae);
+              if (isTable) {
+                console.log(
+                  `Branch ${i} cond text:`,
+                  b.conditionNode?.text,
+                  "condExprId:",
+                  condExprId,
+                  "evaluated:",
+                  evaluated,
+                  "eqNodes count:",
+                  b.equationNodes.length,
+                );
+              }
               if (evaluated === null) {
                 isDynamic = true;
                 break;
@@ -720,11 +762,17 @@ export function extractClassEquations(
             }
           }
 
+          if (isTable || isSupport) {
+            console.log(`isDynamic: ${isDynamic}, staticBranchIndex: ${staticBranchIndex}`);
+          }
           if (!isDynamic) {
             if (staticBranchIndex !== null) {
               // Statically chosen branch: emit only its equations!
               const chosen = branches[staticBranchIndex];
               for (const eqNode of chosen.equationNodes) {
+                if (isTable || isSupport) {
+                  console.log("Emitting eqNode from chosen branch:", eqNode.text);
+                }
                 walk(eqNode, substitutions, isInitial);
               }
             }

@@ -1495,9 +1495,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   server.tool(
     "pscad_lint",
-    "Lint a PSCAD project (.pscx) or workspace (.pswx) file. Performs pre-flight electrical topology, parameter bounds, floating terminal, and weak grid (SCR) checks.",
+    "Lint a PSCAD project (.pscx, .pslx) or workspace (.pswx) file. Performs pre-flight electrical topology, parameter bounds, floating terminal, and weak grid (SCR) checks.",
     {
-      path: z.string().describe("Absolute or relative path to .pscx or .pswx file"),
+      path: z.string().describe("Absolute or relative path to .pscx, .pslx, or .pswx file"),
     },
     async ({ path: filePath }) => {
       try {
@@ -1553,7 +1553,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     "pscad_simulate",
     "Simulate a PSCAD electromagnetic transient (EMT) circuit using the WebAssembly Dommel companion-circuit solver. Supports Bergeron lines, CDA switch damping, and OEM Inverter-Based Resource (IBR) FMUs.",
     {
-      path: z.string().describe("Path to .pscx PSCAD project file"),
+      path: z.string().describe("Path to .pscx or .pslx PSCAD project file"),
       dt: z.number().optional().describe("Time step in seconds (default: 20e-6 = 20 µs)"),
       tstop: z.number().optional().describe("Simulation duration in seconds (default: 0.1)"),
       faultBus: z.string().optional().describe("Optional bus ID to apply a 3-phase fault to ground"),
@@ -1719,7 +1719,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     "pscad_verify_ieee2800",
     "Automate IEEE 2800-2022 grid code compliance testing for Inverter-Based Resources (IBRs). Assesses momentary cessation, fast reactive current injection (T_90 <= 50 ms), and overvoltage ceiling (<= 1.20 pu).",
     {
-      path: z.string().describe("Path to .pscx PSCAD project file"),
+      path: z.string().describe("Path to .pscx or .pslx PSCAD project file"),
       poiBus: z.string().optional().describe("Point of Interconnection (POI) bus name (default: auto-detected)"),
       faultDurationMs: z.number().optional().describe("Fault duration in milliseconds (default: 150)"),
       vSagPu: z.number().optional().describe("Voltage sag level in pu during fault (default: 0.05)"),
@@ -1819,9 +1819,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   server.tool(
     "pscad_export",
-    "Export a PSCAD project (.pscx) to Modelica (OpenIPSL) or FMI/SSP (SystemStructure.ssd) for cross-domain digital thread interoperability.",
+    "Export a PSCAD project (.pscx, .pslx) to Modelica (OpenIPSL) or FMI/SSP (SystemStructure.ssd) for cross-domain digital thread interoperability.",
     {
-      path: z.string().describe("Path to .pscx PSCAD project file"),
+      path: z.string().describe("Path to .pscx or .pslx PSCAD project file"),
       target: z
         .enum(["modelica", "ssp"])
         .describe("Target format: 'modelica' for OpenIPSL or 'ssp' for System Structure & Parameterization"),

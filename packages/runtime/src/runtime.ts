@@ -28,6 +28,7 @@ export enum LanguageDomainId {
   ModelScript = 0x08,
   SCAD = 0x09,
   CSV = 0x0a,
+  PSCAD = 0x0b,
 }
 
 export function makePolyglotSymbolId(domain: LanguageDomainId | number, localSeq: number): SymbolId {
@@ -55,6 +56,14 @@ export function getLanguageDomainId(language: string): LanguageDomainId {
   if (norm.includes("fea")) return LanguageDomainId.FEA;
   if (norm.includes("modelscript") || norm.includes("msx")) return LanguageDomainId.ModelScript;
   if (norm.includes("csv")) return LanguageDomainId.CSV;
+  if (
+    norm.includes("pscad") ||
+    norm.includes("pscx") ||
+    norm.includes("pslx") ||
+    norm.includes("pswx") ||
+    norm.includes("psmx")
+  )
+    return LanguageDomainId.PSCAD;
   return LanguageDomainId.Default;
 }
 
@@ -626,10 +635,12 @@ export interface ComponentTreeNode {
 export interface TreeNodeInfo {
   name: string;
   id?: string;
+  uri?: string;
   compositeName?: string;
   kind?: string;
   classKind?: string;
   icon?: string;
+  iconSvg?: string;
   hasChildren?: boolean;
   language?: string;
   description?: string | null;

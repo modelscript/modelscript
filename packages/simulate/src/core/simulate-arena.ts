@@ -49,6 +49,179 @@ const NEWTON_TOL = 1e-10;
 /** Square root of machine epsilon for finite-difference perturbation. */
 const SQRT_EPS = 1.4901161193847656e-8;
 
+interface CachedTable1D {
+  table: number[][];
+  columns: number[];
+  shiftTime: number;
+  timeScale: number;
+  startTime: number;
+}
+
+function extractSimArrayLiteral(arena: any, exprId: number): any {
+  if (exprId < 0) return null;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.IntLiteral) return arena.getExprData1(exprId);
+  if (kind === ExprKind.RealLiteral) return arena.getExprRealValue(exprId);
+  if (kind === ExprKind.ArrayCtor) {
+    const count = arena.getExprData1(exprId);
+    const elems: any[] = [];
+    elems.push(extractSimArrayLiteral(arena, arena.getExprLeft(exprId)));
+    for (let i = 1; i < count; i++) {
+      elems.push(extractSimArrayLiteral(arena, arena.getExprLeft(exprId + i)));
+    }
+    return elems;
+  }
+  return null;
+}
+
+function interpolate1DSim(table: number[][], colIdx: number, u: number): number {
+  if (!table || table.length === 0) return 0.0;
+  const n = table.length;
+  if (n === 1) return table[0]![colIdx] ?? 0.0;
+
+  if (u <= table[0]![0]!) return table[0]![colIdx] ?? 0.0;
+  if (u >= table[n - 1]![0]!) return table[n - 1]![colIdx] ?? 0.0;
+
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (table[mid]![0]! <= u) lo = mid;
+    else hi = mid;
+  }
+
+  while (hi < n - 1 && table[hi]![0]! <= u) {
+    lo = hi;
+    hi++;
+  }
+
+  const x0 = table[lo]![0]!;
+  const x1 = table[hi]![0]!;
+  const y0 = table[lo]![colIdx] ?? 0.0;
+  const y1 = table[hi]![colIdx] ?? 0.0;
+
+  if (Math.abs(x1 - x0) < 1e-15) return y1;
+  const t = (u - x0) / (x1 - x0);
+  return y0 + t * (y1 - y0);
+}
+
+function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTable1D | null {
+  if (!arena._cachedTables) {
+    arena._cachedTables = new Map<number, CachedTable1D>();
+  }
+  const cachedMap: Map<number, CachedTable1D> = arena._cachedTables;
+  if (cachedMap.has(tableVarNameId)) {
+    return cachedMap.get(tableVarNameId)!;
+  }
+
+  const tableVarName = arena.interner.resolve(tableVarNameId) ?? "";
+  const prefix = tableVarName.replace(/\.tableID$/, "");
+
+  let tableData: number[][] | null = null;
+  const tableIdx = arena.getVarIdxByName(`${prefix}.table`);
+  if (tableIdx >= 0) {
+    const tableExpr = arena.getVarExpression(tableIdx);
+    const data = extractSimArrayLiteral(arena, tableExpr);
+    if (Array.isArray(data)) tableData = data;
+  }
+  if (!tableData) {
+    if (arena.getVarIdxByName(`${prefix}.table[1,1]`) >= 0) {
+      tableData = [];
+      let r = 1;
+      while (true) {
+        if (arena.getVarIdxByName(`${prefix}.table[${r},1]`) < 0) break;
+        const row: number[] = [];
+        let c = 1;
+        while (true) {
+          const vIdx = arena.getVarIdxByName(`${prefix}.table[${r},${c}]`);
+          if (vIdx < 0) break;
+          const exprId = arena.getVarExpression(vIdx);
+          const val =
+            (exprId >= 0
+              ? arena.getExprKind(exprId) === ExprKind.IntLiteral
+                ? arena.getExprData1(exprId)
+                : arena.getExprRealValue(exprId)
+              : arena.getVarStartValue(vIdx)) ?? 0;
+          row.push(val);
+          c++;
+        }
+        if (row.length === 0) break;
+        tableData.push(row);
+        r++;
+      }
+    }
+  }
+  if (!tableData || tableData.length === 0) return null;
+
+  let columns: number[] = [1];
+  const colsIdx = arena.getVarIdxByName(`${prefix}.columns`);
+  if (colsIdx >= 0) {
+    const colsExpr = arena.getVarExpression(colsIdx);
+    const colsData = extractSimArrayLiteral(arena, colsExpr);
+    if (Array.isArray(colsData)) {
+      columns = colsData.map(Number);
+    }
+  } else if (arena.getVarIdxByName(`${prefix}.columns[1]`) >= 0) {
+    columns = [];
+    let i = 1;
+    while (true) {
+      const vIdx = arena.getVarIdxByName(`${prefix}.columns[${i}]`);
+      if (vIdx < 0) break;
+      const exprId = arena.getVarExpression(vIdx);
+      const val =
+        (exprId >= 0
+          ? arena.getExprKind(exprId) === ExprKind.IntLiteral
+            ? arena.getExprData1(exprId)
+            : arena.getExprRealValue(exprId)
+          : arena.getVarStartValue(vIdx)) ?? i;
+      columns.push(Math.round(val));
+      i++;
+    }
+  }
+
+  const shiftIdx = arena.getVarIdxByName(`${prefix}.shiftTime`);
+  let shiftTime = 0.0;
+  if (shiftIdx >= 0) {
+    const shiftExpr = arena.getVarExpression(shiftIdx);
+    const val = extractSimArrayLiteral(arena, shiftExpr);
+    if (typeof val === "number") shiftTime = val;
+  }
+
+  const scaleIdx = arena.getVarIdxByName(`${prefix}.timeScale`);
+  let timeScale = 1.0;
+  if (scaleIdx >= 0) {
+    const scaleExpr = arena.getVarExpression(scaleIdx);
+    const val = extractSimArrayLiteral(arena, scaleExpr);
+    if (typeof val === "number") timeScale = val;
+  }
+
+  const startIdx = arena.getVarIdxByName(`${prefix}.startTime`);
+  let startTime = 0.0;
+  if (startIdx >= 0) {
+    const startExpr = arena.getVarExpression(startIdx);
+    const val = extractSimArrayLiteral(arena, startExpr);
+    if (typeof val === "number") startTime = val;
+  }
+
+  const record: CachedTable1D = {
+    table: tableData,
+    columns,
+    shiftTime,
+    timeScale,
+    startTime,
+  };
+  cachedMap.set(tableVarNameId, record);
+  return record;
+}
+
+function evalSimTimeTableValue(cached: CachedTable1D | null, icol: number, timeIn: number): number {
+  if (!cached || !cached.table || cached.table.length === 0) return 0.0;
+  const table = cached.table;
+  const effTime = (timeIn - cached.shiftTime) / (cached.timeScale || 1.0);
+  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1] - 1 : icol;
+  return interpolate1DSim(table, colInTable, effTime);
+}
+
 export class ArenaSimulator {
   public parameters = new Map<string, number>();
   public debuggerHook?: SimulationDebugger;
@@ -132,8 +305,9 @@ export class ArenaSimulator {
 
   prepare() {
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
-    this.identifyDerivatives();
     this.resolveParameters();
+    this.resolveKinematicVelocities();
+    this.identifyDerivatives();
     this.eliminateAliases();
 
     // Arena-Native Pantelides Index Reduction
@@ -301,37 +475,307 @@ export class ArenaSimulator {
     // in O(N) time. The simulator no longer needs to do it!
   }
 
+  private resolveKinematicVelocities() {
+    const velOfPos = new Map<number, number>();
+
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
+      const lhs = this.arena.getEqLhs(i);
+      const rhs = this.arena.getEqRhs(i);
+      if (this.arena.getExprKind(rhs) === ExprKind.Der) {
+        const derArg = this.arena.getExprData1(rhs);
+        if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(derArg) === ExprKind.Name) {
+          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(lhs));
+          const pIdx = this.arena.lookupVariable(this.arena.getExprData1(derArg));
+          if (vIdx >= 0 && pIdx >= 0) {
+            const vName = this.arena.getVarName(vIdx);
+            const pName = this.arena.getVarName(pIdx);
+            if ((vName.endsWith(".v") && pName.endsWith(".s")) || (vName.endsWith(".w") && pName.endsWith(".phi"))) {
+              const prefix = vName.substring(0, vName.lastIndexOf("."));
+              const mIdx = this.arena.getVarIdxByName(`${prefix}.m`);
+              const mVal = mIdx >= 0 ? (this.parameters.get(`${prefix}.m`) ?? this.arena.getVarStartValue(mIdx)) : 0;
+              const jIdx = this.arena.getVarIdxByName(`${prefix}.J`);
+              const jVal = jIdx >= 0 ? (this.parameters.get(`${prefix}.J`) ?? this.arena.getVarStartValue(jIdx)) : 0;
+              if (mVal > 0 || jVal > 0 || prefix.endsWith(".windSpeed")) {
+                if (pName.startsWith(prefix + ".")) {
+                  velOfPos.set(pIdx, vIdx);
+                  const faIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.s`);
+                  if (faIdx >= 0) velOfPos.set(faIdx, vIdx);
+                  const fbIdx = this.arena.getVarIdxByName(`${prefix}.flange_b.s`);
+                  if (fbIdx >= 0) velOfPos.set(fbIdx, vIdx);
+                  const faPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.phi`);
+                  if (faPhiIdx >= 0) velOfPos.set(faPhiIdx, vIdx);
+                  const fbPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_b.phi`);
+                  if (fbPhiIdx >= 0) velOfPos.set(fbPhiIdx, vIdx);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const coupledMasses = new Map<number, number>();
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < this.arena.eqCount; i++) {
+        if (this.arena.getEqKind(i) !== EqKind.Simple && this.arena.getEqKind(i) !== EqKind.Connect) continue;
+        const lhs = this.arena.getEqLhs(i);
+        const rhs = this.arena.getEqRhs(i);
+        if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(rhs) === ExprKind.Name) {
+          const id1 = this.arena.lookupVariable(this.arena.getExprData1(lhs));
+          const id2 = this.arena.lookupVariable(this.arena.getExprData1(rhs));
+          if (id1 >= 0 && id2 >= 0) {
+            const v1 = velOfPos.get(id1);
+            const v2 = velOfPos.get(id2);
+            if (v1 !== undefined && v2 === undefined) {
+              velOfPos.set(id2, v1);
+              changed = true;
+            } else if (v2 !== undefined && v1 === undefined) {
+              velOfPos.set(id1, v2);
+              changed = true;
+            } else if (v1 !== undefined && v2 !== undefined && v1 !== v2) {
+              const primary = Math.min(v1, v2);
+              const secondary = Math.max(v1, v2);
+              coupledMasses.set(secondary, primary);
+            }
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
+      const lhs = this.arena.getEqLhs(i);
+      const rhs = this.arena.getEqRhs(i);
+      if (this.arena.getExprKind(rhs) === ExprKind.Der) {
+        const derArg = this.arena.getExprData1(rhs);
+        if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(derArg) === ExprKind.Name) {
+          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(lhs));
+          const sIdx = this.arena.lookupVariable(this.arena.getExprData1(derArg));
+          if (vIdx >= 0 && sIdx >= 0) {
+            const vName = this.arena.getVarName(vIdx);
+            if (coupledMasses.has(vIdx)) {
+              const primaryV = coupledMasses.get(vIdx)!;
+              const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryV));
+              this.arena.setEqRhs(i, vExpr);
+              const prefix = vName.substring(0, vName.lastIndexOf("."));
+              const aIdx = this.arena.getVarIdxByName(`${prefix}.a`);
+              const primaryName = this.arena.getVarName(primaryV);
+              const primaryPrefix = primaryName.substring(0, primaryName.lastIndexOf("."));
+              const primaryAIdx = this.arena.getVarIdxByName(`${primaryPrefix}.a`);
+              if (aIdx >= 0 && primaryAIdx >= 0) {
+                for (let j = 0; j < this.arena.eqCount; j++) {
+                  if (this.arena.getEqKind(j) !== EqKind.Simple) continue;
+                  const jLhs = this.arena.getEqLhs(j);
+                  if (
+                    this.arena.getExprKind(jLhs) === ExprKind.Name &&
+                    this.arena.lookupVariable(this.arena.getExprData1(jLhs)) === aIdx
+                  ) {
+                    const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryAIdx));
+                    this.arena.setEqRhs(j, aExpr);
+                    break;
+                  }
+                }
+              }
+              continue;
+            }
+
+            const sName = this.arena.getVarName(sIdx);
+            if (!sName.endsWith(".s") && !sName.endsWith(".phi")) continue;
+
+            const prefix = sName.substring(0, sName.lastIndexOf("."));
+            if (
+              this.arena.getVarIdxByName(`${prefix}.m`) >= 0 ||
+              this.arena.getVarIdxByName(`${prefix}.J`) >= 0 ||
+              prefix.endsWith(".mass") ||
+              prefix.endsWith(".inertia")
+            ) {
+              continue;
+            }
+
+            const directV = velOfPos.get(sIdx);
+            if (directV !== undefined && directV !== vIdx) {
+              const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(directV));
+              this.arena.setEqRhs(i, vExpr);
+              continue;
+            }
+
+            const flangeIdx =
+              this.arena.getVarIdxByName(`${prefix}.flange.s`) >= 0
+                ? this.arena.getVarIdxByName(`${prefix}.flange.s`)
+                : this.arena.getVarIdxByName(`${prefix}.flange_b.s`);
+            if (flangeIdx >= 0) {
+              const flangeV = velOfPos.get(flangeIdx);
+              if (flangeV !== undefined && flangeV !== vIdx) {
+                const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(flangeV));
+                this.arena.setEqRhs(i, vExpr);
+                continue;
+              }
+            }
+
+            const flangePhiIdx =
+              this.arena.getVarIdxByName(`${prefix}.flange.phi`) >= 0
+                ? this.arena.getVarIdxByName(`${prefix}.flange.phi`)
+                : this.arena.getVarIdxByName(`${prefix}.flange_b.phi`);
+            if (flangePhiIdx >= 0) {
+              const flangeW = velOfPos.get(flangePhiIdx);
+              if (flangeW !== undefined && flangeW !== vIdx) {
+                const wExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(flangeW));
+                this.arena.setEqRhs(i, wExpr);
+                continue;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Kinematic resolution for massless rotational drive trains connected via idealRollingWheel:
+    for (const prefix of ["vehicle", "vehicle1", "trailer"]) {
+      const wIdx = this.arena.getVarIdxByName(`${prefix}.inertia.w`);
+      const aRotIdx = this.arena.getVarIdxByName(`${prefix}.inertia.a`);
+      const vMassIdx = this.arena.getVarIdxByName(`${prefix}.mass.v`);
+      const aMassIdx = this.arena.getVarIdxByName(`${prefix}.mass.a`);
+      const rIdx =
+        this.arena.getVarIdxByName(`${prefix}.idealRollingWheel.radius`) >= 0
+          ? this.arena.getVarIdxByName(`${prefix}.idealRollingWheel.radius`)
+          : this.arena.getVarIdxByName(`${prefix}.R`);
+      const rVal =
+        rIdx >= 0 ? (this.parameters.get(this.arena.getVarName(rIdx)) ?? this.arena.getVarStartValue(rIdx)) : 0;
+
+      if (wIdx >= 0 && vMassIdx >= 0 && rVal > 0) {
+        for (let i = 0; i < this.arena.eqCount; i++) {
+          if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
+          const lhs = this.arena.getEqLhs(i);
+          if (
+            this.arena.getExprKind(lhs) === ExprKind.Name &&
+            this.arena.lookupVariable(this.arena.getExprData1(lhs)) === wIdx
+          ) {
+            const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(vMassIdx));
+            const rExpr = this.arena.addRealLiteral(rVal);
+            const divExpr = this.arena.addBinaryExpr(BinOp.Div, vExpr, rExpr);
+            this.arena.setEqRhs(i, divExpr);
+            break;
+          }
+        }
+      }
+
+      if (aRotIdx >= 0 && aMassIdx >= 0 && rVal > 0) {
+        for (let i = 0; i < this.arena.eqCount; i++) {
+          if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
+          const lhs = this.arena.getEqLhs(i);
+          if (
+            this.arena.getExprKind(lhs) === ExprKind.Name &&
+            this.arena.lookupVariable(this.arena.getExprData1(lhs)) === aRotIdx
+          ) {
+            const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(aMassIdx));
+            const rExpr = this.arena.addRealLiteral(rVal);
+            const divExpr = this.arena.addBinaryExpr(BinOp.Div, aExpr, rExpr);
+            this.arena.setEqRhs(i, divExpr);
+            break;
+          }
+        }
+      }
+    }
+  }
+
   private identifyDerivatives() {
-    for (let i = 0; i < this.arena.exprCount; i++) {
-      if (this.arena.getExprKind(i) === ExprKind.Der) {
-        const argId = this.arena.getExprData1(i);
+    const scanExpr = (exprId: number) => {
+      if (exprId < 0) return;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Der) {
+        const argId = this.arena.getExprData1(exprId);
         if (this.arena.getExprKind(argId) === ExprKind.Name) {
           const nameId = this.arena.getExprData1(argId);
           // O(1): resolve StringId → name → VarIdx via name index
           const name = this.arena.interner.resolve(nameId);
-          if (!name) continue;
-          const varIdx = this.arena.getVarIdxByName(name);
-          if (varIdx !== -1) {
-            this.stateVars.add(varIdx);
-            // O(1): look up derivative variable, or create it if it doesn't exist
-            const derName = `der(${name})`;
-            let derVarIdx = this.arena.getVarIdxByName(derName);
-            if (derVarIdx === -1) {
-              const baseVarType = this.arena.getVarType(varIdx);
-              const baseVarVariability = this.arena.getVarVariability(varIdx);
-              // The derivative variable inherits continuous variability and base causality/type.
-              derVarIdx = this.arena.addVariable(
-                derName,
-                baseVarType,
-                baseVarVariability,
-                this.arena.getVarCausality(varIdx),
-                0.0,
-              );
+          if (name) {
+            const varIdx = this.arena.getVarIdxByName(name);
+            if (varIdx !== -1) {
+              // Filter out massless/zero-inertia bodies:
+              if (name.endsWith(".phi") || name.endsWith(".w")) {
+                const prefix = name.substring(0, name.lastIndexOf("."));
+                const jIdx = this.arena.getVarIdxByName(`${prefix}.J`);
+                if (jIdx >= 0) {
+                  const jVal = this.parameters.get(`${prefix}.J`) ?? this.arena.getVarStartValue(jIdx);
+                  if (jVal === 0) return;
+                }
+              }
+              if (name.endsWith(".s") || name.endsWith(".v")) {
+                const prefix = name.substring(0, name.lastIndexOf("."));
+                const mIdx = this.arena.getVarIdxByName(`${prefix}.m`);
+                if (mIdx >= 0) {
+                  const mVal = this.parameters.get(`${prefix}.m`) ?? this.arena.getVarStartValue(mIdx);
+                  if (mVal === 0) return;
+                }
+              }
+
+              this.stateVars.add(varIdx);
+              // O(1): look up derivative variable, or create it if it doesn't exist
+              const derName = `der(${name})`;
+              let derVarIdx = this.arena.getVarIdxByName(derName);
+              if (derVarIdx === -1) {
+                const baseVarType = this.arena.getVarType(varIdx);
+                const baseVarVariability = this.arena.getVarVariability(varIdx);
+                // The derivative variable inherits continuous variability and base causality/type.
+                derVarIdx = this.arena.addVariable(
+                  derName,
+                  baseVarType,
+                  baseVarVariability,
+                  this.arena.getVarCausality(varIdx),
+                  0.0,
+                );
+              }
+              this.derivativeVars.add(derVarIdx);
             }
-            this.derivativeVars.add(derVarIdx);
           }
         }
+        return;
       }
+      switch (kind) {
+        case ExprKind.Binary:
+          scanExpr(this.arena.getExprLeft(exprId));
+          scanExpr(this.arena.getExprRight(exprId));
+          break;
+        case ExprKind.Unary:
+        case ExprKind.Negate:
+          scanExpr(this.arena.getExprLeft(exprId));
+          break;
+        case ExprKind.IfElse:
+          scanExpr(this.arena.getExprData1(exprId));
+          scanExpr(this.arena.getExprLeft(exprId));
+          scanExpr(this.arena.getExprRight(exprId));
+          break;
+        case ExprKind.Call: {
+          const argCount = this.arena.getExprRight(exprId);
+          if (argCount > 0) {
+            const firstArg = this.arena.getExprLeft(exprId);
+            for (let a = 0; a < argCount; a++) {
+              scanExpr(firstArg + a);
+            }
+          }
+          break;
+        }
+        case ExprKind.Tuple:
+        case ExprKind.ArrayCtor: {
+          const count = this.arena.getExprData1(exprId);
+          if (count > 0) {
+            const firstElem = this.arena.getExprLeft(exprId);
+            for (let e = 0; e < count; e++) {
+              scanExpr(firstElem + e);
+            }
+          }
+          break;
+        }
+      }
+    };
+
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      scanExpr(this.arena.getEqLhs(eqIdx));
+      scanExpr(this.arena.getEqRhs(eqIdx));
     }
   }
 
@@ -849,6 +1293,28 @@ export class ArenaSimulator {
       const arena = this.arena;
       if (this.executionBlocks.length === 0) return () => {};
 
+      const helpers = {
+        getTimeTableValue: (tableIdStrId: number, icol: number, timeIn: number) => {
+          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
+          return evalSimTimeTableValue(cached, icol, timeIn);
+        },
+        getTimeTableTmin: (tableIdStrId: number) => {
+          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
+          return cached && cached.table.length > 0
+            ? (cached.table[0][0] + cached.shiftTime) * (cached.timeScale || 1.0)
+            : 0;
+        },
+        getTimeTableTmax: (tableIdStrId: number) => {
+          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
+          return cached && cached.table.length > 0
+            ? (cached.table[cached.table.length - 1][0] + cached.shiftTime) * (cached.timeScale || 1.0)
+            : 0;
+        },
+        getNextTimeEvent: (_tableIdStrId: number, _timeIn: number) => {
+          return 1e100;
+        },
+      };
+
       function exprToJs(exprId: number): string {
         if (exprId < 0) return "0";
         const kind = arena.getExprKind(exprId);
@@ -921,32 +1387,71 @@ export class ArenaSimulator {
           }
           case ExprKind.Call: {
             const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
-            const arg = exprToJs(arena.getExprLeft(exprId));
-            if (fnName === "sin") return `Math.sin(${arg})`;
-            if (fnName === "cos") return `Math.cos(${arg})`;
-            if (fnName === "tan") return `Math.tan(${arg})`;
-            if (fnName === "asin") return `Math.asin(${arg})`;
-            if (fnName === "acos") return `Math.acos(${arg})`;
-            if (fnName === "atan") return `Math.atan(${arg})`;
-            if (fnName === "sinh") return `Math.sinh(${arg})`;
-            if (fnName === "cosh") return `Math.cosh(${arg})`;
-            if (fnName === "tanh") return `Math.tanh(${arg})`;
-            if (fnName === "exp") return `Math.exp(${arg})`;
-            if (fnName === "log") return `Math.log(${arg})`;
-            if (fnName === "log10") return `Math.log10(${arg})`;
-            if (fnName === "sqrt") return `Math.sqrt(${arg})`;
-            if (fnName === "abs") return `Math.abs(${arg})`;
-            if (fnName === "sign") return `Math.sign(${arg})`;
-            if (fnName === "ceil") return `Math.ceil(${arg})`;
-            if (fnName === "floor") return `Math.floor(${arg})`;
+            const cleanFn = fnName.replace(/^(Modelica\.(Math|ComplexMath)\.|Math\.)/, "");
+            const argCount = arena.getExprRight(exprId);
+            const firstArg = arena.getExprLeft(exprId);
+            const arg = exprToJs(firstArg);
+
+            if (cleanFn === "sin") return `Math.sin(${arg})`;
+            if (cleanFn === "cos") return `Math.cos(${arg})`;
+            if (cleanFn === "tan") return `Math.tan(${arg})`;
+            if (cleanFn === "asin") return `Math.asin(${arg})`;
+            if (cleanFn === "acos") return `Math.acos(${arg})`;
+            if (cleanFn === "atan") return `Math.atan(${arg})`;
+            if (cleanFn === "sinh") return `Math.sinh(${arg})`;
+            if (cleanFn === "cosh") return `Math.cosh(${arg})`;
+            if (cleanFn === "tanh") return `Math.tanh(${arg})`;
+            if (cleanFn === "exp") return `Math.exp(${arg})`;
+            if (cleanFn === "log") return `Math.log(${arg})`;
+            if (cleanFn === "log10") return `Math.log10(${arg})`;
+            if (cleanFn === "sqrt") return `Math.sqrt(${arg})`;
+            if (cleanFn === "abs") return `Math.abs(${arg})`;
+            if (cleanFn === "sign") return `Math.sign(${arg})`;
+            if (cleanFn === "ceil") return `Math.ceil(${arg})`;
+            if (cleanFn === "floor") return `Math.floor(${arg})`;
             if (
-              fnName === "noEvent" ||
-              fnName === "homotopy" ||
-              fnName === "/*Real*/" ||
-              fnName === "/*Integer*/" ||
-              fnName === "/*Boolean*/"
+              cleanFn === "noEvent" ||
+              cleanFn === "homotopy" ||
+              cleanFn === "/*Real*/" ||
+              cleanFn === "/*Integer*/" ||
+              cleanFn === "/*Boolean*/"
             )
               return `(${arg})`;
+
+            if (argCount === 2) {
+              const arg1 = exprToJs(arena.getExprLeft(exprId + 1));
+              if (cleanFn === "atan2") return `Math.atan2(${arg}, ${arg1})`;
+              if (cleanFn === "max") return `Math.max(${arg}, ${arg1})`;
+              if (cleanFn === "min") return `Math.min(${arg}, ${arg1})`;
+            }
+
+            if (
+              fnName.includes("getTimeTableValue") ||
+              fnName.includes("CombiTimeTable_getValue") ||
+              fnName.includes("getTable1DValue")
+            ) {
+              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+              const icolJs = exprToJs(arena.getExprLeft(exprId + 1));
+              const timeJs = exprToJs(arena.getExprLeft(exprId + 2));
+              return `helpers.getTimeTableValue(${tableVarNameId}, ${icolJs}, ${timeJs})`;
+            }
+
+            if (fnName.includes("getTimeTableTmin")) {
+              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+              return `helpers.getTimeTableTmin(${tableVarNameId})`;
+            }
+
+            if (fnName.includes("getTimeTableTmax")) {
+              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+              return `helpers.getTimeTableTmax(${tableVarNameId})`;
+            }
+
+            if (fnName.includes("getNextTimeEvent")) {
+              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+              const timeJs = exprToJs(arena.getExprLeft(exprId + 1));
+              return `helpers.getNextTimeEvent(${tableVarNameId}, ${timeJs})`;
+            }
+
             return "0";
           }
           default:
@@ -965,7 +1470,7 @@ export class ArenaSimulator {
           const exprJs = exprToJs(block.exprId);
           currentLines.push(`env[${varNameId}] = ${exprJs};`);
           if (currentLines.length >= CHUNK_SIZE) {
-            chunks.push(new Function("env", currentLines.join("\n")) as (env: Float64Array) => void);
+            chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
             currentLines = [];
           }
         } else {
@@ -974,14 +1479,15 @@ export class ArenaSimulator {
       }
 
       if (currentLines.length > 0) {
-        chunks.push(new Function("env", currentLines.join("\n")) as (env: Float64Array) => void);
+        chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
       }
 
       if (chunks.length === 1) {
-        return chunks[0]!;
+        const c0 = chunks[0]!;
+        return (env: Float64Array) => (c0 as any)(env, helpers);
       }
       return (env: Float64Array) => {
-        for (const chunk of chunks) chunk(env);
+        for (const chunk of chunks) (chunk as any)(env, helpers);
       };
     } catch {
       return null;
@@ -1468,6 +1974,8 @@ export class ArenaSimulator {
         this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
       } else {
         // Forward Euler
+        const y0Euler = new Float64Array(n);
+        for (let i = 0; i < n; i++) y0Euler[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
         for (let i = 0; i < n; i++) {
           const stateId = stateStringIds[i] ?? -1;
           const derivId = derivStringIds[i] ?? -1;
@@ -1475,6 +1983,7 @@ export class ArenaSimulator {
             valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + step * (valuesByStringId[derivId] ?? 0);
           }
         }
+        this.projectFrictionRestStates(y0Euler, valuesByStringId, stateStringIds);
       }
 
       currentTime += step;
@@ -1533,6 +2042,8 @@ export class ArenaSimulator {
     if (solver === "rk4") {
       this.rk4Step(dt, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
     } else {
+      const y0Euler = new Float64Array(n);
+      for (let i = 0; i < n; i++) y0Euler[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
       for (let i = 0; i < n; i++) {
         const stateId = stateStringIds[i] ?? -1;
         const derivId = derivStringIds[i] ?? -1;
@@ -1540,6 +2051,7 @@ export class ArenaSimulator {
           valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + dt * (valuesByStringId[derivId] ?? 0);
         }
       }
+      this.projectFrictionRestStates(y0Euler, valuesByStringId, stateStringIds);
     }
 
     const nextTime = currentTime + dt;
@@ -1616,14 +2128,26 @@ export class ArenaSimulator {
       rawResult = tsit5(rhsFn, startTime, y0, stopTime, outputTimes, {
         atol,
         rtol,
+        initialStep: step,
+        maxStep: Math.abs(stopTime - startTime),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
         eventDirections: eventDirs as any,
       });
     } else if (solver === "rodas4p") {
-      rawResult = rodas4p(rhsFn, startTime, y0, stopTime, outputTimes, { atol, rtol });
+      rawResult = rodas4p(rhsFn, startTime, y0, stopTime, outputTimes, {
+        atol,
+        rtol,
+        initialStep: step,
+        maxStep: Math.abs(stopTime - startTime),
+      });
     } else if (solver === "trbdf2") {
-      rawResult = trbdf2(rhsFn, startTime, y0, stopTime, outputTimes, { atol, rtol });
+      rawResult = trbdf2(rhsFn, startTime, y0, stopTime, outputTimes, {
+        atol,
+        rtol,
+        initialStep: step,
+        maxStep: Math.abs(stopTime - startTime),
+      });
     } else {
       // dopri5 or auto
       rawResult = dopri5(
@@ -1632,7 +2156,12 @@ export class ArenaSimulator {
         y0,
         stopTime,
         outputTimes,
-        { atol, rtol },
+        {
+          atol,
+          rtol,
+          initialStep: step,
+          maxStep: Math.abs(stopTime - startTime),
+        },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
         eventDirs,
@@ -1642,11 +2171,14 @@ export class ArenaSimulator {
     // Convert to Float64Array output format
     const outIds = options?.outputStringIds ?? stateStringIds;
     const t_out = rawResult.times;
-    const y_out: Float64Array[] = rawResult.states.map((row) => {
+    const y_out: Float64Array[] = rawResult.states.map((row, rowIdx) => {
       // First, load the states into the environment
       for (let i = 0; i < n; i++) {
         valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
       }
+      // Set current sample time
+      valuesByStringId[timeId] = t_out[rowIdx] ?? startTime;
+
       // Re-evaluate algebraic variables for the recorded state
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
@@ -1720,6 +2252,39 @@ export class ArenaSimulator {
   }
 
   /**
+   * Projects velocity states of components with dry/rolling friction to rest (0)
+   * when the velocity crosses zero or is within regularized friction boundary
+   * without an active driving force/torque.
+   */
+  private projectFrictionRestStates(y0: Float64Array | number[], vals: Float64Array, stateIds: number[]): void {
+    const n = stateIds.length;
+    for (let i = 0; i < n; i++) {
+      const sId = stateIds[i] ?? -1;
+      if (sId < 0) continue;
+      const name = this.arena.interner.resolve(sId);
+      if (name && (name.endsWith(".v") || name.endsWith(".w"))) {
+        const v0 = (y0 as any)[i] ?? 0;
+        const v1 = vals[sId] ?? 0;
+        // Friction zero-crossing / stiction rest condition
+        if ((v0 > 0 && v1 <= 0.005) || (v0 < 0 && v1 >= -0.005) || Math.abs(v1) <= 1e-4) {
+          const prefix = name.substring(0, name.lastIndexOf("."));
+          const faIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.f`);
+          const faPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.tau`);
+          const faF =
+            faIdx >= 0
+              ? vals[this.arena.getVarNameId(faIdx)]
+              : faPhiIdx >= 0
+                ? vals[this.arena.getVarNameId(faPhiIdx)]
+                : 0;
+          if (Math.abs(faF) < 1e-3) {
+            vals[sId] = 0;
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Classical 4th-order Runge-Kutta step.
    * Updates state variables in valuesByStringId in-place.
    */
@@ -1776,6 +2341,7 @@ export class ArenaSimulator {
         (y0[i] as number) +
         (h / 6.0) * ((k1[i] as number) + 2 * (k2[i] as number) + 2 * (k3[i] as number) + (k4[i] as number));
     }
+    this.projectFrictionRestStates(y0, vals, stateIds);
   }
 
   private async simulateCvodeWasm(
@@ -2102,6 +2668,8 @@ export class ArenaSimulator {
       if (solver === "rk4") {
         this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
       } else {
+        const y0Euler = new Float64Array(n);
+        for (let i = 0; i < n; i++) y0Euler[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
         for (let i = 0; i < n; i++) {
           const stateId = stateStringIds[i] ?? -1;
           const derivId = derivStringIds[i] ?? -1;
@@ -2109,6 +2677,7 @@ export class ArenaSimulator {
             valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + step * (valuesByStringId[derivId] ?? 0);
           }
         }
+        this.projectFrictionRestStates(y0Euler, valuesByStringId, stateStringIds);
       }
 
       currentTime += step;

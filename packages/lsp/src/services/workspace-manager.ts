@@ -338,6 +338,13 @@ export class WorkspaceManager {
             this.setWorkspaceIndex(norm, idx);
             return idx;
           }
+        } else if (norm === "pscad") {
+          const mod = nodeRequire("@modelscript/pscad");
+          if (mod?.PscadWorkspaceIndex) {
+            const idx = new mod.PscadWorkspaceIndex();
+            this.setWorkspaceIndex(norm, idx);
+            return idx;
+          }
         }
       } catch {
         // Fallback failed
@@ -498,6 +505,13 @@ export class WorkspaceManager {
   }
   set stepWorkspaceIndex(val: any) {
     this.setWorkspaceIndex("step", val);
+  }
+
+  get pscadWorkspaceIndex() {
+    return this.getWorkspaceIndex("pscad");
+  }
+  set pscadWorkspaceIndex(val: any) {
+    this.setWorkspaceIndex("pscad", val);
   }
 
   /** @deprecated Use `getQueryEngine("modelica")` instead. */
@@ -695,11 +709,11 @@ export class WorkspaceManager {
     return null;
   }
 
-  public resolveClassInstance(uri: string, className?: string): any | null {
-    return this.resolveModelicaClassInstance(uri, className);
+  public resolveClassInstance(uri: string, className?: string, options?: { iconOnly?: boolean }): any | null {
+    return this.resolveModelicaClassInstance(uri, className, options);
   }
 
-  public resolveModelicaClassInstance(uri: string, className?: string): any | null {
+  public resolveModelicaClassInstance(uri: string, className?: string, options?: { iconOnly?: boolean }): any | null {
     // 1. Check documentInstances first for rich AST models
     const docInsts = this.documentInstances.get(uri);
     if (docInsts && docInsts.length > 0) {
@@ -779,51 +793,54 @@ export class WorkspaceManager {
 
       for (const child of children) {
         if (child.kind === "Component" || child.kind === "Variable") {
-          const childClassId = db.query ? db.query("classInstance", child.id) : null;
-          let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
-          if (!typeSpec && db.query) {
-            try {
-              typeSpec = db.query("typeSpecifier", child.id);
-            } catch {}
-          }
-          const childClassEntry = childClassId ? db.symbol(childClassId) : null;
-          let componentClassInstance = childClassEntry
-            ? buildAdapter(childClassEntry, db, typeSpec || childClassEntry.name)
-            : null;
-          if (!componentClassInstance) {
-            if (!typeSpec) {
-              const compCst = (child.cstNode || (db.cstNode ? db.cstNode(child.id) : null)) as any;
-              let p = compCst?.parent;
-              while (p) {
-                if (p.type === "component_clause" || p.type === "ComponentClause") {
-                  const ts = p.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
-                  if (ts) {
-                    typeSpec = ts.text?.trim() ?? null;
-                    break;
-                  }
-                }
-                p = p.parent;
-              }
-            }
-            if (!typeSpec && entry.resourceId) {
+          let componentClassInstance = null;
+          if (!options?.iconOnly) {
+            const childClassId = db.query ? db.query("classInstance", child.id) : null;
+            let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
+            if (!typeSpec && db.query) {
               try {
-                const text = getSourceText(entry.resourceId);
-                const sOff = child.startOffset ?? child.startByte;
-                const eOff = child.endOffset ?? child.endByte;
-                if (text && sOff != null && eOff != null) {
-                  const lineStart = text.lastIndexOf("\n", sOff);
-                  const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
-                  const m = declLine.match(
-                    /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
-                  );
-                  if (m) {
-                    typeSpec = m[1].trim();
-                  }
-                }
+                typeSpec = db.query("typeSpecifier", child.id);
               } catch {}
             }
-            if (typeSpec) {
-              componentClassInstance = this.resolveModelicaClassInstance(entry.resourceId, typeSpec);
+            const childClassEntry = childClassId ? db.symbol(childClassId) : null;
+            componentClassInstance = childClassEntry
+              ? buildAdapter(childClassEntry, db, typeSpec || childClassEntry.name)
+              : null;
+            if (!componentClassInstance) {
+              if (!typeSpec) {
+                const compCst = (child.cstNode || (db.cstNode ? db.cstNode(child.id) : null)) as any;
+                let p = compCst?.parent;
+                while (p) {
+                  if (p.type === "component_clause" || p.type === "ComponentClause") {
+                    const ts = p.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+                    if (ts) {
+                      typeSpec = ts.text?.trim() ?? null;
+                      break;
+                    }
+                  }
+                  p = p.parent;
+                }
+              }
+              if (!typeSpec && entry.resourceId) {
+                try {
+                  const text = getSourceText(entry.resourceId);
+                  const sOff = child.startOffset ?? child.startByte;
+                  const eOff = child.endOffset ?? child.endByte;
+                  if (text && sOff != null && eOff != null) {
+                    const lineStart = text.lastIndexOf("\n", sOff);
+                    const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
+                    const m = declLine.match(
+                      /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
+                    );
+                    if (m) {
+                      typeSpec = m[1].trim();
+                    }
+                  }
+                } catch {}
+              }
+              if (typeSpec) {
+                componentClassInstance = this.resolveModelicaClassInstance(entry.resourceId, typeSpec, options);
+              }
             }
           }
           const childCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
@@ -853,13 +870,13 @@ export class WorkspaceManager {
           });
         } else if (child.kind === "Extends" && child.name) {
           if (child.name !== entry.name && child.name !== compositeName) {
-            let baseInstance = this.resolveModelicaClassInstance(entry.resourceId, child.name);
+            let baseInstance = this.resolveModelicaClassInstance(entry.resourceId, child.name, options);
             if (!baseInstance && entry.parentId != null) {
               // Try resolving relative to parent scopes (e.g. child.name is "Icons.Package" in "Modelica.Electrical")
               let currParent = db.symbol ? db.symbol(entry.parentId) : null;
               while (currParent && !baseInstance) {
                 const qualifiedParentName = currParent.name ? `${currParent.name}.${child.name}` : child.name;
-                baseInstance = this.resolveModelicaClassInstance(entry.resourceId, qualifiedParentName);
+                baseInstance = this.resolveModelicaClassInstance(entry.resourceId, qualifiedParentName, options);
                 currParent = currParent.parentId != null && db.symbol ? db.symbol(currParent.parentId) : null;
               }
             }
@@ -890,7 +907,7 @@ export class WorkspaceManager {
               }
               while (scopeParts.length > 0 && !baseInstance) {
                 const qualifiedParentName = `${scopeParts.join(".")}.${child.name}`;
-                baseInstance = this.resolveModelicaClassInstance(entry.resourceId, qualifiedParentName);
+                baseInstance = this.resolveModelicaClassInstance(entry.resourceId, qualifiedParentName, options);
                 scopeParts.pop();
               }
             }

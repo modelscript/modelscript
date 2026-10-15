@@ -340,6 +340,7 @@ export class ModelicaPortBalancer {
     const zeroExpr = dae.addRealLiteral(0.0);
 
     const outsideVarSet = new Set<number>();
+    const outerConnectedVars = new Set<number>();
     for (let i = 0; i < dae.eqCount; i++) {
       if (dae.getEqKind(i) === EqKind.Connect) {
         const flags = dae.getEqAux(i);
@@ -354,6 +355,14 @@ export class ModelicaPortBalancer {
               if (vn === s || vn.startsWith(s + ".")) outsideVarSet.add(v);
             }
           }
+        } else {
+          const s = dae.interner.resolve(dae.getExprData1(lhsId));
+          if (s) {
+            for (let v = 0; v < dae.varCount; v++) {
+              const vn = dae.getVarName(v);
+              if (vn === s || vn.startsWith(s + ".")) outerConnectedVars.add(v);
+            }
+          }
         }
         if (flags & 2) {
           const s = dae.interner.resolve(dae.getExprData1(rhsId));
@@ -361,6 +370,14 @@ export class ModelicaPortBalancer {
             for (let v = 0; v < dae.varCount; v++) {
               const vn = dae.getVarName(v);
               if (vn === s || vn.startsWith(s + ".")) outsideVarSet.add(v);
+            }
+          }
+        } else {
+          const s = dae.interner.resolve(dae.getExprData1(rhsId));
+          if (s) {
+            for (let v = 0; v < dae.varCount; v++) {
+              const vn = dae.getVarName(v);
+              if (vn === s || vn.startsWith(s + ".")) outerConnectedVars.add(v);
             }
           }
         }
@@ -983,20 +1000,45 @@ export class ModelicaPortBalancer {
                 return a - b;
               });
             }
-            const orderedVars = [...insideVars, ...outsideVars];
-            const first = orderedVars[0]!;
-            const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(first));
-            sumExpr = isGroupOutside(first) ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
-            for (let i = 1; i < orderedVars.length; i++) {
-              const vIdx = orderedVars[i]!;
-              const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-              const term = isGroupOutside(vIdx) ? dae.addExpression(ExprKind.Negate, 0, vi) : vi;
-              sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
+            const activeOutsideVars = outsideVars.filter((vIdx) => !outerConnectedVars.has(vIdx));
+            const intermediateOutsideVars = outsideVars.filter((vIdx) => outerConnectedVars.has(vIdx));
+
+            const orderedVars =
+              intermediateOutsideVars.length > 0 && insideVars.length > 0
+                ? [...insideVars, ...activeOutsideVars]
+                : [...insideVars, ...outsideVars];
+            if (orderedVars.length > 0) {
+              const first = orderedVars[0]!;
+              const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(first));
+              sumExpr = isGroupOutside(first) ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
+              for (let i = 1; i < orderedVars.length; i++) {
+                const vIdx = orderedVars[i]!;
+                const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                const term = isGroupOutside(vIdx) ? dae.addExpression(ExprKind.Negate, 0, vi) : vi;
+                sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
+              }
+            } else {
+              sumExpr = zeroExpr;
             }
-            for (const vIdx of outsideVars) {
+            for (const vIdx of activeOutsideVars) {
               if (group.every((v) => !dae.getVarName(v).includes("."))) continue;
               const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
+            }
+            for (const vIdx of intermediateOutsideVars) {
+              const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+              const insidePeer =
+                insideVars.find((iv) => {
+                  const ivName = dae.getVarName(iv);
+                  const ovName = dae.getVarName(vIdx);
+                  const ovPrefix = ovName.substring(0, ovName.lastIndexOf("."));
+                  return ivName.startsWith(ovPrefix + ".");
+                }) ?? insideVars[0];
+              if (insidePeer !== undefined) {
+                const peerExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(insidePeer));
+                const negPeer = dae.addExpression(ExprKind.Negate, 0, peerExpr);
+                potentialEqs.push({ kind: EqKind.Simple, lhs: vExpr, rhs: negPeer, str: dae.getVarName(vIdx) });
+              }
             }
           }
         } else if (options?.omcCompatibility && !hasOutside) {

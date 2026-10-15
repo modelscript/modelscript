@@ -718,6 +718,18 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   }
 
   commands.push({
+    command: "modelscript.openModel",
+    title: "Open Model in Editor",
+    category: "ModelScript",
+  });
+
+  commands.push({
+    command: "modelscript.addToDiagram",
+    title: "Add Component to Diagram",
+    category: "ModelScript",
+  });
+
+  commands.push({
     command: "modelscript.writebackParameter",
     title: "Writeback Parameter Value to Source",
     category: "ModelScript",
@@ -734,6 +746,18 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       "editor/title": editorTitleMenus,
       "editor/context": editorContextMenus,
       "explorer/context": explorerContextMenus,
+      "view/item/context": [
+        {
+          command: "modelscript.openModel",
+          when: "view == modelscript.libraryTree",
+          group: "navigation@1",
+        },
+        {
+          command: "modelscript.addToDiagram",
+          when: "view == modelscript.libraryTree",
+          group: "navigation@2",
+        },
+      ],
       ...(commandPaletteMenus.length > 0 ? { commandPalette: commandPaletteMenus } : {}),
     },
     languageModelTools,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { DAEBuilder, EqKind, ExprKind, Variability } from "../dae/wasm_dae.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "../dae/wasm_dae.js";
 
 // WASM Exports mapped globally within this module
 export let alloc: (size: number) => number;
@@ -66,6 +66,41 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
 }
 
 /**
+ * Checks if an expression statically evaluates to zero (e.g. numeric literal 0 or parameter/constant with value 0).
+ */
+export function isZeroExpr(arena: DAEBuilder, exprId: number): boolean {
+  if (exprId < 0) return false;
+  const k = arena.getExprKind(exprId);
+  if (k === ExprKind.RealLiteral) return arena.getExprRealValue(exprId) === 0;
+  if (k === ExprKind.IntLiteral) return arena.getExprData1(exprId) === 0;
+  if (k === ExprKind.Name) {
+    const nameId = arena.getExprData1(exprId);
+    const varIdx = resolveArenaVarIdx(arena, nameId);
+    if (varIdx !== -1) {
+      const v = arena.getVarVariability(varIdx);
+      if (v === Variability.Parameter || v === Variability.Constant) {
+        if (arena.getVarStartValue(varIdx) === 0) {
+          const expr = arena.getVarExpression(varIdx);
+          if (expr === -1 || expr === undefined) return true;
+          return isZeroExpr(arena, expr);
+        }
+      }
+    }
+  }
+  if (k === ExprKind.Negate) {
+    const left = arena.getExprLeft(exprId) >= 0 ? arena.getExprLeft(exprId) : arena.getExprData1(exprId);
+    return isZeroExpr(arena, left);
+  }
+  if (k === ExprKind.Binary) {
+    const op = arena.getExprData1(exprId);
+    if (op === BinOp.Mul || op === BinOp.ElemMul) {
+      return isZeroExpr(arena, arena.getExprLeft(exprId)) || isZeroExpr(arena, arena.getExprRight(exprId));
+    }
+  }
+  return false;
+}
+
+/**
  * Collects all variable indices referenced in an expression.
  *
  * @param excludeDer - If true, variables inside `der()` are excluded from
@@ -83,10 +118,19 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
       if (varIdx !== -1) deps.add(varIdx);
       break;
     }
-    case ExprKind.Binary:
-      collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
-      collectArenaExprDeps(arena, arena.getExprRight(exprId), deps, excludeDer);
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId);
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+      if (op === BinOp.Mul || op === BinOp.ElemMul) {
+        if (isZeroExpr(arena, left) || isZeroExpr(arena, right)) {
+          break;
+        }
+      }
+      collectArenaExprDeps(arena, left, deps, excludeDer);
+      collectArenaExprDeps(arena, right, deps, excludeDer);
       break;
+    }
     case ExprKind.Unary:
     case ExprKind.Negate:
       collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
@@ -211,6 +255,7 @@ export function performBltTransformationArena(
     if (
       variability === Variability.Parameter ||
       variability === Variability.Constant ||
+      variability === Variability.Discrete ||
       (arena.hasExplicitVarExpression?.(i) && (!stateVars || !stateVars.has(i)))
     ) {
       continue;
@@ -229,6 +274,18 @@ export function performBltTransformationArena(
     const kind = arena.getEqKind(i);
     // Include dynamic Simple and InitialSimple equations
     if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+      const lhs = arena.getEqLhs(i);
+      const rhs = arena.getEqRhs(i);
+      if (lhs === rhs) continue;
+      if (
+        lhs >= 0 &&
+        rhs >= 0 &&
+        arena.getExprKind(lhs) === ExprKind.Name &&
+        arena.getExprKind(rhs) === ExprKind.Name &&
+        arena.getExprData1(lhs) === arena.getExprData1(rhs)
+      ) {
+        continue;
+      }
       activeEqIndices.push(i);
     }
   }

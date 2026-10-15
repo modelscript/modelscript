@@ -671,6 +671,11 @@ export class DaeBuilder {
   }
 
   @inline
+  addBoolLiteral(value: bool): u32 {
+    return this.addExpression(ExprKind.BoolLiteral, value ? 1 : 0);
+  }
+
+  @inline
   addRealLiteral(value: f64): u32 {
     let bits = i64.reinterpret_f64(value) as u64;
     let lo = (bits & 0xffffffff) as u32;
@@ -1156,6 +1161,10 @@ export function dae_addRealLiteral(ptr: u32, value: f64): u32 {
 
 export function dae_addIntLiteral(ptr: u32, value: i32): u32 {
   return changetype<DaeBuilder>(ptr).addIntLiteral(value);
+}
+
+export function dae_addBoolLiteral(ptr: u32, value: bool): u32 {
+  return changetype<DaeBuilder>(ptr).addBoolLiteral(value);
 }
 
 export function dae_addEquation(ptr: u32, kind: i32, lhsId: u32, rhsId: u32, auxId: u32): u32 {

@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/prefer-for-of */
 // @ts-nocheck
 import { LspContext } from "../lsp-context.js";
+import { getCompositeName } from "../utils/hierarchy-utils.js";
 
 export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
@@ -157,13 +158,111 @@ export function registerClassQueryEndpoints(context: LspContext) {
             const stripped = uri.replace(/^modelica:\/?\/?/, "/");
             text = context.state.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
           }
-          return { content: text || null };
+          return { content: text || null, uri };
         }
 
-        return { content: null, error: `Class not found: ${params.className}` };
+        return { content: null, uri, error: `Class not found: ${params.className}` };
       } catch (e) {
         return { content: null, error: String(e) };
       }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/getClassLocation",
+    (params: { className: string }): { uri: string; line: number; character: number } | null => {
+      try {
+        const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
+        const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2");
+        let uri =
+          (context.workspaceManager.unifiedWorkspace as any)?.getFileUriForFQN?.(params.className) ||
+          (moIdx as any)?.getFileUriForFQN?.(params.className) ||
+          (sysmlIdx as any)?.getFileUriForFQN?.(params.className);
+
+        let entry: any = undefined;
+        let lastName = params.className.split(".").pop() || "";
+
+        // Only query unified index if uri wasn't found via fast-path
+        if (!uri) {
+          const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          let entries = unifiedIndex.byName.get(params.className) ?? unifiedIndex.byName.get(lastName);
+
+          if (entries) {
+            // 1. Try exact composite name match
+            for (const id of entries) {
+              const e = unifiedIndex.symbols.get(id);
+              if (e && getCompositeName(e, unifiedIndex) === params.className) {
+                entry = e;
+                break;
+              }
+            }
+            // 2. Fallback to name match
+            if (!entry) {
+              for (const id of entries) {
+                const e = unifiedIndex.symbols.get(id);
+                if (e && (e.name === lastName || e.name === params.className)) {
+                  entry = e;
+                  break;
+                }
+              }
+            }
+          }
+
+          uri =
+            entry?.resourceId ||
+            (context.workspaceManager.unifiedWorkspace as any)?.getFileUriForFQN?.(lastName) ||
+            (moIdx as any)?.getFileUriForFQN?.(lastName) ||
+            (sysmlIdx as any)?.getFileUriForFQN?.(lastName);
+        }
+
+        if (uri) {
+          let line = 0;
+          let character = 0;
+          let startByte = entry?.startOffset ?? entry?.startByte ?? 0;
+
+          const doc = context.documents.get(uri);
+          if (doc) {
+            const pos = doc.positionAt(startByte);
+            return { uri, line: pos.line, character: pos.character };
+          }
+
+          let text: string | undefined;
+          const sharedFs = (globalThis as any).sharedFs ?? context.state?.sharedContext?.fs;
+          if (sharedFs) {
+            let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            if (uri.startsWith("modelica:")) {
+              const stripped = uri.replace(/^modelica:(?:\/\/lib\/|\/{1,3})/, "/lib/");
+              fsPath = stripped.startsWith("/") ? stripped : "/" + stripped;
+            }
+            try {
+              if (typeof sharedFs.read === "function") {
+                text = sharedFs.read(fsPath);
+              }
+            } catch {}
+          }
+          if (text) {
+            if (startByte === 0 && lastName) {
+              const regex = new RegExp(
+                `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
+              );
+              const match = regex.exec(text);
+              if (match && match.index !== undefined) {
+                startByte = match.index;
+              }
+            }
+            if (startByte > 0) {
+              const prefix = text.substring(0, startByte);
+              const lines = prefix.split("\n");
+              line = lines.length - 1;
+              character = lines[lines.length - 1].length;
+            }
+          }
+          return { uri, line, character };
+        }
+      } catch (e: any) {
+        context.connection.console.error(`[getClassLocation] Error: ${e?.message || e}`);
+      }
+      return null;
     },
   );
 
@@ -268,7 +367,13 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       let classInstance = instances[0];
       if (params.name) {
-        const found = instances.find((i) => i.name === params.name);
+        const found = instances.find(
+          (i) =>
+            i.name === params.name ||
+            (i as any).compositeName === params.name ||
+            params.name.endsWith("." + i.name) ||
+            i.name.endsWith("." + params.name),
+        );
         if (found) classInstance = found;
       }
 
@@ -290,7 +395,13 @@ export function registerClassQueryEndpoints(context: LspContext) {
             instances = context.workspaceManager.documentInstances.get(params.uri);
             if (instances && instances.length > 0) {
               classInstance = params.name
-                ? (instances.find((i) => i.name === params.name) ?? instances[0])
+                ? (instances.find(
+                    (i) =>
+                      i.name === params.name ||
+                      (i as any).compositeName === params.name ||
+                      params.name.endsWith("." + i.name) ||
+                      i.name.endsWith("." + params.name),
+                  ) ?? instances[0])
                 : instances[0];
             }
           }
@@ -507,7 +618,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return { exists: false };
       const fsPath = getVirtualFsPath(target);
-      const fs = (globalThis as any).sharedFs;
+      const fs = (globalThis as any).sharedFs ?? context.state?.sharedContext?.fs;
       if (!fs) return { exists: false };
       if (typeof fs.exists === "function" && fs.exists(fsPath)) {
         const stat = typeof fs.stat === "function" ? fs.stat(fsPath) : null;
@@ -532,7 +643,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return [];
       const fsPath = getVirtualFsPath(target);
-      const fs = (globalThis as any).sharedFs;
+      const fs = (globalThis as any).sharedFs ?? context.state?.sharedContext?.fs;
       if (!fs || typeof fs.readdir !== "function") return [];
       try {
         const entries = fs.readdir(fsPath);

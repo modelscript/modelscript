@@ -35,6 +35,22 @@ function resolveClassId(queryEngine: any, queryDB: any, className: string): numb
       }
     }
   }
+  // Fallback to short name if qualified lookup didn't match directly
+  if (firstId === undefined && className.includes(".")) {
+    const shortName = className.split(".").pop()!;
+    if (queryEngine.index?.byName) {
+      const entries = queryEngine.index.byName.get(shortName) || [];
+      firstId = entries[0];
+    }
+    if (firstId === undefined && queryEngine.index?.symbols) {
+      for (const [id, entry] of queryEngine.index.symbols.entries()) {
+        if (entry.name === shortName) {
+          firstId = id;
+          break;
+        }
+      }
+    }
+  }
   return firstId;
 }
 
@@ -97,6 +113,7 @@ function ensureClassIndexed(
           docTrees.set(effectiveUri, { text: docText, tree });
         }
 
+        const prevTree = (queryEngine as any).tree;
         const cstWrapper = {
           getText: (s: number, e: number, entry?: any) => {
             const resUri = entry?.resourceId ?? effectiveUri;
@@ -105,6 +122,11 @@ function ensureClassIndexed(
             if (dt?.text) return dt.text.substring(s, e);
             const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
             if (sharedWrapper) return sharedWrapper.getText(s, e, entry);
+            if (resUri === effectiveUri && docText) return docText.substring(s, e);
+            if (prevTree && typeof prevTree.getText === "function") {
+              const res = prevTree.getText(s, e, entry);
+              if (res) return res;
+            }
             return docText ? docText.substring(s, e) : null;
           },
           getNode: (s: number, e: number, entry?: any) => {
@@ -121,6 +143,10 @@ function ensureClassIndexed(
             }
             const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
             if (sharedWrapper) return sharedWrapper.getNode(s, e, entry);
+            if (prevTree && typeof prevTree.getNode === "function") {
+              const res = prevTree.getNode(s, e, entry);
+              if (res) return res;
+            }
             return null;
           },
         };
@@ -170,12 +196,17 @@ function ensureClassIndexed(
     queryDB = queryEngine.toQueryDB();
   }
 
+  const shortName = className.includes(".") ? className.split(".").pop()! : className;
+
   if (firstId === undefined && ws?.unifiedIndex) {
-    const entries = ws.unifiedIndex.byName?.get(className) || [];
+    let entries = ws.unifiedIndex.byName?.get(className) || [];
+    if (entries.length === 0 && shortName !== className) {
+      entries = ws.unifiedIndex.byName?.get(shortName) || [];
+    }
     firstId = entries[0];
     if (firstId === undefined && ws.unifiedIndex.symbols) {
       for (const [id, entry] of ws.unifiedIndex.symbols.entries()) {
-        if (entry.name === className || entry.qualifiedName === className) {
+        if (entry.name === className || entry.qualifiedName === className || entry.name === shortName) {
           firstId = id;
           break;
         }
@@ -195,8 +226,19 @@ function ensureClassIndexed(
   if (firstId === undefined && (context.workspaceManager as any)?.unifiedWorkspace) {
     const uws = (context.workspaceManager as any).unifiedWorkspace.toUnifiedPartial();
     if (uws?.byName) {
-      const entries = uws.byName.get(className) || [];
+      let entries = uws.byName.get(className) || [];
+      if (entries.length === 0 && shortName !== className) {
+        entries = uws.byName.get(shortName) || [];
+      }
       firstId = entries[0];
+      if (firstId === undefined && uws.symbols) {
+        for (const [id, entry] of uws.symbols.entries()) {
+          if (entry.name === className || entry.qualifiedName === className || entry.name === shortName) {
+            firstId = id;
+            break;
+          }
+        }
+      }
       if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
         injectPredefinedTypes(uws);
         queryEngine.updateIndex(uws);
@@ -211,6 +253,44 @@ function ensureClassIndexed(
   return { firstId, queryDB };
 }
 
+function extractClassName(context: ActionExecutionContext, inputs: any): string | undefined {
+  let className = inputs?.name;
+  let docText = context.documentText;
+  let uri = context.uri;
+
+  if (!docText && uri && typeof (context as any).documents?.get === "function") {
+    const doc = (context as any).documents.get(uri);
+    if (doc) docText = doc.getText();
+  }
+  if (!docText && typeof (context as any).documents?.all === "function") {
+    for (const d of (context as any).documents.all()) {
+      const t = d.getText();
+      if ((className && t.includes(className)) || /\b(?:model|block|class|record)\s+/.test(t)) {
+        docText = t;
+        if (!uri) uri = d.uri;
+        break;
+      }
+    }
+  }
+  if (docText) {
+    const wm = docText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+    if (wm && wm[1]?.trim()) {
+      const pkg = wm[1].trim();
+      if (!className) {
+        const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+        if (m) className = `${pkg}.${m[1]}`;
+      } else if (!className.includes(".")) {
+        className = `${pkg}.${className}`;
+      }
+    }
+  }
+  if (!className && docText) {
+    const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+    if (m) className = m[1];
+  }
+  return className;
+}
+
 /**
  * Host-side execution handlers for Modelica actions.
  * Decoupled from the declarative language syntax grammar.
@@ -220,11 +300,7 @@ export const modelicaActionHandlers: Record<
   (context: ActionExecutionContext, inputs: any) => Promise<any> | any
 > = {
   flatten: async (context: ActionExecutionContext, inputs: any) => {
-    let className = inputs?.name;
-    if (!className && context.documentText) {
-      const m = context.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-      if (m) className = m[1];
-    }
+    const className = extractClassName(context, inputs);
     if (!className) {
       throw new Error("No Modelica class name specified to flatten.");
     }
@@ -251,11 +327,7 @@ export const modelicaActionHandlers: Record<
   },
 
   simulate: async (context: ActionExecutionContext, inputs: any) => {
-    let className = inputs?.name;
-    if (!className && context.documentText) {
-      const m = context.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-      if (m) className = m[1];
-    }
+    const className = extractClassName(context, inputs);
     if (!className) {
       throw new Error("No Modelica class name specified to simulate.");
     }

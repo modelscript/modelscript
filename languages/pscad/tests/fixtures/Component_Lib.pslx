@@ -1,0 +1,1508 @@
+<project name="Component_Lib" version="5.1.0" schema="" Target="Library">
+  <paramlist name="Settings">
+    <param name="creator" value="mathi,1777668366" />
+    <param name="time_duration" value="0.5" />
+    <param name="time_step" value="50" />
+    <param name="sample_step" value="250" />
+    <param name="chatter_threshold" value=".001" />
+    <param name="branch_threshold" value=".0005" />
+    <param name="StartType" value="0" />
+    <param name="startup_filename" value="$(Namespace).snp" />
+    <param name="PlotType" value="0" />
+    <param name="output_filename" value="$(Namespace).out" />
+    <param name="SnapType" value="0" />
+    <param name="SnapTime" value="0.3" />
+    <param name="snapshot_filename" value="$(Namespace).snp" />
+    <param name="MrunType" value="0" />
+    <param name="Mruns" value="1" />
+    <param name="Scenario" value="" />
+    <param name="fortran_version" value="$(DefaultCompilerKey)" />
+    <param name="c_version" value="$(DefaultCKey)" />
+    <param name="matlab_version" value="$(DefaultMatlabKey)" />
+    <param name="comfab_loc" value="$(HomeDir)\ComFab\$(EmtPlatform)\ComFab.dll" />
+    <param name="output_file_writer" value="$(HomeDir)\CurveFile\$(EmtPlatform)\CurveFile.dll" />
+    <param name="emtdc_additional_options" value="" />
+    <param name="compileF_additional_options" value="" />
+    <param name="compileC_additional_options" value="" />
+    <param name="link_additional_options" value="" />
+    <param name="compileF_additional_includes" value="" />
+    <param name="compileF_precomp_options" value="" />
+    <param name="compileF_opt_level" value="2" />
+    <param name="build_path" value="$(ProjectDir)\$(Namespace).$(Compiler)\" />
+    <param name="threads" value="8" />
+    <param name="private_env" value="0" />
+    <param name="Advanced" value="14335" />
+    <param name="sparsity_threshold" value="200" />
+    <param name="Options" value="16" />
+    <param name="Build" value="18" />
+    <param name="Debug" value="0" />
+    <param name="description" value="EMT-Tools" />
+    <param name="compileC_additional_includes" value="" />
+    <param name="compileC_precomp_options" value="" />
+    <param name="compile_enforce_build_order" value="1" />
+    <param name="prebuild_action" value="" />
+    <param name="postbuild_action" value="" />
+    <param name="prerun_action" value="" />
+    <param name="postrun_action" value="" />
+    <param name="prebuild_wait" value="true" />
+    <param name="postbuild_wait" value="true" />
+    <param name="prerun_wait" value="true" />
+    <param name="postrun_wait" value="true" />
+    <param name="gf_warn_lvl" value="1" />
+    <param name="if_warn_lvl" value="1" />
+    <param name="gc_warn_lvl" value="0" />
+    <param name="vs_warn_lvl" value="3" />
+    <param name="gf_warn_trunccode" value="false" />
+    <param name="gf_warn_inter" value="false" />
+    <param name="gf_warn_pedandic" value="false" />
+    <param name="gf_warn_alias" value="false" />
+    <param name="gf_warn_missingamp" value="false" />
+    <param name="gf_warn_temparray" value="false" />
+    <param name="gf_warn_bindtype" value="false" />
+    <param name="gf_warn_truncchar" value="false" />
+    <param name="gf_warn_conversion" value="false" />
+    <param name="gf_warn_intdiv" value="false" />
+    <param name="gf_warn_intrinsics" value="false" />
+    <param name="gf_warn_realq" value="false" />
+    <param name="gf_warn_suspicious" value="false" />
+    <param name="gf_warn_undefloop" value="false" />
+    <param name="gf_warn_underflow" value="false" />
+    <param name="gf_warn_shadow" value="false" />
+    <param name="gf_warn_usenoonly" value="false" />
+    <param name="gf_warn_unusedummy" value="false" />
+    <param name="gf_warn_unuseparam" value="false" />
+    <param name="gf_warn_aligncommon" value="false" />
+    <param name="gf_warn_funcelim" value="false" />
+    <param name="gf_warn_realloclhs" value="false" />
+    <param name="gf_warn_compreal" value="false" />
+    <param name="gf_warn_lifetime" value="false" />
+    <param name="gf_warn_zerotrip" value="false" />
+    <param name="gf_warn_dosubscript" value="false" />
+    <param name="if_warn_align" value="false" />
+    <param name="if_warn_decl" value="false" />
+    <param name="if_warn_extrn" value="false" />
+    <param name="if_warn_gen" value="false" />
+    <param name="if_warn_ignorebounds" value="false" />
+    <param name="if_warn_ignoreloc" value="false" />
+    <param name="if_warn_shape" value="false" />
+    <param name="if_warn_uncalled" value="false" />
+    <param name="if_warn_unused" value="false" />
+    <param name="if_warn_usage" value="false" />
+    <param name="if_warn_inter" value="false" />
+    <param name="if_warn_trunccode" value="false" />
+    <param name="gc_warn_abi" value="false" />
+    <param name="gc_warn_charsub" value="false" />
+    <param name="gc_warn_doublepromo" value="false" />
+    <param name="gc_warn_format" value="false" />
+    <param name="gc_warn_formatnotlit" value="false" />
+    <param name="gc_warn_formatsec" value="false" />
+    <param name="gc_warn_nonnull" value="false" />
+    <param name="gc_warn_initself" value="false" />
+    <param name="gc_warn_implicit" value="false" />
+    <param name="gc_warn_ignorequal" value="false" />
+    <param name="gc_warn_main" value="false" />
+    <param name="gc_warn_missbrace" value="false" />
+    <param name="gc_warn_missincldir" value="false" />
+    <param name="gc_warn_brackets" value="false" />
+    <param name="gc_warn_seqpoint" value="false" />
+    <param name="gc_warn_rettype" value="false" />
+    <param name="gc_warn_switch" value="false" />
+    <param name="gc_warn_switchdef" value="false" />
+    <param name="gc_warn_unused" value="false" />
+    <param name="gc_warn_uninit" value="false" />
+    <param name="gc_warn_arrbnds" value="false" />
+    <param name="gc_warn_boolop" value="false" />
+    <param name="gc_warn_syshead" value="false" />
+    <param name="gc_warn_tramp" value="false" />
+    <param name="gc_warn_floatcomp" value="false" />
+    <param name="gc_warn_latedecl" value="false" />
+    <param name="gc_warn_shadow" value="false" />
+    <param name="gc_warn_ptrarith" value="false" />
+    <param name="gc_warn_typelimits" value="false" />
+    <param name="gc_warn_comment" value="false" />
+    <param name="gc_warn_trigraph" value="false" />
+    <param name="gc_warn_undef" value="false" />
+    <param name="gc_warn_unusedmacro" value="false" />
+    <param name="gc_warn_badfunccast" value="false" />
+    <param name="gc_warn_castqual" value="false" />
+    <param name="gc_warn_castalign" value="false" />
+    <param name="gc_warn_writestr" value="false" />
+    <param name="gc_warn_clobber" value="false" />
+    <param name="gc_warn_conver" value="false" />
+    <param name="gc_warn_nobody" value="false" />
+    <param name="gc_warn_enumcomp" value="false" />
+    <param name="gc_warn_jumpmiss" value="false" />
+    <param name="gc_warn_signcomp" value="false" />
+    <param name="gc_warn_signconv" value="false" />
+    <param name="gc_warn_address" value="false" />
+    <param name="gc_warn_logop" value="false" />
+    <param name="gc_warn_retaggr" value="false" />
+    <param name="gc_warn_strictproto" value="false" />
+    <param name="gc_warn_olddecl" value="false" />
+    <param name="gc_warn_olddefn" value="false" />
+    <param name="gc_warn_missparamtype" value="false" />
+    <param name="gc_warn_missdecl" value="false" />
+    <param name="gc_warn_missfieldinit" value="false" />
+    <param name="gc_warn_overinit" value="false" />
+    <param name="gc_warn_packed" value="false" />
+    <param name="gc_warn_padded" value="false" />
+    <param name="gc_warn_redundecl" value="false" />
+    <param name="gc_warn_nextextern" value="false" />
+    <param name="gc_warn_inline" value="false" />
+    <param name="gc_warn_badpch" value="false" />
+    <param name="gc_warn_longlong" value="false" />
+    <param name="gc_warn_varmacro" value="false" />
+    <param name="gc_warn_vla" value="false" />
+    <param name="gc_warn_disopt" value="false" />
+    <param name="gc_warn_ptrsign" value="false" />
+    <param name="gc_warn_overlenstr" value="false" />
+    <param name="gc_warn_unsuffloat" value="false" />
+    <param name="gc_warn_pedandic" value="false" />
+    <param name="gc_warn_dupldeclspec" value="false" />
+    <param name="gc_warn_formatoverflow" value="false" />
+    <param name="gc_warn_formatsign" value="false" />
+    <param name="gc_warn_formattrunc" value="false" />
+    <param name="gc_warn_nonnullcomp" value="false" />
+    <param name="gc_warn_nullderef" value="false" />
+    <param name="gc_warn_ignoreattr" value="false" />
+    <param name="gc_warn_badident" value="false" />
+    <param name="gc_warn_missattr" value="false" />
+    <param name="gc_warn_multimacro" value="false" />
+    <param name="gc_warn_selfmove" value="false" />
+    <param name="gc_warn_alloc0" value="false" />
+    <param name="gc_warn_boolcomp" value="false" />
+    <param name="gc_warn_dupbr" value="false" />
+    <param name="gc_warn_dupcon" value="false" />
+    <param name="gc_warn_tautcomp" value="false" />
+    <param name="gc_warn_freestack" value="false" />
+    <param name="gc_warn_expanddef" value="false" />
+    <param name="gc_warn_castfunc" value="false" />
+    <param name="gc_warn_dangleelse" value="false" />
+    <param name="gc_warn_datetime" value="false" />
+    <param name="gc_warn_floatconv" value="false" />
+    <param name="gc_warn_sizeptrdiv" value="false" />
+    <param name="gc_warn_sizeptracc" value="false" />
+    <param name="gc_warn_memseteltsize" value="false" />
+    <param name="gc_warn_memsettranargs" value="false" />
+    <param name="gc_warn_logbracket" value="false" />
+    <param name="gc_warn_packedalign" value="false" />
+    <param name="gc_warn_restrict" value="false" />
+    <param name="gc_warn_intbool" value="false" />
+    <param name="gf_ch_lvl" value="0" />
+    <param name="if_ch_lvl" value="0" />
+    <param name="gf_ch_arr" value="false" />
+    <param name="gf_ch_bit" value="false" />
+    <param name="gc_ch_bnd" value="false" />
+    <param name="gc_ch_do" value="false" />
+    <param name="gc_ch_mem" value="false" />
+    <param name="gc_ch_ptr" value="false" />
+    <param name="gc_ch_rec" value="false" />
+    <param name="if_ch_args" value="false" />
+    <param name="if_ch_assume" value="false" />
+    <param name="if_ch_bnds" value="false" />
+    <param name="if_ch_frmt" value="false" />
+    <param name="if_ch_opt" value="false" />
+    <param name="if_ch_ptrs" value="false" />
+    <param name="if_ch_shapes" value="false" />
+    <param name="if_ch_stach" value="false" />
+    <param name="if_ch_teams" value="false" />
+    <param name="if_ch_udio" value="false" />
+    <param name="if_ch_uninit" value="false" />
+    <param name="revisor" value="mathi, 1789132700" />
+    <param name="labels" value="" />
+  </paramlist>
+  <Layers />
+  <List classid="Settings" />
+  <bookmarks />
+  <GlobalSubstitutions name="Default">
+    <List classid="Sub" />
+    <List classid="ValueSet" />
+    <paramlist>
+      <param name="Current" value="" />
+    </paramlist>
+  </GlobalSubstitutions>
+  <definitions>
+    <Definition classid="UserCmpDefn" name="Rational_Operator" build="" crc="98783880" view="false" instances="0" date="0" id="1139945640" w="320" h="400">
+      <paramlist>
+        <param name="Description" value="" />
+      </paramlist>
+      <graphics size="4">
+        <Port classid="Port" id="1455538045" x="-54" y="-18">
+          <paramlist>
+            <param name="name" value="In1" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Port classid="Port" id="275870494" x="-54" y="18">
+          <paramlist>
+            <param name="name" value="In2" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Port classid="Port" id="2111739290" x="54" y="0">
+          <paramlist>
+            <param name="name" value="Out" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="2" />
+            <param name="datatype" value="2" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Rectangle" id="1823432655" x="-39" y="-28" w="78" h="51">
+          <paramlist>
+            <param name="color" value="#ff4a4a4a" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="2" />
+            <param name="port" value="" />
+            <param name="fill_style" value="0" />
+            <param name="fill_fg" value="Black" />
+            <param name="fill_bg" value="White" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Line" id="978707253" x="-39" y="-18">
+          <vertex x="0" y="0" />
+          <vertex x="-14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="type==0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="945625825" x="-21" y="-5">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="true" />
+            <param name="text" value="In1" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Line" id="1617327623" x="-39" y="18">
+          <vertex x="0" y="0" />
+          <vertex x="-14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="type==0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="554944416" x="23" y="-5">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="true" />
+            <param name="text" value="In2" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Line" id="464996276" x="39" y="0">
+          <vertex x="0" y="0" />
+          <vertex x="15" y="0" />
+          <paramlist>
+            <param name="color" value="Blue" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="Out" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <paramlist>
+          <param name="lock_style" value="3" />
+          <param name="lock_cx" value="0" />
+          <param name="lock_cy" value="0" />
+        </paramlist>
+        <Gfx classid="Graphics.Text" id="453635810" x="1" y="-5">
+          <paramlist>
+            <param name="text" value="≤" />
+            <param name="anchor" value="1" />
+            <param name="full_font" value="Tahoma, 13world" />
+            <param name="angle" value="0" />
+            <param name="color" value="Black" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="cond" value="operation==4" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="750038728" x="1" y="-6">
+          <paramlist>
+            <param name="text" value="&lt;" />
+            <param name="anchor" value="1" />
+            <param name="full_font" value="Tahoma, 13world" />
+            <param name="angle" value="0" />
+            <param name="color" value="Black" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="cond" value="operation==3" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1830497650" x="1" y="-3">
+          <paramlist>
+            <param name="text" value="=" />
+            <param name="anchor" value="1" />
+            <param name="full_font" value="Tahoma, 13world" />
+            <param name="angle" value="0" />
+            <param name="color" value="Black" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="cond" value="operation==2" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1591811142" x="1" y="-6">
+          <paramlist>
+            <param name="text" value="&gt;" />
+            <param name="anchor" value="1" />
+            <param name="full_font" value="Tahoma, 13world" />
+            <param name="angle" value="0" />
+            <param name="color" value="Black" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="cond" value="operation==1" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="58261915" x="1" y="-5">
+          <paramlist>
+            <param name="text" value="≥" />
+            <param name="anchor" value="1" />
+            <param name="full_font" value="Tahoma, 13world" />
+            <param name="angle" value="0" />
+            <param name="color" value="Black" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="cond" value="operation==0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Line" id="1723881057" x="-54" y="-18">
+          <vertex x="0" y="0" />
+          <vertex x="15" y="0" />
+          <paramlist>
+            <param name="color" value="Blue" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="type==1" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Line" id="112367631" x="-54" y="18">
+          <vertex x="0" y="0" />
+          <vertex x="15" y="0" />
+          <paramlist>
+            <param name="color" value="Blue" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="type==1" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Port classid="Port" id="888076104" x="-54" y="-18">
+          <paramlist>
+            <param name="name" value="In1" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="type==1" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="2" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Text" id="1041873690" x="1" y="13">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="type==0&amp;&amp;(operation==0||operation==2||operation==4)" />
+            <param name="text" value="+/- Tol" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+        <Port classid="Port" id="1662016412" x="-54" y="18">
+          <paramlist>
+            <param name="name" value="In2" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="type==1" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="2" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Text" id="1430677487" x="-45" y="-23">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="true" />
+            <param name="text" value="1" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 9pt" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1889464554" x="-45" y="14">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="true" />
+            <param name="text" value="2" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 9pt" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+      </graphics>
+      <form name="EMT-Tools.com" splitter="60" w="303" h="264" commentlines="4" help-width="490">
+        <category name="Configuration" visible="true">
+          <cond><![CDATA[true]]></cond>
+          <parameter name="Name" desc="Name" group="" type="Text" helpmode="Overwrite" allowemptystr="true" min="0" max="0">
+            <value><![CDATA[]]></value>
+            <cond><![CDATA[true]]></cond>
+            <help><![CDATA[The name of the component]]></help>
+            <regex><![CDATA[]]></regex>
+            <error_msg><![CDATA[]]></error_msg>
+            <vis />
+          </parameter>
+          <parameter name="type" desc="Data Type" type="Choice" group="" helpmode="Append" animate="false">
+            <value><![CDATA[0]]></value>
+            <cond><![CDATA[true]]></cond>
+            <vis><![CDATA[true]]></vis>
+            <help><![CDATA[]]></help>
+            <choice cond=""><![CDATA[0 = Real]]></choice>
+            <choice cond=""><![CDATA[1 = Integer]]></choice>
+          </parameter>
+          <parameter name="operation" desc="Operation" type="Choice" group="" helpmode="Overwrite" animate="false">
+            <value><![CDATA[0]]></value>
+            <cond><![CDATA[true]]></cond>
+            <vis><![CDATA[true]]></vis>
+            <help><![CDATA[Choose type of operation. Input 1 (operation) Input 2.]]></help>
+            <choice cond=""><![CDATA[0 = ≥]]></choice>
+            <choice cond=""><![CDATA[1 = >]]></choice>
+            <choice cond=""><![CDATA[2 = =]]></choice>
+            <choice cond=""><![CDATA[3 = <]]></choice>
+            <choice cond=""><![CDATA[4 = ≤]]></choice>
+          </parameter>
+          <parameter name="tol" desc="+/- Tolerance" type="Real" group="" helpmode="Append" content_type="Constant" intent="Input" dim="1" animate="false" unit="" min="-1E+308" max="1E+308">
+            <value><![CDATA[0.0]]></value>
+            <cond><![CDATA[type==0&&(operation==0||operation==2||operation==4)]]></cond>
+            <vis><![CDATA[true]]></vis>
+            <help><![CDATA[]]></help>
+            <animate><![CDATA[0]]></animate>
+          </parameter>
+        </category>
+      </form>
+      <script>
+        <segment name="Fortran" id="1430211623" classid="CoreSegment"><![CDATA[#if operation==0
+#if type==0
+      if ((($in1 - $tol) .GE. $in2) .OR. (($in1 + $tol) .GE. $in2)) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#else
+      if ($in1 .GE. $in2) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#endif
+#else operation==1
+      if ($in1 .GT. $in2) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#else  operation==2
+#if type==0
+      if ((($in1 - $tol) .EQ. $in2) .OR. (($in1 + $tol) .EQ. $in2)) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#else
+      if ($in1 .EQ. $in2) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#endif
+#else  operation==3
+      if ($in1 .LT. $in2) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#else  operation==4
+#if type==0
+      if ((($in1 - $tol) .LE. $in2) .OR. (($in1 + $tol) .LE. $in2)) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#else
+      if ($in1 .LE. $in2) then
+        $out = 1
+      else
+        $out = 0
+      endif
+#endif]]></segment>
+        <segment classid="CoreSegment" id="1647186271" name="Help"><![CDATA[help.html]]></segment>
+      </script>
+    </Definition>
+    <Definition classid="StationDefn" name="DS" id="1078024246" group="" url="" version="" build="" crc="57881668" view="false">
+      <paramlist name="">
+        <param name="Description" value="" />
+      </paramlist>
+      <schematic classid="StationCanvas">
+        <paramlist>
+          <param name="show_grid" value="0" />
+          <param name="size" value="0" />
+          <param name="orient" value="1" />
+          <param name="show_border" value="0" />
+          <param name="monitor_bus_voltage" value="0" />
+          <param name="show_signal" value="0" />
+          <param name="show_virtual" value="0" />
+          <param name="show_sequence" value="0" />
+          <param name="auto_sequence" value="1" />
+          <param name="bus_expand_x" value="8" />
+          <param name="bus_expand_y" value="8" />
+          <param name="bus_length" value="4" />
+          <param name="disabled_behaviour" value="0" />
+          <param name="opt_level" value="-1" />
+          <param name="compile_options" value="" />
+          <param name="precomp_options" value="" />
+          <param name="include_options" value="" />
+          <param name="gf_warn_lvl" value="-99" />
+          <param name="if_warn_lvl" value="-99" />
+          <param name="gc_warn_lvl" value="-99" />
+          <param name="vs_warn_lvl" value="-99" />
+          <param name="gf_warn_trunccode" value="false" />
+          <param name="gf_warn_inter" value="false" />
+          <param name="gf_warn_pedandic" value="false" />
+          <param name="gf_warn_alias" value="false" />
+          <param name="gf_warn_missingamp" value="false" />
+          <param name="gf_warn_temparray" value="false" />
+          <param name="gf_warn_bindtype" value="false" />
+          <param name="gf_warn_truncchar" value="false" />
+          <param name="gf_warn_conversion" value="false" />
+          <param name="gf_warn_intdiv" value="false" />
+          <param name="gf_warn_intrinsics" value="false" />
+          <param name="gf_warn_realq" value="false" />
+          <param name="gf_warn_suspicious" value="false" />
+          <param name="gf_warn_undefloop" value="false" />
+          <param name="gf_warn_underflow" value="false" />
+          <param name="gf_warn_shadow" value="false" />
+          <param name="gf_warn_usenoonly" value="false" />
+          <param name="gf_warn_unusedummy" value="false" />
+          <param name="gf_warn_unuseparam" value="false" />
+          <param name="gf_warn_aligncommon" value="false" />
+          <param name="gf_warn_funcelim" value="false" />
+          <param name="gf_warn_realloclhs" value="false" />
+          <param name="gf_warn_compreal" value="false" />
+          <param name="gf_warn_lifetime" value="false" />
+          <param name="gf_warn_zerotrip" value="false" />
+          <param name="gf_warn_dosubscript" value="false" />
+          <param name="if_warn_align" value="false" />
+          <param name="if_warn_decl" value="false" />
+          <param name="if_warn_extrn" value="false" />
+          <param name="if_warn_gen" value="false" />
+          <param name="if_warn_ignorebounds" value="false" />
+          <param name="if_warn_ignoreloc" value="false" />
+          <param name="if_warn_shape" value="false" />
+          <param name="if_warn_uncalled" value="false" />
+          <param name="if_warn_unused" value="false" />
+          <param name="if_warn_usage" value="false" />
+          <param name="if_warn_inter" value="false" />
+          <param name="if_warn_trunccode" value="false" />
+          <param name="gc_warn_abi" value="false" />
+          <param name="gc_warn_charsub" value="false" />
+          <param name="gc_warn_doublepromo" value="false" />
+          <param name="gc_warn_format" value="false" />
+          <param name="gc_warn_formatnotlit" value="false" />
+          <param name="gc_warn_formatsec" value="false" />
+          <param name="gc_warn_nonnull" value="false" />
+          <param name="gc_warn_initself" value="false" />
+          <param name="gc_warn_implicit" value="false" />
+          <param name="gc_warn_ignorequal" value="false" />
+          <param name="gc_warn_main" value="false" />
+          <param name="gc_warn_missbrace" value="false" />
+          <param name="gc_warn_missincldir" value="false" />
+          <param name="gc_warn_brackets" value="false" />
+          <param name="gc_warn_seqpoint" value="false" />
+          <param name="gc_warn_rettype" value="false" />
+          <param name="gc_warn_switch" value="false" />
+          <param name="gc_warn_switchdef" value="false" />
+          <param name="gc_warn_unused" value="false" />
+          <param name="gc_warn_uninit" value="false" />
+          <param name="gc_warn_arrbnds" value="false" />
+          <param name="gc_warn_boolop" value="false" />
+          <param name="gc_warn_syshead" value="false" />
+          <param name="gc_warn_tramp" value="false" />
+          <param name="gc_warn_floatcomp" value="false" />
+          <param name="gc_warn_latedecl" value="false" />
+          <param name="gc_warn_shadow" value="false" />
+          <param name="gc_warn_ptrarith" value="false" />
+          <param name="gc_warn_typelimits" value="false" />
+          <param name="gc_warn_comment" value="false" />
+          <param name="gc_warn_trigraph" value="false" />
+          <param name="gc_warn_undef" value="false" />
+          <param name="gc_warn_unusedmacro" value="false" />
+          <param name="gc_warn_badfunccast" value="false" />
+          <param name="gc_warn_castqual" value="false" />
+          <param name="gc_warn_castalign" value="false" />
+          <param name="gc_warn_writestr" value="false" />
+          <param name="gc_warn_clobber" value="false" />
+          <param name="gc_warn_conver" value="false" />
+          <param name="gc_warn_nobody" value="false" />
+          <param name="gc_warn_enumcomp" value="false" />
+          <param name="gc_warn_jumpmiss" value="false" />
+          <param name="gc_warn_signcomp" value="false" />
+          <param name="gc_warn_signconv" value="false" />
+          <param name="gc_warn_address" value="false" />
+          <param name="gc_warn_logop" value="false" />
+          <param name="gc_warn_retaggr" value="false" />
+          <param name="gc_warn_strictproto" value="false" />
+          <param name="gc_warn_olddecl" value="false" />
+          <param name="gc_warn_olddefn" value="false" />
+          <param name="gc_warn_missparamtype" value="false" />
+          <param name="gc_warn_missdecl" value="false" />
+          <param name="gc_warn_missfieldinit" value="false" />
+          <param name="gc_warn_overinit" value="false" />
+          <param name="gc_warn_packed" value="false" />
+          <param name="gc_warn_padded" value="false" />
+          <param name="gc_warn_redundecl" value="false" />
+          <param name="gc_warn_nextextern" value="false" />
+          <param name="gc_warn_inline" value="false" />
+          <param name="gc_warn_badpch" value="false" />
+          <param name="gc_warn_longlong" value="false" />
+          <param name="gc_warn_varmacro" value="false" />
+          <param name="gc_warn_vla" value="false" />
+          <param name="gc_warn_disopt" value="false" />
+          <param name="gc_warn_ptrsign" value="false" />
+          <param name="gc_warn_overlenstr" value="false" />
+          <param name="gc_warn_unsuffloat" value="false" />
+          <param name="gc_warn_pedandic" value="false" />
+          <param name="gc_warn_dupldeclspec" value="false" />
+          <param name="gc_warn_formatoverflow" value="false" />
+          <param name="gc_warn_formatsign" value="false" />
+          <param name="gc_warn_formattrunc" value="false" />
+          <param name="gc_warn_nonnullcomp" value="false" />
+          <param name="gc_warn_nullderef" value="false" />
+          <param name="gc_warn_ignoreattr" value="false" />
+          <param name="gc_warn_badident" value="false" />
+          <param name="gc_warn_missattr" value="false" />
+          <param name="gc_warn_multimacro" value="false" />
+          <param name="gc_warn_selfmove" value="false" />
+          <param name="gc_warn_alloc0" value="false" />
+          <param name="gc_warn_boolcomp" value="false" />
+          <param name="gc_warn_dupbr" value="false" />
+          <param name="gc_warn_dupcon" value="false" />
+          <param name="gc_warn_tautcomp" value="false" />
+          <param name="gc_warn_freestack" value="false" />
+          <param name="gc_warn_expanddef" value="false" />
+          <param name="gc_warn_castfunc" value="false" />
+          <param name="gc_warn_dangleelse" value="false" />
+          <param name="gc_warn_datetime" value="false" />
+          <param name="gc_warn_floatconv" value="false" />
+          <param name="gc_warn_sizeptrdiv" value="false" />
+          <param name="gc_warn_sizeptracc" value="false" />
+          <param name="gc_warn_memseteltsize" value="false" />
+          <param name="gc_warn_memsettranargs" value="false" />
+          <param name="gc_warn_logbracket" value="false" />
+          <param name="gc_warn_packedalign" value="false" />
+          <param name="gc_warn_restrict" value="false" />
+          <param name="gc_warn_intbool" value="false" />
+          <param name="gf_ch_lvl" value="-99" />
+          <param name="if_ch_lvl" value="-99" />
+          <param name="gf_ch_arr" value="false" />
+          <param name="gf_ch_bit" value="false" />
+          <param name="gc_ch_bnd" value="false" />
+          <param name="gc_ch_do" value="false" />
+          <param name="gc_ch_mem" value="false" />
+          <param name="gc_ch_ptr" value="false" />
+          <param name="gc_ch_rec" value="false" />
+          <param name="if_ch_args" value="false" />
+          <param name="if_ch_assume" value="false" />
+          <param name="if_ch_bnds" value="false" />
+          <param name="if_ch_frmt" value="false" />
+          <param name="if_ch_opt" value="false" />
+          <param name="if_ch_ptrs" value="false" />
+          <param name="if_ch_shapes" value="false" />
+          <param name="if_ch_stach" value="false" />
+          <param name="if_ch_teams" value="false" />
+          <param name="if_ch_udio" value="false" />
+          <param name="if_ch_uninit" value="false" />
+        </paramlist>
+        <grouping />
+        <Wire classid="Branch" id="1733024023" name="Main" x="180" y="180" w="66" h="82" orient="0" disable="false" defn="Main" recv="-1" send="-1" back="-1">
+          <vertex x="0" y="0" />
+          <vertex x="0" y="18" />
+          <vertex x="54" y="54" />
+          <vertex x="54" y="72" />
+          <User classid="UserCmp" id="946953974" name="Component_Lib:Main" x="0" y="0" w="0" h="0" z="-1" orient="0" defn="Component_Lib:Main" link="-1" disable="false">
+            <paramlist name="" link="-1" crc="4361682" />
+          </User>
+        </Wire>
+      </schematic>
+    </Definition>
+    <Definition classid="UserCmpDefn" name="Main" id="240074756" group="" url="" version="" build="" crc="120162113" view="false" date="0">
+      <paramlist name="">
+        <param name="Description" value="" />
+      </paramlist>
+      <form name="" w="320" h="400" splitter="60" />
+      <graphics viewBox="-200 -200 200 200" size="2">
+        <Gfx classid="Graphics.Rectangle" id="689809501" x="-36" y="-36" w="72" h="72">
+          <paramlist>
+            <param name="color" value="Black" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="fill_style" value="0" />
+            <param name="fill_fg" value="Black" />
+            <param name="fill_bg" value="Black" />
+            <param name="cond" value="true" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="w" value="18" />
+            <param name="h" value="18" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1594397452" x="0" y="0">
+          <paramlist>
+            <param name="text" value="%:Name" />
+            <param name="anchor" value="0" />
+            <param name="full_font" value="Tahoma, 13world" />
+            <param name="angle" value="0" />
+            <param name="color" value="Black" />
+            <param name="x" value="0" />
+            <param name="y" value="0" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <paramlist>
+          <param name="lock_style" value="3" />
+          <param name="lock_cx" value="0" />
+          <param name="lock_cy" value="0" />
+        </paramlist>
+      </graphics>
+      <schematic classid="UserCanvas">
+        <paramlist>
+          <param name="show_grid" value="0" />
+          <param name="size" value="0" />
+          <param name="orient" value="1" />
+          <param name="show_border" value="0" />
+          <param name="monitor_bus_voltage" value="0" />
+          <param name="show_signal" value="0" />
+          <param name="show_virtual" value="0" />
+          <param name="show_sequence" value="0" />
+          <param name="auto_sequence" value="1" />
+          <param name="bus_expand_x" value="8" />
+          <param name="bus_expand_y" value="8" />
+          <param name="bus_length" value="4" />
+          <param name="disabled_behaviour" value="0" />
+          <param name="show_terminals" value="0" />
+          <param name="virtual_filter" value="" />
+          <param name="animation_freq" value="500" />
+          <param name="opt_level" value="-1" />
+          <param name="compile_options" value="" />
+          <param name="precomp_options" value="" />
+          <param name="include_options" value="" />
+          <param name="if_warn_lvl" value="-99" />
+          <param name="if_warn_align" value="false" />
+          <param name="if_warn_decl" value="false" />
+          <param name="if_warn_extrn" value="false" />
+          <param name="if_warn_gen" value="false" />
+          <param name="if_warn_ignorebounds" value="false" />
+          <param name="if_warn_ignoreloc" value="false" />
+          <param name="if_warn_shape" value="false" />
+          <param name="if_warn_uncalled" value="false" />
+          <param name="if_warn_unused" value="false" />
+          <param name="if_warn_usage" value="false" />
+          <param name="if_warn_inter" value="false" />
+          <param name="if_warn_trunccode" value="false" />
+          <param name="if_ch_lvl" value="-99" />
+          <param name="if_ch_args" value="false" />
+          <param name="if_ch_assume" value="false" />
+          <param name="if_ch_bnds" value="false" />
+          <param name="if_ch_frmt" value="false" />
+          <param name="if_ch_opt" value="false" />
+          <param name="if_ch_ptrs" value="false" />
+          <param name="if_ch_shapes" value="false" />
+          <param name="if_ch_stach" value="false" />
+          <param name="if_ch_teams" value="false" />
+          <param name="if_ch_udio" value="false" />
+          <param name="if_ch_uninit" value="false" />
+          <param name="gf_warn_lvl" value="-99" />
+          <param name="gc_warn_lvl" value="-99" />
+          <param name="vs_warn_lvl" value="-99" />
+          <param name="gf_warn_trunccode" value="false" />
+          <param name="gf_warn_inter" value="false" />
+          <param name="gf_warn_pedandic" value="false" />
+          <param name="gf_warn_alias" value="false" />
+          <param name="gf_warn_missingamp" value="false" />
+          <param name="gf_warn_temparray" value="false" />
+          <param name="gf_warn_bindtype" value="false" />
+          <param name="gf_warn_truncchar" value="false" />
+          <param name="gf_warn_conversion" value="false" />
+          <param name="gf_warn_intdiv" value="false" />
+          <param name="gf_warn_intrinsics" value="false" />
+          <param name="gf_warn_realq" value="false" />
+          <param name="gf_warn_suspicious" value="false" />
+          <param name="gf_warn_undefloop" value="false" />
+          <param name="gf_warn_underflow" value="false" />
+          <param name="gf_warn_shadow" value="false" />
+          <param name="gf_warn_usenoonly" value="false" />
+          <param name="gf_warn_unusedummy" value="false" />
+          <param name="gf_warn_unuseparam" value="false" />
+          <param name="gf_warn_aligncommon" value="false" />
+          <param name="gf_warn_funcelim" value="false" />
+          <param name="gf_warn_realloclhs" value="false" />
+          <param name="gf_warn_compreal" value="false" />
+          <param name="gf_warn_lifetime" value="false" />
+          <param name="gf_warn_zerotrip" value="false" />
+          <param name="gf_warn_dosubscript" value="false" />
+          <param name="gc_warn_abi" value="false" />
+          <param name="gc_warn_charsub" value="false" />
+          <param name="gc_warn_doublepromo" value="false" />
+          <param name="gc_warn_format" value="false" />
+          <param name="gc_warn_formatnotlit" value="false" />
+          <param name="gc_warn_formatsec" value="false" />
+          <param name="gc_warn_nonnull" value="false" />
+          <param name="gc_warn_initself" value="false" />
+          <param name="gc_warn_implicit" value="false" />
+          <param name="gc_warn_ignorequal" value="false" />
+          <param name="gc_warn_main" value="false" />
+          <param name="gc_warn_missbrace" value="false" />
+          <param name="gc_warn_missincldir" value="false" />
+          <param name="gc_warn_brackets" value="false" />
+          <param name="gc_warn_seqpoint" value="false" />
+          <param name="gc_warn_rettype" value="false" />
+          <param name="gc_warn_switch" value="false" />
+          <param name="gc_warn_switchdef" value="false" />
+          <param name="gc_warn_unused" value="false" />
+          <param name="gc_warn_uninit" value="false" />
+          <param name="gc_warn_arrbnds" value="false" />
+          <param name="gc_warn_boolop" value="false" />
+          <param name="gc_warn_syshead" value="false" />
+          <param name="gc_warn_tramp" value="false" />
+          <param name="gc_warn_floatcomp" value="false" />
+          <param name="gc_warn_latedecl" value="false" />
+          <param name="gc_warn_shadow" value="false" />
+          <param name="gc_warn_ptrarith" value="false" />
+          <param name="gc_warn_typelimits" value="false" />
+          <param name="gc_warn_comment" value="false" />
+          <param name="gc_warn_trigraph" value="false" />
+          <param name="gc_warn_undef" value="false" />
+          <param name="gc_warn_unusedmacro" value="false" />
+          <param name="gc_warn_badfunccast" value="false" />
+          <param name="gc_warn_castqual" value="false" />
+          <param name="gc_warn_castalign" value="false" />
+          <param name="gc_warn_writestr" value="false" />
+          <param name="gc_warn_clobber" value="false" />
+          <param name="gc_warn_conver" value="false" />
+          <param name="gc_warn_nobody" value="false" />
+          <param name="gc_warn_enumcomp" value="false" />
+          <param name="gc_warn_jumpmiss" value="false" />
+          <param name="gc_warn_signcomp" value="false" />
+          <param name="gc_warn_signconv" value="false" />
+          <param name="gc_warn_address" value="false" />
+          <param name="gc_warn_logop" value="false" />
+          <param name="gc_warn_retaggr" value="false" />
+          <param name="gc_warn_strictproto" value="false" />
+          <param name="gc_warn_olddecl" value="false" />
+          <param name="gc_warn_olddefn" value="false" />
+          <param name="gc_warn_missparamtype" value="false" />
+          <param name="gc_warn_missdecl" value="false" />
+          <param name="gc_warn_missfieldinit" value="false" />
+          <param name="gc_warn_overinit" value="false" />
+          <param name="gc_warn_packed" value="false" />
+          <param name="gc_warn_padded" value="false" />
+          <param name="gc_warn_redundecl" value="false" />
+          <param name="gc_warn_nextextern" value="false" />
+          <param name="gc_warn_inline" value="false" />
+          <param name="gc_warn_badpch" value="false" />
+          <param name="gc_warn_longlong" value="false" />
+          <param name="gc_warn_varmacro" value="false" />
+          <param name="gc_warn_vla" value="false" />
+          <param name="gc_warn_disopt" value="false" />
+          <param name="gc_warn_ptrsign" value="false" />
+          <param name="gc_warn_overlenstr" value="false" />
+          <param name="gc_warn_unsuffloat" value="false" />
+          <param name="gc_warn_pedandic" value="false" />
+          <param name="gc_warn_dupldeclspec" value="false" />
+          <param name="gc_warn_formatoverflow" value="false" />
+          <param name="gc_warn_formatsign" value="false" />
+          <param name="gc_warn_formattrunc" value="false" />
+          <param name="gc_warn_nonnullcomp" value="false" />
+          <param name="gc_warn_nullderef" value="false" />
+          <param name="gc_warn_ignoreattr" value="false" />
+          <param name="gc_warn_badident" value="false" />
+          <param name="gc_warn_missattr" value="false" />
+          <param name="gc_warn_multimacro" value="false" />
+          <param name="gc_warn_selfmove" value="false" />
+          <param name="gc_warn_alloc0" value="false" />
+          <param name="gc_warn_boolcomp" value="false" />
+          <param name="gc_warn_dupbr" value="false" />
+          <param name="gc_warn_dupcon" value="false" />
+          <param name="gc_warn_tautcomp" value="false" />
+          <param name="gc_warn_freestack" value="false" />
+          <param name="gc_warn_expanddef" value="false" />
+          <param name="gc_warn_castfunc" value="false" />
+          <param name="gc_warn_dangleelse" value="false" />
+          <param name="gc_warn_datetime" value="false" />
+          <param name="gc_warn_floatconv" value="false" />
+          <param name="gc_warn_sizeptrdiv" value="false" />
+          <param name="gc_warn_sizeptracc" value="false" />
+          <param name="gc_warn_memseteltsize" value="false" />
+          <param name="gc_warn_memsettranargs" value="false" />
+          <param name="gc_warn_logbracket" value="false" />
+          <param name="gc_warn_packedalign" value="false" />
+          <param name="gc_warn_restrict" value="false" />
+          <param name="gc_warn_intbool" value="false" />
+          <param name="gf_ch_lvl" value="-99" />
+          <param name="gf_ch_arr" value="false" />
+          <param name="gf_ch_bit" value="false" />
+          <param name="gc_ch_bnd" value="false" />
+          <param name="gc_ch_do" value="false" />
+          <param name="gc_ch_mem" value="false" />
+          <param name="gc_ch_ptr" value="false" />
+          <param name="gc_ch_rec" value="false" />
+        </paramlist>
+        <grouping />
+        <Sticky classid="Sticky" id="1493238777" x="18" y="18" w="774" h="270" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="0" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFE4B5" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="0" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[EMT-Tools PSCAD Library
+
+Version: V1.1
+Compatible: PSCAD V5.1+
+Website: EMT-Tools.com
+
+DESCRIPTION
+This library provides a range of useful, open-source, PSCAD components intended to make the user's work more efficient. ]]></Sticky>
+        <User classid="UserCmp" id="108761204" name="Component_Lib:Rational_Operator" x="162" y="396" w="116" h="63" z="-1" orient="0" defn="Component_Lib:Rational_Operator" link="-1" disable="false">
+          <paramlist name="" link="-1" crc="10610472">
+            <param name="Name" value="" />
+            <param name="operation" value="3" />
+            <param name="type" value="0" />
+            <param name="tol" value="0.0" />
+          </paramlist>
+        </User>
+        <Sticky classid="Sticky" id="1983442897" x="90" y="324" w="144" h="36" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="1" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFFFC0" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="0" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[Rational Operator]]></Sticky>
+        <Sticky classid="Sticky" id="1008448677" x="270" y="324" w="162" h="36" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="1" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFFFC0" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="0" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[Power Factor Meter]]></Sticky>
+        <Sticky classid="Sticky" id="1923613972" x="468" y="324" w="162" h="36" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="1" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFFFC0" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="0" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[Flag]]></Sticky>
+        <Link classid="UrlCmp" id="906088562" x="882" y="72" z="-1" orient="0" link="-1" q="4">
+          <paramlist>
+            <param name="display" value="EMT-Tools" />
+            <param name="hyperlink" value="https://emt-tools.com" />
+          </paramlist>
+        </Link>
+        <Sticky classid="Sticky" id="225791024" x="828" y="108" w="180" h="36" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="1" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFE4B5" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="1" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[Double-click here!]]></Sticky>
+        <User classid="UserCmp" id="566789655" name="Component_Lib:PF_Meter" x="342" y="396" w="134" h="65" z="-1" orient="0" defn="Component_Lib:PF_Meter" link="-1" disable="false">
+          <paramlist name="" link="-1" crc="74537595">
+            <param name="Name" value="" />
+            <param name="PF" value="0.0" />
+          </paramlist>
+        </User>
+        <User classid="UserCmp" id="1889048043" name="Component_Lib:Flag" x="540" y="396" w="134" h="57" z="-1" orient="0" defn="Component_Lib:Flag" link="-1" disable="false">
+          <paramlist name="" link="-1" crc="90343615">
+            <param name="Name" value="" />
+            <param name="type" value="0" />
+            <param name="operation" value="0" />
+            <param name="tol" value="0.0" />
+            <param name="Flag_timer" value="0.0" />
+          </paramlist>
+        </User>
+        <Sticky classid="Sticky" id="97806973" x="468" y="450" w="180" h="90" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="0" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFE4B5" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="1" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[Displays and outputs the time the Trigger input goes HIGH less any Offset.]]></Sticky>
+        <Sticky classid="Sticky" id="557824023" x="252" y="450" w="180" h="90" colors="0, 15792890">
+          <paramlist>
+            <param name="full_font" value="Arial, 15world" />
+            <param name="align" value="0" />
+            <param name="fg_color_adv" value="#FF000000" />
+            <param name="bg_color_adv" value="#FFFFE4B5" />
+            <param name="bdr_color_adv" value="#FF808080" />
+            <param name="hl_color_adv" value="#FFFFFF00" />
+            <param name="arrows" value="1" />
+            <param name="style" value="1" />
+            <param name="font" value="1" />
+            <param name="fg_color" value="0" />
+            <param name="bg_color" value="15792890" />
+          </paramlist><![CDATA[Displays and outputs the PF based on P/Q input. Units do not matter.]]></Sticky>
+      </schematic>
+    </Definition>
+    <Definition classid="UserCmpDefn" name="PF_Meter" build="" crc="21485841" view="false" instances="0" date="0" id="1564086688" w="320" h="400">
+      <paramlist>
+        <param name="Description" value="" />
+        <param name="tags" value="" />
+        <param name="seq" value="true" />
+      </paramlist>
+      <graphics size="4">
+        <Port classid="Port" id="1548878967" x="-54" y="-18">
+          <paramlist>
+            <param name="name" value="In1" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Rectangle" id="488437720" x="-39" y="-26" w="96" h="51">
+          <paramlist>
+            <param name="color" value="#ff4a4a4a" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="2" />
+            <param name="port" value="" />
+            <param name="fill_style" value="0" />
+            <param name="fill_fg" value="Black" />
+            <param name="fill_bg" value="White" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Line" id="1660009703" x="-39" y="-18">
+          <vertex x="0" y="0" />
+          <vertex x="-14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <paramlist>
+          <param name="lock_style" value="3" />
+          <param name="lock_cx" value="0" />
+          <param name="lock_cy" value="0" />
+        </paramlist>
+        <Gfx classid="Graphics.Text" id="75702200" x="-45" y="-23">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="true" />
+            <param name="text" value="P" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 9pt" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="85662984" x="-45" y="14">
+          <paramlist>
+            <param name="color" value="#ff000000" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="1" />
+            <param name="cond" value="true" />
+            <param name="text" value="Q" />
+            <param name="lock" value="false" />
+            <param name="full_font" value="Tahoma, 9pt" />
+            <param name="angle" value="0" />
+          </paramlist>
+        </Gfx>
+        <Port classid="Port" id="578477697" x="-54" y="18">
+          <paramlist>
+            <param name="name" value="In2" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Line" id="522717024" x="-39" y="18">
+          <vertex x="0" y="0" />
+          <vertex x="-14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Port classid="Port" id="687904349" x="72" y="0">
+          <paramlist>
+            <param name="name" value="Out" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="2" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Line" id="443565567" x="57" y="0">
+          <vertex x="0" y="0" />
+          <vertex x="14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1638239699" x="-32" y="3">
+          <paramlist>
+            <param name="color" value="Black" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="0" />
+            <param name="cond" value="" />
+            <param name="text" value="PF = %PF" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+      </graphics>
+      <form name="EMT-Tools.com" splitter="60" w="408" h="321" commentlines="4" help-width="490" category-width="180">
+        <category name="Configuration" visible="true">
+          <cond><![CDATA[true]]></cond>
+          <parameter name="Name" desc="Name" group="" type="Text" helpmode="Overwrite" allowemptystr="true" min="0" max="0">
+            <value><![CDATA[]]></value>
+            <cond><![CDATA[true]]></cond>
+            <help><![CDATA[The name of the component]]></help>
+            <regex><![CDATA[]]></regex>
+            <error_msg><![CDATA[]]></error_msg>
+            <vis />
+          </parameter>
+        </category>
+        <category name="Animation" visible="false">
+          <cond><![CDATA[true]]></cond>
+          <parameter type="Real" name="PF" desc="PF" group="" helpmode="Append" animate="true" allowemptystr="true" content_type="Literal" min="-1E+308" max="1E+308" unit="" intent="Input" dim="1">
+            <value><![CDATA[0.0]]></value>
+            <cond type="Enable" />
+            <help />
+            <regex />
+            <error_msg />
+            <vis />
+            <animate />
+          </parameter>
+        </category>
+      </form>
+      <script>
+        <segment name="Fortran" id="510960850" classid="CoreSegment"><![CDATA[#LOCAL REAL PF
+
+      PF = $In1 / sqrt($In1 * $In1 + $In2 * $In2)
+
+      IF (UPDATE_AG) CALL PSCAD_AGR2(ICALL_NO,$#Component,PF,"PF")
+
+      $Out = PF]]></segment>
+        <segment classid="CoreSegment" id="1129167665" name="Help"><![CDATA[help.html]]></segment>
+      </script>
+    </Definition>
+    <Definition classid="UserCmpDefn" name="Flag" build="" crc="40806214" view="false" instances="0" date="0" id="706981660" w="320" h="400">
+      <paramlist>
+        <param name="Description" value="" />
+        <param name="tags" value="" />
+        <param name="seq" value="true" />
+      </paramlist>
+      <graphics size="4">
+        <Port classid="Port" id="1149666355" x="-54" y="18">
+          <paramlist>
+            <param name="name" value="Offset" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Line" id="693614617" x="-39" y="18">
+          <vertex x="0" y="0" />
+          <vertex x="-14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <paramlist>
+          <param name="lock_style" value="3" />
+          <param name="lock_cx" value="0" />
+          <param name="lock_cy" value="0" />
+        </paramlist>
+        <Gfx classid="Graphics.Rectangle" id="767719227" x="-39" y="-25" w="96" h="51">
+          <paramlist>
+            <param name="color" value="#ff4a4a4a" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="2" />
+            <param name="port" value="" />
+            <param name="fill_style" value="0" />
+            <param name="fill_fg" value="Black" />
+            <param name="fill_bg" value="White" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="185934798" x="-20" y="5">
+          <paramlist>
+            <param name="color" value="Black" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="0" />
+            <param name="cond" value="" />
+            <param name="text" value="t = %Flag_timer" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Port classid="Port" id="2561178" x="-54" y="-18">
+          <paramlist>
+            <param name="name" value="In" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="1" />
+            <param name="datatype" value="2" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Line" id="1919843663" x="-54" y="-18">
+          <vertex x="0" y="0" />
+          <vertex x="15" y="0" />
+          <paramlist>
+            <param name="color" value="Blue" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Port classid="Port" id="1512125140" x="72" y="0">
+          <paramlist>
+            <param name="name" value="Flag_time" />
+            <param name="dim" value="1" />
+            <param name="internal" value="false" />
+            <param name="cond" value="true" />
+            <param name="mode" value="2" />
+            <param name="datatype" value="3" />
+            <param name="electype" value="0" />
+            <param name="const" value="false" />
+          </paramlist>
+        </Port>
+        <Gfx classid="Graphics.Line" id="2008005768" x="57" y="0">
+          <vertex x="0" y="0" />
+          <vertex x="14" y="0" />
+          <paramlist>
+            <param name="color" value="Green" />
+            <param name="dasharray" value="0" />
+            <param name="thickness" value="0" />
+            <param name="port" value="" />
+            <param name="cond" value="true" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1087577786" x="-38" y="-12">
+          <paramlist>
+            <param name="color" value="Black" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="0" />
+            <param name="cond" value="" />
+            <param name="text" value="Trigger" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+        <Gfx classid="Graphics.Text" id="1207610410" x="-38" y="21">
+          <paramlist>
+            <param name="color" value="Black" />
+            <param name="font_size" value="0" />
+            <param name="anchor" value="0" />
+            <param name="cond" value="" />
+            <param name="text" value="Offset" />
+            <param name="full_font" value="Tahoma, 12world" />
+            <param name="angle" value="0" />
+            <param name="lock" value="false" />
+          </paramlist>
+        </Gfx>
+      </graphics>
+      <form name="EMT-Tools.com" splitter="60" w="407" h="264" commentlines="4" help-width="490" category-width="180">
+        <category name="Configuration" visible="true">
+          <cond><![CDATA[true]]></cond>
+          <parameter name="Name" desc="Name" group="" type="Text" helpmode="Overwrite" allowemptystr="true" min="0" max="0">
+            <value><![CDATA[]]></value>
+            <cond><![CDATA[true]]></cond>
+            <help><![CDATA[The name of the component]]></help>
+            <regex><![CDATA[]]></regex>
+            <error_msg><![CDATA[]]></error_msg>
+            <vis />
+          </parameter>
+        </category>
+        <category name="Animation" visible="false">
+          <cond><![CDATA[true]]></cond>
+          <parameter type="Real" name="Flag_timer" desc="Flag_timer" group="" helpmode="Append" animate="true" allowemptystr="true" content_type="Literal" min="-1E+308" max="1E+308" unit="" intent="Input" dim="1">
+            <value><![CDATA[0.0]]></value>
+            <cond type="Enable" />
+            <help />
+            <regex />
+            <error_msg />
+            <vis />
+            <animate />
+          </parameter>
+        </category>
+      </form>
+      <script>
+        <segment name="Fortran" id="740322278" classid="CoreSegment"><![CDATA[#STORAGE REAL:1 INTEGER:1
+
+      IF (FIRSTSTEP) THEN
+        STORF(NSTORF) = 0.0
+        STORI(NSTORI) = 0
+      ENDIF
+
+      IF (($In .GT. 0) .AND. (STORI(NSTORI) .EQ. 0)) THEN
+        STORI(NSTORI) = 1
+        STORF(NSTORF) = TIME - $Offset
+      ENDIF
+
+      IF (UPDATE_AG) CALL PSCAD_AGR2(ICALL_NO,$#Component,STORF(NSTORF),"Flag_timer")
+
+      $Flag_time = STORF(NSTORF)
+
+      NSTORF = NSTORF + 1
+      NSTORI = NSTORI + 1]]></segment>
+        <segment classid="CoreSegment" id="311687511" name="Help"><![CDATA[help.html]]></segment>
+      </script>
+    </Definition>
+  </definitions>
+  <List classid="Template" />
+  <List classid="Resource" />
+  <hierarchy>
+    <call link="2142199705" name="Component_Lib:DS" z="-1" view="false" instance="0">
+      <call link="946953974" name="Component_Lib:Main" z="-1" view="true" instance="0" />
+    </call>
+  </hierarchy>
+</project>

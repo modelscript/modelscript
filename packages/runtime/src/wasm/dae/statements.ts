@@ -16,7 +16,7 @@ import {
   STMT_RIGHT,
 } from "./builder";
 import { evalExpr } from "./eval";
-import { UnmanagedFloat64Array } from "../core/array";
+import { UnmanagedFloat64Array, ChunkedInt32Array } from "../core/array";
 
 export const SIGNAL_NONE: u32 = 0;
 export const SIGNAL_BREAK: u32 = 1;
@@ -32,8 +32,7 @@ function resolveVarSlot(dae: DaeBuilder, idOrName: u32): i32 {
   return dae.lookupVariableByName(idOrName);
 }
 
-@inline
-function countNestedStmts(stmtData: any, startIdx: u32, topCount: u32, totalStmts: u32): u32 {
+function countNestedStmts(stmtData: ChunkedInt32Array, startIdx: u32, topCount: u32, totalStmts: u32): u32 {
   let curr = startIdx;
   let remaining = topCount;
   while (remaining > 0 && curr < totalStmts) {
@@ -125,7 +124,7 @@ export function executeStatements(
         if (sig != SIGNAL_NONE) return sig;
       }
 
-      let curBranchIdx = thenEnd;
+      let curBranchIdx: u32 = thenEnd;
       if (rightCount > 0 && curBranchIdx < dae.stmtCount) {
         let firstBranchKind = stmtData.get(curBranchIdx * STMT_STRIDE + STMT_KIND);
         if (firstBranchKind == StmtKind.Block) {
@@ -133,7 +132,7 @@ export function executeStatements(
             let bOff = curBranchIdx * STMT_STRIDE;
             let bCond = stmtData.get(bOff + STMT_DATA1) as u32;
             let bStmtCount = stmtData.get(bOff + STMT_LEFT) as u32;
-            let bEnd = countNestedStmts(stmtData, curBranchIdx + 1, bStmtCount, dae.stmtCount);
+            let bEnd: u32 = countNestedStmts(stmtData, curBranchIdx + 1, bStmtCount, dae.stmtCount);
             if (!branchexecuted) {
               if (bCond == 0xffffffff || evalExpr(bCond, dae, varValuesPtr) != 0.0) {
                 branchexecuted = true;
@@ -145,7 +144,7 @@ export function executeStatements(
           }
         } else {
           // Flat else statement count stored in `right`
-          let elseEnd = countNestedStmts(stmtData, curBranchIdx, rightCount, dae.stmtCount);
+          let elseEnd: u32 = countNestedStmts(stmtData, curBranchIdx, rightCount, dae.stmtCount);
           if (!branchexecuted) {
             let sig = executeStatements(curBranchIdx, rightCount, dae, varValuesPtr);
             if (sig != SIGNAL_NONE) return sig;
@@ -215,7 +214,7 @@ export function executeStatements(
     } else if (kind == StmtKind.When) {
       let bodyStmtCount = left as u32;
       let elseWhenCount = right as u32;
-      let curIdx = countNestedStmts(stmtData, i + 1, bodyStmtCount, dae.stmtCount);
+      let curIdx: u32 = countNestedStmts(stmtData, i + 1, bodyStmtCount, dae.stmtCount);
       for (let b: u32 = 0; b < elseWhenCount && curIdx < dae.stmtCount; b++) {
         let bOff = curIdx * STMT_STRIDE;
         let bCount = stmtData.get(bOff + STMT_LEFT) as u32;

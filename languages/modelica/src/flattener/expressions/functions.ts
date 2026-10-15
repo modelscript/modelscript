@@ -142,12 +142,26 @@ export function vectorizeFunctionCall(
             ? (db.query as any)("resolveName", currentScopeId)
             : (db.query as any)("resolveSimpleName", currentScopeId)
         ) as ((n: string) => any) | undefined;
-        sym = resolver?.(fnName);
+        const resSym = resolver?.(fnName);
+        if (
+          resSym &&
+          (resSym.kind === "Function" || flattener.isFunctionSym?.(resSym)) &&
+          !flattener.isExternalObject?.(resSym.id) &&
+          !flattener.isRecordSym?.(resSym)
+        ) {
+          sym = resSym;
+        }
       }
       if (!sym) {
         sym = db
           .byName(fnBase)
-          .find((e: any) => (e.kind === "Class" || e.kind === "Function") && flattener.isFunctionSym?.(e));
+          .find(
+            (e: any) =>
+              (e.kind === "Class" || e.kind === "Function") &&
+              flattener.isFunctionSym?.(e) &&
+              !flattener.isExternalObject?.(e.id) &&
+              !flattener.isRecordSym?.(e),
+          );
       }
       if (sym && flattener.failedFunctionIds?.has(sym.id)) {
         return null;

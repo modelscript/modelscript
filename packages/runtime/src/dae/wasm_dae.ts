@@ -2697,19 +2697,38 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     return curr;
   }
 
+  function getVarScore(nameId: number): number {
+    const vIdx = dae.lookupVariable(nameId);
+    const name = dae.interner.resolve(nameId) || "";
+    let score = 0;
+    if (vIdx >= 0) {
+      if (dae.getVarVariability(vIdx) === Variability.Continuous) score += 1000;
+    }
+    if (name.includes(".flange") || name.includes(".port") || name.includes(".support")) {
+      score -= 500;
+    }
+    const dotCount = (name.match(/\./g) || []).length;
+    score -= dotCount * 10;
+    score -= name.length;
+    return score;
+  }
+
   function union(id1: number, id2: number): void {
     const root1 = find(id1);
     const root2 = find(id2);
     if (root1 !== root2) {
-      aliasMap.set(root2, root1);
+      if (getVarScore(root1) >= getVarScore(root2)) {
+        aliasMap.set(root2, root1);
+      } else {
+        aliasMap.set(root1, root2);
+      }
     }
   }
 
   for (let i = 0; i < dae.eqCount; i++) {
     const kind = dae.getEqKind(i);
-    if (kind === EqKind.Connect) {
+    if (kind === EqKind.Connect || kind === EqKind.Simple) {
       const lhs = dae.getEqLhs(i);
-
       const rhs = dae.getEqRhs(i);
       if (lhs >= 0 && rhs >= 0 && dae.getExprKind(lhs) === ExprKind.Name && dae.getExprKind(rhs) === ExprKind.Name) {
         const name1 = dae.getExprData1(lhs);
@@ -2717,6 +2736,9 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
         const vIdx1 = dae.lookupVariable(name1);
         const vIdx2 = dae.lookupVariable(name2);
         if ((vIdx1 >= 0 && dae.isVarFlow(vIdx1)) || (vIdx2 >= 0 && dae.isVarFlow(vIdx2))) {
+          continue;
+        }
+        if (vIdx1 >= 0 && vIdx2 >= 0 && dae.getVarType(vIdx1) !== dae.getVarType(vIdx2)) {
           continue;
         }
         union(name1, name2);

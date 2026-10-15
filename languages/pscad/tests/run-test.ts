@@ -150,6 +150,7 @@ async function main() {
   console.log("4. Verifying Language Actions...");
   if (pscadLanguage.name !== "pscad") throw new Error("Expected language name to be pscad");
   if (!pscadLanguage.fileExtensions.includes(".pscx")) throw new Error("Expected .pscx extension");
+  if (!pscadLanguage.fileExtensions.includes(".pslx")) throw new Error("Expected .pslx extension");
   console.log(`   Registered actions: ${pscadLanguage.actions?.map((a) => a.id).join(", ")}`);
 
   // 5. Verify Modelica Projection

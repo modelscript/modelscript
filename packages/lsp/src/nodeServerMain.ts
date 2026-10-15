@@ -20,7 +20,7 @@ import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import owl2LangFallback from "@modelscript/owl2/language";
-import { pscadLanguage } from "@modelscript/pscad";
+import { pscadLanguage, PscadWorkspaceIndex } from "@modelscript/pscad";
 import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
 import scadLangFallback from "@modelscript/scad/language";
 import { stepLanguage, StepWorkspaceIndex } from "@modelscript/step";
@@ -273,6 +273,10 @@ export function startNodeServer(input?: any, output?: any) {
   workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.getWorkspaceIndex("step"), {
     priority: 2,
   });
+  workspaceManager.setWorkspaceIndex("pscad", new PscadWorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("pscad", workspaceManager.getWorkspaceIndex("pscad"), {
+    priority: 2,
+  });
 
   // Initialize built-in WASM parsers
   const require = createRequire(import.meta.url);
@@ -283,6 +287,7 @@ export function startNodeServer(input?: any, output?: any) {
     { id: "step", pkg: "@modelscript/step", name: "STEP", ext: [".step", ".stp", ".p21"] },
     { id: "owl2", pkg: "@modelscript/owl2", name: "OWL2", ext: [".owl", ".owl2", ".ofn", ".ttl"] },
     { id: "csv", pkg: "@modelscript/csv", name: "CSV", ext: [".csv"] },
+    { id: "pscad", pkg: "@modelscript/pscad", name: "PSCAD", ext: [".pscx", ".pslx", ".pswx", ".psmx"] },
     { id: "scad", pkg: "@modelscript/scad", name: "OpenSCAD", ext: [".scad"] },
     { id: "modelscript", pkg: "@modelscript/modelscript", name: "ModelScript", ext: [".modelscript", ".msx"] },
     { id: "fea", pkg: "@modelscript/fea", name: "FEA", ext: [".inp", ".bdf"] },
@@ -381,7 +386,7 @@ export function startNodeServer(input?: any, output?: any) {
     globalLanguageRegistry.register({
       id: "pscad",
       name: "PSCAD",
-      extensions: [".pscx", ".pswx", ".psmx"],
+      extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
       languageDef: pscadLanguage,
       actionHandlers: {
         lint_pscad_project: async (ctx: any, params: any) => {

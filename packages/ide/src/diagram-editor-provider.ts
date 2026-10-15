@@ -18,6 +18,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "modelscript.diagram";
 
   public readonly activeWebviews = new Set<vscode.WebviewPanel>();
+  public onDidOpenDocument?: (uri: string) => void;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -74,6 +75,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
+    this.onDidOpenDocument?.(uriString);
     const languageId =
       document.languageId && document.languageId !== "" ? document.languageId : uriString.split(".").pop() || "generic";
     let currentDiagramType = "All";

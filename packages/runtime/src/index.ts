@@ -41,6 +41,7 @@ export * from "./dae/wasm_fold.js";
 export * from "./dae/wasm_init.js";
 export * from "./dae/wasm_neural_block.js";
 export * from "./dae/wasm_statement_executor.js";
+export * from "./dae/wasm_table.js";
 export * from "./formal/abstract_interpretation/tvpi_domain.js";
 export * from "./formal/candidate_filter.js";
 export * from "./formal/cdcl_sat.js";

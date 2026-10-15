@@ -14,8 +14,17 @@ export interface PscadComponentLike {
   definitionName: string;
   instanceName?: string | undefined;
   position: { x: number; y: number };
+  width?: number | undefined;
+  height?: number | undefined;
   parameters: Record<string, string | number>;
-  ports?: { id: string; name: string }[] | undefined;
+  ports?:
+    | {
+        id: string;
+        name: string;
+        kind?: string | undefined;
+        position?: { x: number; y: number } | undefined;
+      }[]
+    | undefined;
 }
 
 export interface PscadBusLike {
@@ -32,12 +41,22 @@ export interface PscadWireLike {
   connectedPortIds?: string[] | undefined;
 }
 
+export interface PscadStickyLike {
+  id: string;
+  position: { x: number; y: number };
+  width: number;
+  height: number;
+  text: string;
+}
+
 export interface PscadProjectLike {
   name: string;
+  projectType?: "case" | "library" | undefined;
   rootModule: {
     buses: PscadBusLike[];
     components: PscadComponentLike[];
     wires: PscadWireLike[];
+    stickies?: PscadStickyLike[] | undefined;
   };
 }
 
@@ -50,6 +69,7 @@ export interface X6CellData {
   height?: number;
   markup?: any[];
   attrs?: Record<string, any>;
+  ports?: any;
   source?: any;
   target?: any;
   vertices?: { x: number; y: number }[];
@@ -81,7 +101,7 @@ export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph 
 
     cells.push({
       id: bus.id,
-      shape: "html",
+      shape: "rect",
       x: bus.position.x,
       y: bus.position.y,
       width,
@@ -95,12 +115,22 @@ export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph 
     });
   }
 
-  // 2. Convert Components to Power Glyph Nodes
+  // 2. Convert Components to Power Glyph or Modular IC Nodes
   for (const cmp of mod.components) {
+    // If library project, ignore dummy Drawing Station Main at 0, 0
+    if (
+      project.projectType === "library" &&
+      cmp.definitionName.endsWith(":Main") &&
+      cmp.position.x === 0 &&
+      cmp.position.y === 0
+    ) {
+      continue;
+    }
+
     const defn = cmp.definitionName.toLowerCase();
     let markup = undefined;
-    let width = 64;
-    let height = 64;
+    let width = cmp.width && cmp.width > 60 ? cmp.width : 110;
+    let height = cmp.height && cmp.height > 40 ? cmp.height : 60;
 
     if (defn.includes("xfmr") || defn.includes("transformer")) {
       markup = transformerGlyph();
@@ -116,33 +146,132 @@ export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph 
       height = 60;
     }
 
+    const cleanName = (cmp.instanceName || cmp.id).includes(":")
+      ? (cmp.instanceName || cmp.id).split(":").pop()!
+      : cmp.instanceName || cmp.id;
+
+    const cleanDefn = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
+
+    // Build ports if present
+    const portGroups: Record<string, any> = {
+      left: {
+        position: "left",
+        attrs: {
+          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+        },
+        label: { position: { name: "left", args: { x: -6 } } },
+      },
+      right: {
+        position: "right",
+        attrs: {
+          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+        },
+        label: { position: { name: "right", args: { x: 6 } } },
+      },
+      top: {
+        position: "top",
+        attrs: {
+          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+        },
+        label: { position: { name: "top", args: { y: -6 } } },
+      },
+      bottom: {
+        position: "bottom",
+        attrs: {
+          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+        },
+        label: { position: { name: "bottom", args: { y: 6 } } },
+      },
+    };
+
+    const portItems: any[] = [];
+    if (cmp.ports && cmp.ports.length > 0) {
+      const seenPortIds = new Set<string>();
+      for (const p of cmp.ports) {
+        let group = "left";
+        if (p.position) {
+          if (p.position.x > 10) group = "right";
+          else if (p.position.x < -10) group = "left";
+          else if (p.position.y < -10) group = "top";
+          else if (p.position.y > 10) group = "bottom";
+        } else if (p.name.toLowerCase().includes("out") || p.name.toLowerCase().includes("term")) {
+          group = "right";
+        }
+
+        let portId = p.id || `${cmp.id}_${p.name}`;
+        if (seenPortIds.has(portId)) {
+          let counter = 2;
+          while (seenPortIds.has(`${portId}_${counter}`)) {
+            counter++;
+          }
+          portId = `${portId}_${counter}`;
+        }
+        seenPortIds.add(portId);
+
+        portItems.push({
+          id: portId,
+          group,
+          attrs: {
+            text: {
+              text: p.name,
+              fill: "#94a3b8",
+              fontSize: 9,
+            },
+          },
+        });
+      }
+    }
+
     cells.push({
       id: cmp.id,
-      shape: markup ? "html" : "rect",
+      shape: "rect",
       x: cmp.position.x,
       y: cmp.position.y,
       width,
       height,
-      markup,
+      markup: markup ?? [
+        { tagName: "rect", selector: "body" },
+        { tagName: "rect", selector: "headerBg" },
+        { tagName: "text", selector: "typeBadge" },
+        { tagName: "text", selector: "label" },
+      ],
       attrs: markup
         ? undefined
         : {
             body: {
-              fill: "#263238",
-              stroke: "#90caf9",
+              fill: "#1e293b",
+              stroke: "#38bdf8",
               strokeWidth: 1.5,
-              rx: 4,
-              ry: 4,
+              rx: 6,
+              ry: 6,
+            },
+            headerBg: {
+              refWidth: 1,
+              height: 18,
+              fill: "#0f172a",
+              rx: 6,
+              ry: 6,
+            },
+            typeBadge: {
+              text: `«${cleanDefn}»`,
+              fill: "#38bdf8",
+              fontSize: 8,
+              fontStyle: "italic",
+              refX: 0.5,
+              refY: 4,
+              textAnchor: "middle",
             },
             label: {
-              text: cmp.instanceName || cmp.id,
-              fill: "#eceff1",
-              fontSize: 10,
-              textAnchor: "middle",
+              text: cleanName,
+              fill: "#f8fafc",
+              fontSize: 11,
+              fontWeight: "bold",
               refX: 0.5,
-              refY: 0.5,
+              refY: 26,
+              textAnchor: "middle",
             },
           },
+      ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
       data: {
         kind: "component",
         definition: cmp.definitionName,
@@ -179,14 +308,62 @@ export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph 
     }
   }
 
+  // 4. Convert Sticky Notes to Card Nodes
+  if (mod.stickies) {
+    for (const sticky of mod.stickies) {
+      const isBanner = sticky.width > 400;
+      const isTitle = sticky.height <= 40;
+      cells.push({
+        id: sticky.id,
+        shape: "rect",
+        x: sticky.position.x,
+        y: sticky.position.y,
+        width: sticky.width,
+        height: sticky.height,
+        attrs: {
+          body: {
+            fill: isBanner ? "#fffbeb" : isTitle ? "#fef3c7" : "#fffdf0",
+            stroke: isBanner ? "#f59e0b" : isTitle ? "#d97706" : "#cbd5e1",
+            strokeWidth: isBanner ? 1.5 : 1,
+            rx: isBanner ? 6 : 4,
+            ry: isBanner ? 6 : 4,
+          },
+          label: {
+            text: sticky.text,
+            fill: "#1e293b",
+            fontSize: isTitle ? 13 : isBanner ? 12 : 11,
+            fontWeight: isTitle ? "bold" : "normal",
+            textAnchor: isTitle ? "middle" : "start",
+            textVerticalAnchor: isTitle ? "middle" : "top",
+            refX: isTitle ? 0.5 : 10,
+            refY: isTitle ? 0.5 : 10,
+          },
+        },
+        data: {
+          kind: "sticky",
+          text: sticky.text,
+        },
+      });
+    }
+  }
+
   return {
     cells,
     metadata: {
       projectName: project.name,
-      nodeCount: mod.buses.length + mod.components.length,
+      nodeCount: mod.buses.length + mod.components.length + (mod.stickies?.length ?? 0),
       edgeCount: mod.wires.length,
     },
   };
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
@@ -239,7 +416,7 @@ export function renderPscadSvg(project: PscadProjectLike): string {
     }
   }
 
-  // Render nodes (components & buses)
+  // Render nodes (components & buses & stickies)
   for (const c of diag.cells) {
     if (c.x !== undefined && c.y !== undefined) {
       const w = c.width ?? 60;
@@ -252,8 +429,22 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         elementsSvg += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
         elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${c.data.name} (${vbase} kV)</text>\n`;
         elementsSvg += `  </g>\n`;
+      } else if (c.data?.kind === "sticky") {
+        const lines = (c.data.text || "").split("\n");
+        const isBanner = w > 400;
+        const fill = isBanner ? "#fffbeb" : "#fef3c7";
+        const stroke = isBanner ? "#f59e0b" : "#d97706";
+        elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
+        elementsSvg += `    <rect width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="1" />\n`;
+        let textY = 18;
+        for (const line of lines.slice(0, 12)) {
+          elementsSvg += `    <text x="12" y="${textY}" fill="#1e293b" font-size="11" font-family="sans-serif">${escapeHtml(line)}</text>\n`;
+          textY += 15;
+        }
+        elementsSvg += `  </g>\n`;
       } else {
-        const name = c.data?.name || c.id;
+        const rawName = c.data?.name || c.id;
+        const name = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
         const defn = c.data?.definition || "Component";
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
         elementsSvg += `    <rect width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />\n`;

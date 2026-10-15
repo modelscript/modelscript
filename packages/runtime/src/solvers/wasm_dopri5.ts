@@ -59,6 +59,8 @@ export interface Dopri5Options {
   rtol?: number;
   /** Maximum step size (default: tEnd - t0). */
   maxStep?: number;
+  /** Minimum step size (default: 1e-15). */
+  minStep?: number;
   /** Initial step size (default: auto-estimated). */
   initialStep?: number;
   /** Maximum number of steps (default: 100000). */
@@ -164,6 +166,7 @@ export function dopri5(
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
   const maxStep = options.maxStep ?? Math.abs(tEnd - t0);
+  const minStep = options.minStep ?? 1e-15;
   const maxSteps = options.maxSteps ?? 100000;
   const equidistant = options.equidistantOutput !== false;
   const n = y0.length;
@@ -212,9 +215,9 @@ export function dopri5(
           return gProbe > 0 ? 1e-10 : -1e-10;
         }
         const reqDir = eventDirections?.[gIdx] ?? 0;
-        if (reqDir < 0) return 1e-10;
-        if (reqDir > 0) return -1e-10;
-        return 1e-10;
+        if (reqDir < 0) return -1e-10;
+        if (reqDir > 0) return 1e-10;
+        return 0;
       }
       return gVal;
     });
@@ -228,12 +231,16 @@ export function dopri5(
   let totalSteps = 0;
   let lastEventTime = -Infinity;
   let consecutiveEvents = 0;
+  let consecutiveRejections = 0;
+  const maxConsecutiveRejections = 50;
 
   while (t < tEnd && totalSteps < maxSteps) {
     totalSteps++;
 
     if (t + h > tEnd) h = tEnd - t;
-    if (h < 1e-15) break;
+    if (h < minStep) {
+      break;
+    }
 
     // Stages 1-6
     for (let s = 1; s < 7; s++) {
@@ -270,8 +277,19 @@ export function dopri5(
       err = Math.max(err, Math.abs(errI) / sc);
     }
 
+    if (!Number.isFinite(err)) {
+      result.rejectedSteps++;
+      consecutiveRejections++;
+      if (consecutiveRejections > maxConsecutiveRejections || h < minStep) {
+        break;
+      }
+      h = Math.max(minStep, h * 0.5);
+      continue;
+    }
+
     if (err <= 1.0) {
       result.acceptedSteps++;
+      consecutiveRejections = 0;
       const tNew = t + h;
       let eventOccurred = false;
 
@@ -335,25 +353,14 @@ export function dopri5(
             }
 
             if (consecutiveEvents >= 10) {
-              result.times.push(tEvent);
-              result.states.push([...yAfter]);
-
-              if (equidistant) {
-                while (outputIdx < outputTimes.length) {
-                  const tOut = outputTimes[outputIdx] ?? tEnd;
-                  if (tOut > tEvent + 1e-14) {
-                    result.times.push(tOut);
-                    result.states.push([...yAfter]);
-                  }
-                  outputIdx++;
-                }
-              } else {
-                if (tEnd > tEvent + 1e-14) {
-                  result.times.push(tEnd);
-                  result.states.push([...yAfter]);
-                }
-              }
-              return result;
+              consecutiveEvents = 0;
+              t = tEvent + Math.max(1e-6, minStep);
+              y = [...yAfter];
+              k1 = f(t, y);
+              result.fEvals++;
+              k[0] = k1;
+              prevEventValues = computeEventValuesWithProbe(t, y);
+              break;
             }
 
             result.times.push(tEvent);
@@ -369,7 +376,8 @@ export function dopri5(
 
             const t0Out = outputTimes[0] ?? 0;
             const t1Out = outputTimes[1] ?? 0;
-            h = Math.min(h, outputTimes.length > 1 ? t1Out - t0Out : h * 0.1);
+            const dtOut = outputTimes.length > 1 ? t1Out - t0Out : maxStep;
+            h = Math.max(minStep, Math.min(Math.max(h, dtOut * 0.1), maxStep));
             break;
           }
         }
@@ -409,11 +417,15 @@ export function dopri5(
       }
 
       const factor = err > 0 ? Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(err, -0.2))) : 5.0;
-      h = Math.min(h * factor, maxStep);
+      h = Math.min(Math.max(minStep, h * factor), maxStep);
     } else {
       result.rejectedSteps++;
-      const factor = Math.max(0.2, 0.9 * Math.pow(err, -0.2));
-      h *= factor;
+      consecutiveRejections++;
+      if (consecutiveRejections > maxConsecutiveRejections) {
+        break;
+      }
+      const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(err, -0.25)));
+      h = Math.max(minStep, h * factor);
     }
   }
 
@@ -446,6 +458,7 @@ export async function dopri5Async(
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
   const maxStep = options.maxStep ?? Math.abs(tEnd - t0);
+  const minStep = options.minStep ?? 1e-15;
   const maxSteps = options.maxSteps ?? 100000;
   const equidistant = options.equidistantOutput !== false;
   const n = y0.length;
@@ -488,9 +501,9 @@ export async function dopri5Async(
           vals.push(gProbe > 0 ? 1e-10 : -1e-10);
         } else {
           const reqDir = eventDirections?.[gIdx] ?? 0;
-          if (reqDir < 0) vals.push(1e-10);
-          else if (reqDir > 0) vals.push(-1e-10);
-          else vals.push(1e-10);
+          if (reqDir < 0) vals.push(-1e-10);
+          else if (reqDir > 0) vals.push(1e-10);
+          else vals.push(0);
         }
       } else {
         vals.push(gVal);
@@ -507,11 +520,13 @@ export async function dopri5Async(
   let totalSteps = 0;
   let lastEventTime = -Infinity;
   let consecutiveEvents = 0;
+  let consecutiveRejections = 0;
+  const maxConsecutiveRejections = 50;
 
   while (t < tEnd && totalSteps < maxSteps) {
     totalSteps++;
     if (t + h > tEnd) h = tEnd - t;
-    if (h < 1e-15) break;
+    if (h < minStep) break;
 
     for (let s = 1; s < 7; s++) {
       const cs = DOPRI5_C[s] ?? 0;
@@ -545,8 +560,19 @@ export async function dopri5Async(
       err = Math.max(err, Math.abs(errI) / sc);
     }
 
+    if (!Number.isFinite(err)) {
+      result.rejectedSteps++;
+      consecutiveRejections++;
+      if (consecutiveRejections > maxConsecutiveRejections || h < minStep) {
+        break;
+      }
+      h = Math.max(minStep, h * 0.5);
+      continue;
+    }
+
     if (err <= 1.0) {
       result.acceptedSteps++;
+      consecutiveRejections = 0;
       const tNew = t + h;
       let eventOccurred = false;
 
@@ -606,24 +632,14 @@ export async function dopri5Async(
             }
 
             if (consecutiveEvents >= 10) {
-              result.times.push(tEvent);
-              result.states.push([...yAfter]);
-              if (equidistant) {
-                while (outputIdx < outputTimes.length) {
-                  const tOut = outputTimes[outputIdx] ?? tEnd;
-                  if (tOut > tEvent + 1e-14) {
-                    result.times.push(tOut);
-                    result.states.push([...yAfter]);
-                  }
-                  outputIdx++;
-                }
-              } else {
-                if (tEnd > tEvent + 1e-14) {
-                  result.times.push(tEnd);
-                  result.states.push([...yAfter]);
-                }
-              }
-              return result;
+              consecutiveEvents = 0;
+              t = tEvent + Math.max(1e-6, minStep);
+              y = [...yAfter];
+              k1 = await f(t, y);
+              result.fEvals++;
+              k[0] = k1;
+              prevEventValues = await computeEventValuesWithProbeAsync(t, y);
+              break;
             }
 
             result.times.push(tEvent);
@@ -638,7 +654,8 @@ export async function dopri5Async(
             prevEventValues = await computeEventValuesWithProbeAsync(t, y);
             const t0Out = outputTimes[0] ?? 0;
             const t1Out = outputTimes[1] ?? 0;
-            h = Math.min(h, outputTimes.length > 1 ? t1Out - t0Out : h * 0.1);
+            const dtOut = outputTimes.length > 1 ? t1Out - t0Out : maxStep;
+            h = Math.max(minStep, Math.min(Math.max(h, dtOut * 0.1), maxStep));
             break;
           }
         }
@@ -679,11 +696,15 @@ export async function dopri5Async(
       }
 
       const factor = err > 0 ? Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(err, -0.2))) : 5.0;
-      h = Math.min(h * factor, maxStep);
+      h = Math.min(Math.max(minStep, h * factor), maxStep);
     } else {
       result.rejectedSteps++;
-      const factor = Math.max(0.2, 0.9 * Math.pow(err, -0.2));
-      h *= factor;
+      consecutiveRejections++;
+      if (consecutiveRejections > maxConsecutiveRejections) {
+        break;
+      }
+      const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(err, -0.25)));
+      h = Math.max(minStep, h * factor);
     }
   }
 
@@ -722,7 +743,7 @@ function estimateInitialStep(
 
   let h0: number;
   if (d0 < 1e-5 || d1 < 1e-5) {
-    h0 = 1e-6;
+    h0 = 1e-4;
   } else {
     h0 = 0.01 * (d0 / d1);
   }
@@ -742,7 +763,7 @@ function estimateInitialStep(
 
   let h1: number;
   if (Math.max(d1, d2) <= 1e-15) {
-    h1 = Math.max(1e-6, h0 * 1e-3);
+    h1 = Math.min(maxStep, Math.max(1e-3, maxStep / 100));
   } else {
     h1 = Math.pow(0.01 / Math.max(d1, d2), 0.2);
   }
@@ -831,7 +852,7 @@ async function estimateInitialStepAsync(
     d0 = Math.max(d0, Math.abs(y0[i] ?? 0) / sc);
     d1 = Math.max(d1, Math.abs(f0[i] ?? 0) / sc);
   }
-  let h0 = d0 < 1e-5 || d1 < 1e-5 ? 1e-6 : 0.01 * (d0 / d1);
+  let h0 = d0 < 1e-5 || d1 < 1e-5 ? 1e-4 : 0.01 * (d0 / d1);
   h0 = Math.min(h0, maxStep);
 
   const y1 = new Array(n);
@@ -843,7 +864,10 @@ async function estimateInitialStepAsync(
     const sc = atol + rtol * Math.abs(y0[i] ?? 0);
     d2 = Math.max(d2, Math.abs(((f1[i] ?? 0) - (f0[i] ?? 0)) / h0) / sc);
   }
-  const h1 = Math.max(d1, d2) <= 1e-15 ? Math.max(1e-6, h0 * 1e-3) : Math.pow(0.01 / Math.max(d1, d2), 0.2);
+  const h1 =
+    Math.max(d1, d2) <= 1e-15
+      ? Math.min(maxStep, Math.max(1e-3, maxStep / 100))
+      : Math.pow(0.01 / Math.max(d1, d2), 0.2);
   return Math.min(100 * h0, Math.min(h1, maxStep));
 }
 

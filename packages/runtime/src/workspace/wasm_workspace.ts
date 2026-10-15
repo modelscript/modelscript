@@ -186,6 +186,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   private fileSymbols = new Map<string, SymbolId[]>();
   private fileLoaders = new Map<string, { loader: () => any; parentFQN?: string; editRanges?: any }>();
   private fqnToUri = new Map<string, string>();
+  private ensuringFQNSet = new Set<string>();
+  private ensuringUriSet = new Set<string>();
   private unifiedIndex: SymbolIndex = {
     symbols: new Map<SymbolId, SymbolEntry>(),
     byName: new Map<string, SymbolId[]>(),
@@ -313,16 +315,22 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Evaluates the lazy loader for the given URI if it has not yet been indexed.
    */
   ensureIndexed(uri: string): void {
-    const entry = this.fileLoaders.get(uri);
-    if (entry) {
-      this.fileLoaders.delete(uri);
-      if (entry.parentFQN) {
-        this.ensureFQNIndexed(entry.parentFQN);
+    if (!uri || this.ensuringUriSet.has(uri)) return;
+    this.ensuringUriSet.add(uri);
+    try {
+      const entry = this.fileLoaders.get(uri);
+      if (entry) {
+        this.fileLoaders.delete(uri);
+        if (entry.parentFQN && !this.ensuringFQNSet.has(entry.parentFQN)) {
+          this.ensureFQNIndexed(entry.parentFQN);
+        }
+        const rootNode = entry.loader();
+        if (rootNode) {
+          this.indexCst(uri, rootNode, entry.parentFQN);
+        }
       }
-      const rootNode = entry.loader();
-      if (rootNode) {
-        this.indexCst(uri, rootNode, entry.parentFQN);
-      }
+    } finally {
+      this.ensuringUriSet.delete(uri);
     }
   }
 
@@ -330,35 +338,40 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Ensures that all ancestor packages and files along the specified FQN path are indexed in hierarchical order.
    */
   ensureFQNIndexed(fqn: string): void {
-    if (!fqn) return;
-    const parts = fqn.split(".");
-    this.ensureChildrenIndexed("");
-    let prefix = "";
-    for (let i = 0; i < parts.length; i++) {
-      prefix = prefix ? `${prefix}.${parts[i]}` : parts[i];
-      let uri = this.fqnToUri.get(prefix);
-      if (!uri && prefix.includes(".")) {
-        const pParts = prefix.split(".");
-        for (let j = pParts.length - 1; j >= 1; j--) {
-          const sub = pParts.slice(0, j).join(".");
-          if (this.fqnToUri.has(sub)) {
-            uri = this.fqnToUri.get(sub);
-            break;
+    if (!fqn || this.ensuringFQNSet.has(fqn)) return;
+    this.ensuringFQNSet.add(fqn);
+    try {
+      const parts = fqn.split(".");
+      this.ensureChildrenIndexed("");
+      let prefix = "";
+      for (let i = 0; i < parts.length; i++) {
+        prefix = prefix ? `${prefix}.${parts[i]}` : parts[i];
+        let uri = this.fqnToUri.get(prefix);
+        if (!uri && prefix.includes(".")) {
+          const pParts = prefix.split(".");
+          for (let j = pParts.length - 1; j >= 1; j--) {
+            const sub = pParts.slice(0, j).join(".");
+            if (this.fqnToUri.has(sub)) {
+              uri = this.fqnToUri.get(sub);
+              break;
+            }
           }
         }
-      }
-      if (!uri && (prefix === "Modelica.Icons" || prefix.endsWith(".Icons") || prefix === "Icons")) {
-        for (const fUri of this.fileLoaders.keys()) {
-          if (fUri.endsWith("/Icons.mo") || fUri.endsWith("Icons.mo")) {
-            uri = fUri;
-            break;
+        if (!uri && (prefix === "Modelica.Icons" || prefix.endsWith(".Icons") || prefix === "Icons")) {
+          for (const fUri of this.fileLoaders.keys()) {
+            if (fUri.endsWith("/Icons.mo") || fUri.endsWith("Icons.mo")) {
+              uri = fUri;
+              break;
+            }
           }
         }
+        if (uri) {
+          this.ensureIndexed(uri);
+        }
+        this.ensureChildrenIndexed(prefix);
       }
-      if (uri) {
-        this.ensureIndexed(uri);
-      }
-      this.ensureChildrenIndexed(prefix);
+    } finally {
+      this.ensuringFQNSet.delete(fqn);
     }
   }
 
@@ -420,8 +433,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Resolves a fully qualified class name to its backing file URI, evaluating lazy loader if needed.
    */
   getFileUriForFQN(fqn: string): string | undefined {
-    this.ensureFQNIndexed(fqn);
     let uri = this.fqnToUri.get(fqn);
+    if (!uri) {
+      this.ensureFQNIndexed(fqn);
+      uri = this.fqnToUri.get(fqn);
+    }
     if (!uri) {
       const parts = fqn.split(".");
       for (let i = parts.length - 1; i >= 1; i--) {
@@ -431,9 +447,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           break;
         }
       }
-    }
-    if (uri) {
-      this.ensureIndexed(uri);
     }
     return uri;
   }
@@ -456,6 +469,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Re-indexes a document or marks it dirty upon edit.
    */
   reindexDocument(uri: string, loader?: () => any, editRanges?: any, _totalDelta?: number): void {
+    const existingEntry = this.fileLoaders.get(uri);
     this.fileLoaders.delete(uri);
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
@@ -463,13 +477,54 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     if (typeof loader === "function") {
       const rootNode = loader();
       if (rootNode) {
-        this.indexCst(uri, rootNode);
+        this.indexCst(uri, rootNode, existingEntry?.parentFQN);
       }
     } else {
       this._version++;
       this._structuralRevision++;
       this.bumpFileStructuralRevision(uri);
     }
+  }
+
+  private extractDeclaredWithin(rootNode: any): string | null {
+    if (!rootNode) return null;
+    const findInNode = (n: any): string | null => {
+      if (!n) return null;
+      if (n.type === "within_clause" || n.type === "WithinDirective") {
+        const nameChild = n.children?.find(
+          (c: any) => c.type === "name" || c.type === "name_list" || c.type === "identifier" || c.type === "IDENT",
+        );
+        if (nameChild && nameChild.text) {
+          return nameChild.text.trim();
+        }
+        const t = n.text || "";
+        const m = t.match(/^within\s*([a-zA-Z0-9_.]*)\s*;/m);
+        return m ? m[1]?.trim() || "" : "";
+      }
+      for (const child of n.children || []) {
+        if (child.type === "within_clause" || child.type === "WithinDirective") {
+          const nameChild = child.children?.find(
+            (c: any) => c.type === "name" || c.type === "name_list" || c.type === "identifier" || c.type === "IDENT",
+          );
+          if (nameChild && nameChild.text) {
+            return nameChild.text.trim();
+          }
+          const t = child.text || "";
+          const m = t.match(/^within\s*([a-zA-Z0-9_.]*)\s*;/m);
+          return m ? m[1]?.trim() || "" : "";
+        }
+        if (child.type === "stored_definition" || child.type === "program") {
+          const res = findInNode(child);
+          if (res !== null) return res;
+        }
+      }
+      if (typeof n.text === "string" && n.text.length > 0) {
+        const m = n.text.slice(0, 1000).match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
+        if (m) return m[1]?.trim() || "";
+      }
+      return null;
+    };
+    return findInNode(rootNode);
   }
 
   /**
@@ -495,6 +550,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
+    if (!_parentFQN && rootNode) {
+      const declared = this.extractDeclaredWithin(rootNode);
+      if (declared !== null) {
+        _parentFQN = declared.length > 0 ? declared : undefined;
+      }
+    }
     const existingIds = this.fileSymbols.get(uri);
     const prevSignatures: string[] = [];
     const oldEntriesByKey = new Map<string, SymbolEntry>();
@@ -938,6 +999,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             fqnList.push(symId);
             this.unifiedIndex.byName.set(fqn, fqnList);
           }
+          this.fqnToUri.set(fqn, uri);
         }
 
         const childList = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
@@ -963,6 +1025,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
     let initialParentId: SymbolId | null = null;
     if (_parentFQN) {
+      if (typeof this.ensureFQNIndexed === "function") {
+        this.ensureFQNIndexed(_parentFQN);
+      }
       let parentEntries = this.unifiedIndex.byName.get(_parentFQN);
       if (!parentEntries || parentEntries.length === 0) {
         const lastPart = _parentFQN.split(".").pop();
@@ -1970,6 +2035,23 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         (ws as any).ensureFQNIndexed(fqn);
       }
     }
+  }
+
+  getFileUriForFQN(fqn: string): string | undefined {
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).getFileUriForFQN === "function") {
+        const uri = (ws as any).getFileUriForFQN(fqn);
+        if (uri) return uri;
+      }
+    }
+    this.ensureFQNIndexed(fqn);
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).getFileUriForFQN === "function") {
+        const uri = (ws as any).getFileUriForFQN(fqn);
+        if (uri) return uri;
+      }
+    }
+    return undefined;
   }
 
   hasPendingChildren(parentFQN?: string): boolean {

@@ -61,6 +61,9 @@ export const fqnCacheState = {
 };
 
 export function iconFromEntry(entry: any): string | undefined {
+  if (entry?.language === "pscad") {
+    return entry.metadata?.classPrefixes === "package" ? "package" : "circuit-board";
+  }
   if (entry?.language) {
     const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
     const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
@@ -70,6 +73,9 @@ export function iconFromEntry(entry: any): string | undefined {
 }
 
 export function classKindFromEntry(entry: any): string {
+  if (entry?.language === "pscad") {
+    return entry.metadata?.classPrefixes ?? (entry.kind === "Package" ? "package" : "class");
+  }
   if (entry?.language) {
     const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
     const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
@@ -102,6 +108,9 @@ export function isTreeVisible(entry: any): boolean {
   }
   if (entry?.language === "sysml2") {
     return SYSML2_TREE_KINDS.has(entry.kind);
+  }
+  if (entry?.language === "pscad") {
+    return true;
   }
   return entry?.kind === "Class";
 }
@@ -212,8 +221,10 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
           compositeName,
           classKind: classKindFromEntry(entry),
           icon: iconFromEntry(entry),
+          iconSvg: entry.metadata?.iconSvg,
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
+          uri: entry.resourceId,
         });
         fqnCacheState.cache.set(compositeName, id);
       }
@@ -256,8 +267,10 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
           compositeName,
           classKind: classKindFromEntry(entry),
           icon: iconFromEntry(entry),
+          iconSvg: entry.metadata?.iconSvg,
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
+          uri: entry.resourceId,
         });
         fqnCacheState.cache.set(compositeName, id);
       }
@@ -292,8 +305,10 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
           compositeName,
           classKind: classKindFromEntry(entry),
           icon: iconFromEntry(entry),
+          iconSvg: entry.metadata?.iconSvg,
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
+          uri: entry.resourceId,
         });
         fqnCacheState.cache.set(compositeName, id);
       }

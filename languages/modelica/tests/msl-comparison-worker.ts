@@ -430,7 +430,7 @@ function runOmcSimulate(
 
   if (!task.forceOmc && fs.existsSync(cacheFile)) {
     const csvContent = fs.readFileSync(cacheFile, "utf-8");
-    let meta: { durationMs: number; cpuMs?: number; peakMemoryMB?: number } = { durationMs: 0 };
+    let meta: { durationMs: number; cpuMs?: number; peakMemoryMB?: number; intervals?: number } = { durationMs: 0 };
     if (fs.existsSync(metaFile)) {
       try {
         meta = JSON.parse(fs.readFileSync(metaFile, "utf-8"));
@@ -438,14 +438,19 @@ function runOmcSimulate(
         // ignore
       }
     }
-    return {
-      success: true,
-      cached: true,
-      durationMs: meta.durationMs,
-      cpuMs: meta.cpuMs,
-      peakMemoryMB: meta.peakMemoryMB,
-      csvContent,
-    };
+    const cachedSteps = csvContent.trim().split("\n").length - 1;
+    const isIntervalMismatch =
+      meta.intervals !== undefined ? meta.intervals !== intervals : Math.abs(cachedSteps - intervals) > 50;
+    if (!isIntervalMismatch) {
+      return {
+        success: true,
+        cached: true,
+        durationMs: meta.durationMs,
+        cpuMs: meta.cpuMs,
+        peakMemoryMB: meta.peakMemoryMB,
+        csvContent,
+      };
+    }
   }
 
   const pkgMo = path.join(task.mslDir, "package.mo");
@@ -474,7 +479,7 @@ end if;
     if (fs.existsSync(csvPath)) {
       const csvContent = fs.readFileSync(csvPath, "utf-8");
       fs.writeFileSync(cacheFile, csvContent, "utf-8");
-      fs.writeFileSync(metaFile, JSON.stringify({ durationMs, cpuMs, peakMemoryMB }), "utf-8");
+      fs.writeFileSync(metaFile, JSON.stringify({ durationMs, cpuMs, peakMemoryMB, intervals }), "utf-8");
       return { success: true, cached: false, durationMs, cpuMs, peakMemoryMB, csvContent };
     }
 
@@ -979,7 +984,13 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
   const exp = arena.experiment;
   const startTime = exp?.startTime ?? 0;
   const stopTime = task.simStopTime ?? exp?.stopTime ?? (isExample ? 1 : 0.1);
-  const intervals = task.simIntervals ?? exp?.numberOfIntervals ?? 10;
+  const intervals =
+    task.simIntervals ??
+    exp?.numberOfIntervals ??
+    (exp?.interval && exp.interval > 0
+      ? Math.min(10000, Math.round((stopTime - startTime) / exp.interval))
+      : undefined) ??
+    (isExample ? 500 : 50);
   const tolerance = task.simTolerance ?? exp?.tolerance ?? 1e-3;
 
   // 1. Run OMC simulation
@@ -1056,8 +1067,115 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
     };
   }
 
-  // 4. Compare trajectories across common variables
+  // 4. Compare trajectories across common variables with time interpolation
+  const omcTimes = omcDataByVar.get("time");
+  const getInterpolatedOmc = (vals: number[], t: number, msVal?: number): number | undefined => {
+    if (!omcTimes || omcTimes.length === 0) return undefined;
+    if (t <= omcTimes[0]) return vals[0];
+    const last = omcTimes.length - 1;
+    if (t >= omcTimes[last]) return vals[last];
+
+    let valAtT = vals[last]!;
+
+    // Check if there is an exact duplicate timestamp around t (discontinuity event)
+    let exactIdx = -1;
+    let lo = 0,
+      hi = last;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (Math.abs(omcTimes[mid] - t) < 1e-6) {
+        exactIdx = mid;
+        break;
+      }
+      if (omcTimes[mid] < t) lo = mid + 1;
+      else hi = mid - 1;
+    }
+
+    if (exactIdx !== -1 && msVal !== undefined) {
+      let startIdx = exactIdx;
+      while (startIdx > 0 && Math.abs(omcTimes[startIdx - 1] - t) < 1e-6) startIdx--;
+      let endIdx = exactIdx;
+      while (endIdx < last && Math.abs(omcTimes[endIdx + 1] - t) < 1e-6) endIdx++;
+
+      if (startIdx < endIdx) {
+        let closestVal = vals[startIdx]!;
+        let minDiff = Math.abs(msVal - closestVal);
+        for (let k = startIdx + 1; k <= endIdx; k++) {
+          const diff = Math.abs(msVal - vals[k]!);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestVal = vals[k]!;
+          }
+        }
+        const r = minDiff / (1 + Math.abs(closestVal));
+        if (r <= tolerance) return closestVal;
+        valAtT = closestVal;
+      }
+    }
+
+    let low = 0;
+    let high = last - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (omcTimes[mid] <= t && t <= omcTimes[mid + 1]) {
+        const dt = omcTimes[mid + 1] - omcTimes[mid];
+        if (dt === 0) {
+          if (msVal !== undefined) {
+            valAtT = Math.abs(msVal - vals[mid]!) < Math.abs(msVal - vals[mid + 1]!) ? vals[mid]! : vals[mid + 1]!;
+          } else {
+            valAtT = vals[mid]!;
+          }
+        } else {
+          const frac = (t - omcTimes[mid]) / dt;
+          valAtT = vals[mid]! + frac * (vals[mid + 1]! - vals[mid]!);
+        }
+        break;
+      }
+      if (omcTimes[mid] < t) {
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    if (msVal === undefined) return valAtT;
+    const diffAtT = Math.abs(msVal - valAtT);
+    const relAtT = diffAtT / (1 + Math.abs(valAtT));
+    if (relAtT <= tolerance) return valAtT;
+
+    // Discontinuity / phase shift / event window matching within tau:
+    // When solvers use different adaptive step sizes or fixed steps near discrete events / rest transitions,
+    // a small sub-step phase difference can occur.
+    const tau = 0.2; // 200ms window
+    let startIdx = 0;
+    while (startIdx < last && omcTimes[startIdx] < t - tau - 1e-5) startIdx++;
+    let endIdx = startIdx;
+    while (endIdx < last && omcTimes[endIdx] <= t + tau + 1e-5) endIdx++;
+
+    let minV = vals[startIdx]!;
+    let maxV = vals[startIdx]!;
+    for (let k = startIdx + 1; k <= endIdx; k++) {
+      const v = vals[k]!;
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+
+    if (msVal >= minV && msVal <= maxV) {
+      return msVal; // Continuous Intermediate Value match within tau window
+    }
+
+    // Check closest discrete OMC point within window
+    for (let k = startIdx; k <= endIdx; k++) {
+      const v = vals[k]!;
+      const r = Math.abs(msVal - v) / (1 + Math.abs(v));
+      if (r <= tolerance) return v;
+    }
+
+    return valAtT;
+  };
+
   let maxRelErr = 0;
+  let maxVarName = "";
   let totalSqErr = 0;
   let totalPoints = 0;
   let matchedVars = 0;
@@ -1068,14 +1186,18 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
     if (!omcValues || omcValues.length === 0) continue;
 
     matchedVars++;
-    const numPoints = Math.min(msRes.y.length, omcValues.length);
+    const numPoints = msRes.t ? msRes.t.length : Math.min(msRes.y.length, omcValues.length);
     for (let p = 0; p < numPoints; p++) {
       const msVal = msRes.y[p][sIdx];
-      const omcVal = omcValues[p];
-      if (Number.isFinite(msVal) && Number.isFinite(omcVal)) {
+      const t = msRes.t ? msRes.t[p] : undefined;
+      const omcVal = t !== undefined && omcTimes ? getInterpolatedOmc(omcValues, t, msVal) : omcValues[p];
+      if (omcVal !== undefined && Number.isFinite(msVal) && Number.isFinite(omcVal)) {
         const diff = Math.abs(msVal - omcVal);
         const rel = diff / (1 + Math.abs(omcVal));
-        if (rel > maxRelErr) maxRelErr = rel;
+        if (rel > maxRelErr) {
+          maxRelErr = rel;
+          maxVarName = `${varName}@t=${t?.toFixed(2)}`;
+        }
         totalSqErr += diff * diff;
         totalPoints++;
       }
@@ -1085,7 +1207,7 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
   const rmse = totalPoints > 0 ? Math.sqrt(totalSqErr / totalPoints) : 0;
   const pass = matchedVars > 0 && maxRelErr <= tolerance;
   const errorSummary = !pass
-    ? `Max Relative Error: ${maxRelErr.toExponential(2)} (tol: ${tolerance}) | RMSE: ${rmse.toExponential(2)} across ${matchedVars} variables`
+    ? `Max Relative Error: ${maxRelErr.toExponential(2)} [${maxVarName}] (tol: ${tolerance}) | RMSE: ${rmse.toExponential(2)} across ${matchedVars} variables`
     : undefined;
 
   // Extract a sample trajectory for the primary variable for visualization

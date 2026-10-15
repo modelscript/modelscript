@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
-import { collectArenaExprDeps } from "../analysis/wasm_blt.js";
+import { collectArenaExprDeps, isZeroExpr } from "../analysis/wasm_blt.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
 import { Polynomial, Term, computeGroebnerBasis } from "../solvers/wasm_groebner.js";
 
@@ -55,6 +54,7 @@ export function isolateSymbolicallyArena(arena: DAEBuilder, eqIdx: number, targe
   const linear = extractLinearCoeffsArena(arena, residualId, targetVarIdx);
   if (linear) {
     const { aId, bId } = linear;
+    if (isZeroExpr(arena, aId)) return -1;
     const negB = arena.addBinaryExpr(BinOp.Mul, arena.addRealLiteral(-1), bId);
     return arena.addBinaryExpr(BinOp.Div, negB, aId);
   }

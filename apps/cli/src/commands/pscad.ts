@@ -3,7 +3,7 @@
 /**
  * ModelScript CLI: PSCAD Subcommand.
  *
- * Provides headless CLI operations for PSCAD projects (.pscx, .psmx):
+ * Provides headless CLI operations for PSCAD projects (.pscx, .pslx, .psmx):
  * - `msx pscad lint <path>`
  * - `msx pscad diagram <path> [--out=output.svg]`
  * - `msx pscad diff <oldPath> <newPath>`
@@ -29,7 +29,7 @@ import type { CommandModule } from "yargs";
 
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "pscad <action> [files...]",
-  describe: "Inspect, lint, diff, simulate, and verify PSCAD projects (.pscx)",
+  describe: "Inspect, lint, diff, simulate, and verify PSCAD projects (.pscx, .pslx)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
@@ -64,7 +64,7 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     const files = (args["files"] as string[]) ?? [];
 
     if (files.length === 0) {
-      console.error("Error: Please provide at least one PSCAD project file (.pscx).");
+      console.error("Error: Please provide at least one PSCAD project file (.pscx, .pslx).");
       process.exit(1);
     }
 
