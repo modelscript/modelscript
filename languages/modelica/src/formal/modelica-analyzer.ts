@@ -269,7 +269,7 @@ export class ModelicaAlgorithmAnalyzer {
   /**
    * Extracts declared variable specifications directly from a class_definition CST node.
    */
-  static extractVariablesFromClassCst(classCst: any, db?: any, classId?: any): ModelicaVariableDecl[] {
+  static extractVariablesFromClassCst(classCst: any, _db?: any, _classId?: any): ModelicaVariableDecl[] {
     const variables: ModelicaVariableDecl[] = [];
     const seen = new Set<string>();
 

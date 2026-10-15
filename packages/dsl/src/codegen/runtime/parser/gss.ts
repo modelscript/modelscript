@@ -78,6 +78,8 @@ export const HEAD_PROBE_SIZE: u32 = 2048;
 export const HEAD_PROBE_MASK: u32 = 2047;
 export let t_activeHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_nextHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_activeHeadNext: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_nextHeadNext: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 /**
  * Initializes the Graph-Structured Stack (GSS) active and next heads buffer memory.
@@ -105,6 +107,12 @@ export function initGSS(): void {
   if (changetype<usize>(t_nextHeadProbe) == 0) {
     t_nextHeadProbe = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
     memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+  }
+  if (changetype<usize>(t_activeHeadNext) == 0) {
+    t_activeHeadNext = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
+  }
+  if (changetype<usize>(t_nextHeadNext) == 0) {
+    t_nextHeadNext = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
   }
   if (changetype<usize>(t_activeSummary) == 0) {
     t_activeSummary = changetype<FrontierSummary>(heap.alloc(FS_SIZE));
@@ -420,10 +428,23 @@ export function addToFrontierSummary(s: FrontierSummary, h: ParseHead): void {
 export function rebuildFrontierSummary(kind: u32, frontier: UnmanagedUint32Array, count: u32): void {
   let s = kind == 1 ? t_nextSummary : t_activeSummary;
   resetFrontierSummary(s);
+  let probe = kind == 1 ? t_nextHeadProbe : t_activeHeadProbe;
+  let nextArr = kind == 1 ? t_nextHeadNext : t_activeHeadNext;
+  let hasProbe = changetype<usize>(probe) != 0 && changetype<usize>(nextArr) != 0;
+  if (hasProbe) {
+    memory.fill(changetype<usize>(probe), 0, HEAD_PROBE_SIZE * 4);
+  }
   for (let i: u32 = 0; i < count; i++) {
     let h = changetype<ParseHead>(frontier[i]);
     if (!h.isDead) {
       addToFrontierSummary(s, h);
+      if (hasProbe) {
+        let key: u32 = (((h.state as u32) * 31) ^ h.pos) & HEAD_PROBE_MASK;
+        nextArr[i] = probe[key];
+        probe[key] = i + 1;
+      }
+    } else if (hasProbe) {
+      nextArr[i] = 0;
     }
   }
 }
@@ -568,13 +589,14 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
 /**
  * Prunes dominated existing heads in the frontier when a new decisively superior head is added.
  */
-export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint32Array, count: u32): void {
+export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint32Array, count: u32, isNext: bool = false): void {
   let healthyCount: u32 = 0;
   for (let i: u32 = 0; i < count; i++) {
     let h = changetype<ParseHead>(frontier[i]);
     if (!h.isDead && !h.inErrorState) healthyCount++;
   }
 
+  let anyKilled = false;
   for (let i: u32 = 0; i < count; i++) {
     let existing = changetype<ParseHead>(frontier[i]);
     if (existing == newHead || existing.isDead) continue;
@@ -626,10 +648,15 @@ export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint3
 
     if (dominated) {
       existing.isDead = true;
+      anyKilled = true;
       if (!existing.inErrorState) {
         healthyCount--;
       }
     }
+  }
+
+  if (anyKilled) {
+    rebuildFrontierSummary(isNext ? 1 : 0, frontier, count);
   }
 }
 
@@ -648,36 +675,35 @@ export function pushActiveHead(headPtr: u32): boolean {
     memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
   }
   let probeKey: u32 = (((newHead.state as u32) * 31) ^ newHead.pos) & HEAD_PROBE_MASK;
-  if (changetype<usize>(t_activeHeadProbe) != 0) {
-    let probeIdx = t_activeHeadProbe[probeKey];
-    if (probeIdx == 0) {
-      t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
-      t_activeHeads[activeHeadsCount] = headPtr;
-      activeHeadsCount++;
-      addToFrontierSummary(t_activeSummary, newHead);
-      if (!newHead.inErrorState) g_expectedVersion++;
-      if (configEnableActivePruning) {
-        pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount);
+  if (changetype<usize>(t_activeHeadProbe) != 0 && changetype<usize>(t_activeHeadNext) != 0) {
+    let currIdx = t_activeHeadProbe[probeKey];
+    while (currIdx != 0) {
+      let slot = currIdx - 1;
+      let r = mergeIntoFrontierSlot(t_activeHeads, slot, newHead, false);
+      if (r != MERGE_NONE) {
+        if (!newHead.inErrorState) g_expectedVersion++;
+        return true;
       }
-      return true;
+      currIdx = t_activeHeadNext[slot];
     }
-  }
-  for (let i: u32 = 0; i < activeHeadsCount; i++) {
-    let r = mergeIntoFrontierSlot(t_activeHeads, i, newHead, false);
-    if (r != MERGE_NONE) {
-      if (!newHead.inErrorState) g_expectedVersion++;
-      return true;
+    let newSlot = activeHeadsCount;
+    t_activeHeadNext[newSlot] = t_activeHeadProbe[probeKey];
+    t_activeHeadProbe[probeKey] = newSlot + 1;
+  } else {
+    for (let i: u32 = 0; i < activeHeadsCount; i++) {
+      let r = mergeIntoFrontierSlot(t_activeHeads, i, newHead, false);
+      if (r != MERGE_NONE) {
+        if (!newHead.inErrorState) g_expectedVersion++;
+        return true;
+      }
     }
-  }
-  if (changetype<usize>(t_activeHeadProbe) != 0) {
-    t_activeHeadProbe[probeKey] = activeHeadsCount + 1;
   }
   t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
   addToFrontierSummary(t_activeSummary, newHead);
   if (!newHead.inErrorState) g_expectedVersion++;
   if (configEnableActivePruning) {
-    pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount);
+    pruneDominatedHeads(newHead, t_activeHeads, activeHeadsCount, false);
   }
   return true;
 }
@@ -688,7 +714,9 @@ const MERGE_DONE: i32 = 1;
 /** True if `a` is a strictly better derivation than `b` for the same (state, pos). */
 @inline
 function isBetterHead(a: ParseHead, b: ParseHead): bool {
-  return a.errorCost < b.errorCost || (a.errorCost == b.errorCost && a.dynamicPrec > b.dynamicPrec);
+  if (a.errorCost != b.errorCost) return a.errorCost < b.errorCost;
+  if (a.dynamicPrec != b.dynamicPrec) return a.dynamicPrec > b.dynamicPrec;
+  return b.inErrorState && !a.inErrorState;
 }
 
 /** Copies every alternative predecessor edge of `from` onto `to`. */
@@ -708,8 +736,10 @@ function inheritEdges(to: ParseHead, from: ParseHead): void {
  */
 function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: ParseHead, isNext: bool = false): i32 {
   let existingHead = changetype<ParseHead>(frontier[i]);
+  if (existingHead.isDead) return MERGE_NONE;
   // D2 fix: removed balanceHash from merge key — merge on (state, pos) only
   if (existingHead.state != newHead.state || existingHead.pos != newHead.pos) return MERGE_NONE;
+  if (existingHead.scannerState != newHead.scannerState) return MERGE_NONE;
   if (existingHead == newHead) return MERGE_DONE;
   // Reductions for a processed head have already run; attaching an edge now would skip
   // reductions along it. Keep the new head as a separate version instead.
@@ -726,14 +756,23 @@ function mergeIntoFrontierSlot(frontier: UnmanagedUint32Array, i: u32, newHead: 
     }
     frontier[i] = changetype<u32>(winner);
     if (winner == newHead) {
-      let s = isNext ? t_nextSummary : t_activeSummary;
-      addToFrontierSummary(s, winner);
+      rebuildFrontierSummary(isNext ? 1 : 0, frontier, isNext ? nextHeadsCount : activeHeadsCount);
     }
     return MERGE_DONE;
   }
 
   if (existingHead.errorCost == newHead.errorCost) {
+    let prevInError = existingHead.inErrorState;
+    let prevNodeCount = existingHead.nodeCount;
+    let prevUnconfirmed = isUnconfirmedRepair(existingHead);
     gssMergeHeads(existingHead, newHead);
+    if (
+      prevInError != existingHead.inErrorState ||
+      prevNodeCount != existingHead.nodeCount ||
+      prevUnconfirmed != isUnconfirmedRepair(existingHead)
+    ) {
+      rebuildFrontierSummary(isNext ? 1 : 0, frontier, isNext ? nextHeadsCount : activeHeadsCount);
+    }
     return MERGE_DONE;
   }
 
@@ -756,31 +795,28 @@ export function pushNextHead(headPtr: u32): boolean {
     memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
   }
   let probeKey: u32 = (((newHead.state as u32) * 31) ^ newHead.pos) & HEAD_PROBE_MASK;
-  if (changetype<usize>(t_nextHeadProbe) != 0) {
-    let probeIdx = t_nextHeadProbe[probeKey];
-    if (probeIdx == 0) {
-      t_nextHeadProbe[probeKey] = nextHeadsCount + 1;
-      t_nextHeads[nextHeadsCount] = headPtr;
-      nextHeadsCount++;
-      addToFrontierSummary(t_nextSummary, newHead);
-      if (configEnableActivePruning) {
-        pruneDominatedHeads(newHead, t_nextHeads, nextHeadsCount);
-      }
-      return true;
+  if (changetype<usize>(t_nextHeadProbe) != 0 && changetype<usize>(t_nextHeadNext) != 0) {
+    let currIdx = t_nextHeadProbe[probeKey];
+    while (currIdx != 0) {
+      let slot = currIdx - 1;
+      let r = mergeIntoFrontierSlot(t_nextHeads, slot, newHead, true);
+      if (r != MERGE_NONE) return true;
+      currIdx = t_nextHeadNext[slot];
     }
-  }
-  for (let i: u32 = 0; i < nextHeadsCount; i++) {
-    let r = mergeIntoFrontierSlot(t_nextHeads, i, newHead, true);
-    if (r != MERGE_NONE) return true;
-  }
-  if (changetype<usize>(t_nextHeadProbe) != 0) {
-    t_nextHeadProbe[probeKey] = nextHeadsCount + 1;
+    let newSlot = nextHeadsCount;
+    t_nextHeadNext[newSlot] = t_nextHeadProbe[probeKey];
+    t_nextHeadProbe[probeKey] = newSlot + 1;
+  } else {
+    for (let i: u32 = 0; i < nextHeadsCount; i++) {
+      let r = mergeIntoFrontierSlot(t_nextHeads, i, newHead, true);
+      if (r != MERGE_NONE) return true;
+    }
   }
   t_nextHeads[nextHeadsCount] = headPtr;
   nextHeadsCount++;
   addToFrontierSummary(t_nextSummary, newHead);
   if (configEnableActivePruning) {
-    pruneDominatedHeads(newHead, t_nextHeads, nextHeadsCount);
+    pruneDominatedHeads(newHead, t_nextHeads, nextHeadsCount, true);
   }
   return true;
 }
@@ -789,12 +825,15 @@ export function pushNextHead(headPtr: u32): boolean {
  * Swaps active and next head double buffers at the end of a lockstep token frontier.
  */
 export function swapActiveAndNextHeads(): void {
+  let hadDead = false;
   if (configEnableActivePruning) {
     let writeIdx: u32 = 0;
     for (let i: u32 = 0; i < nextHeadsCount; i++) {
       let h = changetype<ParseHead>(t_nextHeads[i]);
       if (!h.isDead) {
         t_nextHeads[writeIdx++] = changetype<u32>(h);
+      } else {
+        hadDead = true;
       }
     }
     nextHeadsCount = writeIdx;
@@ -806,6 +845,9 @@ export function swapActiveAndNextHeads(): void {
   let tmpProbe = t_activeHeadProbe;
   t_activeHeadProbe = t_nextHeadProbe;
   t_nextHeadProbe = tmpProbe;
+  let tmpNext = t_activeHeadNext;
+  t_activeHeadNext = t_nextHeadNext;
+  t_nextHeadNext = tmpNext;
   activeHeadsCount = nextHeadsCount;
   nextHeadsCount = 0;
   if (changetype<usize>(t_nextHeadProbe) != 0) {
@@ -816,6 +858,9 @@ export function swapActiveAndNextHeads(): void {
   t_activeSummary = t_nextSummary;
   t_nextSummary = tmpSummary;
   resetFrontierSummary(t_nextSummary);
+  if (hadDead) {
+    rebuildFrontierSummary(0, t_activeHeads, activeHeadsCount);
+  }
 }
 
 /**
@@ -873,12 +918,7 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
   // Primary link inversion fix:
   // If newHead has higher dynamic precedence (or lower errorCost), swap existingHead's primary link
   // (prev, astNode) with newHead's so the primary link always points to the superior derivation.
-  let swapPrimary = false;
-  if (newHead.errorCost < existingHead.errorCost) {
-    swapPrimary = true;
-  } else if (newHead.errorCost == existingHead.errorCost && newHead.dynamicPrec > existingHead.dynamicPrec) {
-    swapPrimary = true;
-  }
+  let swapPrimary = isBetterHead(newHead, existingHead);
 
   if (swapPrimary) {
     if (newHead.prev != existingHead) {
@@ -888,6 +928,7 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
       existingHead.astNode = newHead.astNode;
       existingHead.dynamicPrec = newHead.dynamicPrec;
       existingHead.errorCost = newHead.errorCost;
+      existingHead.inErrorState = newHead.inErrorState;
       // Per-path state must follow the primary derivation, otherwise diagnostics and
       // padding of the losing path are reported for the winning tree.
       existingHead.errorTail = newHead.errorTail;
@@ -911,9 +952,6 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
     let edge = changetype<GssEdge>(curr);
     gssAddPredecessor(existingHead, edge.targetHead, edge.astNode);
     curr = edge.nextEdge;
-  }
-  if (!newHead.inErrorState) {
-    existingHead.inErrorState = false;
   }
   // D9 fix: propagate successfulShifts during merge (take max)
   if (newHead.successfulShifts > existingHead.successfulShifts) {
@@ -1112,8 +1150,8 @@ export function allocErrorBranch(
 // Global Tree Traversal Cursor (backed by value-type TreeCursor)
 // ----------------------------------------------------------------------------
 
-export const cursorNodeStack = createChunkedUint32Array();
-export const cursorContentStartStack = createChunkedUint32Array();
+export let cursorNodeStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let cursorContentStartStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 export let globalCursorDepth: i32 = -1;
 export let g_globalTreeCursor: usize = 0;
@@ -1121,6 +1159,8 @@ export let g_globalTreeCursor: usize = 0;
 export function ensureGlobalTreeCursor(): usize {
   if (g_globalTreeCursor == 0) {
     g_globalTreeCursor = treeCursorAlloc();
+    cursorNodeStack = changetype<UnmanagedUint32Array>(g_globalTreeCursor + 8);
+    cursorContentStartStack = changetype<UnmanagedUint32Array>(g_globalTreeCursor + 520);
   }
   return g_globalTreeCursor;
 }
@@ -1131,13 +1171,7 @@ export function ensureGlobalTreeCursor(): usize {
  */
 export function initGlobalCursor(rootPtr: u32): void {
   treeCursorReset(ensureGlobalTreeCursor(), rootPtr);
-  if (rootPtr != 0) {
-    globalCursorDepth = 0;
-    cursorNodeStack[0] = rootPtr;
-    cursorContentStartStack[0] = getNodePadding(rootPtr);
-  } else {
-    globalCursorDepth = -1;
-  }
+  globalCursorDepth = rootPtr != 0 ? 0 : -1;
 }
 
 /**
@@ -1153,9 +1187,7 @@ export function globalCursorCurrentNode(): u32 {
 export function globalCursorGotoFirstChild(): boolean {
   let ok = treeCursorGotoFirstChild(ensureGlobalTreeCursor());
   if (ok) {
-    globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
-    cursorNodeStack[globalCursorDepth] = treeCursorCurrentNode(ensureGlobalTreeCursor());
-    cursorContentStartStack[globalCursorDepth] = treeCursorCurrentOffset(ensureGlobalTreeCursor());
+    globalCursorDepth = treeCursorDepth(g_globalTreeCursor);
   }
   return ok;
 }
@@ -1166,9 +1198,7 @@ export function globalCursorGotoFirstChild(): boolean {
 export function globalCursorGotoNextSibling(): boolean {
   let ok = treeCursorGotoNextSibling(ensureGlobalTreeCursor());
   if (ok) {
-    globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
-    cursorNodeStack[globalCursorDepth] = treeCursorCurrentNode(ensureGlobalTreeCursor());
-    cursorContentStartStack[globalCursorDepth] = treeCursorCurrentOffset(ensureGlobalTreeCursor());
+    globalCursorDepth = treeCursorDepth(g_globalTreeCursor);
   }
   return ok;
 }
@@ -1179,7 +1209,7 @@ export function globalCursorGotoNextSibling(): boolean {
 export function globalCursorGotoParent(): boolean {
   let ok = treeCursorGotoParent(ensureGlobalTreeCursor());
   if (ok) {
-    globalCursorDepth = treeCursorDepth(ensureGlobalTreeCursor());
+    globalCursorDepth = treeCursorDepth(g_globalTreeCursor);
   }
   return ok;
 }
@@ -1198,6 +1228,10 @@ export function ensureCursorCheckpoint(): usize {
  * Saves a transactional snapshot of the global tree cursor and its path stacks.
  */
 export function saveCursorCheckpoint(): void {
+  if (globalCursorDepth < 0) {
+    g_checkpointDepth = -1;
+    return;
+  }
   let src = ensureGlobalTreeCursor();
   let dst = ensureCursorCheckpoint();
   memory.copy(dst, src, TREE_CURSOR_SIZE as usize);
@@ -1213,8 +1247,5 @@ export function restoreCursorCheckpoint(): void {
   let dst = ensureGlobalTreeCursor();
   memory.copy(dst, src, TREE_CURSOR_SIZE as usize);
   globalCursorDepth = g_checkpointDepth;
-  for (let d = 0; d <= globalCursorDepth; d++) {
-    cursorNodeStack[d] = treeCursorNodeAtDepth(src, d);
-    cursorContentStartStack[d] = treeCursorOffsetAtDepth(src, d);
-  }
 }
+

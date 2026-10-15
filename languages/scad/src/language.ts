@@ -377,6 +377,33 @@ export const scadLanguage = language({
           kind: "Variable",
           name: self.name ?? "",
         }),
+        queries: {
+          lint__duplicateVariable: (db: any, self: any) => {
+            if (!self.name || self.name.startsWith("$")) return null;
+            const siblings =
+              self.parentId !== null
+                ? db.childrenOf(self.parentId)
+                : db.byName(self.name).filter((s: any) => s.parentId === null && s.resourceId === self.resourceId);
+            const earlier = siblings.find(
+              (s: any) =>
+                s.id !== self.id &&
+                s.kind === "Variable" &&
+                s.name === self.name &&
+                s.resourceId === self.resourceId &&
+                (s.startByte ?? 0) < (self.startByte ?? 0),
+            );
+            if (!earlier) return null;
+            const nameRange = self.fieldRanges?.["name"];
+            return {
+              severity: "warning" as const,
+              code: "SCAD_DUPLICATE_DECLARATION",
+              message: `Variable '${self.name}' is assigned multiple times in the same scope; the last assignment overrides earlier ones.`,
+              field: "name",
+              startByte: nameRange?.startByte ?? self.startByte,
+              endByte: nameRange?.endByte ?? (self.startByte ?? 0) + self.name.length,
+            };
+          },
+        },
       }),
 
     ModuleDeclaration: ($) =>
@@ -394,6 +421,33 @@ export const scadLanguage = language({
           name: self.name ?? "",
           exports: ["body"],
         }),
+        queries: {
+          lint__duplicateModule: (db: any, self: any) => {
+            if (!self.name) return null;
+            const siblings =
+              self.parentId !== null
+                ? db.childrenOf(self.parentId)
+                : db.byName(self.name).filter((s: any) => s.parentId === null && s.resourceId === self.resourceId);
+            const earlier = siblings.find(
+              (s: any) =>
+                s.id !== self.id &&
+                s.kind === "Module" &&
+                s.name === self.name &&
+                s.resourceId === self.resourceId &&
+                (s.startByte ?? 0) < (self.startByte ?? 0),
+            );
+            if (!earlier) return null;
+            const nameRange = self.fieldRanges?.["name"];
+            return {
+              severity: "error" as const,
+              code: "SCAD_DUPLICATE_DECLARATION",
+              message: `Duplicate module declaration '${self.name}' in the same scope.`,
+              field: "name",
+              startByte: nameRange?.startByte ?? self.startByte,
+              endByte: nameRange?.endByte ?? (self.startByte ?? 0) + self.name.length,
+            };
+          },
+        },
       }),
 
     FunctionDeclaration: ($) =>
@@ -412,6 +466,33 @@ export const scadLanguage = language({
           kind: "Function",
           name: self.name ?? "",
         }),
+        queries: {
+          lint__duplicateFunction: (db: any, self: any) => {
+            if (!self.name) return null;
+            const siblings =
+              self.parentId !== null
+                ? db.childrenOf(self.parentId)
+                : db.byName(self.name).filter((s: any) => s.parentId === null && s.resourceId === self.resourceId);
+            const earlier = siblings.find(
+              (s: any) =>
+                s.id !== self.id &&
+                s.kind === "Function" &&
+                s.name === self.name &&
+                s.resourceId === self.resourceId &&
+                (s.startByte ?? 0) < (self.startByte ?? 0),
+            );
+            if (!earlier) return null;
+            const nameRange = self.fieldRanges?.["name"];
+            return {
+              severity: "error" as const,
+              code: "SCAD_DUPLICATE_DECLARATION",
+              message: `Duplicate function declaration '${self.name}' in the same scope.`,
+              field: "name",
+              startByte: nameRange?.startByte ?? self.startByte,
+              endByte: nameRange?.endByte ?? (self.startByte ?? 0) + self.name.length,
+            };
+          },
+        },
       }),
 
     IfStatement: ($) =>

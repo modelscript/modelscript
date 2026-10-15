@@ -1654,38 +1654,393 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       return backends.owl2;
     }
     if (uri.endsWith(".pscx") || uri.endsWith(".pslx") || uri.endsWith(".pswx") || uri.endsWith(".psmx")) {
+      const readPscxSource = async (targetUri: string): Promise<string | null> => {
+        const memText =
+          (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
+          (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+        if (typeof memText === "string") return memText;
+        try {
+          const fs = await import("node:fs");
+          const { fileURLToPath } = await import("node:url");
+          const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+          if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, "utf-8");
+          }
+        } catch {
+          // ignore fs errors
+        }
+        return null;
+      };
+
+      const formatDiagramData = (rawDiagram: any): DiagramData => {
+        const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
+        const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+        return {
+          nodes,
+          edges,
+          coordinateSystem: { x: 0, y: 0, width: 1200, height: 800 },
+          diagramBackground: null,
+          cells: rawDiagram.cells,
+          metadata: rawDiagram.metadata,
+        } as any;
+      };
+
       return {
         async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
           try {
+            const text = await readPscxSource(params.uri);
+            if (!text) return null;
             const { parsePscx } = await import("@modelscript/pscad");
             const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
-            const fs = await import("node:fs");
-            const { fileURLToPath } = await import("node:url");
-            const filePath = params.uri.startsWith("file://") ? fileURLToPath(params.uri) : params.uri;
-            if (fs.existsSync(filePath)) {
-              const text = fs.readFileSync(filePath, "utf-8");
-              const project = parsePscx(text);
-              const rawDiagram = buildPscadDiagram(project);
-              const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
-              const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
+            const project = parsePscx(text);
+            const rawDiagram = buildPscadDiagram(project, params.className);
+            return formatDiagramData(rawDiagram);
+          } catch {
+            return null;
+          }
+        },
+
+        async getComponentProperties(
+          params: DiagramGetComponentPropertiesParams,
+        ): Promise<ComponentPropertyData | null> {
+          try {
+            const text = await readPscxSource(params.uri);
+            if (!text) return null;
+            const { parsePscx } = await import("@modelscript/pscad");
+            const project = parsePscx(text);
+            const mod =
+              params.className && project.subModules.has(params.className)
+                ? project.subModules.get(params.className)!
+                : project.rootModule;
+
+            const rawName = params.componentName;
+            const strippedCmpId = rawName.startsWith("cmp_") ? rawName.slice(4) : rawName;
+            const strippedBusId = rawName.startsWith("bus_") ? rawName.slice(4) : rawName;
+
+            const cmp = mod.components.find(
+              (c) => c.id === strippedCmpId || c.id === rawName || c.instanceName === rawName,
+            );
+            if (cmp) {
+              const parameters = Object.entries(cmp.parameters).map(([k, v]) => ({
+                name: k,
+                value: String(v),
+                description: `PSCAD parameter '${k}'`,
+              }));
+              const fields: PropertyFieldConfig[] = Object.entries(cmp.parameters).map(([k, v]) => ({
+                key: k,
+                label: k,
+                kind: typeof v === "number" ? "number" : "string",
+                defaultValue: v,
+              }));
               return {
-                nodes,
-                edges,
-                coordinateSystem: { x: 0, y: 0, width: 1200, height: 800 },
-                cells: rawDiagram.cells,
-                metadata: rawDiagram.metadata,
-              } as any;
+                classKind: "component",
+                className: cmp.definitionName,
+                name: cmp.instanceName || cmp.id,
+                description: `PSCAD ${cmp.definitionName} (${cmp.id})`,
+                parameters,
+                schema: {
+                  title: cmp.instanceName || cmp.definitionName,
+                  tabs: [
+                    {
+                      id: "parameters",
+                      label: "Parameters",
+                      groups: [{ id: "general", label: "Configuration", fields }],
+                    },
+                  ],
+                },
+                values: { ...cmp.parameters },
+              };
+            }
+
+            const bus = mod.buses.find((b) => b.id === strippedBusId || b.id === rawName || b.name === rawName);
+            if (bus) {
+              return {
+                classKind: "bus",
+                className: "Bus",
+                name: bus.name,
+                description: `PSCAD Electrical Bus (${bus.phaseCount}-phase)`,
+                parameters: [
+                  { name: "Name", value: bus.name, description: "Bus identifier" },
+                  {
+                    name: "BaseKV",
+                    value: String(bus.voltageBaseKv ?? 230.0),
+                    unit: "kV",
+                    description: "Base line-to-line RMS voltage",
+                  },
+                ],
+                values: {
+                  Name: bus.name,
+                  BaseKV: bus.voltageBaseKv ?? 230.0,
+                },
+              };
             }
           } catch {
             return null;
           }
           return null;
         },
-        async getComponentProperties() {
-          return null;
+
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          try {
+            const text = await readPscxSource(params.uri);
+            if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+            const { parsePscx } = await import("@modelscript/pscad");
+            const project = parsePscx(text);
+            const lines = text.split("\n");
+            const allEdits: TextEdit[] = [];
+            let renderHint: "none" | "immediate" | "debounced" = "none";
+
+            const allComponents = [
+              ...project.rootModule.components,
+              ...Array.from(project.subModules.values()).flatMap((m) => m.components),
+            ];
+            const allBuses = [
+              ...project.rootModule.buses,
+              ...Array.from(project.subModules.values()).flatMap((m) => m.buses),
+            ];
+
+            for (const action of params.actions) {
+              if (action.type === "move") {
+                for (const item of action.items) {
+                  const strippedId = item.name.startsWith("cmp_")
+                    ? item.name.slice(4)
+                    : item.name.startsWith("bus_")
+                      ? item.name.slice(4)
+                      : item.name;
+                  const cmp = allComponents.find(
+                    (c) => c.id === strippedId || c.id === item.name || c.instanceName === item.name,
+                  );
+                  const targetLineIdx = cmp?.line ? cmp.line - 1 : -1;
+                  const newX = Math.round(item.width > 0 ? item.x + item.width / 2 : item.x);
+                  const newY = Math.round(item.height > 0 ? item.y + item.height / 2 : item.y);
+
+                  if (targetLineIdx >= 0 && targetLineIdx < lines.length) {
+                    const lineText = lines[targetLineIdx]!;
+                    const updatedLine = lineText
+                      .replace(/\bx\s*=\s*(["'])[^"']*\1/i, `x=$1${newX}$1`)
+                      .replace(/\by\s*=\s*(["'])[^"']*\1/i, `y=$1${newY}$1`);
+                    if (updatedLine !== lineText) {
+                      allEdits.push({
+                        range: {
+                          start: { line: targetLineIdx, character: 0 },
+                          end: { line: targetLineIdx, character: lineText.length },
+                        },
+                        newText: updatedLine,
+                      });
+                    }
+                  } else {
+                    const bus = allBuses.find((b) => b.id === strippedId || b.id === item.name || b.name === item.name);
+                    if (bus?.line && bus.line - 1 < lines.length) {
+                      const bLineIdx = bus.line - 1;
+                      const lineText = lines[bLineIdx]!;
+                      const updatedLine = lineText
+                        .replace(/\bx\s*=\s*(["'])[^"']*\1/i, `x=$1${newX}$1`)
+                        .replace(/\by\s*=\s*(["'])[^"']*\1/i, `y=$1${newY}$1`);
+                      if (updatedLine !== lineText) {
+                        allEdits.push({
+                          range: {
+                            start: { line: bLineIdx, character: 0 },
+                            end: { line: bLineIdx, character: lineText.length },
+                          },
+                          newText: updatedLine,
+                        });
+                      }
+                    }
+                  }
+                }
+              } else if (action.type === "updateParameter" || action.type === "updateProperty") {
+                const paramName = action.type === "updateProperty" ? action.key : action.parameter;
+                const paramVal = String(action.value);
+                const strippedId = action.name.startsWith("cmp_") ? action.name.slice(4) : action.name;
+                const cmp = allComponents.find(
+                  (c) => c.id === strippedId || c.id === action.name || c.instanceName === action.name,
+                );
+                const paramLoc = cmp?.paramLocations?.[paramName];
+                if (paramLoc && paramLoc.line - 1 < lines.length) {
+                  const pLineIdx = paramLoc.line - 1;
+                  const lineText = lines[pLineIdx]!;
+                  const updatedLine = lineText.replace(/(value\s*=\s*["'])([^"']*)(["'])/i, `$1${paramVal}$3`);
+                  if (updatedLine !== lineText) {
+                    allEdits.push({
+                      range: {
+                        start: { line: pLineIdx, character: 0 },
+                        end: { line: pLineIdx, character: lineText.length },
+                      },
+                      newText: updatedLine,
+                    });
+                    renderHint = "debounced";
+                  }
+                }
+              } else if (action.type === "deleteComponents") {
+                for (const name of action.names) {
+                  const strippedId = name.startsWith("cmp_") ? name.slice(4) : name;
+                  const cmp = allComponents.find(
+                    (c) => c.id === strippedId || c.id === name || c.instanceName === name,
+                  );
+                  if (cmp?.line && cmp.line - 1 < lines.length) {
+                    const startLine = cmp.line - 1;
+                    let endLine = startLine;
+                    if (!/\/>\s*$/.test(lines[startLine]!)) {
+                      while (endLine < lines.length && !/<\/(?:User|Component)>/i.test(lines[endLine]!)) {
+                        endLine++;
+                      }
+                    }
+                    allEdits.push({
+                      range: {
+                        start: { line: startLine, character: 0 },
+                        end: { line: Math.min(lines.length, endLine + 1), character: 0 },
+                      },
+                      newText: "",
+                    });
+                    renderHint = "immediate";
+                  }
+                }
+              }
+            }
+
+            return {
+              seq: params.seq,
+              edits: deduplicateAndSort(allEdits),
+              renderHint,
+            };
+          } catch {
+            return { seq: params.seq, edits: [], renderHint: "none" };
+          }
         },
-        async applyEdits(params: DiagramApplyEditsParams) {
-          return { seq: params.seq, edits: [], renderHint: "none" as const };
+
+        async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
+          try {
+            const text = await readPscxSource(params.uri);
+            if (!text) return null;
+            const { parsePscx } = await import("@modelscript/pscad");
+            const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
+            const project = parsePscx(text);
+
+            const candidateId = params.componentId || params.nodeId || params.componentName || params.className || "";
+            const strippedId = candidateId.startsWith("cmp_") ? candidateId.slice(4) : candidateId;
+
+            let targetModuleName = params.className || "";
+            if (!targetModuleName || !project.subModules.has(targetModuleName)) {
+              const cmp = project.rootModule.components.find(
+                (c) => c.id === strippedId || c.id === candidateId || c.instanceName === candidateId,
+              );
+              if (cmp) {
+                const cleanDef = cmp.definitionName.split(":").pop() || cmp.definitionName;
+                if (project.subModules.has(cleanDef)) {
+                  targetModuleName = cleanDef;
+                } else if (cmp.instanceName && project.subModules.has(cmp.instanceName)) {
+                  targetModuleName = cmp.instanceName;
+                }
+              } else if (project.subModules.has(strippedId)) {
+                targetModuleName = strippedId;
+              }
+            }
+
+            if (!targetModuleName || !project.subModules.has(targetModuleName)) {
+              return null;
+            }
+
+            const rawDiagram = buildPscadDiagram(project, targetModuleName);
+            return {
+              data: formatDiagramData(rawDiagram),
+              breadcrumbs: [
+                { id: "Main", label: project.rootModule.name || "Main", uri: params.uri },
+                { id: targetModuleName, label: targetModuleName, uri: params.uri },
+              ],
+              targetUri: params.uri,
+              targetClassName: targetModuleName,
+            };
+          } catch {
+            return null;
+          }
+        },
+
+        async getPalette(): Promise<DiagramPalette> {
+          return {
+            categories: [
+              {
+                name: "Sources & Rotating Machines",
+                items: [
+                  {
+                    label: "3-Phase Voltage Source",
+                    className: "master:source3",
+                    description: "Three-phase AC Thevenin voltage source",
+                  },
+                  {
+                    label: "Synchronous Machine (Subtransient)",
+                    className: "master:sync_machine",
+                    description: "6th-order dq0 synchronous generator with IEEE ST1A AVR & TGOV1 governor",
+                  },
+                  {
+                    label: "Induction Machine / DFIG",
+                    className: "master:ind_machine",
+                    description: "5th-order 3-phase squirrel-cage / wound-rotor DFIG induction machine",
+                  },
+                ],
+              },
+              {
+                name: "Transformers, Lines & Cables",
+                items: [
+                  {
+                    label: "3-Phase 2-Winding Transformer",
+                    className: "master:xfmr-3p2w",
+                    description: "Three-phase transformer with vector group & anhysteretic saturation",
+                  },
+                  {
+                    label: "Overhead Transmission Line",
+                    className: "master:tline",
+                    description: "Bergeron / Frequency-Dependent Phase Model (FDPM) overhead line",
+                  },
+                  {
+                    label: "Underground / Submarine Coaxial Cable",
+                    className: "master:cable",
+                    description: "Wedepohl-Wilcox coaxial core-sheath-armour cable with Pollaczek earth return",
+                  },
+                ],
+              },
+              {
+                name: "Power Electronics, HVDC & FACTS",
+                items: [
+                  {
+                    label: "Two-Level VSC PWM Converter",
+                    className: "master:vsc_pwm",
+                    description: "Switched / averaged 3-phase voltage-source converter with interpolated firing",
+                  },
+                  {
+                    label: "6-Pulse Graetz LCC HVDC Bridge",
+                    className: "master:lcc_6pulse",
+                    description:
+                      "Line-commutated thyristor converter bridge with firing angle alpha & commutation overlap",
+                  },
+                  {
+                    label: "Modular Multilevel Converter (MMC)",
+                    className: "master:mmc_thevenin",
+                    description: "Half-bridge / full-bridge Thévenin arm equivalent MMC with capacitor sorting",
+                  },
+                ],
+              },
+              {
+                name: "Switchgear & Protection",
+                items: [
+                  {
+                    label: "3-Phase Circuit Breaker",
+                    className: "master:breaker3",
+                    description: "3-phase breaker with current-zero extinction & single-pole tripping",
+                  },
+                  {
+                    label: "3-Phase Timed Fault",
+                    className: "master:tpflt",
+                    description: "Timed 3LG / SLG / LL / LLG fault switch",
+                  },
+                  {
+                    label: "ZnO Metal-Oxide Surge Arrester",
+                    className: "master:arrester",
+                    description: "Piecewise power-law ZnO surge arrester with Newton-Raphson iteration",
+                  },
+                ],
+              },
+            ],
+          };
         },
       };
     }

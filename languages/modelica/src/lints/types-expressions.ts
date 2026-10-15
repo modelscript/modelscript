@@ -554,12 +554,22 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         }
       }
 
-      // Count elements in array_arguments
+      // Count elements in array_arguments (only direct elements of arrayArgs, not nested inner arrays)
       let count: u32 = 1;
       if ($.array_arguments_non_first != 0) {
         const nonFirstElements = db.ast.getDescendants(arrayArgs, $.array_arguments_non_first);
         for (const elem of nonFirstElements) {
-          if (elem != 0) count++;
+          if (elem != 0) {
+            let isNested = false;
+            for (const anc of db.ast.getAncestors(elem)) {
+              if (anc == arrayArgs) break;
+              if (db.ast.getType(anc) == $.array_arguments) {
+                isNested = true;
+                break;
+              }
+            }
+            if (!isNested) count++;
+          }
         }
       }
 
@@ -613,14 +623,41 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
 
       if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER) {
         for (const str of db.ast.getDescendants(arrayArgs, $.string_literal)) {
-          db.diagnostic(str);
+          let inSubOrCall = false;
+          for (const anc of db.ast.getAncestors(str)) {
+            if (anc == arrayArgs) break;
+            const t = db.ast.getType(anc);
+            if (t == $.array_subscripts || t == $.subscript || t == $.function_call_args) {
+              inSubOrCall = true;
+              break;
+            }
+          }
+          if (!inSubOrCall) db.diagnostic(str);
         }
       } else if (expectedType == TYPE_STRING) {
         for (const num of db.ast.getDescendants(arrayArgs, $.unsigned_real)) {
-          db.diagnostic(num);
+          let inSubOrCall = false;
+          for (const anc of db.ast.getAncestors(num)) {
+            if (anc == arrayArgs) break;
+            const t = db.ast.getType(anc);
+            if (t == $.array_subscripts || t == $.subscript || t == $.function_call_args) {
+              inSubOrCall = true;
+              break;
+            }
+          }
+          if (!inSubOrCall) db.diagnostic(num);
         }
         for (const num of db.ast.getDescendants(arrayArgs, $.unsigned_integer)) {
-          db.diagnostic(num);
+          let inSubOrCall = false;
+          for (const anc of db.ast.getAncestors(num)) {
+            if (anc == arrayArgs) break;
+            const t = db.ast.getType(anc);
+            if (t == $.array_subscripts || t == $.subscript || t == $.function_call_args) {
+              inSubOrCall = true;
+              break;
+            }
+          }
+          if (!inSubOrCall) db.diagnostic(num);
         }
       }
     },
@@ -770,7 +807,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           for (const did of db.ast.getDescendants(decl, $.identifier)) {
             if (db.ast.textEqualsNode(did, idNode)) {
               if (hasTypePrefix(db, comp, "constant", $)) {
-                db.diagnostic(node, idNode);
+                db.diagnostic(target, idNode);
               }
               return;
             }
@@ -816,7 +853,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           for (const did of db.ast.getDescendants(decl, $.identifier)) {
             if (db.ast.textEqualsNode(did, idNode)) {
               if (hasTypePrefix(db, comp, "input", $)) {
-                db.diagnostic(node, idNode);
+                db.diagnostic(target, idNode);
               }
               return;
             }
@@ -870,7 +907,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
       if (argNode != 0) {
         if (!isStreamVariable(db, enclosingClass, argNode, $)) {
-          db.diagnostic(node, argNode, node);
+          db.diagnostic(argNode, argNode, node);
         }
       } else {
         let targetArg: u32 = 0;
@@ -887,7 +924,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           }
         }
         if (targetArg != 0) {
-          db.diagnostic(node, targetArg, node);
+          db.diagnostic(targetArg, targetArg, node);
         }
       }
     },
@@ -933,9 +970,19 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             if (outerArray == 0) {
               outerArray = args;
             } else {
-              innerArrayCount++;
-              if (firstInnerArray == 0) {
-                firstInnerArray = args;
+              let isDirectInner = true;
+              for (const anc of db.ast.getAncestors(args)) {
+                if (anc == outerArray) break;
+                if (db.ast.getType(anc) == $.array_arguments) {
+                  isDirectInner = false;
+                  break;
+                }
+              }
+              if (isDirectInner) {
+                innerArrayCount++;
+                if (firstInnerArray == 0) {
+                  firstInnerArray = args;
+                }
               }
             }
           }
@@ -944,7 +991,17 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             let dim2: u32 = 1;
             if ($.array_arguments_non_first != 0) {
               for (const elem of db.ast.getDescendants(firstInnerArray, $.array_arguments_non_first)) {
-                if (elem != 0) dim2++;
+                if (elem != 0) {
+                  let isNested = false;
+                  for (const anc of db.ast.getAncestors(elem)) {
+                    if (anc == firstInnerArray) break;
+                    if (db.ast.getType(anc) == $.array_arguments) {
+                      isNested = true;
+                      break;
+                    }
+                  }
+                  if (!isNested) dim2++;
+                }
               }
             }
 
@@ -955,7 +1012,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             else if (elemType == TYPE_STRING) typeNum = 3;
 
             const packedShape: u32 = (typeNum << 24) | ((innerArrayCount & 0xfff) << 12) | (dim2 & 0xfff);
-            db.diagnostic(node, varNode, packedShape);
+            db.diagnostic(forIdx, varNode, packedShape);
             return;
           }
         }
@@ -997,7 +1054,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const rhsUnit = inferExprUnit(db, rhs, $, classNode);
 
         if (lhsUnit != null && rhsUnit != null && !unitsCompatible(lhsUnit, rhsUnit)) {
-          db.diagnostic(node);
+          db.diagnostic(node, 1);
         }
       }
     },
@@ -1007,10 +1064,15 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
    * M3010: Unit mismatch in component declaration binding.
    */
   unitMismatchBinding: {
-    nodes: ["component_declaration", "declaration"],
+    nodes: ["component_declaration"],
     severity: "warning",
     code: 3010,
-    message: (target) => `Unit mismatch in component binding '${target.text}'.`,
+    message: (target, isEq) => {
+      const eqFlag = isEq && (isEq.asNumber ? isEq.asNumber() : Number(isEq)) === 1;
+      return eqFlag
+        ? `Unit mismatch in equation '${target.text}'.`
+        : `Unit mismatch in component binding '${target.text}'.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const compUnit = getComponentUnit(db, node, $);
       if (compUnit == null) return;
@@ -1079,9 +1141,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["component_reference"],
     severity: "error",
     code: 4031,
-    message: (node, subNode, dimIndex, dimSize) => {
+    message: (subNode, arrNode, dimIndex, dimSize) => {
       const idxText = subNode && subNode.text ? subNode.text : "index";
-      const arrName = node && node.text ? node.text.split("[")[0].trim() : "array";
+      const arrName = arrNode && arrNode.text && arrNode.text !== "0" ? arrNode.text.split("[")[0].trim() : "array";
       const dIdx = dimIndex ? String(dimIndex) : "1";
       const dSz = dimSize ? String(dimSize) : "?";
       return `Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`;
@@ -1109,6 +1171,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
 
       let declSubs: u32 = 0;
       for (const compDecl of db.ast.getDescendants(encClass, $.component_declaration)) {
+        if (isDescendantOfInnerClass(db, compDecl, encClass, $)) continue;
         let nameNode: u32 = 0;
         for (const decl of db.ast.getDescendants(compDecl, $.declaration)) {
           for (const id of db.ast.getDescendants(decl, $.identifier)) {
@@ -1172,10 +1235,17 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             break;
           }
           if (!hasIdent) {
+            let numCount: u32 = 0;
+            let firstNum: u32 = 0;
             for (const num of db.ast.getDescendants(sub, $.unsigned_integer)) {
-              const val = db.ast.parseInteger(num);
+              numCount++;
+              if (firstNum == 0) firstNum = num;
+            }
+            // Only validate when subscript is a single integer literal (or negative integer literal), not a range 1:3 or binary op 1+1
+            if (numCount == 1 && firstNum != 0) {
+              const val = db.ast.parseInteger(sub);
               if (val < 1 || val > dimSize) {
-                db.diagnostic(node, sub, dimIdx, dimSize);
+                db.diagnostic(sub, arrNameNode, dimIdx, dimSize);
                 return;
               }
             }
@@ -1193,10 +1263,11 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["component_declaration", "component_declaration1"],
     severity: "error",
     code: 4076,
-    message: (node, lowerNode, upperNode) => {
+    message: (node, lowerNode, upperNode, declNode) => {
       let pName = "parameter";
-      if (node && node.text) {
-        const parts = node.text.split("(")[0].split("=");
+      const src = declNode && declNode.text && declNode.text !== "0" ? declNode : node;
+      if (src && src.text) {
+        const parts = src.text.split("(")[0].split("=");
         pName = parts[0].trim();
       }
       const lVal = lowerNode && lowerNode.text ? lowerNode.text : "min";
@@ -1227,6 +1298,15 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       let maxNode: u32 = 0;
 
       for (const mod of db.ast.getDescendants(node, $.element_modification)) {
+        let isNestedMod = false;
+        for (const anc of db.ast.getAncestors(mod)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            isNestedMod = true;
+            break;
+          }
+        }
+        if (isNestedMod) continue;
         for (const nameId of db.ast.getDescendants(mod, $.name)) {
           if (db.ast.textEquals(nameId, "min")) {
             for (const expr of db.ast.getDescendants(mod, $.expression)) {
@@ -1245,7 +1325,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
 
       if (minNode != 0 && maxNode != 0 && minVal > maxVal) {
-        db.diagnostic(node, minNode, maxNode);
+        db.diagnostic(minNode, minNode, maxNode, node);
       }
     },
   },

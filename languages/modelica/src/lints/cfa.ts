@@ -30,7 +30,11 @@ function findNodesByType(root: any, typeName: string): any[] {
 
   function walk(node: any) {
     if (!node) return;
-    if (normType(node.type) === target) {
+    const nt = normType(node.type);
+    if (node !== root && nt === "classdefinition") {
+      return;
+    }
+    if (nt === target) {
       results.push(node);
     }
     if (node.children) {
@@ -652,7 +656,6 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
   const results: LintResult[] = [];
   if (!cst) return results;
 
-  const text: string = cst.text || "";
   const className: string = self.name || "Anonymous";
 
   // Check if class is a function
@@ -723,6 +726,18 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
             nameStartByte = child.startIndex ?? compStart + (decl.startIndex ?? 0);
             nameEndByte = nameStartByte + (name?.length ?? 0);
             break;
+          }
+          if (childType === "declaration" && child.children) {
+            for (const sub of child.children) {
+              const subType = normType(sub.type);
+              if (subType === "ident" || subType === "identifier") {
+                name = sub.text;
+                nameStartByte = sub.startIndex ?? child.startIndex ?? decl.startIndex ?? compStart;
+                nameEndByte = nameStartByte + (name?.length ?? 0);
+                break;
+              }
+            }
+            if (name) break;
           }
         }
         // Fallback: extract first identifier from declaration text
@@ -873,7 +888,12 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
     let m: RegExpExecArray | null;
     while ((m = identRegex.exec(expr)) !== null) {
       const varName = m[1];
-      if (activeLoopVars.has(varName)) continue;
+      if (!varName || activeLoopVars.has(varName)) continue;
+      // Ignore member access after '.' (e.g. rec.field) and named argument labels before '=' (e.g. f(x = 1))
+      const prevChar = m.index > 0 ? expr[m.index - 1] : "";
+      if (prevChar === ".") continue;
+      const afterSlice = expr.slice(m.index + varName.length);
+      if (/^\s*=[^=]/.test(afterSlice)) continue;
       if (monitoredVars.has(varName) && !currentAssigned.has(varName)) {
         const sByte = exprStartByte + m.index;
         const eByte = sByte + varName.length;
@@ -1063,25 +1083,35 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
     return { assigned: cur, alwaysReturns: returned };
   };
 
+  let currentAssigned = new Set(initialAssigned);
+  let hasNonEmptySection = false;
+  let alwaysReturns = false;
+
   for (const alg of algSections) {
     const algStart = alg.startIndex ?? self.startByte;
     const stmts = extractStatementsFromCst(alg, algStart);
     if (stmts.length === 0) continue;
-    const finalRes = analyzeStatements(stmts, initialAssigned);
+    hasNonEmptySection = true;
+    const sectionRes = analyzeStatements(stmts, currentAssigned);
+    currentAssigned = sectionRes.assigned;
+    if (sectionRes.alwaysReturns) {
+      alwaysReturns = true;
+      break;
+    }
+  }
 
-    // At the end of function execution: check all outputs
-    if (isFunction && !finalRes.alwaysReturns) {
-      for (const [outName, outInfo] of outputs) {
-        const isAssigned = finalRes.assigned.has(outName) || (outInfo.isArray && allAssignedEver.has(outName));
-        if (!isAssigned) {
-          results.push(
-            error(ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.message(outName, className), {
-              startByte: outInfo.startByte,
-              endByte: outInfo.endByte,
-              code: ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.code,
-            }),
-          );
-        }
+  // At the end of function execution: check all outputs
+  if (isFunction && hasNonEmptySection && !alwaysReturns) {
+    for (const [outName, outInfo] of outputs) {
+      const isAssigned = currentAssigned.has(outName) || (outInfo.isArray && allAssignedEver.has(outName));
+      if (!isAssigned) {
+        results.push(
+          error(ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.message(outName, className), {
+            startByte: outInfo.startByte,
+            endByte: outInfo.endByte,
+            code: ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.code,
+          }),
+        );
       }
     }
   }

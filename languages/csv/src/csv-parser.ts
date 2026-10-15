@@ -290,3 +290,352 @@ export function parseCsvToModelica(csvText: string, modelName: string): string {
   mo += `end ${modelName};\n`;
   return mo;
 }
+
+// ── Semantic Linter ──────────────────────────────────────────────────────────
+
+export interface CsvDiagnostic {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  /** 0-indexed character/byte start offset in CSV text */
+  startByte: number;
+  /** 0-indexed character/byte end offset in CSV text */
+  endByte: number;
+  /** 1-indexed start line */
+  line: number;
+  /** 1-indexed start column */
+  column: number;
+  /** 1-indexed end line */
+  endLine: number;
+  /** 1-indexed end column */
+  endColumn: number;
+}
+
+interface LocatedCsvCell {
+  text: string;
+  rawText: string;
+  startByte: number;
+  endByte: number;
+  unclosedQuote?: boolean;
+}
+
+interface LocatedCsvRow {
+  rowIndex: number;
+  startByte: number;
+  endByte: number;
+  cells: LocatedCsvCell[];
+}
+
+class CsvLineLocator {
+  private lineStarts: number[] = [0];
+
+  constructor(private source: string) {
+    for (let i = 0; i < source.length; i++) {
+      if (source.charCodeAt(i) === 10) {
+        this.lineStarts.push(i + 1);
+      }
+    }
+  }
+
+  offsetToPos(offset: number): { line: number; column: number } {
+    const clamped = Math.max(0, Math.min(offset, this.source.length));
+    let low = 0;
+    let high = this.lineStarts.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >>> 1;
+      if (this.lineStarts[mid]! <= clamped) {
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    const lineIdx = Math.max(0, low - 1);
+    return {
+      line: lineIdx + 1,
+      column: clamped - this.lineStarts[lineIdx]! + 1,
+    };
+  }
+}
+
+function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter: string } {
+  // Detect delimiter from first non-empty line
+  let firstLineEnd = text.indexOf("\n");
+  if (firstLineEnd === -1) firstLineEnd = text.length;
+  const firstLine = text.slice(0, firstLineEnd).replace(/\r$/, "");
+  const delimiter = detectDelimiter(firstLine);
+
+  const rows: LocatedCsvRow[] = [];
+  let i = 0;
+  const len = text.length;
+  let rowIndex = 0;
+
+  while (i < len) {
+    // Skip blank lines outside quotes
+    if (text[i] === "\r" || text[i] === "\n") {
+      if (text[i] === "\r" && text[i + 1] === "\n") i += 2;
+      else i++;
+      continue;
+    }
+
+    const rowStart = i;
+    const cells: LocatedCsvCell[] = [];
+    let cellStart = i;
+    let currentVal = "";
+    let inQuote = false;
+    let unclosedQuote = false;
+
+    while (i < len) {
+      const ch = text[i]!;
+      if (ch === '"') {
+        if (inQuote && text[i + 1] === '"') {
+          currentVal += '"';
+          i += 2;
+          continue;
+        }
+        inQuote = !inQuote;
+        i++;
+        continue;
+      }
+
+      if (!inQuote && ch === delimiter) {
+        const rawSlice = text.slice(cellStart, i);
+        const leadWs = rawSlice.length - rawSlice.trimStart().length;
+        const trailWs = rawSlice.length - rawSlice.trimEnd().length;
+        const trimmedStart = rawSlice.trim().length > 0 ? cellStart + leadWs : cellStart;
+        const trimmedEnd = rawSlice.trim().length > 0 ? i - trailWs : Math.min(len, cellStart + 1);
+        cells.push({
+          text: currentVal.trim(),
+          rawText: rawSlice,
+          startByte: trimmedStart,
+          endByte: trimmedEnd,
+        });
+        currentVal = "";
+        i++;
+        cellStart = i;
+        continue;
+      }
+
+      if (!inQuote && (ch === "\n" || ch === "\r")) {
+        break;
+      }
+
+      currentVal += ch;
+      i++;
+    }
+
+    if (inQuote) {
+      unclosedQuote = true;
+    }
+
+    const rowEnd = i;
+    const rawSlice = text.slice(cellStart, rowEnd);
+    const leadWs = rawSlice.length - rawSlice.trimStart().length;
+    const trailWs = rawSlice.length - rawSlice.trimEnd().length;
+    const trimmedStart = rawSlice.trim().length > 0 ? cellStart + leadWs : Math.max(rowStart, cellStart - 1);
+    const trimmedEnd =
+      rawSlice.trim().length > 0 ? rowEnd - trailWs : Math.min(len, Math.max(trimmedStart + 1, rowEnd));
+    cells.push({
+      text: currentVal.trim(),
+      rawText: rawSlice,
+      startByte: trimmedStart,
+      endByte: trimmedEnd,
+      unclosedQuote,
+    });
+
+    if (i < len && (text[i] === "\r" || text[i] === "\n")) {
+      if (text[i] === "\r" && text[i + 1] === "\n") i += 2;
+      else i++;
+    }
+
+    // Ignore pure whitespace lines
+    if (text.slice(rowStart, rowEnd).trim().length > 0) {
+      rows.push({
+        rowIndex: rowIndex++,
+        startByte: rowStart,
+        endByte: rowEnd,
+        cells,
+      });
+    }
+  }
+
+  return { rows, delimiter };
+}
+
+function isStrictFiniteNumber(str: string): boolean {
+  if (!str) return false;
+  return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str);
+}
+
+/**
+ * Perform semantic linting on a CSV string, returning diagnostics with exact cell/row ranges.
+ */
+export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
+  const diagnostics: CsvDiagnostic[] = [];
+  const locator = new CsvLineLocator(csvText);
+
+  const emit = (
+    startByte: number,
+    endByte: number,
+    code: string,
+    severity: "error" | "warning" | "info",
+    message: string,
+  ) => {
+    const localStart = Math.max(0, startByte);
+    const localEnd = Math.max(localStart + 1, endByte);
+    const startPos = locator.offsetToPos(localStart);
+    const endPos = locator.offsetToPos(localEnd);
+    diagnostics.push({
+      code,
+      severity,
+      message,
+      startByte: baseStartByte + localStart,
+      endByte: baseStartByte + localEnd,
+      line: startPos.line,
+      column: startPos.column,
+      endLine: endPos.line,
+      endColumn: endPos.column,
+    });
+  };
+
+  const { rows } = tokenizeCsvWithRanges(csvText);
+  if (rows.length === 0) return diagnostics;
+
+  const headerRow = rows[0]!;
+  const numCols = headerRow.cells.length;
+  const seenHeaders = new Map<string, number>();
+
+  // 1. Validate header cells (empty or duplicate headers, unclosed quotes)
+  for (let c = 0; c < numCols; c++) {
+    const cell = headerRow.cells[c]!;
+    if (cell.unclosedQuote) {
+      emit(
+        cell.startByte,
+        cell.endByte,
+        "CSV_UNCLOSED_QUOTE",
+        "error",
+        `Unclosed quoted string in header column ${c + 1}.`,
+      );
+    }
+    if (!cell.text) {
+      emit(cell.startByte, cell.endByte, "CSV_EMPTY_HEADER", "error", `Header column ${c + 1} is empty.`);
+      continue;
+    }
+    if (seenHeaders.has(cell.text)) {
+      emit(
+        cell.startByte,
+        cell.endByte,
+        "CSV_DUPLICATE_HEADER",
+        "error",
+        `Duplicate header column '${cell.text}' (already defined at column ${seenHeaders.get(cell.text)! + 1}).`,
+      );
+    } else {
+      seenHeaders.set(cell.text, c);
+    }
+  }
+
+  // Determine which columns are numeric (at least one data row has a finite numeric value, or column is time/t)
+  const numericCols = new Array<boolean>(numCols).fill(false);
+  let timeColIdx = -1;
+  for (let c = 0; c < numCols; c++) {
+    const hName = headerRow.cells[c]!.text.toLowerCase();
+    if (timeColIdx === -1 && (hName === "time" || hName === "t")) {
+      timeColIdx = c;
+      numericCols[c] = true;
+    }
+  }
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r]!;
+    for (let c = 0; c < Math.min(numCols, row.cells.length); c++) {
+      if (isStrictFiniteNumber(row.cells[c]!.text)) {
+        numericCols[c] = true;
+      }
+    }
+  }
+
+  let prevTimeVal: number | undefined;
+
+  // 2. Validate data rows (column count mismatch, unclosed quotes, invalid numeric cells, non-monotonic time)
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r]!;
+
+    for (let c = 0; c < row.cells.length; c++) {
+      const cell = row.cells[c]!;
+      if (cell.unclosedQuote) {
+        emit(
+          cell.startByte,
+          cell.endByte,
+          "CSV_UNCLOSED_QUOTE",
+          "error",
+          `Unclosed quoted string at row ${r + 1}, column ${c + 1}.`,
+        );
+      }
+    }
+
+    if (row.cells.length !== numCols) {
+      if (row.cells.length > numCols) {
+        // Underline ONLY the excess cells
+        const firstExcess = row.cells[numCols]!;
+        const lastExcess = row.cells[row.cells.length - 1]!;
+        emit(
+          firstExcess.startByte,
+          lastExcess.endByte,
+          "CSV_COLUMN_COUNT_MISMATCH",
+          "error",
+          `Row ${r + 1} has ${row.cells.length} columns, expected ${numCols} to match header row.`,
+        );
+      } else {
+        emit(
+          row.startByte,
+          row.endByte,
+          "CSV_COLUMN_COUNT_MISMATCH",
+          "error",
+          `Row ${r + 1} has ${row.cells.length} columns, expected ${numCols} to match header row.`,
+        );
+      }
+    }
+
+    const checkCols = Math.min(numCols, row.cells.length);
+    for (let c = 0; c < checkCols; c++) {
+      if (!numericCols[c]) continue;
+      const cell = row.cells[c]!;
+      const colName = headerRow.cells[c]?.text || `column ${c + 1}`;
+      if (!cell.text) {
+        emit(
+          cell.startByte,
+          cell.endByte,
+          "CSV_INVALID_NUMERIC_CELL",
+          "warning",
+          `Missing numeric value in column '${colName}' at row ${r + 1}.`,
+        );
+        continue;
+      }
+      if (!isStrictFiniteNumber(cell.text)) {
+        emit(
+          cell.startByte,
+          cell.endByte,
+          "CSV_INVALID_NUMERIC_CELL",
+          "error",
+          `Invalid numeric value '${cell.text}' in column '${colName}' at row ${r + 1}.`,
+        );
+        continue;
+      }
+
+      if (c === timeColIdx) {
+        const tVal = parseFloat(cell.text);
+        if (prevTimeVal !== undefined && tVal < prevTimeVal) {
+          emit(
+            cell.startByte,
+            cell.endByte,
+            "CSV_NON_MONOTONIC_TIME",
+            "warning",
+            `Non-monotonic time value ${tVal} at row ${r + 1} (previous time was ${prevTimeVal}).`,
+          );
+        }
+        prevTimeVal = tVal;
+      }
+    }
+  }
+
+  return diagnostics;
+}

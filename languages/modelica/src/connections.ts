@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "@modelscript/runtime";
+import { BinOp, DAEBuilder, EqKind, ExprKind, StmtKind, Variability } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "./errors.js";
+import { getFlatteningState } from "./flattener/support/state.js";
 
 /**
  * Union-Find data structure with path compression and union-by-rank.
@@ -93,15 +94,70 @@ export class ModelicaPortBalancer {
    */
   static expandConnections(
     dae: DAEBuilder,
-    options?: { omcCompatibility?: boolean; isOldFrontend?: boolean; flowThreshold?: number },
+    options?: {
+      omcCompatibility?: boolean;
+      useWasmKernel?: boolean;
+      isOldFrontend?: boolean;
+      flowThreshold?: number;
+    },
   ): void {
-    if (dae.exports && typeof dae.exports.flattener_expandConnections === "function" && !options?.omcCompatibility) {
+    const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
+    const ocGraphMeta = dae.extensionMetadata?.overconstrainedGraph as
+      | {
+          roots: Set<string>;
+          potentialRoots: Map<string, number>;
+          branches: { a: string; b: string }[];
+          queriedRoots: Set<string>;
+          selectedRoots?: Set<string>;
+          rootedMap?: Map<string, boolean>;
+        }
+      | undefined;
+    const hasOverconstrained = Boolean(
+      ocGraphMeta &&
+      (ocGraphMeta.roots?.size > 0 ||
+        ocGraphMeta.potentialRoots?.size > 0 ||
+        ocGraphMeta.branches?.length > 0 ||
+        ocGraphMeta.queriedRoots?.size > 0),
+    );
+    let hasStreamVars = false;
+    for (let i = 0; i < dae.varCount; i++) {
+      if (!dae.isVarRemoved(i) && dae.isVarStream(i)) {
+        hasStreamVars = true;
+        break;
+      }
+    }
+
+    let hasConnectEq = false;
+    for (let i = 0; i < dae.eqCount; i++) {
+      if (dae.getEqKind(i) === EqKind.Connect) {
+        hasConnectEq = true;
+        break;
+      }
+    }
+
+    const state = getFlatteningState(dae);
+    if (
+      hasConnectEq &&
+      options?.useWasmKernel !== false &&
+      dae.exports &&
+      typeof dae.exports.flattener_expandConnections === "function" &&
+      !options?.omcCompatibility &&
+      !hasStreamVars &&
+      !hasOverconstrained &&
+      expBuses.length === 0
+    ) {
+      const existingWasmFlattener = state.wasmFlattener;
       const wasmFlattener =
-        (dae as any)._wasmFlattener ??
-        ((dae as any)._wasmFlattener = dae.exports.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
+        existingWasmFlattener ?? (dae.exports.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
       if (wasmFlattener) {
-        const expanded = dae.exports.flattener_expandConnections(wasmFlattener, 0);
-        if (expanded > 0) return;
+        try {
+          const expanded = dae.exports.flattener_expandConnections(wasmFlattener, 0);
+          if (expanded > 0) return;
+        } finally {
+          if (!existingWasmFlattener && typeof dae.exports.flattener_destroy === "function") {
+            dae.exports.flattener_destroy(wasmFlattener);
+          }
+        }
       }
     }
 
@@ -122,7 +178,7 @@ export class ModelicaPortBalancer {
           const rhsStr = dae.interner.resolve(dae.getExprData1(rhsId));
           if (!lhsStr || !rhsStr) continue;
           const isExactVar = dae.getVarIdxByName(lhsStr) !== -1 && dae.getVarIdxByName(rhsStr) !== -1;
-          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !isExactVar) {
+          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !isExactVar && !hasOverconstrained) {
             outsideOutsidePairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
           } else {
             connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId), i]);
@@ -131,7 +187,6 @@ export class ModelicaPortBalancer {
       }
     }
 
-    const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
     const isExpBusVar = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
 
     let hasExpBusFlows = false;
@@ -208,8 +263,206 @@ export class ModelicaPortBalancer {
       }
     }
 
+    // 2.5 Resolve overconstrained connection graph (MLS §9.4)
+    const brokenOverconstrainedConnections: { u: string; v: string; eqIdx: number }[] = [];
+    if (hasOverconstrained && ocGraphMeta) {
+      const ocNodes = new Set<string>();
+      for (const r of ocGraphMeta.roots ?? []) ocNodes.add(r);
+      for (const pr of ocGraphMeta.potentialRoots?.keys() ?? []) ocNodes.add(pr);
+      for (const b of ocGraphMeta.branches ?? []) {
+        ocNodes.add(b.a);
+        ocNodes.add(b.b);
+      }
+      for (const qr of ocGraphMeta.queriedRoots ?? []) ocNodes.add(qr);
+
+      const stripTrailingSubscripts = (s: string): string => s.replace(/(?:\[\d+(?:,\d+)*\])+$/, "");
+
+      // Extract relative overconstrained member suffixes (e.g., ".o", ".R", ".reference", ".theta", or "")
+      const ocSuffixes = new Set<string>();
+      for (const [fromStrId, toStrId] of connectPairs) {
+        const fromStr = stripTrailingSubscripts(dae.interner.resolve(fromStrId));
+        const toStr = stripTrailingSubscripts(dae.interner.resolve(toStrId));
+        for (const n of ocNodes) {
+          if (n === fromStr || n === toStr) {
+            ocSuffixes.add("");
+          } else if (n.startsWith(fromStr + ".")) {
+            ocSuffixes.add(n.slice(fromStr.length));
+          } else if (n.startsWith(toStr + ".")) {
+            ocSuffixes.add(n.slice(toStr.length));
+          }
+        }
+      }
+      if (ocSuffixes.size === 0) {
+        for (const n of ocNodes) {
+          const lastDot = n.lastIndexOf(".");
+          if (lastDot > 0) ocSuffixes.add(n.slice(lastDot));
+        }
+      }
+
+      const ocParent = new Map<string, string>();
+      const ocFind = (x: string): string => {
+        let p = ocParent.get(x);
+        if (p === undefined) {
+          ocParent.set(x, x);
+          return x;
+        }
+        if (p !== x) {
+          p = ocFind(p);
+          ocParent.set(x, p);
+        }
+        return p;
+      };
+      const ocUnion = (x: string, y: string): boolean => {
+        const rx = ocFind(x);
+        const ry = ocFind(y);
+        if (rx === ry) return false;
+        ocParent.set(ry, rx);
+        return true;
+      };
+
+      const treeAdj = new Map<string, string[]>();
+      const addTreeEdge = (u: string, v: string) => {
+        let lu = treeAdj.get(u);
+        if (!lu) {
+          lu = [];
+          treeAdj.set(u, lu);
+        }
+        lu.push(v);
+        let lv = treeAdj.get(v);
+        if (!lv) {
+          lv = [];
+          treeAdj.set(v, lv);
+        }
+        lv.push(u);
+      };
+
+      for (const n of ocNodes) ocFind(n);
+      for (const b of ocGraphMeta.branches ?? []) {
+        ocUnion(b.a, b.b);
+        addTreeEdge(b.a, b.b);
+      }
+
+      const nodeExists = (candidate: string): boolean => {
+        if (ocNodes.has(candidate)) return true;
+        if (dae.getVarIdxByName(candidate) >= 0 || dae.hasArrayElements(candidate)) return true;
+        const pfxDot = candidate + ".";
+        const pfxBracket = candidate + "[";
+        for (let v = 0; v < dae.varCount; v++) {
+          if (dae.isVarRemoved(v)) continue;
+          const vn = dae.getVarName(v);
+          if (vn === candidate || vn.startsWith(pfxDot) || vn.startsWith(pfxBracket)) return true;
+        }
+        return false;
+      };
+
+      // Process connect equations in reverse order so later connections stay in the spanning tree
+      const seenConnectEdges = new Set<string>();
+      for (let k = connectPairs.length - 1; k >= 0; k--) {
+        const [fromStrId, toStrId, eqIdx] = connectPairs[k]!;
+        const fromStr = stripTrailingSubscripts(dae.interner.resolve(fromStrId));
+        const toStr = stripTrailingSubscripts(dae.interner.resolve(toStrId));
+        for (const sfx of ocSuffixes) {
+          const u = fromStr + sfx;
+          const v = toStr + sfx;
+          if (!nodeExists(u) || !nodeExists(v)) continue;
+          const edgeKey = `${u}->${v}`;
+          if (seenConnectEdges.has(edgeKey)) continue;
+          seenConnectEdges.add(edgeKey);
+          ocNodes.add(u);
+          ocNodes.add(v);
+          if (!ocUnion(u, v)) {
+            if ((ocGraphMeta.branches?.length ?? 0) > 0) {
+              brokenOverconstrainedConnections.push({ u, v, eqIdx });
+            }
+          } else {
+            addTreeEdge(u, v);
+          }
+        }
+      }
+
+      const compNodes = new Map<string, string[]>();
+      for (const n of ocNodes) {
+        const r = ocFind(n);
+        let list = compNodes.get(r);
+        if (!list) {
+          list = [];
+          compNodes.set(r, list);
+        }
+        list.push(n);
+      }
+
+      const selectedRoots = new Set<string>();
+      const depth = new Map<string, number>();
+      for (const nodes of compNodes.values()) {
+        const explicitRoots = nodes.filter((n) => ocGraphMeta.roots?.has(n));
+        if (explicitRoots.length > 0) {
+          for (const er of explicitRoots) selectedRoots.add(er);
+        } else {
+          let bestNode: string | null = null;
+          let bestPrio = Infinity;
+          for (const n of nodes) {
+            const prio = ocGraphMeta.potentialRoots?.get(n);
+            if (prio !== undefined && prio < bestPrio) {
+              bestPrio = prio;
+              bestNode = n;
+            }
+          }
+          if (bestNode !== null) {
+            selectedRoots.add(bestNode);
+          } else if (nodes.length > 0) {
+            selectedRoots.add(nodes[0]!);
+          }
+        }
+
+        const queue: string[] = [];
+        for (const n of nodes) {
+          if (selectedRoots.has(n)) {
+            depth.set(n, 0);
+            queue.push(n);
+          }
+        }
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          const d = depth.get(curr) ?? 0;
+          for (const nb of treeAdj.get(curr) ?? []) {
+            if (!depth.has(nb)) {
+              depth.set(nb, d + 1);
+              queue.push(nb);
+            }
+          }
+        }
+      }
+
+      const rootedMap = new Map<string, boolean>();
+      for (const b of ocGraphMeta.branches ?? []) {
+        const dA = depth.get(b.a) ?? 0;
+        const dB = depth.get(b.b) ?? 1;
+        rootedMap.set(b.a, dA <= dB);
+      }
+      ocGraphMeta.selectedRoots = selectedRoots;
+      ocGraphMeta.rootedMap = rootedMap;
+    }
+
+    const isBrokenOverconstrainedVarPair = (nameA: string, nameB: string): boolean => {
+      if (brokenOverconstrainedConnections.length === 0) return false;
+      for (const br of brokenOverconstrainedConnections) {
+        const matchAB =
+          (nameA === br.u || nameA.startsWith(br.u + "[") || nameA.startsWith(br.u + ".")) &&
+          (nameB === br.v || nameB.startsWith(br.v + "[") || nameB.startsWith(br.v + "."));
+        const matchBA =
+          (nameA === br.v || nameA.startsWith(br.v + "[") || nameA.startsWith(br.v + ".")) &&
+          (nameB === br.u || nameB.startsWith(br.u + "[") || nameB.startsWith(br.u + "."));
+        if (matchAB || matchBA) return true;
+      }
+      return false;
+    };
+
     // 3. Resolve structural connections to variable index pairs efficiently
-    for (const [fromStrId, toStrId, eqIdx] of connectPairs) {
+    const orderedConnectPairs =
+      brokenOverconstrainedConnections.length > 0 && options?.omcCompatibility
+        ? [...connectPairs].reverse()
+        : connectPairs;
+    for (const [fromStrId, toStrId, eqIdx] of orderedConnectPairs) {
       const fromStr = dae.interner.resolve(fromStrId);
       const toStr = dae.interner.resolve(toStrId);
 
@@ -217,13 +470,15 @@ export class ModelicaPortBalancer {
       const toExact = dae.getVarIdxByName(toStr);
 
       if (fromExact !== -1 && toExact !== -1 && !dae.isVarRemoved(fromExact) && !dae.isVarRemoved(toExact)) {
-        uf.union(fromExact, toExact);
-        resolvedPairs.push([fromExact, toExact, eqIdx]);
-        if (!varConnectEqIdx.has(fromExact)) varConnectEqIdx.set(fromExact, eqIdx);
-        if (!varConnectEqIdx.has(toExact)) varConnectEqIdx.set(toExact, eqIdx);
-        if (dae.exports?.flattener_unionSets) {
-          const wasmFlattener = (dae as any)._wasmFlattener;
-          if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, fromExact, toExact);
+        if (!isBrokenOverconstrainedVarPair(fromStr, toStr)) {
+          uf.union(fromExact, toExact);
+          resolvedPairs.push([fromExact, toExact, eqIdx]);
+          if (!varConnectEqIdx.has(fromExact)) varConnectEqIdx.set(fromExact, eqIdx);
+          if (!varConnectEqIdx.has(toExact)) varConnectEqIdx.set(toExact, eqIdx);
+          if (dae.exports?.flattener_unionSets) {
+            const wasmFlattener = state.wasmFlattener;
+            if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, fromExact, toExact);
+          }
         }
       } else {
         const fromDesc = prefixMap.get(fromStr);
@@ -307,13 +562,15 @@ export class ModelicaPortBalancer {
                 dae.getVarFlowPrefix(idxA) === dae.getVarFlowPrefix(idxB) &&
                 dae.getVarType(idxA) === dae.getVarType(idxB)
               ) {
-                uf.union(idxA, idxB);
-                resolvedPairs.push([idxA, idxB, eqIdx]);
-                if (!varConnectEqIdx.has(idxA)) varConnectEqIdx.set(idxA, eqIdx);
-                if (!varConnectEqIdx.has(idxB)) varConnectEqIdx.set(idxB, eqIdx);
-                if (dae.exports?.flattener_unionSets) {
-                  const wasmFlattener = (dae as any)._wasmFlattener;
-                  if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
+                if (!isBrokenOverconstrainedVarPair(vNameA, targetName)) {
+                  uf.union(idxA, idxB);
+                  resolvedPairs.push([idxA, idxB, eqIdx]);
+                  if (!varConnectEqIdx.has(idxA)) varConnectEqIdx.set(idxA, eqIdx);
+                  if (!varConnectEqIdx.has(idxB)) varConnectEqIdx.set(idxB, eqIdx);
+                  if (dae.exports?.flattener_unionSets) {
+                    const wasmFlattener = state.wasmFlattener;
+                    if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
+                  }
                 }
               } else {
                 isPlugCompatible = false;
@@ -384,8 +641,30 @@ export class ModelicaPortBalancer {
       }
     }
 
+    const innerComps = state.innerComponents;
+    const outerMap = state.outerToInner;
+    const isInnerOrOuterVar = (varName: string): boolean => {
+      if (innerComps) {
+        for (const ic of innerComps) {
+          if (ic && (varName === ic || varName.startsWith(ic + "."))) return true;
+        }
+      }
+      if (outerMap) {
+        for (const [op, tp] of outerMap) {
+          if (
+            (op && (varName === op || varName.startsWith(op + "."))) ||
+            (tp && (varName === tp || varName.startsWith(tp + ".")))
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
     const isOutsideOrOuter = (varName: string, vIdx?: number) =>
       (vIdx !== undefined && outsideVarSet.has(vIdx)) ||
+      isInnerOrOuterVar(varName) ||
       varName.indexOf(".") === varName.lastIndexOf(".") ||
       varName.startsWith("ip.") ||
       varName.includes(".ip.") ||
@@ -394,6 +673,7 @@ export class ModelicaPortBalancer {
 
     // 3.5. Stream variables: inStream(s) and actualStream(s) expansion and outside-outside connection equations
     const streamGroups = new Map<number, number[]>();
+    const portFlowVarByPrefix = new Map<string, number>();
     for (let i = 0; i < dae.varCount; i++) {
       if (dae.isVarRemoved(i)) continue;
       if (dae.getVarFlowPrefix(i) === "stream") {
@@ -404,8 +684,37 @@ export class ModelicaPortBalancer {
           streamGroups.set(root, list);
         }
         list.push(i);
+      } else if (dae.isVarFlow(i)) {
+        const vn = dae.getVarName(i);
+        const dot = vn.lastIndexOf(".");
+        if (dot !== -1) {
+          portFlowVarByPrefix.set(vn.substring(0, dot + 1), i);
+        }
       }
     }
+
+    const getPortFlowVar = (varIdx: number): number => {
+      const vn = dae.getVarName(varIdx);
+      const dot = vn.lastIndexOf(".");
+      return dot !== -1 ? (portFlowVarByPrefix.get(vn.substring(0, dot + 1)) ?? -1) : -1;
+    };
+
+    const isStreamVarOutside = (varName: string, vIdx: number, group?: number[]): boolean => {
+      if (outsideVarSet.has(vIdx) || isInnerOrOuterVar(varName)) return true;
+      if (varName.startsWith("ip.") || varName.includes(".ip.") || varName.includes(".y.") || varName.includes(".o.")) {
+        return true;
+      }
+      const isOneDot = varName.indexOf(".") !== -1 && varName.indexOf(".") === varName.lastIndexOf(".");
+      if (!isOneDot) return false;
+      if (!group || group.length <= 1) return true;
+      // In inside-outside connections (e.g. connect(a.s, s)), the group mixes 1-dot (outside) and >=2-dot (inside) vars.
+      // When all connected peers in the root model are 1-dot and none is in outsideVarSet, treat them as connected peers.
+      return group.some((peerIdx) => {
+        if (outsideVarSet.has(peerIdx)) return true;
+        const pn = dae.getVarName(peerIdx);
+        return pn.indexOf(".") !== pn.lastIndexOf(".");
+      });
+    };
 
     const getNumericConst = (eId: number): number | undefined => {
       if (eId < 0) return undefined;
@@ -419,9 +728,84 @@ export class ModelicaPortBalancer {
       return undefined;
     };
 
+    const buildInStreamExpr = (vIdx: number, argId: number): number => {
+      const vName = dae.getVarName(vIdx);
+      const root = uf.find(vIdx);
+      const group = streamGroups.get(root);
+      if (isStreamVarOutside(vName, vIdx, group)) {
+        return argId;
+      }
+      if (!group || group.length <= 1) {
+        // Unconnected stream: inStream(s.s) = s.s
+        return argId;
+      }
+      if (group.length === 2) {
+        const partnerIdx = group[0] === vIdx ? group[1]! : group[0]!;
+        return dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
+      }
+      // N-way mass-flow-weighted stream mixing (MLS §15.2)
+      const terms: number[] = [];
+      const weights: number[] = [];
+      let allHaveFlow = true;
+      for (const otherIdx of group) {
+        if (otherIdx === vIdx) continue;
+        const otherFlowIdx = getPortFlowVar(otherIdx);
+        if (otherFlowIdx === -1) {
+          allHaveFlow = false;
+          break;
+        }
+        let eps_k: number;
+        if (options?.flowThreshold !== undefined) {
+          eps_k = options.flowThreshold;
+        } else {
+          let nominal = 1.0;
+          const nominalAttrExprId = dae.getVarAttrExprId(otherFlowIdx, "nominal");
+          if (nominalAttrExprId !== undefined) {
+            const nomVal = getNumericConst(nominalAttrExprId);
+            if (nomVal !== undefined) nominal = nomVal;
+          }
+          eps_k = nominal * 1e-7;
+        }
+        const rawFlowExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherFlowIdx));
+        const otherName = dae.getVarName(otherIdx);
+        const inflowExpr = isStreamVarOutside(otherName, otherIdx, group)
+          ? rawFlowExpr
+          : dae.addExpression(ExprKind.Negate, 0, rawFlowExpr);
+        const epsExpr = dae.addRealLiteral(eps_k);
+        const posMaxExpr = dae.addCallExpr("$OMC$PositiveMax", [inflowExpr, epsExpr]);
+        const sExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
+        terms.push(dae.addBinaryExpr(BinOp.Mul, posMaxExpr, sExpr));
+        weights.push(posMaxExpr);
+      }
+      if (allHaveFlow && terms.length > 0) {
+        let numExpr = terms[0]!;
+        for (let t = 1; t < terms.length; t++) {
+          numExpr = dae.addBinaryExpr(BinOp.Add, numExpr, terms[t]!);
+        }
+        let denExpr = weights[0]!;
+        for (let w = 1; w < weights.length; w++) {
+          denExpr = dae.addBinaryExpr(BinOp.Add, denExpr, weights[w]!);
+        }
+        return dae.addBinaryExpr(BinOp.Div, numExpr, denExpr);
+      }
+      // Fallback unweighted average when connector has no flow variable
+      let sumExpr: number | null = null;
+      let count = 0;
+      for (const otherIdx of group) {
+        if (otherIdx === vIdx) continue;
+        const srcExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
+        sumExpr = sumExpr === null ? srcExpr : dae.addBinaryExpr(BinOp.Add, sumExpr, srcExpr);
+        count++;
+      }
+      if (sumExpr !== null && count > 0) {
+        return dae.addBinaryExpr(BinOp.Div, sumExpr, dae.addRealLiteral(count));
+      }
+      return argId;
+    };
+
     // Function to recursively replace inStream(s) and actualStream(s) inside expression trees
     const rewriteStreamExpr = (exprId: number): number => {
-      if (exprId < 0) return exprId;
+      if (exprId < 0 || exprId >= dae.exprCount) return exprId;
       const k = dae.getExprKind(exprId);
       if (k === ExprKind.Call) {
         const funcNameId = dae.getExprData1(exprId);
@@ -432,31 +816,7 @@ export class ModelicaPortBalancer {
             const vName = dae.interner.resolve(dae.getExprData1(argId));
             const vIdx = dae.getVarIdxByName(vName);
             if (vIdx !== -1) {
-              if (isOutsideOrOuter(vName)) {
-                return argId;
-              }
-              const root = uf.find(vIdx);
-              const group = streamGroups.get(root);
-              if (!group || group.length <= 1) {
-                // Unconnected stream: inStream(s.s) = s.s
-                return argId;
-              } else if (group.length === 2) {
-                const partnerIdx = group[0] === vIdx ? group[1]! : group[0]!;
-                return dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
-              } else {
-                // N-way mixing: sum(other_s) / (N-1)
-                let sumExpr: number | null = null;
-                let count = 0;
-                for (const otherIdx of group) {
-                  if (otherIdx === vIdx) continue;
-                  const srcExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
-                  sumExpr = sumExpr === null ? srcExpr : dae.addBinaryExpr(BinOp.Add, sumExpr, srcExpr);
-                  count++;
-                }
-                if (sumExpr !== null && count > 0) {
-                  return dae.addBinaryExpr(BinOp.Div, sumExpr, dae.addRealLiteral(count));
-                }
-              }
+              return buildInStreamExpr(vIdx, argId);
             }
           }
         } else if (fnName === "actualStream") {
@@ -467,63 +827,78 @@ export class ModelicaPortBalancer {
             if (vIdx !== -1) {
               const root = uf.find(vIdx);
               const group = streamGroups.get(root);
-              let partnerIdx = vIdx;
-              if (group && group.length === 2) {
-                partnerIdx = group[0] === vIdx ? group[1]! : group[0]!;
-              }
-              const dotLast = vName.lastIndexOf(".");
-              const portPrefix = dotLast !== -1 ? vName.substring(0, dotLast + 1) : "";
-              let flowVarIdx = -1;
-              for (let i = 0; i < dae.varCount; i++) {
-                if (dae.isVarRemoved(i)) continue;
-                if (dae.isVarFlow(i) && dae.getVarName(i).startsWith(portPrefix)) {
-                  flowVarIdx = i;
-                  break;
-                }
-              }
-              if (partnerIdx === vIdx || flowVarIdx === -1) {
+              const flowVarIdx = getPortFlowVar(vIdx);
+              if (!group || group.length <= 1 || flowVarIdx === -1 || isStreamVarOutside(vName, vIdx, group)) {
                 return dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               }
-              if (flowVarIdx !== -1 && partnerIdx !== vIdx) {
-                const attrs = dae.getVarAttrExprIds(flowVarIdx);
-                const minExpr = attrs?.get("min");
-                const maxExpr = attrs?.get("max");
-                const minVal = minExpr !== undefined ? getNumericConst(minExpr) : undefined;
-                const maxVal = maxExpr !== undefined ? getNumericConst(maxExpr) : undefined;
+              const attrs = dae.getVarAttrExprIds(flowVarIdx);
+              const minExpr = attrs?.get("min");
+              const maxExpr = attrs?.get("max");
+              const minVal = minExpr !== undefined ? getNumericConst(minExpr) : undefined;
+              const maxVal = maxExpr !== undefined ? getNumericConst(maxExpr) : undefined;
 
-                let partnerMinVal: number | undefined;
-                const pName = dae.getVarName(partnerIdx);
-                const pDot = pName.lastIndexOf(".");
-                const pPrefix = pDot !== -1 ? pName.substring(0, pDot + 1) : "";
-                for (let i = 0; i < dae.varCount; i++) {
-                  if (dae.isVarRemoved(i)) continue;
-                  if (dae.isVarFlow(i) && dae.getVarName(i).startsWith(pPrefix)) {
-                    const pAttrs = dae.getVarAttrExprIds(i);
-                    const pMinExpr = pAttrs?.get("min");
-                    partnerMinVal = pMinExpr !== undefined ? getNumericConst(pMinExpr) : undefined;
-                    break;
-                  }
-                }
-
-                const wrapSmooth = Boolean(dae.extensionMetadata?.isOldFrontend);
-                if (minVal !== undefined && minVal >= 0 && partnerMinVal !== undefined && partnerMinVal >= 0) {
-                  const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
-                } else if (minVal !== undefined && minVal >= 0) {
-                  const inStreamExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
-                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), inStreamExpr]) : inStreamExpr;
-                } else if (maxVal !== undefined && maxVal <= 0) {
-                  const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
-                } else {
-                  const fExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIdx));
-                  const cond = dae.addBinaryExpr(BinOp.Gt, fExpr, zeroExpr);
-                  const thenExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
-                  const elseExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                  const ifExpr = dae.addIfElseExpr(cond, thenExpr, elseExpr);
-                  return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), ifExpr]) : ifExpr;
+              let partnerMinVal: number | undefined;
+              if (group.length === 2) {
+                const partnerIdx = group[0] === vIdx ? group[1]! : group[0]!;
+                const pFlowIdx = getPortFlowVar(partnerIdx);
+                if (pFlowIdx !== -1) {
+                  const pAttrs = dae.getVarAttrExprIds(pFlowIdx);
+                  const pMinExpr = pAttrs?.get("min");
+                  partnerMinVal = pMinExpr !== undefined ? getNumericConst(pMinExpr) : undefined;
                 }
               }
+
+              const wrapSmooth = Boolean(dae.extensionMetadata?.isOldFrontend);
+              if (minVal !== undefined && minVal >= 0 && partnerMinVal !== undefined && partnerMinVal >= 0) {
+                const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
+              } else if (minVal !== undefined && minVal >= 0) {
+                const inStreamExpr = buildInStreamExpr(vIdx, argId);
+                return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), inStreamExpr]) : inStreamExpr;
+              } else if (maxVal !== undefined && maxVal <= 0) {
+                const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
+              } else {
+                const fExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIdx));
+                const cond = dae.addBinaryExpr(BinOp.Gt, fExpr, zeroExpr);
+                const thenExpr = buildInStreamExpr(vIdx, argId);
+                const elseExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                const ifExpr = dae.addIfElseExpr(cond, thenExpr, elseExpr);
+                return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), ifExpr]) : ifExpr;
+              }
+            }
+          }
+        }
+        if (hasOverconstrained && ocGraphMeta) {
+          const argCount = dae.getExprRight(exprId);
+          if ((fnName === "Connections.isRoot" || fnName === "isRoot") && argCount === 1) {
+            const a0 = dae.getExprLeft(exprId);
+            let connName: string | null = null;
+            if (dae.getExprKind(a0) === ExprKind.Name) {
+              connName = dae.interner.resolve(dae.getExprData1(a0)) || null;
+            } else if (dae.getExprKind(a0) === ExprKind.ArrayCtor && dae.getExprData1(a0) > 0) {
+              const firstEl = dae.getExprLeft(a0);
+              if (dae.getExprKind(firstEl) === ExprKind.Name) {
+                const elName = dae.interner.resolve(dae.getExprData1(firstEl));
+                connName = elName ? elName.replace(/(?:\[\d+\])+$/, "") : null;
+              }
+            }
+            if (connName) {
+              const isRootVal = Boolean(ocGraphMeta.selectedRoots?.has(connName) ?? ocGraphMeta.roots?.has(connName));
+              return dae.addBoolLiteral(isRootVal);
+            }
+          }
+          if ((fnName === "Connections.rooted" || fnName === "rooted") && argCount === 1) {
+            const a0 = dae.getExprLeft(exprId);
+            let connName: string | null = null;
+            if (dae.getExprKind(a0) === ExprKind.Name) {
+              connName = dae.interner.resolve(dae.getExprData1(a0)) || null;
+            }
+            if (connName) {
+              const isRootedVal = Boolean(
+                ocGraphMeta.rootedMap?.get(connName) ?? ocGraphMeta.selectedRoots?.has(connName),
+              );
+              return dae.addBoolLiteral(isRootedVal);
             }
           }
         }
@@ -556,6 +931,20 @@ export class ModelicaPortBalancer {
         }
         return exprId;
       }
+      if (k === ExprKind.Negate) {
+        const operand = rewriteStreamExpr(dae.getExprLeft(exprId));
+        if (operand !== dae.getExprLeft(exprId)) {
+          return dae.addExpression(ExprKind.Negate, 0, operand);
+        }
+        return exprId;
+      }
+      if (k === ExprKind.Der || k === ExprKind.Pre) {
+        const operand = rewriteStreamExpr(dae.getExprLeft(exprId));
+        if (operand !== dae.getExprLeft(exprId)) {
+          return dae.addExpression(k, dae.getExprData1(exprId), operand, dae.getExprRight(exprId));
+        }
+        return exprId;
+      }
       if (k === ExprKind.IfElse) {
         const cond = rewriteStreamExpr(dae.getExprData1(exprId));
         const thenBranch = rewriteStreamExpr(dae.getExprLeft(exprId));
@@ -569,16 +958,122 @@ export class ModelicaPortBalancer {
         }
         return exprId;
       }
+      if (k === ExprKind.ArrayCtor) {
+        const count = dae.getExprData1(exprId) || dae.getExprRight(exprId);
+        const elems: number[] = [];
+        let anyChanged = false;
+        for (let i = 0; i < count; i++) {
+          const eId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+          const rewritten = rewriteStreamExpr(eId);
+          if (rewritten !== eId) anyChanged = true;
+          elems.push(rewritten);
+        }
+        if (anyChanged) {
+          return dae.addArrayCtorExpr(elems);
+        }
+        return exprId;
+      }
+      if (k === ExprKind.Subscript) {
+        const baseId = dae.getExprData1(exprId);
+        const newBase = rewriteStreamExpr(baseId);
+        const count = dae.getExprRight(exprId);
+        const subs: number[] = [];
+        let anyChanged = newBase !== baseId;
+        for (let i = 0; i < count; i++) {
+          const sId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+          const rewritten = rewriteStreamExpr(sId);
+          if (rewritten !== sId) anyChanged = true;
+          subs.push(rewritten);
+        }
+        if (anyChanged) {
+          return dae.addSubscriptExpr(newBase, subs);
+        }
+        return exprId;
+      }
       return exprId;
     };
 
     for (let i = 0; i < dae.eqCount; i++) {
+      const eqKind = dae.getEqKind(i);
       const lhs = dae.getEqLhs(i);
       const rhs = dae.getEqRhs(i);
       const newLhs = rewriteStreamExpr(lhs);
       const newRhs = rewriteStreamExpr(rhs);
       if (newLhs !== lhs) dae.setEqLhs(i, newLhs);
       if (newRhs !== rhs) dae.setEqRhs(i, newRhs);
+
+      if (eqKind === EqKind.When) {
+        const meta = dae.getWhenEquationMeta(i);
+        if (meta) {
+          meta.conditionExprId = rewriteStreamExpr(meta.conditionExprId);
+          dae.setEqLhs(i, meta.conditionExprId);
+          for (const bEq of meta.bodyEquations) {
+            bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+            bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+          }
+          for (const bEq of meta.equations) {
+            bEq.lhs = rewriteStreamExpr(bEq.lhs);
+            bEq.rhs = rewriteStreamExpr(bEq.rhs);
+          }
+          for (const ew of meta.elseWhenClauses) {
+            ew.conditionExprId = rewriteStreamExpr(ew.conditionExprId);
+            for (const bEq of ew.bodyEquations) {
+              bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+              bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+            }
+            for (const bEq of ew.equations) {
+              bEq.lhs = rewriteStreamExpr(bEq.lhs);
+              bEq.rhs = rewriteStreamExpr(bEq.rhs);
+            }
+          }
+          if (meta.elseEquations) {
+            for (const bEq of meta.elseEquations) {
+              bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+              bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+            }
+          }
+        }
+      } else if (eqKind === EqKind.If) {
+        const meta = dae.getIfEquationMeta(i);
+        if (meta) {
+          meta.conditionExprId = rewriteStreamExpr(meta.conditionExprId);
+          dae.setEqLhs(i, meta.conditionExprId);
+          for (const bEq of meta.thenEquations) {
+            bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+            bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+          }
+          for (const ei of meta.elseIfClauses) {
+            ei.conditionExprId = rewriteStreamExpr(ei.conditionExprId);
+            for (const bEq of ei.bodyEquations) {
+              bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+              bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+            }
+            for (const bEq of ei.equations) {
+              bEq.lhs = rewriteStreamExpr(bEq.lhs);
+              bEq.rhs = rewriteStreamExpr(bEq.rhs);
+            }
+          }
+          if (meta.elseEquations) {
+            for (const bEq of meta.elseEquations) {
+              bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+              bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+            }
+          }
+        }
+      } else if (eqKind === EqKind.For) {
+        const meta = dae.getForEquationMeta(i);
+        if (meta) {
+          meta.rangeExprId = rewriteStreamExpr(meta.rangeExprId);
+          for (const bEq of meta.bodyEquations) {
+            bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+            bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+          }
+          for (const bEq of meta.equations) {
+            bEq.lhs = rewriteStreamExpr(bEq.lhs);
+            bEq.rhs = rewriteStreamExpr(bEq.rhs);
+          }
+        }
+      }
     }
     for (let i = 0; i < dae.varCount; i++) {
       if (dae.isVarRemoved(i)) continue;
@@ -587,6 +1082,33 @@ export class ModelicaPortBalancer {
         const newExpr = rewriteStreamExpr(expr);
         if (newExpr !== expr) {
           dae.setVarExpression(i, newExpr);
+        }
+      }
+    }
+    for (let s = 0; s < dae.stmtCount; s++) {
+      const sk = dae.getStmtKind(s);
+      if (sk === StmtKind.Assignment) {
+        const d1 = dae.getStmtData1(s);
+        const sLeft = dae.getStmtLeft(s);
+        const newD1 = rewriteStreamExpr(d1);
+        const newLeft = rewriteStreamExpr(sLeft);
+        if (newD1 !== d1) dae.setStmtData1(s, newD1);
+        if (newLeft !== sLeft) dae.setStmtLeft(s, newLeft);
+      } else if (sk === StmtKind.For || sk === StmtKind.ComplexAssignment) {
+        const sLeft = dae.getStmtLeft(s);
+        const newLeft = rewriteStreamExpr(sLeft);
+        if (newLeft !== sLeft) dae.setStmtLeft(s, newLeft);
+      } else if (
+        sk === StmtKind.While ||
+        sk === StmtKind.If ||
+        sk === StmtKind.When ||
+        sk === StmtKind.ProcedureCall ||
+        sk === StmtKind.Block
+      ) {
+        const d1 = dae.getStmtData1(s);
+        if (d1 >= 0 && d1 !== 0xffffffff) {
+          const newD1 = rewriteStreamExpr(d1);
+          if (newD1 !== d1) dae.setStmtData1(s, newD1);
         }
       }
     }
@@ -624,6 +1146,34 @@ export class ModelicaPortBalancer {
           if (dae.getVarName(v).startsWith(compPrefix)) {
             compVars.push(v);
           }
+        }
+        if (compVars.length === 0) {
+          const cIdx = dae.getVarIdxByName(compPort);
+          const bIdx = dae.getVarIdxByName(busTerminal);
+          if (cIdx >= 0 && bIdx >= 0 && !dae.isVarRemoved(cIdx) && !dae.isVarRemoved(bIdx)) {
+            const cExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(cIdx));
+            const bExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(bIdx));
+            if (!dae.isVarFlow(cIdx)) {
+              potentialEqs.push({
+                kind: EqKind.Simple,
+                lhs: cExpr,
+                rhs: bExpr,
+                str: dae.getVarName(cIdx),
+                eqIdx: 0,
+              });
+            } else {
+              handledFlowVars.add(cIdx);
+              handledFlowVars.add(bIdx);
+              const diffExpr = dae.addBinaryExpr(BinOp.Sub, cExpr, bExpr);
+              compBusFlowEqs.push({
+                kind: EqKind.Simple,
+                lhs: diffExpr,
+                rhs: zeroExpr,
+                str: dae.getVarName(cIdx),
+              });
+            }
+          }
+          continue;
         }
         // Sort: non-flow (potentials) first, then flow
         compVars.sort((a, b) => {
@@ -693,6 +1243,8 @@ export class ModelicaPortBalancer {
 
       for (const group of busGroups.values()) {
         const terminals = new Set<string>();
+        const potentialSubsByTerm = new Map<string, Set<string>>();
+        const flowSubsByTerm = new Map<string, Set<string>>();
         for (const b of group) {
           const pfx = b + ".";
           for (let v = 0; v < dae.varCount; v++) {
@@ -700,8 +1252,17 @@ export class ModelicaPortBalancer {
             const vn = dae.getVarName(v);
             if (vn.startsWith(pfx)) {
               const rest = vn.slice(pfx.length);
-              const term = rest.split(".")[0]!;
+              const dotIdx = rest.indexOf(".");
+              const term = dotIdx >= 0 ? rest.slice(0, dotIdx) : rest;
+              const sub = dotIdx >= 0 ? rest.slice(dotIdx + 1) : "";
               terminals.add(term);
+              const targetMap = dae.isVarFlow(v) ? flowSubsByTerm : potentialSubsByTerm;
+              let subSet = targetMap.get(term);
+              if (!subSet) {
+                subSet = new Set<string>();
+                targetMap.set(term, subSet);
+              }
+              subSet.add(sub);
             }
           }
         }
@@ -712,20 +1273,25 @@ export class ModelicaPortBalancer {
           const refBus = group[0]!;
           const otherBuses = group.slice(1).reverse();
           for (const term of sortedTerminals) {
-            const refVarIdx = dae.getVarIdxByName(`${refBus}.${term}.v`);
-            if (refVarIdx < 0) continue;
-            const refExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(refVarIdx));
-            for (const otherBus of otherBuses) {
-              const otherVarIdx = dae.getVarIdxByName(`${otherBus}.${term}.v`);
-              if (otherVarIdx >= 0) {
-                const otherExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherVarIdx));
-                potentialEqs.push({
-                  kind: EqKind.Simple,
-                  lhs: refExpr,
-                  rhs: otherExpr,
-                  str: `${refBus}.${term}.v`,
-                  eqIdx: 1,
-                });
+            const potSubs = Array.from(potentialSubsByTerm.get(term) ?? []).sort();
+            for (const sub of potSubs) {
+              const suffix = sub ? `.${sub}` : "";
+              const refVarName = `${refBus}.${term}${suffix}`;
+              const refVarIdx = dae.getVarIdxByName(refVarName);
+              if (refVarIdx < 0) continue;
+              const refExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(refVarIdx));
+              for (const otherBus of otherBuses) {
+                const otherVarIdx = dae.getVarIdxByName(`${otherBus}.${term}${suffix}`);
+                if (otherVarIdx >= 0) {
+                  const otherExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherVarIdx));
+                  potentialEqs.push({
+                    kind: EqKind.Simple,
+                    lhs: refExpr,
+                    rhs: otherExpr,
+                    str: refVarName,
+                    eqIdx: 1,
+                  });
+                }
               }
             }
           }
@@ -734,34 +1300,38 @@ export class ModelicaPortBalancer {
         // Bus flow sums: reverse order
         const revBuses = [...group].reverse();
         for (const term of sortedTerminals) {
-          const flowVarIndices: number[] = [];
-          for (const b of revBuses) {
-            const idx = dae.getVarIdxByName(`${b}.${term}.i`);
-            if (idx >= 0) flowVarIndices.push(idx);
-          }
-          if (flowVarIndices.length > 1) {
-            flowVarIndices.forEach((fi) => handledFlowVars.add(fi));
-            let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIndices[0]!));
-            for (let k = 1; k < flowVarIndices.length; k++) {
-              const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIndices[k]!));
-              sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vi);
+          const flowSubs = Array.from(flowSubsByTerm.get(term) ?? []).sort();
+          for (const sub of flowSubs) {
+            const suffix = sub ? `.${sub}` : "";
+            const flowVarIndices: number[] = [];
+            for (const b of revBuses) {
+              const idx = dae.getVarIdxByName(`${b}.${term}${suffix}`);
+              if (idx >= 0) flowVarIndices.push(idx);
             }
-            flowSumEqs.push({
-              kind: EqKind.Simple,
-              lhs: sumExpr,
-              rhs: zeroExpr,
-              str: dae.getVarName(flowVarIndices[0]!),
-            });
-          } else if (flowVarIndices.length === 1) {
-            const fi = flowVarIndices[0]!;
-            handledFlowVars.add(fi);
-            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(fi));
-            zeroFlows.push({
-              kind: EqKind.Simple,
-              lhs: vExpr,
-              rhs: zeroExpr,
-              varName: dae.getVarName(fi),
-            });
+            if (flowVarIndices.length > 1) {
+              flowVarIndices.forEach((fi) => handledFlowVars.add(fi));
+              let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIndices[0]!));
+              for (let k = 1; k < flowVarIndices.length; k++) {
+                const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(flowVarIndices[k]!));
+                sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vi);
+              }
+              flowSumEqs.push({
+                kind: EqKind.Simple,
+                lhs: sumExpr,
+                rhs: zeroExpr,
+                str: dae.getVarName(flowVarIndices[0]!),
+              });
+            } else if (flowVarIndices.length === 1) {
+              const fi = flowVarIndices[0]!;
+              handledFlowVars.add(fi);
+              const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(fi));
+              zeroFlows.push({
+                kind: EqKind.Simple,
+                lhs: vExpr,
+                rhs: zeroExpr,
+                varName: dae.getVarName(fi),
+              });
+            }
           }
         }
 
@@ -771,16 +1341,21 @@ export class ModelicaPortBalancer {
             for (const term of sortedTerminals) {
               const terminalKey = `${b}.${term}`;
               if (!connectedBusTerminals.has(terminalKey)) {
-                const idx = dae.getVarIdxByName(`${b}.${term}.i`);
-                if (idx >= 0) {
-                  handledFlowVars.add(idx);
-                  const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(idx));
-                  zeroFlows.push({
-                    kind: EqKind.Simple,
-                    lhs: vExpr,
-                    rhs: zeroExpr,
-                    varName: `${b}.${term}.i`,
-                  });
+                const flowSubs = Array.from(flowSubsByTerm.get(term) ?? []).sort();
+                for (const sub of flowSubs) {
+                  const suffix = sub ? `.${sub}` : "";
+                  const varName = `${b}.${term}${suffix}`;
+                  const idx = dae.getVarIdxByName(varName);
+                  if (idx >= 0) {
+                    handledFlowVars.add(idx);
+                    const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(idx));
+                    zeroFlows.push({
+                      kind: EqKind.Simple,
+                      lhs: vExpr,
+                      rhs: zeroExpr,
+                      varName,
+                    });
+                  }
                 }
               }
             }
@@ -869,6 +1444,31 @@ export class ModelicaPortBalancer {
               .filter((vIdx) => vIdx !== expBusVar)
               .sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
             orderedGroup = [expBusVar, ...otherVars];
+          } else if (brokenOverconstrainedConnections.length > 0 && resolvedPairs.length > 0) {
+            const firstPairInGroup = resolvedPairs.find(([s, t]) => group.includes(s) && group.includes(t));
+            if (firstPairInGroup) {
+              potRoot = firstPairInGroup[0];
+              const seen = new Set<number>([potRoot]);
+              const ordered: number[] = [potRoot];
+              for (const [s, t] of resolvedPairs) {
+                if (group.includes(s) && !seen.has(s)) {
+                  seen.add(s);
+                  ordered.push(s);
+                }
+                if (group.includes(t) && !seen.has(t)) {
+                  seen.add(t);
+                  ordered.push(t);
+                }
+              }
+              for (const vIdx of group) {
+                if (!seen.has(vIdx)) ordered.push(vIdx);
+              }
+              orderedGroup = ordered;
+            } else {
+              const sorted = [...group].sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
+              potRoot = sorted[0]!;
+              orderedGroup = sorted;
+            }
           } else {
             const sorted = [...group].sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
             potRoot = sorted[0]!;
@@ -877,7 +1477,8 @@ export class ModelicaPortBalancer {
         }
         const rootExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(potRoot));
 
-        for (const vIdx of orderedGroup) {
+        for (let gIdx = 0; gIdx < orderedGroup.length; gIdx++) {
+          const vIdx = orderedGroup[gIdx]!;
           if (vIdx !== potRoot) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
             if (
@@ -899,7 +1500,7 @@ export class ModelicaPortBalancer {
               let finalRhsIdx = vIdx;
 
               const isVIdxSource = resolvedPairs.some(([s, t]) => s === vIdx && t === potRoot);
-              if (!options?.isOldFrontend && isVIdxSource) {
+              if (!options?.isOldFrontend && isVIdxSource && brokenOverconstrainedConnections.length === 0) {
                 finalLhs = vExpr;
                 finalRhs = rootExpr;
                 finalLhsIdx = vIdx;
@@ -924,11 +1525,13 @@ export class ModelicaPortBalancer {
               }
 
               const connOrder =
-                varConnectEqIdx.get(finalLhsIdx) ??
-                varConnectEqIdx.get(finalRhsIdx) ??
-                varConnectEqIdx.get(potRoot) ??
-                varConnectEqIdx.get(vIdx) ??
-                99999;
+                brokenOverconstrainedConnections.length > 0
+                  ? (varConnectEqIdx.get(potRoot) ?? 0) + gIdx * 0.001
+                  : (varConnectEqIdx.get(finalLhsIdx) ??
+                    varConnectEqIdx.get(finalRhsIdx) ??
+                    varConnectEqIdx.get(potRoot) ??
+                    varConnectEqIdx.get(vIdx) ??
+                    99999);
 
               potentialEqs.push({
                 kind: EqKind.Simple,
@@ -960,6 +1563,8 @@ export class ModelicaPortBalancer {
         const isWorldGroup =
           options?.omcCompatibility &&
           ((group.length > 2 && group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))) ||
+            (brokenOverconstrainedConnections.length > 0 &&
+              group.every((vIdx) => countDots(dae.getVarName(vIdx)) === 1)) ||
             group.some((vIdx) => {
               const name = dae.getVarName(vIdx);
               return name.startsWith("bus.") && name.includes(".f");
@@ -970,9 +1575,28 @@ export class ModelicaPortBalancer {
               !group.every((vIdx) => dae.getVarFlowPrefix(vIdx) === "flow")));
         if (options?.omcCompatibility && (hasOutside || isWorldGroup)) {
           if (isWorldGroup) {
-            let posSum = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVarIdx));
-            for (let i = 1; i < group.length; i++) {
-              const vIdx = group[i];
+            let worldOrdered = group;
+            if (brokenOverconstrainedConnections.length > 0 && resolvedPairs.length > 0) {
+              const seen = new Set<number>();
+              const ord: number[] = [];
+              for (const [s, t] of resolvedPairs) {
+                if (group.includes(s) && !seen.has(s)) {
+                  seen.add(s);
+                  ord.push(s);
+                }
+                if (group.includes(t) && !seen.has(t)) {
+                  seen.add(t);
+                  ord.push(t);
+                }
+              }
+              for (const vIdx of group) {
+                if (!seen.has(vIdx)) ord.push(vIdx);
+              }
+              if (ord.length > 0) worldOrdered = ord;
+            }
+            let posSum = dae.addExpression(ExprKind.Name, dae.getVarNameId(worldOrdered[0]!));
+            for (let i = 1; i < worldOrdered.length; i++) {
+              const vIdx = worldOrdered[i];
               if (vIdx !== undefined) {
                 const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
                 posSum = dae.addBinaryExpr(BinOp.Add, posSum, vi);
@@ -1000,8 +1624,10 @@ export class ModelicaPortBalancer {
                 return a - b;
               });
             }
-            const activeOutsideVars = outsideVars.filter((vIdx) => !outerConnectedVars.has(vIdx));
-            const intermediateOutsideVars = outsideVars.filter((vIdx) => outerConnectedVars.has(vIdx));
+            const isIntermediateOutside = (vIdx: number) =>
+              outsideVarSet.has(vIdx) && outerConnectedVars.has(vIdx) && insideVars.length > 0;
+            const activeOutsideVars = outsideVars.filter((vIdx) => !isIntermediateOutside(vIdx));
+            const intermediateOutsideVars = outsideVars.filter((vIdx) => isIntermediateOutside(vIdx));
 
             const orderedVars =
               intermediateOutsideVars.length > 0 && insideVars.length > 0
@@ -1588,6 +2214,53 @@ export class ModelicaPortBalancer {
       flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
       compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+    }
+
+    if (brokenOverconstrainedConnections.length > 0) {
+      const db = state.db;
+      const flattener = state.flattener;
+      let eqConstraintName = "equalityConstraint";
+      let residueLen = 0;
+
+      if (db && typeof db.byName === "function") {
+        const eqSyms = db.byName("equalityConstraint") ?? [];
+        const eqSym = eqSyms.find((s: any) => s.kind === "Class" || s.kind === "Function");
+        if (eqSym) {
+          const parentSym = eqSym.parentId ? db.symbol(eqSym.parentId) : null;
+          if (parentSym?.name) {
+            eqConstraintName = `${parentSym.name}.equalityConstraint`;
+          }
+          let fnDae = dae.getFunction(eqConstraintName) ?? dae.getFunction("equalityConstraint");
+          if (!fnDae && flattener && typeof flattener.flattenFunction === "function") {
+            fnDae = flattener.flattenFunction(eqSym.id, eqConstraintName, undefined, dae);
+            if (fnDae) {
+              (fnDae as any).wasCalled = true;
+              dae.addFunction(eqConstraintName, fnDae);
+            }
+          }
+          if (fnDae) {
+            (fnDae as any).wasCalled = true;
+            for (let v = 0; v < fnDae.varCount; v++) {
+              if (fnDae.getVarCausality(v) === 2) {
+                const shape = fnDae.getVarShape(v);
+                residueLen = shape && shape.length > 0 ? shape[0]! : 1;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (residueLen > 0) {
+        for (const br of brokenOverconstrainedConnections) {
+          const uExpr = dae.addName(dae.interner.intern(br.u));
+          const vExpr = dae.addName(dae.interner.intern(br.v));
+          const callExpr = dae.addCallExpr(eqConstraintName, [uExpr, vExpr]);
+          const zeros = Array.from({ length: residueLen }, () => dae.addRealLiteral(0.0));
+          const rhsExpr = dae.addArrayCtorExpr(zeros);
+          dae.addEquation(EqKind.Simple, callExpr, rhsExpr, 9999);
+        }
+      }
     }
   }
 }

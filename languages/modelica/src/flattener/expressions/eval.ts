@@ -13,7 +13,8 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
-import { getFlatteningState } from "../support/state.js";
+import { getExprArrayShape, getFlatteningState, getNamedArrayShape } from "../support/state.js";
+import { exprReferencesRuntimeParameter } from "./binary-ops.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "./functions.js";
 
 export function isArrayLiteral(text: string): boolean {
@@ -115,17 +116,16 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
     fieldRest = name.slice(firstDot + 1);
   }
 
+  const activeDb: QueryDB | undefined = state.db;
   if (baseName && fieldRest) {
     let rIdx = dae.getVarIdxByName(baseName);
     if (rIdx < 0) rIdx = dae.getVarIdxByName(`${baseName}[1]`);
     if (rIdx >= 0) {
       const cType = dae.getVarCustomType(rIdx);
       if (cType) {
-        const activeDb: QueryDB | undefined = (dae as any).db ?? (dae as any).parentDae?.db;
         if (activeDb) {
           const segs = fieldRest.split(".");
-          const currentClassId: SymbolId | undefined =
-            (dae as any).flattener?.currentClassId ?? (dae as any).currentClassId;
+          const currentClassId: SymbolId | undefined = state.flattener?.currentClassId ?? state.currentClassId;
           let currentScopeId: SymbolId | undefined = currentClassId;
           let syms = currentScopeId
             ? (
@@ -184,9 +184,8 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
       }
     }
   }
-  const activeDb: QueryDB | undefined = (dae as any).db ?? (dae as any).parentDae?.db;
   if (activeDb) {
-    const currentClassId: SymbolId | undefined = (dae as any).flattener?.currentClassId ?? (dae as any).currentClassId;
+    const currentClassId: SymbolId | undefined = state.flattener?.currentClassId ?? state.currentClassId;
     const lastPart = name.includes(".") ? name.split(".").pop()! : name;
     const cleanLastPart = lastPart.includes("[") ? lastPart.split("[")[0]! : lastPart;
     let syms: SymbolEntry[] = [];
@@ -236,12 +235,9 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
   if (kind === ExprKind.Pre) return isRealExpr(dae.getExprData1(exprId), dae);
   if (kind === ExprKind.Name) {
     const symId = dae.getExprData1(exprId);
-    let cache = (dae as any)._isRealNameCache as Map<number, boolean> | undefined;
-    if (!cache) {
-      cache = new Map<number, boolean>();
-      (dae as any)._isRealNameCache = cache;
-    }
-    const hasLoopVars = Boolean((dae as any).activeLoopVars && (dae as any).activeLoopVars.size > 0);
+    const state = getFlatteningState(dae);
+    const cache = state.isRealNameCache;
+    const hasLoopVars = Boolean(state.activeLoopVars && state.activeLoopVars.size > 0);
     if (!hasLoopVars) {
       const cached = cache.get(symId);
       if (cached === true) return true;
@@ -286,6 +282,7 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
       fnName === "Real" ||
       fnName.startsWith("/*Real") ||
       fnName === "homotopy" ||
+      fnName === "semiLinear" ||
       fnName === "smooth" ||
       fnName === "sin" ||
       fnName === "cos" ||
@@ -604,25 +601,26 @@ function normalizeDims(rawDims: any[] | null | undefined): number[] | null {
 
 export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener?: any): number[] | null {
   if (exprId < 0) return null;
-  db = db ?? (dae as any).db ?? (dae as any).flattener?.db ?? (dae as any).parentDae?.db;
-  flattener = flattener ?? (dae as any).flattener;
-  const storedShape = (dae as any).exprArrayShapes?.get(exprId);
+  const state = getFlatteningState(dae);
+  db = db ?? state.db;
+  flattener = flattener ?? state.flattener;
+  const storedShape = getExprArrayShape(dae, exprId);
   if (storedShape && storedShape.length > 0) return storedShape;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.Name) {
     const vName = dae.interner.resolve(dae.getExprData1(exprId));
     if (vName) {
-      const flat = flattener ?? (dae as any).flattener;
+      const flat = flattener ?? state.flattener;
       if (dae.classKind === "function" && flat?.currentBindingCompName === vName) {
         return null;
       }
-      const namedShape = (dae as any).getNamedArrayShape?.(vName) ?? (dae as any).namedArrayShapes?.get(vName);
+      const namedShape = getNamedArrayShape(dae, vName);
       if (namedShape && namedShape.length > 0) return namedShape;
       const varIdx = dae.getVarIdxByName(vName);
       if (varIdx >= 0) {
         const shape = dae.getVarShape(varIdx);
         if (shape && shape.length > 0) return shape;
-        const shapeExprs = (dae as any).getVarShapeExprs ? (dae as any).getVarShapeExprs(varIdx) : null;
+        const shapeExprs = dae.getVarShapeExprs ? dae.getVarShapeExprs(varIdx) : null;
         if (shapeExprs && shapeExprs.length > 0) return shapeExprs;
         if (!dae.hasArrayElements(vName)) return null;
       }
@@ -653,9 +651,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       if (db) {
         const simpleName = vName.includes(".") ? vName.split(".").pop()! : vName;
         const currentScopeId =
-          (dae as any).currentClassId ??
-          (dae as any).flattener?.currentClassId ??
-          (dae as any).flattener?.currentRootClassId;
+          state.currentClassId ?? state.flattener?.currentClassId ?? state.flattener?.currentRootClassId;
         let sym: any = null;
         if (currentScopeId) {
           const resolver = ((db as any).query("resolveName", currentScopeId) ??
@@ -782,6 +778,31 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       const dims = inner.split(",").map((s) => Number(s.trim()));
       if (dims.every((d) => !isNaN(d) && d >= 0)) return dims;
     }
+    if (fnName === "outerProduct" && dae.getExprRight(exprId) >= 2) {
+      const d1 = getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
+      const d2 = getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
+      if (d1 && d1.length === 1 && d2 && d2.length === 1) {
+        return [d1[0]!, d2[0]!];
+      }
+      return null;
+    }
+    if (
+      (fnName === "Connections.uniqueRootIndices" || fnName === "uniqueRootIndices") &&
+      dae.getExprRight(exprId) >= 2
+    ) {
+      return getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
+    }
+    if (fnName === "smooth" && dae.getExprRight(exprId) >= 2) {
+      return getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
+    }
+    if (fnName === "homotopy") {
+      const d0 = getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
+      if (d0) return d0;
+      if (dae.getExprRight(exprId) >= 2) {
+        return getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
+      }
+      return null;
+    }
     if (
       fnName === "superSample" ||
       fnName === "subSample" ||
@@ -790,6 +811,8 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       fnName === "previous" ||
       fnName === "sample" ||
       fnName === "hold" ||
+      fnName === "semiLinear" ||
+      fnName === "noEvent" ||
       SCALAR_VECTORIZABLE_FUNCTIONS.has(fnName)
     ) {
       const aId = dae.getExprLeft(exprId);
@@ -799,9 +822,10 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       dae.getFunction?.(fnName) ??
       (flattener?.currentPrefix ? dae.getFunction?.(`${flattener.currentPrefix}.${fnName}`) : undefined);
     if (fnObj) {
+      const fnState = getFlatteningState(fnObj);
       for (let vi = 0; vi < fnObj.varCount; vi++) {
         if (fnObj.getVarCausality(vi) === Causality.Output) {
-          const outShape = (fnObj as any).deducedOutputShapes?.get(fnObj.getVarName(vi)) ?? fnObj.getVarShape(vi);
+          const outShape = fnState.deducedOutputShapes?.get(fnObj.getVarName(vi)) ?? fnObj.getVarShape(vi);
           if (outShape && outShape.length > 0) return outShape;
         }
       }
@@ -944,9 +968,59 @@ export function evalDaeExpr(
             visitedVars.delete(varIdx);
           }
         }
+        // Check expanded array variable in DAE
+        const state = getFlatteningState(dae);
+        const arrShape = getNamedArrayShape(dae, name);
+        if (arrShape && arrShape.some((d) => d === 0)) {
+          return [];
+        }
+        if (dae.hasArrayElements(name)) {
+          const elemIndices = dae.getArrayElementIndices(name);
+          if (elemIndices.length > 0) {
+            const elemVals: any[] = [];
+            for (const idx of elemIndices) {
+              if (!visitedVars) visitedVars = new Set<number>();
+              if (visitedVars.has(idx)) return null;
+              visitedVars.add(idx);
+              try {
+                const v = dae.getVarVariability(idx);
+                if (v !== Variability.Constant && v !== Variability.Parameter) return null;
+                const bId = dae.getVarExpression(idx);
+                let val: any = null;
+                if (bId !== undefined && bId >= 0) {
+                  val = evalDaeExpr(bId, dae, visitedExprs, visitedVars);
+                } else {
+                  const startAttr = dae.getVarAttr(idx, "start");
+                  if (startAttr !== undefined && startAttr >= 0) {
+                    const startVal = dae.getVarStartValue(idx);
+                    val = dae.getVarType(idx) === VarType.Boolean ? startVal !== 0 : startVal;
+                  }
+                }
+                if (val === null) return null;
+                elemVals.push(val);
+              } finally {
+                visitedVars.delete(idx);
+              }
+            }
+            if (arrShape && arrShape.length > 1) {
+              let reshaped: any[] = elemVals;
+              for (let d = arrShape.length - 1; d >= 1; d--) {
+                const dimLen = arrShape[d]!;
+                if (dimLen <= 0) break;
+                const next: any[] = [];
+                for (let i = 0; i < reshaped.length; i += dimLen) {
+                  next.push(reshaped.slice(i, i + dimLen));
+                }
+                reshaped = next;
+              }
+              return reshaped;
+            }
+            return elemVals;
+          }
+        }
         if (dae.classKind === "function") {
-          const flat = (dae as any).flattener;
-          const db = (dae as any).db ?? flat?.db;
+          const flat = state.flattener;
+          const db = state.db ?? flat?.db;
           const scopeId =
             (dae as any).enclosingScopeId ??
             ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??
@@ -1118,10 +1192,24 @@ export function evalDaeExpr(
 
         if ((cleanFn === "max" || cleanFn === "min") && argCount === 1) {
           const arrVal = evalDaeExpr(firstArg, dae, visitedExprs, visitedVars);
-          if (Array.isArray(arrVal) && arrVal.length > 0) {
+          if (Array.isArray(arrVal)) {
             const flat = arrVal.flat(Infinity);
-            if (flat.every((x) => typeof x === "number")) {
-              return cleanFn === "max" ? Math.max(...flat) : Math.min(...flat);
+            if (flat.length > 0) {
+              if (flat.every((x) => typeof x === "number")) {
+                return cleanFn === "max" ? Math.max(...flat) : Math.min(...flat);
+              }
+              if (flat.every((x) => typeof x === "boolean")) {
+                return cleanFn === "max" ? flat.some(Boolean) : flat.every(Boolean);
+              }
+            } else {
+              // Empty Boolean array reduction: min(empty) = true, max(empty) = false
+              if (dae.getExprKind(firstArg) === ExprKind.Name) {
+                const arrName = dae.interner.resolve(dae.getExprData1(firstArg));
+                const arrTypes: Map<string, number> | undefined = (dae as any).namedArrayTypes;
+                if (arrName && arrTypes?.get(arrName) === VarType.Boolean) {
+                  return cleanFn === "min";
+                }
+              }
             }
           }
           return null;
@@ -1129,10 +1217,45 @@ export function evalDaeExpr(
 
         if ((cleanFn === "sum" || cleanFn === "product") && argCount === 1) {
           const arrVal = evalDaeExpr(firstArg, dae, visitedExprs, visitedVars);
-          if (Array.isArray(arrVal) && arrVal.length > 0) {
+          if (Array.isArray(arrVal)) {
             const flat = arrVal.flat(Infinity);
+            if (flat.length === 0) {
+              return cleanFn === "sum" ? 0 : 1;
+            }
             if (flat.every((x) => typeof x === "number")) {
               return cleanFn === "sum" ? flat.reduce((a, b) => a + b, 0) : flat.reduce((a, b) => a * b, 1);
+            }
+          }
+          return null;
+        }
+
+        if (cleanFn === "noEvent" && argCount === 1) {
+          if (exprReferencesRuntimeParameter(firstArg, dae)) return null;
+          return evalDaeExpr(firstArg, dae, visitedExprs, visitedVars);
+        }
+
+        if ((fnName === "Connections.isRoot" || cleanFn === "isRoot") && argCount === 1) {
+          if (dae.getExprKind(firstArg) === ExprKind.Name) {
+            const connName = dae.interner.resolve(dae.getExprData1(firstArg));
+            const graph = (dae as any).extensionMetadata?.overconstrainedGraph;
+            if (connName && graph) {
+              if (graph.selectedRoots instanceof Set) {
+                return graph.selectedRoots.has(connName);
+              }
+              if (graph.roots instanceof Set && graph.roots.has(connName)) {
+                return true;
+              }
+            }
+          }
+          return null;
+        }
+
+        if ((fnName === "Connections.rooted" || fnName === "rooted" || cleanFn === "rooted") && argCount === 1) {
+          if (dae.getExprKind(firstArg) === ExprKind.Name) {
+            const connName = dae.interner.resolve(dae.getExprData1(firstArg));
+            const graph = (dae as any).extensionMetadata?.overconstrainedGraph;
+            if (connName && graph?.rootedMap instanceof Map && graph.rootedMap.has(connName)) {
+              return graph.rootedMap.get(connName)!;
             }
           }
           return null;
@@ -1162,11 +1285,38 @@ export function evalDaeExpr(
         if (cleanFn === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
           return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
         }
-        if (cleanFn === "max" && args.length >= 2 && args.every((a) => typeof a === "number")) {
-          return Math.max(...args);
+        if (cleanFn === "max" && args.length >= 2) {
+          if (args.every((a) => typeof a === "number")) return Math.max(...args);
+          if (args.every((a) => typeof a === "boolean")) return args.some(Boolean);
         }
-        if (cleanFn === "min" && args.length >= 2 && args.every((a) => typeof a === "number")) {
-          return Math.min(...args);
+        if (cleanFn === "min" && args.length >= 2) {
+          if (args.every((a) => typeof a === "number")) return Math.min(...args);
+          if (args.every((a) => typeof a === "boolean")) return args.every(Boolean);
+        }
+        if (cleanFn === "homotopy" && args.length >= 1) {
+          return args[0];
+        }
+        if (cleanFn === "smooth" && args.length >= 2) {
+          return args[1];
+        }
+        if (cleanFn === "semiLinear" && args.length === 3) {
+          const evalSemi = (x: any, kPos: any, kNeg: any): any => {
+            if (typeof x === "number" && typeof kPos === "number" && typeof kNeg === "number") {
+              return x >= 0 ? kPos * x : kNeg * x;
+            }
+            if (Array.isArray(x)) {
+              return x.map((xi, idx) =>
+                evalSemi(xi, Array.isArray(kPos) ? kPos[idx] : kPos, Array.isArray(kNeg) ? kNeg[idx] : kNeg),
+              );
+            }
+            return null;
+          };
+          return evalSemi(args[0], args[1], args[2]);
+        }
+        if (cleanFn === "outerProduct" && args.length === 2 && Array.isArray(args[0]) && Array.isArray(args[1])) {
+          if (args[0].every((x: any) => typeof x === "number") && args[1].every((y: any) => typeof y === "number")) {
+            return args[0].map((x: number) => args[1].map((y: number) => x * y));
+          }
         }
         const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
         if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
@@ -1187,16 +1337,23 @@ export function evalDaeExpr(
         const baseVal = evalDaeExpr(dae.getExprData1(exprId), dae, visitedExprs, visitedVars);
         if (!Array.isArray(baseVal)) return null;
         const subCount = dae.getExprRight(exprId);
-        if (subCount === 1) {
-          const subVal = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
+        let curr: any = baseVal;
+        for (let i = 0; i < subCount; i++) {
+          if (!Array.isArray(curr)) return null;
+          const subExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+          const subVal = evalDaeExpr(subExprId, dae, visitedExprs, visitedVars);
           if (typeof subVal === "number" && Number.isInteger(subVal)) {
             const idx = subVal - 1;
-            if (idx >= 0 && idx < baseVal.length) {
-              return baseVal[idx];
+            if (idx >= 0 && idx < curr.length) {
+              curr = curr[idx];
+            } else {
+              return null;
             }
+          } else {
+            return null;
           }
         }
-        return null;
+        return curr;
       }
       default:
         return null;
@@ -1318,8 +1475,9 @@ export function exprContainsNonConstantRef(exprId: number, dae: DAEBuilder, visi
       return false;
     }
     if (dae.classKind === "function") {
-      const flat = (dae as any).flattener;
-      const db = (dae as any).db ?? flat?.db;
+      const state = getFlatteningState(dae);
+      const flat = state.flattener;
+      const db = state.db ?? flat?.db;
       const scopeId =
         (dae as any).enclosingScopeId ??
         ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??

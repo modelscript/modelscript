@@ -143,7 +143,7 @@ export function generateParserTables(
 ): GeneratedFile[] {
   (originalGrammar as any).fieldToInt = grammar.fieldToInt;
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\nimport { decodeHexIntArray } from "./encoding";\nexport { decodeHexIntArray };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport let expected_tokens: usize = 0;\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\nimport { decodeHexIntArray, decodeHexU16Array, decodeHexByteArray } from "./encoding";\nexport { decodeHexIntArray, decodeHexU16Array, decodeHexByteArray };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport let expected_tokens: usize = 0;\n\n`;
 
   // Types & SyntaxType enum
   const typesContent = generateTypes(originalGrammar, grammar);
@@ -220,6 +220,26 @@ export function generateParserTables(
     return `export const ${name}: usize = decodeHexIntArray("${hex}", ${arr.length});\n`;
   };
 
+  const generateStaticU16Array = (arr: ArrayLike<number>, name: string) => {
+    if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
+    let hex = "";
+    for (let i = 0; i < arr.length; i++) {
+      const val = arr[i] === undefined ? 0 : arr[i] & 0xffff;
+      hex += val.toString(16).padStart(4, "0");
+    }
+    return `export const ${name}: usize = decodeHexU16Array("${hex}", ${arr.length});\n`;
+  };
+
+  const generateStaticByteArray = (arr: ArrayLike<number>, name: string) => {
+    if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
+    let hex = "";
+    for (let i = 0; i < arr.length; i++) {
+      const val = arr[i] === undefined ? 0 : arr[i] & 0xff;
+      hex += val.toString(16).padStart(2, "0");
+    }
+    return `export const ${name}: usize = decodeHexByteArray("${hex}", ${arr.length});\n`;
+  };
+
   code += generateStaticArray(actionOffsets, "action_offsets");
   code += generateStaticArray(actionData, "action_data");
   code += generateStaticArray(actionEntryOffsets, "action_entry_offsets");
@@ -232,8 +252,11 @@ export function generateParserTables(
     gotoOffsets.push(gotoData.length);
     const gotos = table.gotoTable.get(stateId)!;
     gotoData.push(gotos.size);
-    for (const [sym, target] of gotos.entries()) {
-      gotoData.push(symToInt.get(sym)!);
+    const sortedGotos = Array.from(gotos.entries())
+      .map(([sym, target]) => [symToInt.get(sym)!, target] as const)
+      .sort((a, b) => a[0] - b[0]);
+    for (const [symId, target] of sortedGotos) {
+      gotoData.push(symId);
       gotoData.push(target);
     }
   }
@@ -241,88 +264,16 @@ export function generateParserTables(
   code += generateStaticArray(gotoOffsets, "goto_offsets");
   code += generateStaticArray(gotoData, "goto_data");
 
-  const mrd = table.automaton.computeMRD();
-  code += generateStaticArray(mrd, "mrd_data");
-
-  const terminalFreq = new Map<string, number>();
-  for (const p of grammar.productions) {
-    for (const sym of p.right) {
-      terminalFreq.set(sym, (terminalFreq.get(sym) || 0) + 1);
-    }
-  }
+  const mrd = table.automaton.computeMRD().map((v) => Math.min(255, v));
+  code += generateStaticByteArray(mrd, "mrd_data");
 
   const termList = Array.from(grammar.terminals);
   const tokenInsertCosts: number[] = new Array(termList.length + 5).fill(1);
-
-  // 1. Analyze grammar productions for structural roles (Tree-sitter style)
-  const structuralOpeners = new Set<string>();
-  const structuralClosers = new Set<string>();
-  const structuralSeparators = new Set<string>();
-
-  for (const p of grammar.productions) {
-    const rhs = p.right;
-    if (rhs.length === 0) continue;
-
-    const firstSym = rhs[0];
-    const lastSym = rhs[rhs.length - 1];
-
-    if (grammar.terminals.has(firstSym)) {
-      structuralOpeners.add(firstSym);
-    }
-    if (grammar.terminals.has(lastSym)) {
-      structuralClosers.add(lastSym);
-    }
-
-    // Infix separators: terminals flanked by non-terminals in sequences/repetitions
-    for (let i = 1; i < rhs.length - 1; i++) {
-      const sym = rhs[i];
-      if (grammar.terminals.has(sym) && grammar.nonTerminals.has(rhs[i - 1]) && grammar.nonTerminals.has(rhs[i + 1])) {
-        if (p.prec === undefined && !p.assoc) {
-          structuralSeparators.add(sym);
-        }
-      }
-    }
-  }
-
-  const grammarOperators = new Set<string>();
-  for (const p of grammar.productions) {
-    const rhs = p.right;
-    if (p.prec !== undefined || p.assoc !== undefined) {
-      for (const sym of rhs) {
-        if (grammar.terminals.has(sym)) {
-          grammarOperators.add(sym);
-        }
-      }
-    } else if (rhs.length === 3) {
-      const [left, op, right] = rhs;
-      if (grammar.nonTerminals.has(left) && grammar.terminals.has(op) && grammar.nonTerminals.has(right)) {
-        grammarOperators.add(op);
-      }
-    }
-  }
-
-  const customDelims = originalGrammar.recovery?.delimiters || [];
-  const customOps = originalGrammar.recovery?.operators || [];
-  for (const op of customOps) {
-    grammarOperators.add(op);
-  }
 
   for (let i = 0; i < termList.length; i++) {
     const sym = termList[i];
     const symId = symToInt.get(sym) ?? i;
     const cleanSym = sym.replace(/^"|"$/g, "");
-
-    const _isCustomDelim = customDelims.includes(sym) || customDelims.includes(cleanSym);
-    const _isOperator = grammarOperators.has(sym) || grammarOperators.has(cleanSym);
-    const _isWord = /^[a-zA-Z_]/.test(cleanSym);
-
-    const _isStructuralDelimiter =
-      _isCustomDelim ||
-      ((structuralClosers.has(sym) || structuralOpeners.has(sym)) &&
-        !_isWord &&
-        cleanSym !== ";" &&
-        cleanSym !== "," &&
-        cleanSym !== ":");
 
     if (cleanSym === ";" || cleanSym === "," || cleanSym === ":") {
       tokenInsertCosts[symId] = 1; // Low cost strictly for structural punctuation and list separators ; , :
@@ -330,7 +281,7 @@ export function generateParserTables(
       tokenInsertCosts[symId] = 50; // Restricted insertion cost (50) for operators (=, +, -, etc.), keywords, types, block delimiters, and data terminals
     }
   }
-  code += generateStaticArray(tokenInsertCosts, "token_insert_costs");
+  code += generateStaticByteArray(tokenInsertCosts, "token_insert_costs");
 
   const tokenIsWord = new Array(maxSymbolId + 1).fill(0);
   for (const [sym, symId] of symToInt.entries()) {
@@ -345,16 +296,7 @@ export function generateParserTables(
       }
     }
   }
-  code += generateStaticArray(tokenIsWord, "token_is_word");
-
-  const tokenIsOperator = new Array(maxSymbolId + 1).fill(0);
-  for (const [sym, symId] of symToInt.entries()) {
-    const cleanSym = sym.replace(/^"|"$/g, "");
-    if (grammarOperators.has(sym) || grammarOperators.has(cleanSym)) {
-      tokenIsOperator[symId] = 1;
-    }
-  }
-  code += generateStaticArray(tokenIsOperator, "token_is_operator");
+  code += generateStaticByteArray(tokenIsWord, "token_is_word");
 
   let maxTerminalId = 0;
   for (const term of grammar.terminals) {
@@ -365,9 +307,42 @@ export function generateParserTables(
       }
     }
   }
-  const sortedSymbols = Array.from({ length: maxSymbolId }, (_, i) => i + 1).filter((id) => id <= maxTerminalId);
-  sortedSymbols.sort((a, b) => tokenInsertCosts[a] - tokenInsertCosts[b]);
-  code += generateStaticArray(sortedSymbols, "sorted_insertion_symbols");
+
+  // Precompute Minimal Yield Terminal Sequences (needed to weight GOTO transitions in reachability_matrix)
+  const minYieldMap = new Map<string, number[]>();
+  for (const term of grammar.terminals) {
+    const id = symToInt.get(term);
+    if (id !== undefined) {
+      minYieldMap.set(term, [id]);
+    }
+  }
+
+  let yieldChanged = true;
+  while (yieldChanged) {
+    yieldChanged = false;
+    for (const p of grammar.productions) {
+      const lhs = p.left;
+      let valid = true;
+      const sequence: number[] = [];
+
+      for (const sym of p.right) {
+        const symYield = minYieldMap.get(sym);
+        if (!symYield) {
+          valid = false;
+          break;
+        }
+        sequence.push(...symYield);
+      }
+
+      if (valid) {
+        const existing = minYieldMap.get(lhs);
+        if (!existing || sequence.length < existing.length) {
+          minYieldMap.set(lhs, sequence);
+          yieldChanged = true;
+        }
+      }
+    }
+  }
 
   const MAX_REACHABILITY_DEPTH = Math.min(64, table.actionTable.size);
   const reachabilityMatrix = new Uint8Array(table.actionTable.size * (maxTerminalId + 1));
@@ -396,20 +371,70 @@ export function generateParserTables(
     "terminals",
   );
 
-  // Precompute GOTO targets for each non-terminal
-  const gotoTargets = new Map<number, number[]>();
-  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
-    const gotos = table.gotoTable.get(stateId);
-    if (gotos) {
-      for (const [sym, nextState] of gotos.entries()) {
-        const symId = symToInt.get(sym);
-        if (symId !== undefined) {
-          if (!gotoTargets.has(symId)) gotoTargets.set(symId, []);
-          gotoTargets.get(symId)!.push(nextState);
+  // Build reverse transition index (targetState:sym -> predecessor states) to find exact post-reduction GOTO targets
+  const reverseTransitions = new Map<string, number[]>();
+  for (let s = 0; s < table.actionTable.size; s++) {
+    const actions = table.actionTable.get(s);
+    if (actions) {
+      for (const [sym, acts] of actions.entries()) {
+        for (const act of acts) {
+          if (act.type === 0 && act.target !== undefined) {
+            const key = `${act.target}:${sym}`;
+            let list = reverseTransitions.get(key);
+            if (!list) {
+              list = [];
+              reverseTransitions.set(key, list);
+            }
+            if (!list.includes(s)) list.push(s);
+          }
         }
       }
     }
+    const gotos = table.gotoTable.get(s);
+    if (gotos) {
+      for (const [sym, target] of gotos.entries()) {
+        const key = `${target}:${sym}`;
+        let list = reverseTransitions.get(key);
+        if (!list) {
+          list = [];
+          reverseTransitions.set(key, list);
+        }
+        if (!list.includes(s)) list.push(s);
+      }
+    }
   }
+
+  const reduceGotoTargets = new Map<string, number[]>();
+  const getReduceTargets = (stateId: number, prodIdx: number): number[] => {
+    const cacheKey = `${stateId}:${prodIdx}`;
+    const cached = reduceGotoTargets.get(cacheKey);
+    if (cached) return cached;
+    const prod = table.grammar.productions[prodIdx];
+    let currStates = [stateId];
+    for (let i = prod.right.length - 1; i >= 0; i--) {
+      const rhsSym = prod.right[i];
+      const prevStates: number[] = [];
+      for (const st of currStates) {
+        const preds = reverseTransitions.get(`${st}:${rhsSym}`);
+        if (preds) {
+          for (const p of preds) {
+            if (!prevStates.includes(p)) prevStates.push(p);
+          }
+        }
+      }
+      currStates = prevStates;
+      if (currStates.length === 0) break;
+    }
+    const targets: number[] = [];
+    for (const sourceState of currStates) {
+      const nextState = table.gotoTable.get(sourceState)?.get(prod.left);
+      if (nextState !== undefined && !targets.includes(nextState)) {
+        targets.push(nextState);
+      }
+    }
+    reduceGotoTargets.set(cacheKey, targets);
+    return targets;
+  };
 
   let matrixChanged = true;
   for (let iter = 0; iter < MAX_REACHABILITY_DEPTH; iter++) {
@@ -420,29 +445,32 @@ export function generateParserTables(
       const actions = table.actionTable.get(stateId);
       const gotos = table.gotoTable.get(stateId);
       if (actions) {
-        for (const [, acts] of actions.entries()) {
+        for (const [sym, acts] of actions.entries()) {
+          const symId = sym === "$default" ? 0 : (symToInt.get(sym) ?? -1);
           for (const act of acts) {
             if (act.type === 0 && act.target !== undefined) {
               const nextState = act.target;
               for (let t = 1; t <= maxTerminalId; t++) {
-                const altCost = 1 + reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                if (baseCost >= 254) continue;
+                const altCost = 1 + baseCost;
                 if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
                   newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
                   matrixChanged = true;
                 }
               }
             } else if (act.type === 1 && act.target !== undefined) {
-              // REDUCE action: cost is 0 GSS transitions (reductions are "free" lookahead steps)
-              const prod = table.grammar.productions[act.target];
-              const ruleSymId = symToInt.get(prod.left);
-              if (ruleSymId !== undefined && gotoTargets.has(ruleSymId)) {
-                for (const nextState of gotoTargets.get(ruleSymId)!) {
-                  for (let t = 1; t <= maxTerminalId; t++) {
-                    const altCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
-                    if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
-                      newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
-                      matrixChanged = true;
-                    }
+              // REDUCE action: 0-cost lookahead step only for the reduction's valid lookahead terminal(s),
+              // and only to valid post-reduction GOTO target states.
+              const targets = getReduceTargets(stateId, act.target);
+              for (const nextState of targets) {
+                for (let t = 1; t <= maxTerminalId; t++) {
+                  const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                  if (baseCost >= 254) continue;
+                  const altCost = sym === "$default" || t === symId ? baseCost : Math.max(1, baseCost);
+                  if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+                    newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
+                    matrixChanged = true;
                   }
                 }
               }
@@ -451,10 +479,13 @@ export function generateParserTables(
         }
       }
       if (gotos) {
-        for (const [, nextState] of gotos.entries()) {
-          const cost = 1; // GOTO counts as 1 GSS transition (shifting a non-terminal)
+        for (const [sym, nextState] of gotos.entries()) {
+          const yieldLen = minYieldMap.get(sym)?.length ?? 1;
+          const cost = Math.max(1, yieldLen);
           for (let t = 1; t <= maxTerminalId; t++) {
-            const altCost = cost + reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+            const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+            if (baseCost >= 254) continue;
+            const altCost = Math.min(254, cost + baseCost);
             if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
               newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
               matrixChanged = true;
@@ -465,8 +496,6 @@ export function generateParserTables(
     }
     reachabilityMatrix.set(newMatrix);
   }
-  code += generateStaticArray(Array.from(reachabilityMatrix), "reachability_matrix");
-
   // Build Precomputed 1-Token Repair Table (Phase 2)
   const precomputedRepairs = new Uint16Array(table.actionTable.size * (maxTerminalId + 1));
   for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
@@ -500,7 +529,17 @@ export function generateParserTables(
       precomputedRepairs[stateId * (maxTerminalId + 1) + unexpectedTok] = bestRepairTok;
     }
   }
-  code += generateStaticArray(Array.from(precomputedRepairs), "precomputed_repairs");
+  // At runtime in WASM, only distance-0 reachability (`isReachableZeroDist`) is queried.
+  // Bit-pack `reachabilityMatrix` (1 bit per `(state, tok)` pair: 1 if distance === 0, 0 otherwise)
+  // to shrink the static table by 8x while preserving natural 0-default semantics for out-of-bounds indices.
+  const reachabilityBitset = new Uint8Array((reachabilityMatrix.length + 7) >> 3);
+  for (let i = 0; i < reachabilityMatrix.length; i++) {
+    if (reachabilityMatrix[i] === 0) {
+      reachabilityBitset[i >> 3] |= 1 << (i & 7);
+    }
+  }
+  code += generateStaticByteArray(reachabilityBitset, "reachability_matrix");
+  code += generateStaticU16Array(precomputedRepairs, "precomputed_repairs");
 
   // Literal terminal strings for keyword/symbol similarity matching
   const tokenStringOffsets: number[] = new Array(maxSymbolId + 1).fill(-1);
@@ -518,13 +557,6 @@ export function generateParserTables(
   }
   code += generateStaticArray(tokenStringOffsets, "token_string_offsets");
   code += generateStaticArray(tokenStringBytes, "token_string_bytes");
-
-  const syncIds: number[] = [];
-  for (const t of syncTokens) {
-    const id = symToInt.get(`"${t}"`) || symToInt.get(t);
-    if (id !== undefined) syncIds.push(id);
-  }
-  code += generateStaticArray(syncIds, "sync_tokens");
 
   // 1. Identify list separators
   const listSeparators = new Set<string>();
@@ -555,124 +587,17 @@ export function generateParserTables(
     tokenDeleteCosts[eofId] = 5000;
   }
 
-  code += generateStaticArray(tokenDeleteCosts, "token_delete_costs");
-
-  // 3. Compute Minimal Yield Terminal Sequences (Phase 3)
-  const minYieldMap = new Map<string, number[]>();
-  for (const term of grammar.terminals) {
-    const id = symToInt.get(term);
-    if (id !== undefined) {
-      minYieldMap.set(term, [id]);
-    }
-  }
-
-  let yieldChanged = true;
-  while (yieldChanged) {
-    yieldChanged = false;
-    for (const p of grammar.productions) {
-      const lhs = p.left;
-      let valid = true;
-      let sequence: number[] = [];
-
-      for (const sym of p.right) {
-        const symYield = minYieldMap.get(sym);
-        if (!symYield) {
-          valid = false;
-          break;
-        }
-        sequence.push(...symYield);
-      }
-
-      if (valid) {
-        const existing = minYieldMap.get(lhs);
-        if (!existing || sequence.length < existing.length) {
-          minYieldMap.set(lhs, sequence);
-          yieldChanged = true;
-        }
-      }
-    }
-  }
-
-  const minYieldOffsets: number[] = new Array(maxSymbolId + 1).fill(0);
-  const minYieldData: number[] = [];
-
-  for (let symId = 1; symId <= maxSymbolId; symId++) {
-    minYieldOffsets[symId] = minYieldData.length;
-    let symName = "";
-    for (const [s, id] of symToInt.entries()) {
-      if (id === symId) {
-        symName = s;
-        break;
-      }
-    }
-    const seq = symName ? minYieldMap.get(symName) : undefined;
-    if (seq) {
-      minYieldData.push(seq.length);
-      for (const tId of seq) {
-        minYieldData.push(tId);
-      }
-    } else {
-      minYieldData.push(0);
-    }
-  }
-
-  code += generateStaticArray(minYieldOffsets, "min_yield_offsets");
-  code += generateStaticArray(minYieldData, "min_yield_data");
-
-  // 4. Compute Scope Dominator & Boundary Bitmaps (Phase 4)
-  const stateScopeBounds = new Uint8Array(table.actionTable.size * (maxTerminalId + 1));
-  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
-    const lrState = table.automaton.states[stateId];
-    if (!lrState) continue;
-
-    for (const item of lrState.items) {
-      for (let pos = item.dot; pos < item.production.right.length; pos++) {
-        const sym = item.production.right[pos];
-        if (grammar.terminals.has(sym)) {
-          const symId = symToInt.get(sym);
-          const cleanSym = sym.replace(/^"|"$/g, "");
-          const isBoundary =
-            cleanSym === "}" ||
-            cleanSym === "]" ||
-            cleanSym === ")" ||
-            cleanSym === ";" ||
-            cleanSym === "end" ||
-            cleanSym === "else" ||
-            cleanSym === "elseif";
-
-          if (isBoundary && symId !== undefined && symId <= maxTerminalId) {
-            stateScopeBounds[stateId * (maxTerminalId + 1) + symId] = 1;
-          }
-        }
-      }
-
-      if (item.dot === item.production.right.length) {
-        for (const la of item.lookahead) {
-          const cleanLa = la.replace(/^"|"$/g, "");
-          const isBoundary =
-            cleanLa === "}" || cleanLa === "]" || cleanLa === ")" || cleanLa === ";" || cleanLa === "end";
-          const symId = symToInt.get(la);
-          if (isBoundary && symId !== undefined && symId <= maxTerminalId) {
-            stateScopeBounds[stateId * (maxTerminalId + 1) + symId] = 1;
-          }
-        }
-      }
-    }
-  }
-  code += generateStaticArray(Array.from(stateScopeBounds), "state_scope_bounds");
+  code += generateStaticU16Array(tokenDeleteCosts, "token_delete_costs");
 
   const prodLengths: number[] = [];
   const prodRightOffsets: number[] = [];
   const prodRightSymbols: number[] = [];
   const prodLhs: number[] = [];
-  const prodIsStructural: number[] = [];
   const prodIsInvisible: number[] = [];
   const prodIsList: number[] = [];
   const prodDynamicPrec: number[] = [];
   const prodAliases: number[] = [];
   const aliasData: number[] = [];
-
-  const customStructural = originalGrammar.recovery?.structuralRules || [];
 
   const sortedProds = [...grammar.productions].sort((a, b) => a.id - b.id);
   for (const p of sortedProds) {
@@ -689,35 +614,6 @@ export function generateParserTables(
     prodIsInvisible.push(p.isInvisible ? 1 : 0);
     prodIsList.push(p.isList ? 1 : 0);
     prodDynamicPrec.push(p.dynamicPrec || 0);
-
-    let isStructural = 0;
-    if (customStructural.length > 0) {
-      isStructural = customStructural.includes(p.left as any) ? 1 : 0;
-    } else {
-      if (
-        p.left.endsWith("_list") ||
-        p.left.endsWith("_clause") ||
-        p.left.endsWith("_section") ||
-        p.left.endsWith("_prefixes") ||
-        p.left.includes("declaration") ||
-        p.left.includes("definition") ||
-        p.left.includes("statement") ||
-        p.left.includes("specifier") ||
-        p.left.includes("block") ||
-        p.left.includes("suite")
-      ) {
-        isStructural = 1;
-      }
-      if (
-        p.left.includes("expression") ||
-        p.left.includes("term") ||
-        p.left.includes("factor") ||
-        p.left.includes("literal")
-      ) {
-        isStructural = 0;
-      }
-    }
-    prodIsStructural.push(isStructural);
 
     if (p.aliases && p.aliases.length > 0) {
       prodAliases.push(aliasData.length);
@@ -846,13 +742,12 @@ export function generateParserTables(
     }
   }
 
-  code += generateStaticArray(prodLengths, "prod_lengths");
+  code += generateStaticByteArray(prodLengths, "prod_lengths");
   code += generateStaticArray(prodRightOffsets, "prod_right_offsets");
-  code += generateStaticArray(prodRightSymbols, "prod_right_symbols");
-  code += generateStaticArray(prodLhs, "prod_lhs");
-  code += generateStaticArray(prodIsStructural, "prod_is_structural");
-  code += generateStaticArray(prodIsInvisible, "prod_is_invisible");
-  code += generateStaticArray(prodIsList, "prod_is_list");
+  code += generateStaticU16Array(prodRightSymbols, "prod_right_symbols");
+  code += generateStaticU16Array(prodLhs, "prod_lhs");
+  code += generateStaticByteArray(prodIsInvisible, "prod_is_invisible");
+  code += generateStaticByteArray(prodIsList, "prod_is_list");
   code += generateStaticArray(prodDynamicPrec, "prod_dynamic_prec");
   code += generateStaticArray(prodAliases, "prod_aliases");
   code += generateStaticArray(aliasData.length > 0 ? aliasData : [0], "alias_data");
@@ -865,7 +760,7 @@ export function generateParserTables(
   for (let p = 0; p < prodLhs.length; p++) {
     if (prodIsList[p] === 1) typeIsList[prodLhs[p]] = 1;
   }
-  code += generateStaticArray(typeIsList, "type_is_list");
+  code += generateStaticByteArray(typeIsList, "type_is_list");
 
   const typeIsFolding: number[] = new Array(maxSymbolId + 1).fill(0);
   if (originalGrammar.lsp && originalGrammar.lsp.folding) {
@@ -1012,17 +907,14 @@ export function generateParserTables(
       "token_insert_costs",
       "token_delete_costs",
       "token_is_word",
-      "token_is_operator",
       "reachability_matrix",
       "precomputed_repairs",
       "token_string_offsets",
       "token_string_bytes",
-      "sorted_insertion_symbols",
       "prod_lengths",
       "prod_right_offsets",
       "prod_right_symbols",
       "prod_lhs",
-      "prod_is_structural",
       "prod_is_invisible",
       "prod_is_list",
       "prod_dynamic_prec",

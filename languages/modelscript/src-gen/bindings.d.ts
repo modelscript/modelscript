@@ -1146,6 +1146,7 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
+  readonly _encMult: number;
   private _mem32;
   get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
@@ -1316,11 +1317,11 @@ export declare enum SyntaxKind {
   BOOLEAN = 114,
   START = 115,
   _START = 115,
-  EmptyStatement = 139,
-  _EmptyStatement = 139,
-  IDENTIFIER = 176,
-  NUMBER = 177,
-  STRING = 178,
+  EmptyStatement = 142,
+  _EmptyStatement = 142,
+  IDENTIFIER = 179,
+  NUMBER = 180,
+  STRING = 181,
   EOF = 1023,
 }
 
@@ -1721,8 +1722,8 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is VariableDeclarationNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    returnType(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    returnTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -1776,8 +1777,6 @@ export declare namespace Cst {
     updateList(node: SyntaxNode | null | undefined): SyntaxNode[];
     body(node: SyntaxNode | null | undefined): SyntaxNode | null;
     bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ExpressionStatement: {
     readonly typeId: number;

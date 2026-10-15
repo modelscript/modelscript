@@ -7,8 +7,10 @@ import {
   EqKind,
   ExprKind,
 } from "@modelscript/runtime";
+import { getFlatteningState } from "../support/state.js";
 
 export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibility?: boolean }): void {
+  const state = getFlatteningState(dae);
   // 1. Scan for initialState and transition calls
   interface InitialStateInfo {
     eqIdx: number;
@@ -62,7 +64,7 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
         orphanStates.add(t.to);
         ignored.add(t.eqIdx);
       }
-      (dae as any).ignoredEqIndices = ignored;
+      state.ignoredEqIndices = ignored;
       for (let v = 0; v < dae.varCount; v++) {
         const vName = dae.getVarName(v);
         for (const st of orphanStates) {
@@ -225,7 +227,7 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
     const localOutputs = new Set<string>();
     for (const st of sm.states) {
       for (const vIdx of st.varIndices!) {
-        if (dae.getVarCausality(vIdx) === 2 || Boolean((dae as any).stateOutputVars?.has(dae.getVarName(vIdx)))) {
+        if (dae.getVarCausality(vIdx) === 2 || Boolean(state.stateOutputVars?.has(dae.getVarName(vIdx)))) {
           const fullName = dae.getVarName(vIdx);
           const shortName = fullName.slice(st.name.length + 1);
           localOutputs.add(shortName);
@@ -248,7 +250,7 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
       if (branches.length === 0) continue;
 
       let prevVarName = targetVarName;
-      if ((dae as any).stateOutputVars?.has(targetVarName)) {
+      if (state.stateOutputVars?.has(targetVarName)) {
         const outerDot = targetVarName.lastIndexOf(".");
         prevVarName = outerDot >= 0 ? targetVarName.slice(outerDot + 1) : targetVarName;
       }

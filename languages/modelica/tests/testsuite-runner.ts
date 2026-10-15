@@ -226,7 +226,12 @@ function parseTestFile(filePath: string): TestCase | null {
     metadata: {
       name,
       keywords,
-      status: status === "incorrect" ? "incorrect" : status === "skipped" ? "skipped" : "correct",
+      status:
+        status === "incorrect" || status === "erroneous" || status === "wrong"
+          ? "incorrect"
+          : status === "skipped"
+            ? "skipped"
+            : "correct",
       description: descriptionLines.join(" "),
       ...(arrayMode ? { arrayMode } : {}),
       ...(fmiVersion ? { fmiVersion } : {}),

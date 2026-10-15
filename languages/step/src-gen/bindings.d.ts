@@ -1146,6 +1146,7 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
+  readonly _encMult: number;
   private _mem32;
   get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
@@ -1290,19 +1291,19 @@ export declare enum SyntaxKind {
   START = 34,
   _START = 34,
   Trailer = 36,
-  OMITTEDPARAMETER = 45,
-  OMITTED_PARAMETER = 45,
-  DERIVEDPARAMETER = 46,
-  DERIVED_PARAMETER = 46,
-  ENTITYINSTANCENAME = 47,
-  ENTITY_INSTANCE_NAME = 47,
-  KEYWORD = 48,
-  INTEGER = 49,
-  REAL = 50,
-  STRING = 51,
-  ENUMERATION = 52,
-  BLOCKCOMMENT = 53,
-  BLOCK_COMMENT = 53,
+  OMITTEDPARAMETER = 46,
+  OMITTED_PARAMETER = 46,
+  DERIVEDPARAMETER = 47,
+  DERIVED_PARAMETER = 47,
+  ENTITYINSTANCENAME = 48,
+  ENTITY_INSTANCE_NAME = 48,
+  KEYWORD = 49,
+  INTEGER = 50,
+  REAL = 51,
+  STRING = 52,
+  ENUMERATION = 53,
+  BLOCKCOMMENT = 54,
+  BLOCK_COMMENT = 54,
   EOF = 1023,
 }
 
@@ -1495,8 +1496,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ListValueNode;
-    parameters(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    parametersList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const Trailer: {
     readonly typeId: number;

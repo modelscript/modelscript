@@ -139,7 +139,7 @@ export function buildJacobianSparsity(
 ): u32 {
     if (numEqns == 0 || numVars == 0) {
         let emptyRes = SparsityPatternResult.at(arenaOffset);
-        arenaOffset += sizeof<SparsityPatternResult>();
+        arenaOffset += offsetof<SparsityPatternResult>();
         emptyRes.init(0, 0, 0, 0);
         return changetype<usize>(emptyRes) as u32;
     }
@@ -190,7 +190,7 @@ export function buildJacobianSparsity(
     }
 
     let resultStruct = SparsityPatternResult.at(arenaOffset);
-    arenaOffset += sizeof<SparsityPatternResult>();
+    arenaOffset += offsetof<SparsityPatternResult>();
     resultStruct.init(nnz, colPtrOffset, rowIdxOffset, valuesOffset);
 
     return changetype<usize>(resultStruct) as u32;
@@ -339,7 +339,7 @@ export function buildHessianSparsity(
 ): u32 {
     if (numEqns == 0 || numVars == 0) {
         let emptyRes = SparsityPatternResult.at(arenaOffset);
-        arenaOffset += sizeof<SparsityPatternResult>();
+        arenaOffset += offsetof<SparsityPatternResult>();
         emptyRes.init(0, 0, 0, 0);
         return changetype<usize>(emptyRes) as u32;
     }
@@ -388,7 +388,7 @@ export function buildHessianSparsity(
     }
 
     let resultStruct = SparsityPatternResult.at(arenaOffset);
-    arenaOffset += sizeof<SparsityPatternResult>();
+    arenaOffset += offsetof<SparsityPatternResult>();
     resultStruct.init(nnzH, colPtrOffsetH, rowIdxOffsetH, 0);
 
     return changetype<usize>(resultStruct) as u32;

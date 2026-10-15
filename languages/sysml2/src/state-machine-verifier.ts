@@ -891,8 +891,23 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
   const transitionEntries = allEntries.filter((e) => e.ruleName === "TransitionUsage");
 
   for (const state of stateEntries) {
-    if (scopeFilter && state.name !== scopeFilter && !state.name.includes(scopeFilter)) {
-      continue;
+    if (scopeFilter) {
+      let inScope = state.name === scopeFilter || state.name.includes(scopeFilter);
+      if (!inScope) {
+        let curParentId = state.parentId;
+        while (curParentId !== null) {
+          const parentSym = db.symbol(curParentId);
+          if (!parentSym) break;
+          if (parentSym.name === scopeFilter) {
+            inScope = true;
+            break;
+          }
+          curParentId = parentSym.parentId;
+        }
+      }
+      if (!inScope) {
+        continue;
+      }
     }
 
     const stateName = state.name;

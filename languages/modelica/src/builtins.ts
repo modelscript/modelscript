@@ -671,8 +671,40 @@ export const BUILTIN_FUNCTIONS: ReadonlyMap<string, BuiltinFunctionDef> = new Ma
   ["pure", { inputs: [{ name: "expr", type: "Real" }], outputType: "Real" }],
   // §9.4.1 Connections.* graph operators
   ["Connections.isRoot", { inputs: [{ name: "A", type: "Real" }], outputType: "Boolean" }],
-  ["Connections.potentialRoot", { inputs: [{ name: "A", type: "Real" }], outputType: null }],
+  ["Connections.rooted", { inputs: [{ name: "A", type: "Real" }], outputType: "Boolean" }],
+  [
+    "Connections.potentialRoot",
+    {
+      inputs: [
+        { name: "A", type: "Real" },
+        { name: "priority", type: "Integer", defaultValue: 0 },
+      ],
+      outputType: null,
+    },
+  ],
   ["Connections.root", { inputs: [{ name: "A", type: "Real" }], outputType: null }],
+  [
+    "Connections.uniqueRoot",
+    {
+      inputs: [
+        { name: "A", type: "Real" },
+        { name: "message", type: "String" },
+      ],
+      outputType: null,
+    },
+  ],
+  [
+    "Connections.uniqueRootIndices",
+    {
+      inputs: [
+        { name: "roots", type: "Real" },
+        { name: "nodes", type: "Real" },
+        { name: "branches", type: "Real" },
+        { name: "message", type: "String" },
+      ],
+      outputType: "Integer",
+    },
+  ],
   [
     "Connections.branch",
     {

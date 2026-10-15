@@ -17,6 +17,7 @@ import { diffPscadProjects, renderPscadSvg } from "@modelscript/diagram/pscad-di
 import {
   extractEmtNetlist,
   lintPscx,
+  netlistToEmtCircuit,
   parsePscx,
   pscadToModelica,
   pscadToSsd,
@@ -143,43 +144,20 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         const durationSec = (args["tstop"] as number) ?? project.settings.durationSec;
 
         const netlist = extractEmtNetlist(project);
-
-        const circuit: EmtCircuitDefinition = {
-          buses: Array.from(netlist.buses.keys()),
-          rlc: netlist.branches.map((b: any) => ({
-            id: b.id,
-            from: b.fromBus,
-            to: b.toBus,
-            r: b.resistanceOhm,
-            l: b.inductanceH,
-            c: b.capacitanceF,
-          })),
-          transmissionLines: netlist.transmissionLines.map((l: any) => ({
-            id: l.id,
-            from: l.fromBus,
-            to: l.toBus,
-            lengthKm: l.lengthKm,
-            rPerKm: l.rPerKm,
-            lPerKm: l.lPerKm,
-            cPerKm: l.cPerKm,
-          })),
-          fmuInstances: netlist.fmuInstances.map((f: any) => ({
-            id: f.id,
-            bus: f.busConnection,
-            ratedMva: f.ratedMva,
-            ratedKv: f.ratedKv,
-          })),
-        };
+        const circuit = netlistToEmtCircuit(netlist) as unknown as EmtCircuitDefinition;
 
         const solver = new EmtSolver(circuit, {
           timeStepSec: stepSec,
           durationSec,
           nominalFrequencyHz: netlist.nominalFrequencyHz,
+          threePhase: true,
+          steadyStateInit: true,
+          maxNonlinearIterations: 6,
         });
 
         const result = solver.solve();
         console.log(
-          `✓ Simulation completed in ${result.metrics.wallClockTimeMs} ms (${result.metrics.totalSteps} steps).`,
+          `✓ Simulation completed in ${result.metrics.wallClockTimeMs} ms (${result.metrics.totalSteps} steps, ${result.metrics.factorizationCount} factorizations).`,
         );
         console.log(`  Buses solved: ${result.busVoltages.size}`);
         console.log(`  Branches solved: ${result.branchCurrents.size}`);
@@ -194,63 +172,72 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         const targetPoiBus = netlist.fmuInstances[0]?.busConnection || Array.from(netlist.buses.keys())[0]!;
         const durationSec = 0.25; // 250 ms study duration
         const stepSec = 20e-6; // 20 us
+        const vNomKv = netlist.buses.get(targetPoiBus)?.baseKv ?? 230;
+
+        const baseCircuit = netlistToEmtCircuit(netlist);
+        const sources =
+          baseCircuit.sources && baseCircuit.sources.length > 0
+            ? baseCircuit.sources
+            : [
+                {
+                  bus: targetPoiBus,
+                  vPeakKv: vNomKv,
+                  freqHz: netlist.nominalFrequencyHz,
+                },
+              ];
 
         const circuit: EmtCircuitDefinition = {
-          buses: Array.from(netlist.buses.keys()),
-          rlc: netlist.branches.map((b: any) => ({
-            id: b.id,
-            from: b.fromBus,
-            to: b.toBus,
-            r: b.resistanceOhm,
-            l: b.inductanceH,
-            c: b.capacitanceF,
-          })),
-          transmissionLines: netlist.transmissionLines.map((l: any) => ({
-            id: l.id,
-            from: l.fromBus,
-            to: l.toBus,
-            lengthKm: l.lengthKm,
-            rPerKm: l.rPerKm,
-            lPerKm: l.lPerKm,
-            cPerKm: l.cPerKm,
-          })),
-          fmuInstances: netlist.fmuInstances.map((f: any) => ({
-            id: f.id,
-            bus: f.busConnection,
-            ratedMva: f.ratedMva,
-            ratedKv: f.ratedKv,
-          })),
-          sources: [
-            {
-              bus: targetPoiBus,
-              vPeakKv: netlist.buses.get(targetPoiBus)?.baseKv ?? 230,
-              freqHz: netlist.nominalFrequencyHz,
-            },
-          ],
+          ...(baseCircuit as unknown as EmtCircuitDefinition),
+          sources,
+          faults:
+            baseCircuit.faults && baseCircuit.faults.length > 0
+              ? (baseCircuit.faults as NonNullable<EmtCircuitDefinition["faults"]>)
+              : [
+                  {
+                    bus: targetPoiBus,
+                    startSec: 0.05,
+                    durationSec: 0.15,
+                    faultResistanceOhm: 0.05,
+                    faultType: "SLG",
+                  },
+                ],
         };
 
         const solver = new EmtSolver(circuit, {
           timeStepSec: stepSec,
           durationSec,
           nominalFrequencyHz: netlist.nominalFrequencyHz,
+          threePhase: true,
+          steadyStateInit: true,
         });
 
         const result = solver.solve();
         const vPoi = result.busVoltages.get(targetPoiBus) ?? new Float64Array(result.time.length);
-        const dummyCurrent = new Float64Array(result.time.length);
-        for (let i = 0; i < dummyCurrent.length; i++) {
-          dummyCurrent[i] = 1200 * Math.sin(2 * Math.PI * 60 * result.time[i]!);
+        const fmuId = netlist.fmuInstances[0]?.id;
+        let iIbr = fmuId ? result.branchCurrents.get(fmuId) : undefined;
+        if (!iIbr) {
+          iIbr = new Float64Array(result.time.length);
+          for (let i = 0; i < iIbr.length; i++) {
+            iIbr[i] = 1200 * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+          }
         }
 
         const report = verifyIeee2800Compliance(
           project.name,
           netlist,
-          { time: result.time, vPoi, iIbr: dummyCurrent },
+          {
+            time: result.time,
+            vPoi,
+            iIbr,
+            vPoiAbc: result.busPhaseVoltages?.get(targetPoiBus),
+            iIbrAbc: fmuId ? result.branchPhaseCurrents?.get(fmuId) : undefined,
+          },
           {
             faultStartSec: 0.05,
             faultDurationSec: 0.15,
-            vPreFaultKv: netlist.buses.get(targetPoiBus)?.baseKv ?? 230,
+            vPreFaultKv: vNomKv,
             vFaultKv: 11.5,
+            evaluateExtendedClauses: true,
           },
         );
 

@@ -222,6 +222,16 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
           const doc = context.documents.get(uri);
           if (doc) {
+            if (startByte === 0 && lastName) {
+              const docText = doc.getText();
+              const regex = new RegExp(
+                `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
+              );
+              const match = regex.exec(docText);
+              if (match && match.index !== undefined) {
+                startByte = match.index;
+              }
+            }
             const pos = doc.positionAt(startByte);
             return { uri, line: pos.line, character: pos.character };
           }

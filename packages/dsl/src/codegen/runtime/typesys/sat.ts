@@ -723,14 +723,14 @@ export function extractModel(): u32 {
         let nodeId = satVarToNode[v];
         if (nodeId == 0) continue;
         
-        let entry = SatModelEntry.at(modelDataOffset + modelEntryCount * sizeof<SatModelEntry>());
+        let entry = SatModelEntry.at(modelDataOffset + modelEntryCount * offsetof<SatModelEntry>());
         entry.nodeId = nodeId;
         entry.boolVal = val == SAT_TRUE ? 1 : 0;
         entry.numVal = val == SAT_TRUE ? 1.0 : 0.0;
         modelEntryCount++;
     }
     
-    let headerPtr = modelDataOffset + modelEntryCount * sizeof<SatModelEntry>();
+    let headerPtr = modelDataOffset + modelEntryCount * offsetof<SatModelEntry>();
     changetype<UnmanagedUint32Array>(headerPtr)[0] = modelEntryCount;
     satArenaOffset = headerPtr + 4;
     return modelDataOffset;

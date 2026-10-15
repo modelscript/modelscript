@@ -505,46 +505,9 @@ export function transpileQuery(
             const arg2 = args.length > 2 ? (visitNode(args[2]) as ts.Expression) : ts.factory.createNumericLiteral(0);
             const arg3 = args.length > 3 ? (visitNode(args[3]) as ts.Expression) : ts.factory.createNumericLiteral(0);
 
-            let startExpr: ts.Expression = ts.factory.createIdentifier("nodeStart");
-            let endExpr: ts.Expression = ts.factory.createIdentifier("nodeEnd");
-
-            if (targetArg && targetNodeExpr) {
-              if (!ts.isIdentifier(targetNodeExpr) || targetNodeExpr.text !== "node") {
-                const createOffsetCall = () =>
-                  ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_findNodeOffset"), undefined, [
-                    ts.factory.createIdentifier("node"),
-                    targetNodeExpr,
-                    ts.factory.createIdentifier("nodeStart"),
-                  ]);
-                const startNodeOffset = ts.factory.createConditionalExpression(
-                  ts.factory.createBinaryExpression(
-                    createOffsetCall(),
-                    ts.factory.createToken(ts.SyntaxKind.GreaterThanEqualsToken),
-                    ts.factory.createNumericLiteral("0"),
-                  ),
-                  ts.factory.createToken(ts.SyntaxKind.QuestionToken),
-                  ts.factory.createCallExpression(ts.factory.createIdentifier("u32"), undefined, [createOffsetCall()]),
-                  ts.factory.createToken(ts.SyntaxKind.ColonToken),
-                  ts.factory.createIdentifier("nodeStart"),
-                );
-                const nodeLen = ts.factory.createCallExpression(
-                  ts.factory.createIdentifier("getNodeByteLength"),
-                  undefined,
-                  [targetNodeExpr],
-                );
-
-                startExpr = startNodeOffset;
-                endExpr = ts.factory.createBinaryExpression(
-                  startExpr,
-                  ts.factory.createToken(ts.SyntaxKind.PlusToken),
-                  nodeLen,
-                );
-              }
-            }
-
             return ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_allocDiagnostic"), undefined, [
-              startExpr,
-              endExpr,
+              ts.factory.createIdentifier("nodeStart"),
+              ts.factory.createIdentifier("nodeEnd"),
               ts.factory.createIdentifier("lintId"),
               arg0,
               arg1,
@@ -968,7 +931,7 @@ export function transpileQuery(
  */
 export function transpileClass(
   classDef: (new (...args: any[]) => any) | ((...args: any[]) => any) | string | ts.Node,
-  options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
+  _options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): string {
   let classStr: string;
   if (
@@ -1124,64 +1087,52 @@ export function transpileHelperFunction(
   }
 
   const sourceFile = ts.createSourceFile("temp_fn.ts", fnStr, ts.ScriptTarget.Latest, true);
+  let declNode: ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+  let fnName = typeof fn === "function" && fn.name ? fn.name : "helperFunction";
 
-  const transformer: ts.TransformerFactory<ts.SourceFile> = (transformerContext) => {
-    const visit: ts.Visitor = (node) => {
-      if (ts.isFunctionDeclaration(node)) {
-        const updatedParams = node.parameters.map((p) => {
-          let paramType = p.type;
-          if (!paramType) {
-            paramType = ts.factory.createTypeReferenceNode("u32");
-          }
-          return ts.factory.updateParameterDeclaration(
-            p,
-            p.modifiers,
-            p.dotDotDotToken,
-            p.name,
-            p.questionToken,
-            paramType,
-            p.initializer,
-          );
-        });
-
-        let returnType = node.type;
-        if (!returnType) {
-          returnType = ts.factory.createTypeReferenceNode("u32");
-        }
-
-        const visitedBody = node.body ? (visitNode(node.body) as ts.Block) : undefined;
-
-        return ts.factory.updateFunctionDeclaration(
-          node,
-          node.modifiers,
-          node.asteriskToken,
-          node.name,
-          node.typeParameters,
-          updatedParams,
-          returnType,
-          visitedBody,
-        );
-      }
-
-      return ts.visitEachChild(node, visit, transformerContext);
-    };
-
-    function visitNode(node: ts.Node): ts.Node {
-      return ts.visitNode(node, visit) as ts.Node;
+  function findDecl(node: ts.Node): void {
+    if (declNode) return;
+    if (ts.isFunctionDeclaration(node)) {
+      declNode = node;
+      if (node.name) fnName = node.name.getText(sourceFile);
+      return;
     }
-
-    return (node) => ts.visitNode(node, visit) as ts.SourceFile;
-  };
-
-  const result = ts.transform(sourceFile, [transformer]);
-  let printed = ts.createPrinter().printFile(result.transformed[0]).trim();
-
-  if (!printed.startsWith("export function") && !printed.startsWith("function")) {
-    const queryInfo = transpileQuery(fn, opts);
-    return `export function helperFunction(${queryInfo.params.map((p) => p + ": u32").join(", ")}): u32 {\n${queryInfo.body}\n}`;
+    if (ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+      declNode = node;
+      if (ts.isFunctionExpression(node) && node.name) {
+        fnName = node.name.getText(sourceFile);
+      }
+      return;
+    }
+    ts.forEachChild(node, findDecl);
   }
-  if (!printed.startsWith("export ")) {
-    printed = "export " + printed;
+  ts.forEachChild(sourceFile, findDecl);
+
+  const isIgnoredParam = (p: string): boolean =>
+    p === "$" || p === "_$" || p === "db" || p === "_db" || p === "graph" || p === "_graph" || p === "cg";
+
+  const queryInfo = transpileQuery(fn, opts);
+  const nonIgnoredParams = queryInfo.params.filter((p) => !isIgnoredParam(p));
+  const paramsStr = nonIgnoredParams
+    .map((p) => {
+      if (declNode) {
+        const origParam = declNode.parameters.find((orig) => orig.name.getText(sourceFile) === p);
+        if (origParam) {
+          let pType = origParam.type ? origParam.type.getText(sourceFile) : "u32";
+          if (pType === "boolean") pType = "bool";
+          const initSuffix = origParam.initializer ? " = " + origParam.initializer.getText(sourceFile) : "";
+          return `${p}: ${pType}${initSuffix}`;
+        }
+      }
+      return `${p}: u32`;
+    })
+    .join(", ");
+
+  let returnType = "u32";
+  if (declNode && declNode.type) {
+    returnType = declNode.type.getText(sourceFile);
+    if (returnType === "boolean") returnType = "bool";
   }
-  return printed;
+
+  return `export function ${fnName}(${paramsStr}): ${returnType} {\n${queryInfo.body}\n}`;
 }

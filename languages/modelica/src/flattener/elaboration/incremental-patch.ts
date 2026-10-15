@@ -255,23 +255,33 @@ export function patchIncremental(
   let missingFromDb: string | null = null;
   let newInDb: string | null = null;
 
+  const PRIMITIVE_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
   const dbVarNames = new Set<string>();
+  const dbPrimitiveVarNames = new Set<string>();
   for (const childSym of classChildren) {
     if (childSym && childSym.name) {
       dbVarNames.add(childSym.name);
+      const childTypeName =
+        (childSym as any).typeName ??
+        (childSym.metadata as any)?.typeName ??
+        (childSym.metadata as any)?.typeSpecifier ??
+        db.query<string | null>("typeSpecifier", childSym.id);
+      if (childSym.kind === "Component" && childTypeName && PRIMITIVE_TYPES.has(childTypeName)) {
+        dbPrimitiveVarNames.add(childSym.name);
+      }
     }
   }
 
   for (let v = 0; v < dae.getVarCount(); v++) {
     const vn = dae.getVarName(v);
-    if (!vn.includes("[") && !dbVarNames.has(vn)) {
+    if (!vn.includes("[") && !vn.includes(".") && !dbVarNames.has(vn)) {
       missingFromDb = vn;
       break;
     }
   }
 
   if (missingFromDb) {
-    for (const childName of dbVarNames) {
+    for (const childName of dbPrimitiveVarNames) {
       if (dae.lookupVariable(childName) < 0) {
         newInDb = childName;
         break;

@@ -765,3 +765,188 @@ export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number 
     },
   ];
 }
+
+/**
+ * IEEE/IEC Circuit Breaker Glyph (Switch Box with Interrupt Cross).
+ */
+export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean }): X6Markup[] {
+  const isOpen = options?.isOpen ?? false;
+  const stroke = options?.stroke ?? (isOpen ? "#fbbf24" : "#f87171");
+  const fill = options?.fill ?? (isOpen ? "rgba(251, 191, 36, 0.1)" : "rgba(248, 113, 113, 0.14)");
+
+  return [
+    {
+      tagName: "rect",
+      selector: "brkBox",
+      attrs: { x: 6, y: 10, width: 36, height: 24, rx: 3, ry: 3, fill, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "brkLeadL",
+      attrs: { x1: 0, y1: 22, x2: 6, y2: 22, stroke: "#81d4fa", strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "brkLeadR",
+      attrs: { x1: 42, y1: 22, x2: 48, y2: 22, stroke: "#81d4fa", strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "brkCross1",
+      attrs: { x1: 16, y1: 15, x2: 32, y2: 29, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "brkCross2",
+      attrs: { x1: 16, y1: 29, x2: 32, y2: 15, stroke, strokeWidth: 1.8 },
+    },
+  ];
+}
+
+/**
+ * IEEE/IEC ZnO Metal-Oxide Varistor (MOV) Surge Arrester Glyph.
+ */
+export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#c084fc";
+  const fill = options?.fill ?? "rgba(192, 132, 252, 0.12)";
+
+  return [
+    {
+      tagName: "line",
+      selector: "arrLeadTop",
+      attrs: { x1: 20, y1: 0, x2: 20, y2: 10, stroke: "#81d4fa", strokeWidth: 2 },
+    },
+    {
+      tagName: "rect",
+      selector: "arrBody",
+      attrs: { x: 11, y: 10, width: 18, height: 26, rx: 2, ry: 2, fill, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "polyline",
+      selector: "arrNonlinearBar",
+      attrs: { points: "7,28 14,28 26,16 33,16", fill: "none", stroke, strokeWidth: 1.6 },
+    },
+    {
+      tagName: "line",
+      selector: "arrLeadGnd",
+      attrs: { x1: 20, y1: 36, x2: 20, y2: 44, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "gnd1",
+      attrs: { x1: 10, y1: 44, x2: 30, y2: 44, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "gnd2",
+      attrs: { x1: 14, y1: 48, x2: 26, y2: 48, stroke, strokeWidth: 1.5 },
+    },
+    {
+      tagName: "line",
+      selector: "gnd3",
+      attrs: { x1: 17, y1: 52, x2: 23, y2: 52, stroke, strokeWidth: 1.2 },
+    },
+  ];
+}
+
+/**
+ * Short-Circuit Fault Strike (Lightning Bolt) Glyph.
+ */
+export function faultGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#ef4444";
+  const fill = options?.fill ?? "rgba(239, 68, 68, 0.2)";
+
+  return [
+    {
+      tagName: "polygon",
+      selector: "faultBolt",
+      attrs: {
+        points: "22,2 10,22 20,22 14,42 32,18 21,18",
+        fill,
+        stroke,
+        strokeWidth: 1.8,
+      },
+    },
+  ];
+}
+
+/**
+ * HVDC / Power-Electronics Converter Bridge (VSC / LCC / MMC) Glyph.
+ */
+export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string }): X6Markup[] {
+  const stroke = options?.stroke ?? "#2dd4bf";
+  const fill = options?.fill ?? "rgba(45, 212, 191, 0.1)";
+  const badge = options?.badge ?? "MMC";
+
+  return [
+    {
+      tagName: "rect",
+      selector: "convBox",
+      attrs: { x: 4, y: 4, width: 64, height: 52, rx: 5, ry: 5, fill, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "convDivider",
+      attrs: { x1: 4, y1: 56, x2: 68, y2: 4, stroke, strokeWidth: 1.5 },
+    },
+    {
+      tagName: "path",
+      selector: "convAcSine",
+      attrs: { d: "M 10,20 Q 16,12 22,20 Q 28,28 34,20", fill: "none", stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "convDc1",
+      attrs: { x1: 40, y1: 38, x2: 58, y2: 38, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "convDc2",
+      attrs: { x1: 40, y1: 44, x2: 58, y2: 44, stroke, strokeWidth: 1.8, strokeDasharray: "3,2" },
+    },
+    {
+      tagName: "text",
+      selector: "convBadge",
+      attrs: {
+        text: badge,
+        fill: "#f8fafc",
+        fontSize: 8,
+        fontWeight: "bold",
+        fontFamily: "monospace",
+        refX: 52,
+        refY: 16,
+        textAnchor: "middle",
+      },
+    },
+  ];
+}
+
+/**
+ * Transmission Line / Underground Cable Segment Glyph.
+ */
+export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boolean }): X6Markup[] {
+  const isCable = options?.isCable ?? false;
+  const stroke = options?.stroke ?? (isCable ? "#f472b6" : "#38bdf8");
+  const fill = options?.fill ?? "rgba(56, 189, 248, 0.08)";
+
+  return [
+    {
+      tagName: "rect",
+      selector: "tlineBox",
+      attrs: { x: 4, y: 12, width: 72, height: 24, rx: 12, ry: 12, fill, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "tlineCore",
+      attrs: {
+        x1: 0,
+        y1: 24,
+        x2: 80,
+        y2: 24,
+        stroke,
+        strokeWidth: 2,
+        strokeDasharray: isCable ? "4,2" : undefined,
+      },
+    },
+  ];
+}

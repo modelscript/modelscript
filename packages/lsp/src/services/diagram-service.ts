@@ -65,7 +65,7 @@ export class DiagramService {
     // text editor of diagnostic updates. Instead, build the diagram from the
     // most recently indexed AST (at worst ~300ms stale).
 
-    // PSCAD — generate AntV X6 diagram data directly
+    // PSCAD — generate AntV X6 diagram data directly (with content hash caching)
     if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(params.uri)) {
       try {
         let text = this.documentManager.documents.get(params.uri)?.getText();
@@ -76,6 +76,13 @@ export class DiagramService {
           }
         }
         if (text) {
+          const pscadCacheKey = `pscad:${params.uri}`;
+          const pscadVersion = `idx:${text.length}:${simpleHash(text)}`;
+          const cachedPscad = this.diagramCache.get(pscadCacheKey);
+          if (cachedPscad && cachedPscad.version === pscadVersion) {
+            return cachedPscad.data;
+          }
+
           const { parsePscx } = await import("@modelscript/pscad");
           const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
           const project = parsePscx(text);
@@ -105,13 +112,15 @@ export class DiagramService {
                   height: Math.max(600, maxY - minY + 80),
                 }
               : { x: 0, y: 0, width: 1200, height: 800 };
-          return {
+          const pscadResult = {
             nodes,
             edges,
             coordinateSystem: cs,
             cells: rawDiagram.cells,
             metadata: rawDiagram.metadata,
           };
+          this.diagramCache.set(pscadCacheKey, { version: pscadVersion, data: pscadResult });
+          return pscadResult;
         }
       } catch (err: any) {
         this.connection.console.error(`[diagram] Failed to build PSCAD diagram for ${params.uri}: ${err.message}`);

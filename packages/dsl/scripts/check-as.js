@@ -48,6 +48,17 @@ for (const file of files) {
   const { error } = await asc.main(flags, {
     stderr: stderrStream,
     readFile(filename) {
+      const baseName = path.basename(filename);
+      const baseNameWithExt = baseName.endsWith(".ts") ? baseName : `${baseName}.ts`;
+      if (baseName === "graph.ts" || baseName === "graph") {
+        return `export function initQueryArena(): void {}\nexport function resetQueryArena(): void {}\nexport function clearDiagnostics(): void {}\nexport function allocDiagnostic(startByte: u32, endByte: u32, code: u32, severity: u32): void {}\n`;
+      }
+      if (baseName === "parser.ts" || baseName === "parser") {
+        return `export const inputEncoding: u32 = 0;\nexport function simplifyAst<T>(exprId: u32, dae: T): u32 { return exprId; }\n`;
+      }
+      if (baseName === "lsp.ts" || baseName === "lsp") {
+        return `export let globalAstRoot: u32 = 0;\nexport function lsp_findNodeOffset(root: u32, target: u32, startOffset: u32): i32 { return 0; }\n`;
+      }
       if (fs.existsSync(filename)) {
         return fs.readFileSync(filename, "utf-8");
       }
@@ -61,16 +72,14 @@ for (const file of files) {
           return fs.readFileSync(`${wasmPath}.ts`, "utf-8");
         }
       }
-      const baseName = path.basename(filename);
-      const baseNameWithExt = baseName.endsWith(".ts") ? baseName : `${baseName}.ts`;
       if (rootShimMap.has(baseNameWithExt)) {
-        return rootShimMap.get(baseNameWithExt);
-      }
-      if (baseName === "graph.ts" || baseName === "graph") {
-        return `export function initQueryArena(): void {}\nexport function resetQueryArena(): void {}\nexport function clearDiagnostics(): void {}\n`;
-      }
-      if (baseName === "parser.ts" || baseName === "parser") {
-        return `export const inputEncoding: u32 = 0;\n`;
+        const shim = rootShimMap.get(baseNameWithExt);
+        const fileDir = path.dirname(filename);
+        const relToRoot = path.relative(fileDir, runtimeDir).replace(/\\/g, "/");
+        if (relToRoot && relToRoot !== ".") {
+          return shim.replace(/from "\.\//g, `from "${relToRoot}/`);
+        }
+        return shim;
       }
       const rootWasmPath = path.join(runtimeWasmDir, baseName.endsWith(".ts") ? baseName : `${baseName}.ts`);
       if (fs.existsSync(rootWasmPath)) {

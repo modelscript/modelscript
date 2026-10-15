@@ -2,6 +2,7 @@
 
 import { createZipArchive, defaultContainerToolkit, extractContainerArchive } from "@modelscript/runtime";
 import { sspLanguage } from "../src/language.js";
+import { lintSsd } from "../src/linter.js";
 import { sspToModelicaBlock } from "../src/projection.js";
 import { parseSsd, parseSsv } from "../src/ssd-parser.js";
 
@@ -90,9 +91,6 @@ async function main() {
   if (!modelicaBlock.includes('__modelscript_external(type="ssp", file="DualDrive.ssp")'))
     throw new Error("External annotation missing");
   console.log("✓ Modelica Block Projection test passed");
-  console.log("--- Generated Modelica Block ---");
-  console.log(modelicaBlock);
-  console.log("--------------------------------");
 
   // 3. Test Container Extraction & In-Memory ZIP Pipeline
   const sspZip = createZipArchive({
@@ -113,6 +111,128 @@ async function main() {
   if (!projected || !projected.includes("block DualDriveController"))
     throw new Error("Projection from container failed");
   console.log("✓ Container extraction & projection test passed");
+
+  // 4. Test Semantic Linter & Narrow Attribute Value Ranges
+  const cleanDiags = lintSsd(ssdXml);
+  if (cleanDiags.length !== 0) {
+    throw new Error(`Expected 0 diagnostics on valid SSD, got: ${JSON.stringify(cleanDiags)}`);
+  }
+
+  const invalidSsd = `<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription name="BrokenSys" version="1.0">
+  <ssd:System name="BrokenSys">
+    <ssd:Elements>
+      <ssd:Component name="Ctrl" source="resources/Ctrl.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="cmd" kind="output"><ssc:Real /></ssd:Connector>
+          <ssd:Connector name="cmd" kind="output"><ssc:Real /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Plant" source="resources/Plant.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="enable" kind="input"><ssc:Boolean /></ssd:Connector>
+          <ssd:Connector name="y" kind="output"><ssc:Real /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="GhostComp" startConnector="cmd" endElement="Plant" endConnector="enable" />
+      <ssd:Connection startElement="Ctrl" startConnector="missingPort" endElement="Plant" endConnector="enable" />
+      <ssd:Connection startElement="Ctrl" startConnector="cmd" endElement="Plant" endConnector="enable" />
+      <ssd:Connection startElement="Ctrl" startConnector="cmd" endElement="Plant" endConnector="y" />
+    </ssd:Connections>
+  </ssd:System>
+  <ssd:DefaultExperiment startTime="10.0" stopTime="5.0" />
+</ssd:SystemStructureDescription>`;
+
+  const diags = lintSsd(invalidSsd);
+  const findByCode = (code: string) => diags.find((d) => d.code === code);
+
+  const dupConn = findByCode("SSP_DUPLICATE_CONNECTOR");
+  if (!dupConn || invalidSsd.slice(dupConn.startByte, dupConn.endByte) !== "cmd") {
+    throw new Error(`Expected narrow 'cmd' range for SSP_DUPLICATE_CONNECTOR, got: ${JSON.stringify(dupConn)}`);
+  }
+
+  const unresolvedEl = findByCode("SSP_UNRESOLVED_ELEMENT");
+  if (!unresolvedEl || invalidSsd.slice(unresolvedEl.startByte, unresolvedEl.endByte) !== "GhostComp") {
+    throw new Error(
+      `Expected narrow 'GhostComp' range for SSP_UNRESOLVED_ELEMENT, got: ${JSON.stringify(unresolvedEl)}`,
+    );
+  }
+
+  const unresolvedConn = findByCode("SSP_UNRESOLVED_CONNECTOR");
+  if (!unresolvedConn || invalidSsd.slice(unresolvedConn.startByte, unresolvedConn.endByte) !== "missingPort") {
+    throw new Error(
+      `Expected narrow 'missingPort' range for SSP_UNRESOLVED_CONNECTOR, got: ${JSON.stringify(unresolvedConn)}`,
+    );
+  }
+
+  const typeMismatch = findByCode("SSP_CONNECTOR_TYPE_MISMATCH");
+  if (!typeMismatch || invalidSsd.slice(typeMismatch.startByte, typeMismatch.endByte) !== "enable") {
+    throw new Error(
+      `Expected narrow 'enable' range for SSP_CONNECTOR_TYPE_MISMATCH, got: ${JSON.stringify(typeMismatch)}`,
+    );
+  }
+
+  const causalConflict = findByCode("SSP_CONNECTOR_CAUSALITY_CONFLICT");
+  if (!causalConflict || invalidSsd.slice(causalConflict.startByte, causalConflict.endByte) !== "y") {
+    throw new Error(
+      `Expected narrow 'y' range for SSP_CONNECTOR_CAUSALITY_CONFLICT, got: ${JSON.stringify(causalConflict)}`,
+    );
+  }
+
+  const expBounds = findByCode("SSP_INVALID_EXPERIMENT_BOUNDS");
+  if (!expBounds || invalidSsd.slice(expBounds.startByte, expBounds.endByte) !== "5.0") {
+    throw new Error(`Expected narrow '5.0' range for SSP_INVALID_EXPERIMENT_BOUNDS, got: ${JSON.stringify(expBounds)}`);
+  }
+
+  // 5. Test SSV Semantic Linter & Narrow Attribute Value Ranges
+  const { lintSsv } = await import("../src/linter.js");
+  if (lintSsv(ssvXml).length !== 0) {
+    throw new Error("Expected 0 diagnostics on valid SSV XML");
+  }
+
+  const invalidSsv = `<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet version="1.0" name="BrokenParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="gain"><ssv:Real value="1.5" /></ssv:Parameter>
+    <ssv:Parameter name="gain"><ssv:Real value="not_a_float" /></ssv:Parameter>
+    <ssv:Parameter name="count"><ssv:Integer value="3.14" /></ssv:Parameter>
+    <ssv:Parameter name="flag"><ssv:Boolean value="maybe" /></ssv:Parameter>
+    <ssv:Parameter name="untyped"></ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>`;
+
+  const ssvDiags = lintSsv(invalidSsv);
+  const findSsv = (code: string) => ssvDiags.find((d) => d.code === code);
+
+  const dupParam = findSsv("SSV_DUPLICATE_PARAMETER");
+  if (!dupParam || invalidSsv.slice(dupParam.startByte, dupParam.endByte) !== "gain") {
+    throw new Error(`Expected narrow 'gain' range for SSV_DUPLICATE_PARAMETER, got: ${JSON.stringify(dupParam)}`);
+  }
+
+  const badReal = findSsv("SSV_INVALID_REAL_VALUE");
+  if (!badReal || invalidSsv.slice(badReal.startByte, badReal.endByte) !== "not_a_float") {
+    throw new Error(`Expected narrow 'not_a_float' range for SSV_INVALID_REAL_VALUE, got: ${JSON.stringify(badReal)}`);
+  }
+
+  const badInt = findSsv("SSV_INVALID_INTEGER_VALUE");
+  if (!badInt || invalidSsv.slice(badInt.startByte, badInt.endByte) !== "3.14") {
+    throw new Error(`Expected narrow '3.14' range for SSV_INVALID_INTEGER_VALUE, got: ${JSON.stringify(badInt)}`);
+  }
+
+  const badBool = findSsv("SSV_INVALID_BOOLEAN_VALUE");
+  if (!badBool || invalidSsv.slice(badBool.startByte, badBool.endByte) !== "maybe") {
+    throw new Error(`Expected narrow 'maybe' range for SSV_INVALID_BOOLEAN_VALUE, got: ${JSON.stringify(badBool)}`);
+  }
+
+  const missingType = findSsv("SSV_MISSING_PARAMETER_TYPE");
+  if (!missingType || invalidSsv.slice(missingType.startByte, missingType.endByte) !== "untyped") {
+    throw new Error(
+      `Expected narrow 'untyped' range for SSV_MISSING_PARAMETER_TYPE, got: ${JSON.stringify(missingType)}`,
+    );
+  }
+  console.log("✓ SSP & SSV semantic linter & narrow XML attribute range tests passed");
 
   console.log("ALL TESTS PASSED SUCCESSFULLY! ✨");
 }

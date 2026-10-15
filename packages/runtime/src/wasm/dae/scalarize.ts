@@ -92,7 +92,7 @@ export function computeFlatIndexOffset(
  * and produces a new scalarized DaeBuilder where all tensors are unrolled into flat scalar variables.
  */
 export function scalarizeDae(srcDae: DaeBuilder): DaeBuilder {
-  let outPtr = atomicChunkAlloc(sizeof<DaeBuilder>());
+  let outPtr = atomicChunkAlloc(offsetof<DaeBuilder>());
   let outDae = changetype<DaeBuilder>(outPtr);
   outDae.init();
 

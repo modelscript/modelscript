@@ -17,7 +17,19 @@ export function parseStepReferences(text: string) {
 
   let inString = false;
   for (let i = 0; i < text.length; i++) {
+    if (!inString && text[i] === "/" && text[i + 1] === "*") {
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
+        i++;
+      }
+      i++;
+      continue;
+    }
     if (text[i] === "'") {
+      if (inString && text[i + 1] === "'") {
+        i++;
+        continue;
+      }
       inString = !inString;
       continue;
     }

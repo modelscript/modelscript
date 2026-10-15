@@ -142,12 +142,11 @@ export function findArraySubscriptsForIter(
               if (distinctSubs.size > 0) {
                 subs = [...distinctSubs].map((s) => (/^\d+$/.test(s) ? parseInt(s, 10) : s));
               } else if (db) {
+                const state = getFlatteningState(dae);
                 const parts = baseName.split(".");
                 let pkgOrClass: any = null;
                 const currentScopeId =
-                  (dae as any).currentClassId ??
-                  (dae as any).flattener?.currentClassId ??
-                  (dae as any).flattener?.currentRootClassId;
+                  state.currentClassId ?? state.flattener?.currentClassId ?? state.flattener?.currentRootClassId;
                 if (currentScopeId) {
                   const resolver =
                     db.query<any>("resolveName", currentScopeId) ?? db.query<any>("resolveSimpleName", currentScopeId);

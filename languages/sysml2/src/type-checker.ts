@@ -166,8 +166,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
           return {
             error: {
               message: `Type error: arithmetic operators require numeric operands, got '${res.typeName}'.`,
-              startByte: opNode.startByte,
-              endByte: opNode.endByte,
+              startByte: opNode.startIndex ?? opNode.startOffset ?? opNode.startByte,
+              endByte: opNode.endIndex ?? opNode.endOffset ?? opNode.endByte,
             },
           };
         }
@@ -197,8 +197,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
         return {
           error: {
             message: `Type error: logical operators require Boolean operands, got '${res.typeName}'.`,
-            startByte: opNode.startByte,
-            endByte: opNode.endByte,
+            startByte: opNode.startIndex ?? opNode.startOffset ?? opNode.startByte,
+            endByte: opNode.endIndex ?? opNode.endOffset ?? opNode.endByte,
           },
         };
       }
@@ -220,8 +220,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
           return {
             error: {
               message: `Type error: operator 'not' requires Boolean operand, got '${res.typeName}'.`,
-              startByte: operandNode.startByte,
-              endByte: operandNode.endByte,
+              startByte: operandNode.startIndex ?? operandNode.startOffset ?? operandNode.startByte,
+              endByte: operandNode.endIndex ?? operandNode.endOffset ?? operandNode.endByte,
             },
           };
         }
@@ -430,13 +430,16 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
 
   if (inferRes.typeName) {
     if (!isTypeAssignable(db, inferRes.typeName, declaredTypeName)) {
+      const exprStart = exprNode.startIndex ?? exprNode.startOffset ?? exprNode.startByte;
+      const exprEnd = exprNode.endIndex ?? exprNode.endOffset ?? exprNode.endByte;
       return error(
         SysML2ErrorCode.TYPE_MISMATCH.message(self.name || "<anonymous>", declaredTypeName, inferRes.typeName),
         {
           code: SysML2ErrorCode.TYPE_MISMATCH.code,
           field: "declaredName",
-          startByte: self.startByte,
-          endByte: self.endByte,
+          ...(typeof exprStart === "number" && typeof exprEnd === "number" && exprEnd > exprStart
+            ? { startByte: exprStart, endByte: exprEnd }
+            : {}),
         },
       );
     }

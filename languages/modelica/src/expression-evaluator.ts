@@ -23,6 +23,7 @@
  */
 
 import type { ExpressionEvaluator, QueryDB, SymbolEntry } from "@modelscript/runtime";
+import { evalArithmeticString, splitTopLevel } from "./flattener/expressions/cst-utils.js";
 import type { ModificationValue } from "./modifications.js";
 
 // ---------------------------------------------------------------------------
@@ -210,12 +211,8 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           if (pt === "true") return 2;
           const ev = evaluateExprText(pt, scope, db);
           if (typeof ev === "number") return ev;
-          try {
-            if (/^[0-9+\-*/().\s]+$/.test(pt)) {
-              const val = Function(`"use strict"; return (${pt})`)();
-              if (typeof val === "number" && !isNaN(val)) return Math.round(val);
-            }
-          } catch {}
+          const arithVal = evalArithmeticString(pt);
+          if (arithVal !== null) return arithVal;
           if (db) {
             const enumIdx = getEnumLiteralIndex(pt, db);
             if (enumIdx !== null) return enumIdx;
@@ -261,12 +258,8 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         if (cleanSub === "false") idx = 1;
         if (cleanSub === "true") idx = 2;
         if (typeof idx !== "number") {
-          try {
-            if (/^[0-9+\-*/().\s]+$/.test(cleanSub)) {
-              const val = Function(`"use strict"; return (${cleanSub})`)();
-              if (typeof val === "number" && !isNaN(val)) idx = Math.round(val);
-            }
-          } catch {}
+          const arithVal = evalArithmeticString(cleanSub);
+          if (arithVal !== null) idx = arithVal;
         }
         if (typeof idx !== "number" && db) {
           const enumIdx = getEnumLiteralIndex(cleanSub, db);
@@ -517,6 +510,17 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
 function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry | null, db: QueryDB): unknown {
   const args = splitTopLevel(argsText, ",").map((a) => evaluateExprText(a.trim(), scope, db));
 
+  if (name === "noEvent" && args.length >= 1) {
+    return args[0];
+  }
+  if ((name === "smooth" || name === "homotopy") && args.length === 2) {
+    return args[name === "smooth" ? 1 : 0];
+  }
+  if (name === "semiLinear" && args.length === 3 && args.every((a) => typeof a === "number")) {
+    const [x, posSlope, negSlope] = args as [number, number, number];
+    return x >= 0 ? posSlope * x : negSlope * x;
+  }
+
   // Math functions (single numeric argument)
   if (args.length === 1 && typeof args[0] === "number") {
     const v = args[0];
@@ -537,6 +541,12 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
         return Math.acos(v);
       case "atan":
         return Math.atan(v);
+      case "sinh":
+        return Math.sinh(v);
+      case "cosh":
+        return Math.cosh(v);
+      case "tanh":
+        return Math.tanh(v);
       case "exp":
         return Math.exp(v);
       case "log":
@@ -564,11 +574,61 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
       case "min":
         return Math.min(args[0], args[1]);
       case "mod":
-        return args[0] % args[1];
+        return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
+      case "rem":
+        return args[1] !== 0 ? args[0] % args[1] : null;
       case "div":
-        return Math.trunc(args[0] / args[1]);
+        return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
       case "atan2":
         return Math.atan2(args[0], args[1]);
+    }
+  }
+
+  // 1-arg array reductions: sum, product, min, max, ndims, scalar, vector, diagonal
+  if (args.length === 1 && Array.isArray(args[0])) {
+    const flattenNumeric = (arr: unknown[]): number[] | null => {
+      const out: number[] = [];
+      for (const el of arr) {
+        if (typeof el === "number") {
+          out.push(el);
+        } else if (Array.isArray(el)) {
+          const sub = flattenNumeric(el);
+          if (!sub) return null;
+          out.push(...sub);
+        } else {
+          return null;
+        }
+      }
+      return out;
+    };
+    switch (name) {
+      case "sum": {
+        const flat = flattenNumeric(args[0]);
+        return flat ? flat.reduce((a, b) => a + b, 0) : null;
+      }
+      case "product": {
+        const flat = flattenNumeric(args[0]);
+        return flat ? flat.reduce((a, b) => a * b, 1) : null;
+      }
+      case "min": {
+        const flat = flattenNumeric(args[0]);
+        return flat ? (flat.length === 0 ? Infinity : Math.min(...flat)) : null;
+      }
+      case "max": {
+        const flat = flattenNumeric(args[0]);
+        return flat ? (flat.length === 0 ? -Infinity : Math.max(...flat)) : null;
+      }
+      case "scalar": {
+        const flat = flattenNumeric(args[0]);
+        return flat && flat.length === 1 ? flat[0]! : null;
+      }
+      case "diagonal": {
+        const vec = args[0];
+        if (vec.every((x) => typeof x === "number")) {
+          return vec.map((v, i) => vec.map((_, j) => (i === j ? v : 0)));
+        }
+        break;
+      }
     }
   }
 
@@ -577,11 +637,16 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
     const arrayArg = args[0];
     let dims: number[] | null = null;
     if (Array.isArray(arrayArg)) {
-      dims = [arrayArg.length];
+      const d: number[] = [];
+      let curr: unknown = arrayArg;
+      while (Array.isArray(curr)) {
+        d.push(curr.length);
+        curr = curr[0];
+      }
+      dims = d;
     } else if (arrayArg && typeof arrayArg === "object" && "id" in arrayArg) {
       const entry = arrayArg as SymbolEntry;
       dims = db.query<number[] | null>("resolvedArrayDimensions", entry.id);
-      // console.error(`[DEBUG EVAL SIZE] entry=${entry.name} dims=${dims}`);
     }
 
     if (dims && dims.length > 0) {
@@ -590,12 +655,26 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
       } else if (args.length === 2 && typeof args[1] === "number") {
         const dimIndex = args[1] - 1; // 1-based index
         if (dimIndex >= 0 && dimIndex < dims.length) {
-          // console.error(`[DEBUG EVAL SIZE RETURN] returning ${dims[dimIndex]}`);
           return dims[dimIndex];
         }
       }
     }
-    // console.error(`[DEBUG EVAL SIZE FAIL] name=${name} arrayArg=${JSON.stringify(arrayArg)}`);
+  }
+
+  if ((name === "zeros" || name === "ones") && args.length >= 1 && args.every((d) => typeof d === "number")) {
+    const fillVal = name === "ones" ? 1 : 0;
+    const dims = args as number[];
+    const buildConstArr = (depth: number): unknown => {
+      const count = dims[depth]!;
+      if (depth === dims.length - 1) return Array(count).fill(fillVal);
+      return Array.from({ length: count }, () => buildConstArr(depth + 1));
+    };
+    return buildConstArr(0);
+  }
+
+  if (name === "identity" && args.length === 1 && typeof args[0] === "number") {
+    const n = args[0];
+    return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => (i === j ? 1 : 0)));
   }
 
   if (name === "fill" && args.length >= 2) {
@@ -623,26 +702,6 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
 // ---------------------------------------------------------------------------
 // String Utilities
 // ---------------------------------------------------------------------------
-
-/** Split a string at top-level occurrences of a delimiter (respects parens/braces). */
-function splitTopLevel(text: string, delimiter: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = "";
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]!;
-    if (ch === "(" || ch === "{" || ch === "[") depth++;
-    else if (ch === ")" || ch === "}" || ch === "]") depth--;
-    if (depth === 0 && ch === delimiter) {
-      parts.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  if (current) parts.push(current);
-  return parts;
-}
 
 /** Find the rightmost top-level occurrence of any operator (for left-associativity). */
 function findTopLevelOperator(text: string, ops: string[]): number {

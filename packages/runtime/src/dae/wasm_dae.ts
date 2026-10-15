@@ -1707,7 +1707,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   addSubscript(baseExpr: number, subExpr: number): number {
-    return this.addExpression(ExprKind.Subscript, 0, baseExpr, subExpr);
+    return this.addSubscriptExpr(baseExpr, [subExpr]);
   }
 
   addArrayCtor(firstElem: number, count: number): number {
@@ -1783,6 +1783,9 @@ export class WasmDaeBridge implements IDaeBuilder {
     return this.addStatement(StmtKind.Break);
   }
 
+  private stmtData1Overrides = new Map<number, number>();
+  private stmtLeftOverrides = new Map<number, number>();
+
   getStmtKind(stmtId: number): StmtKind {
     return this.exports?.dae_getStmtKind
       ? (this.exports.dae_getStmtKind(this.ptr, stmtId) as StmtKind)
@@ -1790,15 +1793,33 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   getStmtData1(stmtId: number): number {
+    const ov = this.stmtData1Overrides.get(stmtId);
+    if (ov !== undefined) return ov;
     return this.exports?.dae_getStmtData1 ? this.exports.dae_getStmtData1(this.ptr, stmtId) : 0;
   }
 
   getStmtLeft(stmtId: number): number {
+    const ov = this.stmtLeftOverrides.get(stmtId);
+    if (ov !== undefined) return ov;
     return this.exports?.dae_getStmtLeft ? this.exports.dae_getStmtLeft(this.ptr, stmtId) : -1;
   }
 
   getStmtRight(stmtId: number): number {
     return this.exports?.dae_getStmtRight ? this.exports.dae_getStmtRight(this.ptr, stmtId) : -1;
+  }
+
+  setStmtData1(stmtId: number, data1: number): void {
+    this.stmtData1Overrides.set(stmtId, data1);
+    if (this.exports?.dae_setStmtData1) {
+      this.exports.dae_setStmtData1(this.ptr, stmtId, data1);
+    }
+  }
+
+  setStmtLeft(stmtId: number, left: number): void {
+    this.stmtLeftOverrides.set(stmtId, left);
+    if (this.exports?.dae_setStmtLeft) {
+      this.exports.dae_setStmtLeft(this.ptr, stmtId, left);
+    }
   }
 
   getStatements(): { kind: StmtKind; data1: number; left: number; right: number }[] {

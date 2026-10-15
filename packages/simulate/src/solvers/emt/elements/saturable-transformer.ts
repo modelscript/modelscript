@@ -26,8 +26,10 @@
 
 export interface SaturableTransformerConfig {
   id: string;
-  primaryNode: number;
-  secondaryNode: number;
+  primaryNode?: number | undefined;
+  secondaryNode?: number | undefined;
+  primaryBus?: string | undefined;
+  secondaryBus?: string | undefined;
   ratedMva: number;
   primaryKv: number;
   secondaryKv: number;
@@ -39,7 +41,7 @@ export interface SaturableTransformerConfig {
 }
 
 export interface SaturableTransformerState {
-  config: SaturableTransformerConfig;
+  config: SaturableTransformerConfig & { primaryNode: number; secondaryNode: number };
   ratio: number; // Primary-to-secondary turns ratio N1 / N2
   rPrimary: number;
   lLeakageH: number;
@@ -70,7 +72,11 @@ export function createSaturableTransformerState(
   const gMag = dt / (2 * config.lUnsatH);
 
   return {
-    config,
+    config: {
+      ...config,
+      primaryNode: config.primaryNode ?? -1,
+      secondaryNode: config.secondaryNode ?? -1,
+    },
     ratio,
     rPrimary,
     lLeakageH,

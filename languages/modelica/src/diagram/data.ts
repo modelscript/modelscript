@@ -1545,8 +1545,8 @@ function renderTextX6(
 ): X6Markup {
   const [x1, y1] = convertPoint(graphicItem?.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem?.extent?.[1], [0, 0]);
-  const x = Math.min(x1, x2);
-  const y = Math.min(y1, y2);
+  const _x = Math.min(x1, x2);
+  const _y = Math.min(y1, y2);
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
 
@@ -1605,7 +1605,7 @@ function renderTextX6(
     : "none";
 
   const transform = componentInstance ? computeIconPlacement(componentInstance) : null;
-  const invScaleRatio =
+  const _invScaleRatio =
     transform && transform.scaleX !== 0 ? Math.abs(transform.scaleY) / Math.abs(transform.scaleX) : 1;
 
   return {

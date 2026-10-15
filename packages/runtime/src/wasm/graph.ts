@@ -232,14 +232,25 @@ const DIAG_ARENA_CAPACITY = 65536; // 64KB (allows ~4096 simultaneous diagnostic
  * Allocates hash tables for query keys, FQN symbols, and the dirty file bitset.
  */
 export function initQueryArena(): void {
-  // Allocate hash table
-  queryHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(HASH_TABLE_CAPACITY * 4));
+  // Allocate hash table once
+  if (changetype<usize>(queryHashTableOffset) == 0) {
+    queryHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(HASH_TABLE_CAPACITY * 4));
+  }
   
-  // Allocate FQN hash table
-  fqnHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(FQN_HASH_TABLE_CAPACITY * 4));
+  // Allocate FQN hash table once
+  if (changetype<usize>(fqnHashTableOffset) == 0) {
+    fqnHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(FQN_HASH_TABLE_CAPACITY * 4));
+  }
   
-  // Allocate 128-byte dirty files bitset (for up to 1024 file IDs)
-  dirtyFilesBitsetOffset = changetype<UnmanagedUint32Array>(heap.alloc(128));
+  // Allocate 128-byte dirty files bitset (for up to 1024 file IDs) once
+  if (changetype<usize>(dirtyFilesBitsetOffset) == 0) {
+    dirtyFilesBitsetOffset = changetype<UnmanagedUint32Array>(heap.alloc(128));
+  }
+
+  // Allocate activeQueryStack (1024 u32 entries) once
+  if (changetype<usize>(activeQueryStack) == 0) {
+    activeQueryStack = changetype<UnmanagedUint32Array>(heap.alloc(1024 * 4));
+  }
   
   resetQueryArena();
 }
@@ -268,6 +279,7 @@ export function resetQueryArena(): void {
       t_negativeDeps.init();
   }
   scopedImportHead = 0;
+  activeQueryDepth = 0;
 }
 
 /**
@@ -634,6 +646,9 @@ export function addSubscriberEdgeIfMissing(childPtr: u32, parentPtr: u32): void 
  */
 export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0, arg4: u32 = 0): u32 {
    if (activeQueryDepth >= 256) return 0; // Stack depth guard to prevent WASM stack overflow
+   if (changetype<usize>(activeQueryStack) == 0) {
+      activeQueryStack = changetype<UnmanagedUint32Array>(heap.alloc(1024 * 4));
+   }
 
    let nodePtr = getQueryNode2(queryType, arg1, arg2, arg3, arg4);
    if (nodePtr == 0) {
@@ -735,7 +750,7 @@ export class ModelAPI {
       t_modelProperties = changetype<usize>(createMap64To64());
     }
     let map = changetype<UnmanagedMap64To64>(t_modelProperties);
-    let key: u64 = (nodeId as u64) | ((propId as u64) << 32);
+    let key: u64 = (nodeId as u32 as u64) | ((propId as u64) << 32);
     if (isFloat<T>()) {
       if (sizeof<T>() == 8) {
         map.set(key, reinterpret<u64>(value as f64));
@@ -790,15 +805,18 @@ let globalClassHasUnitsResult: boolean = false;
 let globalClassHasInnerRoot: u32 = 0;
 let globalClassHasInnerResult: boolean = false;
 
-let globalClassByNameMap: Map<u64, u32> | null = null;
+let globalClassByNameMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 let globalClassByNameGen: u32 = 0xFFFFFFFF;
 
-function classByNameMap(): Map<u64, u32> {
-  if (globalClassByNameMap === null || globalClassByNameGen != lintRunGeneration) {
-    globalClassByNameMap = new Map<u64, u32>();
+function classByNameMap(): UnmanagedMap64 {
+  if (changetype<usize>(globalClassByNameMap) == 0) {
+    globalClassByNameMap = changetype<UnmanagedMap64>(UnmanagedMap64.create(256));
+    globalClassByNameGen = lintRunGeneration;
+  } else if (globalClassByNameGen != lintRunGeneration) {
+    globalClassByNameMap.clear();
     globalClassByNameGen = lintRunGeneration;
   }
-  return globalClassByNameMap!;
+  return globalClassByNameMap;
 }
 
 @inline function classNameKey(span: u64, kind: u32): u64 {

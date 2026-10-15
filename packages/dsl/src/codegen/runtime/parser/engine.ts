@@ -48,7 +48,6 @@ import {
   prod_aliases as _prod_aliases,
   prod_dynamic_prec as _prod_dynamic_prec,
   prod_is_invisible as _prod_is_invisible,
-  prod_is_structural as _prod_is_structural,
   prod_is_list as _prod_is_list,
   prod_lengths as _prod_lengths,
   prod_lhs as _prod_lhs,
@@ -57,12 +56,10 @@ import {
   token_insert_costs as _token_insert_costs,
   token_delete_costs as _token_delete_costs,
   token_is_word as _token_is_word,
-  token_is_operator as _token_is_operator,
   reachability_matrix as _reachability_matrix,
   precomputed_repairs as _precomputed_repairs,
   token_string_offsets as _token_string_offsets,
   token_string_bytes as _token_string_bytes,
-  sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
   type_is_list as _type_is_list,
@@ -121,6 +118,44 @@ class StaticTable {
   }
 }
 
+@unmanaged
+class StaticU16Table {
+  /** Reads a 16-bit unsigned integer at the given logical index. */
+  @inline @operator("[]") get(index: i32): i32 {
+    let ptr = changetype<usize>(this);
+    if (ptr < 4) return 0;
+    let len = load<i32>(ptr - 4);
+    if (index < 0 || index >= len) {
+      return 0;
+    }
+    return load<u16>(ptr + ((index as usize) << 1)) as i32;
+  }
+  @inline get length(): i32 {
+    let ptr = changetype<usize>(this);
+    if (ptr < 4) return 0;
+    return load<i32>(ptr - 4);
+  }
+}
+
+@unmanaged
+class StaticByteTable {
+  /** Reads an 8-bit unsigned integer at the given logical index. */
+  @inline @operator("[]") get(index: i32): i32 {
+    let ptr = changetype<usize>(this);
+    if (ptr < 4) return 0;
+    let len = load<i32>(ptr - 4);
+    if (index < 0 || index >= len) {
+      return 0;
+    }
+    return load<u8>(ptr + (index as usize)) as i32;
+  }
+  @inline get length(): i32 {
+    let ptr = changetype<usize>(this);
+    if (ptr < 4) return 0;
+    return load<i32>(ptr - 4);
+  }
+}
+
 export let action_offsets: StaticTable = changetype<StaticTable>(0);
 export let action_data: StaticTable = changetype<StaticTable>(0);
 export let action_entry_offsets: StaticTable = changetype<StaticTable>(0);
@@ -130,30 +165,27 @@ export let open_bracket_chars: StaticTable = changetype<StaticTable>(0);
 export let close_bracket_chars: StaticTable = changetype<StaticTable>(0);
 export let goto_offsets: StaticTable = changetype<StaticTable>(0);
 export let goto_data: StaticTable = changetype<StaticTable>(0);
-export let mrd_data: StaticTable = changetype<StaticTable>(0);
-export let token_insert_costs: StaticTable = changetype<StaticTable>(0);
-export let token_delete_costs: StaticTable = changetype<StaticTable>(0);
-export let token_is_word: StaticTable = changetype<StaticTable>(0);
-export let token_is_operator: StaticTable = changetype<StaticTable>(0);
-export let reachability_matrix: StaticTable = changetype<StaticTable>(0);
-export let precomputed_repairs: StaticTable = changetype<StaticTable>(0);
+export let mrd_data: StaticByteTable = changetype<StaticByteTable>(0);
+export let token_insert_costs: StaticByteTable = changetype<StaticByteTable>(0);
+export let token_delete_costs: StaticU16Table = changetype<StaticU16Table>(0);
+export let token_is_word: StaticByteTable = changetype<StaticByteTable>(0);
+export let reachability_matrix: StaticByteTable = changetype<StaticByteTable>(0);
+export let precomputed_repairs: StaticU16Table = changetype<StaticU16Table>(0);
 export let token_string_offsets: StaticTable = changetype<StaticTable>(0);
 export let token_string_bytes: StaticTable = changetype<StaticTable>(0);
-export let sorted_insertion_symbols: StaticTable = changetype<StaticTable>(0);
 
-export let prod_lengths: StaticTable = changetype<StaticTable>(0);
+export let prod_lengths: StaticByteTable = changetype<StaticByteTable>(0);
 export let prod_right_offsets: StaticTable = changetype<StaticTable>(0);
-export let prod_right_symbols: StaticTable = changetype<StaticTable>(0);
-export let prod_lhs: StaticTable = changetype<StaticTable>(0);
-export let prod_is_structural: StaticTable = changetype<StaticTable>(0);
-export let prod_is_invisible: StaticTable = changetype<StaticTable>(0);
-export let prod_is_list: StaticTable = changetype<StaticTable>(0);
+export let prod_right_symbols: StaticU16Table = changetype<StaticU16Table>(0);
+export let prod_lhs: StaticU16Table = changetype<StaticU16Table>(0);
+export let prod_is_invisible: StaticByteTable = changetype<StaticByteTable>(0);
+export let prod_is_list: StaticByteTable = changetype<StaticByteTable>(0);
 export let prod_dynamic_prec: StaticTable = changetype<StaticTable>(0);
 export let prod_aliases: StaticTable = changetype<StaticTable>(0);
 export let alias_data: StaticTable = changetype<StaticTable>(0);
 export let type_fields: StaticTable = changetype<StaticTable>(0);
 export let type_field_data: StaticTable = changetype<StaticTable>(0);
-export let type_is_list: StaticTable = changetype<StaticTable>(0);
+export let type_is_list: StaticByteTable = changetype<StaticByteTable>(0);
 
 export function initStaticTables(): void {
   action_offsets = changetype<StaticTable>(_action_offsets);
@@ -165,29 +197,78 @@ export function initStaticTables(): void {
   close_bracket_chars = changetype<StaticTable>(_close_bracket_chars);
   goto_offsets = changetype<StaticTable>(_goto_offsets);
   goto_data = changetype<StaticTable>(_goto_data);
-  mrd_data = changetype<StaticTable>(_mrd_data);
-  token_insert_costs = changetype<StaticTable>(_token_insert_costs);
-  token_delete_costs = changetype<StaticTable>(_token_delete_costs);
-  token_is_word = changetype<StaticTable>(_token_is_word);
-  token_is_operator = changetype<StaticTable>(_token_is_operator);
-  reachability_matrix = changetype<StaticTable>(_reachability_matrix);
-  precomputed_repairs = changetype<StaticTable>(_precomputed_repairs);
+  mrd_data = changetype<StaticByteTable>(_mrd_data);
+  token_insert_costs = changetype<StaticByteTable>(_token_insert_costs);
+  token_delete_costs = changetype<StaticU16Table>(_token_delete_costs);
+  token_is_word = changetype<StaticByteTable>(_token_is_word);
+  reachability_matrix = changetype<StaticByteTable>(_reachability_matrix);
+  precomputed_repairs = changetype<StaticU16Table>(_precomputed_repairs);
   token_string_offsets = changetype<StaticTable>(_token_string_offsets);
   token_string_bytes = changetype<StaticTable>(_token_string_bytes);
-  sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
-  prod_lengths = changetype<StaticTable>(_prod_lengths);
+  prod_lengths = changetype<StaticByteTable>(_prod_lengths);
   prod_right_offsets = changetype<StaticTable>(_prod_right_offsets);
-  prod_right_symbols = changetype<StaticTable>(_prod_right_symbols);
-  prod_lhs = changetype<StaticTable>(_prod_lhs);
-  prod_is_structural = changetype<StaticTable>(_prod_is_structural);
-  prod_is_invisible = changetype<StaticTable>(_prod_is_invisible);
-  prod_is_list = changetype<StaticTable>(_prod_is_list);
+  prod_right_symbols = changetype<StaticU16Table>(_prod_right_symbols);
+  prod_lhs = changetype<StaticU16Table>(_prod_lhs);
+  prod_is_invisible = changetype<StaticByteTable>(_prod_is_invisible);
+  prod_is_list = changetype<StaticByteTable>(_prod_is_list);
   prod_dynamic_prec = changetype<StaticTable>(_prod_dynamic_prec);
   prod_aliases = changetype<StaticTable>(_prod_aliases);
   alias_data = changetype<StaticTable>(_alias_data);
   type_fields = changetype<StaticTable>(_type_fields);
   type_field_data = changetype<StaticTable>(_type_field_data);
-  type_is_list = changetype<StaticTable>(_type_is_list);
+  type_is_list = changetype<StaticByteTable>(_type_is_list);
+}
+
+/**
+ * Checks whether `tok` is reachable at distance 0 from `state` in the bit-packed `reachability_matrix`.
+ * Each bit `idx = state * (MAX_TERMINAL_ID + 1) + tok` is 1 iff `tok` is reachable at distance 0.
+ */
+@inline
+export function isReachableZeroDist(state: i32, tok: i32): boolean {
+  if (state < 0 || tok <= 0 || tok > MAX_TERMINAL_ID) return false;
+  let idx = state * (MAX_TERMINAL_ID + 1) + tok;
+  let byteIdx = idx >> 3;
+  if (byteIdx < 0 || byteIdx >= reachability_matrix.length) return false;
+  return (reachability_matrix[byteIdx] & (1 << (idx & 7))) != 0;
+}
+
+/**
+ * Looks up the GOTO target state for `(state, lhs)` in `goto_data`.
+ * Since `goto_data` entries per state are sorted by `symId`, uses binary search
+ * when `gCount > 8` and an early-exiting linear scan for small tables.
+ * Returns -1 if no transition exists.
+ */
+export function lookupGoto(state: i32, lhs: i32): i32 {
+  if (state < 0 || state >= goto_offsets.length) return -1;
+  let gOffset = goto_offsets[state];
+  if (gOffset < 0 || gOffset >= goto_data.length) return -1;
+  let gCount = goto_data[gOffset];
+  if (gCount <= 0) return -1;
+  let base = gOffset + 1;
+  if (gCount <= 8) {
+    for (let k = 0; k < gCount; k++) {
+      let sym = goto_data[base];
+      if (sym == lhs) return goto_data[base + 1];
+      if (sym > lhs) return -1;
+      base += 2;
+    }
+    return -1;
+  }
+  let low = 0;
+  let high = gCount - 1;
+  while (low <= high) {
+    let mid = (low + high) >> 1;
+    let idx = base + (mid << 1);
+    let sym = goto_data[idx];
+    if (sym == lhs) {
+      return goto_data[idx + 1];
+    } else if (sym < lhs) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return -1;
 }
 
 
@@ -221,87 +302,6 @@ export const MAX_PANIC_SCAN_TOKENS: u32 = 500;
 
 export const PENALTY_UNWIND_NODE: i32 = 500;
 export const PENALTY_SYNC_TOKEN: i32 = 50;
-
-// --- Merge Hash Index ---
-// Fixed-size hash table for O(1) GLR merge lookups, replacing O(H) linear scans.
-// Keyed by (pos, state). Uses a generation counter for O(1) clearing.
-const MERGE_TABLE_SIZE: u32 = 256;
-const MERGE_TABLE_MASK: u32 = MERGE_TABLE_SIZE - 1;
-const MERGE_PROBE_LIMIT: u32 = 4;
-let t_mergeTable: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0); // pointer to raw memory: MERGE_TABLE_SIZE * 8 bytes
-export let mergeGeneration: u32 = 0;
-
-/**
- * Initializes the GLR state merge hash table.
- */
-export function mergeTableInit(): void {
-  if (changetype<usize>(t_mergeTable) == 0) {
-    t_mergeTable = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MERGE_TABLE_SIZE * 8));
-  }
-}
-
-/**
- * Rebuilds the merge hash index from the currently active GSS heads.
- * @param activeHeadsCount Number of active GSS parse heads.
- * @param t_activeHeads Array of active head pointers.
- */
-export function rebuildMergeTable(activeHeadsCount: u32, t_activeHeads: UnmanagedUint32Array): void {
-  if (changetype<usize>(t_mergeTable) == 0) return;
-  mergeGeneration++;
-  for (let i: u32 = 0; i < activeHeadsCount; i++) {
-    let h = changetype<ParseHead>(t_activeHeads[i]);
-    let hash = ((h.pos ^ ((h.state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
-    for (let j: u32 = 0; j < MERGE_PROBE_LIMIT; j++) {
-      let slotIdx = ((hash + j) & MERGE_TABLE_MASK) << 1;
-      if (t_mergeTable[slotIdx + 1] != mergeGeneration) {
-        t_mergeTable[slotIdx] = i;
-        t_mergeTable[slotIdx + 1] = mergeGeneration;
-        break;
-      }
-    }
-  }
-}
-
-/**
- * Finds a merge candidate in the active heads matching (pos, state).
- * Returns the index into t_activeHeads, or -1 if not found.
- */
-export function findMergeCandidate(pos: u32, state: i32, prev: ParseHead | null): i32 {
-  if (changetype<usize>(t_mergeTable) == 0) return -1;
-  let h = ((pos ^ ((state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
-  for (let i: u32 = 0; i < MERGE_PROBE_LIMIT; i++) {
-    let slotIdx = ((h + i) & MERGE_TABLE_MASK) << 1;
-    if (t_mergeTable[slotIdx + 1] != mergeGeneration) continue;
-    let idx = t_mergeTable[slotIdx];
-    if (idx < activeHeadsCount) {
-      let ah = changetype<ParseHead>(t_activeHeads[idx]);
-      if (ah.pos == pos && ah.state == state) {
-        return idx as i32;
-      }
-    }
-  }
-  return -1;
-}
-
-/**
- * Registers a newly pushed head in the merge hash index.
- */
-export function registerMergeCandidate(headIdx: u32, pos: u32, state: i32): void {
-  if (changetype<usize>(t_mergeTable) == 0) return;
-  let h = ((pos ^ ((state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
-  for (let i: u32 = 0; i < MERGE_PROBE_LIMIT; i++) {
-    let slotIdx = ((h + i) & MERGE_TABLE_MASK) << 1;
-    if (t_mergeTable[slotIdx + 1] != mergeGeneration) {
-      t_mergeTable[slotIdx] = headIdx;
-      t_mergeTable[slotIdx + 1] = mergeGeneration;
-      return;
-    }
-  }
-  // All probe slots occupied -> evict the first one
-  let slotIdx = h << 1;
-  t_mergeTable[slotIdx] = headIdx;
-  t_mergeTable[slotIdx + 1] = mergeGeneration;
-}
 
 /**
  * Retrieves the start byte offset of a reported syntax error by index.
@@ -403,7 +403,12 @@ export let t_diagExpectedPoolCapacity: u32 = 0;
 export let t_diagExpectedPoolLen: u32 = 0;
 
 let t_diagExpectedBitset: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
+let t_diagExpectedBitsetCap: u32 = 0;
 let t_diagVisitedStates: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
+let t_diagVisitedStatesCap: u32 = 0;
+let t_stateExpectedCache: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_stateExpectedCacheCap: u32 = 0;
+let g_crawlSawEof: bool = false;
 
 export function getExpectedTokensPoolPtr(): u32 {
   if (changetype<usize>(t_diagExpectedPool) == 0) {
@@ -419,14 +424,28 @@ export function getExpectedTokensPoolLen(): u32 {
 }
 
 export function resetExpectedTokensPool(): void {
-  t_diagExpectedPoolLen = 0;
+  // Static grammar expected-token sets are invariant across parses; keep cache warm.
+}
+
+function ensureExpectedPoolCapacity(required: u32): void {
+  if (required <= t_diagExpectedPoolCapacity) return;
+  let newCap: u32 = t_diagExpectedPoolCapacity == 0 ? 8192 : t_diagExpectedPoolCapacity * 2;
+  while (newCap < required) newCap *= 2;
+  let newPtr = atomicChunkAlloc(newCap * 2);
+  if (t_diagExpectedPoolLen > 0 && changetype<usize>(t_diagExpectedPool) != 0) {
+    memory.copy(newPtr, changetype<usize>(t_diagExpectedPool), t_diagExpectedPoolLen * 2);
+  }
+  t_diagExpectedPool = changetype<UnmanagedUint16Array>(newPtr);
+  t_diagExpectedPoolCapacity = newCap;
 }
 
 function crawlStateExpectedTokens(state: i32, depth: i32): void {
   if (depth > 4 || state < 0 || state >= action_offsets.length || state >= goto_offsets.length) return;
-  if (state < 2048) {
-    if (t_diagVisitedStates[state] == 1) return;
-    t_diagVisitedStates[state] = 1;
+  if ((state as u32) < t_diagVisitedStatesCap) {
+    let depthCode: u8 = (depth + 1) as u8;
+    let prev = t_diagVisitedStates[state];
+    if (prev != 0 && prev <= depthCode) return;
+    t_diagVisitedStates[state] = depthCode;
   }
   let gOffset = action_offsets[state];
   if (gOffset < 0 || gOffset >= action_data.length) return;
@@ -436,8 +455,10 @@ function crawlStateExpectedTokens(state: i32, depth: i32): void {
   for (let j = 0; j < actionCount; j++) {
     let sym = action_data[idx++];
     let actCount = action_data[idx++];
-    if (sym > 0 && sym <= (MAX_TERMINAL_ID as i32)) {
-      if (sym < 2048) {
+    if (sym == TOKEN_EOF) {
+      g_crawlSawEof = true;
+    } else if (sym > 0 && sym <= (MAX_TERMINAL_ID as i32)) {
+      if ((sym as u32) < t_diagExpectedBitsetCap) {
         t_diagExpectedBitset[sym] = 1;
       }
     }
@@ -447,18 +468,9 @@ function crawlStateExpectedTokens(state: i32, depth: i32): void {
         let aTarget = action_data[idx + na * 2 + 1];
         if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lhs.length) {
           let lhs = prod_lhs[aTarget];
-          let gotoOffset = goto_offsets[state];
-          if (gotoOffset >= 0 && gotoOffset < goto_data.length) {
-            let gCount = goto_data[gotoOffset];
-            let gIdx = gotoOffset + 1;
-            for (let k = 0; k < gCount; k++) {
-              if (gIdx + 1 >= goto_data.length) break;
-              if (goto_data[gIdx++] == lhs) {
-                let nextSt = goto_data[gIdx++];
-                crawlStateExpectedTokens(nextSt, depth + 1);
-                break;
-              } else gIdx++;
-            }
+          let nextSt = lookupGoto(state, lhs);
+          if (nextSt != -1) {
+            crawlStateExpectedTokens(nextSt, depth + 1);
           }
         }
       }
@@ -470,52 +482,82 @@ function crawlStateExpectedTokens(state: i32, depth: i32): void {
 export function getExpectedTokensForState(state: i32, depth: i32 = 0): u64 {
   if (state < 0 || state >= action_offsets.length) return 0;
 
+  let numStates = action_offsets.length as u32;
+  if (changetype<usize>(t_stateExpectedCache) == 0 || t_stateExpectedCacheCap < numStates) {
+    t_stateExpectedCacheCap = numStates;
+    t_stateExpectedCache = changetype<UnmanagedUint32Array>(atomicChunkAlloc(numStates * 8));
+    memory.fill(changetype<usize>(t_stateExpectedCache), 0xff, numStates * 8);
+  }
+  let cacheIdx = (state as u32) * 2;
+  let cachedStart = t_stateExpectedCache[cacheIdx];
+  if (cachedStart != 0xffffffff) {
+    let cachedCount = t_stateExpectedCache[cacheIdx + 1] & 0x7fffffff;
+    return (cachedStart as u64) | ((cachedCount as u64) << 32);
+  }
+
   if (changetype<usize>(t_diagExpectedPool) == 0) {
     t_diagExpectedPoolCapacity = 8192;
     t_diagExpectedPool = changetype<UnmanagedUint16Array>(atomicChunkAlloc(t_diagExpectedPoolCapacity * 2));
   }
-  if (changetype<usize>(t_diagExpectedBitset) == 0) {
-    t_diagExpectedBitset = changetype<UnmanagedUint8Array>(atomicChunkAlloc(2048));
+  let maxSym = (MAX_TERMINAL_ID as u32) + 1;
+  if (changetype<usize>(t_diagExpectedBitset) == 0 || t_diagExpectedBitsetCap < maxSym) {
+    t_diagExpectedBitsetCap = maxSym < 2048 ? 2048 : maxSym;
+    t_diagExpectedBitset = changetype<UnmanagedUint8Array>(atomicChunkAlloc(t_diagExpectedBitsetCap));
   }
-  if (changetype<usize>(t_diagVisitedStates) == 0) {
-    t_diagVisitedStates = changetype<UnmanagedUint8Array>(atomicChunkAlloc(2048));
+  if (changetype<usize>(t_diagVisitedStates) == 0 || t_diagVisitedStatesCap < numStates) {
+    t_diagVisitedStatesCap = numStates < 2048 ? 2048 : numStates;
+    t_diagVisitedStates = changetype<UnmanagedUint8Array>(atomicChunkAlloc(t_diagVisitedStatesCap));
   }
 
-  let maxSym = (MAX_TERMINAL_ID as i32) + 1;
-  if (maxSym > 2048) maxSym = 2048;
   memory.fill(changetype<usize>(t_diagExpectedBitset), 0, maxSym);
-  memory.fill(changetype<usize>(t_diagVisitedStates), 0, 2048);
+  memory.fill(changetype<usize>(t_diagVisitedStates), 0, numStates);
+  g_crawlSawEof = false;
 
   crawlStateExpectedTokens(state, 0);
 
+  ensureExpectedPoolCapacity(t_diagExpectedPoolLen + maxSym);
   let poolStart = t_diagExpectedPoolLen;
 
   // Pass 1: Words & identifiers first
-  for (let s: i32 = 1; s < maxSym; s++) {
+  for (let s: i32 = 1; s < (maxSym as i32); s++) {
     if (t_diagExpectedBitset[s] == 1) {
       let isWord = token_is_word.length > s && token_is_word[s] == 1;
       if (isWord) {
-        if (t_diagExpectedPoolLen < t_diagExpectedPoolCapacity) {
-          t_diagExpectedPool[t_diagExpectedPoolLen++] = s as u16;
-        }
+        t_diagExpectedPool[t_diagExpectedPoolLen++] = s as u16;
       }
     }
   }
 
   // Pass 2: Delimiters, operators, and symbols
-  for (let s: i32 = 1; s < maxSym; s++) {
+  for (let s: i32 = 1; s < (maxSym as i32); s++) {
     if (t_diagExpectedBitset[s] == 1) {
       let isWord = token_is_word.length > s && token_is_word[s] == 1;
       if (!isWord) {
-        if (t_diagExpectedPoolLen < t_diagExpectedPoolCapacity) {
-          t_diagExpectedPool[t_diagExpectedPoolLen++] = s as u16;
-        }
+        t_diagExpectedPool[t_diagExpectedPoolLen++] = s as u16;
       }
     }
   }
 
   let poolCount = t_diagExpectedPoolLen - poolStart;
+  t_stateExpectedCache[cacheIdx] = poolStart;
+  t_stateExpectedCache[cacheIdx + 1] = poolCount | (g_crawlSawEof ? 0x80000000 : 0);
   return (poolStart as u64) | ((poolCount as u64) << 32);
+}
+
+export function populateStateExpectedTokens(state: i32, expectedTokensPtr: usize): void {
+  if (state < 0 || state >= action_offsets.length || expectedTokensPtr == 0) return;
+  let packed = getExpectedTokensForState(state, 0);
+  let poolStart = (packed & 0xffffffff) as u32;
+  let poolCount = (packed >> 32) as u32;
+  let rawCount = t_stateExpectedCache[(state as u32) * 2 + 1];
+  if ((rawCount & 0x80000000) != 0) {
+    store<u8>(expectedTokensPtr + (TOKEN_EOF as usize), 1);
+  }
+  let poolPtr = changetype<usize>(t_diagExpectedPool);
+  for (let i: u32 = 0; i < poolCount; i++) {
+    let sym = load<u16>(poolPtr + ((poolStart + i) << 1)) as usize;
+    store<u8>(expectedTokensPtr + sym, 1);
+  }
 }
 
 
@@ -959,6 +1001,7 @@ export class FieldCursor {
 
       if (child == 0) continue;
 
+      let rawChildType = getNodeType(child);
       if (!isSyntheticField) {
         while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0)) {
           let first = getNodeFirstChild(child);
@@ -1009,10 +1052,6 @@ export class FieldCursor {
           return inner;
         }
       }
-      // If child is an empty epsilon node (0 length, no children, not inserted by recovery), it is absent
-      if (child != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0 && getNodeByteLength(child) == 0 && getNodeFirstChild(child) == 0) {
-        return 0;
-      }
       // Unwrap any invisible synthetic wrapper node down to the real child
       while (child != 0 && (getNodeFlags(child) & FLAG_INVISIBLE) != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0) {
         let first = getNodeFirstChild(child);
@@ -1022,7 +1061,11 @@ export class FieldCursor {
           break;
         }
       }
-      if (expectedType != 0 && getNodeType(child) != expectedType) {
+      // If child is an empty epsilon node (0 length, no children, not inserted by recovery), it is absent
+      if (child != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0 && getNodeByteLength(child) == 0 && getNodeFirstChild(child) == 0) {
+        continue;
+      }
+      if (expectedType != 0 && rawChildType != expectedType && getNodeType(child) != expectedType) {
         continue;
       }
       return child;
@@ -1041,16 +1084,19 @@ export class FieldCursor {
 let cursorPoolInitialized: boolean = false;
 const CURSOR_POOL_CAPACITY: i32 = 64;
 let cursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let cursorPoolAll: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let cursorPoolDepth: i32 = 0;
 
 function initCursorPool(): void {
   cursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(CURSOR_POOL_CAPACITY * 4));
+  cursorPoolAll = changetype<UnmanagedUint32Array>(atomicChunkAlloc(CURSOR_POOL_CAPACITY * 4));
   for (let i = 0; i < CURSOR_POOL_CAPACITY; i++) {
-    let ptr = atomicChunkAlloc(sizeof<FieldCursor>());
+    let ptr = atomicChunkAlloc(offsetof<FieldCursor>());
     let cursor = changetype<FieldCursor>(ptr);
     cursor.isActive = false;
     cursor.stackPtr = atomicChunkAlloc(64 << 5) as usize;
     cursorPool[i] = ptr as u32;
+    cursorPoolAll[i] = ptr as u32;
   }
   cursorPoolDepth = CURSOR_POOL_CAPACITY;
   cursorPoolInitialized = true;
@@ -1058,10 +1104,13 @@ function initCursorPool(): void {
 
 export function resetCursorPool(): void {
   if (!cursorPoolInitialized) return;
-  for (let i = 0; i < cursorPoolDepth; i++) {
-    let c = changetype<FieldCursor>(cursorPool[i]);
+  for (let i = 0; i < CURSOR_POOL_CAPACITY; i++) {
+    let ptr = cursorPoolAll[i];
+    cursorPool[i] = ptr;
+    let c = changetype<FieldCursor>(ptr);
     if (changetype<usize>(c) != 0) c.isActive = false;
   }
+  cursorPoolDepth = CURSOR_POOL_CAPACITY;
 }
 
 export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
@@ -1071,7 +1120,7 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
     cursorPoolDepth--;
     cursor = changetype<FieldCursor>(cursorPool[cursorPoolDepth]);
   } else {
-    let ptr = atomicChunkAlloc(sizeof<FieldCursor>());
+    let ptr = atomicChunkAlloc(offsetof<FieldCursor>());
     cursor = changetype<FieldCursor>(ptr);
     cursor.stackPtr = atomicChunkAlloc(64 << 5) as usize;
   }
@@ -1382,33 +1431,42 @@ export class AncestorCursor {
   }
 }
 
-const ancestorCursorPool = new Array<AncestorCursor>(16);
-let ancestorCursorPoolDepth: i32 = 16;
-for (let i = 0; i < 16; i++) {
-  let ptr = heap.alloc(offsetof<AncestorCursor>());
-  let cursor = changetype<AncestorCursor>(ptr);
-  cursor.isActive = false;
-  cursor.pathStack = heap.alloc(4096 * 4);
-  ancestorCursorPool[i] = cursor;
+let ancestorCursorPoolInitialized: boolean = false;
+let ancestorCursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let ancestorCursorPoolDepth: i32 = 0;
+
+function initAncestorCursorPool(): void {
+  ancestorCursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
+  for (let i = 0; i < 16; i++) {
+    let ptr = atomicChunkAlloc(offsetof<AncestorCursor>());
+    let cursor = changetype<AncestorCursor>(ptr);
+    cursor.isActive = false;
+    cursor.pathStack = atomicChunkAlloc(4096 * 4) as usize;
+    ancestorCursorPool[i] = ptr;
+  }
+  ancestorCursorPoolDepth = 16;
+  ancestorCursorPoolInitialized = true;
 }
 
 export function getAncestors(node: u32, filterType: u16, rootNode: u32): AncestorCursor {
+  if (!ancestorCursorPoolInitialized) initAncestorCursorPool();
   let cursor: AncestorCursor;
   if (ancestorCursorPoolDepth > 0) {
     ancestorCursorPoolDepth--;
-    cursor = ancestorCursorPool[ancestorCursorPoolDepth];
+    cursor = changetype<AncestorCursor>(ancestorCursorPool[ancestorCursorPoolDepth]);
   } else {
-    let ptr = heap.alloc(offsetof<AncestorCursor>());
+    let ptr = atomicChunkAlloc(offsetof<AncestorCursor>());
     cursor = changetype<AncestorCursor>(ptr);
-    cursor.pathStack = heap.alloc(4096 * 4);
+    cursor.pathStack = atomicChunkAlloc(4096 * 4) as usize;
   }
   cursor.init(node, filterType, rootNode);
   return cursor;
 }
 
 export function releaseAncestorCursor(cursor: AncestorCursor): void {
+  if (!ancestorCursorPoolInitialized) initAncestorCursorPool();
   if (ancestorCursorPoolDepth < 16) {
-    ancestorCursorPool[ancestorCursorPoolDepth] = cursor;
+    ancestorCursorPool[ancestorCursorPoolDepth] = changetype<u32>(cursor);
     ancestorCursorPoolDepth++;
   }
 }
@@ -1479,33 +1537,42 @@ export class DescendantCursor {
   }
 }
 
-const descendantCursorPool = new Array<DescendantCursor>(16);
-let descendantCursorPoolDepth: i32 = 16;
-for (let i = 0; i < 16; i++) {
-  let ptr = heap.alloc(offsetof<DescendantCursor>());
-  let cursor = changetype<DescendantCursor>(ptr);
-  cursor.isActive = false;
-  cursor.stack = heap.alloc(4096 * 4) as u32;
-  descendantCursorPool[i] = cursor;
+let descendantCursorPoolInitialized: boolean = false;
+let descendantCursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let descendantCursorPoolDepth: i32 = 0;
+
+function initDescendantCursorPool(): void {
+  descendantCursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
+  for (let i = 0; i < 16; i++) {
+    let ptr = atomicChunkAlloc(offsetof<DescendantCursor>());
+    let cursor = changetype<DescendantCursor>(ptr);
+    cursor.isActive = false;
+    cursor.stack = atomicChunkAlloc(4096 * 4);
+    descendantCursorPool[i] = ptr;
+  }
+  descendantCursorPoolDepth = 16;
+  descendantCursorPoolInitialized = true;
 }
 
 export function getDescendants(node: u32, filterType: u16): DescendantCursor {
+  if (!descendantCursorPoolInitialized) initDescendantCursorPool();
   let cursor: DescendantCursor;
   if (descendantCursorPoolDepth > 0) {
     descendantCursorPoolDepth--;
-    cursor = descendantCursorPool[descendantCursorPoolDepth];
+    cursor = changetype<DescendantCursor>(descendantCursorPool[descendantCursorPoolDepth]);
   } else {
-    let ptr = heap.alloc(offsetof<DescendantCursor>());
+    let ptr = atomicChunkAlloc(offsetof<DescendantCursor>());
     cursor = changetype<DescendantCursor>(ptr);
-    cursor.stack = heap.alloc(4096 * 4) as u32;
+    cursor.stack = atomicChunkAlloc(4096 * 4);
   }
   cursor.init(node, filterType);
   return cursor;
 }
 
 export function releaseDescendantCursor(cursor: DescendantCursor): void {
+  if (!descendantCursorPoolInitialized) initDescendantCursorPool();
   if (descendantCursorPoolDepth < 16) {
-    descendantCursorPool[descendantCursorPoolDepth] = cursor;
+    descendantCursorPool[descendantCursorPoolDepth] = changetype<u32>(cursor);
     descendantCursorPoolDepth++;
   }
 }
@@ -1538,22 +1605,30 @@ export class SemanticCursor {
   }
 }
 
-const semanticCursorPool = new Array<SemanticCursor>(16);
-let semanticCursorPoolDepth: i32 = 16;
-for (let i = 0; i < 16; i++) {
-  let ptr = heap.alloc(offsetof<SemanticCursor>());
-  let cursor = changetype<SemanticCursor>(ptr);
-  cursor.isActive = false;
-  semanticCursorPool[i] = cursor;
+let semanticCursorPoolInitialized: boolean = false;
+let semanticCursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let semanticCursorPoolDepth: i32 = 0;
+
+function initSemanticCursorPool(): void {
+  semanticCursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
+  for (let i = 0; i < 16; i++) {
+    let ptr = atomicChunkAlloc(offsetof<SemanticCursor>());
+    let cursor = changetype<SemanticCursor>(ptr);
+    cursor.isActive = false;
+    semanticCursorPool[i] = ptr;
+  }
+  semanticCursorPoolDepth = 16;
+  semanticCursorPoolInitialized = true;
 }
 
 export function getSemanticChildren(node: u32): SemanticCursor {
+  if (!semanticCursorPoolInitialized) initSemanticCursorPool();
   let cursor: SemanticCursor;
   if (semanticCursorPoolDepth > 0) {
     semanticCursorPoolDepth--;
-    cursor = semanticCursorPool[semanticCursorPoolDepth];
+    cursor = changetype<SemanticCursor>(semanticCursorPool[semanticCursorPoolDepth]);
   } else {
-    let ptr = heap.alloc(offsetof<SemanticCursor>());
+    let ptr = atomicChunkAlloc(offsetof<SemanticCursor>());
     cursor = changetype<SemanticCursor>(ptr);
   }
   cursor.init(node);
@@ -1561,8 +1636,9 @@ export function getSemanticChildren(node: u32): SemanticCursor {
 }
 
 export function releaseSemanticCursor(cursor: SemanticCursor): void {
+  if (!semanticCursorPoolInitialized) initSemanticCursorPool();
   if (semanticCursorPoolDepth < 16) {
-    semanticCursorPool[semanticCursorPoolDepth] = cursor;
+    semanticCursorPool[semanticCursorPoolDepth] = changetype<u32>(cursor);
     semanticCursorPoolDepth++;
   }
 }

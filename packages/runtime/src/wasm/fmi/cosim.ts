@@ -70,14 +70,14 @@ export class CosimOrchestrator {
     this.participantCount = 0;
     this.couplingCount = 0;
 
-    this.participantsPtr = atomicChunkAlloc(COSIM_MAX_PARTICIPANTS * sizeof<CosimParticipant>());
-    this.couplingsPtr = atomicChunkAlloc(COSIM_MAX_COUPLINGS * sizeof<CosimCoupling>());
+    this.participantsPtr = atomicChunkAlloc(COSIM_MAX_PARTICIPANTS * offsetof<CosimParticipant>());
+    this.couplingsPtr = atomicChunkAlloc(COSIM_MAX_COUPLINGS * offsetof<CosimCoupling>());
   }
 
   addParticipant(instancePtr: u32, fmiVersion: u32, stepRatio: u32): i32 {
     if (this.participantCount >= (COSIM_MAX_PARTICIPANTS as u32)) return -1;
     let idx = this.participantCount;
-    let pPtr = this.participantsPtr + idx * sizeof<CosimParticipant>();
+    let pPtr = this.participantsPtr + idx * offsetof<CosimParticipant>();
     let p = changetype<CosimParticipant>(pPtr);
     p.instancePtr = instancePtr;
     p.fmiVersion = fmiVersion == 3 ? 3 : 2;
@@ -99,7 +99,7 @@ export class CosimOrchestrator {
   ): i32 {
     if (this.couplingCount >= (COSIM_MAX_COUPLINGS as u32)) return -1;
     let idx = this.couplingCount;
-    let cPtr = this.couplingsPtr + idx * sizeof<CosimCoupling>();
+    let cPtr = this.couplingsPtr + idx * offsetof<CosimCoupling>();
     let c = changetype<CosimCoupling>(cPtr);
     c.srcInstancePtr = srcInstancePtr;
     c.srcVr = srcVr;
@@ -155,7 +155,7 @@ export class CosimOrchestrator {
     let cBase = this.couplingsPtr;
 
     for (let i: u32 = 0; i < count; i++) {
-      let cPtr = cBase + i * sizeof<CosimCoupling>();
+      let cPtr = cBase + i * offsetof<CosimCoupling>();
       let c = changetype<CosimCoupling>(cPtr);
 
       let rawSrc = this.getReal(c.srcInstancePtr, c.srcVr, c.srcFmiVersion);
@@ -193,7 +193,7 @@ export class CosimOrchestrator {
 
     // Advance each participant
     for (let i: u32 = 0; i < pCount; i++) {
-      let pPtr = pBase + i * sizeof<CosimParticipant>();
+      let pPtr = pBase + i * offsetof<CosimParticipant>();
       let p = changetype<CosimParticipant>(pPtr);
 
       let subStep = communicationStepSize / (p.stepRatio as f64);
@@ -227,7 +227,7 @@ export function cosimCreateOrchestrator(
   tolerance: f64,
   relaxation: f64
 ): u32 {
-  let ptr = atomicChunkAlloc(sizeof<CosimOrchestrator>());
+  let ptr = atomicChunkAlloc(offsetof<CosimOrchestrator>());
   let orchestrator = changetype<CosimOrchestrator>(ptr);
   orchestrator.init(method, maxIterations, tolerance, relaxation);
   return ptr as u32;

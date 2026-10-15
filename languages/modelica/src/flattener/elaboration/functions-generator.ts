@@ -875,16 +875,24 @@ export function flattenFunction(
       });
     }
 
+    const cleanupFrom = (targetDae: any) => {
+      if (!targetDae) return;
+      for (const k of [cleanFnName, fnName, baseName]) {
+        if (!k) continue;
+        targetDae.functions.delete(k);
+        const id = targetDae.interner?.lookup(k);
+        if (id !== undefined) targetDae.functions.delete(id);
+      }
+    };
+
+    if (fn.externalDecl && fn.externalDecl.includes('"builtin"')) {
+      cleanupFrom(parentDae);
+      let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+      while (rootDae?.parentDae) rootDae = rootDae.parentDae;
+      cleanupFrom(rootDae);
+    }
+
     if (fn.diagnostics.some((d: any) => d.severity === "error")) {
-      const cleanupFrom = (targetDae: any) => {
-        if (!targetDae) return;
-        for (const k of [cleanFnName, fnName, baseName]) {
-          if (!k) continue;
-          targetDae.functions.delete(k);
-          const id = targetDae.interner?.lookup(k);
-          if (id !== undefined) targetDae.functions.delete(id);
-        }
-      };
       cleanupFrom(parentDae);
       let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
       while (rootDae?.parentDae) rootDae = rootDae.parentDae;
@@ -954,9 +962,6 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
     if (isFunctionSym(db, cc)) {
       const qualifiedName = `${dae.name}.${cc.name}`;
       const fn = flattener.flattenFunction(cc.id, qualifiedName, undefined, dae);
-      if (fn.externalDecl && fn.externalDecl.includes('"builtin"')) {
-        continue;
-      }
       if (fn.diagnostics.some((d: any) => d.severity === "error")) {
         for (const d of fn.diagnostics) {
           if (!dae.diagnostics.some((existing) => existing.message === d.message)) {
@@ -965,7 +970,7 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
           }
         }
         flattener.failedFunctionIds.add(cc.id);
-      } else {
+      } else if (!(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
         (fn as any).isNestedMember = true;
         (fn as any).symId = cc.id;
         if (flattener.calledFunctionSymIds.has(cc.id)) {
@@ -1079,8 +1084,24 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
               }
             }
             flattener.failedFunctionIds.add(fc.id);
-          } else {
+          } else if (!(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
             dae.addFunction(fc.name, fn);
+          }
+        }
+      } else {
+        const childFuncs = (db.childrenOf(fc.id) ?? []).filter((c: any) => c.kind === "Class" && isFunctionSym(db, c));
+        for (const cf of childFuncs) {
+          const qualName = `${fc.name}.${cf.name}`;
+          const isQualCalled = new RegExp(`\\b${escapeRegExp(qualName)}\\s*\\(`).test(rootText);
+          if (isQualCalled && !dae.functions.has(qualName)) {
+            const fn = flattener.flattenFunction(cf.id, qualName, undefined, dae);
+            if (
+              !fn.diagnostics.some((d: any) => d.severity === "error") &&
+              !(fn.externalDecl && fn.externalDecl.includes('"builtin"'))
+            ) {
+              (fn as any).wasCalled = true;
+              dae.addFunction(qualName, fn);
+            }
           }
         }
       }

@@ -460,7 +460,7 @@ export class TearingCache {
 }
 
 export function dae_createTearingCache(capacity: u32 = 256): u32 {
-  let ptr = atomicChunkAlloc(sizeof<TearingCache>());
+  let ptr = atomicChunkAlloc(offsetof<TearingCache>());
   let cache = changetype<TearingCache>(ptr);
   cache.init(capacity);
   return ptr as u32;

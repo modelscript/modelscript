@@ -710,7 +710,7 @@ export class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  public scheduleCompaction(immediate: boolean = false): void {
+  public scheduleCompaction(_immediate: boolean = false): void {
     if (this._idleTimer) {
       clearTimeout(this._idleTimer);
       this._idleTimer = null;
@@ -1356,6 +1356,7 @@ export class LspFacade {
 
     // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges or need context interpolation.
     // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
+    const isPotentialNodePtr = (p: number): boolean => p >= 64 && (p & 3) === 0 && p >>> 2 < memory.length - 4;
     const requiredNodePtrs = new Set<number>();
     for (let i = 0; i < numElements * 7; i += 7) {
       const lintId = memory[(dirPtr >> 2) + i + 2];
@@ -1364,17 +1365,17 @@ export class LspFacade {
         const arg1 = memory[(dirPtr >> 2) + i + 4];
         const arg2 = memory[(dirPtr >> 2) + i + 5];
         const arg3 = memory[(dirPtr >> 2) + i + 6];
-        if (arg0) requiredNodePtrs.add(arg0);
-        if (arg1) requiredNodePtrs.add(arg1);
-        if (arg2) requiredNodePtrs.add(arg2);
-        if (arg3) requiredNodePtrs.add(arg3);
+        if (isPotentialNodePtr(arg0)) requiredNodePtrs.add(arg0);
+        if (isPotentialNodePtr(arg1)) requiredNodePtrs.add(arg1);
+        if (isPotentialNodePtr(arg2)) requiredNodePtrs.add(arg2);
+        if (isPotentialNodePtr(arg3)) requiredNodePtrs.add(arg3);
       }
     }
 
     const offsetCache = new Map<number, number>();
     if (requiredNodePtrs.size > 0 && astRoot) {
       const encoding = this.getInputEncoding();
-      const encStep = encoding === 1 ? 2 : 1;
+      const _encStep = encoding === 1 ? 2 : 1;
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
@@ -1416,14 +1417,24 @@ export class LspFacade {
         if (child !== 0) {
           let childCount = 0;
           let c = child;
-          while (c !== 0 && childCount < 5000) {
+          while (c !== 0 && childCount < 200000) {
             childCount++;
             c = memory[(c + 16) / 4];
           }
 
-          if (stackTop + childCount < 50000) {
+          if (stackTop + childCount >= stackPtrs.length) {
+            let newCap = stackPtrs.length * 2;
+            while (newCap <= stackTop + childCount) newCap *= 2;
+            const nextPtrs = new Uint32Array(newCap);
+            const nextOffsets = new Uint32Array(newCap);
+            nextPtrs.set(stackPtrs);
+            nextOffsets.set(stackOffsets);
+            stackPtrs = nextPtrs;
+            stackOffsets = nextOffsets;
+          }
+          {
             let currOffset = nodeStart;
-            let consumedInParent = 0;
+            let _consumedInParent = 0;
             let idx = 0;
             c = child;
             while (c !== 0 && idx < childCount) {
@@ -1437,7 +1448,7 @@ export class LspFacade {
               stackPtrs[slot] = c;
               stackOffsets[slot] = childStart;
               currOffset = childStart + cLen;
-              consumedInParent += cLen;
+              _consumedInParent += cLen;
               idx++;
               c = memory[(c + 16) / 4];
             }
@@ -1518,7 +1529,7 @@ export class LspFacade {
             symName = formatSyntaxTokenName(rawArg1, symName);
           }
 
-          let rawArg2 = (arg2 & 0x7fff) as number;
+          let rawArg2 = (arg2 >>> 0) as number;
           let rawArg3 = (arg3 & 0x7fff) as number;
           const poolPtr = this.exports.lsp_getExpectedPool ? this.exports.lsp_getExpectedPool() : 0;
 
@@ -1675,7 +1686,7 @@ export class LspFacade {
             };
 
             const getSyntaxNodeForPtr = (ptr: number): SyntaxNode | null => {
-              const isAligned = ptr > 0 && ptr % 4 === 0 && ptr / 4 < memory.length - 4;
+              const isAligned = ptr >= 64 && (ptr & 3) === 0 && ptr >>> 2 < memory.length - 4;
               if (!isAligned || !this.exports.getChildByFieldId) return null;
               let actualStart = -1;
               if (offsetCache.has(ptr)) {
@@ -1705,7 +1716,13 @@ export class LspFacade {
               }
 
               const isAstNode = syntaxNode !== null;
-              const nodeText = isAstNode ? text : fallbackText !== "" ? fallbackText : String(nodePtr);
+              const nodeText = isAstNode
+                ? text
+                : fallbackText !== ""
+                  ? fallbackText
+                  : nodePtr === 0
+                    ? ""
+                    : String(nodePtr);
 
               const resolveChildFieldText = (fieldName: string): string => {
                 if (syntaxNode) {
@@ -2110,7 +2127,7 @@ export class LspFacade {
   }
 
   /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */
-  getDiagramData(astRoot: number, projectionId: number = 0): { nodes: any[]; edges: any[] } {
+  getDiagramData(astRoot: number, _projectionId: number = 0): { nodes: any[]; edges: any[] } {
     const nodes: any[] = [];
     const edges: any[] = [];
     if (!this.exports.lsp_getDiagramData || !this.exports.lsp_getBinaryBuffer) {
@@ -2134,7 +2151,7 @@ export class LspFacade {
         ? this.exports.inputLength.value
         : Number(this.exports.inputLength) || 0
       : 0;
-    const textBuffer =
+    const _textBuffer =
       inputBufPtr > 0 && lenBytes > 0 ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes) : null;
     const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
     const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
@@ -2162,7 +2179,7 @@ export class LspFacade {
             const slice = new Uint8Array(sliceLen);
             slice.set(new Uint8Array(this.wasmMemory.buffer, inputBufPtr + startByte, sliceLen));
             nodeText = decoder.decode(slice);
-          } catch (e) {}
+          } catch (_e) {}
         }
 
         nodes.push({
@@ -3746,9 +3763,9 @@ export class LspFacade {
 
     // Reuse cached error ranges from the last getDiagnostics() call
     // instead of calling lsp_getDiagnostics again (avoids triple traversal)
-    const errorRanges = this.readCachedErrorRanges();
+    const _errorRanges = this.readCachedErrorRanges();
 
-    const printedErrors = new Set<string>();
+    const _printedErrors = new Set<string>();
 
     const toSExpr = (ptr: number, currentOffset: number, depth: number): { strs: string[]; nextOffset: number } => {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
@@ -3836,9 +3853,9 @@ export class LspFacade {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
 
     // Reuse cached error ranges from the last getDiagnostics() call
-    const errorRanges = this.readCachedErrorRanges();
+    const _errorRanges = this.readCachedErrorRanges();
 
-    const printedErrors = new Set<string>();
+    const _printedErrors = new Set<string>();
     const lines: string[] = [];
 
     lines.push(
@@ -3882,7 +3899,7 @@ export class LspFacade {
 
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
 
-      const isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const _isInvisible = (typeFlags & (1 << 14)) !== 0;
       const shouldPrint = true; // Debug: print all nodes
 
       let renderedChildren = 0;
@@ -4574,12 +4591,12 @@ export class SyntaxNode {
 
   /** The line and column where this node starts. */
   get startPosition(): Point {
-    return this.tree.offsetToPoint(this.startIndex * 2);
+    return this.tree.offsetToPoint(this.startIndex * this.tree._encMult);
   }
 
   /** The line and column where this node ends. */
   get endPosition(): Point {
-    return this.tree.offsetToPoint(this.endIndex * 2);
+    return this.tree.offsetToPoint(this.endIndex * this.tree._encMult);
   }
 
   /**
@@ -5222,6 +5239,7 @@ export class TreeCursor {
  */
 export class Tree {
   public lineStarts: number[];
+  public readonly _encMult: number;
   private _mem32: Uint32Array | null = null;
 
   get mem32(): Uint32Array {
@@ -5239,6 +5257,7 @@ export class Tree {
   ) {
     const enc = this.facade?.getInputEncoding ? this.facade.getInputEncoding() : 1;
     const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    this._encMult = mult;
     if (facade && rootPtr > 0 && typeof (facade as any).rootSourceCode?.set === "function") {
       (facade as any).rootSourceCode.set(rootPtr, sourceCode);
     }
@@ -5262,7 +5281,15 @@ export class Tree {
       isFat && this.facade.exports.getFatPaddingPtr ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
     const len = envHashPadding & 0x007fffff;
 
-    return new SyntaxNode(this, this.rootPtr, 0, null, pad, len > 0 ? len : this.sourceCode.length * 2, typeId);
+    return new SyntaxNode(
+      this,
+      this.rootPtr,
+      0,
+      null,
+      pad,
+      len > 0 ? len : this.sourceCode.length * this._encMult,
+      typeId,
+    );
   }
 
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
@@ -5272,27 +5299,28 @@ export class Tree {
 
   /** Converts a linear byte offset into a row and column Point. */
   offsetToPoint(offset: number): Point {
+    const mult = this._encMult;
     let low = 0;
     let high = this.lineStarts.length - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
       if (this.lineStarts[mid] <= offset) {
         if (mid === this.lineStarts.length - 1 || this.lineStarts[mid + 1] > offset) {
-          return { row: mid, column: (offset - this.lineStarts[mid]) / 2 };
+          return { row: mid, column: (offset - this.lineStarts[mid]) / mult };
         }
         low = mid + 1;
       } else {
         high = mid - 1;
       }
     }
-    return { row: 0, column: offset / 2 };
+    return { row: 0, column: offset / mult };
   }
 
   /** Converts a row and column Point into a linear character offset. */
   pointToOffset(point: Point): number {
     if (point.row < 0) return 0;
     if (point.row >= this.lineStarts.length) return this.sourceCode.length;
-    const lineStart = this.lineStarts[point.row] / 2;
+    const lineStart = this.lineStarts[point.row] / this._encMult;
     return Math.min(this.sourceCode.length, lineStart + point.column);
   }
 }
@@ -5621,7 +5649,7 @@ export async function createWasmParser(
       },
     },
     parser: {
-      logInt: (val: number) => {},
+      logInt: (_val: number) => {},
     },
     engine: {
       debugLog: (id: number, p1: number, p2: number, p3: number) => {
@@ -5716,7 +5744,7 @@ export function createWasmParserSync(
       },
     },
     parser: {
-      logInt: (val: number) => {},
+      logInt: (_val: number) => {},
     },
     engine: {
       debugLog: (id: number, p1: number, p2: number, p3: number) => {

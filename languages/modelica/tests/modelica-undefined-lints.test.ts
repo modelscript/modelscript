@@ -472,6 +472,54 @@ end;`;
     const m2002Diag = diags.find((d: any) => d.code === 2002);
     expect(m2002Diag).toBeDefined();
     expect(m2002Diag.message).toBe("Variable x.error not found in scope Z.");
+    // "  connect(x.error, y.p2);" -> "error" is at columns 12..17 (0-indexed)
+    expect(m2002Diag.range.start.character).toBe(12);
+    expect(m2002Diag.range.end.character).toBe(17);
+  });
+
+  test("narrows diagnostic range to only the missing component segment in a.b.c, Pkg.MissingType, and dotted modifiers", () => {
+    const code = `package Pkg
+  model Sub
+    Real validVal;
+  end Sub;
+end Pkg;
+model Holder
+  Pkg.Sub b;
+end Holder;
+model TestNarrowRanges
+  Holder a;
+  Pkg.MissingType badComp;
+  Holder a2(b.missingMod = 1.0);
+equation
+  a.b.missingField = 2.0;
+end TestNarrowRanges;`;
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+
+    // 1. Qualified type Pkg.MissingType -> only "MissingType" (cols 6..17 on line 10) is underlined
+    const typeDiag = diags.find((d: any) => d.code === 2003);
+    expect(typeDiag).toBeDefined();
+    expect(typeDiag.message).toBe("Class or type 'Pkg.MissingType' not found in scope.");
+    expect(typeDiag.range.start.line).toBe(10);
+    expect(typeDiag.range.start.character).toBe(6);
+    expect(typeDiag.range.end.character).toBe(17);
+
+    // 2. Dotted modifier Holder a2(b.missingMod = 1.0) -> only "missingMod" (cols 14..24 on line 11) is underlined
+    const modDiag = diags.find((d: any) => d.code === 4045);
+    expect(modDiag).toBeDefined();
+    expect(modDiag.range.start.line).toBe(11);
+    expect(modDiag.range.start.character).toBe(14);
+    expect(modDiag.range.end.character).toBe(24);
+
+    // 3. Dotted variable reference a.b.missingField -> only "missingField" (cols 6..18 on line 13) is underlined
+    const varDiag = diags.find((d: any) => d.code === 2002 && d.message.includes("a.b.missingField"));
+    expect(varDiag).toBeDefined();
+    expect(varDiag.message).toBe("Variable a.b.missingField not found in scope TestNarrowRanges.");
+    expect(varDiag.range.start.line).toBe(13);
+    expect(varDiag.range.start.character).toBe(6);
+    expect(varDiag.range.end.character).toBe(18);
   });
 
   test("catches connector port type and flow mismatch in hierarchical connect(x.p1, y.p2)", () => {
@@ -526,130 +574,5 @@ end;`;
     const diags = activeFacade.getDiagnostics(root);
     const diagsFiltered = diags.filter((d: any) => d.code === 5004 || d.code === 2002);
     expect(diagsFiltered).toEqual([]);
-  });
-
-  test("executes physical in-DSL flattening pipeline on Modelica AST", () => {
-    const code = `model A
-  Real x;
-equation
-  x = 1;
-end A;`;
-    const root = activeFacade.parse(code);
-    expect(root).toBeGreaterThan(0);
-
-    const pipelineResult = activeFacade.executePipeline(root, "flatten");
-    console.log("PIPELINE FLATTEN RESULT:\n", JSON.stringify(pipelineResult, null, 2));
-
-    expect(pipelineResult).toBeDefined();
-    expect(pipelineResult.variables.length).toBe(1);
-    expect(pipelineResult.variables[0].name).toBe("x");
-    expect(pipelineResult.variables[0].type).toBe("Real");
-    expect(pipelineResult.equations.length).toBe(1);
-    expect(pipelineResult.equations[0].lhs).toBe("x");
-    expect(pipelineResult.equations[0].rhs).toBe("1");
-    expect(pipelineResult.bltBlocks.length).toBe(1);
-  });
-
-  test("executes physical in-DSL flattening pipeline on extends inheritance model", () => {
-    const code = `model Base
-  Real x;
-equation
-  x = 10;
-end Base;
-
-model Derived
-  extends Base;
-  Real y;
-equation
-  y = 20;
-end Derived;`;
-    const root = activeFacade.parse(code);
-    expect(root).toBeGreaterThan(0);
-
-    const pipelineResult = activeFacade.executePipeline(root, "flatten");
-    console.log("PIPELINE EXTENDS RESULT:\n", JSON.stringify(pipelineResult, null, 2));
-
-    expect(pipelineResult).toBeDefined();
-    expect(pipelineResult.variables.length).toBe(2);
-    const varNames = pipelineResult.variables.map((v: any) => v.name);
-    expect(varNames).toContain("x");
-    expect(varNames).toContain("y");
-    expect(pipelineResult.equations.length).toBe(2);
-  });
-
-  test("executes physical in-DSL flattening pipeline on hierarchical sub-model with connectors", () => {
-    const code = `connector Pin
-  Real v;
-  flow Real i;
-end Pin;
-
-model Resistor
-  Pin p;
-  Pin n;
-  parameter Real R = 100;
-equation
-  p.v - n.v = R * p.i;
-  p.i + n.i = 0;
-end Resistor;
-
-model Circuit
-  Resistor r1;
-equation
-  r1.p.v = 10;
-end Circuit;`;
-    const root = activeFacade.parse(code);
-    expect(root).toBeGreaterThan(0);
-
-    const pipelineResult = activeFacade.executePipeline(root, "flatten");
-    console.log("PIPELINE HIERARCHICAL RESULT:\n", JSON.stringify(pipelineResult, null, 2));
-
-    expect(pipelineResult).toBeDefined();
-    const varNames = pipelineResult.variables.map((v: any) => v.name);
-    expect(varNames).toContain("r1.p.v");
-    expect(varNames).toContain("r1.p.i");
-    expect(varNames).toContain("r1.n.v");
-    expect(varNames).toContain("r1.n.i");
-    expect(varNames).toContain("r1.R");
-  });
-
-  test("expands connect(x.xc, y.yc) into Kirchhoff zero-sum flow conservation equations", () => {
-    const code = `connector XC
-  flow Real x;
-end;
-
-connector YC
-  flow Real x;
-end;
-
-model X
-  XC xc;
-end;
-
-model Y
-  YC yc;
-end;
-
-model Z
-  X x;
-  Y y;
-equation
-  connect(x.xc, y.yc);
-end Z;`;
-    const root = activeFacade.parse(code);
-    expect(root).toBeGreaterThan(0);
-
-    const pipelineResult = activeFacade.executePipeline(root, "flatten");
-    console.log("PIPELINE CONNECTOR EXPANSION RESULT:\n", JSON.stringify(pipelineResult, null, 2));
-
-    expect(pipelineResult).toBeDefined();
-    const varNames = pipelineResult.variables.map((v: any) => v.name);
-    expect(varNames).toContain("x.xc.x");
-    expect(varNames).toContain("y.yc.x");
-
-    // Verify connect equation emitted for flattened connector references
-    expect(pipelineResult.equations.length).toBeGreaterThanOrEqual(1);
-    const eq = pipelineResult.equations.find((e: any) => e.kind === "connect") || pipelineResult.equations[0];
-    expect(eq.kind).toBe("connect");
-    expect(eq.text).toContain("connect(x.xc, y.yc)");
   });
 });

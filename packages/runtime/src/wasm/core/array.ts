@@ -662,10 +662,10 @@ export class SourceTextView {
 
   @inline static at(ptr: usize, len: u32, isUtf16: bool = true): SourceTextView {
     if (g_sourceViewBuf == 0) {
-      g_sourceViewBuf = atomicChunkAlloc(SOURCE_VIEW_SLOTS * sizeof<SourceTextView>());
+      g_sourceViewBuf = atomicChunkAlloc(SOURCE_VIEW_SLOTS * offsetof<SourceTextView>());
     }
     let slot = (g_sourceViewIdx++) & SOURCE_VIEW_MASK;
-    let view = changetype<SourceTextView>(g_sourceViewBuf + slot * sizeof<SourceTextView>());
+    let view = changetype<SourceTextView>(g_sourceViewBuf + slot * offsetof<SourceTextView>());
     view.ptr = ptr;
     view.byteLen = len;
     view.isUtf16 = isUtf16;

@@ -28,6 +28,7 @@ import {
   dropRoot,
   cloneNode,
   getNodeMerkleHash,
+  getNodeMerkleHashAt,
   S,
 } from "../arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool, setAncestorCacheEnabled } from "./engine";
@@ -58,6 +59,7 @@ let t_lspFindStackCapacity: u32 = 0;
 export let globalAstRoot: u32 = 0;
 export let globalEnclosingClassRoot: u32 = 0;
 export let globalEnclosingClassNode: u32 = 0;
+export let currentLintNode: u32 = 0;
 
 let t_nodeOffsetMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 let t_nodeOffsetMapAstRoot: u32 = 0;
@@ -250,6 +252,14 @@ export function lsp_getBinaryLength(): u32 {
  * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
  */
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
+  if (lintId > 0 && lintId < 0x7ffe && arg0 != 0 && arg0 != currentLintNode) {
+    let off = lsp_findNodeOffset(globalAstRoot, arg0, 0);
+    if (off >= 0) {
+      start = off as u32;
+      end = start + getNodeByteLength(arg0);
+    }
+  }
+
   let bufLen = t_lspBinaryBuffer.length;
   if (bufLen >= 10000 * 7) {
     // LSP2 fix: emit a meta-diagnostic once when limit is reached
@@ -272,7 +282,9 @@ export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32
     let prevStart = t_lspBinaryBuffer[offset];
     let prevEnd = t_lspBinaryBuffer[offset + 1];
     let prevLintId = t_lspBinaryBuffer[offset + 2];
-    if (prevStart == start && prevEnd == end && prevLintId == lintId) return;
+    let prevArg0 = t_lspBinaryBuffer[offset + 3];
+    let prevArg1 = t_lspBinaryBuffer[offset + 4];
+    if (prevStart == start && prevEnd == end && prevLintId == lintId && prevArg0 == arg0 && prevArg1 == arg1) return;
   }
 
   t_lspBinaryBuffer.push(start);
@@ -301,7 +313,6 @@ function ensureLspBuffers(): void {
   } else {
     lsp_clearVisited();
     t_lspBinaryBuffer.clear();
-    resetExpectedTokensPool();
   }
 }
 
@@ -453,6 +464,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0, rangeStart
 function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeStart: u32 = 0, rangeEnd: u32 = 0): void {
   if (astRoot == 0) return;
   globalAstRoot = astRoot;
+  clearNodeOffsetCache();
 
 
   let prevLen = t_lspBinaryBuffer.length;
@@ -742,7 +754,9 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
 
     let shouldLint = rangeEnd == 0 || (nodeStart <= rangeEnd && nodeEnd >= rangeStart && (nodeEnd - nodeStart <= (rangeEnd - rangeStart) * 8 + 512));
     if (shouldLint && !isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
+      currentLintNode = node;
       executeLints(type, node, nodeStart, nodeEnd);
+      currentLintNode = 0;
     }
 
     // Recurse into children (for both error and non-error nodes)
@@ -1498,7 +1512,7 @@ export function lsp_populateNodeOffsetMap(rootNode: u32, rootOffset: u32 = 0): v
       if (child != 0) {
          let childCount: i32 = 0;
          let c = child;
-         while (c != 0 && childCount < 5000) { childCount++; c = getNodeNextSibling(c); }
+         while (c != 0 && childCount < 200000) { childCount++; c = getNodeNextSibling(c); }
          
          ensureFindTraverseStack(stackTop + childCount);
          
@@ -1531,16 +1545,23 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
    if (rootNode == targetNode) return rootStart as i32;
 
    ensureNodeOffsetMap();
-   if (t_nodeOffsetMapAstRoot != rootNode) {
+   let cacheRoot = globalAstRoot != 0 ? globalAstRoot : rootNode;
+   let cacheOffset = cacheRoot == rootNode ? rootOffset : 0;
+   if (t_nodeOffsetMapAstRoot != cacheRoot) {
       t_nodeOffsetMap.clear();
-      t_nodeOffsetMapAstRoot = rootNode;
-      lsp_populateNodeOffsetMap(rootNode, rootOffset);
+      t_nodeOffsetMapAstRoot = cacheRoot;
+      lsp_populateNodeOffsetMap(cacheRoot, cacheOffset);
    }
    if (t_nodeOffsetMap.has(targetNode as u64)) {
       return t_nodeOffsetMap.get(targetNode as u64) as i32;
    }
-   if (rootNode != globalAstRoot && globalAstRoot != 0) {
-      return lsp_findNodeOffset(globalAstRoot, targetNode, 0);
+   if (cacheRoot != rootNode) {
+      t_nodeOffsetMap.clear();
+      t_nodeOffsetMapAstRoot = rootNode;
+      lsp_populateNodeOffsetMap(rootNode, rootOffset);
+      if (t_nodeOffsetMap.has(targetNode as u64)) {
+         return t_nodeOffsetMap.get(targetNode as u64) as i32;
+      }
    }
    return -1;
 }
@@ -1749,7 +1770,7 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
                countChild = getNodeNextSibling(countChild);
             }
             ensureTraverseStack(stackTop + childCount);
-            let currOffset = offset;
+            let currOffset = offset + pad;
             let c = child;
             let childIdx = 0;
             while (c != 0) {
@@ -1766,6 +1787,7 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
       }
    }
    
+   lsp_clearVisited();
    flushBinaryBuffer();
    return t_lspBinaryBuffer.length / 3;
 }
@@ -1999,7 +2021,7 @@ export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 
   ensureTraverseStack(2);
   let stackTop: i32 = 0;
   t_lspTraverseStack[0] = rootNode;
-  t_lspOffsetStack[0] = 0; 
+  t_lspOffsetStack[0] = getNodeLeadingPad(rootNode); 
   t_lspParentStack[0] = 0;
   stackTop = 1;
   
@@ -2161,6 +2183,11 @@ function pushCoalescedChangedRange(start: u32, end: u32): void {
  * Each range is a pair of [startByte, endByte].
  * Returns the number of changed ranges.
  */
+let t_diffOStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_diffNStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_diffOOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let t_diffNOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+
 export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
   ensureLspBuffers();
   t_lspBinaryBuffer.clear();
@@ -2181,18 +2208,24 @@ export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
     return 0;
   }
 
-  let oldMerkle = getNodeMerkleHash(oldTree);
-  let newMerkle = getNodeMerkleHash(newTree);
+  let oldMerkle = getNodeMerkleHashAt(oldTree, getNodePadding(oldTree));
+  let newMerkle = getNodeMerkleHashAt(newTree, getNodePadding(newTree));
   if (oldMerkle != 0 && oldMerkle == newMerkle) {
     flushBinaryBuffer();
     return 0;
   }
 
   let maxStack: u32 = 2048;
-  let oStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
-  let nStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
-  let oOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
-  let nOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+  if (changetype<usize>(t_diffOStack) == 0) {
+    t_diffOStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+    t_diffNStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+    t_diffOOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+    t_diffNOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(maxStack * 4));
+  }
+  let oStack = t_diffOStack;
+  let nStack = t_diffNStack;
+  let oOffsetStack = t_diffOOffsetStack;
+  let nOffsetStack = t_diffNOffsetStack;
   let sp: u32 = 0;
 
   oStack[0] = oldTree;
@@ -2210,8 +2243,8 @@ export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
 
     if (oNode == nNode) continue;
 
-    let oM = getNodeMerkleHash(oNode);
-    let nM = getNodeMerkleHash(nNode);
+    let oM = getNodeMerkleHashAt(oNode, oStart);
+    let nM = getNodeMerkleHashAt(nNode, nStart);
     if (oM != 0 && oM == nM) continue;
 
     let oType = getNodeType(oNode);
@@ -2240,40 +2273,26 @@ export function lsp_getChangedRanges(oldTree: u32, newTree: u32): u32 {
     while (nc != 0) { nChildCount++; nc = getNodeNextSibling(nc); }
 
     if (oChildCount == nChildCount && sp + oChildCount < maxStack) {
-      let oOffsets = changetype<UnmanagedUint32Array>(atomicChunkAlloc(oChildCount * 4));
-      let nOffsets = changetype<UnmanagedUint32Array>(atomicChunkAlloc(nChildCount * 4));
-      let oNodes = changetype<UnmanagedUint32Array>(atomicChunkAlloc(oChildCount * 4));
-      let nNodes = changetype<UnmanagedUint32Array>(atomicChunkAlloc(nChildCount * 4));
-
       let currO = oStart;
-      let curChild = oChild;
-      for (let i: u32 = 0; i < oChildCount; i++) {
-        if (i > 0) currO += getNodePadding(curChild);
-        oOffsets[i] = currO;
-        oNodes[i] = curChild;
-        currO += getNodeByteLength(curChild);
-        curChild = getNodeNextSibling(curChild);
-      }
-
+      let curOChild = oChild;
       let currN = nStart;
-      curChild = nChild;
-      for (let i: u32 = 0; i < nChildCount; i++) {
-        if (i > 0) currN += getNodePadding(curChild);
-        nOffsets[i] = currN;
-        nNodes[i] = curChild;
-        currN += getNodeByteLength(curChild);
-        curChild = getNodeNextSibling(curChild);
+      let curNChild = nChild;
+      for (let i: u32 = 0; i < oChildCount; i++) {
+        if (i > 0) {
+          currO += getNodePadding(curOChild);
+          currN += getNodePadding(curNChild);
+        }
+        let slot = sp + (oChildCount - 1 - i);
+        oStack[slot] = curOChild;
+        nStack[slot] = curNChild;
+        oOffsetStack[slot] = currO;
+        nOffsetStack[slot] = currN;
+        currO += getNodeByteLength(curOChild);
+        currN += getNodeByteLength(curNChild);
+        curOChild = getNodeNextSibling(curOChild);
+        curNChild = getNodeNextSibling(curNChild);
       }
-
-      for (let i: i32 = (oChildCount as i32) - 1; i >= 0; i--) {
-        let oC = oNodes[i as u32];
-        let nC = nNodes[i as u32];
-        oStack[sp] = oC;
-        nStack[sp] = nC;
-        oOffsetStack[sp] = oOffsets[i as u32];
-        nOffsetStack[sp] = nOffsets[i as u32];
-        sp++;
-      }
+      sp += oChildCount;
     } else {
       let rStart = nStart < oStart ? nStart : oStart;
       let oEnd = oStart + oLen;

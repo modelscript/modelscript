@@ -337,8 +337,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
             return {
               error: {
                 message: `Dimensional mismatch: arguments to '${fnName}' must have identical physical dimensions, got '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
-                startByte: node.startByte,
-                endByte: node.endByte,
+                startByte: node.startIndex ?? node.startOffset ?? node.startByte,
+                endByte: node.endIndex ?? node.endOffset ?? node.endByte,
               },
             };
           }
@@ -358,8 +358,9 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
             return {
               error: {
                 message: `Dimensional mismatch: argument to transcendental function '${fnName}' must be dimensionless, got '${getDimensionLabel(argDim)}'.`,
-                startByte: node.startByte,
-                endByte: node.endByte,
+                startByte:
+                  argNode.startIndex ?? argNode.startOffset ?? argNode.startByte ?? node.startIndex ?? node.startByte,
+                endByte: argNode.endIndex ?? argNode.endOffset ?? argNode.endByte ?? node.endIndex ?? node.endByte,
               },
             };
           }
@@ -395,8 +396,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
           return {
             error: {
               message: `Dimensional mismatch: cannot perform '${operators[i]}' on incompatible physical dimensions '${getDimensionLabel(curDim)}' and '${getDimensionLabel(nextDim)}'.`,
-              startByte: node.startByte,
-              endByte: node.endByte,
+              startByte: node.startIndex ?? node.startOffset ?? node.startByte,
+              endByte: node.endIndex ?? node.endOffset ?? node.endByte,
             },
           };
         }
@@ -431,8 +432,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
             return {
               error: {
                 message: `Dimensional mismatch: cannot perform '%' on incompatible physical dimensions '${getDimensionLabel(curDim)}' and '${getDimensionLabel(nextDim)}'.`,
-                startByte: node.startByte,
-                endByte: node.endByte,
+                startByte: node.startIndex ?? node.startOffset ?? node.startByte,
+                endByte: node.endIndex ?? node.endOffset ?? node.endByte,
               },
             };
           }
@@ -481,8 +482,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
         return {
           error: {
             message: `Dimensional mismatch: cannot compare incompatible physical dimensions '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
-            startByte: node.startByte,
-            endByte: node.endByte,
+            startByte: node.startIndex ?? node.startOffset ?? node.startByte,
+            endByte: node.endIndex ?? node.endOffset ?? node.endByte,
           },
         };
       }
@@ -513,8 +514,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
         return {
           error: {
             message: `Dimensional mismatch: cannot test equality between incompatible physical dimensions '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
-            startByte: node.startByte,
-            endByte: node.endByte,
+            startByte: node.startIndex ?? node.startOffset ?? node.startByte,
+            endByte: node.endIndex ?? node.endOffset ?? node.endByte,
           },
         };
       }

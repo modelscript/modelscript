@@ -4,6 +4,10 @@ import type { CodeGraph, CompilerLint, u16, u32, u64 } from "@modelscript/dsl";
 import {
   findClassByName,
   findComponentTypeInClass,
+  findComposition,
+  findDeclInClass,
+  findInnerClassInClass,
+  findUnresolvedComponentIdent,
   getEnclosingClass,
   getExpressionVariability,
   getMemberKindInClass,
@@ -33,10 +37,12 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["component_reference"],
     severity: "error",
     code: 2002,
-    message: (target, className) =>
-      className && className.text
-        ? `Variable ${target.text} not found in scope ${className.text}.`
-        : `Variable ${target.text} not found in scope.`,
+    message: (target, className, fullRef) => {
+      const vName = fullRef && fullRef.text && fullRef.text !== "0" ? fullRef.text : target.text;
+      return className && className.text
+        ? `Variable ${vName} not found in scope ${className.text}.`
+        : `Variable ${vName} not found in scope.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let rootId: u32 = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
@@ -257,7 +263,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         break;
       }
 
-      db.diagnostic(node, classNameNode);
+      const missingIdent = findUnresolvedComponentIdent(db, enclosingClass, node, $);
+      db.diagnostic(missingIdent, classNameNode, node);
     },
   },
 
@@ -284,7 +291,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["type_specifier"],
     severity: "error",
     code: 2003,
-    message: (target) => `Class or type '${target.text}' not found in scope.`,
+    message: (target, fullType) =>
+      `Class or type '${fullType && fullType.text && fullType.text !== "0" ? fullType.text : target.text}' not found in scope.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let firstIdent: u32 = 0;
       let identCount = 0;
@@ -317,9 +325,42 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
 
       // 2. Qualified type paths (e.g. Modelica.SIunits.Voltage, Package.Type)
-      // Defer to Salsa QueryEngine which has full multi-file WorkspaceIndex
-      // and standard library symbols. Avoids hardcoded namespace whitelists.
+      // If root package is defined in the current document, resolve segments and
+      // underline only the first unresolved segment; otherwise defer to Salsa QueryEngine.
       if (identCount > 1) {
+        if (firstIdent == 0) return;
+        let currClass = findClassByName(db, firstIdent, $);
+        if (currClass == 0) return;
+        let segIdx: u32 = 0;
+        for (const id of db.ast.getDescendants(node, $.identifier)) {
+          if (segIdx == 0) {
+            segIdx++;
+            continue;
+          }
+          if (findComposition(db, currClass, $) == 0) {
+            return;
+          }
+          if ($.extends_clause != 0) {
+            for (const _ of db.ast.getDescendants(currClass, $.extends_clause)) {
+              return;
+            }
+          }
+          if ($.import_clause != 0) {
+            for (const _ of db.ast.getDescendants(currClass, $.import_clause)) {
+              return;
+            }
+          }
+          const nextClass = findInnerClassInClass(db, currClass, id, $);
+          if (nextClass == 0) {
+            if (findDeclInClass(db, currClass, id, $) != 0) {
+              return;
+            }
+            db.diagnostic(id, node);
+            return;
+          }
+          currClass = nextClass;
+          segIdx++;
+        }
         return;
       }
 
@@ -343,7 +384,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
       }
 
-      db.diagnostic(node);
+      db.diagnostic(node, node);
     },
   },
 
@@ -362,7 +403,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         for (const cls of db.ast.getAncestors(node, 0)) {
           if (db.ast.getType(cls) == $.class_definition) {
             if (cls == baseClass) {
-              db.diagnostic(node);
+              db.diagnostic(typeSpec);
             }
             break;
           }
@@ -448,6 +489,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         let outerMod: u32 = 0;
         for (const anc of db.ast.getAncestors(mod, 0)) {
           if (anc == node) break;
+          if (anc != mod && db.ast.getType(anc) == $.element_redeclaration) {
+            isNestedInSub = true;
+            break;
+          }
           if (anc != mod && db.ast.getType(anc) == $.element_modification) {
             if (outerMod == 0) outerMod = anc;
             else {
@@ -743,6 +788,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         let outerMod: u32 = 0;
         for (const anc of db.ast.getAncestors(mod, 0)) {
           if (anc == node) break;
+          if (anc != mod && db.ast.getType(anc) == $.element_redeclaration) {
+            isNestedInSub = true;
+            break;
+          }
           if (anc != mod && db.ast.getType(anc) == $.element_modification) {
             if (outerMod == 0) outerMod = anc;
             else {
@@ -1120,7 +1169,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             if (decl != 0) nameId = db.ast.getChildByFieldId(decl, "name");
           }
           for (const mod of db.ast.getDescendants(compDecl, $.modification)) {
-            db.diagnostic(compDecl, mod, nameId != 0 ? nameId : compDecl);
+            db.diagnostic(mod, mod, nameId != 0 ? nameId : compDecl);
             return;
           }
         }
@@ -1128,7 +1177,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         for (const scs of db.ast.getDescendants(node, $.short_class_specifier)) {
           const nameId = db.ast.getChildByFieldId(scs, "name");
           for (const mod of db.ast.getDescendants(scs, $.class_modification)) {
-            db.diagnostic(scs, mod, nameId != 0 ? nameId : scs);
+            db.diagnostic(mod, mod, nameId != 0 ? nameId : scs);
             return;
           }
         }
@@ -1148,7 +1197,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       for (const typeSpec of db.ast.getDescendants(node, $.type_specifier)) {
         const sym = db.scope.resolve(typeSpec);
         if (sym != 0 && db.model.hasFlag(sym, "isReplaceable")) {
-          db.diagnostic(node);
+          db.diagnostic(typeSpec);
         }
         break;
       }
@@ -1194,7 +1243,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["element_modification"],
     severity: "error",
     code: 4044,
-    message: (target) => `Non-array modification '${target.text}' for array component, possibly due to missing 'each'.`,
+    message: (target, fullMod) =>
+      `Non-array modification '${fullMod && fullMod.text && fullMod.text !== "0" ? fullMod.text : target.text}' for array component, possibly due to missing 'each'.`,
     query: (db: CodeGraph, node: u32) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0) {
@@ -1202,7 +1252,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         if (sym != 0 && db.model.hasFlag(sym, "isArray")) {
           const hasEach = db.ast.getChildByFieldId(node, "each") != 0;
           if (!hasEach) {
-            db.diagnostic(node);
+            db.diagnostic(name, node);
           }
         }
       }
@@ -1423,7 +1473,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             }
             const memberKind = getMemberKindInClass(db, classDef, nameNode, $);
             if (memberKind == MEMBER_NONE) {
-              db.diagnostic(node, baseTypeId, nameNode);
+              db.diagnostic(nameNode, baseTypeId, nameNode);
             }
             return;
           }
@@ -1440,7 +1490,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             }
             const memberKind = getMemberKindInClass(db, classDef, nameNode, $);
             if (memberKind == MEMBER_NONE) {
-              db.diagnostic(node, baseTypeId, nameNode);
+              db.diagnostic(nameNode, baseTypeId, nameNode);
             }
             return;
           }
@@ -1475,13 +1525,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
                 if (isPrimitiveAttribute(db, compPrim, nameNode)) {
                   return;
                 }
-                db.diagnostic(node, outerName, nameNode);
+                db.diagnostic(nameNode, outerName, nameNode);
                 return;
               }
               const compClass = findClassByName(db, compType, $);
               if (compClass != 0) {
                 if (!isVariableDeclaredInClass(db, compClass, nameNode, $)) {
-                  db.diagnostic(node, outerName, nameNode);
+                  db.diagnostic(nameNode, outerName, nameNode);
                 }
                 return;
               }
@@ -1501,11 +1551,11 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
                 if (isPrimitiveAttribute(db, aliasPrim, nameNode)) {
                   return;
                 }
-                db.diagnostic(node, outerName, nameNode);
+                db.diagnostic(nameNode, outerName, nameNode);
                 return;
               }
               if (!isVariableDeclaredInClass(db, innerCls, nameNode, $)) {
-                db.diagnostic(node, outerName, nameNode);
+                db.diagnostic(nameNode, outerName, nameNode);
               }
               return;
             }
@@ -1536,7 +1586,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
             if (idx == idCount - 1) {
               if (!isVariableDeclaredInClass(db, currClass, id, $)) {
-                db.diagnostic(node, baseTypeId, nameNode);
+                db.diagnostic(id, baseTypeId, nameNode);
               }
               return;
             }
@@ -1544,21 +1594,19 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             if (compType != 0) {
               const compPrim = resolveBasePrimitiveType(db, compType, $);
               if (compPrim != TYPE_UNKNOWN) {
-                if (idx == idCount - 2) {
-                  let leafId: u32 = 0;
-                  for (const lid of db.ast.getDescendants(nameNode, $.identifier)) {
-                    leafId = lid;
-                  }
-                  if (isPrimitiveAttribute(db, compPrim, leafId)) {
-                    return;
-                  }
+                let leafId: u32 = id;
+                for (const lid of db.ast.getDescendants(nameNode, $.identifier)) {
+                  leafId = lid;
                 }
-                db.diagnostic(node, baseTypeId, nameNode);
+                if (idx == idCount - 2 && isPrimitiveAttribute(db, compPrim, leafId)) {
+                  return;
+                }
+                db.diagnostic(leafId, baseTypeId, nameNode);
                 return;
               }
               const nextClass = findClassByName(db, compType, $);
               if (nextClass == 0) {
-                db.diagnostic(node, baseTypeId, nameNode);
+                db.diagnostic(id, baseTypeId, nameNode);
                 return;
               }
               currClass = nextClass;
@@ -1567,7 +1615,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
               if (innerCls != 0) {
                 currClass = innerCls;
               } else {
-                db.diagnostic(node, baseTypeId, nameNode);
+                db.diagnostic(id, baseTypeId, nameNode);
                 return;
               }
             }
@@ -1577,7 +1625,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
 
         if (!isVariableDeclaredInClass(db, targetClass, nameNode, $)) {
-          db.diagnostic(node, baseTypeId, nameNode);
+          db.diagnostic(nameNode, baseTypeId, nameNode);
         }
         return;
       }
@@ -1631,7 +1679,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       // Check primitive base class (e.g. extends Real(break start))
       const primType = resolveBasePrimitiveType(db, baseTypeId, $);
       if (primType != TYPE_UNKNOWN) {
-        db.diagnostic(node, identNode);
+        db.diagnostic(identNode, identNode);
         return;
       }
 
@@ -1649,7 +1697,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           }
           const memberKind = getMemberKindInClass(db, classDef, identNode, $);
           if (memberKind == MEMBER_CLASS) {
-            db.diagnostic(node, identNode);
+            db.diagnostic(identNode, identNode);
           }
           return;
         }
@@ -1715,7 +1763,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           }
           const memberKind = getMemberKindInClass(db, classDef, identNode, $);
           if (memberKind == MEMBER_RECORD_COMPONENT) {
-            db.diagnostic(node, identNode);
+            db.diagnostic(identNode, identNode);
           }
           return;
         }

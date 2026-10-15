@@ -136,7 +136,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
         for (const decl of db.ast.getDescendants(node, $.declaration)) {
           const nameNode = db.ast.getChildByFieldId(decl, "name");
           if (nameNode != 0) {
-            db.diagnostic(decl, nameNode);
+            db.diagnostic(nameNode, nameNode);
           }
         }
       }
@@ -169,7 +169,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
               for (const decl of db.ast.getDescendants(node, $.declaration)) {
                 const nameNode = db.ast.getChildByFieldId(decl, "name");
                 if (nameNode != 0) {
-                  db.diagnostic(node, pfx, nameNode);
+                  db.diagnostic(pfx, pfx, nameNode);
                   return;
                 }
               }
@@ -256,7 +256,8 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
             if (nameNode != 0) break;
           }
         }
-        db.diagnostic(node, nameNode != 0 ? nameNode : node, flowCount);
+        const diagNode = nameNode != 0 ? nameNode : node;
+        db.diagnostic(diagNode, diagNode, flowCount);
       }
     },
   },

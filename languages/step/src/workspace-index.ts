@@ -126,39 +126,28 @@ function extractStepNames(text: string): {
     if (text[endPos] === ";") endPos++;
     headerRegex.lastIndex = endPos;
 
-    const matchEnd = endPos;
-    const fullMatch = text.slice(matchStart, matchEnd);
-
-    const startByte = encoder.encode(text.substring(0, matchStart)).length;
-    const endByte = encoder.encode(text.substring(0, matchEnd)).length;
-
-    if (entityType === "PRODUCT") {
-      const name = extractFirstString(args);
-      if (name) {
-        const nameIdx = fullMatch.indexOf(`'${name}'`);
-        const nameStart = nameIdx >= 0 ? startByte + nameIdx + 1 : startByte;
-        const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
-        products.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
-      }
-    } else if (
+    if (
+      entityType === "PRODUCT" ||
       entityType === "MANIFOLD_SOLID_BREP" ||
       entityType === "BREP_WITH_VOIDS" ||
-      entityType === "FACETED_BREP"
+      entityType === "FACETED_BREP" ||
+      entityType === "GEOMETRIC_TOLERANCE"
     ) {
       const name = extractFirstString(args);
       if (name && name.length > 0) {
+        const matchEnd = endPos;
+        const fullMatch = text.slice(matchStart, matchEnd);
+        const startByte = encoder.encode(text.substring(0, matchStart)).length;
+        const endByte = startByte + encoder.encode(fullMatch).length;
         const nameIdx = fullMatch.indexOf(`'${name}'`);
-        const nameStart = nameIdx >= 0 ? startByte + nameIdx + 1 : startByte;
+        const nameStart =
+          nameIdx >= 0 ? startByte + encoder.encode(fullMatch.substring(0, nameIdx + 1)).length : startByte;
         const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
-        shapes.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
-      }
-    } else if (entityType === "GEOMETRIC_TOLERANCE") {
-      const name = extractFirstString(args);
-      if (name && name.length > 0) {
-        const nameIdx = fullMatch.indexOf(`'${name}'`);
-        const nameStart = nameIdx >= 0 ? startByte + nameIdx + 1 : startByte;
-        const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
-        shapes.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
+        if (entityType === "PRODUCT") {
+          products.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
+        } else {
+          shapes.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
+        }
       }
     }
   }
@@ -280,6 +269,12 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
       namePath: productName,
       startByte: product?.startByte ?? 0,
       endByte: product?.endByte ?? 0,
+      fieldRanges: product
+        ? {
+            name: { startByte: product.nameStartByte, endByte: product.nameEndByte },
+            declaredName: { startByte: product.nameStartByte, endByte: product.nameEndByte },
+          }
+        : undefined,
       parentId: null,
       exports: [],
       inherits: [],
@@ -311,6 +306,10 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         namePath: `${productName}::${shape.name}`,
         startByte: shape.startByte,
         endByte: shape.endByte,
+        fieldRanges: {
+          name: { startByte: shape.nameStartByte, endByte: shape.nameEndByte },
+          declaredName: { startByte: shape.nameStartByte, endByte: shape.nameEndByte },
+        },
         parentId: productId,
         exports: [],
         inherits: [],

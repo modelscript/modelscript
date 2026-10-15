@@ -22,7 +22,7 @@ import {
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { getShortClassSpecifierNode } from "../../queries.js";
-import { getFlatteningState } from "../support/state.js";
+import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import {
   castToRealExpr,
   evalDaeExpr,
@@ -308,9 +308,6 @@ export function copyExprBetweenDaes(
       const op = src.getExprData1(srcId);
       const l = copyExprBetweenDaes(src, src.getExprLeft(srcId), dst, substitutions, callPrefix);
       const r = copyExprBetweenDaes(src, src.getExprRight(srcId), dst, substitutions, callPrefix);
-      if (srcId === 20) {
-        console.log("copy srcId 20: l=", l, "kind=", dst.getExprKind(l), "r=", r, "kind=", dst.getExprKind(r));
-      }
       if (op === BinOp.Mul) {
         const lK = dst.getExprKind(l);
         const rK = dst.getExprKind(r);
@@ -757,7 +754,7 @@ export function formatArenaValForMod(val: any, targetType?: any): string {
   return String(val);
 }
 
-export function evalArithmeticString(expr: string): number | null {
+export function evalArithmeticString(expr: string, allowFloat = false): number | null {
   let pos = 0;
   const len = expr.length;
 
@@ -786,11 +783,78 @@ export function evalArithmeticString(expr: string): number | null {
       pos++;
       return val;
     }
+    if ((ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch === 95) {
+      const idStart = pos;
+      while (pos < len) {
+        const c = expr.charCodeAt(pos);
+        if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95) {
+          pos++;
+        } else {
+          break;
+        }
+      }
+      const fnName = expr.slice(idStart, pos);
+      skipWhitespace();
+      if (pos >= len || expr.charCodeAt(pos) !== 40) return null;
+      pos++; // skip '('
+      const args: number[] = [];
+      skipWhitespace();
+      if (pos < len && expr.charCodeAt(pos) !== 41) {
+        while (true) {
+          const argVal = parseExpr();
+          if (argVal === null) return null;
+          args.push(argVal);
+          skipWhitespace();
+          if (pos < len && expr.charCodeAt(pos) === 44) {
+            pos++;
+          } else {
+            break;
+          }
+        }
+      }
+      if (pos >= len || expr.charCodeAt(pos) !== 41) return null;
+      pos++; // skip ')'
+      if (args.length === 1) {
+        const a0 = args[0]!;
+        switch (fnName) {
+          case "abs":
+            return Math.abs(a0);
+          case "ceil":
+            return Math.ceil(a0);
+          case "floor":
+          case "integer":
+            return Math.floor(a0);
+          case "sign":
+            return Math.sign(a0);
+        }
+      } else if (args.length === 2) {
+        const a0 = args[0]!;
+        const a1 = args[1]!;
+        switch (fnName) {
+          case "min":
+            return Math.min(a0, a1);
+          case "max":
+            return Math.max(a0, a1);
+          case "div":
+            return a1 !== 0 ? Math.trunc(a0 / a1) : null;
+          case "mod":
+            return a1 !== 0 ? a0 - Math.floor(a0 / a1) * a1 : null;
+          case "rem":
+            return a1 !== 0 ? a0 % a1 : null;
+        }
+      }
+      return null;
+    }
     const start = pos;
     while (pos < len) {
       const c = expr.charCodeAt(pos);
       if ((c >= 48 && c <= 57) || c === 46) {
         pos++;
+      } else if ((c === 101 || c === 69) && pos > start) {
+        pos++;
+        if (pos < len && (expr.charCodeAt(pos) === 43 || expr.charCodeAt(pos) === 45)) {
+          pos++;
+        }
       } else {
         break;
       }
@@ -800,8 +864,21 @@ export function evalArithmeticString(expr: string): number | null {
     return isNaN(num) ? null : num;
   }
 
+  function parsePower(): number | null {
+    const base = parsePrimary();
+    if (base === null) return null;
+    skipWhitespace();
+    if (pos < len && expr.charCodeAt(pos) === 94) {
+      pos++;
+      const exp = parsePower();
+      if (exp === null) return null;
+      return Math.pow(base, exp);
+    }
+    return base;
+  }
+
   function parseMulDiv(): number | null {
-    let left = parsePrimary();
+    let left = parsePower();
     if (left === null) return null;
     while (pos < len) {
       skipWhitespace();
@@ -809,12 +886,12 @@ export function evalArithmeticString(expr: string): number | null {
       const c = expr.charCodeAt(pos);
       if (c === 42) {
         pos++;
-        const right = parsePrimary();
+        const right = parsePower();
         if (right === null) return null;
         left = left * right;
       } else if (c === 47) {
         pos++;
-        const right = parsePrimary();
+        const right = parsePower();
         if (right === null || right === 0) return null;
         left = left / right;
       } else {
@@ -851,10 +928,10 @@ export function evalArithmeticString(expr: string): number | null {
   const res = parseExpr();
   skipWhitespace();
   if (res === null || pos < len) return null;
-  return Math.round(res);
+  return allowFloat ? res : Math.round(res);
 }
 
-export function evalArithmeticText(str: string, subs?: Map<string, number>): number | null {
+export function evalArithmeticText(str: string, subs?: Map<string, number>, allowFloat = false): number | null {
   if (!str) return null;
   let s = str.trim();
   if (subs && subs.size > 0) {
@@ -863,15 +940,16 @@ export function evalArithmeticText(str: string, subs?: Map<string, number>): num
       return v !== undefined ? String(v) : id;
     });
   }
-  return evalArithmeticString(s);
+  return evalArithmeticString(s, allowFloat);
 }
 
 export function getVarPrefixSet(dae: DAEBuilder): Set<string> {
-  let set = (dae as any)._varPrefixSet as Set<string> | undefined;
-  let lastCount = (dae as any)._varPrefixCount ?? 0;
+  const state = getFlatteningState(dae);
+  let set = state.varPrefixSet;
+  let lastCount = state.varPrefixCount ?? 0;
   if (!set) {
     set = new Set<string>();
-    (dae as any)._varPrefixSet = set;
+    state.varPrefixSet = set;
     lastCount = 0;
   }
   const currCount = dae.varCount;
@@ -894,17 +972,13 @@ export function getVarPrefixSet(dae: DAEBuilder): Set<string> {
         set.add(name.slice(0, brkIdx));
       }
     }
-    (dae as any)._varPrefixCount = currCount;
+    state.varPrefixCount = currCount;
   }
   return set;
 }
 
 export function getDaeArrayDimSize(dae: DAEBuilder, arrName: string, resolvedName: string, dim: number): number | null {
-  const namedShape =
-    (dae as any).getNamedArrayShape?.(resolvedName) ??
-    (dae as any).namedArrayShapes?.get(resolvedName) ??
-    (dae as any).getNamedArrayShape?.(arrName) ??
-    (dae as any).namedArrayShapes?.get(arrName);
+  const namedShape = getNamedArrayShape(dae, resolvedName) ?? getNamedArrayShape(dae, arrName);
   if (namedShape && namedShape.length >= dim && namedShape[dim - 1]! >= 0) {
     return namedShape[dim - 1]!;
   }
@@ -923,6 +997,26 @@ export function getDaeArrayDimSize(dae: DAEBuilder, arrName: string, resolvedNam
   let maxDim = 0;
   const target = prefixSet.has(resolvedName) ? resolvedName : arrName;
   const prefixMatch = `${target}[`;
+  const elemIndices = dae.getArrayElementIndices?.(target);
+  if (elemIndices && elemIndices.length > 0) {
+    for (let k = 0; k < elemIndices.length; k++) {
+      const i = elemIndices[k]!;
+      if (dae.isVarRemoved(i)) continue;
+      const vn = dae.getVarName(i);
+      if (vn.startsWith(prefixMatch)) {
+        const rest = vn.slice(prefixMatch.length);
+        const endBracket = rest.indexOf("]");
+        if (endBracket >= 0) {
+          const idxList = rest.slice(0, endBracket).split(",");
+          if (dim >= 1 && dim <= idxList.length) {
+            const val = parseInt(idxList[dim - 1]!.trim(), 10);
+            if (!isNaN(val) && val > maxDim) maxDim = val;
+          }
+        }
+      }
+    }
+    if (maxDim > 0) return maxDim;
+  }
   for (let i = 0; i < dae.varCount; i++) {
     if (!dae.isVarRemoved(i)) {
       const vn = dae.getVarName(i);
@@ -967,10 +1061,7 @@ export function evaluateCSTNumber(
   const floatNum = parseFloat(text);
   if (!isNaN(floatNum) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
 
-  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*(?:,\s*(\d+))?\s*\)$/);
-  if (sizeMatch) {
-    const arrName = sizeMatch[1]!;
-    const dim = sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 1;
+  const resolveSizeCall = (arrName: string, dim: number): number | null => {
     if (dae) {
       const resolvedName = resolveScopedName(arrName, prefix, dae);
       const dimSize = getDaeArrayDimSize(dae, arrName, resolvedName, dim);
@@ -989,10 +1080,10 @@ export function evaluateCSTNumber(
       for (const s of syms) {
         if (dim === 1) {
           const targetMeta = s.metadata as any;
-          const node = db.cstNode(s.id);
-          const isEnum = targetMeta?.isEnumeration || Boolean(node?.text?.includes("enumeration("));
+          const cst = db.cstNode(s.id);
+          const isEnum = targetMeta?.isEnumeration || Boolean(cst?.text?.includes("enumeration("));
           if (isEnum) {
-            const lits = extractEnumLiteralsFromCst(node, targetMeta);
+            const lits = extractEnumLiteralsFromCst(cst, targetMeta);
             if (lits) return lits.length;
           }
         }
@@ -1003,6 +1094,61 @@ export function evaluateCSTNumber(
         }
       }
     }
+    return null;
+  };
+
+  const resolveIdentConstant = (ident: string, requireConstOrParamVariability: boolean): number | null => {
+    if (subs && subs.has(ident)) return subs.get(ident)!;
+    if (dae) {
+      const resolved = resolveScopedName(ident, prefix, dae);
+      let vIdx = dae.getVarIdxByName(resolved);
+      if (vIdx < 0 && !requireConstOrParamVariability) vIdx = dae.getVarIdxByName(ident);
+      if (vIdx >= 0) {
+        const v = dae.getVarVariability(vIdx);
+        if (!requireConstOrParamVariability || v === Variability.Constant || v === Variability.Parameter) {
+          const bExpr = dae.getVarExpression(vIdx);
+          if (bExpr !== undefined && bExpr >= 0) {
+            const val = evalDaeExpr(bExpr, dae);
+            if (typeof val === "number" && !isNaN(val)) return val;
+          }
+          const startAttrExpr = dae.getVarAttrExprId?.(vIdx, "start");
+          if (startAttrExpr !== undefined && startAttrExpr >= 0) {
+            const val = evalDaeExpr(startAttrExpr, dae);
+            if (typeof val === "number" && !isNaN(val)) return val;
+          }
+          const startVal = dae.getVarStartValue(vIdx);
+          if (
+            startVal !== undefined &&
+            !isNaN(startVal) &&
+            (startVal !== 0 || (requireConstOrParamVariability && startAttrExpr !== undefined))
+          ) {
+            return startVal;
+          }
+        }
+      }
+    }
+    if (scopeId !== undefined && db) {
+      const resolver = db.query("resolveSimpleName", scopeId);
+      if (resolver) {
+        const resolved = resolver(ident);
+        if (resolved) {
+          const mod = db.query("effectiveModification", resolved.id);
+          if (mod?.bindingExpression?.text) {
+            const bVal = parseInt(mod.bindingExpression.text.trim(), 10);
+            if (!isNaN(bVal)) return bVal;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*(?:,\s*(\d+))?\s*\)$/);
+  if (sizeMatch) {
+    const arrName = sizeMatch[1]!;
+    const dim = sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 1;
+    const sizeVal = resolveSizeCall(arrName, dim);
+    if (sizeVal !== null) return sizeVal;
   }
 
   // Binary expression
@@ -1028,103 +1174,23 @@ export function evaluateCSTNumber(
     }
   }
 
-  if (dae) {
-    const resolved = resolveScopedName(text, prefix, dae);
-    const vIdx = dae.getVarIdxByName(resolved);
-    if (vIdx >= 0) {
-      const v = dae.getVarVariability(vIdx);
-      if (v === Variability.Constant || v === Variability.Parameter) {
-        const bExpr = dae.getVarExpression(vIdx);
-        if (bExpr !== undefined && bExpr >= 0) {
-          const val = evalDaeExpr(bExpr, dae);
-          if (typeof val === "number" && !isNaN(val)) return val;
-        }
-        const startAttrExpr = dae.getVarAttrExprId?.(vIdx, "start");
-        if (startAttrExpr !== undefined && startAttrExpr >= 0) {
-          const val = evalDaeExpr(startAttrExpr, dae);
-          if (typeof val === "number" && !isNaN(val)) return val;
-        }
-        const startVal = dae.getVarStartValue(vIdx);
-        if (startVal !== undefined && !isNaN(startVal) && (startVal !== 0 || startAttrExpr !== undefined))
-          return startVal;
-      }
-    }
-  }
-
-  if (scopeId !== undefined && db) {
-    const resolver = db.query("resolveSimpleName", scopeId);
-    if (resolver) {
-      const resolved = resolver(text);
-      if (resolved) {
-        const mod = db.query("effectiveModification", resolved.id);
-        if (mod?.bindingExpression?.text) {
-          const bVal = parseInt(mod.bindingExpression.text.trim(), 10);
-          if (!isNaN(bVal)) return bVal;
-        }
-      }
-    }
-  }
+  const directIdentVal = resolveIdentConstant(text, true);
+  if (directIdentVal !== null) return directIdentVal;
 
   if (/[+\-*/]/.test(text)) {
     let exprStr = text;
-    exprStr = exprStr.replace(/size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*,\s*(\d+)\s*\)/g, (_, arrName, dimStr) => {
-      const dim = parseInt(dimStr, 10);
-      if (dae) {
-        const resolvedName = resolveScopedName(arrName, prefix, dae);
-        const dimSize = getDaeArrayDimSize(dae, arrName, resolvedName, dim);
-        if (dimSize !== null && dimSize > 0) return String(dimSize);
-      }
-      if (db) {
-        let sym: any = null;
-        if (scopeId) {
-          const resolver = db.query("resolveName", scopeId) ?? db.query("resolveSimpleName", scopeId);
-          if (resolver) {
-            const res = resolver(arrName);
-            if (res) sym = res;
-          }
-        }
-        const syms = sym ? [sym] : db.byName(arrName);
-        for (const s of syms) {
-          const dims = db.query("arrayDimensions", s.id);
-          if (dims && dims.length >= dim) {
-            const d = dims[dim - 1];
-            if (d?.kind === "literal" && typeof d.value === "number") return String(d.value);
-          }
-        }
-      }
-      return _;
-    });
+    exprStr = exprStr.replace(
+      /size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*,\s*(\d+)\s*\)/g,
+      (full, arrName, dimStr) => {
+        const dim = parseInt(dimStr, 10);
+        const sizeVal = resolveSizeCall(arrName, dim);
+        return sizeVal !== null ? String(sizeVal) : full;
+      },
+    );
 
     exprStr = exprStr.replace(/\b([a-zA-Z_]\w*)\b/g, (match) => {
-      if (subs && subs.has(match)) return String(subs.get(match)!);
-      if (dae) {
-        const resolved = resolveScopedName(match, prefix, dae);
-        let vIdx = dae.getVarIdxByName(resolved);
-        if (vIdx < 0) vIdx = dae.getVarIdxByName(match);
-        if (vIdx >= 0) {
-          const bExpr = dae.getVarExpression(vIdx);
-          if (bExpr !== undefined && bExpr >= 0) {
-            const val = evalDaeExpr(bExpr, dae);
-            if (typeof val === "number") return String(val);
-          }
-          const startVal = dae.getVarStartValue(vIdx);
-          if (startVal !== 0) return String(startVal);
-        }
-      }
-      if (scopeId !== undefined && db) {
-        const resolver = db.query("resolveSimpleName", scopeId);
-        if (resolver) {
-          const resolved = resolver(match);
-          if (resolved) {
-            const mod = db.query("effectiveModification", resolved.id);
-            if (mod?.bindingExpression?.text) {
-              const bVal = parseInt(mod.bindingExpression.text.trim(), 10);
-              if (!isNaN(bVal)) return String(bVal);
-            }
-          }
-        }
-      }
-      return match;
+      const identVal = resolveIdentConstant(match, false);
+      return identVal !== null ? String(identVal) : match;
     });
 
     const arithVal = evalArithmeticText(exprStr);
@@ -1174,8 +1240,7 @@ export function resolveScopedName(
   const isStateOutput = Boolean(state.stateOutputVars?.has(fullLocalRoot));
   const isInnerOuter = innerOuterComponents?.has(fullLocalRoot) || (Boolean(state.isInsidePrevious) && isStateOutput);
 
-  const scopeDeclaredNames: Map<string, Set<string>> | undefined =
-    state.scopeDeclaredNames ?? (dae as any).scopeDeclaredNames;
+  const scopeDeclaredNames: Map<string, Set<string>> | undefined = state.scopeDeclaredNames;
 
   let resolvedName: string | null = null;
   if (!isInnerOuter) {
@@ -1213,15 +1278,13 @@ export function resolveScopedName(
             break;
           }
           if (vIdx >= 0 && dae.getVarVariability(vIdx) !== Variability.Constant) {
-            const flattener = (state as any)?.flattener ?? (dae as any).flattener;
-            const db = (state as any)?.db ?? (dae as any).db ?? flattener?.db;
-            const currentClassId = flattener?.currentClassId ?? (dae as any).currentClassId;
-            const currentRootClassId = flattener?.currentRootClassId ?? (dae as any).currentRootClassId;
+            const flattener = state.flattener;
+            const currentClassId = flattener?.currentClassId ?? state.currentClassId;
+            const currentRootClassId = flattener?.currentRootClassId ?? state.currentRootClassId;
             if (currentClassId && currentRootClassId && currentClassId !== currentRootClassId) {
               if (recordDiagnostics) {
                 if (!state.outerNonConstantAccess) {
                   state.outerNonConstantAccess = [];
-                  (dae as any).outerNonConstantAccess = state.outerNonConstantAccess;
                 }
                 const exists = state.outerNonConstantAccess.some(
                   (e: any) => e.compName === prefix && e.varName === name && e.target === target,

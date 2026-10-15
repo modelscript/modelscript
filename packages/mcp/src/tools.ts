@@ -1561,18 +1561,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       faultDuration: z.number().optional().describe("Fault duration in seconds (default: 0.05)"),
       format: z.enum(["summary", "comtrade", "json"]).optional().describe("Output format (default: summary)"),
     },
-    async ({
-      path: filePath,
-      dt,
-      tstop,
-      faultBus: _faultBus,
-      faultStart: _faultStart,
-      faultDuration: _faultDuration,
-      format,
-    }) => {
+    async ({ path: filePath, dt, tstop, faultBus, faultStart, faultDuration, format }) => {
       try {
         const resolved = path.resolve(filePath);
-        const { parsePscx, extractEmtNetlist, emtResultToComtrade, writeComtrade } = await import("@modelscript/pscad");
+        const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, emtResultToComtrade, writeComtrade } =
+          await import("@modelscript/pscad");
         const { EmtSolver } = await import("@modelscript/simulate");
         const fsMod = await import("node:fs");
 
@@ -1586,38 +1579,31 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const text = fsMod.readFileSync(resolved, "utf-8");
         const project = parsePscx(text);
         const netlist = extractEmtNetlist(project);
+        const baseCircuit = netlistToEmtCircuit(netlist);
 
         const circuit = {
-          buses: Array.from(netlist.buses.keys()),
-          rlc: netlist.branches.map((b: any) => ({
-            id: b.id,
-            from: b.fromBus,
-            to: b.toBus,
-            r: b.resistanceOhm,
-            l: b.inductanceH,
-            c: b.capacitanceF,
-          })),
-          transmissionLines: netlist.transmissionLines.map((l: any) => ({
-            id: l.id,
-            from: l.fromBus,
-            to: l.toBus,
-            lengthKm: l.lengthKm,
-            rPerKm: l.rPerKm,
-            lPerKm: l.lPerKm,
-            cPerKm: l.cPerKm,
-          })),
-          fmuInstances: netlist.fmuInstances.map((f: any) => ({
-            id: f.id,
-            bus: f.busConnection,
-            ratedMva: f.ratedMva,
-            ratedKv: f.ratedKv,
-          })),
+          ...baseCircuit,
+          faults: faultBus
+            ? [
+                ...(baseCircuit.faults ?? []),
+                {
+                  bus: faultBus,
+                  startSec: faultStart ?? 0.05,
+                  durationSec: faultDuration ?? 0.05,
+                  faultResistanceOhm: 0.01,
+                  faultType: "SLG" as const,
+                },
+              ]
+            : baseCircuit.faults,
         };
 
         const solver = new EmtSolver(circuit as any, {
           timeStepSec: dt ?? 20e-6,
           durationSec: tstop ?? 0.1,
           nominalFrequencyHz: netlist.nominalFrequencyHz,
+          threePhase: true,
+          steadyStateInit: true,
+          maxNonlinearIterations: 6,
         });
 
         const result = solver.solve();
@@ -1727,7 +1713,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     async ({ path: filePath, poiBus, faultDurationMs, vSagPu }) => {
       try {
         const resolved = path.resolve(filePath);
-        const { parsePscx, extractEmtNetlist, verifyIeee2800Compliance } = await import("@modelscript/pscad");
+        const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, verifyIeee2800Compliance } =
+          await import("@modelscript/pscad");
         const { EmtSolver } = await import("@modelscript/simulate");
         const fsMod = await import("node:fs");
 
@@ -1741,60 +1728,78 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const text = fsMod.readFileSync(resolved, "utf-8");
         const project = parsePscx(text);
         const netlist = extractEmtNetlist(project);
+        const baseCircuit = netlistToEmtCircuit(netlist);
 
-        const targetBus = poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0]!;
+        // Resolve POI bus by ID or human-readable name
+        let targetBus = poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0]!;
+        if (poiBus && !netlist.buses.has(poiBus)) {
+          for (const [id, bus] of netlist.buses.entries()) {
+            if (bus.name === poiBus) {
+              targetBus = id;
+              break;
+            }
+          }
+        }
+
         const fDurationSec = (faultDurationMs ?? 150) / 1000;
         const vNominalKv = netlist.buses.get(targetBus)?.baseKv ?? 230;
+        const sources =
+          baseCircuit.sources && baseCircuit.sources.length > 0
+            ? baseCircuit.sources
+            : [{ bus: targetBus, vPeakKv: vNominalKv, freqHz: netlist.nominalFrequencyHz }];
 
         const circuit = {
-          buses: Array.from(netlist.buses.keys()),
-          rlc: netlist.branches.map((b: any) => ({
-            id: b.id,
-            from: b.fromBus,
-            to: b.toBus,
-            r: b.resistanceOhm,
-            l: b.inductanceH,
-            c: b.capacitanceF,
-          })),
-          transmissionLines: netlist.transmissionLines.map((l: any) => ({
-            id: l.id,
-            from: l.fromBus,
-            to: l.toBus,
-            lengthKm: l.lengthKm,
-            rPerKm: l.rPerKm,
-            lPerKm: l.lPerKm,
-            cPerKm: l.cPerKm,
-          })),
-          fmuInstances: netlist.fmuInstances.map((f: any) => ({
-            id: f.id,
-            bus: f.busConnection,
-            ratedMva: f.ratedMva,
-            ratedKv: f.ratedKv,
-          })),
+          ...baseCircuit,
+          sources,
+          faults:
+            baseCircuit.faults && baseCircuit.faults.length > 0
+              ? baseCircuit.faults
+              : [
+                  {
+                    bus: targetBus,
+                    startSec: 0.05,
+                    durationSec: fDurationSec,
+                    faultResistanceOhm: 0.05,
+                    faultType: "SLG" as const,
+                  },
+                ],
         };
 
         const solver = new EmtSolver(circuit as any, {
           timeStepSec: 20e-6,
           durationSec: 0.25,
           nominalFrequencyHz: netlist.nominalFrequencyHz,
+          threePhase: true,
+          steadyStateInit: true,
         });
 
         const result = solver.solve();
         const vPoi = result.busVoltages.get(targetBus) ?? new Float64Array(result.time.length);
-        const dummyCurrent = new Float64Array(result.time.length);
-        for (let i = 0; i < dummyCurrent.length; i++) {
-          dummyCurrent[i] = 1200 * Math.sin(2 * Math.PI * 60 * result.time[i]!);
+        const fmuId = netlist.fmuInstances[0]?.id;
+        let iIbr = fmuId ? result.branchCurrents.get(fmuId) : undefined;
+        if (!iIbr) {
+          iIbr = new Float64Array(result.time.length);
+          for (let i = 0; i < iIbr.length; i++) {
+            iIbr[i] = 1200 * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+          }
         }
 
         const compliance = verifyIeee2800Compliance(
           project.name,
           netlist,
-          { time: result.time, vPoi, iIbr: dummyCurrent },
+          {
+            time: result.time,
+            vPoi,
+            iIbr,
+            vPoiAbc: result.busPhaseVoltages?.get(targetBus),
+            iIbrAbc: fmuId ? result.branchPhaseCurrents?.get(fmuId) : undefined,
+          },
           {
             faultStartSec: 0.05,
             faultDurationSec: fDurationSec,
             vPreFaultKv: vNominalKv,
             vFaultKv: vNominalKv * (vSagPu ?? 0.05),
+            evaluateExtendedClauses: true,
           },
         );
 

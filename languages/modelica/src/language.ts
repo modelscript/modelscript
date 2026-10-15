@@ -26,10 +26,9 @@ import {
 } from "@modelscript/dsl";
 import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";
-import { modelicaFlatteningPasses } from "./pipelines/flatten.js";
 import { modelicaWriteback } from "./writeback.js";
 
-export { allModelicaLints, modelicaFlatteningPasses, modelicaWriteback };
+export { allModelicaLints, modelicaWriteback };
 
 const PRECEDENCE = {
   if_exp: 1,
@@ -591,14 +590,6 @@ export const modelicaLanguage = language({
           connector: "rounded",
         },
       },
-    },
-  },
-
-  pipelines: {
-    flatten: {
-      label: "Modelica In-DSL Physical Flattening Pipeline",
-      target: "dae",
-      passes: modelicaFlatteningPasses,
     },
   },
 

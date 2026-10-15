@@ -49,6 +49,7 @@ import {
   matrixPower,
 } from "../expressions/index.js";
 import { getElementDiagRange } from "../support/range-utils.js";
+import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import type { ComponentInstanceData } from "../types.js";
 import { collectExtendsMods } from "./component-inst.js";
 
@@ -61,6 +62,8 @@ export function isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
   return dae.getExprKind(firstArg) === ExprKind.BoolLiteral && dae.getExprData1(firstArg) === 1;
 }
 
+const sharedAnnotationEvaluator = new AnnotationEvaluator();
+
 export function emitFunctionCallEquation(
   flattener: any,
   node: SyntaxNode | null | undefined,
@@ -69,6 +72,10 @@ export function emitFunctionCallEquation(
   substitutions?: Map<string, number | string>,
   isInitial = false,
   whenIdx = -1,
+  elseWhenClause?: {
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+    equations: { kind: EqKind; lhs: number; rhs: number }[];
+  } | null,
 ): void {
   const isReinit =
     node.child?.(0)?.text?.trim() === "reinit" ||
@@ -199,8 +206,99 @@ export function emitFunctionCallEquation(
     return;
   }
 
+  const ensureOverconstrainedGraph = () => {
+    if (!dae.extensionMetadata) dae.extensionMetadata = {};
+    if (!dae.extensionMetadata.overconstrainedGraph) {
+      dae.extensionMetadata.overconstrainedGraph = {
+        roots: new Set<string>(),
+        potentialRoots: new Map<string, number>(),
+        branches: [] as { a: string; b: string }[],
+        queriedRoots: new Set<string>(),
+      };
+    }
+    return dae.extensionMetadata.overconstrainedGraph as {
+      roots: Set<string>;
+      potentialRoots: Map<string, number>;
+      branches: { a: string; b: string }[];
+      queriedRoots: Set<string>;
+    };
+  };
+
+  const resolveOverconstrainedArgName = (argId: number): string | null => {
+    if (argId < 0) return null;
+    if (dae.getExprKind(argId) === ExprKind.Name) {
+      return dae.interner.resolve(dae.getExprData1(argId)) || null;
+    }
+    if (dae.getExprKind(argId) === ExprKind.ArrayCtor && dae.getExprData1(argId) > 0) {
+      const firstEl = dae.getExprLeft(argId);
+      if (dae.getExprKind(firstEl) === ExprKind.Name) {
+        const elName = dae.interner.resolve(dae.getExprData1(firstEl));
+        return elName ? elName.replace(/(?:\[\d+\])+$/, "") : null;
+      }
+    }
+    return null;
+  };
+
+  if (dae.getExprKind(callId) === ExprKind.BoolLiteral) {
+    const rawCallText = node.text?.trim() ?? "";
+    if (/^(?:Connections\.)?(?:isRoot|rooted)\s*\(/.test(rawCallText)) {
+      return;
+    }
+  }
+
   if (dae.getExprKind(callId) === ExprKind.Call) {
     const callName = dae.interner.resolve(dae.getExprData1(callId));
+    const argCount = dae.getExprRight(callId);
+    if ((callName === "Connections.branch" || callName === "branch") && argCount >= 2) {
+      const aName = resolveOverconstrainedArgName(dae.getExprLeft(callId));
+      const bName = resolveOverconstrainedArgName(dae.getExprLeft(callId + 1));
+      if (aName && bName) {
+        ensureOverconstrainedGraph().branches.push({ a: aName, b: bName });
+      }
+      return;
+    }
+    if (
+      (callName === "Connections.root" || callName === "Connections.uniqueRoot" || callName === "uniqueRoot") &&
+      argCount >= 1
+    ) {
+      const aName = resolveOverconstrainedArgName(dae.getExprLeft(callId));
+      if (aName) {
+        ensureOverconstrainedGraph().roots.add(aName);
+      }
+      return;
+    }
+    if ((callName === "Connections.potentialRoot" || callName === "potentialRoot") && argCount >= 1) {
+      const aName = resolveOverconstrainedArgName(dae.getExprLeft(callId));
+      let priority = 0;
+      if (argCount >= 2) {
+        const prioExprId = dae.getExprLeft(callId + 1);
+        const pVal = evalDaeExpr(prioExprId, dae);
+        if (typeof pVal === "number") priority = pVal;
+        const prioVars = new Set<string>();
+        dae.collectExprVarNames(prioExprId, prioVars);
+        for (const vName of prioVars) {
+          const vIdx = dae.getVarIdxByName(vName);
+          if (vIdx !== -1 && dae.getVarVariability(vIdx) === Variability.Parameter) {
+            dae.setVarFinal(vIdx, true);
+          }
+        }
+      }
+      if (aName) {
+        const graph = ensureOverconstrainedGraph();
+        const prev = graph.potentialRoots.get(aName);
+        if (prev === undefined || priority < prev) {
+          graph.potentialRoots.set(aName, priority);
+        }
+      }
+      return;
+    }
+    if ((callName === "Connections.isRoot" || callName === "isRoot") && argCount >= 1) {
+      const aName = resolveOverconstrainedArgName(dae.getExprLeft(callId));
+      if (aName) {
+        ensureOverconstrainedGraph().queriedRoots.add(aName);
+      }
+      return;
+    }
     if (callName === "reinit" && dae.getExprRight(callId) >= 2) {
       const arg0 = dae.getExprLeft(callId);
       if (dae.getExprKind(arg0) === ExprKind.Name) {
@@ -229,7 +327,10 @@ export function emitFunctionCallEquation(
             const el0 = i === 0 ? dae.getExprLeft(arg0) : dae.getExprLeft(arg0 + i);
             const el1 = i === 0 ? dae.getExprLeft(arg1) : dae.getExprLeft(arg1 + i);
             const scalarCall = dae.addCallExpr("reinit", [el0, el1]);
-            if (whenIdx >= 0) {
+            if (elseWhenClause) {
+              elseWhenClause.equations.push({ kind: EqKind.FunctionCall, lhs: scalarCall, rhs: -1 });
+              elseWhenClause.bodyEquations.push({ kind: EqKind.FunctionCall, lhsExprId: scalarCall, rhsExprId: -1 });
+            } else if (whenIdx >= 0) {
               dae.addWhenBodyEquation(whenIdx, EqKind.FunctionCall, scalarCall, -1);
             } else {
               const eqKind = isInitial ? EqKind.InitialFunctionCall : EqKind.FunctionCall;
@@ -242,7 +343,10 @@ export function emitFunctionCallEquation(
     }
   }
 
-  if (whenIdx >= 0) {
+  if (elseWhenClause) {
+    elseWhenClause.equations.push({ kind: EqKind.FunctionCall, lhs: callId, rhs: -1 });
+    elseWhenClause.bodyEquations.push({ kind: EqKind.FunctionCall, lhsExprId: callId, rhsExprId: -1 });
+  } else if (whenIdx >= 0) {
     dae.addWhenBodyEquation(whenIdx, EqKind.FunctionCall, callId, -1);
   } else {
     const eqKind = isInitial ? EqKind.InitialFunctionCall : EqKind.FunctionCall;
@@ -478,17 +582,6 @@ export function extractClassEquations(
             }
           }
 
-          if (prefix.includes("timeTableTorqueInclination")) {
-            console.log(
-              "FOR_EQ indicesNode:",
-              indicesNode?.text,
-              "forIndexNodes:",
-              forIndexNodes.length,
-              "bodyNodes:",
-              bodyNodes.map((b: any) => b.text),
-            );
-          }
-
           const getForIndexValues = (fIndex: any, currentSubs: Map<string, number | string>): (number | string)[] => {
             const rangeNode =
               Cst.ForIndex.range(fIndex) || fIndex.children?.find?.((c: any) => c.type === "expression");
@@ -627,16 +720,6 @@ export function extractClassEquations(
             const vals = getForIndexValues(fIndex, substitutions || new Map());
             return acc * Math.max(1, vals.length);
           }, 1);
-          if (prefix.includes("timeTableTorqueInclination")) {
-            console.log(
-              "FOR_EQ totalEstimated:",
-              totalEstimated,
-              "arrayMode:",
-              flattener.options.arrayMode,
-              "vals:",
-              forIndexNodes.map((f: any) => getForIndexValues(f, substitutions || new Map())),
-            );
-          }
           if (totalEstimated > 5000 && flattener.options.arrayMode === "preserve") {
             return;
           }
@@ -646,16 +729,6 @@ export function extractClassEquations(
 
         // If equations: if cond then ... elseif cond then ... else ... end if;
         if (Cst.IfEquation.is(node) || node.type === "if_equation") {
-          const isTable = prefix.includes("timeTableTorqueInclination");
-          const isSupport = node.text?.includes("useSupport");
-          if (isTable || isSupport) {
-            console.log(`=== if_equation in ${prefix} ===`);
-            console.log("node text:", node.text?.slice(0, 100));
-            console.log(
-              "child types:",
-              (node.children || []).map((c: any) => c.type),
-            );
-          }
           interface IfBranch {
             conditionNode?: any;
             equationNodes: any[];
@@ -736,18 +809,6 @@ export function extractClassEquations(
                 }
               }
               const evaluated = evalDaeExpr(condExprId, dae);
-              if (isTable) {
-                console.log(
-                  `Branch ${i} cond text:`,
-                  b.conditionNode?.text,
-                  "condExprId:",
-                  condExprId,
-                  "evaluated:",
-                  evaluated,
-                  "eqNodes count:",
-                  b.equationNodes.length,
-                );
-              }
               if (evaluated === null) {
                 isDynamic = true;
                 break;
@@ -762,17 +823,11 @@ export function extractClassEquations(
             }
           }
 
-          if (isTable || isSupport) {
-            console.log(`isDynamic: ${isDynamic}, staticBranchIndex: ${staticBranchIndex}`);
-          }
           if (!isDynamic) {
             if (staticBranchIndex !== null) {
               // Statically chosen branch: emit only its equations!
               const chosen = branches[staticBranchIndex];
               for (const eqNode of chosen.equationNodes) {
-                if (isTable || isSupport) {
-                  console.log("Emitting eqNode from chosen branch:", eqNode.text);
-                }
                 walk(eqNode, substitutions, isInitial);
               }
             }
@@ -813,37 +868,71 @@ export function extractClassEquations(
             const ifIdx = dae.addIfEquation(firstCondId);
             const meta = dae.getIfEquationMeta(ifIdx);
 
-            const lowerInlineEq = (n: any): { kind: EqKind; lhsExprId: number; rhsExprId: number } | null => {
-              if (!n) return null;
+            const scalarizeInlineSimpleEq = (
+              lId: number,
+              rId: number,
+            ): { kind: EqKind; lhsExprId: number; rhsExprId: number }[] => {
+              let expL = lId;
+              let expR = rId;
+              if (dae.getExprKind(expL) === ExprKind.Name) {
+                const lName = dae.interner.resolve(dae.getExprData1(expL));
+                if (lName && dae.hasArrayElements(lName)) {
+                  const ctor = expandVarToArrayCtor(lName, dae);
+                  if (ctor !== null) expL = ctor;
+                }
+              }
+              if (dae.getExprKind(expR) === ExprKind.Name) {
+                const rName = dae.interner.resolve(dae.getExprData1(expR));
+                if (rName && dae.hasArrayElements(rName)) {
+                  const ctor = expandVarToArrayCtor(rName, dae);
+                  if (ctor !== null) expR = ctor;
+                }
+              }
+              if (dae.getExprKind(expL) === ExprKind.ArrayCtor && dae.getExprKind(expR) === ExprKind.ArrayCtor) {
+                const lElems = getArrayCtorElements(expL, dae);
+                const rElems = getArrayCtorElements(expR, dae);
+                if (lElems.length === rElems.length) {
+                  const out: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  for (let k = 0; k < lElems.length; k++) {
+                    out.push(...scalarizeInlineSimpleEq(lElems[k]!, rElems[k]!));
+                  }
+                  return out;
+                }
+              }
+              if (isRealExpr(expL, dae) && !isRealExpr(expR, dae)) {
+                expR = castToRealExpr(expR, dae);
+              }
+              return [{ kind: EqKind.Simple, lhsExprId: expL, rhsExprId: expR }];
+            };
+
+            const lowerInlineEqs = (n: any): { kind: EqKind; lhsExprId: number; rhsExprId: number }[] => {
+              if (!n) return [];
               if (n.type === "some_equation" && n.childCount === 1) n = n.child(0);
               if (n.type === "simple_equation") {
                 const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
                 const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
                 const exprs = leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
                 if (exprs.length >= 2) {
-                  let lId = flattener.lowerExpr(exprs[0], dae, prefix, substitutions);
-                  let rId = flattener.lowerExpr(exprs[1], dae, prefix, substitutions);
-                  if (isRealExpr(lId, dae) && !isRealExpr(rId, dae)) {
-                    rId = castToRealExpr(rId, dae);
-                  }
-                  return { kind: EqKind.Simple, lhsExprId: lId, rhsExprId: rId };
+                  const lId = flattener.lowerExpr(exprs[0], dae, prefix, substitutions);
+                  const rId = flattener.lowerExpr(exprs[1], dae, prefix, substitutions);
+                  return scalarizeInlineSimpleEq(lId, rId);
                 }
               }
               if (n.type === "function_call") {
                 const callId = flattener.lowerExpr(n, dae, prefix, substitutions);
-                return { kind: EqKind.FunctionCall, lhsExprId: callId, rhsExprId: -1 };
+                return [{ kind: EqKind.FunctionCall, lhsExprId: callId, rhsExprId: -1 }];
               }
               for (const kid of n.children || []) {
-                const res = lowerInlineEq(kid);
-                if (res) return res;
+                const res = lowerInlineEqs(kid);
+                if (res.length > 0) return res;
               }
-              return null;
+              return [];
             };
 
             for (const eqNode of branches[0].equationNodes) {
-              const eq = lowerInlineEq(eqNode);
-              if (eq && meta) {
-                meta.thenEquations.push(eq);
+              const eqs = lowerInlineEqs(eqNode);
+              if (eqs.length > 0 && meta) {
+                meta.thenEquations.push(...eqs);
               }
             }
 
@@ -853,8 +942,8 @@ export function extractClassEquations(
                 const elseCondId = flattener.lowerExpr(b.conditionNode, dae, prefix, substitutions);
                 const bodyEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
                 for (const eqNode of b.equationNodes) {
-                  const eq = lowerInlineEq(eqNode);
-                  if (eq) bodyEqs.push(eq);
+                  const eqs = lowerInlineEqs(eqNode);
+                  if (eqs.length > 0) bodyEqs.push(...eqs);
                 }
                 if (meta) {
                   meta.elseIfClauses.push({
@@ -868,8 +957,8 @@ export function extractClassEquations(
                 if (meta) {
                   if (!meta.elseEquations) meta.elseEquations = [];
                   for (const eqNode of b.equationNodes) {
-                    const eq = lowerInlineEq(eqNode);
-                    if (eq) meta.elseEquations.push(eq);
+                    const eqs = lowerInlineEqs(eqNode);
+                    if (eqs.length > 0) meta.elseEquations.push(...eqs);
                   }
                 }
               }
@@ -1648,11 +1737,15 @@ export function extractClassEquations(
             }
 
             // Check equation annotation for diffusion (SDE)
-            const evaluator = new AnnotationEvaluator();
-            const diffVal =
-              evaluator.evaluate(node, "diffusion") ??
-              evaluator.evaluate(node.parent, "diffusion") ??
-              evaluator.evaluate(node.parent?.parent, "diffusion");
+            const hasDiffusionHint =
+              node.text?.includes("diffusion") ||
+              node.parent?.text?.includes("diffusion") ||
+              node.parent?.parent?.text?.includes("diffusion");
+            const diffVal = hasDiffusionHint
+              ? (sharedAnnotationEvaluator.evaluate(node, "diffusion") ??
+                sharedAnnotationEvaluator.evaluate(node.parent, "diffusion") ??
+                sharedAnnotationEvaluator.evaluate(node.parent?.parent, "diffusion"))
+              : null;
             if (diffVal !== null && diffVal !== undefined) {
               let stateVarIdx = -1;
               const derExpr = lhsKind === ExprKind.Der ? lhsExprId : rhsKind === ExprKind.Der ? rhsExprId : -1;
@@ -2210,6 +2303,12 @@ export function extractClassEquations(
 
           const condId = cond ? flattener.lowerExpr(cond, dae, prefix, substitutions) : -1;
           const whenIdx = dae.addWhenEquation(condId);
+          const whenMeta = dae.getWhenEquationMeta(whenIdx);
+          let currentElseWhenClause: {
+            conditionExprId: number;
+            bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+            equations: { kind: EqKind; lhs: number; rhs: number }[];
+          } | null = null;
 
           let hasWhenLhsError = false;
           const collectWhenBody = (n: any) => {
@@ -2257,7 +2356,16 @@ export function extractClassEquations(
                   hasWhenLhsError = true;
                   return;
                 }
-                dae.addWhenBodyEquation(whenIdx, EqKind.Simple, lhsId, rhsId);
+                if (currentElseWhenClause) {
+                  currentElseWhenClause.equations.push({ kind: EqKind.Simple, lhs: lhsId, rhs: rhsId });
+                  currentElseWhenClause.bodyEquations.push({
+                    kind: EqKind.Simple,
+                    lhsExprId: lhsId,
+                    rhsExprId: rhsId,
+                  });
+                } else {
+                  dae.addWhenBodyEquation(whenIdx, EqKind.Simple, lhsId, rhsId);
+                }
               }
               return;
             }
@@ -2277,7 +2385,7 @@ export function extractClassEquations(
             }
 
             if (n.type === "function_call") {
-              emitFunctionCallEquation(flattener, n, dae, prefix, substitutions, false, whenIdx);
+              emitFunctionCallEquation(flattener, n, dae, prefix, substitutions, false, whenIdx, currentElseWhenClause);
               return;
             }
 
@@ -2288,7 +2396,25 @@ export function extractClassEquations(
             }
           };
 
+          let expectElseWhenCond = false;
           for (const kid of node.children || []) {
+            const norm = Cst.kind(kid);
+            const text = kid.text?.trim() ?? "";
+            if (norm === "elsewhen" || kid.type === "elsewhen" || text === "elsewhen") {
+              expectElseWhenCond = true;
+              continue;
+            }
+            if (expectElseWhenCond && (kid.type === "expression" || !kid.isTerminal)) {
+              const elseCondId = flattener.lowerExpr(kid, dae, prefix, substitutions);
+              currentElseWhenClause = {
+                conditionExprId: elseCondId,
+                bodyEquations: [],
+                equations: [],
+              };
+              whenMeta?.elseWhenClauses.push(currentElseWhenClause);
+              expectElseWhenCond = false;
+              continue;
+            }
             if (kid !== cond && kid.type !== "when" && kid.type !== "then" && kid.type !== "end when") {
               collectWhenBody(kid);
             }
@@ -2298,9 +2424,10 @@ export function extractClassEquations(
 
         // Algorithm sections:
         if (node.type === "algorithm_section") {
-          (dae as any).hasAlgorithmSection = true;
-          const prevInAlg = (dae as any).inAlgorithmSection;
-          (dae as any).inAlgorithmSection = true;
+          const state = getFlatteningState(dae);
+          state.hasAlgorithmSection = true;
+          const prevInAlg = state.inAlgorithmSection;
+          state.inAlgorithmSection = true;
           const secStart = dae.stmtCount;
           const isInitAlg =
             (node.text?.trim()?.startsWith("initial") ?? false) ||
@@ -2531,7 +2658,7 @@ export function extractClassEquations(
                 const callId = flattener.lowerExpr(sNode, dae, prefix, substitutions);
                 if (!isStaticTrueAssert(callId, dae)) {
                   const sId = dae.addStatement(StmtKind.ProcedureCall, callId);
-                  ((dae as any).stmtRanges ??= new Map()).set(sId, {
+                  state.stmtRanges.set(sId, {
                     startByte: sNode.startIndex ?? sNode.startByte,
                     endByte: sNode.endIndex ?? sNode.endByte,
                     startPosition: sNode.startPosition,
@@ -2566,7 +2693,7 @@ export function extractClassEquations(
                 return;
               }
               const sId = dae.addStatement(StmtKind.ProcedureCall, callId);
-              ((dae as any).stmtRanges ??= new Map()).set(sId, {
+              state.stmtRanges.set(sId, {
                 startByte: sNode.startIndex ?? sNode.startByte,
                 endByte: sNode.endIndex ?? sNode.endByte,
                 startPosition: sNode.startPosition,
@@ -2639,8 +2766,7 @@ export function extractClassEquations(
 
                 if (targetArr && targetDimIdx >= 0) {
                   let maxIdx = 0;
-                  const namedShape =
-                    (dae as any).getNamedArrayShape?.(targetArr) ?? (dae as any).namedArrayShapes?.get(targetArr);
+                  const namedShape = getNamedArrayShape(dae, targetArr);
                   if (namedShape && namedShape.length > targetDimIdx && namedShape[targetDimIdx]! > 0) {
                     maxIdx = namedShape[targetDimIdx]!;
                   } else {
@@ -2976,12 +3102,12 @@ export function extractClassEquations(
                 let vIdx = dae.getVarIdxByName(targetStr);
                 if (vIdx < 0 && cleanTargetText) vIdx = dae.getVarIdxByName(cleanTargetText);
                 if (vIdx < 0 && cleanTargetText && prefix) vIdx = dae.getVarIdxByName(`${prefix}.${cleanTargetText}`);
-                if (vIdx >= 0 && (dae as any).lastLoweredShape) {
-                  const deducedShape = (dae as any).lastLoweredShape as number[];
+                if (vIdx >= 0 && state.lastLoweredShape) {
+                  const deducedShape = state.lastLoweredShape;
                   if (deducedShape && deducedShape.length > 0 && deducedShape.every((d: number) => d > 0)) {
-                    ((dae as any).deducedOutputShapes ??= new Map()).set(dae.getVarName(vIdx), deducedShape);
+                    state.deducedOutputShapes.set(dae.getVarName(vIdx), deducedShape);
                     if (cleanTargetText !== dae.getVarName(vIdx)) {
-                      (dae as any).deducedOutputShapes.set(cleanTargetText, deducedShape);
+                      state.deducedOutputShapes.set(cleanTargetText, deducedShape);
                     }
                     if (dae.classKind !== "function") {
                       dae.setVarShape(vIdx, deducedShape);
@@ -3313,7 +3439,7 @@ export function extractClassEquations(
           } else {
             dae.algorithmSections.push({ start: secStart, count: dae.stmtCount - secStart });
           }
-          (dae as any).inAlgorithmSection = prevInAlg;
+          state.inAlgorithmSection = Boolean(prevInAlg);
           return;
         }
 
@@ -3473,7 +3599,7 @@ export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
     return [refStr];
   }
   // 2. Direct shape lookup for array connector
-  const namedShape = (dae as any).getNamedArrayShape?.(refStr) ?? (dae as any).namedArrayShapes?.get(refStr);
+  const namedShape = getNamedArrayShape(dae, refStr);
   if (namedShape && namedShape.length > 0) {
     return generateArrayIndices(namedShape).map((idx) => `${refStr}${idx}`);
   }

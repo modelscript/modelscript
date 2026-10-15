@@ -36,7 +36,7 @@ export class ModelicaModificationEnv {
     }
   }
 
-  bindRedeclare(keyHash: number, newTypeHash: number, valExprId = 0, flag = 0): void {
+  bindRedeclare(keyHash: number, newTypeHash: number, valExprId = 0xffffffff, flag = 0): void {
     if (this.wasmExports?.flattener_envBindRedeclare) {
       const isFinal = (flag & 1) !== 0 ? 1 : 0;
       const isEach = (flag & 2) !== 0 ? 1 : 0;
@@ -44,7 +44,7 @@ export class ModelicaModificationEnv {
     }
   }
 
-  bindRedeclarePath(flattenerPtr: number, pathId: number, newTypeHash: number, valExprId = 0, flag = 0): void {
+  bindRedeclarePath(flattenerPtr: number, pathId: number, newTypeHash: number, valExprId = 0xffffffff, flag = 0): void {
     if (this.wasmExports?.flattener_envBindRedeclarePath && flattenerPtr !== 0) {
       const isFinal = (flag & 1) !== 0 ? 1 : 0;
       const isEach = (flag & 2) !== 0 ? 1 : 0;

@@ -146,7 +146,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
   lexerCode += `\nexport let is_extra_token: usize = 0;\n`;
   lexerCode += `export function initExtras(): void {\n`;
-  lexerCode += `  if (is_extra_token == 0) {\n    is_extra_token = atomicChunkAlloc(2048);\n    memory.fill(is_extra_token, 0, 2048);\n  }\n`;
+  lexerCode += `  if (is_extra_token == 0) {\n    let extraCap: u32 = ((MAX_TERMINAL_ID as u32) + 1) > 2048 ? ((MAX_TERMINAL_ID as u32) + 1) : 2048;\n    is_extra_token = atomicChunkAlloc(extraCap);\n    memory.fill(is_extra_token, 0, extraCap);\n  }\n`;
   if (normalized.extras) {
     for (const rule of normalized.extras) {
       const rType = (rule.type || "").toUpperCase();
@@ -226,6 +226,7 @@ export function peekChar(pos: u32): i32 {
             }
             return 0xFFFD;
         }
+        if (b0 >= 0x80) return 0xFFFD;
         return b0;
     } else if (inputEncoding == 1) {
         if (pos + 1 >= inputLength) return load<u8>(getInputBuffer() + pos);
@@ -557,15 +558,16 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   const keywordTokens = new Map<string, string>();
   const stringEntries = Array.from(stringTokens.entries());
   stringEntries.sort((a, b) => b[1].length - a[1].length);
+  const stringBranchesByChar0 = new Map<number, string>();
+  const isWordCodePoint = (cp: number): boolean =>
+    (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp === 95;
+
   for (const [key, val] of stringEntries) {
     const mappedInt = normalized.symToInt.get(`"${val}"`);
     if (!mappedInt) continue;
     const safeName = "T_" + mappedInt;
 
     const isWord = wordRegex ? wordRegex.test(val) : false;
-    if (val === "model") {
-      console.log(`lexer.ts: Debug 'model': mappedInt=${mappedInt}, isWord=${isWord}, hasWord=${!!grammar.word}`);
-    }
 
     // Determine if this literal is a reserved keyword
     let isReserved = false;
@@ -576,14 +578,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         break;
       }
     }
-    if (val === "model") {
-      console.log(`lexer.ts: Debug 'model': isReserved=${isReserved}`);
-    }
 
     if (grammar.word && isWord && !isReserved) {
       // Tree-sitter style keyword extraction: defer this literal to the identifier fallback!
       keywordTokens.set(val, key);
-      console.log("lexer.ts: keywordTokens added:", val, "size:", keywordTokens.size);
       continue;
     }
 
@@ -611,42 +609,76 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     }
 
     const cps = toCodePoints(val);
+    if (cps.length === 0) continue;
+
+    let branchCode = "";
     if (cps.length === 1) {
       if (val === "/") {
-        lexerCode += `  if (char0 == 47 && !(lexPos + char0Len < inputLength && (peekChar(lexPos + char0Len) == 42 || peekChar(lexPos + char0Len) == 47))) {\n`;
+        branchCode += `      if (!(lexPos + char0Len < inputLength && (peekChar(lexPos + char0Len) == 42 || peekChar(lexPos + char0Len) == 47))) {\n`;
+        branchCode += `        let cPos = lexPos + char0Len;\n`;
+        branchCode += wordBoundaryCheck;
+        branchCode += `      }\n`;
       } else if (val === "'") {
-        lexerCode += `  let hasClosingQuote: bool = false;\n`;
-        lexerCode += `  let scanPos: u32 = lexPos + char0Len;\n`;
-        lexerCode += `  while (scanPos < inputLength) {\n`;
-        lexerCode += `    let sc: i32 = peekChar(scanPos);\n`;
-        lexerCode += `    if (sc == 92) {\n`;
-        lexerCode += `      scanPos += peekCharLen(scanPos);\n`;
-        lexerCode += `      if (scanPos < inputLength) scanPos += peekCharLen(scanPos);\n`;
-        lexerCode += `      continue;\n`;
-        lexerCode += `    }\n`;
-        lexerCode += `    if (sc == 39) { hasClosingQuote = true; break; }\n`;
-        lexerCode += `    if (sc == 10 || sc == 13 || sc == 59) break;\n`;
-        lexerCode += `    scanPos += peekCharLen(scanPos);\n`;
-        lexerCode += `  }\n`;
-        lexerCode += `  if (char0 == 39 && !hasClosingQuote) {\n`;
+        branchCode += `      {\n`;
+        branchCode += `        let hasClosingQuote: bool = false;\n`;
+        branchCode += `        let scanPos: u32 = lexPos + char0Len;\n`;
+        branchCode += `        while (scanPos < inputLength) {\n`;
+        branchCode += `          let sc: i32 = peekChar(scanPos);\n`;
+        branchCode += `          if (sc == 92) {\n`;
+        branchCode += `            scanPos += peekCharLen(scanPos);\n`;
+        branchCode += `            if (scanPos < inputLength) scanPos += peekCharLen(scanPos);\n`;
+        branchCode += `            continue;\n`;
+        branchCode += `          }\n`;
+        branchCode += `          if (sc == 39) { hasClosingQuote = true; break; }\n`;
+        branchCode += `          if (sc == 10 || sc == 13 || sc == 59) break;\n`;
+        branchCode += `          scanPos += peekCharLen(scanPos);\n`;
+        branchCode += `        }\n`;
+        branchCode += `        if (!hasClosingQuote) {\n`;
+        branchCode += `          let cPos = lexPos + char0Len;\n`;
+        branchCode += wordBoundaryCheck;
+        branchCode += `        }\n`;
+        branchCode += `      }\n`;
       } else {
-        lexerCode += `  if (char0 == ${cps[0]}) {\n`;
+        branchCode += `      {\n`;
+        branchCode += `        let cPos = lexPos + char0Len;\n`;
+        branchCode += wordBoundaryCheck;
+        branchCode += `      }\n`;
       }
-      lexerCode += `    let cPos = lexPos + char0Len;\n`;
-      lexerCode += wordBoundaryCheck;
-      lexerCode += `  }\n`;
     } else {
-      lexerCode += `  if (char0 == ${cps[0]}) {\n`;
-      lexerCode += `    let cPos = lexPos + char0Len;\n`;
-      lexerCode += `    let sMatch = true;\n`;
+      branchCode += `      {\n`;
+      branchCode += `        let cPos = lexPos + char0Len;\n`;
+      branchCode += `        let sMatch = true;\n`;
       for (let i = 1; i < cps.length; i++) {
-        lexerCode += `    if (sMatch && cPos < inputLength && peekChar(cPos) == ${cps[i]}) { cPos += peekCharLen(cPos); } else { sMatch = false; }\n`;
+        if (
+          cps[i] === 32 &&
+          hasWhitespaceExtra &&
+          i + 1 < cps.length &&
+          isWordCodePoint(cps[i - 1]) &&
+          isWordCodePoint(cps[i + 1])
+        ) {
+          branchCode += `        if (sMatch && cPos < inputLength && (peekChar(cPos) == 32 || peekChar(cPos) == 9)) { while (cPos < inputLength && (peekChar(cPos) == 32 || peekChar(cPos) == 9)) { cPos += peekCharLen(cPos); } } else { sMatch = false; }\n`;
+        } else {
+          branchCode += `        if (sMatch && cPos < inputLength && peekChar(cPos) == ${cps[i]}) { cPos += peekCharLen(cPos); } else { sMatch = false; }\n`;
+        }
       }
-      lexerCode += `    if (sMatch) {\n`;
-      lexerCode += wordBoundaryCheck;
-      lexerCode += `    }\n`;
-      lexerCode += `  }\n`;
+      branchCode += `        if (sMatch) {\n`;
+      branchCode += wordBoundaryCheck;
+      branchCode += `        }\n`;
+      branchCode += `      }\n`;
     }
+
+    stringBranchesByChar0.set(cps[0], (stringBranchesByChar0.get(cps[0]) || "") + branchCode);
+  }
+
+  if (stringBranchesByChar0.size > 0) {
+    lexerCode += `  switch (char0) {\n`;
+    for (const [cp0, branches] of stringBranchesByChar0.entries()) {
+      lexerCode += `    case ${cp0}: {\n`;
+      lexerCode += branches;
+      lexerCode += `      break;\n`;
+      lexerCode += `    }\n`;
+    }
+    lexerCode += `  }\n`;
   }
 
   // 2. Generic Regex DFA Fallback

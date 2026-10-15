@@ -1271,6 +1271,8 @@ export class LspFacade {
     };
     // Pre-calculate needed nodePtr offsets for semantic/dataflow lints that lack byte ranges or need context interpolation.
     // Syntax errors already have precise byte ranges from WASM and do not require AST traversal.
+    const isPotentialNodePtr = (p) =>
+      p >= 64 && (p & 3) === 0 && p >>> 2 < memory.length - 4;
     const requiredNodePtrs = new Set();
     for (let i = 0; i < numElements * 7; i += 7) {
       const lintId = memory[(dirPtr >> 2) + i + 2];
@@ -1279,10 +1281,10 @@ export class LspFacade {
         const arg1 = memory[(dirPtr >> 2) + i + 4];
         const arg2 = memory[(dirPtr >> 2) + i + 5];
         const arg3 = memory[(dirPtr >> 2) + i + 6];
-        if (arg0) requiredNodePtrs.add(arg0);
-        if (arg1) requiredNodePtrs.add(arg1);
-        if (arg2) requiredNodePtrs.add(arg2);
-        if (arg3) requiredNodePtrs.add(arg3);
+        if (isPotentialNodePtr(arg0)) requiredNodePtrs.add(arg0);
+        if (isPotentialNodePtr(arg1)) requiredNodePtrs.add(arg1);
+        if (isPotentialNodePtr(arg2)) requiredNodePtrs.add(arg2);
+        if (isPotentialNodePtr(arg3)) requiredNodePtrs.add(arg3);
       }
     }
     const offsetCache = new Map();
@@ -1327,11 +1329,21 @@ export class LspFacade {
         if (child !== 0) {
           let childCount = 0;
           let c = child;
-          while (c !== 0 && childCount < 5000) {
+          while (c !== 0 && childCount < 200000) {
             childCount++;
             c = memory[(c + 16) / 4];
           }
-          if (stackTop + childCount < 50000) {
+          if (stackTop + childCount >= stackPtrs.length) {
+            let newCap = stackPtrs.length * 2;
+            while (newCap <= stackTop + childCount) newCap *= 2;
+            const nextPtrs = new Uint32Array(newCap);
+            const nextOffsets = new Uint32Array(newCap);
+            nextPtrs.set(stackPtrs);
+            nextOffsets.set(stackOffsets);
+            stackPtrs = nextPtrs;
+            stackOffsets = nextOffsets;
+          }
+          {
             let currOffset = nodeStart;
             let consumedInParent = 0;
             let idx = 0;
@@ -1431,7 +1443,7 @@ export class LspFacade {
           } else if (symName.startsWith("/") && symName.endsWith("/")) {
             symName = formatSyntaxTokenName(rawArg1, symName);
           }
-          let rawArg2 = arg2 & 0x7fff;
+          let rawArg2 = arg2 >>> 0;
           let rawArg3 = arg3 & 0x7fff;
           const poolPtr = this.exports.lsp_getExpectedPool
             ? this.exports.lsp_getExpectedPool()
@@ -1610,7 +1622,7 @@ export class LspFacade {
             };
             const getSyntaxNodeForPtr = (ptr) => {
               const isAligned =
-                ptr > 0 && ptr % 4 === 0 && ptr / 4 < memory.length - 4;
+                ptr >= 64 && (ptr & 3) === 0 && ptr >>> 2 < memory.length - 4;
               if (!isAligned || !this.exports.getChildByFieldId) return null;
               let actualStart = -1;
               if (offsetCache.has(ptr)) {
@@ -1653,7 +1665,9 @@ export class LspFacade {
                 ? text
                 : fallbackText !== ""
                   ? fallbackText
-                  : String(nodePtr);
+                  : nodePtr === 0
+                    ? ""
+                    : String(nodePtr);
               const resolveChildFieldText = (fieldName) => {
                 if (syntaxNode) {
                   const cText = syntaxNode.childText(fieldName);
@@ -4598,11 +4612,11 @@ export class SyntaxNode {
   }
   /** The line and column where this node starts. */
   get startPosition() {
-    return this.tree.offsetToPoint(this.startIndex * 2);
+    return this.tree.offsetToPoint(this.startIndex * this.tree._encMult);
   }
   /** The line and column where this node ends. */
   get endPosition() {
-    return this.tree.offsetToPoint(this.endIndex * 2);
+    return this.tree.offsetToPoint(this.endIndex * this.tree._encMult);
   }
   /**
    * Returns a list of all visible child nodes by walking the WASM sibling linked list.
@@ -5222,6 +5236,7 @@ export class Tree {
   rootPtr;
   sourceCode;
   lineStarts;
+  _encMult;
   _mem32 = null;
   get mem32() {
     const buf = this.facade.wasmMemory.buffer;
@@ -5238,6 +5253,7 @@ export class Tree {
       ? this.facade.getInputEncoding()
       : 1;
     const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    this._encMult = mult;
     if (
       facade &&
       rootPtr > 0 &&
@@ -5270,7 +5286,7 @@ export class Tree {
       0,
       null,
       pad,
-      len > 0 ? len : this.sourceCode.length * 2,
+      len > 0 ? len : this.sourceCode.length * this._encMult,
       typeId,
     );
   }
@@ -5280,6 +5296,7 @@ export class Tree {
   }
   /** Converts a linear byte offset into a row and column Point. */
   offsetToPoint(offset) {
+    const mult = this._encMult;
     let low = 0;
     let high = this.lineStarts.length - 1;
     while (low <= high) {
@@ -5289,20 +5306,20 @@ export class Tree {
           mid === this.lineStarts.length - 1 ||
           this.lineStarts[mid + 1] > offset
         ) {
-          return { row: mid, column: (offset - this.lineStarts[mid]) / 2 };
+          return { row: mid, column: (offset - this.lineStarts[mid]) / mult };
         }
         low = mid + 1;
       } else {
         high = mid - 1;
       }
     }
-    return { row: 0, column: offset / 2 };
+    return { row: 0, column: offset / mult };
   }
   /** Converts a row and column Point into a linear character offset. */
   pointToOffset(point) {
     if (point.row < 0) return 0;
     if (point.row >= this.lineStarts.length) return this.sourceCode.length;
-    const lineStart = this.lineStarts[point.row] / 2;
+    const lineStart = this.lineStarts[point.row] / this._encMult;
     return Math.min(this.sourceCode.length, lineStart + point.column);
   }
 }

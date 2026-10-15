@@ -133,20 +133,20 @@ export class CstUnparser {
       };
     }
 
-    // 3. Child Deletions Only Fast-Path
+    // 3. Single Child Deletion Fast-Path
     if (
       patch.deleteChildren &&
-      patch.deleteChildren.length > 0 &&
+      patch.deleteChildren.length === 1 &&
       childReplacements.size === 0 &&
       (!patch.insertChildren || patch.insertChildren.length === 0)
     ) {
       return this.handleChildDeletions(target, patch.deleteChildren, sourceCode);
     }
 
-    // 4. Child Insertions Only Fast-Path
+    // 4. Single Child Insertion Fast-Path
     if (
       patch.insertChildren &&
-      patch.insertChildren.length > 0 &&
+      patch.insertChildren.length === 1 &&
       childReplacements.size === 0 &&
       (!patch.deleteChildren || patch.deleteChildren.length === 0)
     ) {

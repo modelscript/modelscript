@@ -1,7 +1,6 @@
 // name: OuterProduct
 // keywords: outerProduct
 // status: correct
-// xfail:    true
 //
 // Testing the built-in outerProduct function.
 //

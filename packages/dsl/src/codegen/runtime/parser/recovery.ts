@@ -20,23 +20,22 @@ import {
   ACTION_SHIFT,
   ACTION_REDUCE,
   NODE_TYPE_ERROR,
-  goto_offsets,
-  goto_data,
+  lookupGoto,
   prod_lengths,
   prod_lhs,
   inputLength,
   token_insert_costs,
   token_delete_costs,
+  token_bracket_deltas,
   token_is_word,
   precomputed_repairs,
-  reachability_matrix,
   token_string_offsets,
   token_string_bytes,
   prod_is_list,
   getExpectedTokensForState,
   debugLog,
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength, lookupActions } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength, lookupActions, findActionEntry } from "./parser-loop";
 import {
   getNodePadding,
   setNodePadding,
@@ -83,23 +82,14 @@ export const PENALTY_DELETE_LINE_END_DANGLING: i32 = 100;
  * Searches the action table for a SHIFT transition for the given state and terminal token.
  */
 export function findShiftTarget(state: i32, tok: u16): i32 {
-  if (state < 0 || state >= action_offsets.length) return -1;
-  let actOffset = action_offsets[state];
-  if (actOffset < 0 || actOffset >= action_data.length) return -1;
-  let actionCount = action_data[actOffset];
-  let idx = actOffset + 1;
-  for (let i = 0; i < actionCount; i++) {
-    let sym = action_data[idx];
-    let actCount = action_data[idx + 1];
-    let actPtr = idx + 2;
-    if (sym == (tok as i32) || sym == 0) {
-      for (let a = 0; a < actCount; a++) {
-        let type = action_data[actPtr + a * 2];
-        let target = action_data[actPtr + a * 2 + 1];
-        if (type == ACTION_SHIFT) return target;
-      }
+  let matchIdx = findActionEntry(state, tok as i32);
+  if (matchIdx == -1) return -1;
+  let actCount = action_data[matchIdx + 1];
+  let actPtr = matchIdx + 2;
+  for (let a = 0; a < actCount; a++) {
+    if (action_data[actPtr + a * 2] == ACTION_SHIFT) {
+      return action_data[actPtr + a * 2 + 1];
     }
-    idx += 2 + actCount * 2;
   }
   return -1;
 }
@@ -309,7 +299,8 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           let cl = peekCharLen(diagEnd - step);
           let lastCh = peekChar(diagEnd - step);
           if (lastCh == 32 || lastCh == 9 || lastCh == 10 || lastCh == 13 || lastCh == 0) {
-            diagEnd -= cl > 0 ? cl : step;
+            let dec = cl > 0 ? cl : step;
+            diagEnd = diagEnd > diagStart + dec ? diagEnd - dec : diagStart;
           } else {
             break;
           }
@@ -483,17 +474,41 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
   if (kwLen == 0) return 50;
 
   let matchChars: u32 = 0;
+  let alignedChars: u32 = 0;
+  let kwCursor: u32 = 0;
   let inputCharCount: u32 = 0;
   let currP = pos;
   while (currP < pos + len && currP < inputLength) {
     let inputCh = peekChar(currP);
     let chLen = peekCharLen(currP);
+    if (chLen == 0) chLen = 1;
+    let inNorm = (inputCh >= 65 && inputCh <= 90) ? inputCh + 32 : inputCh;
     if (matchChars < kwLen) {
       let kwCh = token_string_bytes[offset + 1 + matchChars];
-      let inNorm = (inputCh >= 65 && inputCh <= 90) ? inputCh + 32 : inputCh;
       let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
       if (inNorm == kwNorm && matchChars == inputCharCount) {
         matchChars++;
+      }
+    }
+    if (kwCursor < kwLen) {
+      let kwCh = token_string_bytes[offset + 1 + kwCursor];
+      let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
+      if (inNorm == kwNorm) {
+        alignedChars++;
+        kwCursor++;
+      } else if (kwCursor + 1 < kwLen) {
+        let nextKwCh = token_string_bytes[offset + 1 + kwCursor + 1];
+        let nextKwNorm = (nextKwCh >= 65 && nextKwCh <= 90) ? nextKwCh + 32 : nextKwCh;
+        if (inNorm == nextKwNorm) {
+          alignedChars++;
+          kwCursor += 2;
+        } else if (currP + chLen < pos + len && currP + chLen < inputLength) {
+          let nextInCh = peekChar(currP + chLen);
+          let nextInNorm = (nextInCh >= 65 && nextInCh <= 90) ? nextInCh + 32 : nextInCh;
+          if (nextInNorm != kwNorm) {
+            kwCursor++;
+          }
+        }
       }
     }
     inputCharCount++;
@@ -544,6 +559,12 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
     return 0; // Perfect combined split-word typo match!
   }
 
+  // Credit edit-distance character alignment for typos (e.g. "flse" -> "else", "whle" -> "while")
+  // when at least 2 characters and at least half the keyword align in order.
+  if (alignedChars > matchChars && alignedChars >= 2 && alignedChars * 2 >= kwLen) {
+    matchChars = alignedChars;
+  }
+
   lastKeywordMatchChars = matchChars;
   let delta = kwLen > matchChars ? (kwLen - matchChars) : kwLen;
   if (inputCharCount > kwLen) {
@@ -551,6 +572,16 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
   }
   let penalty: i32 = (delta as i32) * 15 + (matchChars == 0 ? 10 : 0);
   return penalty;
+}
+
+@inline
+function computeNextBalanceHash(balanceHash: u32, sym: i32): u32 {
+  let nextBalance: i32 = balanceHash as i32;
+  if (sym >= 0 && sym < token_bracket_deltas.length) {
+    nextBalance += token_bracket_deltas[sym];
+    if (nextBalance < 0) nextBalance = 0;
+  }
+  return nextBalance as u32;
 }
 
 function findShiftTargetThroughEpsilons(head: ParseHead, state: i32, sym: i32): ParseHead | null {
@@ -578,7 +609,7 @@ function findShiftTargetThroughEpsilons(head: ParseHead, state: i32, sym: i32): 
             return allocParseHead(
               aTarget,
               0,
-              currHead.astNode == 0 ? currHead.prev : currHead,
+              currHead,
               currHead.pos,
               currHead.scannerState,
               currHead.errorCost,
@@ -591,33 +622,26 @@ function findShiftTargetThroughEpsilons(head: ParseHead, state: i32, sym: i32): 
             );
           } else if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lengths.length && prod_lengths[aTarget] == 0) {
             let lhs = prod_lhs[aTarget];
-            let gOffset = goto_offsets[currState];
-            if (gOffset >= 0 && gOffset < goto_data.length) {
-              let gCount = goto_data[gOffset];
-              let gIdx = gOffset + 1;
-              for (let k = 0; k < gCount; k++) {
-                if (goto_data[gIdx++] == lhs) {
-                  let nextSt = goto_data[gIdx++];
-                  let redNode = allocNode(lhs as u16, 0, 0, 0, false);
-                  currHead = allocParseHead(
-                    nextSt,
-                    redNode,
-                    currHead,
-                    currHead.pos,
-                    currHead.scannerState,
-                    currHead.errorCost,
-                    currHead.successfulShifts,
-                    currHead.balanceHash,
-                    currHead.consecutiveInsertions,
-                    currHead.dynamicPrec,
-                    currHead.pendingPadding,
-                    currHead.errorTail
-                  );
-                  currState = nextSt;
-                  found = true;
-                  break;
-                } else gIdx++;
-              }
+            let nextSt = lookupGoto(currState, lhs);
+            if (nextSt != -1) {
+              let redNode = allocNode(lhs as u16, 0, 0, 0, false);
+              currHead = allocParseHead(
+                nextSt,
+                redNode,
+                currHead,
+                currHead.pos,
+                currHead.scannerState,
+                currHead.errorCost,
+                currHead.successfulShifts,
+                currHead.balanceHash,
+                currHead.consecutiveInsertions,
+                currHead.dynamicPrec,
+                currHead.pendingPadding,
+                currHead.errorTail
+              );
+              currState = nextSt;
+              found = true;
+              break;
             }
           }
         }
@@ -634,6 +658,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
   if (depth > 2 || state < 0 || state >= action_offsets.length) return false;
 
   let foundAny = false;
+  let precomputedInsertedSym: i32 = -1;
 
   // 1. O(1) Precomputed Fast Path for missing token insertions
   if (depth == 0 && changetype<usize>(precomputed_repairs) != 0 && token >= 0 && token <= MAX_TERMINAL_ID) {
@@ -660,13 +685,14 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
             head.scannerState,
             head.errorCost + repairCost,
             0,
-            head.balanceHash,
+            computeNextBalanceHash(head.balanceHash, bestRep),
             head.consecutiveInsertions + 1,
             head.dynamicPrec,
             head.pendingPadding,
             nextTail
           );
           pushNextHead(changetype<u32>(insHead));
+          precomputedInsertedSym = bestRep;
           foundAny = true;
         }
       }
@@ -688,103 +714,109 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
   let bestSubstResolvedHead: ParseHead | null = null;
   let bestSubstSpan: u32 = curTLen;
 
+  let firstCh = peekChar(curSrcLexPos);
+  let isInputWord = (firstCh >= 65 && firstCh <= 90) || (firstCh >= 97 && firstCh <= 122) || firstCh == 95 || (firstCh >= 48 && firstCh <= 57);
+  let seenEps0: i32 = -1;
+  let seenEps1: i32 = -1;
+  let seenEps2: i32 = -1;
+  let seenEps3: i32 = -1;
+
   for (let j = 0; j < rCount; j++) {
     let sym = action_data[rIdx++];
     let actCount = action_data[rIdx++];
-    for (let a = 0; a < actCount; a++) {
-      let aType = action_data[rIdx++];
-      let aTarget = action_data[rIdx++];
-      let firstCh = peekChar(curSrcLexPos);
-      let isInputWord = (firstCh >= 65 && firstCh <= 90) || (firstCh >= 97 && firstCh <= 122) || firstCh == 95 || (firstCh >= 48 && firstCh <= 57);
-      let isWordSym = sym > 0 && sym <= MAX_TERMINAL_ID && token_is_word.length > sym ? (token_is_word[sym] == 1) : false;
+    let isWordSym = sym > 0 && sym <= MAX_TERMINAL_ID && token_is_word.length > sym ? (token_is_word[sym] == 1) : false;
 
-      // Strategy A: Keyword / Token Substitution (handling both direct shifts and epsilon-reduction paths)
-      if (isInputWord && isWordSym) {
-        let simPenalty = computeKeywordSimilarityPenalty(curSrcLexPos, curTLen, sym);
-        if (simPenalty < bestSubstPenalty) {
-          let span = lastKeywordMatchSpan;
-          let matchCount = lastKeywordMatchChars;
-          let resolvedHead = findShiftTargetThroughEpsilons(head, state, sym);
-          if (resolvedHead != null) {
-            let nextPosAfterTok = curSrcLexPos + span;
-            let nextTok = peekNextTokenInState(nextPosAfterTok, resolvedHead.state);
-            let canAcceptAfterSubst = stateCanAccept(resolvedHead, resolvedHead.state, nextTok, 0, 0);
-            if (canAcceptAfterSubst > 0) {
-              let confirmed = true;
-              if (matchCount == 0) {
-                // If the input word shares zero characters with the keyword (e.g. "some" vs "let"),
-                // require lookahead confirmation on the second token.
-                confirmed = false;
-                if (canAcceptAfterSubst >= 1) {
-                  let shiftedState = canAcceptAfterSubst - 1;
-                  let nextPos2 = lastPeekedTokenEnd;
-                  if (nextPos2 < inputLength) {
-                    let nextTok2 = peekNextTokenInState(nextPos2, shiftedState);
-                    if (stateCanAccept(null, shiftedState, nextTok2, 0, 0) > 0 || lookupActions(shiftedState, nextTok2) > 0) {
-                      confirmed = true;
-                    }
-                  } else {
+    // Strategy A: Keyword / Token Substitution (evaluated once per symbol `sym`)
+    if (isInputWord && isWordSym) {
+      let simPenalty = computeKeywordSimilarityPenalty(curSrcLexPos, curTLen, sym);
+      if (simPenalty < bestSubstPenalty) {
+        let span = lastKeywordMatchSpan;
+        let matchCount = lastKeywordMatchChars;
+        let resolvedHead = findShiftTargetThroughEpsilons(head, state, sym);
+        if (resolvedHead != null) {
+          let nextPosAfterTok = curSrcLexPos + span;
+          let nextTok = peekNextTokenInState(nextPosAfterTok, resolvedHead.state);
+          let canAcceptAfterSubst = stateCanAccept(resolvedHead, resolvedHead.state, nextTok, 0, 0);
+          if (canAcceptAfterSubst > 0) {
+            let confirmed = true;
+            if (matchCount == 0) {
+              // If the input word shares zero characters with the keyword (e.g. "some" vs "let"),
+              // require lookahead confirmation on the second token.
+              confirmed = false;
+              if (canAcceptAfterSubst >= 1) {
+                let shiftedState = canAcceptAfterSubst - 1;
+                let nextPos2 = lastPeekedTokenEnd;
+                if (nextPos2 < inputLength) {
+                  let nextTok2 = peekNextTokenInState(nextPos2, shiftedState);
+                  if (stateCanAccept(null, shiftedState, nextTok2, 0, 0) > 0 || lookupActions(shiftedState, nextTok2) > 0) {
                     confirmed = true;
                   }
+                } else {
+                  confirmed = true;
                 }
               }
+            }
 
-              // Guard: If the very next word at nextPosAfterTok is ALREADY the target keyword `sym`,
-              // this is a stray token before the actual keyword, NOT a keyword substitution!
-              if (confirmed && changetype<usize>(token_string_offsets) != 0 && sym >= 0 && sym < token_string_offsets.length) {
-                let kwOffset = token_string_offsets[sym];
-                if (kwOffset >= 0 && kwOffset < token_string_bytes.length) {
-                  let targetKwLen = token_string_bytes[kwOffset] as u32;
-                  if (targetKwLen > 0) {
-                    let checkP = nextPosAfterTok;
-                    while (checkP < inputLength) {
-                      let ch = peekChar(checkP);
-                      let chLen = peekCharLen(checkP);
-                      if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
-                        checkP += chLen;
-                      } else {
-                        break;
-                      }
+            // Guard: If the very next word at nextPosAfterTok is ALREADY the target keyword `sym`,
+            // this is a stray token before the actual keyword, NOT a keyword substitution!
+            if (confirmed && changetype<usize>(token_string_offsets) != 0 && sym >= 0 && sym < token_string_offsets.length) {
+              let kwOffset = token_string_offsets[sym];
+              if (kwOffset >= 0 && kwOffset < token_string_bytes.length) {
+                let targetKwLen = token_string_bytes[kwOffset] as u32;
+                if (targetKwLen > 0) {
+                  let checkP = nextPosAfterTok;
+                  while (checkP < inputLength) {
+                    let ch = peekChar(checkP);
+                    let chLen = peekCharLen(checkP);
+                    if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+                      checkP += chLen;
+                    } else {
+                      break;
                     }
-                    let scanP = checkP;
-                    let allMatch = true;
-                    for (let ki: u32 = 0; ki < targetKwLen; ki++) {
-                      if (scanP >= inputLength) {
-                        allMatch = false;
-                        break;
-                      }
-                      let ch = peekChar(scanP);
-                      let chLen = peekCharLen(scanP);
-                      let kwCh = token_string_bytes[kwOffset + 1 + ki];
-                      let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
-                      let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
-                      if (inNorm != kwNorm) {
-                        allMatch = false;
-                        break;
-                      }
-                      scanP += chLen;
+                  }
+                  let scanP = checkP;
+                  let allMatch = true;
+                  for (let ki: u32 = 0; ki < targetKwLen; ki++) {
+                    if (scanP >= inputLength) {
+                      allMatch = false;
+                      break;
                     }
-                    if (allMatch) {
-                      let afterCh = scanP < inputLength ? peekChar(scanP) : 0;
-                      let isWord = (afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57);
-                      if (!isWord) {
-                        confirmed = false;
-                      }
+                    let ch = peekChar(scanP);
+                    let chLen = peekCharLen(scanP);
+                    let kwCh = token_string_bytes[kwOffset + 1 + ki];
+                    let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
+                    let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
+                    if (inNorm != kwNorm) {
+                      allMatch = false;
+                      break;
+                    }
+                    scanP += chLen;
+                  }
+                  if (allMatch) {
+                    let afterCh = scanP < inputLength ? peekChar(scanP) : 0;
+                    let isWord = (afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57);
+                    if (!isWord) {
+                      confirmed = false;
                     }
                   }
                 }
               }
+            }
 
-              if (confirmed) {
-                bestSubstPenalty = simPenalty;
-                bestSubstSym = sym;
-                bestSubstResolvedHead = resolvedHead;
-                bestSubstSpan = span;
-              }
+            if (confirmed) {
+              bestSubstPenalty = simPenalty;
+              bestSubstSym = sym;
+              bestSubstResolvedHead = resolvedHead;
+              bestSubstSpan = span;
             }
           }
         }
       }
+    }
+
+    for (let a = 0; a < actCount; a++) {
+      let aType = action_data[rIdx++];
+      let aTarget = action_data[rIdx++];
 
       if (aType == ACTION_SHIFT && sym > 0 && sym <= MAX_TERMINAL_ID) {
         let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
@@ -810,7 +842,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
               head.scannerState,
               head.errorCost + ERROR_COST_PER_MISSING_TREE,
               0,
-              head.balanceHash,
+              computeNextBalanceHash(head.balanceHash, sym),
               0,
               head.dynamicPrec,
               0,
@@ -822,66 +854,68 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
         }
 
         // Strategy B: Missing Token Insertion (0-width sym, keeping current token in stream)
-        let insCost: i32 = token_insert_costs.length > sym ? (token_insert_costs[sym] as i32) : 1;
-        if (insCost < 50 || (isDelimLookahead && insCost <= 50) || sym == 1 || pos == 0) {
-          let canAcceptNext = stateCanAccept(head, aTarget, token, 0, 1);
-          if (canAcceptNext > 0) {
-            let insNode = allocNode(sym as u16, 0, 0, 0, false);
-            setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
+        if (sym != precomputedInsertedSym) {
+          let insCost: i32 = token_insert_costs.length > sym ? (token_insert_costs[sym] as i32) : 1;
+          if (insCost < 50 || (isDelimLookahead && insCost <= 50) || sym == 1 || pos == 0) {
+            let canAcceptNext = stateCanAccept(head, aTarget, token, 0, 1);
+            if (canAcceptNext > 0) {
+              let insNode = allocNode(sym as u16, 0, 0, 0, false);
+              setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
 
-            let diagStart = curSrcLexPos;
-            let diagEnd = curSrcLexPos + curTLen;
-            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 1, sym as u32, 0);
+              let diagStart = curSrcLexPos;
+              let diagEnd = curSrcLexPos + curTLen;
+              let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 1, sym as u32, 0);
 
-            let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
-            let insHead = allocParseHead(
-              aTarget,
-              insNode,
-              head,
-              pos,
-              head.scannerState,
-              head.errorCost + repairCost,
-              0,
-              head.balanceHash,
-              head.consecutiveInsertions + 1,
-              head.dynamicPrec,
-              head.pendingPadding,
-              nextTail
-            );
-
-            pushNextHead(changetype<u32>(insHead));
-            foundAny = true;
-          }
-        }
-      } else if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lengths.length && prod_lengths[aTarget] == 0) {
-        let lhs = prod_lhs[aTarget];
-        let gOffset = goto_offsets[state];
-        if (gOffset >= 0 && gOffset < goto_data.length) {
-          let gCount = goto_data[gOffset];
-          let gIdx = gOffset + 1;
-          for (let k = 0; k < gCount; k++) {
-            if (goto_data[gIdx++] == lhs) {
-              let nextSt = goto_data[gIdx++];
-              let redNode = allocNode(lhs as u16, 0, 0, 0, false);
-              let redHead = allocParseHead(
-                nextSt,
-                redNode,
+              let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
+              let insHead = allocParseHead(
+                aTarget,
+                insNode,
                 head,
                 pos,
                 head.scannerState,
-                head.errorCost,
-                head.successfulShifts,
-                head.balanceHash,
-                head.consecutiveInsertions,
+                head.errorCost + repairCost,
+                0,
+                computeNextBalanceHash(head.balanceHash, sym),
+                head.consecutiveInsertions + 1,
                 head.dynamicPrec,
                 head.pendingPadding,
-                head.errorTail
+                nextTail
               );
-              if (tryRecoverMissingInState(redHead, nextSt, token, pos, depth + 1)) {
-                foundAny = true;
-              }
-              break;
-            } else gIdx++;
+
+              pushNextHead(changetype<u32>(insHead));
+              foundAny = true;
+            }
+          }
+        }
+      } else if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lengths.length && prod_lengths[aTarget] == 0) {
+        if (aTarget == seenEps0 || aTarget == seenEps1 || aTarget == seenEps2 || aTarget == seenEps3) {
+          continue;
+        }
+        if (seenEps0 == -1) seenEps0 = aTarget;
+        else if (seenEps1 == -1) seenEps1 = aTarget;
+        else if (seenEps2 == -1) seenEps2 = aTarget;
+        else if (seenEps3 == -1) seenEps3 = aTarget;
+
+        let lhs = prod_lhs[aTarget];
+        let nextSt = lookupGoto(state, lhs);
+        if (nextSt != -1) {
+          let redNode = allocNode(lhs as u16, 0, 0, 0, false);
+          let redHead = allocParseHead(
+            nextSt,
+            redNode,
+            head,
+            pos,
+            head.scannerState,
+            head.errorCost,
+            head.successfulShifts,
+            head.balanceHash,
+            head.consecutiveInsertions,
+            head.dynamicPrec,
+            head.pendingPadding,
+            head.errorTail
+          );
+          if (tryRecoverMissingInState(redHead, nextSt, token, pos, depth + 1)) {
+            foundAny = true;
           }
         }
       }
@@ -907,7 +941,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
       head.scannerState,
       head.errorCost + ERROR_COST_PER_MISSING_TREE + bestSubstPenalty,
       0,
-      head.balanceHash,
+      computeNextBalanceHash(head.balanceHash, bestSubstSym),
       0,
       head.dynamicPrec,
       0,

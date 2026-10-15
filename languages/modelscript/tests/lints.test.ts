@@ -107,3 +107,33 @@ let filtered =
     ),
   );
 });
+
+test("ModelScript Linter underlines only missing struct property and respects for-loop scopes", async () => {
+  const compiler = new ModelScriptCompiler();
+  await compiler.init();
+
+  const code = `
+struct Vec2 {
+  x: f64;
+  y: f64;
+}
+
+function testFn(v: Vec2): f64 {
+  let acc = 0.0;
+  for (let i = 0; i < 3; i = i + 1) {
+    acc = acc + v.x;
+  }
+  return v.missingProp;
+}
+`;
+
+  const diags = compiler.lint(code);
+  assert.equal(diags.length, 1, `Expected 1 diagnostic, got: ${JSON.stringify(diags)}`);
+  const diag = diags[0]!;
+  assert.equal(diag.code, ModelScriptErrorCode.UNKNOWN_STRUCT_FIELD.code);
+  // "  return v.missingProp;" is on line 12, "missingProp" is columns 12..23 (1-indexed)
+  assert.equal(diag.range.startLine, 12);
+  assert.equal(diag.range.startColumn, 12);
+  assert.equal(diag.range.endLine, 12);
+  assert.equal(diag.range.endColumn, 23);
+});

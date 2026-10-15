@@ -16,6 +16,9 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import { lintCsv, type CsvDiagnostic } from "./src/csv-parser.js";
+
+export { lintCsv, type CsvDiagnostic };
 
 interface CsvMetadata {
   typeSpecifier?: string;
@@ -110,6 +113,19 @@ export const csvLanguage = language({
               byNameMap.set(child.name, child);
             }
             return (name: string) => byNameMap.get(name) ?? null;
+          },
+          lint__csvTableValidity: (db: QueryDB, self: SymbolEntry) => {
+            const text = db.cstText(self.startByte, self.endByte, self);
+            if (!text) return null;
+            const diags = lintCsv(text, self.startByte ?? 0);
+            if (diags.length === 0) return null;
+            return diags.map((d) => ({
+              severity: d.severity,
+              code: d.code,
+              message: d.message,
+              startByte: d.startByte,
+              endByte: d.endByte,
+            }));
           },
         },
       }),

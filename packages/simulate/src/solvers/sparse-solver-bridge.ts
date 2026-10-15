@@ -26,8 +26,10 @@ export interface SparseLU {
   uColPtr: Int32Array;
   uRowIndices: Int32Array;
   uValues: Float64Array;
+  uDiagInv: Float64Array;
   perm: Int32Array;
   permInv: Int32Array;
+  scratchY: Float64Array;
 }
 
 export interface FactorizedLinearSolver {
@@ -85,6 +87,7 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
   const uColPtrList: number[] = [0];
   const uRowIndicesList: number[] = [];
   const uValuesList: number[] = [];
+  const uDiagInv = new Float64Array(n);
 
   const denseX = new Float64Array(n);
   const touched = new Uint8Array(n);
@@ -106,7 +109,7 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
 
     // 2. Triangular solve with previously computed L columns: L[0..k-1] * u = a_k
     for (let j = 0; j < k; j++) {
-      const xj = denseX[j];
+      const xj = denseX[j]!;
       if (Math.abs(xj) < 1e-15) continue;
 
       const lStart = lColPtrList[j] ?? 0;
@@ -120,11 +123,11 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     }
 
     // 3. Partial Pivoting: Find maximum entry in denseX[k..n-1]
-    let maxVal = Math.abs(denseX[k]);
+    let maxVal = Math.abs(denseX[k]!);
     let pivotRow = k;
 
     for (let r = k + 1; r < n; r++) {
-      const val = Math.abs(denseX[r]);
+      const val = Math.abs(denseX[r]!);
       if (val > maxVal) {
         maxVal = val;
         pivotRow = r;
@@ -138,8 +141,8 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
 
     // Swap pivot rows
     if (pivotRow !== k) {
-      const tmp = denseX[k];
-      denseX[k] = denseX[pivotRow];
+      const tmp = denseX[k]!;
+      denseX[k] = denseX[pivotRow]!;
       denseX[pivotRow] = tmp;
 
       const origK = perm[k]!;
@@ -150,11 +153,13 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
       permInv[origK] = pivotRow;
     }
 
-    const pivotVal = denseX[k];
+    const pivotVal = denseX[k]!;
+    const invPivot = 1.0 / pivotVal;
+    uDiagInv[k] = invPivot;
 
     // 4. Store U factor column k (rows 0..k)
     for (let r = 0; r <= k; r++) {
-      const val = denseX[r];
+      const val = denseX[r]!;
       if (Math.abs(val) > 1e-15 || r === k) {
         uRowIndicesList.push(r);
         uValuesList.push(val);
@@ -166,9 +171,8 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     lRowIndicesList.push(k);
     lValuesList.push(1.0); // Unit diagonal
 
-    const invPivot = 1.0 / pivotVal;
     for (let r = k + 1; r < n; r++) {
-      const val = denseX[r];
+      const val = denseX[r]!;
       if (Math.abs(val) > 1e-15) {
         lRowIndicesList.push(r);
         lValuesList.push(val * invPivot);
@@ -189,17 +193,20 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
     uColPtr: new Int32Array(uColPtrList),
     uRowIndices: new Int32Array(uRowIndicesList),
     uValues: new Float64Array(uValuesList),
+    uDiagInv,
     perm,
     permInv,
+    scratchY: new Float64Array(n),
   };
 }
 
 /**
- * Solves (P * A) x = L * U * x = P * b using the precomputed Sparse LU factors.
+ * Solves (P * A) x = L * U * x = P * b using the precomputed Sparse LU factors
+ * with zero per-step memory allocations.
  */
 export function sparseLuSolve(lu: SparseLU, b: Float64Array, x: Float64Array): void {
   const n = lu.n;
-  const y = new Float64Array(n);
+  const y = lu.scratchY;
 
   // 1. Permute RHS: y = P * b
   for (let i = 0; i < n; i++) {
@@ -208,7 +215,7 @@ export function sparseLuSolve(lu: SparseLU, b: Float64Array, x: Float64Array): v
 
   // 2. Forward substitution: L * z = y (Unit diagonal)
   for (let col = 0; col < n; col++) {
-    const diagVal = y[col];
+    const diagVal = y[col]!;
     if (Math.abs(diagVal) < 1e-15) continue;
 
     const start = lu.lColPtr[col] ?? 0;
@@ -225,15 +232,7 @@ export function sparseLuSolve(lu: SparseLU, b: Float64Array, x: Float64Array): v
     const start = lu.uColPtr[col] ?? 0;
     const end = lu.uColPtr[col + 1] ?? 0;
 
-    let diagU = 1.0;
-    for (let p = start; p < end; p++) {
-      if (lu.uRowIndices[p] === col) {
-        diagU = lu.uValues[p] ?? 1.0;
-        break;
-      }
-    }
-
-    const solCol = y[col] / diagU;
+    const solCol = y[col]! * lu.uDiagInv[col]!;
     x[col] = solCol;
 
     for (let p = start; p < end; p++) {

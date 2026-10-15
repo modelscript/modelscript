@@ -54,6 +54,7 @@ import {
   stripArraySubscripts,
 } from "../expressions/index.js";
 import { getElementDiagRange } from "../support/range-utils.js";
+import { getFlatteningState, getNamedArrayShape, setNamedArrayShape } from "../support/state.js";
 import { ModelicaModificationEnv } from "../support/wasm-bridge.js";
 import { type ComponentInstanceData, type FlattenOptions } from "../types.js";
 
@@ -97,22 +98,46 @@ export interface ComponentFlattener {
   [key: string]: any;
 }
 
+const sharedComponentAnnotationEvaluator = new AnnotationEvaluator();
+const componentHiddenCache = new WeakMap<object, Map<SymbolId, boolean>>();
+
 export function isComponentHidden(flattener: ComponentFlattener, elemId: SymbolId): boolean {
+  const dbKey = flattener.db as unknown as object;
+  let dbMap = componentHiddenCache.get(dbKey);
+  if (dbMap) {
+    const cached = dbMap.get(elemId);
+    if (cached !== undefined) return cached;
+  } else {
+    dbMap = new Map<SymbolId, boolean>();
+    componentHiddenCache.set(dbKey, dbMap);
+  }
+
   const cst = flattener.db.cstNode(elemId) as any;
-  if (!cst) return false;
+  if (!cst) {
+    dbMap.set(elemId, false);
+    return false;
+  }
   let curr = cst;
   while (curr && curr.type !== "component_declaration" && curr.type !== "component_clause") {
     curr = curr.parent;
   }
   if (!curr) curr = cst;
-  const evaluator = new AnnotationEvaluator();
-  const hideRes = evaluator.evaluate(curr, "hideresult") ?? evaluator.evaluate(cst, "hideresult");
-  if (hideRes !== null && hideRes !== undefined) {
-    if (typeof hideRes === "boolean") return hideRes;
-    if (typeof hideRes === "object" && hideRes.value !== undefined) return Boolean(hideRes.value);
-    return true;
+  const rawText = (curr?.text ?? cst?.text ?? "").toLowerCase();
+  if (!rawText.includes("hideresult")) {
+    dbMap.set(elemId, false);
+    return false;
   }
-  return false;
+  const hideRes =
+    sharedComponentAnnotationEvaluator.evaluate(curr, "hideresult") ??
+    sharedComponentAnnotationEvaluator.evaluate(cst, "hideresult");
+  let result = false;
+  if (hideRes !== null && hideRes !== undefined) {
+    if (typeof hideRes === "boolean") result = hideRes;
+    else if (typeof hideRes === "object" && hideRes.value !== undefined) result = Boolean(hideRes.value);
+    else result = true;
+  }
+  dbMap.set(elemId, result);
+  return result;
 }
 
 export function extractDescription(elemCst: any): string | null {
@@ -313,17 +338,18 @@ export function getOrCreateWasmEnv(
   if (mods?.wasmEnv instanceof ModelicaModificationEnv) {
     return mods.wasmEnv;
   }
+  const state = getFlatteningState(dae, flattener);
   const wasmFlattener =
-    (dae as any)._wasmFlattener ?? (dae.exports?.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
-  (dae as any)._wasmFlattener = wasmFlattener;
+    state.wasmFlattener ?? (dae.exports?.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
+  state.wasmFlattener = wasmFlattener;
 
   if (!mods?.args || mods.args.length === 0) {
-    if ((dae as any)._emptyWasmEnv) {
-      if (mods) mods.wasmEnv = (dae as any)._emptyWasmEnv;
-      return (dae as any)._emptyWasmEnv;
+    if (state.emptyWasmEnv) {
+      if (mods) mods.wasmEnv = state.emptyWasmEnv;
+      return state.emptyWasmEnv;
     }
     const emptyEnv = new ModelicaModificationEnv(dae.exports);
-    (dae as any)._emptyWasmEnv = emptyEnv;
+    state.emptyWasmEnv = emptyEnv;
     if (mods) mods.wasmEnv = emptyEnv;
     return emptyEnv;
   }
@@ -681,7 +707,11 @@ export function instantiateElements(
 ): void {
   const prevParentMods = flattener.currentParentMods;
   flattener.currentParentMods = parentMods;
+  const state = getFlatteningState(dae, flattener);
   try {
+    if (prefix === "") {
+      cyclicDimensionDiagnostics.clear();
+    }
     const compInstMap = new Map<SymbolId, ComponentInstanceData | undefined>();
     const declaredNames = new Set<string>();
     for (const elemId of elements) {
@@ -725,8 +755,7 @@ export function instantiateElements(
           flattener.innerDeclarations.set(prefix, new Map<string, string>());
         }
         flattener.innerDeclarations.get(prefix)!.set(compInst.name, fullCompName);
-        if (!(dae as any).innerComponents) (dae as any).innerComponents = new Set<string>();
-        (dae as any).innerComponents.add(fullCompName);
+        (state.innerComponents ??= new Set<string>()).add(fullCompName);
       }
 
       if (compInst?.variability === "constant") {
@@ -761,59 +790,63 @@ export function instantiateElements(
               if (elems.length > 0) {
                 if (elems[0]?.trim().startsWith("{") && elems[0]?.trim().endsWith("}")) {
                   const inner = parseArrayLiteralElements(elems[0].trim());
-                  (dae as any).setNamedArrayShape?.(fullName, [elems.length, inner.length]);
+                  setNamedArrayShape(dae, fullName, [elems.length, inner.length]);
                 } else {
-                  (dae as any).setNamedArrayShape?.(fullName, [elems.length]);
+                  setNamedArrayShape(dae, fullName, [elems.length]);
                 }
               }
             } else if (rawText.startsWith("[") && rawText.endsWith("]")) {
               const rows = splitTopLevel(rawText.slice(1, -1), ";");
               if (rows.length > 0) {
                 const cols = splitTopLevel(rows[0]!, ",");
-                (dae as any).setNamedArrayShape?.(fullName, [rows.length, cols.length]);
+                setNamedArrayShape(dae, fullName, [rows.length, cols.length]);
               }
             }
           }
         }
       }
       if (prefix) {
-        const tableShape = (dae as any).getNamedArrayShape?.(`${prefix}.table`);
+        const tableShape = getNamedArrayShape(dae, `${prefix}.table`);
         if (tableShape && tableShape.length >= 2) {
           const colsCount = tableShape[1];
           const hasExplicitCols = parentMods.args.some((a: any) => a.name === "columns");
           if (!hasExplicitCols && colsCount >= 2) {
             const numOutputs = colsCount - 1;
-            (dae as any).setNamedArrayShape?.(`${prefix}.columns`, [numOutputs]);
-            (dae as any).setNamedArrayShape?.(`${prefix}.y`, [numOutputs]);
-            (dae as any).setNamedArrayShape?.(`${prefix}.p_offset`, [numOutputs]);
+            setNamedArrayShape(dae, `${prefix}.columns`, [numOutputs]);
+            setNamedArrayShape(dae, `${prefix}.y`, [numOutputs]);
+            setNamedArrayShape(dae, `${prefix}.p_offset`, [numOutputs]);
           }
         }
       }
     }
-    (dae as any).flattener = flattener;
-    if (!(dae as any).scopeDeclaredNames) {
-      (dae as any).scopeDeclaredNames = new Map<string, Set<string>>();
+    state.flattener = flattener;
+    if (!state.scopeDeclaredNames) {
+      state.scopeDeclaredNames = new Map<string, Set<string>>();
     }
-    (dae as any).scopeDeclaredNames.set(prefix, declaredNames);
+    state.scopeDeclaredNames.set(prefix, declaredNames);
     const basePrefix = stripArraySubscripts(prefix);
     if (basePrefix !== prefix) {
-      (dae as any).scopeDeclaredNames.set(basePrefix, declaredNames);
+      state.scopeDeclaredNames.set(basePrefix, declaredNames);
     }
 
-    const wasmEnv = getOrCreateWasmEnv(flattener, dae, parentMods);
-    const wasmFlattener =
-      (dae as any)._wasmFlattener ?? (dae.exports?.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
-    (dae as any)._wasmFlattener = wasmFlattener;
+    const syncWasmEnv = Boolean((flattener as any).options?.syncWasmEnv);
+    const wasmEnv = syncWasmEnv ? getOrCreateWasmEnv(flattener, dae, parentMods) : null;
+    const wasmFlattener = syncWasmEnv
+      ? (state.wasmFlattener ?? (dae.exports?.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0))
+      : 0;
+    if (syncWasmEnv) {
+      state.wasmFlattener = wasmFlattener;
+    }
 
-    const prefixId = prefix ? dae.interner.intern(prefix) : 0;
     if (wasmFlattener && dae.exports?.flattener_scopePush && wasmEnv) {
+      const prefixId = prefix ? dae.interner.intern(prefix) : 0;
       dae.exports.flattener_scopePush(wasmFlattener, 0, wasmEnv.envPtr, prefixId, 0);
     }
 
-    const prevCompClauseRange = (dae as any).currentCompClauseRange;
+    const prevCompClauseRange = state.currentCompClauseRange;
     const prevClassId = flattener.currentClassId;
     if (parentMods?.componentClauseRange) {
-      (dae as any).currentCompClauseRange = parentMods.componentClauseRange;
+      state.currentCompClauseRange = parentMods.componentClauseRange;
     }
     if (parentMods?.currentClassId) {
       flattener.currentClassId = parentMods.currentClassId;
@@ -1094,8 +1127,7 @@ export function instantiateElements(
             if (innerMap && innerMap.has(compInst.name)) {
               foundInner = true;
               const targetInner = innerMap.get(compInst.name)!;
-              if (!(dae as any).outerToInner) (dae as any).outerToInner = new Map<string, string>();
-              (dae as any).outerToInner.set(fullCompName, targetInner);
+              (state.outerToInner ??= new Map<string, string>()).set(fullCompName, targetInner);
               break;
             }
             p = p.includes(".") ? p.split(".").slice(0, -1).join(".") : p === "" ? null : "";
@@ -1153,7 +1185,7 @@ export function instantiateElements(
                     declNode = pNode;
                     pNode = pNode.parent;
                   }
-                  const notifRange = (dae as any).currentCompClauseRange ?? parentMods?.componentClauseRange;
+                  const notifRange = state.currentCompClauseRange ?? parentMods?.componentClauseRange;
                   if (notifRange) {
                     dae.diagnostics.push({
                       severity: "notification",
@@ -1184,8 +1216,7 @@ export function instantiateElements(
           }
         }
         if (isStateOutput) {
-          if (!(dae as any).stateOutputVars) (dae as any).stateOutputVars = new Set<string>();
-          (dae as any).stateOutputVars.add(fullCompName);
+          (state.stateOutputVars ??= new Set<string>()).add(fullCompName);
         }
         if (compInst.isOuter && compInst.isInner) {
           flattener.innerOuterComponents.add(fullCompName);
@@ -1290,6 +1321,44 @@ export function instantiateElements(
                 range: diagRange,
               });
               return;
+            }
+            if (condVal === null) {
+              const savedDiagLen = dae.diagnostics.length;
+              try {
+                let condSubs: Map<string, number | string> | undefined;
+                if (parentMods?.args) {
+                  for (const a of parentMods.args) {
+                    if (a.name && a.value) {
+                      if (
+                        a.value.kind === "literal" &&
+                        (typeof a.value.value === "number" || typeof a.value.value === "boolean")
+                      ) {
+                        condSubs ??= new Map();
+                        condSubs.set(
+                          a.name,
+                          typeof a.value.value === "boolean" ? (a.value.value ? "true" : "false") : a.value.value,
+                        );
+                      } else if (a.value.kind === "expression" && a.value.text) {
+                        const t = a.value.text.trim();
+                        if (t === "true" || t === "false" || /^-?\d+(?:\.\d+)?$/.test(t)) {
+                          condSubs ??= new Map();
+                          condSubs.set(a.name, t);
+                        }
+                      }
+                    }
+                  }
+                }
+                const loweredCondId = flattener.lowerExpr(condExpr, dae, prefix, condSubs);
+                if (loweredCondId >= 0 && dae.diagnostics.length === savedDiagLen) {
+                  const evaluated = evalDaeExpr(loweredCondId, dae);
+                  if (typeof evaluated === "boolean") {
+                    condVal = evaluated;
+                  }
+                }
+              } catch {}
+              if (condVal === null) {
+                dae.diagnostics.length = savedDiagLen;
+              }
             }
             if (condVal === null) {
               if ((dae.extensionMetadata as any)?.hasOldInstOption && flattener.currentRootClassId) {
@@ -1433,13 +1502,22 @@ export function instantiateElements(
               }
             }
 
+            if (
+              variability === Variability.Constant &&
+              prefix &&
+              !parentMods?.isRecord &&
+              parentMods?.parentVariability !== Variability.Constant &&
+              flattener.currentClassId &&
+              flattener.db.symbol(elemId)?.parentId !== flattener.currentClassId
+            ) {
+              continue;
+            }
             // Allow constants inside components to be instantiated in DAE
             if (variability === Variability.Constant && bText && /^[a-zA-Z_]\w*$/.test(bText)) {
               const targetConst = resolveScopedName(bText, prefix, dae);
               const targetIdx = dae.getVarIdxByName(targetConst);
               if (targetIdx >= 0 && dae.getVarVariability(targetIdx) === Variability.Constant) {
-                if (!(dae as any).constantAliases) (dae as any).constantAliases = new Map<string, string>();
-                (dae as any).constantAliases.set(name, targetConst);
+                (state.constantAliases ??= new Map<string, string>()).set(name, targetConst);
                 continue;
               }
             }
@@ -1620,6 +1698,30 @@ export function instantiateElements(
                     if (litName) {
                       const idx = ssLiterals.indexOf(litName);
                       attrExprId = dae.addEnumLiteral(idx >= 0 ? idx + 1 : 1, `StateSelect.${litName}`);
+                    } else if (rawText.includes("[")) {
+                      let attrCst = (arg.value as any)?.cstBytes
+                        ? flattener.db.cstNodeRange((arg.value as any).cstBytes[0], (arg.value as any).cstBytes[1], sym)
+                        : null;
+                      if (!attrCst && elemCst) {
+                        const findCref = (n: any): any => {
+                          if (!n) return null;
+                          if (
+                            (n.type === "component_reference" || n.type === "expression") &&
+                            n.text?.trim() === rawText
+                          ) {
+                            return n;
+                          }
+                          for (const c of n.children || []) {
+                            const f = findCref(c);
+                            if (f) return f;
+                          }
+                          return null;
+                        };
+                        attrCst = findCref(elemCst);
+                      }
+                      if (attrCst) {
+                        attrExprId = flattener.lowerExpr(attrCst as any, dae, prefix);
+                      }
                     }
                   } else if (arg.value?.kind === "literal" && typeof arg.value.value === "number") {
                     attrExprId =
@@ -2599,13 +2701,14 @@ export function instantiateElements(
               compInst.causality === "input" ? Causality.Input : Causality.Local,
               0.0,
             );
-            (dae as any).formalFunctionParams ??= new Map<string, { targetSymId: SymbolId; targetName: string }>();
-            (dae as any).formalFunctionParams.set(name, {
-              targetSymId: classTarget.id,
-              targetName: classTarget.name,
-            });
-            (dae as any).functionParameterNames ??= new Set<string>();
-            (dae as any).functionParameterNames.add(name);
+            (state.formalFunctionParams ??= new Map<string, { targetSymId: SymbolId; targetName: string }>()).set(
+              name,
+              {
+                targetSymId: classTarget.id,
+                targetName: classTarget.name,
+              },
+            );
+            (state.functionParameterNames ??= new Set<string>()).add(name);
             continue;
           }
 
@@ -2894,7 +2997,7 @@ export function instantiateElements(
               : undefined;
 
           if (compClauseRange) {
-            (dae as any).currentCompClauseRange = compClauseRange;
+            state.currentCompClauseRange = compClauseRange;
           }
 
           const effectiveSubMod = {
@@ -3116,7 +3219,10 @@ export function instantiateElements(
                 }
               }
             }
-            (dae as any).setNamedArrayShape?.(compInst.name, arrayDims);
+            setNamedArrayShape(dae, compInst.name, arrayDims);
+            if (prefix) {
+              setNamedArrayShape(dae, fullCompName, arrayDims);
+            }
             if (arrayDims.some((d) => d === 0)) {
               continue;
             }
@@ -3626,12 +3732,21 @@ export function instantiateElements(
             flattener.currentClassId &&
             (flattener.db.symbol(flattener.currentClassId)?.metadata as any)?.classKind === "function",
           );
+        if (
+          variability === Variability.Constant &&
+          prefix &&
+          !parentMods?.isRecord &&
+          parentMods?.parentVariability !== Variability.Constant &&
+          flattener.currentClassId &&
+          flattener.db.symbol(elemId)?.parentId !== flattener.currentClassId
+        ) {
+          continue;
+        }
         if (variability === Variability.Constant && bText && /^[a-zA-Z_]\w*$/.test(bText)) {
           const targetConst = resolveScopedName(bText, prefix, dae);
           const targetIdx = dae.getVarIdxByName(targetConst);
           if (targetIdx >= 0 && dae.getVarVariability(targetIdx) === Variability.Constant) {
-            if (!(dae as any).constantAliases) (dae as any).constantAliases = new Map<string, string>();
-            (dae as any).constantAliases.set(name, targetConst);
+            (state.constantAliases ??= new Map<string, string>()).set(name, targetConst);
             continue;
           }
         }
@@ -4595,12 +4710,16 @@ export function instantiateElements(
                 dae.classKind !== "function" &&
                 dae.classKind !== "record" &&
                 (variability === Variability.Continuous || variability === Variability.Discrete) &&
-                ((arrayDims && arrayDims.length > 0 && !dae.extensionMetadata?.scalarizeBindings) ||
-                  (exprId !== null && exprId >= 0 && exprContainsNameRef(exprId, dae)))
+                arrayDims &&
+                arrayDims.length > 0 &&
+                !dae.extensionMetadata?.scalarizeBindings
               ) {
-                // Continuous or discrete variable binding referencing another variable is emitted as an equation,
-                // not a static parameter variable expression.
-                if (exprId !== null && exprId >= 0) {
+                // Continuous array binding is emitted as an equation, not a variable expression
+                if (
+                  (flattener.options.arrayMode === "preserve" || !effectiveBinding?.text) &&
+                  exprId !== null &&
+                  exprId >= 0
+                ) {
                   const lhsExprId = dae.addNameExpr(dae.getVarName(varIdx));
                   dae.addEquation(EqKind.Simple, lhsExprId, exprId);
                 }
@@ -4620,6 +4739,19 @@ export function instantiateElements(
                   }
                 }
                 dae.setVarExpression(varIdx, exprId);
+                if (
+                  !flattener.options.omcCompatibility &&
+                  !isRecordParamOrConst &&
+                  dae.classKind !== "function" &&
+                  dae.classKind !== "record" &&
+                  (variability === Variability.Continuous || variability === Variability.Discrete) &&
+                  exprId !== null &&
+                  exprId >= 0 &&
+                  exprContainsNameRef(exprId, dae)
+                ) {
+                  const lhsExprId = dae.addNameExpr(dae.getVarName(varIdx));
+                  dae.addEquation(EqKind.Simple, lhsExprId, exprId);
+                }
               }
             }
             const combinedArgs = [
@@ -4754,6 +4886,8 @@ export function instantiateElements(
                         const prefixFnCallName = prefix ? `${prefix}.${fnCallName}` : fnCallName;
                         const fnObj = dae.getFunction(fnCallName) || dae.getFunction(prefixFnCallName);
                         if (fnObj) {
+                          (fnObj as any).wasCalled = true;
+                          if ((fnObj as any).symId) flattener.calledFunctionSymIds?.add((fnObj as any).symId);
                           const argParts = splitTopLevelArgs(argsText);
                           const evalArgs: any[] = [];
                           let allArgsOk = true;
@@ -4838,6 +4972,31 @@ export function instantiateElements(
                           attrExprId = dae.addEnumLiteral(idx >= 0 ? idx + 1 : 1, `StateSelect.${litName}`);
                         } else if (typeof evalVal === "number") {
                           attrExprId = dae.addRealLiteral(evalVal);
+                        } else if (t.includes("[")) {
+                          const targetSym = flattener.db.symbol(elemId);
+                          let attrCst = arg.value?.cstBytes
+                            ? flattener.db.cstNodeRange(arg.value.cstBytes[0], arg.value.cstBytes[1], targetSym)
+                            : null;
+                          if (!attrCst && elemCst) {
+                            const findCref = (n: any): any => {
+                              if (!n) return null;
+                              if (
+                                (n.type === "component_reference" || n.type === "expression") &&
+                                n.text?.trim() === t
+                              ) {
+                                return n;
+                              }
+                              for (const c of n.children || []) {
+                                const f = findCref(c);
+                                if (f) return f;
+                              }
+                              return null;
+                            };
+                            attrCst = findCref(elemCst);
+                          }
+                          if (attrCst) {
+                            attrExprId = flattener.lowerExpr(attrCst as any, dae, prefix);
+                          }
                         }
                       } else if (typeof evalVal === "number") {
                         attrExprId =
@@ -4990,9 +5149,9 @@ export function instantiateElements(
           );
         }
         const preRegisteredShape =
-          (dae as any).getNamedArrayShape?.(fullCompName) ??
-          (prefix ? (dae as any).getNamedArrayShape?.(`${prefix}.${compInst.name}`) : null) ??
-          (dae as any).getNamedArrayShape?.(compInst.name);
+          getNamedArrayShape(dae, fullCompName) ??
+          (prefix ? getNamedArrayShape(dae, `${prefix}.${compInst.name}`) : null) ??
+          getNamedArrayShape(dae, compInst.name);
         if (preRegisteredShape && preRegisteredShape.length > 0) {
           arrayDims = preRegisteredShape;
         }
@@ -5398,7 +5557,8 @@ export function instantiateElements(
                       for (let vi = 0; vi < fnObj.varCount; vi++) {
                         if (fnObj.getVarCausality(vi) === Causality.Output) {
                           const outShape =
-                            (fnObj as any).deducedOutputShapes?.get(fnObj.getVarName(vi)) ?? fnObj.getVarShape(vi);
+                            getFlatteningState(fnObj).deducedOutputShapes.get(fnObj.getVarName(vi)) ??
+                            fnObj.getVarShape(vi);
                           if (
                             outShape &&
                             outShape.length === resolvedDims.length &&
@@ -5559,7 +5719,7 @@ export function instantiateElements(
           }
         }
         if (arrayDims && arrayDims.length > 0) {
-          (dae as any).setNamedArrayShape?.(name, arrayDims);
+          setNamedArrayShape(dae, name, arrayDims);
           if (
             dae.classKind !== "function" &&
             flattener.options.arrayMode !== "preserve" &&
@@ -5844,7 +6004,7 @@ export function instantiateElements(
                 }
               }
               if (fieldMap.size > 0) {
-                ((dae as any).recordVarFieldExprs ??= new Map()).set(name, fieldMap);
+                (state.recordVarFieldExprs ??= new Map()).set(name, fieldMap);
               }
             }
             applyModifiers(varIdx, []);
@@ -6139,7 +6299,7 @@ export function instantiateElements(
         }
       }
     } finally {
-      (dae as any).currentCompClauseRange = prevCompClauseRange;
+      state.currentCompClauseRange = prevCompClauseRange;
       flattener.currentClassId = prevClassId;
       if (wasmFlattener && dae.exports?.flattener_scopePop && wasmEnv) {
         dae.exports.flattener_scopePop(wasmFlattener);

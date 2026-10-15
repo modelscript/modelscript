@@ -998,6 +998,7 @@ export function evaluateArenaRuntime(
           case "atan2":
             return Math.atan2(arg0, arg1);
           case "max":
+          case "$OMC$PositiveMax":
             return Math.max(arg0, arg1);
           case "min":
             return Math.min(arg0, arg1);

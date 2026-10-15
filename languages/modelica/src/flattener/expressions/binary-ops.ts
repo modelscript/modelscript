@@ -19,6 +19,7 @@ import {
   type SymbolId,
 } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../../errors.js";
+import { getFlatteningState, setExprArrayShape } from "../support/state.js";
 import { castToRealExpr, evalDaeExpr, getExprDims, isRealExpr } from "./eval.js";
 
 export function exprReferencesRuntimeParameter(
@@ -81,25 +82,27 @@ export function exprReferencesRuntimeParameter(
   }
   if (k === ExprKind.Subscript) {
     const base = dae.getExprData1(exprId);
-    const idx = dae.getExprLeft(exprId);
-    return (
-      (base >= 0 && exprReferencesRuntimeParameter(base, dae, visited)) ||
-      (idx >= 0 && exprReferencesRuntimeParameter(idx, dae, visited))
-    );
+    if (base >= 0 && exprReferencesRuntimeParameter(base, dae, visited)) return true;
+    const subCount = dae.getExprRight(exprId);
+    for (let i = 0; i < subCount; i++) {
+      const subId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (subId >= 0 && exprReferencesRuntimeParameter(subId, dae, visited)) return true;
+    }
+    return false;
   }
   if (k === ExprKind.ArrayCtor || k === ExprKind.Tuple) {
     const count = dae.getExprData1(exprId);
-    const first = dae.getExprLeft(exprId);
     for (let i = 0; i < count; i++) {
-      if (exprReferencesRuntimeParameter(first + i, dae, visited)) return true;
+      const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (elemId >= 0 && exprReferencesRuntimeParameter(elemId, dae, visited)) return true;
     }
     return false;
   }
   if (k === ExprKind.Call) {
-    const first = dae.getExprLeft(exprId);
     const count = dae.getExprRight(exprId);
     for (let i = 0; i < count; i++) {
-      if (exprReferencesRuntimeParameter(first + i, dae, visited)) return true;
+      const argId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (argId >= 0 && exprReferencesRuntimeParameter(argId, dae, visited)) return true;
     }
     return false;
   }
@@ -164,25 +167,27 @@ export function exprReferencesEnumParameter(
   }
   if (k === ExprKind.Subscript) {
     const base = dae.getExprData1(exprId);
-    const idx = dae.getExprLeft(exprId);
-    return (
-      (base >= 0 && exprReferencesEnumParameter(base, dae, visited)) ||
-      (idx >= 0 && exprReferencesEnumParameter(idx, dae, visited))
-    );
+    if (base >= 0 && exprReferencesEnumParameter(base, dae, visited)) return true;
+    const subCount = dae.getExprRight(exprId);
+    for (let i = 0; i < subCount; i++) {
+      const subId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (subId >= 0 && exprReferencesEnumParameter(subId, dae, visited)) return true;
+    }
+    return false;
   }
   if (k === ExprKind.ArrayCtor || k === ExprKind.Tuple) {
     const count = dae.getExprData1(exprId);
-    const first = dae.getExprLeft(exprId);
     for (let i = 0; i < count; i++) {
-      if (exprReferencesEnumParameter(first + i, dae, visited)) return true;
+      const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (elemId >= 0 && exprReferencesEnumParameter(elemId, dae, visited)) return true;
     }
     return false;
   }
   if (k === ExprKind.Call) {
-    const first = dae.getExprLeft(exprId);
     const count = dae.getExprRight(exprId);
     for (let i = 0; i < count; i++) {
-      if (exprReferencesEnumParameter(first + i, dae, visited)) return true;
+      const argId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+      if (argId >= 0 && exprReferencesEnumParameter(argId, dae, visited)) return true;
     }
     return false;
   }
@@ -267,56 +272,7 @@ export function getArrayCtorShape(id: number, dae: DAEBuilder): number[] {
 }
 
 export function exprsEqual(id1: number, id2: number, dae: DAEBuilder): boolean {
-  if (id1 === id2) return true;
-  if (id1 < 0 || id2 < 0) return false;
-  const k1 = dae.getExprKind(id1);
-  const k2 = dae.getExprKind(id2);
-  if (k1 !== k2) return false;
-  if (k1 === ExprKind.Name) {
-    return dae.getExprData1(id1) === dae.getExprData1(id2);
-  }
-  if (k1 === ExprKind.IntLiteral) {
-    return dae.getExprData1(id1) === dae.getExprData1(id2);
-  }
-  if (k1 === ExprKind.RealLiteral) {
-    return dae.getExprRealValue(id1) === dae.getExprRealValue(id2);
-  }
-  if (k1 === ExprKind.StringLiteral || k1 === ExprKind.BoolLiteral) {
-    return dae.getExprData1(id1) === dae.getExprData1(id2);
-  }
-  if (k1 === ExprKind.Subscript) {
-    const d1_1 = dae.getExprData1(id1);
-    const d1_2 = dae.getExprData1(id2);
-    const base1 = d1_1 !== 0 ? d1_1 : dae.getExprLeft(id1);
-    const base2 = d1_2 !== 0 ? d1_2 : dae.getExprLeft(id2);
-    if (!exprsEqual(base1, base2, dae)) return false;
-    const count1 = d1_1 !== 0 ? dae.getExprRight(id1) : 1;
-    const count2 = d1_2 !== 0 ? dae.getExprRight(id2) : 1;
-    if (count1 !== count2) return false;
-    if (d1_1 !== 0) {
-      for (let i = 0; i < count1; i++) {
-        const sub1 = i === 0 ? dae.getExprLeft(id1) : dae.getExprLeft(id1 + i);
-        const sub2 = i === 0 ? dae.getExprLeft(id2) : dae.getExprLeft(id2 + i);
-        if (!exprsEqual(sub1, sub2, dae)) return false;
-      }
-    } else {
-      if (!exprsEqual(dae.getExprRight(id1), dae.getExprRight(id2), dae)) return false;
-    }
-    return true;
-  }
-  if (k1 === ExprKind.Unary || k1 === ExprKind.Negate) {
-    return (
-      dae.getExprData1(id1) === dae.getExprData1(id2) && exprsEqual(dae.getExprLeft(id1), dae.getExprLeft(id2), dae)
-    );
-  }
-  if (k1 === ExprKind.Binary) {
-    return (
-      dae.getExprData1(id1) === dae.getExprData1(id2) &&
-      exprsEqual(dae.getExprLeft(id1), dae.getExprLeft(id2), dae) &&
-      exprsEqual(dae.getExprRight(id1), dae.getExprRight(id2), dae)
-    );
-  }
-  return false;
+  return areExpressionsEqual(dae, id1, id2, false);
 }
 
 export function isMinusOne(id: number, dae: DAEBuilder): boolean {
@@ -531,8 +487,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
 
     if (M === 0) {
       const res = dae.addArrayCtorExpr([]);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [0]);
+      setExprArrayShape(dae, res, [0]);
       return res;
     }
     if (K === 0) {
@@ -540,8 +495,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
       const resCols: number[] = [];
       for (let j = 0; j < M; j++) resCols.push(zeroLit);
       const res = dae.addArrayCtorExpr(resCols);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [M]);
+      setExprArrayShape(dae, res, [M]);
       return res;
     }
     if (rRows.length > 0) {
@@ -556,8 +510,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
         resCols.push(sumExpr ?? dae.addRealLiteral(0.0));
       }
       const res = dae.addArrayCtorExpr(resCols);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [M]);
+      setExprArrayShape(dae, res, [M]);
       return res;
     }
   }
@@ -582,8 +535,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
 
     if (N === 0) {
       const res = dae.addArrayCtorExpr([]);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [0, M]);
+      setExprArrayShape(dae, res, [0, M]);
       return res;
     }
     if (M === 0) {
@@ -592,8 +544,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
         resRows.push(dae.addArrayCtorExpr([]));
       }
       const res = dae.addArrayCtorExpr(resRows);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [N, 0]);
+      setExprArrayShape(dae, res, [N, 0]);
       return res;
     }
     if (K === 0) {
@@ -607,8 +558,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
         resRows.push(dae.addArrayCtorExpr(rowCols));
       }
       const res = dae.addArrayCtorExpr(resRows);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [N, M]);
+      setExprArrayShape(dae, res, [N, M]);
       return res;
     }
     if (lRows.length > 0 && rRows.length > 0) {
@@ -628,8 +578,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
         resRows.push(dae.addArrayCtorExpr(rowCols));
       }
       const res = dae.addArrayCtorExpr(resRows);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [N, M]);
+      setExprArrayShape(dae, res, [N, M]);
       return res;
     }
   }
@@ -648,8 +597,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
 
     if (N === 0) {
       const res = dae.addArrayCtorExpr([]);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [0]);
+      setExprArrayShape(dae, res, [0]);
       return res;
     }
     if (K === 0) {
@@ -657,8 +605,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
       const resElems: number[] = [];
       for (let i = 0; i < N; i++) resElems.push(zeroLit);
       const res = dae.addArrayCtorExpr(resElems);
-      if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-      (dae as any).exprArrayShapes.set(res, [N]);
+      setExprArrayShape(dae, res, [N]);
       return res;
     }
     const resElems: number[] = [];
@@ -672,8 +619,7 @@ export function matrixOrVectorMul(leftId: number, rightId: number, dae: DAEBuild
       resElems.push(sumExpr ?? dae.addRealLiteral(0.0));
     }
     const res = dae.addArrayCtorExpr(resElems);
-    if (!(dae as any).exprArrayShapes) (dae as any).exprArrayShapes = new Map<number, number[]>();
-    (dae as any).exprArrayShapes.set(res, [N]);
+    setExprArrayShape(dae, res, [N]);
     return res;
   }
 
@@ -910,13 +856,14 @@ export function getOperatorNameForBinOp(op: BinOp): string | null {
   }
 }
 
-export function areExpressionsEqual(dae: DAEBuilder, id1: number, id2: number): boolean {
+export function areExpressionsEqual(dae: DAEBuilder, id1: number, id2: number, allowNumericCoercion = true): boolean {
   if (id1 === id2) return true;
   if (id1 < 0 || id2 < 0) return false;
   const k1 = dae.getExprKind(id1);
   const k2 = dae.getExprKind(id2);
   if (k1 !== k2) {
     if (
+      allowNumericCoercion &&
       (k1 === ExprKind.RealLiteral || k1 === ExprKind.IntLiteral) &&
       (k2 === ExprKind.RealLiteral || k2 === ExprKind.IntLiteral)
     ) {
@@ -933,41 +880,65 @@ export function areExpressionsEqual(dae: DAEBuilder, id1: number, id2: number): 
     case ExprKind.RealLiteral:
       return dae.getExprRealValue(id1) === dae.getExprRealValue(id2);
     case ExprKind.StringLiteral:
-    case ExprKind.Name:
-      return dae.interner.resolve(dae.getExprData1(id1)) === dae.interner.resolve(dae.getExprData1(id2));
+    case ExprKind.Name: {
+      const d1 = dae.getExprData1(id1);
+      const d2 = dae.getExprData1(id2);
+      if (d1 === d2) return true;
+      return dae.interner.resolve(d1) === dae.interner.resolve(d2);
+    }
     case ExprKind.Unary:
     case ExprKind.Negate:
     case ExprKind.Der:
     case ExprKind.Pre:
       return (
         dae.getExprData1(id1) === dae.getExprData1(id2) &&
-        areExpressionsEqual(dae, dae.getExprLeft(id1), dae.getExprLeft(id2))
+        areExpressionsEqual(dae, dae.getExprLeft(id1), dae.getExprLeft(id2), allowNumericCoercion)
       );
     case ExprKind.Binary:
       return (
         dae.getExprData1(id1) === dae.getExprData1(id2) &&
-        areExpressionsEqual(dae, dae.getExprLeft(id1), dae.getExprLeft(id2)) &&
-        areExpressionsEqual(dae, dae.getExprRight(id1), dae.getExprRight(id2))
+        areExpressionsEqual(dae, dae.getExprLeft(id1), dae.getExprLeft(id2), allowNumericCoercion) &&
+        areExpressionsEqual(dae, dae.getExprRight(id1), dae.getExprRight(id2), allowNumericCoercion)
+      );
+    case ExprKind.IfElse:
+    case ExprKind.Range:
+      return (
+        areExpressionsEqual(dae, dae.getExprData1(id1), dae.getExprData1(id2), allowNumericCoercion) &&
+        areExpressionsEqual(dae, dae.getExprLeft(id1), dae.getExprLeft(id2), allowNumericCoercion) &&
+        areExpressionsEqual(dae, dae.getExprRight(id1), dae.getExprRight(id2), allowNumericCoercion)
       );
     case ExprKind.Subscript: {
-      if (dae.getExprRight(id1) !== dae.getExprRight(id2)) return false;
-      if (!areExpressionsEqual(dae, dae.getExprData1(id1), dae.getExprData1(id2))) return false;
-      const cnt = dae.getExprRight(id1);
-      for (let i = 0; i < cnt; i++) {
-        const s1 = i === 0 ? dae.getExprLeft(id1) : dae.getExprLeft(id1 + i);
-        const s2 = i === 0 ? dae.getExprLeft(id2) : dae.getExprLeft(id2 + i);
-        if (!areExpressionsEqual(dae, s1, s2)) return false;
+      const d1_1 = dae.getExprData1(id1);
+      const d1_2 = dae.getExprData1(id2);
+      const base1 = d1_1 !== 0 ? d1_1 : dae.getExprLeft(id1);
+      const base2 = d1_2 !== 0 ? d1_2 : dae.getExprLeft(id2);
+      if (!areExpressionsEqual(dae, base1, base2, allowNumericCoercion)) return false;
+      const cnt1 = d1_1 !== 0 ? dae.getExprRight(id1) : 1;
+      const cnt2 = d1_2 !== 0 ? dae.getExprRight(id2) : 1;
+      if (cnt1 !== cnt2) return false;
+      if (d1_1 !== 0 && d1_2 !== 0) {
+        for (let i = 0; i < cnt1; i++) {
+          const s1 = i === 0 ? dae.getExprLeft(id1) : dae.getExprLeft(id1 + i);
+          const s2 = i === 0 ? dae.getExprLeft(id2) : dae.getExprLeft(id2 + i);
+          if (!areExpressionsEqual(dae, s1, s2, allowNumericCoercion)) return false;
+        }
+      } else {
+        const s1 = d1_1 !== 0 ? dae.getExprLeft(id1) : dae.getExprRight(id1);
+        const s2 = d1_2 !== 0 ? dae.getExprLeft(id2) : dae.getExprRight(id2);
+        if (!areExpressionsEqual(dae, s1, s2, allowNumericCoercion)) return false;
       }
       return true;
     }
     case ExprKind.Call: {
-      if (dae.interner.resolve(dae.getExprData1(id1)) !== dae.interner.resolve(dae.getExprData1(id2))) return false;
+      const d1 = dae.getExprData1(id1);
+      const d2 = dae.getExprData1(id2);
+      if (d1 !== d2 && dae.interner.resolve(d1) !== dae.interner.resolve(d2)) return false;
       if (dae.getExprRight(id1) !== dae.getExprRight(id2)) return false;
       const cnt = dae.getExprRight(id1);
       for (let i = 0; i < cnt; i++) {
         const a1 = i === 0 ? dae.getExprLeft(id1) : dae.getExprLeft(id1 + i);
         const a2 = i === 0 ? dae.getExprLeft(id2) : dae.getExprLeft(id2 + i);
-        if (!areExpressionsEqual(dae, a1, a2)) return false;
+        if (!areExpressionsEqual(dae, a1, a2, allowNumericCoercion)) return false;
       }
       return true;
     }
@@ -977,7 +948,7 @@ export function areExpressionsEqual(dae: DAEBuilder, id1: number, id2: number): 
       for (let i = 0; i < cnt; i++) {
         const a1 = i === 0 ? dae.getExprLeft(id1) : dae.getExprLeft(id1 + i);
         const a2 = i === 0 ? dae.getExprLeft(id2) : dae.getExprLeft(id2 + i);
-        if (!areExpressionsEqual(dae, a1, a2)) return false;
+        if (!areExpressionsEqual(dae, a1, a2, allowNumericCoercion)) return false;
       }
       return true;
     }
@@ -993,7 +964,7 @@ export function findOperatorRecordComponentType(
   flattener: any,
 ): { name: string; symId: SymbolId; isArray: boolean; arrayDim?: number } | null {
   if (!db) return null;
-  const currentPrefix = (dae as any).currentPrefix ?? flattener?.currentPrefix;
+  const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
   let vIdx = dae.getVarIdxByName(baseName);
   if (vIdx < 0 && currentPrefix) {
     vIdx = dae.getVarIdxByName(`${currentPrefix}.${baseName}`);
@@ -1211,7 +1182,7 @@ export function dispatchBinaryOperator(
   flattener: any,
 ): number | null {
   if (flattener && typeof flattener.hasOperatorRecords === "function") {
-    const rootId = (flattener as any).currentRootClassId ?? (dae as any).currentClassId;
+    const rootId = (flattener as any).currentRootClassId ?? getFlatteningState(dae, flattener).currentClassId;
     if (rootId && !flattener.hasOperatorRecords(rootId)) {
       return null;
     }

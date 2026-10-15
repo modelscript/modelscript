@@ -2960,7 +2960,16 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           args.push(cloneExpr(argExprId, indexSuffix, currentShape, true));
         }
         if (dae.extensionMetadata?.scalarizeMinMax && (funcName === "min" || funcName === "max") && args.length === 1) {
-          const arg0 = args[0]!;
+          let arg0 = args[0]!;
+          if (out.getExprKind(arg0) === ExprKind.Name) {
+            const vName = out.interner.resolve(out.getExprData1(arg0));
+            const shape = vName ? dae.getNamedArrayShape(vName) : null;
+            if (vName && shape && shape.length > 0) {
+              const indices = generateIndices(shape);
+              const elemExprs = indices.map((idx) => out.addNameExpr(`${vName}[${idx.join(",")}]`));
+              arg0 = out.addArrayCtorExpr(elemExprs);
+            }
+          }
           if (out.getExprKind(arg0) === ExprKind.ArrayCtor) {
             const count = out.getExprData1(arg0);
             if (count >= 2) {

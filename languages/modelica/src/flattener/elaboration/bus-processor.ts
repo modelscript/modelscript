@@ -6,6 +6,7 @@ import {
   EqKind,
   ExprKind,
   type QueryDB,
+  StmtKind,
   type SymbolId,
   Variability,
   VarType,
@@ -52,7 +53,7 @@ export function processExpandableConnectors(
     expandableBuses.set("", rootClassId);
   }
   if (expandableBuses.size === 0) return;
-  if (!dae.extensionMetadata) (dae as any).extensionMetadata = {};
+  if (!dae.extensionMetadata) dae.extensionMetadata = {};
   dae.extensionMetadata.expandableBuses = Array.from(expandableBuses.keys());
 
   const busReferencedSignals = new Map<string, Set<string>>();
@@ -282,7 +283,7 @@ export function processExpandableConnectors(
       }
     } else {
       const recordReferencedNames = (eId: number) => {
-        if (eId < 0) return;
+        if (eId < 0 || eId >= dae.exprCount) return;
         const ek = dae.getExprKind(eId);
         if (ek === ExprKind.Name) {
           const vName = dae.interner.resolve(dae.getExprData1(eId));
@@ -290,17 +291,156 @@ export function processExpandableConnectors(
         } else if (ek === ExprKind.Binary) {
           recordReferencedNames(dae.getExprLeft(eId));
           recordReferencedNames(dae.getExprRight(eId));
-        } else if (ek === ExprKind.Unary || ek === ExprKind.Negate) {
+        } else if (ek === ExprKind.Unary || ek === ExprKind.Negate || ek === ExprKind.Der || ek === ExprKind.Pre) {
           recordReferencedNames(dae.getExprLeft(eId));
-        } else if (ek === ExprKind.Call) {
+        } else if (ek === ExprKind.IfElse) {
+          recordReferencedNames(dae.getExprData1(eId));
+          recordReferencedNames(dae.getExprLeft(eId));
+          recordReferencedNames(dae.getExprRight(eId));
+        } else if (ek === ExprKind.Call || ek === ExprKind.ArrayCtor || ek === ExprKind.Tuple) {
           const count = dae.getExprRight(eId);
           for (let a = 0; a < count; a++) {
-            recordReferencedNames(dae.getExprLeft(eId + a));
+            recordReferencedNames(a === 0 ? dae.getExprLeft(eId) : dae.getExprLeft(eId + a));
+          }
+        } else if (ek === ExprKind.Subscript) {
+          recordReferencedNames(dae.getExprData1(eId));
+          const count = dae.getExprRight(eId);
+          for (let s = 0; s < count; s++) {
+            recordReferencedNames(s === 0 ? dae.getExprLeft(eId) : dae.getExprLeft(eId + s));
+          }
+        } else if (ek === ExprKind.Range) {
+          recordReferencedNames(dae.getExprData1(eId));
+          recordReferencedNames(dae.getExprLeft(eId));
+          const step = dae.getExprRight(eId);
+          if (step >= 0 && step !== 0xffffffff) {
+            recordReferencedNames(step);
           }
         }
       };
       recordReferencedNames(lhs);
       recordReferencedNames(rhs);
+      if (k === EqKind.When) {
+        const meta = dae.getWhenEquationMeta(i);
+        if (meta) {
+          recordReferencedNames(meta.conditionExprId);
+          for (const bEq of meta.bodyEquations) {
+            recordReferencedNames(bEq.lhsExprId);
+            recordReferencedNames(bEq.rhsExprId);
+          }
+          for (const ew of meta.elseWhenClauses) {
+            recordReferencedNames(ew.conditionExprId);
+            for (const bEq of ew.bodyEquations) {
+              recordReferencedNames(bEq.lhsExprId);
+              recordReferencedNames(bEq.rhsExprId);
+            }
+          }
+          if (meta.elseEquations) {
+            for (const bEq of meta.elseEquations) {
+              recordReferencedNames(bEq.lhsExprId);
+              recordReferencedNames(bEq.rhsExprId);
+            }
+          }
+        }
+      } else if (k === EqKind.If) {
+        const meta = dae.getIfEquationMeta(i);
+        if (meta) {
+          recordReferencedNames(meta.conditionExprId);
+          for (const bEq of meta.thenEquations) {
+            recordReferencedNames(bEq.lhsExprId);
+            recordReferencedNames(bEq.rhsExprId);
+          }
+          for (const ei of meta.elseIfClauses) {
+            recordReferencedNames(ei.conditionExprId);
+            for (const bEq of ei.bodyEquations) {
+              recordReferencedNames(bEq.lhsExprId);
+              recordReferencedNames(bEq.rhsExprId);
+            }
+          }
+          if (meta.elseEquations) {
+            for (const bEq of meta.elseEquations) {
+              recordReferencedNames(bEq.lhsExprId);
+              recordReferencedNames(bEq.rhsExprId);
+            }
+          }
+        }
+      } else if (k === EqKind.For) {
+        const meta = dae.getForEquationMeta(i);
+        if (meta) {
+          recordReferencedNames(meta.rangeExprId);
+          for (const bEq of meta.bodyEquations) {
+            recordReferencedNames(bEq.lhsExprId);
+            recordReferencedNames(bEq.rhsExprId);
+          }
+        }
+      }
+    }
+  }
+
+  // Also scan variable binding expressions and algorithm statements for expandable bus references
+  {
+    const recordReferencedNames = (eId: number) => {
+      if (eId < 0 || eId >= dae.exprCount) return;
+      const ek = dae.getExprKind(eId);
+      if (ek === ExprKind.Name) {
+        const vName = dae.interner.resolve(dae.getExprData1(eId));
+        markSignalReferenced(vName);
+      } else if (ek === ExprKind.Binary) {
+        recordReferencedNames(dae.getExprLeft(eId));
+        recordReferencedNames(dae.getExprRight(eId));
+      } else if (ek === ExprKind.Unary || ek === ExprKind.Negate || ek === ExprKind.Der || ek === ExprKind.Pre) {
+        recordReferencedNames(dae.getExprLeft(eId));
+      } else if (ek === ExprKind.IfElse) {
+        recordReferencedNames(dae.getExprData1(eId));
+        recordReferencedNames(dae.getExprLeft(eId));
+        recordReferencedNames(dae.getExprRight(eId));
+      } else if (ek === ExprKind.Call || ek === ExprKind.ArrayCtor || ek === ExprKind.Tuple) {
+        const count = dae.getExprRight(eId);
+        for (let a = 0; a < count; a++) {
+          recordReferencedNames(a === 0 ? dae.getExprLeft(eId) : dae.getExprLeft(eId + a));
+        }
+      } else if (ek === ExprKind.Subscript) {
+        recordReferencedNames(dae.getExprData1(eId));
+        const count = dae.getExprRight(eId);
+        for (let s = 0; s < count; s++) {
+          recordReferencedNames(s === 0 ? dae.getExprLeft(eId) : dae.getExprLeft(eId + s));
+        }
+      } else if (ek === ExprKind.Range) {
+        recordReferencedNames(dae.getExprData1(eId));
+        recordReferencedNames(dae.getExprLeft(eId));
+        const step = dae.getExprRight(eId);
+        if (step >= 0 && step !== 0xffffffff) {
+          recordReferencedNames(step);
+        }
+      }
+    };
+
+    for (let v = 0; v < dae.varCount; v++) {
+      if (dae.isVarRemoved(v)) continue;
+      const bExpr = dae.getVarExpression(v);
+      if (bExpr !== undefined && bExpr >= 0) {
+        recordReferencedNames(bExpr);
+      }
+    }
+
+    for (let s = 0; s < dae.stmtCount; s++) {
+      const sk = dae.getStmtKind(s);
+      if (sk === StmtKind.Assignment) {
+        recordReferencedNames(dae.getStmtData1(s));
+        recordReferencedNames(dae.getStmtLeft(s));
+      } else if (sk === StmtKind.For || sk === StmtKind.ComplexAssignment) {
+        recordReferencedNames(dae.getStmtLeft(s));
+      } else if (
+        sk === StmtKind.While ||
+        sk === StmtKind.If ||
+        sk === StmtKind.When ||
+        sk === StmtKind.ProcedureCall ||
+        sk === StmtKind.Block
+      ) {
+        const d1 = dae.getStmtData1(s);
+        if (d1 >= 0 && d1 !== 0xffffffff) {
+          recordReferencedNames(d1);
+        }
+      }
     }
   }
 

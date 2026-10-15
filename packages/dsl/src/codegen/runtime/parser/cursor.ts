@@ -7,8 +7,8 @@ import { ChunkedUint32Array } from "../core/array";
 import { createChunkedUint32Array } from "../core/array";
 
 // TreeCursor State Machine for Persistent AST
-export const cursorNodeStack = createChunkedUint32Array(128);
-export const cursorOffsetStack = createChunkedUint32Array(128);
+export const cursorNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+export const cursorOffsetStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 
 /**
  * A lightweight, zero-GC state machine for traversing the generated AST.
@@ -17,6 +17,8 @@ export const cursorOffsetStack = createChunkedUint32Array(128);
  */
 class TreeCursor {
   private depth: i32 = -1;
+  private nodeStack: ChunkedUint32Array = createChunkedUint32Array(128);
+  private offsetStack: ChunkedUint32Array = createChunkedUint32Array(128);
 
   /**
    * Initializes the cursor at the provided root node.
@@ -25,8 +27,8 @@ class TreeCursor {
   constructor(rootPtr: u32) {
     if (rootPtr != 0) {
       this.depth = 0;
-      cursorNodeStack[0] = rootPtr;
-      cursorOffsetStack[0] = 0;
+      this.nodeStack[0] = rootPtr;
+      this.offsetStack[0] = 0;
     }
   }
 
@@ -35,7 +37,7 @@ class TreeCursor {
    */
   get currentNode(): u32 {
     if (this.depth < 0) return 0;
-    return cursorNodeStack[this.depth];
+    return this.nodeStack[this.depth];
   }
 
   /**
@@ -44,7 +46,7 @@ class TreeCursor {
    */
   get startByte(): u32 {
     if (this.depth < 0) return 0;
-    return cursorOffsetStack[this.depth] + getNodePadding(this.currentNode);
+    return this.offsetStack[this.depth] + getNodePadding(this.currentNode);
   }
 
   /**
@@ -64,12 +66,12 @@ class TreeCursor {
     let child = getNodeFirstChild(this.currentNode);
     if (child == 0) return false;
     
-    // The first child's pre-padding absolute offset is identical to the parent's
-    // because the parent's padding is strictly defined as the whitespace before its first token.
-    let absStart = cursorOffsetStack[this.depth]; 
+    // The first child's padding is 0 because leading whitespace before a parent's first token
+    // is stored in the parent's padding field. Thus the first child starts at parent's startByte.
+    let absStart = this.startByte;
     this.depth++;
-    cursorNodeStack[this.depth] = child;
-    cursorOffsetStack[this.depth] = absStart;
+    this.nodeStack[this.depth] = child;
+    this.offsetStack[this.depth] = absStart;
     return true;
   }
 
@@ -84,8 +86,8 @@ class TreeCursor {
     
     // A sibling's accumulated offset begins exactly at the end byte of the current node.
     let nextOffset = this.startByte + getNodeByteLength(this.currentNode);
-    cursorNodeStack[this.depth] = sibling;
-    cursorOffsetStack[this.depth] = nextOffset;
+    this.nodeStack[this.depth] = sibling;
+    this.offsetStack[this.depth] = nextOffset;
     return true;
   }
 

@@ -261,6 +261,10 @@ export class WasmQueryEngine {
     if (dependentKeys) {
       for (const key of dependentKeys) {
         this.memos.delete(key);
+        const depSymId = this.symbolIdFromKey(key);
+        for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+          cacheDirtySet.add(depSymId);
+        }
       }
     }
   }
@@ -617,6 +621,10 @@ export class WasmQueryEngine {
         if (dependentKeys) {
           for (const key of dependentKeys) {
             this.memos.delete(key);
+            const depSymId = this.symbolIdFromKey(key);
+            for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+              cacheDirtySet.add(depSymId);
+            }
           }
         }
         const entry = this.index.symbols.get(id);
@@ -626,9 +634,18 @@ export class WasmQueryEngine {
       }
     }
 
-    for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
-      for (const id of ids) {
+    for (const id of ids) {
+      for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
         cacheDirtySet.add(id);
+      }
+      const dependentKeys = this.inputReverseDependencies.get(id);
+      if (dependentKeys) {
+        for (const key of dependentKeys) {
+          const depSymId = this.symbolIdFromKey(key);
+          for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+            cacheDirtySet.add(depSymId);
+          }
+        }
       }
     }
 
@@ -701,6 +718,60 @@ export class WasmQueryEngine {
     hooks[hookKey] = fn;
   }
 
+  private resolveLintDiagnosticRange(
+    entry: SymbolEntry,
+    result: LintResult,
+  ): {
+    startByte: number;
+    endByte: number;
+    startOffset: number;
+    endOffset: number;
+  } {
+    const rStartByte = result.startByte ?? result.startOffset ?? (result as any).startCharOffset;
+    const rEndByte = result.endByte ?? result.endOffset ?? (result as any).endCharOffset;
+    const isWholeEntryRange = rStartByte === entry.startByte && rEndByte === entry.endByte;
+
+    if (rStartByte !== undefined && rEndByte !== undefined && rEndByte >= rStartByte && !isWholeEntryRange) {
+      const startOffset =
+        result.startOffset ??
+        (result as any).startCharOffset ??
+        result.startByte ??
+        entry.startOffset ??
+        entry.startByte;
+      const endOffset =
+        result.endOffset ?? (result as any).endCharOffset ?? result.endByte ?? entry.endOffset ?? entry.endByte;
+      return { startByte: rStartByte, endByte: rEndByte, startOffset, endOffset };
+    }
+
+    const fieldRange = result.field ? entry.fieldRanges?.[result.field] : undefined;
+    if (fieldRange) {
+      return {
+        startByte: fieldRange.startByte,
+        endByte: fieldRange.endByte,
+        startOffset: fieldRange.startOffset ?? fieldRange.startByte,
+        endOffset: fieldRange.endOffset ?? fieldRange.endByte,
+      };
+    }
+
+    const fallbackField =
+      entry.fieldRanges?.["declaredName"] ?? entry.fieldRanges?.["name"] ?? entry.fieldRanges?.["id"];
+    if (fallbackField) {
+      return {
+        startByte: fallbackField.startByte,
+        endByte: fallbackField.endByte,
+        startOffset: fallbackField.startOffset ?? fallbackField.startByte,
+        endOffset: fallbackField.endOffset ?? fallbackField.endByte,
+      };
+    }
+
+    return {
+      startByte: entry.startByte,
+      endByte: entry.endByte,
+      startOffset: entry.startOffset ?? entry.startByte,
+      endOffset: entry.endOffset ?? entry.endByte,
+    };
+  }
+
   public runAllLints(resourceId?: string): LintDiagnostic[] {
     const diagnostics: LintDiagnostic[] = [];
     let symbolsToCheck: Iterable<[SymbolId, SymbolEntry]>;
@@ -718,25 +789,7 @@ export class WasmQueryEngine {
     for (const [id, entry] of symbolsToCheck) {
       if (resourceId && entry.resourceId !== resourceId) continue;
       for (const { lintName, result } of this.runLints(id)) {
-        let startByte = result.startByte ?? (result.startOffset !== undefined ? result.startOffset : entry.startByte);
-        let endByte = result.endByte ?? (result.endOffset !== undefined ? result.endOffset : entry.endByte);
-        let startOffset =
-          result.startOffset ??
-          (result as any).startCharOffset ??
-          result.startByte ??
-          entry.startOffset ??
-          entry.startByte;
-        let endOffset =
-          result.endOffset ?? (result as any).endCharOffset ?? result.endByte ?? entry.endOffset ?? entry.endByte;
-        if (result.field && !result.startByte && !result.endByte) {
-          const fieldRange = entry.fieldRanges?.[result.field];
-          if (fieldRange) {
-            startByte = fieldRange.startByte;
-            endByte = fieldRange.endByte;
-            startOffset = fieldRange.startOffset ?? fieldRange.startByte;
-            endOffset = fieldRange.endOffset ?? fieldRange.endByte;
-          }
-        }
+        const { startByte, endByte, startOffset, endOffset } = this.resolveLintDiagnosticRange(entry, result);
         diagnostics.push({
           symbolId: id,
           startByte,
@@ -809,31 +862,7 @@ export class WasmQueryEngine {
       }
       const diags: LintDiagnostic[] = [];
       for (const { lintName, result } of this.runLints(id)) {
-        let startByte = result.startByte ?? (result.startOffset !== undefined ? result.startOffset : entry.startByte);
-        let endByte = result.endByte ?? (result.endOffset !== undefined ? result.endOffset : entry.endByte);
-        let startOffset =
-          result.startOffset ??
-          (result as any).startCharOffset ??
-          (result as any).startOffset ??
-          result.startByte ??
-          entry.startOffset ??
-          entry.startByte;
-        let endOffset =
-          result.endOffset ??
-          (result as any).endCharOffset ??
-          (result as any).endOffset ??
-          result.endByte ??
-          entry.endOffset ??
-          entry.endByte;
-        if (result.field && !result.startByte && !result.endByte) {
-          const fieldRange = entry.fieldRanges?.[result.field];
-          if (fieldRange) {
-            startByte = fieldRange.startByte;
-            endByte = fieldRange.endByte;
-            startOffset = fieldRange.startOffset ?? fieldRange.startByte;
-            endOffset = fieldRange.endOffset ?? fieldRange.endByte;
-          }
-        }
+        const { startByte, endByte, startOffset, endOffset } = this.resolveLintDiagnosticRange(entry, result);
         diags.push({
           symbolId: id,
           startByte,

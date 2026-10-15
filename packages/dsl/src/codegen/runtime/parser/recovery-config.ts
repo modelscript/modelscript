@@ -213,7 +213,7 @@ export const PENALTY_WEAK_LOOKAHEAD: i32 = 150;
 export const MAX_SUMMARY_DEPTH: u32 = 16;
 
 /** Maximum relative cost delta before pruning competing parse heads */
-export const MAX_COST_DIFFERENCE: i32 = 2000;
+export const MAX_COST_DIFFERENCE: i32 = 7000;
 
 /** Minimum linear non-branching history required before GLR -> LR fast path switch */
 export const MAX_PRODUCTION_LENGTH: u32 = 8;

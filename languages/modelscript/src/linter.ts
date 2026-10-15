@@ -51,11 +51,43 @@ export class ModelScriptLinter {
     return true;
   }
 
-  private isDeclared(name: string): boolean {
+  private lookupSymbol(name: string): SymbolInfo | undefined {
     for (let i = this.scopes.length - 1; i >= 0; i--) {
-      if (this.scopes[i].has(name)) return true;
+      const sym = this.scopes[i].get(name);
+      if (sym) return sym;
     }
-    return false;
+    return undefined;
+  }
+
+  private isDeclared(name: string): boolean {
+    return this.lookupSymbol(name) !== undefined;
+  }
+
+  private resolveObjectStructName(node: any): string | undefined {
+    let cur = node;
+    while (
+      cur &&
+      (cur.type === "Expression" || cur.type === "PrimaryExpression" || cur.type === "ParenthesizedExpression")
+    ) {
+      if (cur.type === "ParenthesizedExpression") {
+        cur = cur.childForFieldName?.("expression") ?? cur.namedChildren?.[0];
+      } else {
+        cur = cur.namedChildren?.[0] ?? cur.child?.(0);
+      }
+    }
+    if (!cur) return undefined;
+    if (cur.type === "IDENTIFIER") {
+      const sym = this.lookupSymbol(cur.text);
+      if (sym?.type && this.structs.has(sym.type)) {
+        return sym.type;
+      }
+    } else if (cur.type === "NewExpression") {
+      const ctor = cur.childForFieldName?.("constructor")?.text;
+      if (ctor && this.structs.has(ctor)) {
+        return ctor;
+      }
+    }
+    return undefined;
   }
 
   private addDiagnostic(
@@ -112,7 +144,23 @@ export class ModelScriptLinter {
         continue;
       }
 
-      if (child.type === "StructDeclaration") {
+      if (child.type === "ImportDeclaration") {
+        const specsList = child.childForFieldName?.("specifiers");
+        if (specsList) {
+          for (let j = 0; j < specsList.childCount; j++) {
+            const spec = specsList.child(j);
+            if (spec.type === "ImportSpecifier") {
+              const localNode =
+                spec.childForFieldName?.("local") ??
+                spec.childForFieldName?.("name") ??
+                spec.childForFieldName?.("imported");
+              if (localNode?.text) {
+                this.declareSymbol(localNode.text, "variable", localNode);
+              }
+            }
+          }
+        }
+      } else if (child.type === "StructDeclaration") {
         const idNode = child.childForFieldName?.("name");
         const name = idNode?.text;
         if (name) {
@@ -150,7 +198,8 @@ export class ModelScriptLinter {
     if (!node) return;
 
     switch (node.type) {
-      case "BlockStatement": {
+      case "BlockStatement":
+      case "ForStatement": {
         this.enterScope();
         for (let i = 0; i < node.childCount; i++) {
           this.walk(node.child(i));
@@ -169,8 +218,13 @@ export class ModelScriptLinter {
           this.walk(valNode);
         }
 
+        let resolvedType = typeNode?.text?.trim();
+        if (!resolvedType && valNode) {
+          resolvedType = this.resolveObjectStructName(valNode);
+        }
+
         if (name) {
-          this.declareSymbol(name, "variable", idNode, typeNode?.text);
+          this.declareSymbol(name, "variable", idNode, resolvedType);
         }
         return;
       }
@@ -185,7 +239,7 @@ export class ModelScriptLinter {
             const p = paramsNode.child(i);
             if (p.type === "Parameter") {
               const pId = p.childForFieldName?.("name");
-              const pType = p.childForFieldName?.("type")?.text;
+              const pType = p.childForFieldName?.("type")?.text?.trim();
               if (pId) {
                 this.declareSymbol(pId.text, "parameter", pId, pType);
               }
@@ -205,49 +259,29 @@ export class ModelScriptLinter {
 
       case "FLWORExpression": {
         this.enterScope();
-        const forClauses: any[] = [];
-        const letClauses: any[] = [];
-        let whereClause: any = null;
-        let orderByClause: any = null;
-        let returnClause: any = null;
-
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
-          if (c.type === "ForClause") forClauses.push(c);
-          else if (c.type === "LetClause") letClauses.push(c);
-          else if (c.type === "WhereClause") whereClause = c;
-          else if (c.type === "OrderByClause") orderByClause = c;
-          else if (c.type === "ReturnClause") returnClause = c;
-        }
-
-        for (const fc of forClauses) {
-          const coll = fc.childForFieldName?.("collection");
-          this.walk(coll);
-          const varId = fc.childForFieldName?.("variable");
-          if (varId) {
-            this.declareSymbol(varId.text, "flwor-var", varId);
+          if (c.type === "ForClause") {
+            const coll = c.childForFieldName?.("collection");
+            this.walk(coll);
+            const varId = c.childForFieldName?.("variable");
+            if (varId) {
+              this.declareSymbol(varId.text, "flwor-var", varId);
+            }
+          } else if (c.type === "LetClause") {
+            const val = c.childForFieldName?.("value");
+            this.walk(val);
+            const varId = c.childForFieldName?.("variable");
+            if (varId) {
+              this.declareSymbol(varId.text, "flwor-var", varId);
+            }
+          } else if (c.type === "WhereClause") {
+            this.walk(c.childForFieldName?.("condition"));
+          } else if (c.type === "OrderByClause") {
+            this.walk(c.childForFieldName?.("criteria"));
+          } else if (c.type === "ReturnClause") {
+            this.walk(c.childForFieldName?.("value"));
           }
-        }
-
-        for (const lc of letClauses) {
-          const val = lc.childForFieldName?.("value");
-          this.walk(val);
-          const varId = lc.childForFieldName?.("variable");
-          if (varId) {
-            this.declareSymbol(varId.text, "flwor-var", varId);
-          }
-        }
-
-        if (whereClause) {
-          this.walk(whereClause.childForFieldName?.("condition"));
-        }
-
-        if (orderByClause) {
-          this.walk(orderByClause.childForFieldName?.("criteria"));
-        }
-
-        if (returnClause) {
-          this.walk(returnClause.childForFieldName?.("value"));
         }
 
         this.exitScope();
@@ -272,8 +306,26 @@ export class ModelScriptLinter {
               ModelScriptErrorCode.ARGUMENT_COUNT_MISMATCH.rule,
               "error",
               ModelScriptErrorCode.ARGUMENT_COUNT_MISMATCH.message(fnName, String(fnSig.paramCount), String(argCount)),
-              node,
+              argsNode || calleeNode,
             );
+          }
+        }
+
+        const objNode = node.childForFieldName?.("object");
+        const propNode = node.childForFieldName?.("property");
+        if (objNode && propNode?.text) {
+          const structName = this.resolveObjectStructName(objNode);
+          if (structName) {
+            const structSig = this.structs.get(structName);
+            if (structSig && !structSig.fields.has(propNode.text)) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.UNKNOWN_STRUCT_FIELD.code,
+                ModelScriptErrorCode.UNKNOWN_STRUCT_FIELD.rule,
+                "error",
+                ModelScriptErrorCode.UNKNOWN_STRUCT_FIELD.message(structName, propNode.text),
+                propNode,
+              );
+            }
           }
         }
 
@@ -292,10 +344,12 @@ export class ModelScriptLinter {
             parent?.type === "StructDeclaration" ||
             parent?.type === "StructField" ||
             parent?.type === "FunctionDeclaration" ||
-            parent?.type === "Parameter" ||
-            parent?.type === "ForClause" ||
-            parent?.type === "LetClause") &&
+            parent?.type === "Parameter") &&
             parent.childForFieldName?.("name") === node) ||
+          ((parent?.type === "ForClause" || parent?.type === "LetClause") &&
+            parent.childForFieldName?.("variable") === node) ||
+          (parent?.type === "ObjectField" && parent.childForFieldName?.("key") === node) ||
+          (parent?.type === "Argument" && parent.childForFieldName?.("name") === node) ||
           parent?.type === "CustomType" ||
           parent?.type === "Type" ||
           parent?.type === "PrimitiveType" ||

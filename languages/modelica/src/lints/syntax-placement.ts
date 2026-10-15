@@ -246,7 +246,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
                   }
                   if (varId != 0) break;
                 }
-                db.diagnostic(node, varId);
+                db.diagnostic(varId != 0 ? varId : node, varId);
               }
             }
           }
@@ -279,7 +279,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
                   }
                   if (varId != 0) break;
                 }
-                db.diagnostic(node, varId);
+                db.diagnostic(varId != 0 ? varId : node, varId);
               }
             }
           }
@@ -346,8 +346,18 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       for (const anc of db.ast.getAncestors(node, $.primary)) {
         for (const sub of db.ast.getDescendants(anc, $.array_subscripts)) {
           if (sub != 0) {
-            db.diagnostic(anc, sub);
-            return;
+            let insideTuple = false;
+            for (const subAnc of db.ast.getAncestors(sub, 0)) {
+              if (subAnc == node) {
+                insideTuple = true;
+                break;
+              }
+              if (subAnc == anc) break;
+            }
+            if (!insideTuple) {
+              db.diagnostic(sub, sub);
+              return;
+            }
           }
         }
       }
@@ -863,30 +873,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }
 
       if (!isInherited) {
-        db.diagnostic(targetDiagNode, redeclNameNode);
-      }
-    },
-  },
-
-  /**
-   * M4020: 'time' variable is only available in models and blocks.
-   */
-  builtinTimeInvalid: {
-    nodes: ["identifier"],
-    severity: "error",
-    code: 4020,
-    message: (target) =>
-      `The built-in variable '${target.text}' is only available in models and blocks, not in functions or records.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      if (db.ast.textEquals(node, "time")) {
-        for (const cls of db.ast.getAncestors(node, 0)) {
-          if (db.ast.getType(cls) == $.class_definition) {
-            if (isClassKind(db, cls, "function")) {
-              db.diagnostic(node);
-            }
-            break;
-          }
-        }
+        db.diagnostic(redeclNameNode != 0 ? redeclNameNode : targetDiagNode, redeclNameNode);
       }
     },
   },
@@ -1554,7 +1541,8 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }
       if (count > 1) {
         const nameNode = getClassNameNode(db, node, $);
-        db.diagnostic(node, nameNode != 0 ? nameNode : node);
+        const target = nameNode != 0 ? nameNode : node;
+        db.diagnostic(target, target);
       }
     },
   },
@@ -2064,14 +2052,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
               break;
             }
           }
-          let targetNode = node;
-          for (const anc of db.ast.getAncestors(node, 0)) {
-            if (db.ast.getType(anc) == $.component_clause) {
-              targetNode = anc;
-              break;
-            }
-          }
-          db.diagnostic(targetNode, sub, nameNode);
+          db.diagnostic(sub, sub, nameNode);
           return;
         }
       }
@@ -2116,7 +2097,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             else if (isClassKind(db, anc, "connector")) k = 4;
             else if (isClassKind(db, anc, "package")) k = 5;
             else if (isClassKind(db, anc, "type")) k = 6;
-            db.diagnostic(anc, nameNode != 0 ? nameNode : anc, k);
+            db.diagnostic(node, nameNode != 0 ? nameNode : anc, k);
           }
           break;
         }

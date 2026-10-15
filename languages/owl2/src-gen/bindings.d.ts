@@ -1146,6 +1146,7 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
+  readonly _encMult: number;
   private _mem32;
   get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
@@ -1853,11 +1854,15 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is EquivalentClassesAxiomNode;
+    classExpr(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classExprList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const DisjointClassesAxiom: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DisjointClassesAxiomNode;
+    classExpr(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    classExprList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const SubObjectPropertyOfAxiom: {
     readonly typeId: number;
@@ -1890,8 +1895,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DisjointObjectPropertiesAxiomNode;
-    individual(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    individualList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    property(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ObjectPropertyDomainAxiom: {
     readonly typeId: number;

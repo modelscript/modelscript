@@ -12,6 +12,8 @@ import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@model
 export class PscadWorkspaceIndex implements IWorkspaceIndex {
   private _version = 1;
   private fileIndices = new Map<string, SymbolIndex>();
+  private fileBaseIds = new Map<string, number>();
+  private nextFileSlot = 1;
 
   get version(): number {
     return this._version;
@@ -51,8 +53,13 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
     const byName = new Map<string, SymbolId[]>();
     const childrenOf = new Map<SymbolId | null, SymbolId[]>();
 
-    // Hash or counter for stable symbol IDs
-    let idCounter = (Math.abs(this.hashString(uri)) % 10000000) + 1000000;
+    // Collision-free monotonic slot allocation per file URI
+    let baseId = this.fileBaseIds.get(uri);
+    if (baseId === undefined) {
+      baseId = this.nextFileSlot++ * 100_000;
+      this.fileBaseIds.set(uri, baseId);
+    }
+    let idCounter = baseId;
 
     // 1. Extract project name and type
     const projectMatch = /<project\s+([^>]*?)>/i.exec(text);
@@ -202,15 +209,6 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
   private deriveNameFromUri(uri: string): string {
     const raw = uri.split("/").pop() || uri;
     return raw.replace(/\.(pslx|pscx|pswx|psmx)$/i, "");
-  }
-
-  private hashString(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return hash;
   }
 }
 

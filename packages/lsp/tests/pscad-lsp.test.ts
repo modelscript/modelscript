@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { createDiagramDispatch } from "../src/diagramApi.js";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
 import { DiagramService } from "../src/services/diagram-service.js";
 import { ValidationService } from "../src/services/validation-service.js";
@@ -155,5 +156,131 @@ describe("PSCAD LSP Integration Suite", () => {
       assert.ok(node.iconSvg, `${node.name} must have iconSvg`);
       assert.ok(node.iconSvg?.startsWith("<svg"), `${node.name} iconSvg must be valid SVG markup`);
     }
+  });
+
+  it("supports diagram dispatch operations (getData, getComponentProperties, applyEdits, drillDown, getPalette) for PSCAD", async () => {
+    const phase8Pscx = `<?xml version="1.0" encoding="UTF-8"?>
+<project name="Phase8_Offshore_Wind_DFIG" version="5.0.2" type="case">
+  <paramlist name="Settings">
+    <param name="time_step" value="40.0"/>
+    <param name="time_duration" value="0.06"/>
+    <param name="f_base" value="60.0"/>
+  </paramlist>
+  <definitions>
+    <Definition classid="UserCmpDefn" name="Main">
+      <schematic classid="GraphFrame">
+        <Bus classid="Bus" id="Bus1" name="Onshore_132" x="100" y="100">
+          <paramlist><param name="BaseKV" value="132.0"/></paramlist>
+        </Bus>
+        <Bus classid="Bus" id="Bus2" name="Offshore_132" x="300" y="100">
+          <paramlist><param name="BaseKV" value="132.0"/></paramlist>
+        </Bus>
+        <User classid="UserCmp" name="master:source_3" id="GridSrc" x="64" y="100" orient="0">
+          <paramlist>
+            <param name="V" value="132.0"/>
+            <param name="f" value="60.0"/>
+          </paramlist>
+        </User>
+        <User classid="UserCmp" name="master:cable" id="SubCable1" x="200" y="100" orient="0">
+          <paramlist>
+            <param name="length" value="45.0"/>
+            <param name="model_type" value="fd"/>
+            <param name="core_radius" value="0.022"/>
+            <param name="insulation_radius" value="0.052"/>
+            <param name="eps_r" value="2.3"/>
+            <param name="burial_depth" value="1.5"/>
+          </paramlist>
+        </User>
+        <User classid="UserCmp" name="master:ind_machine" id="AuxPumpMotor" x="100" y="136" orient="0">
+          <paramlist>
+            <param name="MVA" value="5.0"/>
+            <param name="V" value="132.0"/>
+            <param name="H" value="0.6"/>
+            <param name="slip" value="0.03"/>
+            <param name="Tm" value="0.45"/>
+          </paramlist>
+        </User>
+        <User classid="UserCmp" name="master:dfig" id="WindDFIG1" x="336" y="100" orient="0">
+          <paramlist>
+            <param name="MVA" value="120.0"/>
+            <param name="V" value="132.0"/>
+            <param name="H" value="1.8"/>
+            <param name="slip" value="-0.10"/>
+            <param name="Tm" value="-0.80"/>
+            <param name="Vdr" value="0.06"/>
+            <param name="Vqr" value="-0.08"/>
+            <param name="I_crowbar" value="1.8"/>
+          </paramlist>
+        </User>
+        <User classid="UserCmp" name="OffshoreCollector" id="SubModInst1" x="300" y="180" orient="0">
+          <paramlist><param name="RatingMVA" value="120.0"/></paramlist>
+        </User>
+        <Wire classid="WireOrthogonal"><vertex x="100" y="100"/><vertex x="164" y="100"/></Wire>
+        <Wire classid="WireOrthogonal"><vertex x="236" y="100"/><vertex x="300" y="100"/></Wire>
+      </schematic>
+    </Definition>
+    <Definition classid="UserCmpDefn" name="OffshoreCollector">
+      <schematic classid="GraphFrame">
+        <Bus classid="Bus" id="SubBus1" name="Collector_33kV" x="120" y="120">
+          <paramlist><param name="BaseKV" value="33.0"/></paramlist>
+        </Bus>
+        <User classid="UserCmp" name="master:breaker3" id="SubBrk1" x="180" y="120" orient="0">
+          <paramlist><param name="t_open" value="0.05"/></paramlist>
+        </User>
+      </schematic>
+    </Definition>
+  </definitions>
+</project>`;
+
+    let liveXmlBuffer = phase8Pscx;
+    const testUri = "file:///workspace/Phase8_Offshore_Wind_DFIG.pscx";
+    const dispatch = createDiagramDispatch({
+      generic: {
+        deps: {
+          getDocumentText: (u: string) => (u === testUri ? liveXmlBuffer : undefined),
+        },
+      } as any,
+    });
+
+    const mainDiag = await dispatch.getData({ uri: testUri });
+    assert.ok(
+      mainDiag && mainDiag.nodes.length >= 6,
+      "Expected dispatch.getData() to return PSCAD Main canvas nodes from in-memory buffer",
+    );
+
+    const props = await dispatch.getComponentProperties({ uri: testUri, componentName: "WindDFIG1" });
+    assert.ok(
+      props && props.className === "master:dfig" && props.parameters.some((p) => p.name === "MVA" && p.value === "120"),
+      "Expected dispatch.getComponentProperties() to inspect WindDFIG1 XML parameters",
+    );
+
+    const editRes = await dispatch.applyEdits({
+      uri: testUri,
+      seq: 1,
+      actions: [
+        { type: "move", items: [{ name: "WindDFIG1", x: 540, y: 300, width: 60, height: 60 }] },
+        { type: "updateParameter", name: "WindDFIG1", parameter: "MVA", value: "160.0" },
+      ],
+    });
+    assert.ok(
+      editRes.edits && editRes.edits.length >= 2,
+      `Expected dispatch.applyEdits() to return two-way XML text edits (got ${editRes.edits?.length ?? 0})`,
+    );
+
+    const drillRes = await dispatch.drillDown({ uri: testUri, componentId: "SubModInst1" });
+    assert.ok(
+      drillRes &&
+        drillRes.targetClassName === "OffshoreCollector" &&
+        drillRes.data.nodes.some((n: any) => n.id === "SubBrk1"),
+      "Expected dispatch.drillDown() on SubModInst1 to render OffshoreCollector sub-module schematic",
+    );
+
+    const palette = await dispatch.getPalette({ uri: testUri });
+    assert.ok(
+      palette &&
+        palette.categories.length >= 4 &&
+        palette.categories.some((c) => c.items.some((i) => i.className === "master:mmc_thevenin")),
+      "Expected dispatch.getPalette() to return PSCAD Master Library apparatus categories",
+    );
   });
 });

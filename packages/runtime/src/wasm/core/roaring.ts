@@ -620,7 +620,7 @@ export class RoaringBitmap {
  * Factory to create an unmanaged RoaringBitmap in WASM linear memory.
  */
 export function createRoaringBitmap(initialCapacity: u16 = 2): RoaringBitmap {
-  let ptr = atomicChunkAlloc(sizeof<RoaringBitmap>()) as usize;
+  let ptr = atomicChunkAlloc(offsetof<RoaringBitmap>()) as usize;
   let bm = changetype<RoaringBitmap>(ptr);
   bm.init(initialCapacity);
   return bm;

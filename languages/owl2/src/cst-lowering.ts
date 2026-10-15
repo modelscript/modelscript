@@ -64,13 +64,15 @@ function getNodeText(node: GenericSyntaxNode, ctx: LoweringContext): string {
   if (node.text !== undefined) {
     return node.text.trim();
   }
-  if (ctx.sourceText !== undefined && typeof node.startIndex === "number" && typeof node.endIndex === "number") {
-    return ctx.sourceText.slice(node.startIndex, node.endIndex).trim();
+  const start = node.startIndex ?? (node as any).startOffset ?? (node as any).startByte;
+  const end = node.endIndex ?? (node as any).endOffset ?? (node as any).endByte;
+  if (ctx.sourceText !== undefined && typeof start === "number" && typeof end === "number") {
+    return ctx.sourceText.slice(start, end).trim();
   }
   return "";
 }
 
-function normalizeIri(rawText: string, ctx: LoweringContext): string {
+function normalizeIri(rawText: string, _ctx: LoweringContext): string {
   const clean = rawText.trim();
   if (clean.startsWith("<") && clean.endsWith(">")) {
     return clean.slice(1, -1);
@@ -159,7 +161,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           }
         } else if (superClass.type === "ObjectAllValuesFrom") {
           const innerIris = getIris(superClass, ctx);
-          const subIri = getNodeText(subClass, ctx);
+          const subIri = normalizeIri(getNodeText(subClass, ctx), ctx);
           if (innerIris.length >= 2) {
             out.push({
               type: "UniversalRestriction",
@@ -171,7 +173,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           }
         } else if (superClass.type === "ObjectHasSelf") {
           const innerIris = getIris(superClass, ctx);
-          const subIri = getNodeText(subClass, ctx);
+          const subIri = normalizeIri(getNodeText(subClass, ctx), ctx);
           if (innerIris.length >= 1) {
             out.push({
               type: "SelfRestriction",
@@ -185,7 +187,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           superClass.type === "ObjectMaxCardinality" ||
           superClass.type === "ObjectExactCardinality"
         ) {
-          const subIri = getNodeText(subClass, ctx);
+          const subIri = normalizeIri(getNodeText(subClass, ctx), ctx);
           const cardType =
             superClass.type === "ObjectMinCardinality"
               ? "min"
@@ -418,7 +420,7 @@ function cleanNodeType(node: GenericSyntaxNode): string {
   return raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
 }
 
-function getMeaningfulExpressions(node: GenericSyntaxNode, ctx: LoweringContext): GenericSyntaxNode[] {
+function getMeaningfulExpressions(node: GenericSyntaxNode, _ctx: LoweringContext): GenericSyntaxNode[] {
   return getNodeChildren(node).filter((c) => {
     const t = cleanNodeType(c);
     return (

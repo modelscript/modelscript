@@ -141,8 +141,25 @@ export function materializeFeaDeck(templateText: string, options: MaterializeOpt
 
   const formatter = formatNumber || defaultFormat;
 
-  return templateText.replace(/\{\{([^{}]+)\}\}/g, (_match, expr) => {
+  return templateText.replace(/\{\{([^{}]+)\}\}/g, (match, expr, offset: number) => {
+    const prevDiagLen = diagnostics ? diagnostics.length : 0;
     const evaluated = evaluateFeaExpression(expr.trim(), evaluator, diagnostics);
+    if (diagnostics && diagnostics.length > prevDiagLen) {
+      let targetOffset = offset + 2 + expr.indexOf(expr.trim());
+      const diag = diagnostics[diagnostics.length - 1]!;
+      const paramMatch = diag.message.match(/Unresolved parameter: '([^']+)'|illegal identifier: '([^']+)'/);
+      const offendingToken = paramMatch?.[1] ?? paramMatch?.[2];
+      if (offendingToken) {
+        const tokenIdx = expr.indexOf(offendingToken);
+        if (tokenIdx >= 0) {
+          targetOffset = offset + 2 + tokenIdx;
+        }
+      }
+      const prefix = templateText.slice(0, targetOffset);
+      const lastNewline = prefix.lastIndexOf("\n");
+      diag.line = (prefix.match(/\n/g)?.length ?? 0) + 1;
+      diag.column = lastNewline === -1 ? targetOffset + 1 : targetOffset - lastNewline;
+    }
     if (typeof evaluated === "number") {
       return formatter(evaluated);
     }

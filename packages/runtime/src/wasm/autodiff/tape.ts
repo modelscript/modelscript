@@ -66,9 +66,9 @@ export class TapeNodeAccessor {
 
   @inline static at(table: ChunkedUint32Array, nodeIdx: u32): TapeNodeAccessor {
     if (TapeNodeAccessor.pool == 0) {
-      TapeNodeAccessor.pool = atomicChunkAlloc(8 * sizeof<TapeNodeAccessor>());
+      TapeNodeAccessor.pool = atomicChunkAlloc(8 * offsetof<TapeNodeAccessor>());
     }
-    let acc = changetype<TapeNodeAccessor>(TapeNodeAccessor.pool + (TapeNodeAccessor.poolIdx * sizeof<TapeNodeAccessor>()));
+    let acc = changetype<TapeNodeAccessor>(TapeNodeAccessor.pool + (TapeNodeAccessor.poolIdx * offsetof<TapeNodeAccessor>()));
     TapeNodeAccessor.poolIdx = (TapeNodeAccessor.poolIdx + 1) & 7;
     acc._table = table;
     acc._offset = nodeIdx * TAPE_STRIDE;

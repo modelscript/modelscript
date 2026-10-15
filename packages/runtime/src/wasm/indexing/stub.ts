@@ -4,6 +4,7 @@ import { atomicChunkAlloc, ensureStringArena, stringArenaOffset, stringArenaPtr 
 import { ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import { UnmanagedMap64, createMap64 } from "../core/hashmap";
 import { salsa_invalidateNegativeDependencies } from "../graph";
+import { trigram_clear } from "./trigram";
 
 /**
  * ----------------------------------------------------------------------------
@@ -266,6 +267,10 @@ export function stub_registerFileWithParentFQN(fileId: u32, parentFqnHash: u32):
 export function stub_bindFqnStub(fqnHash: u32, stubId: u32): void {
   ensureStubStore();
   t_fqnToStubMap.set(fqnHash as u64, stubId);
+  if (stubId > 0 && stubId < t_stubCount) {
+    let stub = StubAccessor.at(t_stubTable, stubId);
+    stub.reserved = fqnHash;
+  }
 }
 
 /**
@@ -400,7 +405,15 @@ export function stub_clearFile(fileId: u32): void {
       }
     }
 
-    // 3. Clear stub memory & push onto free-list
+    // 3. Unlink bound FQN if this stub was registered via stub_bindFqnStub
+    let boundFqnHash = stub.reserved;
+    if (boundFqnHash != 0 && changetype<usize>(t_fqnToStubMap) != 0) {
+      if (t_fqnToStubMap.get(boundFqnHash as u64) == stubId) {
+        t_fqnToStubMap.set(boundFqnHash as u64, 0);
+      }
+    }
+
+    // 4. Clear stub memory & push onto free-list
     stub.clear();
     t_stubNameHashes.set(stubId, 0);
     t_stubNextByName.set(stubId, 0);
@@ -435,6 +448,7 @@ export function stub_clearAll(): void {
     t_stubCount = 1;
     t_stubFreeListHead = 0;
   }
+  trigram_clear();
 }
 
 /**
@@ -540,9 +554,8 @@ export function stub_findByNameHashSIMD(nameHash: u32, preferredFileId: u32): u3
   }
 
   // 128-bit 4-lane vector scan chunk
-  let simdEnd = (totalStubs & ~3); // Round down to multiple of 4
-
-  for (let id: u32 = 1; id < simdEnd; id += 4) {
+  let id: u32 = 1;
+  for (; id + 3 < totalStubs; id += 4) {
     let h0 = t_stubNameHashes.get(id + 0);
     let h1 = t_stubNameHashes.get(id + 1);
     let h2 = t_stubNameHashes.get(id + 2);
@@ -594,7 +607,7 @@ export function stub_findByNameHashSIMD(nameHash: u32, preferredFileId: u32): u3
   }
 
   // Scalar tail loop
-  for (let id: u32 = simdEnd; id < totalStubs; id++) {
+  for (; id < totalStubs; id++) {
     if (t_stubNameHashes.get(id) == nameHash) {
       let baseIdx = id * STUB_STRIDE;
       let fId = t_stubTable.get(baseIdx + 0);
@@ -824,6 +837,7 @@ export function stub_importBinary(inPtr: u32, byteLength: u32): u32 {
     let mLow: u32 = stride >= 10 ? load<u32>(srcOffset + 32) : 0;
     let mHigh: u32 = stride >= 10 ? load<u32>(srcOffset + 36) : 0;
     let parentFqn: u32 = stride >= 12 ? load<u32>(srcOffset + 40) : 0;
+    let reserved: u32 = stride >= 12 ? load<u32>(srcOffset + 44) : 0;
 
     let stub = StubAccessor.at(t_stubTable, i);
     stub.fileId = fId;
@@ -837,7 +851,7 @@ export function stub_importBinary(inPtr: u32, byteLength: u32): u32 {
     stub.merkleLow = mLow;
     stub.merkleHigh = mHigh;
     stub.parentFqnHash = parentFqn;
-    stub.reserved = 0;
+    stub.reserved = reserved;
 
     t_stubNameHashes.set(i, nameHash);
   }
@@ -870,6 +884,10 @@ export function stub_importBinary(inPtr: u32, byteLength: u32): u32 {
       let prevFileHead = t_stubsByFile.get(fId as u64);
       t_stubNextInFile.set(id, prevFileHead);
       t_stubsByFile.set(fId as u64, id);
+
+      if (stub.reserved != 0) {
+        t_fqnToStubMap.set(stub.reserved as u64, id);
+      }
     }
   }
 

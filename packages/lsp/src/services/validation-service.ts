@@ -192,8 +192,13 @@ export function deduplicateAllDiagnostics(diagnostics: Diagnostic[]): Diagnostic
         if (existing.message === d.message) {
           return true;
         }
-        // 2. Exact range and code
-        if (existing.code !== undefined && d.code !== undefined && String(existing.code) === String(d.code)) {
+        // 2. Exact range, code, and message
+        if (
+          existing.code !== undefined &&
+          d.code !== undefined &&
+          String(existing.code) === String(d.code) &&
+          existing.message === d.message
+        ) {
           return true;
         }
         // 3. Symmetrical generic syntax error shadowing
@@ -208,12 +213,13 @@ export function deduplicateAllDiagnostics(diagnostics: Diagnostic[]): Diagnostic
         }
       }
 
-      // Same start position + same error code duplicate
+      // Same start position + same error code + same message duplicate
       if (
         sameStart &&
         existing.code !== undefined &&
         d.code !== undefined &&
-        String(existing.code) === String(d.code)
+        String(existing.code) === String(d.code) &&
+        existing.message === d.message
       ) {
         return true;
       }
@@ -634,6 +640,21 @@ export class ValidationService {
     const isPscad = textDocument.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(uri);
     if (isPscad) {
       await this.validatePscadDocument(textDocument, plugin);
+      return;
+    }
+
+    // Handle SSP SystemStructureDescription & ParameterSet files (.ssd, .ssp, .ssv)
+    const isSsp =
+      textDocument.languageId === "ssp" || textDocument.languageId === "ssv" || /\.(ssd|ssp|ssv)($|\?|#)/i.test(uri);
+    if (isSsp) {
+      await this.validateSspDocument(textDocument, plugin);
+      return;
+    }
+
+    // Handle CSV telemetry files (.csv)
+    const isCsv = textDocument.languageId === "csv" || /\.csv($|\?|#)/i.test(uri);
+    if (isCsv) {
+      await this.validateCsvDocument(textDocument, plugin);
       return;
     }
 
@@ -1196,14 +1217,18 @@ export class ValidationService {
         const lines = text.split(/\r?\n/);
 
         // 1. Modelica DroneSimulation diagnostics
-        if (uri.endsWith(".mo") || langId === "modelica") {
+        if (
+          (uri.endsWith(".mo") || langId === "modelica") &&
+          (uri.includes("DroneSimulation") || text.includes("DroneSimulation"))
+        ) {
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
             const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
             if (massMatch) {
               const val = parseFloat(massMatch[1]);
-              const col = line.indexOf("m");
+              const colMatch = /\bReal\s+(m)\b/.exec(line);
+              const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
               if (Math.abs(val - 1.2) > 0.01) {
                 newSemanticDiagnostics.push({
                   severity: DiagnosticSeverity.Warning,
@@ -1391,6 +1416,42 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[scad] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { getScadParser, lintScadCst } = await import("@modelscript/scad");
+      const parser = plugin?.parser ?? this.parserService?.getParser?.("scad") ?? (await getScadParser());
+      if (parser) {
+        const tree = parser.parse(text);
+        if (tree?.rootNode) {
+          this.documentManager.documentTrees.set(textDocument.uri, {
+            text,
+            tree,
+            classCache: new Map(),
+          });
+          const { syntaxDiags } = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
+          scadDiagnostics.push(...syntaxDiags);
+
+          if (syntaxDiags.length === 0) {
+            const semanticDiags = lintScadCst(tree.rootNode, text);
+            for (const d of semanticDiags) {
+              scadDiagnostics.push({
+                severity:
+                  d.severity === "error"
+                    ? DiagnosticSeverity.Error
+                    : d.severity === "info"
+                      ? DiagnosticSeverity.Information
+                      : DiagnosticSeverity.Warning,
+                range: {
+                  start: textDocument.positionAt(d.startByte),
+                  end: textDocument.positionAt(d.endByte),
+                },
+                code: d.code,
+                message: d.message,
+                source: "scad",
+              });
+            }
+          }
+        }
+      }
+
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const rawLine = lines[i];
@@ -1475,11 +1536,16 @@ export class ValidationService {
       for (const lint of lints) {
         const line = Math.max(0, (lint.line ?? 1) - 1);
         const col = Math.max(0, (lint.column ?? 1) - 1);
+        const endLine = Math.max(line, (lint.endLine ?? lint.line ?? 1) - 1);
+        const endCol =
+          endLine === line
+            ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
+            : Math.max(0, (lint.endColumn ?? 1) - 1);
         pscadDiagnostics.push({
           severity: lint.severity === "warning" ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
           range: {
             start: { line, character: col },
-            end: { line, character: col + 10 },
+            end: { line: endLine, character: endCol },
           },
           code: lint.code,
           message: `[${lint.code}] ${lint.message}`,
@@ -1514,6 +1580,94 @@ export class ValidationService {
 
     this.lastSemanticDiagnostics.set(textDocument.uri, pscadDiagnostics);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: pscadDiagnostics });
+  }
+
+  private async validateSspDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const sspDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[ssp] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { parseSsd, parseSsv, lintSsd, lintSsv } = await import("@modelscript/ssp");
+      const isSsv =
+        textDocument.languageId === "ssv" ||
+        /\.ssv($|\?|#)/i.test(textDocument.uri) ||
+        text.includes("<ssv:ParameterSet");
+
+      const data = isSsv ? parseSsv(text) : parseSsd(text);
+      const lints = isSsv ? lintSsv(text) : lintSsd(text);
+
+      for (const lint of lints) {
+        sspDiagnostics.push({
+          severity:
+            lint.severity === "error"
+              ? DiagnosticSeverity.Error
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Warning,
+          range: {
+            start: textDocument.positionAt(lint.startByte),
+            end: textDocument.positionAt(lint.endByte),
+          },
+          code: lint.code,
+          message: lint.message,
+          source: isSsv ? "ssv" : "ssp",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data } },
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[ssp] Error validating SSP document ${textDocument.uri}: ${err.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, sspDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sspDiagnostics });
+    this.sendProjectTreeChanged();
+  }
+
+  private async validateCsvDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const csvDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[csv] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { lintCsv } = await import("@modelscript/csv/csv-parser");
+      const lints = lintCsv(text);
+
+      for (const lint of lints) {
+        csvDiagnostics.push({
+          severity:
+            lint.severity === "error"
+              ? DiagnosticSeverity.Error
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Warning,
+          range: {
+            start: textDocument.positionAt(lint.startByte),
+            end: textDocument.positionAt(lint.endByte),
+          },
+          code: lint.code,
+          message: lint.message,
+          source: "csv",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text } },
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[csv] Error validating CSV document ${textDocument.uri}: ${err.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, csvDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: csvDiagnostics });
+    this.sendProjectTreeChanged();
   }
 
   private async validateCfdDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
@@ -1911,7 +2065,11 @@ export class ValidationService {
           for (i = argsStart; i < text.length; i++) {
             const ch = text[i];
             if (ch === "'") {
-              inStr = !inStr;
+              if (inStr && text[i + 1] === "'") {
+                i++;
+              } else {
+                inStr = !inStr;
+              }
               hasContent = true;
             } else if (!inStr && ch === "(") {
               if (depth > 0) hasContent = true;
@@ -1932,8 +2090,10 @@ export class ValidationService {
           }
 
           if (argCount !== schema.parameters.length) {
-            const start = textDocument.positionAt(def.startOffset);
-            const end = textDocument.positionAt(def.endOffset);
+            const typeMatchIndex = def.text.indexOf(def.type);
+            const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+            const start = textDocument.positionAt(typeStartOffset);
+            const end = textDocument.positionAt(typeStartOffset + def.type.length);
             stepDiagnostics.push({
               severity: DiagnosticSeverity.Error,
               range: { start, end },

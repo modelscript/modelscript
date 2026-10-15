@@ -377,7 +377,6 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         (isParentModOrRepl ? parentNode.children?.find((c: any) => c.type === "each" || c.text === "each") : undefined);
 
       const name = nameNode ? nameNode.text : "";
-      const nameRange = nameNode ? ([nameNode.startIndex, nameNode.endIndex] as const) : undefined;
       const modRange = n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined;
       const modPosition = n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined;
 
@@ -398,12 +397,29 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       const nested = parseModArgsFromCst(modNode, scopeId);
 
       const parts = name.split(".");
+      const getPartNameRange = (partIndex: number): readonly [number, number] | undefined => {
+        if (!nameNode) return undefined;
+        const baseStart = nameNode.startIndex ?? nameNode.startByte;
+        if (typeof baseStart !== "number") return undefined;
+        if (parts.length <= 1) {
+          const baseEnd = nameNode.endIndex ?? nameNode.endByte ?? baseStart + name.length;
+          return [baseStart, baseEnd] as const;
+        }
+        let offset = 0;
+        for (let k = 0; k < partIndex; k++) {
+          offset += parts[k].length + 1;
+        }
+        const s = baseStart + offset;
+        return [s, s + parts[partIndex].length] as const;
+      };
+
       let currentNested = nested;
       for (let i = parts.length - 1; i > 0; i--) {
         currentNested = {
           args: [
             {
               name: parts[i],
+              nameRange: getPartNameRange(i),
               modRange,
               modPosition,
               modText,
@@ -421,7 +437,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
 
       args.push({
         name: parts[0],
-        nameRange,
+        nameRange: getPartNameRange(0),
         modRange,
         modPosition,
         modText: parts.length > 1 ? "" : modText,
@@ -643,6 +659,9 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
 
             args.push({
               name,
+              nameRange: ident
+                ? ([ident.startIndex ?? ident.startByte, ident.endIndex ?? ident.endByte] as const)
+                : undefined,
               modRange: n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined,
               modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
               modText: n.text?.trim() ?? "",
@@ -1223,6 +1242,138 @@ function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
   return current;
 }
 
+function getQualifiedTypeFailRange(
+  db: QueryDB,
+  scopeId: SymbolId | null,
+  typeName: string,
+  node: any,
+  fallbackStart: number,
+  fallbackEnd: number,
+): { startByte: number; endByte: number; startCharOffset: number; endCharOffset: number } {
+  let targetNode = node;
+  if (targetNode && (targetNode.type === "extends_clause" || targetNode.type === "ExtendsClause")) {
+    const typeSpecChild =
+      (Cst.ExtendsClause as any)?.typeSpecifier?.(targetNode) ??
+      targetNode.children?.find(
+        (c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier" || c.type === "name" || c.type === "Name",
+      );
+    if (typeSpecChild) targetNode = typeSpecChild;
+  }
+
+  let startByte = targetNode?.startIndex ?? targetNode?.startByte ?? fallbackStart;
+  let endByte = targetNode?.endIndex ?? targetNode?.endByte ?? fallbackEnd;
+  let startOffset = targetNode?.startOffset ?? startByte;
+  let endOffset = targetNode?.endOffset ?? endByte;
+
+  const cleanType = typeName.replace(/\[.*\]$/, "").trim();
+  const hasLeadingDot = cleanType.startsWith(".");
+  const stripped = hasLeadingDot ? cleanType.slice(1) : cleanType;
+  const parts = stripped.split(".");
+
+  const idents: any[] = [];
+  const collectIdents = (n: any) => {
+    if (!n) return;
+    if (
+      n.type === "array_subscripts" ||
+      n.type === "ArraySubscripts" ||
+      n.type === "class_modification" ||
+      n.type === "ClassModification" ||
+      n.type === "class_or_inheritance_modification" ||
+      n.type === "ClassOrInheritanceModification" ||
+      n.type === "annotation" ||
+      n.type === "Annotation"
+    ) {
+      return;
+    }
+    if (n.type === "identifier" || n.type === "Identifier") {
+      idents.push(n);
+      return;
+    }
+    if (n.children) {
+      for (const c of n.children) collectIdents(c);
+    }
+  };
+  collectIdents(targetNode);
+
+  if (parts.length <= 1) {
+    if (idents.length === 1) {
+      const idNode = idents[0];
+      startByte = idNode.startIndex ?? idNode.startByte ?? startByte;
+      endByte = idNode.endIndex ?? idNode.endByte ?? endByte;
+      startOffset = idNode.startOffset ?? startByte;
+      endOffset = idNode.endOffset ?? endByte;
+    }
+    return { startByte, endByte, startCharOffset: startOffset, endCharOffset: endOffset };
+  }
+
+  let failIdx = 0;
+  let current: SymbolEntry | null = null;
+  if (!hasLeadingDot && scopeId !== null) {
+    const resolver =
+      db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", scopeId) ??
+      db.query<(n: string) => SymbolEntry | null>("resolveName", scopeId);
+    if (resolver) current = resolver(parts[0]!);
+  }
+  if (!current && (hasLeadingDot || scopeId === null || !isScopeEncapsulated(db, scopeId))) {
+    const rootEntries = db.byName(parts[0]!);
+    current =
+      rootEntries.find((e) => (e.metadata as any)?.isPredefined) ??
+      rootEntries.find((e) => e.parentId === null) ??
+      rootEntries.find((e) => ["Class", "Package", "Function", "Definition", "Enumeration"].includes(e.kind)) ??
+      rootEntries[0] ??
+      null;
+  }
+
+  if (current) {
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i]!;
+      let next: SymbolEntry | null = null;
+      const simpleRes = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", current.id);
+      if (simpleRes) next = simpleRes(part);
+      if (!next) {
+        const children = db.childrenOf(current.id);
+        next =
+          children.find((c) => c.name === part && c.kind !== "Reference") ||
+          children.find((c) => c.name === part) ||
+          null;
+      }
+      if (!next) {
+        failIdx = i;
+        break;
+      }
+      current = next;
+    }
+  }
+
+  if (failIdx < idents.length) {
+    const idNode = idents[failIdx];
+    const sb = idNode.startIndex ?? idNode.startByte ?? startByte;
+    const eb = idNode.endIndex ?? idNode.endByte ?? endByte;
+    const so = idNode.startOffset ?? sb;
+    const eo = idNode.endOffset ?? eb;
+    return { startByte: sb, endByte: eb, startCharOffset: so, endCharOffset: eo };
+  }
+
+  const nodeText: string = targetNode?.text ?? cleanType;
+  let searchPos = 0;
+  for (let i = 0; i <= failIdx; i++) {
+    const seg = parts[i]!;
+    const idx = nodeText.indexOf(seg, searchPos);
+    if (idx === -1) break;
+    if (i === failIdx) {
+      return {
+        startByte: startByte + idx,
+        endByte: startByte + idx + seg.length,
+        startCharOffset: startOffset + idx,
+        endCharOffset: startOffset + idx + seg.length,
+      };
+    }
+    searchPos = idx + seg.length + 1;
+  }
+
+  return { startByte, endByte, startCharOffset: startOffset, endCharOffset: endOffset };
+}
+
 // Stacks for tracking dimension evaluation and queries to detect cycles
 interface DimensionStackFrame {
   symbolId: SymbolId;
@@ -1714,25 +1865,45 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   if (!isEnum) return null;
 
   const literals: string[] = [];
+  const literalRanges: { name: string; startByte: number; endByte: number }[] = [];
   const enumListNode = shortSpec
     ? (shortSpec.children?.find((c: any) => c.type === "enum_list" || c.type === "EnumList") ??
       (Cst?.ShortClassSpecifier ? Cst.ShortClassSpecifier.enumList(shortSpec) : null))
     : null;
 
+  const baseNodeStart = sym?.startByte ?? cstNode?.startIndex ?? cstNode?.startByte ?? 0;
+
   if (enumListNode && enumListNode.children) {
     for (const c of enumListNode.children) {
       if (c.type === "enumeration_literal" || (Cst?.EnumerationLiteral && Cst.EnumerationLiteral.is(c))) {
-        const idNode = c.children?.find((ch: any) => ch.type === "identifier" || ch.type === "Identifier");
+        const idNode = c.children?.find((ch: any) => ch.type === "identifier" || ch.type === "Identifier") ?? c;
         const litName = idNode?.text?.trim() ?? c.text?.trim()?.split(/\s+/)[0];
-        if (litName) literals.push(litName);
+        if (litName) {
+          literals.push(litName);
+          const s = idNode?.startIndex ?? idNode?.startByte;
+          const e = idNode?.endIndex ?? idNode?.endByte;
+          if (typeof s === "number" && typeof e === "number") {
+            literalRanges.push({ name: litName, startByte: s, endByte: e });
+          }
+        }
       }
     }
   } else {
     const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
     if (enumMatch && enumMatch[1] && enumMatch[1].trim() !== ":") {
+      const innerStart = enumMatch.index + enumMatch[0].indexOf(enumMatch[1]);
+      let searchOffset = 0;
       for (const part of enumMatch[1].split(",")) {
         const litName = part.trim().split(/\s+/)[0];
-        if (litName) literals.push(litName);
+        if (litName) {
+          literals.push(litName);
+          const relIdx = enumMatch[1].indexOf(litName, searchOffset);
+          if (relIdx >= 0) {
+            const s = baseNodeStart + innerStart + relIdx;
+            literalRanges.push({ name: litName, startByte: s, endByte: s + litName.length });
+            searchOffset = relIdx + part.length;
+          }
+        }
       }
     }
   }
@@ -1760,11 +1931,25 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
     startByte += leadingWs;
   }
 
-  const getLitRange = (litName: string) => {
+  const getLitRange = (litName: string, occurrenceIndex = 0) => {
+    let seenCount = 0;
+    for (const lr of literalRanges) {
+      if (lr.name === litName) {
+        if (seenCount === occurrenceIndex) {
+          return {
+            startByte: lr.startByte,
+            endByte: lr.endByte,
+            startOffset: lr.startByte,
+            endOffset: lr.endByte,
+          };
+        }
+        seenCount++;
+      }
+    }
     if (cstText && litName) {
       const idx = cstText.indexOf(litName);
       if (idx >= 0) {
-        const s = (sym?.startByte ?? cstNode?.startIndex ?? 0) + idx;
+        const s = baseNodeStart + idx;
         return { startByte: s, endByte: s + litName.length, startOffset: s, endOffset: s + litName.length };
       }
     }
@@ -1783,28 +1968,29 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
       const message = isNewInst
         ? ModelicaErrorCode.ENUM_RESERVED_ATTRIBUTE_LITERAL.message(lit)
         : ModelicaErrorCode.DUPLICATE_ELEMENT.message(lit);
+      const range = getLitRange(lit, 0);
       return {
         code,
         message,
-        startByte,
-        endByte,
+        ...range,
       };
     }
   }
 
   // 2. Duplicate literal names
-  const seen = new Set<string>();
+  const seenCounts = new Map<string, number>();
   for (const lit of literals) {
-    if (seen.has(lit)) {
+    const prevCount = seenCounts.get(lit) ?? 0;
+    if (prevCount > 0) {
       const listStr = literals.join(",");
-      const range = getLitRange(lit);
+      const range = getLitRange(lit, prevCount);
       return {
         code: ModelicaErrorCode.ENUM_DUPLICATE_LITERAL.code,
         message: ModelicaErrorCode.ENUM_DUPLICATE_LITERAL.message(lit, listStr),
         ...range,
       };
     }
-    seen.add(lit);
+    seenCounts.set(lit, prevCount + 1);
   }
 
   return null;
@@ -2086,13 +2272,13 @@ export const classDefinitionQueries: Record<string, any> = {
     if (self.parentId !== null) {
       const resolve = db.query<any>("resolveName", self.parentId);
       if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
-      if (!baseEntry) {
+      if (!baseEntry && !typeName.includes(".")) {
         const resSimple = db.query<any>("resolveSimpleName", self.parentId);
-        if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+        if (resSimple) baseEntry = resSimple(typeName) as SymbolEntry | null;
       }
     }
 
-    if (!baseEntry) {
+    if (!baseEntry && (typeName.startsWith(".") || self.parentId === null || !isScopeEncapsulated(db, self.parentId))) {
       if (typeName.includes(".")) {
         baseEntry = resolveQualified(db, typeName);
       } else {
@@ -2111,18 +2297,19 @@ export const classDefinitionQueries: Record<string, any> = {
 
     if (baseEntry) return null;
 
-    const startByte = typeSpec?.startIndex ?? typeSpec?.startByte ?? self.startByte;
-    const endByte = typeSpec?.endIndex ?? typeSpec?.endByte ?? startByte + typeName.length;
-    const startOffset = typeSpec?.startOffset ?? startByte;
-    const endOffset = typeSpec?.endOffset ?? endByte;
+    const failRange = getQualifiedTypeFailRange(
+      db,
+      self.parentId,
+      typeName,
+      typeSpec,
+      self.startByte,
+      self.startByte + typeName.length,
+    );
 
     const msg = `Class or type '${typeName}' not found in scope.`;
     return [
       error(msg, {
-        startByte,
-        endByte,
-        startCharOffset: startOffset,
-        endCharOffset: endOffset,
+        ...failRange,
         code: 2003,
       }),
     ];
@@ -3190,14 +3377,18 @@ export const classDefinitionQueries: Record<string, any> = {
       if (self.parentId !== null) {
         const resolve = db.query<any>("resolveName", self.parentId);
         if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
-        if (!baseEntry) {
+        if (!baseEntry && !typeName.includes(".")) {
           const resSimple = db.query<any>("resolveSimpleName", self.parentId);
-          if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+          if (resSimple) baseEntry = resSimple(typeName) as SymbolEntry | null;
         }
       }
       if (!baseEntry) {
-        const entries = db.byName(typeName.split(".").pop()!);
-        baseEntry = entries?.find((e: any) => e.kind === "Class") ?? null;
+        if (typeName.includes(".")) {
+          baseEntry = resolveQualified(db, typeName);
+        } else {
+          const entries = db.byName(typeName);
+          baseEntry = entries?.find((e: any) => e.kind === "Class") ?? null;
+        }
       }
       if (baseEntry) {
         return checkModifierNotFound(db, self, mod, baseEntry.id, baseEntry, self.name);
@@ -3358,29 +3549,32 @@ export const extendsClauseQueries: Record<string, any> = {
           } else if (currentScope) {
             resolved = db.childrenOf(currentScope.id).find((c: any) => c.name === part) ?? null;
           }
-          if (resolved && resolved.kind === "Component") {
-            return null;
+          if (resolved) {
+            if (resolved.kind === "Component") return null;
+            if (resolved.kind === "Class") {
+              const cst = db.cstNode(resolved.id) as any;
+              if (
+                cst?.text &&
+                /^[\s\S]*?\b(?:class|model|block|record|connector|type|package)\s+\w+\s*=/.test(cst.text)
+              ) {
+                return null;
+              }
+            }
           }
           currentScope = resolved;
         }
       }
     } else {
       const entries = db.byName(baseName);
-      if (entries?.some((e: any) => e.kind === "Class" || e.kind === "Package")) return null;
+      if (entries?.some((e: any) => e.kind === "Class" || e.kind === "Package" || e.kind === "Component")) return null;
     }
 
     const cstNode = db.cstNode(self.id) as any;
-    const startByte = cstNode?.startIndex ?? cstNode?.startByte ?? self.startByte;
-    const endByte = cstNode?.endIndex ?? cstNode?.endByte ?? self.endByte;
-    const startOffset = cstNode?.startOffset ?? startByte;
-    const endOffset = cstNode?.endOffset ?? endByte;
+    const failRange = getQualifiedTypeFailRange(db, self.parentId, baseName, cstNode, self.startByte, self.endByte);
 
     const msg = `Class or type '${baseName}' not found in scope.`;
     return error(msg, {
-      startByte,
-      endByte,
-      startCharOffset: startOffset,
-      endCharOffset: endOffset,
+      ...failRange,
       code: 2003,
     });
   },
@@ -4404,6 +4598,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     const isPrim = typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String";
 
     if (isPrim && !arraySub && !clauseArraySub) {
+      cyclicDimensionDiagnostics.delete(self.id);
       return {
         id: self.id,
         name: self.name,
@@ -4511,17 +4706,18 @@ export const componentDeclarationQueries: Record<string, any> = {
       Cst.ComponentClause.typeSpecifier(current) ??
       current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
 
-    const startByte = typeSpecNode?.startIndex ?? typeSpecNode?.startByte ?? self.startByte;
-    const endByte = typeSpecNode?.endIndex ?? typeSpecNode?.endByte ?? startByte + typeName.length;
-    const startOffset = typeSpecNode?.startOffset ?? startByte;
-    const endOffset = typeSpecNode?.endOffset ?? endByte;
+    const failRange = getQualifiedTypeFailRange(
+      db,
+      self.parentId,
+      baseType,
+      typeSpecNode,
+      self.startByte,
+      self.startByte + typeName.length,
+    );
 
     const msg = `Class or type '${typeName}' not found in scope.`;
     return error(msg, {
-      startByte,
-      endByte,
-      startCharOffset: startOffset,
-      endCharOffset: endOffset,
+      ...failRange,
       code: 2003,
     });
   },
@@ -4818,7 +5014,7 @@ export const connectEquationQueries: Record<string, any> = {
 
       for (let i = 0; i < rawSegments.length; i++) {
         const seg = rawSegments[i].replace(/\[.*\]$/, "").trim();
-        if (!seg) return { resolved: false, missingSegment: rawSegments[i] };
+        if (!seg) return { resolved: false, missingSegment: rawSegments[i], missingSegmentIndex: i };
 
         if (i > 0 && db.query<boolean>("isExpandableConnector", currentClassId)) {
           isInsideExpandable = true;
@@ -4847,7 +5043,7 @@ export const connectEquationQueries: Record<string, any> = {
             };
           }
           const fullMissing = rawSegments.slice(0, i + 1).join(".");
-          return { resolved: false, missingSegment: fullMissing };
+          return { resolved: false, missingSegment: fullMissing, missingSegmentIndex: i };
         }
 
         currentEntry = found;
@@ -4858,7 +5054,7 @@ export const connectEquationQueries: Record<string, any> = {
           if (i < rawSegments.length - 1) {
             if (!nextClassId) {
               const fullMissing = rawSegments.slice(0, i + 1).join(".");
-              return { resolved: false, unresolvableType: true, missingSegment: fullMissing };
+              return { resolved: false, unresolvableType: true, missingSegment: fullMissing, missingSegmentIndex: i };
             }
             currentClassId = nextClassId;
           }
@@ -4869,12 +5065,12 @@ export const connectEquationQueries: Record<string, any> = {
         } else {
           if (i < rawSegments.length - 1) {
             const fullMissing = rawSegments.slice(0, i + 1).join(".");
-            return { resolved: false, missingSegment: fullMissing };
+            return { resolved: false, missingSegment: fullMissing, missingSegmentIndex: i };
           }
         }
       }
 
-      if (!currentEntry) return { resolved: false, missingSegment: refText };
+      if (!currentEntry) return { resolved: false, missingSegment: refText, missingSegmentIndex: 0 };
 
       let typeClassId: SymbolId | null = null;
       if (currentEntry.kind === "Component") {
@@ -4910,13 +5106,58 @@ export const connectEquationQueries: Record<string, any> = {
       return { startByte, endByte, startOffset, endOffset, startCharOffset: startOffset, endCharOffset: endOffset };
     };
 
-    // 1. Check if endpoints resolve (M2002)
-    const selfRange = {
-      startByte: self.startByte,
-      endByte: self.endByte,
-      startCharOffset: self.startByte,
-      endCharOffset: self.endByte,
+    const getSegmentRange = (node: any, refText: string, segIdx: number | undefined) => {
+      const base = getRange(node);
+      if (segIdx === undefined || !node) return base;
+      const idents: any[] = [];
+      const collectTopLevelIdents = (n: any) => {
+        if (!n) return;
+        if (
+          n.type === "array_subscripts" ||
+          n.type === "ArraySubscripts" ||
+          n.type === "subscript" ||
+          n.type === "Subscript"
+        ) {
+          return;
+        }
+        if (n.type === "identifier" || n.type === "Identifier") {
+          idents.push(n);
+          return;
+        }
+        if (n.children) {
+          for (const c of n.children) collectTopLevelIdents(c);
+        }
+      };
+      collectTopLevelIdents(node);
+      if (segIdx < idents.length) {
+        return getRange(idents[segIdx]);
+      }
+      const rawSegments = refText.split(".");
+      if (segIdx < rawSegments.length) {
+        const nodeText: string = node?.text ?? refText;
+        let searchPos = 0;
+        for (let i = 0; i <= segIdx; i++) {
+          const rawSeg = rawSegments[i]!;
+          const cleanSeg = rawSeg.replace(/\[.*\]$/, "").trim();
+          const idx = nodeText.indexOf(cleanSeg, searchPos);
+          if (idx === -1) break;
+          if (i === segIdx) {
+            return {
+              startByte: base.startByte + idx,
+              endByte: base.startByte + idx + cleanSeg.length,
+              startOffset: base.startOffset + idx,
+              endOffset: base.startOffset + idx + cleanSeg.length,
+              startCharOffset: base.startOffset + idx,
+              endCharOffset: base.startOffset + idx + cleanSeg.length,
+            };
+          }
+          searchPos = idx + rawSeg.length + 1;
+        }
+      }
+      return base;
     };
+
+    // 1. Check if endpoints resolve (M2002)
     if (!lhsRes.resolved && !lhsRes.unresolvableType) {
       const dotted = lhsText.includes(".");
       diags.push(
@@ -4926,7 +5167,7 @@ export const connectEquationQueries: Record<string, any> = {
             parentClassName,
           ),
           {
-            ...(dotted ? selfRange : getRange(lhsNode)),
+            ...getSegmentRange(lhsNode, lhsText, lhsRes.missingSegmentIndex),
             code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
           },
         ),
@@ -4935,7 +5176,7 @@ export const connectEquationQueries: Record<string, any> = {
     if (!rhsRes.resolved && !rhsRes.unresolvableType) {
       diags.push(
         error(ModelicaErrorCode.VARIABLE_NOT_FOUND.message(rhsRes.missingSegment || rhsText, parentClassName), {
-          ...getRange(rhsNode),
+          ...getSegmentRange(rhsNode, rhsText, rhsRes.missingSegmentIndex),
           code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
         }),
       );
@@ -4979,7 +5220,7 @@ export const connectEquationQueries: Record<string, any> = {
     if (lhsSubErr) {
       diags.push(
         error(ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.message(lhsText, lhsSubErr.subText), {
-          ...getRange(cst),
+          ...lhsSubErr.range,
           code: ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.code,
         }),
       );
@@ -4989,7 +5230,7 @@ export const connectEquationQueries: Record<string, any> = {
     if (rhsSubErr) {
       diags.push(
         error(ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.message(rhsText, rhsSubErr.subText), {
-          ...getRange(cst),
+          ...rhsSubErr.range,
           code: ModelicaErrorCode.CONNECTOR_NON_PARAMETER_SUBSCRIPT.code,
         }),
       );
@@ -5007,7 +5248,7 @@ export const connectEquationQueries: Record<string, any> = {
       if (lhsRes.invalidForm) {
         diags.push(
           error(ModelicaErrorCode.CONNECT_INVALID_FORM.message(lhsText), {
-            ...selfRange,
+            ...getRange(lhsNode),
             code: ModelicaErrorCode.CONNECT_INVALID_FORM.code,
           }),
         );
@@ -5016,7 +5257,7 @@ export const connectEquationQueries: Record<string, any> = {
       if (rhsRes.invalidForm) {
         diags.push(
           error(ModelicaErrorCode.CONNECT_INVALID_FORM.message(rhsText), {
-            ...selfRange,
+            ...getRange(rhsNode),
             code: ModelicaErrorCode.CONNECT_INVALID_FORM.code,
           }),
         );
@@ -5026,7 +5267,7 @@ export const connectEquationQueries: Record<string, any> = {
       if (lhsRes.entry?.kind === "Class" && lhsRes.isConnector) {
         diags.push(
           error(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.message(lhsText), {
-            ...selfRange,
+            ...getRange(lhsNode),
             code: ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.code,
           }),
         );
@@ -5035,7 +5276,7 @@ export const connectEquationQueries: Record<string, any> = {
       if (rhsRes.entry?.kind === "Class" && rhsRes.isConnector) {
         diags.push(
           error(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.message(rhsText), {
-            ...selfRange,
+            ...getRange(rhsNode),
             code: ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.code,
           }),
         );
@@ -5045,7 +5286,7 @@ export const connectEquationQueries: Record<string, any> = {
       if (!lhsRes.isConnector && !lhsRes.isExpandable && !lhsRes.isInsideExpandable) {
         diags.push(
           error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText), {
-            ...selfRange,
+            ...getRange(lhsNode),
             code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
           }),
         );
@@ -5054,7 +5295,7 @@ export const connectEquationQueries: Record<string, any> = {
       if (!rhsRes.isConnector && !rhsRes.isExpandable && !rhsRes.isInsideExpandable) {
         diags.push(
           error(ModelicaErrorCode.NOT_A_CONNECTOR.message(rhsText), {
-            ...selfRange,
+            ...getRange(rhsNode),
             code: ModelicaErrorCode.NOT_A_CONNECTOR.code,
           }),
         );

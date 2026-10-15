@@ -226,50 +226,62 @@ export class LRAutomaton {
       reads.set(ntKey(nt), readsList);
     }
 
-    // INCLUDES relation
+    // INCLUDES relation and lookback table for reduce items
     const includes = new Map<string, string[]>();
     for (const k of allKeys) includes.set(k, []);
 
-    // Pre-index productions by which symbols appear on their RHS.
-    // This avoids the O(NTs × Prods × RHS) triple-nested scan.
-    const prodsByRhsSymbol = new Map<string, { prod: { left: string; right: string[] }; pos: number }[]>();
+    const prodsByLhs = new Map<string, Production[]>();
     for (const prod of this.grammar.productions) {
-      for (let i = 0; i < prod.right.length; i++) {
-        const sym = prod.right[i];
-        if (!prodsByRhsSymbol.has(sym)) prodsByRhsSymbol.set(sym, []);
-        prodsByRhsSymbol.get(sym)!.push({ prod, pos: i });
+      let list = prodsByLhs.get(prod.left);
+      if (!list) {
+        list = [];
+        prodsByLhs.set(prod.left, list);
       }
+      list.push(prod);
     }
 
-    for (const nt of ntTransitions) {
-      const entries = prodsByRhsSymbol.get(nt.symbol);
-      if (!entries) continue;
+    const lookback = new Map<string, string[]>();
 
-      for (const { prod, pos: i } of entries) {
-        // Check suffix β₂ = prod.right[i+1..] is nullable
-        let suffixNullable = true;
-        for (let j = i + 1; j < prod.right.length; j++) {
-          if (!this.isNullable(prod.right[j])) {
-            suffixNullable = false;
-            break;
+    for (const nt of ntTransitions) {
+      const prods = prodsByLhs.get(nt.symbol);
+      if (!prods) continue;
+      const parentKey = ntKey(nt);
+      const startState = this.states[nt.stateId];
+
+      for (const prod of prods) {
+        const rhs = prod.right;
+        const len = rhs.length;
+
+        // Precompute suffix nullability: suffixNullable[i] is true iff rhs[i+1..len-1] is nullable
+        const suffixNullable = new Array<boolean>(len);
+        let nullSoFar = true;
+        for (let i = len - 1; i >= 0; i--) {
+          suffixNullable[i] = nullSoFar;
+          if (nullSoFar && !this.isNullable(rhs[i])) {
+            nullSoFar = false;
           }
         }
-        if (!suffixNullable) continue;
 
-        // Trace prefix β₁ = prod.right[0..i-1] from each state
-        for (const state of this.states) {
-          let cursor: LRState | undefined = state;
-          for (let j = 0; j < i; j++) {
-            cursor = cursor?.transitions.get(prod.right[j]);
-            if (!cursor) break;
+        let cursor: LRState | undefined = startState;
+        for (let i = 0; i < len; i++) {
+          const sym = rhs[i];
+          if (suffixNullable[i] && this.grammar.nonTerminals.has(sym)) {
+            const childKey = ntKey({ stateId: cursor.id, symbol: sym });
+            const inc = includes.get(childKey);
+            if (inc) inc.push(parentKey);
           }
-          if (!cursor || cursor.id !== nt.stateId) continue;
+          cursor = cursor.transitions.get(sym);
+          if (!cursor) break;
+        }
 
-          const parentKey = ntKey({ stateId: state.id, symbol: prod.left });
-          const childKey = ntKey(nt);
-          // INCLUDES edge: child's Follow set includes parent's Follow set
-          // (directed child → parent for the digraph propagation)
-          if (includes.has(childKey)) includes.get(childKey)!.push(parentKey);
+        if (cursor) {
+          const lbKey = `${cursor.id}:${prod.id}`;
+          let lb = lookback.get(lbKey);
+          if (!lb) {
+            lb = [];
+            lookback.set(lbKey, lb);
+          }
+          lb.push(parentKey);
         }
       }
     }
@@ -278,7 +290,7 @@ export class LRAutomaton {
     const readResult = this.digraphPropagate(allKeys, drSets, reads);
     const followResult = this.digraphPropagate(allKeys, readResult, includes);
 
-    // Assign lookaheads to reduce items
+    // Assign lookaheads to reduce items via precomputed lookback edges
     for (const state of this.states) {
       for (const item of state.items) {
         if (item.dot < item.production.right.length) continue;
@@ -287,17 +299,10 @@ export class LRAutomaton {
           continue;
         }
 
-        // Find source states where reading the full RHS lands in this state
-        for (const sourceState of this.states) {
-          let cursor: LRState | undefined = sourceState;
-          for (let i = 0; i < item.production.right.length; i++) {
-            cursor = cursor?.transitions.get(item.production.right[i]);
-            if (!cursor) break;
-          }
-          if (cursor?.id !== state.id) continue;
-
-          const key = ntKey({ stateId: sourceState.id, symbol: item.production.left });
-          const la = followResult.get(key);
+        const lb = lookback.get(`${state.id}:${item.production.id}`);
+        if (!lb) continue;
+        for (const parentKey of lb) {
+          const la = followResult.get(parentKey);
           if (la) for (const sym of la) item.lookahead.add(sym);
         }
       }
@@ -958,14 +963,17 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
     if (pos < pattern.length) {
       if (pattern[pos] === "*") {
         pos++;
+        if (pos < pattern.length && pattern[pos] === "?") pos++;
         return { type: "STAR", child };
       }
       if (pattern[pos] === "+") {
         pos++;
+        if (pos < pattern.length && pattern[pos] === "?") pos++;
         return { type: "PLUS", child };
       }
       if (pattern[pos] === "?") {
         pos++;
+        if (pos < pattern.length && pattern[pos] === "?") pos++;
         return { type: "OPT", child };
       }
       if (pattern[pos] === "{") {
@@ -977,6 +985,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
             const min = parseInt(parts[0], 10);
             const max = parts.length > 1 ? (parts[1].trim() === "" ? Infinity : parseInt(parts[1], 10)) : min;
             pos = endPos + 1;
+            if (pos < pattern.length && pattern[pos] === "?") pos++;
 
             let result: AST | null = null;
             // Add 'min' exact copies
@@ -1040,6 +1049,8 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
             return { isClass: false, char: cp };
           } else if (esc === "d") {
             return { isClass: true, ranges: [[48, 57]] };
+          } else if (esc === "D") {
+            return { isClass: true, ranges: invertRanges([[48, 57]]) };
           } else if (esc === "w") {
             return {
               isClass: true,
@@ -1049,6 +1060,16 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
                 [48, 57],
                 [95, 95],
               ],
+            };
+          } else if (esc === "W") {
+            return {
+              isClass: true,
+              ranges: invertRanges([
+                [65, 90],
+                [97, 122],
+                [48, 57],
+                [95, 95],
+              ]),
             };
           } else if (esc === "s") {
             return {
@@ -1060,7 +1081,18 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
                 [13, 13],
               ],
             };
-          } else if (esc === "n") return { isClass: false, char: 10 };
+          } else if (esc === "S") {
+            return {
+              isClass: true,
+              ranges: invertRanges([
+                [32, 32],
+                [9, 9],
+                [10, 10],
+                [13, 13],
+              ]),
+            };
+          } else if (esc === "0") return { isClass: false, char: 0 };
+          else if (esc === "n") return { isClass: false, char: 10 };
           else if (esc === "r") return { isClass: false, char: 13 };
           else if (esc === "t") return { isClass: false, char: 9 };
           else if (esc === "f") return { isClass: false, char: 12 };
@@ -1121,6 +1153,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
         return { type: "CHAR", char: cp };
       }
       if (esc === "d") return { type: "CLASS", ranges: [[48, 57]], invert: false };
+      if (esc === "D") return { type: "CLASS", ranges: invertRanges([[48, 57]]), invert: false };
       if (esc === "w")
         return {
           type: "CLASS",
@@ -1130,6 +1163,17 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
             [48, 57],
             [95, 95],
           ],
+          invert: false,
+        };
+      if (esc === "W")
+        return {
+          type: "CLASS",
+          ranges: invertRanges([
+            [65, 90],
+            [97, 122],
+            [48, 57],
+            [95, 95],
+          ]),
           invert: false,
         };
       if (esc === "s")
@@ -1143,6 +1187,18 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
           ],
           invert: false,
         };
+      if (esc === "S")
+        return {
+          type: "CLASS",
+          ranges: invertRanges([
+            [32, 32],
+            [9, 9],
+            [10, 10],
+            [13, 13],
+          ]),
+          invert: false,
+        };
+      if (esc === "0") return { type: "CHAR", char: 0 };
       if (esc === "n") return { type: "CHAR", char: 10 };
       if (esc === "r") return { type: "CHAR", char: 13 };
       if (esc === "t") return { type: "CHAR", char: 9 };

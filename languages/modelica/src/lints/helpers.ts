@@ -1644,6 +1644,75 @@ export function isDottedVariableDeclared(
 }
 
 /**
+ * Returns the specific unresolved identifier node inside a component_reference
+ * (e.g. `b` in `a.b.c` if `a` exists and `b` does not, or `a` in `a[1]` if `a` does not exist).
+ */
+export function findUnresolvedComponentIdent(
+  db: CodeGraph,
+  enclosingClass: u32,
+  compRefNode: u32,
+  $: Record<string, u16>,
+): u32 {
+  if (enclosingClass == 0 || compRefNode == 0) return compRefNode;
+
+  let firstIdent: u32 = 0;
+  let nonSubscriptCount: u32 = 0;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+      if (firstIdent == 0) firstIdent = id;
+      nonSubscriptCount++;
+    }
+  }
+
+  if (firstIdent == 0) return compRefNode;
+  if (nonSubscriptCount <= 1) return firstIdent;
+
+  let currClass = enclosingClass;
+  let idx: u32 = 0;
+  let returnNext = false;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    if (id != 0 && !isDescendantOfSubscript(db, id, compRefNode, $)) {
+      if (returnNext) return id;
+      if (idx == nonSubscriptCount - 1) {
+        return id;
+      }
+      let nextClass = resolveComponentClassDefinition(db, currClass, id, $, 0);
+      if (nextClass == 0 && idx == 0) {
+        for (const anc of db.ast.getAncestors(enclosingClass)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            for (const spec of db.ast.getDescendants(anc, $.long_class_specifier)) {
+              const nameId = db.ast.getChildByFieldId(spec, "name");
+              if (nameId != 0 && db.ast.textEqualsNode(id, nameId)) {
+                nextClass = anc;
+                break;
+              }
+              break;
+            }
+            if (nextClass != 0) break;
+          }
+        }
+        if (nextClass == 0) {
+          nextClass = findClassByName(db, id, $);
+        }
+      }
+      if (nextClass == 0) {
+        const compType = findComponentTypeInClass(db, currClass, id, $);
+        if (compType != 0 && resolveBasePrimitiveType(db, compType, $) != TYPE_UNKNOWN) {
+          returnNext = true;
+          idx++;
+          continue;
+        }
+        return id;
+      }
+      currClass = nextClass;
+      idx++;
+    }
+  }
+
+  return firstIdent;
+}
+
+/**
  * Checks if a class is an expandable connector.
  */
 export function isExpandableConnector(db: CodeGraph, clsNode: u32, $: Record<string, u16>): boolean {

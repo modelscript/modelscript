@@ -130,5 +130,35 @@ describe("Gap 2: Dex-Style Trigram Fuzzy Search Tests", () => {
     const exactResults = facade.fuzzyFindSymbols("ResistorModel");
     expect(exactResults.length).toBeGreaterThanOrEqual(1);
     expect(exactResults[0].score).toBeGreaterThanOrEqual(1500); // 1000 exact + 500 prefix + trigram points
+
+    // Repeated trigrams in a symbol name should not create duplicate postings for the same stub
+    facade.registerStub(5, 5, 0, 1, 0, "BananaNanana", 0, 100);
+    facade.indexTrigrams();
+    const anaResults = facade.fuzzyFindSymbols("ana");
+    const bananaMatch = anaResults.find((r: any) => r.stubId === 5);
+    expect(bananaMatch).toBeDefined();
+    expect(bananaMatch.score).toBe(10); // 1 unique trigram 'ana' -> +10 (not +40 from 4 occurrences)
+
+    // SIMD search boundary: exactly 4 stubs (stubIds 1..4 -> totalStubs = 5) must not double-count stub 4
+    facade.clearStubs();
+    for (let i = 1; i <= 4; i++) {
+      facade.registerStub(i, i, 0, 1, 0, `TargetSym_${i}`, 0, 100);
+    }
+    const stub4Hash = facade.exports.stub_findByName ? 0 : 0;
+    const file4Syms = facade.getFileSymbols(4);
+    expect(file4Syms.length).toBe(1);
+    if (facade.exports.stub_findByNameHashSIMD) {
+      const count4 = facade.exports.stub_findByNameHashSIMD(file4Syms[0].nameHash, 0);
+      expect(count4).toBe(1);
+    }
+
+    // Clearing a file must unlink any bound FQN stub mapping from t_fqnToStubMap
+    if (facade.exports.stub_bindFqnStub && facade.exports.stub_stitchParentFQN) {
+      const fqnHash = 0x12345678;
+      facade.exports.stub_bindFqnStub(fqnHash, 1);
+      facade.clearFileStubs(1);
+      const stitched = facade.exports.stub_stitchParentFQN(2, fqnHash);
+      expect(stitched).toBe(0);
+    }
   });
 });

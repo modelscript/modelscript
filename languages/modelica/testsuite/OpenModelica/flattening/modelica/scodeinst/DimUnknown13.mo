@@ -1,7 +1,6 @@
 // name: DimUnknown13
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

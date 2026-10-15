@@ -1,7 +1,6 @@
 // name:     BS9 - Sine component
 // keywords: Sine
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Sine component.
 //

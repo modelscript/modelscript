@@ -74,8 +74,15 @@ export function unwrapNode(node: any): any {
     (node.type === "TopLevelDeclaration" ||
       node.type === "Statement" ||
       node.type === "Expression" ||
-      node.type === "PrimaryExpression")
+      node.type === "PrimaryExpression" ||
+      node.type === "ParenthesizedExpression")
   ) {
+    if (node.type === "ParenthesizedExpression") {
+      const inner = node.childForFieldName ? node.childForFieldName("expression") : node.namedChildren?.[0];
+      if (!inner || inner === node) break;
+      node = inner;
+      continue;
+    }
     let child = null;
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
@@ -185,7 +192,13 @@ export class ModelScriptQueryEngine {
     const node = unwrapNode(rawNode);
     if (!node) return { kind: "unknown" };
 
-    const cacheKey = queryKey("inferExpr", `${node.startIndex}_${node.endIndex}_${node.text}`);
+    const scopeTag =
+      scope.size > 0
+        ? Array.from(scope.entries())
+            .map(([k, v]) => `${k}:${v.kind}`)
+            .join(",")
+        : "";
+    const cacheKey = queryKey("inferExpr", `${node.startIndex}_${node.endIndex}_${node.text}_${scopeTag}`);
     const cached = this.cache.get(cacheKey);
     if (cached && cached.revision === this.globalRevision) {
       return cached.value;
@@ -209,6 +222,16 @@ export class ModelScriptQueryEngine {
         const name = node.text || "";
         if (scope.has(name)) {
           result = scope.get(name)!;
+        }
+        break;
+      }
+      case "UnaryExpression": {
+        const op = node.childForFieldName ? node.childForFieldName("operator")?.text : node.children?.[0]?.text;
+        const operand = node.childForFieldName ? node.childForFieldName("operand") : node.children?.[1];
+        if (op === "!") {
+          result = { kind: "bool" };
+        } else {
+          result = this.inferExpressionType(operand, scope);
         }
         break;
       }

@@ -7,10 +7,11 @@ import { fileURLToPath } from "node:url";
 import type { TreeSitterParser } from "../src-gen/bindings.js";
 import { ScadEvaluator, type ScadEvaluationOptions } from "./evaluator.js";
 import { scadLanguage } from "./language.js";
+import { lintScadCst, type ScadDiagnostic } from "./linter.js";
 import { ScadPatcher } from "./patcher.js";
 
-export { ScadEvaluator, scadLanguage, ScadPatcher };
-export type { ScadEvaluationOptions };
+export { lintScadCst, ScadEvaluator, scadLanguage, ScadPatcher };
+export type { ScadDiagnostic, ScadEvaluationOptions };
 
 let cachedParser: TreeSitterParser | null = null;
 
@@ -38,6 +39,16 @@ export async function getScadParser(): Promise<TreeSitterParser> {
   const { parser } = await createWasmParser(wasmBytes);
   cachedParser = parser;
   return parser;
+}
+
+/**
+ * Parses and semantically lints OpenSCAD source code, returning diagnostics with narrow byte and line/column ranges.
+ */
+export async function lintScad(source: string): Promise<ScadDiagnostic[]> {
+  const parser = await getScadParser();
+  const tree = parser.parse(source);
+  if (!tree) return [];
+  return lintScadCst(tree.rootNode, source);
 }
 
 /**

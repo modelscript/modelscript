@@ -18,10 +18,10 @@ let lastPantelidesEnginePtr: u32 = 0;
 export function runPantelidesIndexReduction(daePtr: u32, bltPtr: u32): u32 {
     if (daePtr == 0) return 0;
     
-    let enginePtr = allocGen0(sizeof<PantelidesEngine>());
+    let enginePtr = allocGen0(offsetof<PantelidesEngine>());
     let engine = changetype<PantelidesEngine>(enginePtr);
     let dae = changetype<DaeBuilder>(daePtr);
-    let blt = bltPtr != 0 ? changetype<BltEngine>(bltPtr) : changetype<BltEngine>(allocGen0(sizeof<BltEngine>()));
+    let blt = bltPtr != 0 ? changetype<BltEngine>(bltPtr) : changetype<BltEngine>(allocGen0(offsetof<BltEngine>()));
     if (bltPtr == 0) blt.init(dae);
     
     engine.init(dae, blt);

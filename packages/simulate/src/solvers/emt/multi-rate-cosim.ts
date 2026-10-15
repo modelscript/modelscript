@@ -39,6 +39,13 @@ export type SlowSystemStepFn = (
   inputs: { vRms: number; iRms: number; pMw: number; qMvar: number },
 ) => Record<string, number>;
 
+export interface FmuCoSimSlave {
+  id: string;
+  setReal(inputs: Record<string, number>): void;
+  doStep(currentCommunicationPoint: number, communicationStepSize: number): boolean;
+  getReal(outputNames: string[]): Record<string, number>;
+}
+
 export class MultiRateCosimOrchestrator {
   public readonly dtFast: number;
   public readonly dtSlow: number;
@@ -105,6 +112,21 @@ export class MultiRateCosimOrchestrator {
     this.pBuffer[this.bufferIdx] = pInst;
 
     this.bufferIdx = (this.bufferIdx + 1) % this.windowSizeSamples;
+
+    // Periodically recompute exact sums once per AC cycle to prevent floating-point drift
+    if (this.bufferIdx === 0) {
+      let sv = 0;
+      let si = 0;
+      let sp = 0;
+      for (let k = 0; k < this.windowSizeSamples; k++) {
+        sv += this.vSquaredBuffer[k]!;
+        si += this.iSquaredBuffer[k]!;
+        sp += this.pBuffer[k]!;
+      }
+      this.sumVSquared = sv;
+      this.sumISquared = si;
+      this.sumP = sp;
+    }
 
     const n = this.windowSizeSamples;
     const vRms = Math.sqrt(Math.max(0, this.sumVSquared / n));
@@ -193,5 +215,22 @@ export class MultiRateCosimOrchestrator {
       reactivePowerMvar: lastQMvar,
       slowOutputs: { ...this.nextSlowOutputs },
     };
+  }
+
+  /**
+   * Advances one macro-step using a standard FMI 2.0/3.0 Co-Simulation slave instance (`FmuCoSimSlave`)
+   * with linear sub-cycle boundary interpolation between the slow FMU communication step (`dtSlow`)
+   * and the fast microsecond EMT step (`dtFast`).
+   */
+  stepMacroWithFmu(
+    stepFastFn: (t: number, slowInputs: Record<string, number>) => { v: number; i: number },
+    fmuSlave: FmuCoSimSlave,
+    outputNames: string[] = ["pSetpointMw", "qSetpointMvar", "iInjected"],
+  ): MacroStepSnapshot {
+    return this.stepMacro(stepFastFn, (tNext, inputs) => {
+      fmuSlave.setReal(inputs);
+      fmuSlave.doStep(tNext - this.dtSlow, this.dtSlow);
+      return fmuSlave.getReal(outputNames);
+    });
   }
 }

@@ -286,10 +286,13 @@ export class ArenaSnapshot {
   activeGeneration: u8;
   gen0_offset: u32;
   gen0_currentChunk: u32;
+  gen0_endLimit: u32;
   gen1_offset: u32;
   gen1_currentChunk: u32;
+  gen1_endLimit: u32;
   gen2_offset: u32;
   gen2_currentChunk: u32;
+  gen2_endLimit: u32;
 }
 
 /**
@@ -298,15 +301,18 @@ export class ArenaSnapshot {
  */
 export function arena_createSnapshot(): u32 {
   let s = S();
-  let ptr = atomicChunkAlloc(sizeof<ArenaSnapshot>());
+  let ptr = atomicChunkAlloc(offsetof<ArenaSnapshot>());
   let snap = changetype<ArenaSnapshot>(ptr);
   snap.activeGeneration = s.activeGeneration;
   snap.gen0_offset = s.gen0_offset;
   snap.gen0_currentChunk = s.gen0_active_chunk;
+  snap.gen0_endLimit = s.gen0_endLimit;
   snap.gen1_offset = s.gen1_offset;
   snap.gen1_currentChunk = s.gen1_active_chunk;
+  snap.gen1_endLimit = s.gen1_endLimit;
   snap.gen2_offset = s.gen2_offset;
   snap.gen2_currentChunk = s.gen2_active_chunk;
+  snap.gen2_endLimit = s.gen2_endLimit;
   return ptr as u32;
 }
 
@@ -320,10 +326,14 @@ export function arena_restoreSnapshot(snapshotPtr: u32): void {
   s.activeGeneration = snap.activeGeneration;
   s.gen0_offset = snap.gen0_offset;
   s.gen0_active_chunk = snap.gen0_currentChunk;
+  s.gen0_endLimit = snap.gen0_endLimit;
   s.gen1_offset = snap.gen1_offset;
   s.gen1_active_chunk = snap.gen1_currentChunk;
+  s.gen1_endLimit = snap.gen1_endLimit;
+  s.arenaOffset = snap.gen1_offset;
   s.gen2_offset = snap.gen2_offset;
   s.gen2_active_chunk = snap.gen2_currentChunk;
+  s.gen2_endLimit = snap.gen2_endLimit;
 
   let offsetVal = snap.activeGeneration == 0 ? snap.gen0_offset : (snap.activeGeneration == 1 ? snap.gen1_offset : snap.gen2_offset);
   s.atomicStoreOffset(offsetVal);
@@ -670,7 +680,7 @@ export function allocAstNode(type: u16, paddingLength: u32, byteLength: u32, env
  * - Leaf node: FNV-1a 64-bit hash over (type, flags, text span).
  * - Interior node: FNV-1a 64-bit hash over (type, flags, children Merkle hashes).
  */
-export function computeNodeMerkleHash(nodeId: u32): u64 {
+export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow != 0 || node.merkleHigh != 0) {
@@ -687,18 +697,36 @@ export function computeNodeMerkleHash(nodeId: u32): u64 {
 
   let child = node.firstChild;
   if (child == 0) {
-    let span = ast_getTextSpan(nodeId);
-    let ptr = (span >> 32) as usize;
-    let len = (span & 0xffffffff) as u32;
-    if (ptr != 0 && len > 0) {
-      for (let i: u32 = 0; i < len; i++) {
-        h ^= load<u8>(ptr + i) as u64;
-        h = h * 0x100000001b3;
+    let span = ast_getTextSpan(nodeId, absoluteStart);
+    if (span != 0) {
+      let ptr = (span >> 32) as usize;
+      let len = (span & 0xffffffff) as u32;
+      let isOverride = (stringArenaPtr != 0 && ptr >= stringArenaPtr && ptr < stringArenaPtr + (stringArenaCapacity as usize));
+      let inBuf = getInputBuffer();
+      if (isOverride || inBuf != 0) {
+        if (!isOverride) {
+          ptr += inBuf;
+        }
+        for (let i: u32 = 0; i < len; i++) {
+          h ^= load<u8>(ptr + i) as u64;
+          h = h * 0x100000001b3;
+        }
       }
     }
   } else {
+    let currOffset = absoluteStart;
+    let isFirst = true;
     while (child != 0) {
-      let cHash = getNodeMerkleHash(child);
+      let childStart: u32 = 0xFFFFFFFF;
+      if (currOffset != 0xFFFFFFFF) {
+        if (!isFirst) {
+          currOffset += getNodePadding(child);
+        }
+        childStart = currOffset;
+        currOffset += getNodeByteLength(child);
+        isFirst = false;
+      }
+      let cHash = getNodeMerkleHashAt(child, childStart);
       h ^= cHash;
       h = h * 0x100000001b3;
       child = getNodeNextSibling(child);
@@ -712,11 +740,15 @@ export function computeNodeMerkleHash(nodeId: u32): u64 {
   return h;
 }
 
+export function computeNodeMerkleHash(nodeId: u32): u64 {
+  return computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+}
+
 export function getNodeMerkleLow(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    computeNodeMerkleHash(nodeId);
+    computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
   }
   return node.merkleLow;
 }
@@ -725,18 +757,22 @@ export function getNodeMerkleHigh(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    computeNodeMerkleHash(nodeId);
+    computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
   }
   return node.merkleHigh;
 }
 
-export function getNodeMerkleHash(nodeId: u32): u64 {
+export function getNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    return computeNodeMerkleHash(nodeId);
+    return computeNodeMerkleHashAt(nodeId, absoluteStart);
   }
   return (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+}
+
+export function getNodeMerkleHash(nodeId: u32): u64 {
+  return getNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
 }
 
 export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
@@ -1067,6 +1103,7 @@ export function rollbackMemory(): void {
     S().gen1_offset = saved_gen_offset;
     S().gen1_active_chunk = saved_gen_active_chunk;
     S().gen1_endLimit = saved_gen_endLimit;
+    S().arenaOffset = saved_gen_offset;
   }
   S().freeNodeHead = saved_freeNodeHead;
   S().fatPaddingCount = saved_fatPaddingCount;
@@ -1204,10 +1241,17 @@ export function getNodeField(ptr: u32, fieldId: u16): u32 {
 }
 
 export function getNodeTextSlice(nodePtr: u32, outBuffer: usize): u32 {
-  let len = getNodeByteLength(nodePtr);
-  if (len == 0 || outBuffer == 0) return 0;
-  let src = getInputBuffer() + getNodePadding(nodePtr);
-  memory.copy(outBuffer, src, len);
+  if (nodePtr == 0 || outBuffer == 0) return 0;
+  let span = ast_getTextSpan(nodePtr);
+  if (span == 0) return 0;
+  let ptr = (span >> 32) as usize;
+  let len = (span & 0xffffffff) as u32;
+  if (len == 0) return 0;
+  let isOverride = (stringArenaPtr != 0 && ptr >= stringArenaPtr && ptr < stringArenaPtr + (stringArenaCapacity as usize));
+  if (!isOverride) {
+    ptr += getInputBuffer();
+  }
+  memory.copy(outBuffer, ptr, len);
   return len;
 }
 
@@ -1359,28 +1403,31 @@ function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
   let byteLen = getNodeByteLength(nodeId);
   let envHash = getNodeEnvHash(nodeId);
   
-  let newPtr = allocNode(type, padding, byteLen, envHash);
+  let newPtr = allocNode(type, padding, byteLen, envHash, false, getNodeStartState(nodeId));
+  setNodeReductionLookahead(newPtr, getNodeReductionLookahead(nodeId));
   
-  // Mark it as a shadow/extracted node so it doesn't get cleared by incremental GC
-  markExtracted(newPtr);
+  // Preserve structural ASTNode flags (FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_LIST_BOUNDARY)
+  // while marking it as a shadow/extracted node so it doesn't get cleared by incremental GC
+  let structuralFlags = (getNodeFlags(nodeId) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED | FLAG_LSP_TRAVERSED);
+  setNodeFlags(newPtr, structuralFlags);
   
   // Map origin provenance for accurate diagnostics
   let origin = ast_getProvenance(nodeId);
-  nodeProvenance.set(newPtr >> 4, origin != 0 ? origin : nodeId);
+  nodeProvenance.set(newPtr >> 5, origin != 0 ? origin : nodeId);
 
-  let typeOverride = nodeOverrideType.get(nodeId >> 4);
+  let typeOverride = nodeOverrideType.get(nodeId >> 5);
   if (typeOverride != OVERRIDE_NONE) {
-    nodeOverrideType.set(newPtr >> 4, typeOverride);
-    if (typeOverride == OVERRIDE_STRING) nodeOverrideStrings.set(newPtr >> 4, nodeOverrideStrings.get(nodeId >> 4));
-    else if (typeOverride == OVERRIDE_FLOAT) nodeOverrideFloats.set(newPtr >> 4, nodeOverrideFloats.get(nodeId >> 4));
-    else if (typeOverride == OVERRIDE_INT) nodeOverrideInts.set(newPtr >> 4, nodeOverrideInts.get(nodeId >> 4));
-    else if (typeOverride == OVERRIDE_TENSOR) nodeTensorHandles.set(newPtr >> 4, nodeTensorHandles.get(nodeId >> 4));
-    else if (typeOverride == OVERRIDE_NODEREF) nodeOverrideRefs.set(newPtr >> 4, nodeOverrideRefs.get(nodeId >> 4));
+    nodeOverrideType.set(newPtr >> 5, typeOverride);
+    if (typeOverride == OVERRIDE_STRING) nodeOverrideStrings.set(newPtr >> 5, nodeOverrideStrings.get(nodeId >> 5));
+    else if (typeOverride == OVERRIDE_FLOAT) nodeOverrideFloats.set(newPtr >> 5, nodeOverrideFloats.get(nodeId >> 5));
+    else if (typeOverride == OVERRIDE_INT) nodeOverrideInts.set(newPtr >> 5, nodeOverrideInts.get(nodeId >> 5));
+    else if (typeOverride == OVERRIDE_TENSOR) nodeTensorHandles.set(newPtr >> 5, nodeTensorHandles.get(nodeId >> 5));
+    else if (typeOverride == OVERRIDE_NODEREF) nodeOverrideRefs.set(newPtr >> 5, nodeOverrideRefs.get(nodeId >> 5));
   }
   
-  let currentFlags = nodeFlags.get(nodeId >> 4);
+  let currentFlags = nodeFlags.get(nodeId >> 5);
   if (currentFlags != 0) {
-    nodeFlags.set(newPtr >> 4, currentFlags);
+    nodeFlags.set(newPtr >> 5, currentFlags);
   }
   
   if (deep) {
@@ -1432,44 +1479,44 @@ export const nodeProvenance = createChunkedUint32Array();
 
 export function ast_getProvenance(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
-  let origin = nodeProvenance.get(nodeId >> 4);
+  let origin = nodeProvenance.get(nodeId >> 5);
   return origin != 0 ? origin : nodeId;
 }
 
 export function ast_setNodeFlag(nodeId: u32, flag: u32): void {
   if (nodeId != 0) {
-    logSideTableMutation(nodeId, 5, nodeFlags.get(nodeId >> 4));
-    nodeFlags.set(nodeId >> 4, nodeFlags.get(nodeId >> 4) | flag);
+    logSideTableMutation(nodeId, 5, nodeFlags.get(nodeId >> 5));
+    nodeFlags.set(nodeId >> 5, nodeFlags.get(nodeId >> 5) | flag);
     ast_markDirty(nodeId);
   }
 }
 
 export function ast_clearNodeFlag(nodeId: u32, flag: u32): void {
   if (nodeId != 0) {
-    logSideTableMutation(nodeId, 5, nodeFlags.get(nodeId >> 4));
-    nodeFlags.set(nodeId >> 4, nodeFlags.get(nodeId >> 4) & ~flag);
+    logSideTableMutation(nodeId, 5, nodeFlags.get(nodeId >> 5));
+    nodeFlags.set(nodeId >> 5, nodeFlags.get(nodeId >> 5) & ~flag);
     ast_markDirty(nodeId);
   }
 }
 
 export function ast_hasNodeFlag(nodeId: u32, flag: u32): boolean {
   if (nodeId == 0) return false;
-  return (nodeFlags.get(nodeId >> 4) & flag) !== 0;
+  return (nodeFlags.get(nodeId >> 5) & flag) !== 0;
 }
 
 export function ast_setLiteralNodeRef(ptr: u32, targetId: u32): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 4));
-    logSideTableMutation(ptr, 4, nodeOverrideRefs.get(ptr >> 4));
-    nodeOverrideRefs.set(ptr >> 4, targetId);
-    nodeOverrideType.set(ptr >> 4, <u8>OVERRIDE_NODEREF);
+    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
+    logSideTableMutation(ptr, 4, nodeOverrideRefs.get(ptr >> 5));
+    nodeOverrideRefs.set(ptr >> 5, targetId);
+    nodeOverrideType.set(ptr >> 5, <u8>OVERRIDE_NODEREF);
     ast_markDirty(ptr);
   }
 }
 
 export function ast_getLiteralNodeRef(ptr: u32): u32 {
-  if (nodeOverrideType.get(ptr >> 4) != OVERRIDE_NODEREF) return 0;
-  return nodeOverrideRefs.get(ptr >> 4);
+  if (nodeOverrideType.get(ptr >> 5) != OVERRIDE_NODEREF) return 0;
+  return nodeOverrideRefs.get(ptr >> 5);
 }
 
 export let stringArenaPtr: usize = 0;
@@ -1492,7 +1539,7 @@ export function ensureStringArena(bytesNeeded: u32 = 4096): void {
 }
 
 export function ast_extractLiteralString(ptr: u32, sourcePtr: usize, lenBytes: u32, encoding: u8): void {
-  if (ptr != 0 && nodeOverrideType.get(ptr >> 4) != OVERRIDE_STRING) {
+  if (ptr != 0 && nodeOverrideType.get(ptr >> 5) != OVERRIDE_STRING) {
     let byteSize = 4 + lenBytes;
     ensureStringArena(byteSize);
     
@@ -1503,8 +1550,8 @@ export function ast_extractLiteralString(ptr: u32, sourcePtr: usize, lenBytes: u
     memory.copy(stringArenaPtr + handle + 4, sourcePtr, lenBytes);
     stringArenaOffset += byteSize;
     
-    nodeOverrideStrings.set(ptr >> 4, handle);
-    nodeOverrideType.set(ptr >> 4, OVERRIDE_STRING);
+    nodeOverrideStrings.set(ptr >> 5, handle);
+    nodeOverrideType.set(ptr >> 5, OVERRIDE_STRING);
     ast_markDirty(ptr);
   }
 }
@@ -1516,8 +1563,8 @@ export function ast_extractLiteralString(ptr: u32, sourcePtr: usize, lenBytes: u
  */
 export function ast_setLiteralString(ptr: u32, val: string): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 4));
-    logSideTableMutation(ptr, 2, nodeOverrideStrings.get(ptr >> 4));
+    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
+    logSideTableMutation(ptr, 2, nodeOverrideStrings.get(ptr >> 5));
     let lenBytes = val.length << 1;
     let byteSize = 4 + lenBytes;
     ensureStringArena(byteSize);
@@ -1527,8 +1574,8 @@ export function ast_setLiteralString(ptr: u32, val: string): void {
     memory.copy(stringArenaPtr + handle + 4, changetype<usize>(val), lenBytes);
     stringArenaOffset += byteSize;
     
-    nodeOverrideStrings.set(ptr >> 4, handle);
-    nodeOverrideType.set(ptr >> 4, OVERRIDE_STRING);
+    nodeOverrideStrings.set(ptr >> 5, handle);
+    nodeOverrideType.set(ptr >> 5, OVERRIDE_STRING);
     ast_markDirty(ptr);
   }
 }
@@ -1550,20 +1597,20 @@ export function arena_allocStringBytes(srcPtr: usize, lenBytes: u32): u32 {
 
 export function ast_setLiteralFloat(ptr: u32, val: f64): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 4));
-    logFloatMutation(ptr, nodeOverrideFloats.get(ptr >> 4));
-    nodeOverrideFloats.set(ptr >> 4, val);
-    nodeOverrideType.set(ptr >> 4, OVERRIDE_FLOAT);
+    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
+    logFloatMutation(ptr, nodeOverrideFloats.get(ptr >> 5));
+    nodeOverrideFloats.set(ptr >> 5, val);
+    nodeOverrideType.set(ptr >> 5, OVERRIDE_FLOAT);
     ast_markDirty(ptr);
   }
 }
 
 export function ast_setLiteralInt(ptr: u32, val: i32): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 4));
-    logSideTableMutation(ptr, 3, nodeOverrideInts.get(ptr >> 4) as u32);
-    nodeOverrideInts.set(ptr >> 4, val);
-    nodeOverrideType.set(ptr >> 4, OVERRIDE_INT);
+    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
+    logSideTableMutation(ptr, 3, nodeOverrideInts.get(ptr >> 5) as u32);
+    nodeOverrideInts.set(ptr >> 5, val);
+    nodeOverrideType.set(ptr >> 5, OVERRIDE_INT);
     ast_markDirty(ptr);
   }
 }
@@ -1575,9 +1622,9 @@ export function ast_setLiteralInt(ptr: u32, val: i32): void {
 export function ast_getTextSpan(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 {
   if (ptr == 0) return 0;
   
-  let type = nodeOverrideType.get(ptr >> 4);
+  let type = nodeOverrideType.get(ptr >> 5);
   if (type == OVERRIDE_STRING) {
-    let handle = nodeOverrideStrings.get(ptr >> 4);
+    let handle = nodeOverrideStrings.get(ptr >> 5);
     let lenBytes = load<u32>(stringArenaPtr + handle) & 0x7FFFFFFF;
     let start = stringArenaPtr + handle + 4;
     return (u64(start) << 32) | u64(lenBytes);
@@ -1666,25 +1713,29 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
 
   let lenA = (spanA & 0xFFFFFFFF) as u32;
   let lenB = (spanB & 0xFFFFFFFF) as u32;
-  let strArenaCap = stringArenaCapacity;
-  let startA = (spanA >> 32) as u32;
-  let startB = (spanB >> 32) as u32;
-  let endA = startA + lenA;
-  let endB = startB + lenB;
-  if (startA >= strArenaCap || startB >= strArenaCap) return false;
-  if (endA > strArenaCap) { endA = strArenaCap; lenA = endA - startA; }
-  if (endB > strArenaCap) { endB = strArenaCap; lenB = endB - startB; }
-
   if (lenA != lenB) return false;
 
-  let ptrA = startA;
-  let ptrB = startB;
+  let ptrA = (spanA >> 32) as u32;
+  let ptrB = (spanB >> 32) as u32;
 
   let isOverrideA = (stringArenaPtr != 0 && ptrA >= (stringArenaPtr as u32) && ptrA < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
   let isOverrideB = (stringArenaPtr != 0 && ptrB >= (stringArenaPtr as u32) && ptrB < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
 
-  if (!isOverrideA) ptrA += getInputBuffer() as u32;
-  if (!isOverrideB) ptrB += getInputBuffer() as u32;
+  let inBufCap = S().currentInputBufferSize;
+  if (!isOverrideA) {
+    if (ptrA >= inBufCap || ptrA + lenA > inBufCap) return false;
+    ptrA += getInputBuffer() as u32;
+  } else {
+    let arenaEnd = (stringArenaPtr as u32) + (stringArenaCapacity as u32);
+    if (ptrA + lenA > arenaEnd) return false;
+  }
+  if (!isOverrideB) {
+    if (ptrB >= inBufCap || ptrB + lenB > inBufCap) return false;
+    ptrB += getInputBuffer() as u32;
+  } else {
+    let arenaEnd = (stringArenaPtr as u32) + (stringArenaCapacity as u32);
+    if (ptrB + lenB > arenaEnd) return false;
+  }
 
   let ptrA_arr = changetype<UnmanagedUint8Array>(ptrA);
   let ptrB_arr = changetype<UnmanagedUint8Array>(ptrB);
@@ -1802,14 +1853,14 @@ export function replayUndoLog(): void {
     let tableId = t_sideTableUndoLog.get(len + 1);
     let nodeId = t_sideTableUndoLog.get(len);
     
-    if (tableId == 1) nodeOverrideType.set(nodeId >> 4, oldValue as u8);
-    else if (tableId == 2) nodeOverrideStrings.set(nodeId >> 4, oldValue);
-    else if (tableId == 3) nodeOverrideInts.set(nodeId >> 4, oldValue as i32);
-    else if (tableId == 4) nodeOverrideRefs.set(nodeId >> 4, oldValue);
-    else if (tableId == 5) nodeFlags.set(nodeId >> 4, oldValue);
-    else if (tableId == 6) nodeProvenance.set(nodeId >> 4, oldValue);
-    else if (tableId == 7) nodeTensorHandles.set(nodeId >> 4, oldValue);
-    else if (tableId == 8) nodeOverrideFloats.set(nodeId >> 4, t_floatUndoLog.get(oldValue));
+    if (tableId == 1) nodeOverrideType.set(nodeId >> 5, oldValue as u8);
+    else if (tableId == 2) nodeOverrideStrings.set(nodeId >> 5, oldValue);
+    else if (tableId == 3) nodeOverrideInts.set(nodeId >> 5, oldValue as i32);
+    else if (tableId == 4) nodeOverrideRefs.set(nodeId >> 5, oldValue);
+    else if (tableId == 5) nodeFlags.set(nodeId >> 5, oldValue);
+    else if (tableId == 6) nodeProvenance.set(nodeId >> 5, oldValue);
+    else if (tableId == 7) nodeTensorHandles.set(nodeId >> 5, oldValue);
+    else if (tableId == 8) nodeOverrideFloats.set(nodeId >> 5, t_floatUndoLog.get(oldValue));
   }
   
   t_sideTableUndoLog.clear();
@@ -2012,7 +2063,7 @@ export function getNthChild(node: u32, n: u32): u32 {
 // ----------------------------------------------------------------------------
 
 let tensorArenaPtr: usize = 0;
-let tensorArenaOffset: u32 = 0;
+let tensorArenaOffset: u32 = 16;
 let tensorArenaCapacity: u32 = 1024 * 1024; // 1MB initial allocation
 
 /**
@@ -2101,6 +2152,7 @@ export class TensorHeader {
 
 /** Universal N-Dimensional Tensor Allocation */
 export function ast_createTensor(type: u32, rank: u32, elementCount: u32): u32 {
+  if (tensorArenaOffset == 0) tensorArenaOffset = 16;
   // align base handle to 16 bytes for safe WebGPU and SIMD access
   tensorArenaOffset = (tensorArenaOffset + 15) & ~15;
   let handle = tensorArenaOffset;
@@ -2176,18 +2228,18 @@ export function ast_getTensorBool(h: u32, i: u32): boolean { return load<u8>(get
 /** Binds a Tensor Handle to an AST Node using the O(1) side-table */
 export function ast_setLiteralTensor(nodeId: u32, handle: u32): void {
   if (nodeId != 0) {
-    logSideTableMutation(nodeId, 1, nodeOverrideType.get(nodeId >> 4));
-    logSideTableMutation(nodeId, 7, nodeTensorHandles.get(nodeId >> 4));
-    nodeTensorHandles.set(nodeId >> 4, handle);
-    nodeOverrideType.set(nodeId >> 4, <u8>OVERRIDE_TENSOR);
+    logSideTableMutation(nodeId, 1, nodeOverrideType.get(nodeId >> 5));
+    logSideTableMutation(nodeId, 7, nodeTensorHandles.get(nodeId >> 5));
+    nodeTensorHandles.set(nodeId >> 5, handle);
+    nodeOverrideType.set(nodeId >> 5, <u8>OVERRIDE_TENSOR);
     ast_markDirty(nodeId);
   }
 }
 
 /** Retrieves the Tensor Handle bound to an AST Node, or 0 if none */
 export function ast_getLiteralTensor(nodeId: u32): u32 {
-  if (nodeOverrideType.get(nodeId >> 4) != OVERRIDE_TENSOR) return 0;
-  return nodeTensorHandles.get(nodeId >> 4);
+  if (nodeOverrideType.get(nodeId >> 5) != OVERRIDE_TENSOR) return 0;
+  return nodeTensorHandles.get(nodeId >> 5);
 }
 
 // ----------------------------------------------------------------------------
@@ -2195,28 +2247,27 @@ export function ast_getLiteralTensor(nodeId: u32): u32 {
 // ----------------------------------------------------------------------------
 
 export function ast_getTensorType(nodeId: u32): u32 {
-  let handle = nodeTensorHandles.get(nodeId >> 4);
+  let handle = nodeTensorHandles.get(nodeId >> 5);
   if (handle == 0) return 0; // defaults to Float64
   return TensorHeader.at(tensorArenaPtr + handle).type;
 }
 
 export function ast_getTensorDimensions(nodeId: u32): u32 {
-  let handle = nodeTensorHandles.get(nodeId >> 4);
+  let handle = nodeTensorHandles.get(nodeId >> 5);
   if (handle == 0) return 0;
   return TensorHeader.at(tensorArenaPtr + handle).rank;
 }
 
 export function ast_getTensorShapePtr(nodeId: u32): usize {
-  let handle = nodeTensorHandles.get(nodeId >> 4);
+  let handle = nodeTensorHandles.get(nodeId >> 5);
   if (handle == 0) return 0;
-  return tensorArenaPtr + handle + 12;
+  return tensorArenaPtr + handle + 16;
 }
 
 export function ast_getTensorDataPtr(nodeId: u32): usize {
-  let handle = nodeTensorHandles.get(nodeId >> 4);
+  let handle = nodeTensorHandles.get(nodeId >> 5);
   if (handle == 0) return 0;
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  return tensorArenaPtr + handle + 12 + (dims * 4);
+  return tensorArenaPtr + handle + TensorHeader.at(tensorArenaPtr + handle).alignedHeaderSize;
 }
 
 // ----------------------------------------------------------------------------
@@ -2343,7 +2394,7 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
   
   if (hash == 0) hash = 1; // Reserve 0 for empty slot
   
-  let tableOffset = nodeScopes.get(parentId >> 4);
+  let tableOffset = nodeScopes.get(parentId >> 5);
   if (tableOffset == 0) {
     // Initialize a new linear open-addressing hash table for this parent.
     // Memory layout: 
@@ -2358,7 +2409,7 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
     scopeArenaPtr[(tableOffset + 4) >> 2] = 0;
     memory.fill(changetype<usize>(scopeArenaPtr) + tableOffset + 8, 0, cap * 8);
     scopeArenaOffset += byteSize;
-    nodeScopes.set(parentId >> 4, tableOffset);
+    nodeScopes.set(parentId >> 5, tableOffset);
   }
   
   let capacity = scopeArenaPtr[(tableOffset) >> 2];
@@ -2395,7 +2446,7 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
       }
     }
     tableOffset = newTableOffset;
-    nodeScopes.set(parentId >> 4, tableOffset);
+    nodeScopes.set(parentId >> 5, tableOffset);
     capacity = newCap;
   }
   
@@ -2425,7 +2476,7 @@ export function ast_bindChildNode(parentId: u32, nameNodeId: u32, childId: u32, 
 /** Resolves a child node by its exact 32-bit hash in O(1) time. */
 export function ast_resolveChildByHash(parentId: u32, hash: u32): u32 {
   if (parentId == 0) return 0;
-  let tableOffset = nodeScopes.get(parentId >> 4);
+  let tableOffset = nodeScopes.get(parentId >> 5);
   if (tableOffset == 0) return 0;
   
   if (hash == 0) hash = 1;

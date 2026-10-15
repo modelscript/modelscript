@@ -1146,6 +1146,7 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
+  readonly _encMult: number;
   private _mem32;
   get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
@@ -1448,14 +1449,14 @@ export declare enum SyntaxKind {
   annotation_clause = 185,
   START = 186,
   _START = 186,
-  Identifier = 342,
-  identifier = 342,
-  StringLiteral = 343,
-  string_literal = 343,
-  UnsignedInteger = 344,
-  unsigned_integer = 344,
-  UnsignedReal = 345,
-  unsigned_real = 345,
+  Identifier = 351,
+  identifier = 351,
+  StringLiteral = 352,
+  string_literal = 352,
+  UnsignedInteger = 353,
+  unsigned_integer = 353,
+  UnsignedReal = 354,
+  unsigned_real = 354,
   EOF = 1023,
 }
 
@@ -1498,74 +1499,76 @@ export declare enum FieldId {
   alias = 18,
   ImportList = 19,
   import_list = 19,
-  TypePrefix = 20,
-  type_prefix = 20,
-  ComponentList = 21,
-  component_list = 21,
-  ComponentDeclaration = 22,
-  component_declaration = 22,
-  Declaration = 23,
-  declaration = 23,
-  Modification = 24,
-  modification = 24,
+  Modification = 20,
+  modification = 20,
+  TypePrefix = 21,
+  type_prefix = 21,
+  ComponentList = 22,
+  component_list = 22,
+  ComponentDeclaration = 23,
+  component_declaration = 23,
+  Declaration = 24,
+  declaration = 24,
   ModificationExpression = 25,
   modification_expression = 25,
   IsEach = 26,
   is_each = 26,
-  Replaceable = 27,
-  replaceable = 27,
-  ComponentClause1 = 28,
-  component_clause1 = 28,
-  ElementReplaceable = 29,
-  element_replaceable = 29,
-  Lhs = 30,
-  lhs = 30,
-  Rhs = 31,
-  rhs = 31,
-  Target = 32,
-  target = 32,
-  Value = 33,
-  value = 33,
-  Args = 34,
-  args = 34,
-  Condition = 35,
-  condition = 35,
-  Body = 36,
-  body = 36,
-  ElseCondition = 37,
-  elseCondition = 37,
-  ElseBody = 38,
-  elseBody = 38,
-  FinalBody = 39,
-  finalBody = 39,
-  Indices = 40,
-  indices = 40,
-  Variable = 41,
-  variable = 41,
-  Range = 42,
-  range = 42,
-  Left = 43,
-  left = 43,
-  Right = 44,
-  right = 44,
-  Operand = 45,
-  operand = 45,
-  Callee = 46,
-  callee = 46,
-  Argument = 47,
-  argument = 47,
-  Expression = 48,
-  expression = 48,
-  Subscripts = 49,
-  subscripts = 49,
-  Member = 50,
-  member = 50,
-  Rows = 51,
-  rows = 51,
-  Arguments = 52,
-  arguments = 52,
-  Flexible = 53,
-  flexible = 53,
+  IsFinal = 27,
+  is_final = 27,
+  Replaceable = 28,
+  replaceable = 28,
+  ComponentClause1 = 29,
+  component_clause1 = 29,
+  ElementReplaceable = 30,
+  element_replaceable = 30,
+  Lhs = 31,
+  lhs = 31,
+  Rhs = 32,
+  rhs = 32,
+  Target = 33,
+  target = 33,
+  Value = 34,
+  value = 34,
+  Args = 35,
+  args = 35,
+  Condition = 36,
+  condition = 36,
+  Body = 37,
+  body = 37,
+  ElseCondition = 38,
+  elseCondition = 38,
+  ElseBody = 39,
+  elseBody = 39,
+  FinalBody = 40,
+  finalBody = 40,
+  Indices = 41,
+  indices = 41,
+  Variable = 42,
+  variable = 42,
+  Range = 43,
+  range = 43,
+  Left = 44,
+  left = 44,
+  Right = 45,
+  right = 45,
+  Operand = 46,
+  operand = 46,
+  Callee = 47,
+  callee = 47,
+  Argument = 48,
+  argument = 48,
+  Expression = 49,
+  expression = 49,
+  Subscripts = 50,
+  subscripts = 50,
+  Member = 51,
+  member = 51,
+  Rows = 52,
+  rows = 52,
+  Arguments = 53,
+  arguments = 53,
+  Flexible = 54,
+  flexible = 54,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -2105,6 +2108,8 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ConstrainingClauseNode;
     typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ClassOrInheritanceModification: {
     readonly typeId: number;
@@ -2206,6 +2211,8 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ElementModificationOrReplaceableNode;
     isEach(node: SyntaxNode | null | undefined): SyntaxNode | null;
     isEachList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    isFinal(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    isFinalList(node: SyntaxNode | null | undefined): SyntaxNode[];
     modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
     modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
     replaceable(node: SyntaxNode | null | undefined): SyntaxNode | null;
@@ -2219,8 +2226,6 @@ export declare namespace Cst {
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
     modification(node: SyntaxNode | null | undefined): SyntaxNode | null;
     modificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ElementRedeclaration: {
     readonly typeId: number;
@@ -2228,6 +2233,8 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ElementRedeclarationNode;
     isEach(node: SyntaxNode | null | undefined): SyntaxNode | null;
     isEachList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    isFinal(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    isFinalList(node: SyntaxNode | null | undefined): SyntaxNode[];
     classDefinition(node: SyntaxNode | null | undefined): SyntaxNode | null;
     classDefinitionList(node: SyntaxNode | null | undefined): SyntaxNode[];
     componentClause1(node: SyntaxNode | null | undefined): SyntaxNode | null;
@@ -2517,8 +2524,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ComponentReferenceNode;
-    arraySubscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    arraySubscriptsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ResultReference: {
     readonly typeId: number;
@@ -2602,8 +2607,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DescriptionNode;
-    description(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    descriptionList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const DescriptionString: {
     readonly typeId: number;

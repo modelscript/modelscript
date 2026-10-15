@@ -33,7 +33,10 @@ export interface PscxComponent {
   rotation?: number | undefined; // 0, 90, 180, 270
   mirror?: boolean | undefined;
   parameters: Record<string, string | number>;
+  paramLocations?: Record<string, { line: number; column: number }> | undefined;
   ports: PscxPort[];
+  line?: number | undefined;
+  column?: number | undefined;
 }
 
 export interface PscxWire {
@@ -48,7 +51,10 @@ export interface PscxBus {
   voltageBaseKv?: number | undefined;
   position: Point2D;
   length?: number | undefined;
+  vertices?: Point2D[] | undefined;
   phaseCount: number; // 1 or 3
+  line?: number | undefined;
+  column?: number | undefined;
 }
 
 export interface PscxSticky {
@@ -110,6 +116,10 @@ export interface EmtBranch {
   inductanceH: number;
   capacitanceF: number;
   status?: "open" | "closed" | undefined;
+  openTimeSec?: number | undefined;
+  closeTimeSec?: number | undefined;
+  choppingCurrentAmp?: number | undefined;
+  singlePoleTripPhase?: 0 | 1 | 2 | undefined;
   metadata?: Record<string, any> | undefined;
 }
 
@@ -134,6 +144,12 @@ export interface EmtTransmissionLine {
   lPerKm: number;
   cPerKm: number;
   modelType: "bergeron" | "pi" | "fdpm";
+  isCable?: boolean | undefined;
+  coreRadiusM?: number | undefined;
+  insulationRadiusM?: number | undefined;
+  insulationEpsR?: number | undefined;
+  burialDepthM?: number | undefined;
+  soilResistivityOhmM?: number | undefined;
 }
 
 export interface EmtFmuInstance {
@@ -146,12 +162,108 @@ export interface EmtFmuInstance {
   controlMode: "grid_following" | "grid_forming";
 }
 
+export interface EmtSource {
+  id: string;
+  name: string;
+  bus: string;
+  vPeakKv: number;
+  frequencyHz: number;
+  phaseRad: number;
+  mvaRating: number;
+  rSourceOhm?: number | undefined;
+  lSourceH?: number | undefined;
+}
+
+export interface EmtFault {
+  id: string;
+  bus: string;
+  faultType: "SLG" | "LL" | "DLG" | "3PH";
+  startSec: number;
+  endSec: number;
+  rFaultOhm?: number | undefined;
+}
+
+export interface EmtSurgeArrester {
+  id: string;
+  fromBus: string;
+  toBus: string;
+  vRefKv: number;
+}
+
+export interface EmtSynchronousMachine {
+  id: string;
+  bus: string;
+  ratedMva: number;
+  ratedKvLL: number;
+  frequencyHz: number;
+  xd?: number | undefined;
+  xq?: number | undefined;
+  xdPrime?: number | undefined;
+  xqPrime?: number | undefined;
+  xdSub?: number | undefined;
+  xqSub?: number | undefined;
+  hInertiaSec?: number | undefined;
+  dampingPu?: number | undefined;
+  mechanicalPowerPu?: number | undefined;
+  fieldVoltagePu?: number | undefined;
+}
+
+export interface EmtInductionMachine {
+  id: string;
+  bus: string;
+  ratedMva: number;
+  ratedKvLL: number;
+  frequencyHz: number;
+  machineType?: "squirrel_cage" | "dfig" | undefined;
+  rsPu?: number | undefined;
+  xsPu?: number | undefined;
+  xmPu?: number | undefined;
+  rrPu?: number | undefined;
+  xrPu?: number | undefined;
+  hInertiaSec?: number | undefined;
+  dampingPu?: number | undefined;
+  mechanicalTorquePu?: number | undefined;
+  initialSlip?: number | undefined;
+  vRotorDPu?: number | undefined;
+  vRotorQPu?: number | undefined;
+  crowbarResistancePu?: number | undefined;
+  crowbarTriggerCurrentPu?: number | undefined;
+}
+
+export interface EmtConverterBridge {
+  id: string;
+  acBus: string;
+  kind: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin";
+  ratedKvLL: number;
+  ratedMva: number;
+  vDcNominalKv?: number | undefined;
+  carrierFreqHz?: number | undefined;
+  firingAngleDeg?: number | undefined;
+  numSubmodulesPerArm?: number | undefined;
+  submoduleCapacitanceF?: number | undefined;
+  armInductanceH?: number | undefined;
+}
+
+export interface EmtControlBlock {
+  id: string;
+  kind: "const" | "gain" | "sum" | "pi" | "lag" | "leadlag" | "limit" | "compar";
+  inputs: string[];
+  params: Record<string, number>;
+}
+
 export interface EmtNetlist {
   buses: Map<string, EmtBus>;
   branches: EmtBranch[];
   transformers: EmtTransformer[];
   transmissionLines: EmtTransmissionLine[];
   fmuInstances: EmtFmuInstance[];
+  sources: EmtSource[];
+  faults?: EmtFault[] | undefined;
+  surgeArresters?: EmtSurgeArrester[] | undefined;
+  synchronousMachines?: EmtSynchronousMachine[] | undefined;
+  inductionMachines?: EmtInductionMachine[] | undefined;
+  converterBridges?: EmtConverterBridge[] | undefined;
+  controlBlocks?: EmtControlBlock[] | undefined;
   nominalFrequencyHz: number;
 }
 
@@ -168,4 +280,6 @@ export interface PscadDiagnostic {
   busId?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
+  endLine?: number | undefined;
+  endColumn?: number | undefined;
 }

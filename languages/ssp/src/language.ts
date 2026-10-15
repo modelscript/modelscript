@@ -13,9 +13,9 @@ import { parseSsd } from "./ssd-parser.js";
 
 export const sspLanguage = language({
   name: "ssp",
-  fileExtensions: [".ssp", ".ssd"],
+  fileExtensions: [".ssp", ".ssd", ".ssv"],
   lsp: {
-    fileExtensions: [".ssp", ".ssd"],
+    fileExtensions: [".ssp", ".ssd", ".ssv"],
     icons: {
       light: "./assets/ssp/icon-light.png",
       dark: "./assets/ssp/icon-dark.png",

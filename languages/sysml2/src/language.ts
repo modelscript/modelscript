@@ -324,7 +324,7 @@ function resolveQualifiedPath(db: QueryDB, roots: SymbolEntry[], segments: strin
 
 /**
  * Resolve a feature reference name within a scope.
- * Searches: (1) multi-segment qualified names, (2) direct scope children, (3) inherited members, (4) imported members/namespaces, (5) global byName.
+ * Searches: (1) multi-segment qualified names, (2) dot-separated feature paths, (3) direct scope children, (4) inherited members, (5) imported members/namespaces, (6) global byName.
  */
 const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string): SymbolEntry | null => {
   // 1. Multi-segment qualified name lookup (e.g. "ScalarValues::Real", "A::B::C::D")
@@ -357,6 +357,26 @@ const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string
 
     const resolved = resolveQualifiedPath(db, rootCandidates, rest);
     if (resolved) return resolved;
+  }
+
+  // 1b. Dot-separated feature path lookup (e.g. "engine.fuelIn", "a.b.c")
+  if (name.includes(".")) {
+    const segments = name.split(".");
+    let curr = resolveFeatureInScope(db, scopeId, segments[0]!);
+    if (!curr) return null;
+    for (let i = 1; i < segments.length; i++) {
+      const seg = segments[i]!;
+      let next: SymbolEntry | null = db.childrenOf(curr.id).find((c) => c.name === seg) ?? null;
+      if (!next) {
+        const typeDef = resolveTypeOf(db, curr);
+        if (typeDef) {
+          next = resolveQualifiedPath(db, [typeDef], [seg]);
+        }
+      }
+      if (!next) return null;
+      curr = next;
+    }
+    return curr;
   }
 
   // 2. Search enclosing scope's children, inheritance, and imports up the scope chain
@@ -1520,6 +1540,7 @@ const definitionLints = {
     if (db.childrenOf(self.id).length === 0) {
       return info(SysML2ErrorCode.EMPTY_DEFINITION.message(self.name), {
         code: SysML2ErrorCode.EMPTY_DEFINITION.code,
+        field: "declaredName",
       });
     }
     return null;
@@ -1529,11 +1550,29 @@ const definitionLints = {
     const seen = new Map<string, SymbolEntry>();
     for (const child of db.childrenOf(self.id)) {
       if (!child.name || child.name === "<anonymous>") continue;
+      if (
+        child.kind === "Specialization" ||
+        child.kind === "Import" ||
+        child.kind === "Reference" ||
+        child.ruleName === "OwnedSubclassification" ||
+        child.ruleName === "OwnedFeatureTyping" ||
+        child.ruleName === "OwnedRedefinition" ||
+        child.ruleName === "OwnedSubsetting" ||
+        child.ruleName === "SatisfyRequirementUsage" ||
+        child.ruleName === "VerifyRequirementUsage" ||
+        child.ruleName === "IncludeUseCaseUsage"
+      ) {
+        continue;
+      }
       const prev = seen.get(child.name);
       if (prev) {
+        const dupRange = child.fieldRanges?.["declaredName"] ?? child.fieldRanges?.["name"];
         return warning(SysML2ErrorCode.DUPLICATE_MEMBER.message(child.name, self.name), {
           code: SysML2ErrorCode.DUPLICATE_MEMBER.code,
           field: "declaredName",
+          ...(dupRange
+            ? { startByte: dupRange.startByte, endByte: dupRange.endByte }
+            : { startByte: child.startByte, endByte: child.endByte }),
         });
       }
       seen.set(child.name, child);
@@ -1542,29 +1581,37 @@ const definitionLints = {
   },
   /** Error when a definition's superclassifier chain creates a cycle. */
   circularSpecialization: (db: QueryDB, self: SymbolEntry) => {
-    const visited = new Set<string>();
-    visited.add(self.name);
+    if (!self.name) return null;
+    const queue: string[] = [];
     for (const child of db.childrenOf(self.id)) {
-      if (child.ruleName !== "OwnedSubclassification" || !child.name) continue;
-      // Walk up the specialization chain
-      let current = child.name;
-      const chain = new Set<string>([current]);
-      while (current) {
-        const targets = db.byName(current);
-        const target = targets.find((t) => t.kind === "Definition");
-        if (!target) break;
-        if (visited.has(target.name)) {
-          return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
-            code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
-            field: "declaredName",
-          });
+      if (child.ruleName === "OwnedSubclassification" && child.name) {
+        queue.push(child.name);
+      }
+    }
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current === self.name) {
+        return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+          code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
+          field: "declaredName",
+        });
+      }
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const targets = db.byName(current);
+      const target = targets.find((t) => t.kind === "Definition");
+      if (!target) continue;
+      if (target.name === self.name) {
+        return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+          code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
+          field: "declaredName",
+        });
+      }
+      for (const sc of db.childrenOf(target.id)) {
+        if (sc.ruleName === "OwnedSubclassification" && sc.name) {
+          queue.push(sc.name);
         }
-        // Find the target's superclassifiers
-        const superRefs = db.childrenOf(target.id).filter((c) => c.ruleName === "OwnedSubclassification" && c.name);
-        if (superRefs.length === 0) break;
-        current = superRefs[0].name;
-        if (chain.has(current)) break; // prevent infinite loop
-        chain.add(current);
       }
     }
     return null;
@@ -1574,6 +1621,15 @@ const definitionLints = {
 /** Shared lint rules for all Usage rules */
 const usageLints = {
   usageNaming: (_db: QueryDB, self: SymbolEntry) => {
+    if (
+      self.ruleName === "SatisfyRequirementUsage" ||
+      self.ruleName === "VerifyRequirementUsage" ||
+      self.ruleName === "IncludeUseCaseUsage" ||
+      self.ruleName === "AllocationUsage" ||
+      self.ruleName === "AllocateUsage"
+    ) {
+      return null;
+    }
     if (self.name && self.name !== self.ruleName && /^[A-Z]/.test(self.name)) {
       return warning(SysML2ErrorCode.USAGE_NAMING.message(self.name), {
         code: SysML2ErrorCode.USAGE_NAMING.code,
@@ -1736,37 +1792,40 @@ const requirementLints = {
     return null;
   },
   cyclicSatisfaction: (db: QueryDB, self: SymbolEntry) => {
+    if (!self.name) return null;
     const satisfyUsages = db.childrenOf(self.id).filter((c) => c.ruleName === "SatisfyRequirementUsage");
-    const visited = new Set<string>();
-    if (self.name) visited.add(self.name);
-
+    const queue: string[] = [];
     for (const satisfy of satisfyUsages) {
       const targetName = getRelationshipTargetName(db, satisfy);
-      if (!targetName) continue;
-      let current = targetName;
-      const chain = new Set<string>([current]);
-
-      while (current) {
-        const targets = db.byName(current);
-        const reqTarget = targets.find(
-          (t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage",
-        );
-        if (!reqTarget) break;
-
-        if (visited.has(reqTarget.name)) {
-          return error(SysML2ErrorCode.CYCLIC_SATISFACTION.message(self.name), {
-            code: SysML2ErrorCode.CYCLIC_SATISFACTION.code,
-            field: "declaredName",
-          });
+      if (targetName) queue.push(targetName);
+    }
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current === self.name) {
+        return error(SysML2ErrorCode.CYCLIC_SATISFACTION.message(self.name), {
+          code: SysML2ErrorCode.CYCLIC_SATISFACTION.code,
+          field: "declaredName",
+        });
+      }
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const targets = db.byName(current);
+      const reqTarget = targets.find(
+        (t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage",
+      );
+      if (!reqTarget) continue;
+      if (reqTarget.name === self.name) {
+        return error(SysML2ErrorCode.CYCLIC_SATISFACTION.message(self.name), {
+          code: SysML2ErrorCode.CYCLIC_SATISFACTION.code,
+          field: "declaredName",
+        });
+      }
+      for (const nextSat of db.childrenOf(reqTarget.id)) {
+        if (nextSat.ruleName === "SatisfyRequirementUsage") {
+          const nextTarget = getRelationshipTargetName(db, nextSat);
+          if (nextTarget) queue.push(nextTarget);
         }
-
-        const nextSatisfies = db.childrenOf(reqTarget.id).filter((c) => c.ruleName === "SatisfyRequirementUsage");
-        if (nextSatisfies.length === 0) break;
-        const nextTarget = getRelationshipTargetName(db, nextSatisfies[0]);
-        if (!nextTarget) break;
-        current = nextTarget;
-        if (chain.has(current)) break;
-        chain.add(current);
       }
     }
     return null;
@@ -1818,7 +1877,7 @@ const satisfyRequirementLints = {
     if (!reqTarget) return null;
     const constraintsMet = evaluateConstraintsMet(db, reqTarget);
     if (constraintsMet === false) {
-      return warning(`Satisfying '${targetName}' whose constraints evaluate to false`);
+      return warning(`Satisfying '${targetName}' whose constraints evaluate to false`, { field: "declaredName" });
     }
     return null;
   },
@@ -1923,23 +1982,80 @@ const verificationCaseUsageLints = {
   },
 };
 
+const getAllocationEndpointName = (db: QueryDB, ref: SymbolEntry): string => {
+  if (ref.name && ref.name !== "OwnedReferenceSubsetting" && !ref.name.includes(".")) {
+    const raw = (db.cstText(ref.startByte, ref.endByte) || "").trim();
+    if (raw.includes(".")) return raw;
+    return ref.name.trim();
+  }
+  if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
+    return ref.name.trim();
+  }
+  return (db.cstText(ref.startByte, ref.endByte) || "").trim();
+};
+
+const getUnresolvedFeatureRange = (
+  db: QueryDB,
+  scopeId: number | null,
+  ref: SymbolEntry,
+  pathStr: string,
+): { startByte: number; endByte: number } => {
+  if (!pathStr.includes(".")) {
+    return { startByte: ref.startByte, endByte: ref.endByte };
+  }
+  const segments = pathStr.split(".");
+  let curr = resolveFeatureInScope(db, scopeId, segments[0]!);
+  let failIdx = 0;
+  if (curr) {
+    for (let i = 1; i < segments.length; i++) {
+      const seg = segments[i]!;
+      let next: SymbolEntry | null = db.childrenOf(curr.id).find((c) => c.name === seg) ?? null;
+      if (!next) {
+        const typeDef = resolveTypeOf(db, curr);
+        if (typeDef) {
+          next = resolveQualifiedPath(db, [typeDef], [seg]);
+        }
+      }
+      if (!next) {
+        failIdx = i;
+        break;
+      }
+      curr = next;
+    }
+  }
+  let offset = 0;
+  for (let i = 0; i < failIdx; i++) {
+    offset += segments[i]!.length + 1;
+  }
+  const segLen = segments[failIdx]?.length ?? pathStr.length;
+  return {
+    startByte: ref.startByte + offset,
+    endByte: Math.min(ref.endByte, ref.startByte + offset + segLen),
+  };
+};
+
 /** Queries for Allocation usage */
 const allocationQueries = {
   ...usageQueries,
   resolvedSource: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
     if (refs.length >= 2) {
-      const resolved = resolveFeatureInScope(db, self.parentId, refs[0].name!);
-      if (resolved) return resolved;
+      const sourceName = getAllocationEndpointName(db, refs[0]!);
+      if (sourceName) {
+        const resolved = resolveFeatureInScope(db, self.parentId, sourceName);
+        if (resolved) return resolved;
+      }
     }
     return null;
   },
   resolvedTarget: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
     if (refs.length >= 2) {
-      // In allocate A to B, A is refs[0] and B is refs[1]
-      const resolved = resolveFeatureInScope(db, self.parentId, refs[1].name!);
-      if (resolved) return resolved;
+      const targetName = getAllocationEndpointName(db, refs[1]!);
+      if (targetName) {
+        const resolved = resolveFeatureInScope(db, self.parentId, targetName);
+        if (resolved) return resolved;
+      }
     }
     return null;
   },
@@ -1949,28 +2065,38 @@ const allocationQueries = {
 const allocationLints = {
   ...usageLints,
   allocationTargetUnresolved: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
     if (refs.length >= 2) {
-      const targetName = refs[1].name!;
+      const targetRef = refs[1]!;
+      const targetName = getAllocationEndpointName(db, targetRef);
+      if (!targetName) return null;
       const resolved = resolveFeatureInScope(db, self.parentId, targetName);
       if (!resolved) {
+        const range = getUnresolvedFeatureRange(db, self.parentId, targetRef, targetName);
         return error(SysML2ErrorCode.ALLOCATION_TARGET_UNRESOLVED.message(targetName), {
           code: SysML2ErrorCode.ALLOCATION_TARGET_UNRESOLVED.code,
           field: "declaredName",
+          startByte: range.startByte,
+          endByte: range.endByte,
         });
       }
     }
     return null;
   },
   allocationSourceUnresolved: (db: QueryDB, self: SymbolEntry) => {
-    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name);
+    const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
     if (refs.length >= 2) {
-      const sourceName = refs[0].name!;
+      const sourceRef = refs[0]!;
+      const sourceName = getAllocationEndpointName(db, sourceRef);
+      if (!sourceName) return null;
       const resolved = resolveFeatureInScope(db, self.parentId, sourceName);
       if (!resolved) {
+        const range = getUnresolvedFeatureRange(db, self.parentId, sourceRef, sourceName);
         return error(SysML2ErrorCode.ALLOCATION_SOURCE_UNRESOLVED.message(sourceName), {
           code: SysML2ErrorCode.ALLOCATION_SOURCE_UNRESOLVED.code,
           field: "declaredName",
+          startByte: range.startByte,
+          endByte: range.endByte,
         });
       }
     }
@@ -1979,14 +2105,8 @@ const allocationLints = {
   portInterfaceMismatch: (db: QueryDB, self: SymbolEntry) => {
     const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
     if (refs.length >= 2) {
-      const getEndpointName = (ref: SymbolEntry) => {
-        if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
-          return ref.name.trim();
-        }
-        return (db.cstText(ref.startByte, ref.endByte) || "").trim();
-      };
-      const sourceName = getEndpointName(refs[0]);
-      const targetName = getEndpointName(refs[1]);
+      const sourceName = getAllocationEndpointName(db, refs[0]!);
+      const targetName = getAllocationEndpointName(db, refs[1]!);
       const sourceEntry = resolveFeatureInScope(db, self.parentId, sourceName);
       const targetEntry = resolveFeatureInScope(db, self.parentId, targetName);
       if (sourceEntry && targetEntry) {
@@ -2029,14 +2149,8 @@ const connectionLints = {
   connectionDimensionalConsistency: (db: QueryDB, self: SymbolEntry) => {
     const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
     if (refs.length >= 2) {
-      const getEndpointName = (ref: SymbolEntry) => {
-        if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
-          return ref.name.trim();
-        }
-        return (db.cstText(ref.startByte, ref.endByte) || "").trim();
-      };
-      const sourceName = getEndpointName(refs[0]);
-      const targetName = getEndpointName(refs[1]);
+      const sourceName = getAllocationEndpointName(db, refs[0]!);
+      const targetName = getAllocationEndpointName(db, refs[1]!);
       const sourceEntry = resolveFeatureInScope(db, self.parentId, sourceName);
       const targetEntry = resolveFeatureInScope(db, self.parentId, targetName);
       if (sourceEntry && targetEntry) {
@@ -2089,11 +2203,12 @@ const connectionLints = {
 /** Lint rules for VerifyRequirementUsage */
 const verifyRequirementLints = {
   verifyTargetNotRequirement: (db: QueryDB, self: SymbolEntry) => {
-    if (!self.name) return null;
-    const targets = db.byName(self.name);
+    const targetName = getRelationshipTargetName(db, self);
+    if (!targetName || targetName === self.ruleName) return null;
+    const targets = db.byName(targetName);
     const reqTarget = targets.find((t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage");
     if (targets.length > 0 && !reqTarget) {
-      return error(`Verify target '${self.name}' is not a Requirement`, { field: "declaredName" });
+      return error(`Verify target '${targetName}' is not a Requirement`, { field: "declaredName" });
     }
     return null;
   },
@@ -2404,6 +2519,7 @@ const packageTraceabilityLints = {
     if (db.childrenOf(self.id).length === 0) {
       return info(SysML2ErrorCode.EMPTY_PACKAGE.message(self.name), {
         code: SysML2ErrorCode.EMPTY_PACKAGE.code,
+        field: "declaredName",
       });
     }
     return null;
@@ -4844,7 +4960,7 @@ export const sysml2Language = language({
               const prevIsAbstract = (previous.metadata as Record<string, unknown>)?.isAbstract;
               const currIsAbstract = (self.metadata as Record<string, unknown>)?.isAbstract;
               if (currIsAbstract && !prevIsAbstract) {
-                return error("Cannot make an existing concrete requirement abstract.", { field: "name" });
+                return error("Cannot make an existing concrete requirement abstract.", { field: "declaredName" });
               }
             }
             return null;

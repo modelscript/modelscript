@@ -28,6 +28,12 @@ export let t_trigramHeadMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 /** Monotonically increasing posting counter (1-indexed, with 0 representing end-of-list sentinel). */
 export let t_trigramPostingCount: u32 = 1;
 
+const STRING_VIEW_SLOTS: u32 = 16;
+const STRING_VIEW_MASK: u32 = STRING_VIEW_SLOTS - 1;
+let g_stringViewIdx: u32 = 0;
+let g_stringViewBuf: usize = 0;
+let g_queryStringViewPtr: usize = 0;
+
 /**
  * Zero-cost unmanaged string view over linear memory in the string arena.
  *
@@ -43,17 +49,30 @@ export class StringView {
   /** True if encoded in UTF-8, false if encoded in UTF-16. */
   isUtf8: bool;
 
-  /**
-   * Constructs an unmanaged string view instance on the execution stack.
-   *
-   * @param ptr - Base address of string character data.
-   * @param len - Character length of the string.
-   * @param isUtf8 - Whether the string is stored in UTF-8 encoding.
-   */
-  constructor(ptr: usize = 0, len: u32 = 0, isUtf8: bool = false) {
-    this.ptr = ptr;
-    this.len = len;
-    this.isUtf8 = isUtf8;
+  @inline
+  static create(ptr: usize = 0, len: u32 = 0, isUtf8: bool = false): StringView {
+    if (g_stringViewBuf == 0) {
+      g_stringViewBuf = atomicChunkAlloc(STRING_VIEW_SLOTS * offsetof<StringView>());
+    }
+    let slot = (g_stringViewIdx++) & STRING_VIEW_MASK;
+    let v = changetype<StringView>(g_stringViewBuf + slot * offsetof<StringView>());
+    v.ptr = ptr;
+    v.len = len;
+    v.isUtf8 = isUtf8;
+    return v;
+  }
+
+  @inline
+  static fromQueryHandle(handle: u32): StringView {
+    if (g_queryStringViewPtr == 0) {
+      g_queryStringViewPtr = atomicChunkAlloc(offsetof<StringView>());
+    }
+    let v = changetype<StringView>(g_queryStringViewPtr);
+    let tmp = StringView.fromHandle(handle);
+    v.ptr = tmp.ptr;
+    v.len = tmp.len;
+    v.isUtf8 = tmp.isUtf8;
+    return v;
   }
 
   /**
@@ -65,17 +84,17 @@ export class StringView {
   @inline
   static fromHandle(handle: u32): StringView {
     if (handle == 0 || stringArenaPtr == 0 || handle + 4 > stringArenaCapacity) {
-      return new StringView(0, 0, false);
+      return StringView.create(0, 0, false);
     }
     let header = load<u32>(stringArenaPtr + handle);
     let lenBytes = header & 0x7fffffff;
     if (handle + 4 + lenBytes > stringArenaCapacity) {
-      return new StringView(0, 0, false);
+      return StringView.create(0, 0, false);
     }
     let isUtf8 = (header & 0x80000000) != 0;
     let len = isUtf8 ? lenBytes : (lenBytes >> 1);
     let ptr = stringArenaPtr + handle + 4;
-    return new StringView(ptr, len, isUtf8);
+    return StringView.create(ptr, len, isUtf8);
   }
 
   /**
@@ -180,11 +199,13 @@ export function trigram_indexStub(stubId: u32, nameHandle: u32): void {
     let triHash: u64 = (((c0 & 0xff) << 16) | ((c1 & 0xff) << 8) | (c2 & 0xff)) as u64;
     let prevHead = t_trigramHeadMap.get(triHash);
 
-    // Prepend new posting to linked list for this trigram
-    let postIdx = t_trigramPostingCount++;
-    t_trigramPostings.set(postIdx * 2 + 0, stubId);
-    t_trigramPostings.set(postIdx * 2 + 1, prevHead);
-    t_trigramHeadMap.set(triHash, postIdx);
+    // Prepend new posting to linked list for this trigram (skip if stubId is already at head)
+    if (prevHead == 0 || t_trigramPostings.get(prevHead * 2 + 0) != stubId) {
+      let postIdx = t_trigramPostingCount++;
+      t_trigramPostings.set(postIdx * 2 + 0, stubId);
+      t_trigramPostings.set(postIdx * 2 + 1, prevHead);
+      t_trigramHeadMap.set(triHash, postIdx);
+    }
 
     // Slide registers for next iteration without re-reading linear memory
     c0 = c1;
@@ -236,7 +257,7 @@ export function trigram_indexAllStubs(): u32 {
  * @returns Total number of matching results written to `t_stubBinaryBuffer`.
  */
 export function trigram_fuzzyFind(queryHandle: u32, maxResults: u32): u32 {
-  let queryView = StringView.fromHandle(queryHandle);
+  let queryView = StringView.fromQueryHandle(queryHandle);
   if (!queryView.isValid) return 0;
 
   ensureStubStore();

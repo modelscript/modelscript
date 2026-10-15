@@ -33,6 +33,8 @@ export interface ComtradeSamplingRate {
   lastSampleNumber: number;
 }
 
+export type ComtradeDataFormat = "ASCII" | "BINARY" | "BINARY32" | "FLOAT32";
+
 export interface ComtradeConfig {
   stationName: string;
   recordingDeviceId: string;
@@ -43,8 +45,13 @@ export interface ComtradeConfig {
   samplingRates: ComtradeSamplingRate[];
   startTime: Date;
   triggerTime: Date;
-  dataFormat: "ASCII" | "BINARY" | "FLOAT32";
+  dataFormat: ComtradeDataFormat;
   timeMultiplicationFactor: number; // typically 1.0 (microseconds)
+  // IEEE C37.111-2013 optional extended trailer fields
+  timeCode?: string | undefined; // e.g. "+00:00"
+  localCode?: string | undefined; // e.g. "+00:00"
+  timeQualityIndicatorCode?: string | undefined; // e.g. "0"
+  leapSecIndicator?: number | undefined; // 0, 1, 2, or 3
 }
 
 export interface ComtradeRecord {
@@ -52,4 +59,5 @@ export interface ComtradeRecord {
   timeSec: Float64Array;
   analogData: Map<string, Float64Array>;
   digitalData: Map<string, Uint8Array>;
+  infoText?: string | undefined;
 }

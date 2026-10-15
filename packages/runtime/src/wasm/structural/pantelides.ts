@@ -470,7 +470,7 @@ export class PantelidesEngine {
     if (blt != null) {
       this.blt = blt;
     } else {
-      let bltPtr = atomicChunkAlloc(sizeof<BltEngine>());
+      let bltPtr = atomicChunkAlloc(offsetof<BltEngine>());
       this.blt = changetype<BltEngine>(bltPtr);
       this.blt.init(dae);
     }
@@ -955,7 +955,7 @@ export class PantelidesEngine {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function dae_createPantelides(daePtr: u32, bltPtr: u32): u32 {
-  let pantPtr = atomicChunkAlloc(sizeof<PantelidesEngine>());
+  let pantPtr = atomicChunkAlloc(offsetof<PantelidesEngine>());
   let pant = changetype<PantelidesEngine>(pantPtr);
   let dae = changetype<DaeBuilder>(daePtr);
   let blt: BltEngine | null = null;

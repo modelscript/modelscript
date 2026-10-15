@@ -309,7 +309,7 @@ export class FrontCodedDictionary {
  * Factory to create an unmanaged FrontCodedDictionary in WASM linear memory.
  */
 export function createFrontCodedDictionary(capacity: u32 = 1024): FrontCodedDictionary {
-  let ptr = atomicChunkAlloc(sizeof<FrontCodedDictionary>());
+  let ptr = atomicChunkAlloc(offsetof<FrontCodedDictionary>());
   let dict = changetype<FrontCodedDictionary>(ptr);
   dict.init(capacity);
   return dict;

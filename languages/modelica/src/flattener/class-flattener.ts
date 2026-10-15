@@ -116,6 +116,9 @@ export class ModelicaFlattener {
   public state: FlatteningState = {
     innerOuterComponents: this.innerOuterComponents,
     activeLoopVars: this.activeLoopVars,
+    stmtRanges: new Map(),
+    deducedOutputShapes: new Map(),
+    isRealNameCache: new Map(),
   };
 
   public pushLoopVar(name: string): void {
@@ -915,24 +918,33 @@ export class ModelicaFlattener {
     return dae;
   }
 
+  private _redeclareCache = new Map<SymbolId, boolean>();
+
   private classHasRedeclare(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
     if (!classId || visited.has(classId)) return false;
+    const cached = this._redeclareCache.get(classId);
+    if (cached !== undefined) return cached;
     visited.add(classId);
+
+    const cacheAndReturn = (val: boolean): boolean => {
+      this._redeclareCache.set(classId, val);
+      return val;
+    };
 
     const shortMod = this.db.query<any>("effectiveModification", classId);
     if (shortMod?.args) {
       for (const arg of shortMod.args) {
-        if (arg.isRedeclaration || arg.redeclaredTypeSpecifier || arg.isReplaceable) return true;
+        if (arg.isRedeclaration || arg.redeclaredTypeSpecifier || arg.isReplaceable) return cacheAndReturn(true);
       }
     }
 
     const children = this.db.childrenOf(classId);
     for (const child of children) {
       if (this.db.query<boolean>("isRedeclare", child.id)) {
-        return true;
+        return cacheAndReturn(true);
       }
       if (this.db.query<boolean>("isReplaceable", child.id)) {
-        return true;
+        return cacheAndReturn(true);
       }
       if (child.kind === "Extends") {
         const extendsModParsedRaw = this.db.query<any>("extendsModificationParsed", child.id);
@@ -940,7 +952,7 @@ export class ModelicaFlattener {
           ? extendsModParsedRaw
           : (extendsModParsedRaw?.args ?? []);
         for (const arg of extendsModParsed) {
-          if (arg.isRedeclaration || arg.redeclaredTypeSpecifier) return true;
+          if (arg.isRedeclaration || arg.redeclaredTypeSpecifier) return cacheAndReturn(true);
         }
         const baseClass =
           this.db.query<any>("resolvedBaseClass", child.id) ??
@@ -949,18 +961,18 @@ export class ModelicaFlattener {
               this.db.query<any>("resolveSimpleName", classId)?.(child.name))
             : null) ??
           this.db.byName(child.name)?.[0];
-        if (baseClass && this.classHasRedeclare(baseClass.id, visited)) return true;
+        if (baseClass && this.classHasRedeclare(baseClass.id, visited)) return cacheAndReturn(true);
       }
       if (child.kind === "Component") {
         const compInst = this.db.query<any>("componentInstance", child.id);
-        if (compInst?.isReplaceable) return true;
+        if (compInst?.isReplaceable) return cacheAndReturn(true);
         if (compInst?.modification?.args) {
           for (const arg of compInst.modification.args) {
-            if (arg.isRedeclaration || arg.redeclaredTypeSpecifier) return true;
+            if (arg.isRedeclaration || arg.redeclaredTypeSpecifier) return cacheAndReturn(true);
           }
         }
         const compClassId = this.db.query<SymbolId | null>("classInstance", child.id);
-        if (compClassId && this.classHasRedeclare(compClassId, visited)) return true;
+        if (compClassId && this.classHasRedeclare(compClassId, visited)) return cacheAndReturn(true);
       }
     }
 
@@ -968,16 +980,19 @@ export class ModelicaFlattener {
     if (cst?.text) {
       const matches = (cst.text as string).match(/\b([a-zA-Z_]\w*)\.[a-zA-Z_]\w*/g);
       if (matches) {
+        const seenPrefixes = new Set<string>();
         for (const m of matches) {
           const prefixName = m.split(".")[0]!;
+          if (seenPrefixes.has(prefixName)) continue;
+          seenPrefixes.add(prefixName);
           const prefixSym = this.db.byName(prefixName).find((e) => e.kind === "Class" || e.kind === "Package");
           if (prefixSym && prefixSym.id !== classId && this.classHasRedeclare(prefixSym.id, visited)) {
-            return true;
+            return cacheAndReturn(true);
           }
         }
       }
     }
-    return false;
+    return cacheAndReturn(false);
   }
 
   private classHasConnect(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
@@ -1048,7 +1063,13 @@ export class ModelicaFlattener {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
-    if (/\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text)) {
+    if (
+      /\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text) ||
+      /\bStateSelect\s*\[/.test(text) ||
+      /\bConnections\s*\./.test(text) ||
+      /\bequalityConstraint\b/.test(text) ||
+      /\b(?:homotopy|semiLinear|outerProduct)\s*\(/.test(text)
+    ) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
@@ -1159,6 +1180,11 @@ export class ModelicaFlattener {
       }
     }
     if (sym?.resourceId) {
+      const src = (this.db as any).source?.(sym.resourceId);
+      if (typeof src === "string" && /\bexternal\s+"builtin"/.test(src)) {
+        this._unsupportedWasmCache.set(classId, true);
+        return true;
+      }
       const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
       const topSymbols = (allSyms as SymbolEntry[]).filter(
         (s: any) => s.resourceId === sym.resourceId && (s.parentId === null || s.parentId === 0),
@@ -1214,6 +1240,9 @@ export class ModelicaFlattener {
     }
     if (/\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text)) {
       reasons.push("enumeration");
+    }
+    if (/\bConnections\s*\./.test(text) || /\bequalityConstraint\b/.test(text)) {
+      reasons.push("overconstrained-connections");
     }
 
     const children = this.db.childrenOf(classId);
@@ -1320,14 +1349,14 @@ export class ModelicaFlattener {
     let dae = cachedArena ?? new DAEBuilder(wasmExports, rootName, "");
     this.state = getFlatteningState(dae, this);
     (this as any).currentRootDae = dae;
-    (dae as any).innerOuterComponents = this.innerOuterComponents;
-    (dae as any).activeLoopVars = this.activeLoopVars;
-    (dae as any).db = this.db;
-    (dae as any).flattener = this;
-    (dae as any).currentClassId = rootClassId;
-    (dae as any)._isRealNameCache?.clear();
-    (dae as any)._varPrefixSet?.clear();
-    (dae as any)._varPrefixCount = 0;
+    this.state.innerOuterComponents = this.innerOuterComponents;
+    this.state.activeLoopVars = this.activeLoopVars;
+    this.state.db = this.db;
+    this.state.flattener = this;
+    this.state.currentClassId = rootClassId;
+    this.state.isRealNameCache?.clear();
+    this.state.varPrefixSet?.clear();
+    this.state.varPrefixCount = 0;
     const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
     let specKind: string | null = null;
     if (typeof rawKind === "string") {
@@ -2096,7 +2125,7 @@ export class ModelicaFlattener {
             this.options.omcCompatibility &&
             typeof (testDae.exports as any)?.flattener_setOmcCompatibility === "function"
           ) {
-            (testDae.exports as any).flattener_setOmcCompatibility(wf, 1);
+            (testDae.exports as any).flattener_setOmcCompatibility(wf, isOldInst ? 1 : 2);
           }
           this.populateWasmScopeResolutions(wf, rootClassId, testDae);
           const vc = testDae.exports.flattener_flatten(wf, classNodePtr, rootProgramPtr);
@@ -2120,14 +2149,15 @@ export class ModelicaFlattener {
     }
 
     if (!cachedArena && hasWasmFlattener && classNodePtr && allowWasm) {
+      let wasmFlattener = 0;
       try {
-        const wasmFlattener = dae.exports.flattener_create(dae.ptr);
+        wasmFlattener = dae.exports.flattener_create(dae.ptr);
         if (wasmFlattener) {
           if (
             this.options.omcCompatibility &&
             typeof (dae.exports as any)?.flattener_setOmcCompatibility === "function"
           ) {
-            (dae.exports as any).flattener_setOmcCompatibility(wasmFlattener, 1);
+            (dae.exports as any).flattener_setOmcCompatibility(wasmFlattener, isOldInst ? 1 : 2);
           }
           this.populateWasmScopeResolutions(wasmFlattener, rootClassId, dae);
           const varCount = dae.exports.flattener_flatten(wasmFlattener, classNodePtr, rootProgramPtr);
@@ -2135,7 +2165,7 @@ export class ModelicaFlattener {
             typeof dae.exports.flattener_getErrorCode === "function"
               ? dae.exports.flattener_getErrorCode(wasmFlattener)
               : 0;
-          (dae as any).wasmErrorCode = wasmErrorCode;
+          this.state.wasmErrorCode = wasmErrorCode;
           // In hybrid mode, if WASM flattener set a non-zero error code, fall back to TS
           const disabledCount =
             typeof (dae.exports as any)?.flattener_getDisabledCount === "function"
@@ -2190,7 +2220,7 @@ export class ModelicaFlattener {
                   dae.algorithmSections.push(section);
                 }
               }
-              if (secCount > 0) (dae as any).hasAlgorithmSection = true;
+              if (secCount > 0) dae.hasAlgorithmSection = true;
             }
             if (typeof (dae.exports as any).flattener_getWhenRecordCount === "function" && whenRecCount > 0) {
               const exWhen = dae.exports as any;
@@ -2342,6 +2372,36 @@ export class ModelicaFlattener {
                 }
               }
             }
+            const exIO = dae.exports as any;
+            if (typeof exIO.flattener_getInnerCount === "function") {
+              const innerCount = exIO.flattener_getInnerCount(wasmFlattener);
+              const innerSet: Set<string> = (this.state.innerComponents ??= new Set<string>());
+              for (let idx = 0; idx < innerCount; idx++) {
+                const fullPathId = exIO.flattener_getInnerFullPath(wasmFlattener, idx);
+                const fullPath = dae.interner.resolve(fullPathId);
+                if (fullPath) {
+                  innerSet.add(fullPath);
+                  this.innerOuterComponents.add(fullPath);
+                }
+              }
+            }
+            if (typeof exIO.flattener_getOuterMapCount === "function") {
+              const outerCount = exIO.flattener_getOuterMapCount(wasmFlattener);
+              const outerMap: Map<string, string> = (this.state.outerToInner ??= new Map<string, string>());
+              const innerSet: Set<string> = (this.state.innerComponents ??= new Set<string>());
+              for (let idx = 0; idx < outerCount; idx++) {
+                const outerId = exIO.flattener_getOuterPath(wasmFlattener, idx);
+                const targetId = exIO.flattener_getTargetInnerPath(wasmFlattener, idx);
+                const outerPath = dae.interner.resolve(outerId);
+                const targetPath = dae.interner.resolve(targetId);
+                if (outerPath && targetPath) {
+                  outerMap.set(outerPath, targetPath);
+                  innerSet.add(targetPath);
+                  this.innerOuterComponents.add(outerPath);
+                  this.innerOuterComponents.add(targetPath);
+                }
+              }
+            }
             const totalVars = dae.varCount;
             for (let v = 0; v < totalVars; v++) {
               if ((dae.getVarFlags(v) & (1 << 9)) !== 0) {
@@ -2358,6 +2418,14 @@ export class ModelicaFlattener {
           undefined,
           isStrictWasm ? "strict-partial" : "ts-fallback",
         );
+      } finally {
+        if (wasmFlattener && typeof (dae.exports as any)?.flattener_destroy === "function") {
+          try {
+            (dae.exports as any).flattener_destroy(wasmFlattener);
+          } catch {
+            // ignore
+          }
+        }
       }
       if (!flattenedInWasm) {
         if (isStrictWasm) {
@@ -2368,25 +2436,29 @@ export class ModelicaFlattener {
             message: `[ModelicaFlattener] Model '${rootName}' could not be flattened using strict WASM backend.`,
             range: null,
           });
-          if (wasmBail) (dae as any).wasmBail = wasmBail;
+          if (wasmBail) this.state.wasmBail = wasmBail;
           return dae;
         }
         const savedDesc = dae.description;
         const savedDiags = dae.diagnostics;
         const savedExtMeta = dae.extensionMetadata;
+        const savedExperiment = dae.experiment;
+        const savedFunctions = dae.functions;
         dae.free?.();
         dae = new DAEBuilder(wasmExports, rootName, "");
         dae.description = savedDesc;
         dae.diagnostics = savedDiags;
         dae.extensionMetadata = savedExtMeta;
+        dae.experiment = savedExperiment;
+        dae.functions = savedFunctions;
         (this as any).currentRootDae = dae;
-        (dae as any).innerOuterComponents = this.innerOuterComponents;
-        (dae as any).activeLoopVars = this.activeLoopVars;
-        (dae as any).db = this.db;
-        (dae as any).flattener = this;
-        (dae as any).currentClassId = rootClassId;
-        dae.classKind = specKind ?? rawKind;
         this.state = getFlatteningState(dae, this);
+        this.state.innerOuterComponents = this.innerOuterComponents;
+        this.state.activeLoopVars = this.activeLoopVars;
+        this.state.db = this.db;
+        this.state.flattener = this;
+        this.state.currentClassId = rootClassId;
+        dae.classKind = specKind ?? rawKind;
       }
     }
 
@@ -2543,6 +2615,12 @@ export class ModelicaFlattener {
 
     if (shouldScalarize) {
       dae = scalarizeArena(dae);
+      this.state = getFlatteningState(dae, this);
+      this.state.db = this.db;
+      this.state.flattener = this;
+      this.state.currentClassId = rootClassId;
+      this.state.innerOuterComponents = this.innerOuterComponents;
+      this.state.activeLoopVars = this.activeLoopVars;
       (this as any).currentRootDae = dae;
     }
 
@@ -2555,6 +2633,7 @@ export class ModelicaFlattener {
     let flowThreshold = compilerOpts.flowThreshold;
     ModelicaPortBalancer.expandConnections(dae, {
       omcCompatibility: this.options.omcCompatibility,
+      useWasmKernel: this.options.useWasmKernel,
       isOldFrontend,
       flowThreshold,
     });
@@ -2602,11 +2681,11 @@ export class ModelicaFlattener {
     if (wasmBail) {
       // Structured metadata only: a diagnostic here would perturb tests whose
       // expected output is driven by linter diagnostics.
-      (dae as any).wasmBail = wasmBail;
+      this.state.wasmBail = wasmBail;
     }
-    (dae as any)._isRealNameCache?.clear();
-    (dae as any)._varPrefixSet?.clear();
-    (dae as any)._varPrefixCount = 0;
+    this.state.isRealNameCache?.clear();
+    this.state.varPrefixSet?.clear();
+    this.state.varPrefixCount = 0;
     return dae;
   }
 
@@ -3127,7 +3206,10 @@ export class ModelicaFlattener {
       }
     }
 
-    ModelicaPortBalancer.expandConnections(dae, { omcCompatibility: this.options.omcCompatibility });
+    ModelicaPortBalancer.expandConnections(dae, {
+      omcCompatibility: this.options.omcCompatibility,
+      useWasmKernel: this.options.useWasmKernel,
+    });
 
     if (this.options.eliminateAliases) {
       eliminateArenaAliases(dae);

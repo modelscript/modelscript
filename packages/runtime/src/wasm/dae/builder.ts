@@ -1211,6 +1211,14 @@ export function dae_getStmtRight(ptr: u32, stmtId: u32): u32 {
   return changetype<DaeBuilder>(ptr).getStmtData().get(stmtId * STMT_STRIDE + STMT_RIGHT) as u32;
 }
 
+export function dae_setStmtData1(ptr: u32, stmtId: u32, data1: u32): void {
+  changetype<DaeBuilder>(ptr).getStmtData().set(stmtId * STMT_STRIDE + STMT_DATA1, data1 as i32);
+}
+
+export function dae_setStmtLeft(ptr: u32, stmtId: u32, left: u32): void {
+  changetype<DaeBuilder>(ptr).getStmtData().set(stmtId * STMT_STRIDE + STMT_LEFT, left as i32);
+}
+
 export function dae_getExprCount(ptr: u32): u32 {
   return changetype<DaeBuilder>(ptr).exprCount;
 }

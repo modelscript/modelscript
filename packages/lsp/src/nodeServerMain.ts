@@ -396,6 +396,47 @@ export function startNodeServer(input?: any, output?: any) {
           const project = parsePscx(text);
           return lintPscx(project);
         },
+        inspect_pscad_schematic: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parsePscx, extractEmtNetlist } = await import("@modelscript/pscad");
+          const { buildPscadDiagram } = await import("@modelscript/diagram");
+          const project = parsePscx(text);
+          return {
+            netlist: extractEmtNetlist(project),
+            diagram: buildPscadDiagram(project, params?.definitionName),
+          };
+        },
+        simulate_hybrid_emt: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { runPscadSimulationPipeline } = await import("@modelscript/pscad");
+          let solverRunner: ((circuit: any, options: any) => any) | undefined;
+          try {
+            const simMod: any = await import("@modelscript/simulate" as string);
+            if (simMod?.EmtSolver) {
+              solverRunner = (circuit, options) => {
+                const solver = new simMod.EmtSolver(circuit, {
+                  timeStepSec: options.timeStepSec,
+                  durationSec: options.durationSec,
+                  threePhase: options.threePhase ?? true,
+                  steadyStateInit: true,
+                  maxNonlinearIterations: 6,
+                });
+                return solver.solve();
+              };
+            }
+          } catch {
+            // Fallback to built-in analytical trajectory if @modelscript/simulate is unavailable
+          }
+          return runPscadSimulationPipeline({
+            documentText: text,
+            runSimulation: true,
+            verifyIeee2800: Boolean(params?.verifyIeee2800),
+            exportComtrade: params?.exportComtrade ?? true,
+            solverRunner,
+          });
+        },
       },
       disposables: [],
     });

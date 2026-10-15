@@ -7,7 +7,17 @@
  * standalone headless SVGs, and visual git diff graphs.
  */
 
-import { busbarGlyph, generatorGlyph, inverterIbrGlyph, transformerGlyph } from "./glyphs.js";
+import {
+  breakerGlyph,
+  busbarGlyph,
+  converterBridgeGlyph,
+  faultGlyph,
+  generatorGlyph,
+  inverterIbrGlyph,
+  surgeArresterGlyph,
+  transformerGlyph,
+  transmissionLineGlyph,
+} from "./glyphs.js";
 
 export interface PscadComponentLike {
   id: string;
@@ -49,15 +59,19 @@ export interface PscadStickyLike {
   text: string;
 }
 
+export interface PscadModuleLike {
+  name?: string | undefined;
+  buses: PscadBusLike[];
+  components: PscadComponentLike[];
+  wires: PscadWireLike[];
+  stickies?: PscadStickyLike[] | undefined;
+}
+
 export interface PscadProjectLike {
   name: string;
   projectType?: "case" | "library" | undefined;
-  rootModule: {
-    buses: PscadBusLike[];
-    components: PscadComponentLike[];
-    wires: PscadWireLike[];
-    stickies?: PscadStickyLike[] | undefined;
-  };
+  rootModule: PscadModuleLike;
+  subModules?: Map<string, PscadModuleLike> | undefined;
 }
 
 export interface X6CellData {
@@ -81,17 +95,21 @@ export interface PscadDiagramGraph {
   cells: X6CellData[];
   metadata: {
     projectName: string;
+    moduleName?: string | undefined;
     nodeCount: number;
     edgeCount: number;
   };
 }
 
 /**
- * Builds an AntV X6-compatible diagram graph from a PSCAD project.
+ * Builds an AntV X6-compatible diagram graph from a PSCAD project (or a specific sub-module).
  */
-export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph {
+export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string): PscadDiagramGraph {
   const cells: X6CellData[] = [];
-  const mod = project.rootModule;
+  const mod =
+    (moduleName && project.subModules?.get(moduleName)) ||
+    (moduleName && moduleName.includes(":") ? project.subModules?.get(moduleName.split(":").pop()!) : undefined) ||
+    project.rootModule;
 
   // 1. Convert Buses to Busbar Nodes
   for (const bus of mod.buses) {
@@ -136,7 +154,13 @@ export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph 
       markup = transformerGlyph();
       width = 72;
       height = 60;
-    } else if (defn.includes("gen") || defn.includes("source")) {
+    } else if (
+      defn.includes("gen") ||
+      defn.includes("source") ||
+      defn.includes("sync_machine") ||
+      defn.includes("ind_machine") ||
+      defn.includes("dfig")
+    ) {
       markup = generatorGlyph();
       width = 60;
       height = 60;
@@ -144,6 +168,28 @@ export function buildPscadDiagram(project: PscadProjectLike): PscadDiagramGraph 
       markup = inverterIbrGlyph();
       width = 60;
       height = 60;
+    } else if (defn.includes("breaker") || defn.includes("switch")) {
+      const statusStr = String(cmp.parameters["Status"] ?? cmp.parameters["status"] ?? "closed").toLowerCase();
+      markup = breakerGlyph({ isOpen: statusStr === "open" || statusStr === "0" });
+      width = 48;
+      height = 44;
+    } else if (defn.includes("arrester") || defn.includes("mov")) {
+      markup = surgeArresterGlyph();
+      width = 40;
+      height = 54;
+    } else if (defn.includes("tpflt") || defn.includes("fault")) {
+      markup = faultGlyph();
+      width = 40;
+      height = 44;
+    } else if (defn.includes("vsc_pwm") || defn.includes("lcc_6pulse") || defn.includes("mmc")) {
+      const badge = defn.includes("mmc") ? "MMC" : defn.includes("lcc") ? "LCC" : "VSC";
+      markup = converterBridgeGlyph({ badge });
+      width = 72;
+      height = 60;
+    } else if (defn.includes("tline") || defn.includes("cable")) {
+      markup = transmissionLineGlyph({ isCable: defn.includes("cable") });
+      width = 80;
+      height = 48;
     }
 
     const cleanName = (cmp.instanceName || cmp.id).includes(":")
@@ -427,7 +473,7 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
         elementsSvg += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
-        elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${c.data.name} (${vbase} kV)</text>\n`;
+        elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data.name ?? c.id))} (${vbase} kV)</text>\n`;
         elementsSvg += `  </g>\n`;
       } else if (c.data?.kind === "sticky") {
         const lines = (c.data.text || "").split("\n");
@@ -443,13 +489,13 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         }
         elementsSvg += `  </g>\n`;
       } else {
-        const rawName = c.data?.name || c.id;
+        const rawName = String(c.data?.name || c.id);
         const name = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
-        const defn = c.data?.definition || "Component";
+        const defn = String(c.data?.definition || "Component");
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
         elementsSvg += `    <rect width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />\n`;
-        elementsSvg += `    <text x="${w / 2}" y="${h / 2 - 4}" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">${name}</text>\n`;
-        elementsSvg += `    <text x="${w / 2}" y="${h / 2 + 10}" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">${defn}</text>\n`;
+        elementsSvg += `    <text x="${w / 2}" y="${h / 2 - 4}" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">${escapeHtml(name)}</text>\n`;
+        elementsSvg += `    <text x="${w / 2}" y="${h / 2 + 10}" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">${escapeHtml(defn)}</text>\n`;
         elementsSvg += `  </g>\n`;
       }
     }
@@ -505,6 +551,11 @@ export function diffPscadProjects(
         const oldVal = oldC.parameters[key];
         if (oldVal !== newVal) {
           changedParams.push({ param: key, oldValue: oldVal, newValue: newVal });
+        }
+      }
+      for (const [key, oldVal] of Object.entries(oldC.parameters)) {
+        if (!(key in newC.parameters)) {
+          changedParams.push({ param: key, oldValue: oldVal, newValue: undefined });
         }
       }
 

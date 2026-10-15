@@ -219,7 +219,7 @@ export class ModelicaAbstractEvaluator {
         return new Interval(-1, 1);
       }
       if (fnName === "tan" && rawArgs[0]) {
-        const argIval = this.evalExpr(rawArgs[0], state, collectRTE, ctx);
+        const _argIval = this.evalExpr(rawArgs[0], state, collectRTE, ctx);
         return Interval.TOP;
       }
 

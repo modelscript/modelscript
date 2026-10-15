@@ -135,7 +135,8 @@ export function vectorizeFunctionCall(
       const parts = fnName.split(".");
       const fnBase = parts[parts.length - 1]!;
       let sym: any = null;
-      const currentScopeId = flattener.currentClassId ?? (dae as any).currentClassId ?? flattener.currentRootClassId;
+      const currentScopeId =
+        flattener.currentClassId ?? getFlatteningState(dae).currentClassId ?? flattener.currentRootClassId;
       if (currentScopeId) {
         const resolver = (
           fnName.includes(".")

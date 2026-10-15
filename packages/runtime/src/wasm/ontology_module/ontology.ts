@@ -235,7 +235,7 @@ export class OntologyStore {
     this.bfsQueue = createChunkedUint32Array(256);
     this.distinctClasses = createChunkedUint32Array(256);
 
-    let dictPtr = atomicChunkAlloc(sizeof<FrontCodedDictionary>());
+    let dictPtr = atomicChunkAlloc(offsetof<FrontCodedDictionary>());
     this.iriDict = changetype<FrontCodedDictionary>(dictPtr);
     this.iriDict.init(initialCapacity);
 

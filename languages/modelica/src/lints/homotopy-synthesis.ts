@@ -79,6 +79,9 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
     if (!node) return;
 
     const nodeType = node.type || "";
+    if (node !== cst && (nodeType === "class_definition" || nodeType === "ClassDefinition")) {
+      return;
+    }
     if (
       nodeType === "simple_equation" ||
       nodeType === "SimpleEquation" ||

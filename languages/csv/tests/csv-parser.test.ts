@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseCsvMeasurements, parseCsvToModelica } from "../src/csv-parser.js";
+import { lintCsv, parseCsvMeasurements, parseCsvToModelica } from "../src/csv-parser.js";
 
 describe("languages/csv: parseCsvMeasurements", () => {
   it("should parse standard comma-delimited time-series data", () => {
@@ -116,5 +116,35 @@ describe("languages/csv: parseCsvToModelica", () => {
     const moTab = parseCsvToModelica(tabCsv, "TabPkg");
     assert.ok(moTab.includes("package TabPkg"));
     assert.ok(moTab.includes("constant Real speed[2] = {100, 200};"));
+  });
+});
+
+describe("languages/csv: lintCsv semantic linter & narrow ranges", () => {
+  it("reports zero diagnostics on valid telemetry CSV", () => {
+    const csv = `time,temp,pressure\n0.0,20.5,1013.25\n1.0,21.0,1012.80`;
+    assert.strictEqual(lintCsv(csv).length, 0);
+  });
+
+  it("underlines only duplicate header cells, excess row cells, invalid numeric cells, and non-monotonic time cells", () => {
+    const csv = `time,temp,temp\n0.0,20.5,20.5\n1.0,bad_num,21.0,extra_col\n0.5,22.0,22.0`;
+    const diags = lintCsv(csv);
+
+    const dupHeader = diags.find((d) => d.code === "CSV_DUPLICATE_HEADER");
+    assert.ok(dupHeader, "Expected CSV_DUPLICATE_HEADER");
+    assert.strictEqual(csv.slice(dupHeader.startByte, dupHeader.endByte), "temp");
+    assert.strictEqual(dupHeader.line, 1);
+    assert.strictEqual(dupHeader.column, 11);
+
+    const excessCol = diags.find((d) => d.code === "CSV_COLUMN_COUNT_MISMATCH");
+    assert.ok(excessCol, "Expected CSV_COLUMN_COUNT_MISMATCH");
+    assert.strictEqual(csv.slice(excessCol.startByte, excessCol.endByte), "extra_col");
+
+    const badNum = diags.find((d) => d.code === "CSV_INVALID_NUMERIC_CELL");
+    assert.ok(badNum, "Expected CSV_INVALID_NUMERIC_CELL");
+    assert.strictEqual(csv.slice(badNum.startByte, badNum.endByte), "bad_num");
+
+    const nonMonoTime = diags.find((d) => d.code === "CSV_NON_MONOTONIC_TIME");
+    assert.ok(nonMonoTime, "Expected CSV_NON_MONOTONIC_TIME");
+    assert.strictEqual(csv.slice(nonMonoTime.startByte, nonMonoTime.endByte), "0.5");
   });
 });

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/dsl";
+import { isDescendantOfInnerClass } from "./helpers.js";
 
 export const modelicaSyncLints: Record<string, CompilerLint> = {
   /**
@@ -90,9 +91,10 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && db.ast.textEquals(name, "hold")) {
-        for (const sec of db.ast.getAncestors(node, 0)) {
+        for (const sec of db.ast.getAncestors(node, $.class_definition)) {
           if (db.ast.getType(sec) == $.equation_section) {
             db.diagnostic(node);
+            break;
           }
         }
       }
@@ -106,10 +108,11 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["class_definition"],
     severity: "error",
     code: 6010,
-    message: (target) => `More than one state marked as initialState in state machine '${target.name}'.`,
+    message: (target) => `More than one state marked as initialState in state machine '${target.name || target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let initCount = 0;
       for (const comp of db.ast.getDescendants(node, $.component_clause)) {
+        if (isDescendantOfInnerClass(db, comp, node, $)) continue;
         for (const mod of db.ast.getDescendants(comp, $.modification)) {
           if (db.ast.textEquals(mod, "initialState = true")) {
             initCount++;
@@ -174,6 +177,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
           for (const sec of db.ast.getAncestors(node, $.class_definition)) {
             if (db.ast.getType(sec) == $.equation_section) {
               db.diagnostic(node);
+              break;
             }
           }
         }
@@ -194,7 +198,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
       if (conn != 0) {
         const sym = db.scope.resolve(conn);
         if (sym == 0) {
-          db.diagnostic(node);
+          db.diagnostic(conn);
         }
       }
     },
