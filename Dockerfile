@@ -42,9 +42,9 @@ COPY languages/cfd/package.json languages/cfd/
 COPY languages/csv/package.json languages/csv/
 COPY languages/fea/package.json languages/fea/
 COPY languages/modelica/package.json languages/modelica/
-COPY languages/modelica/src languages/modelica/src
 COPY languages/modelscript/package.json languages/modelscript/
 COPY languages/owl2/package.json languages/owl2/
+COPY languages/pscad/package.json languages/pscad/
 COPY languages/scad/package.json languages/scad/
 COPY languages/ssp/package.json languages/ssp/
 COPY languages/step/package.json languages/step/
@@ -55,6 +55,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 # API
 # ==============================================================================
 FROM deps AS build-api-false
+COPY scripts scripts
 COPY packages packages
 COPY languages languages
 COPY apps/api apps/api
@@ -72,7 +73,6 @@ FROM node:24-alpine AS api
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/languages/modelica/src languages/modelica/src
 COPY --from=build-api /app/packages packages
 COPY --from=build-api /app/languages languages
 COPY --from=build-api /app/apps/api apps/api
@@ -84,6 +84,7 @@ CMD ["node", "apps/api/dist/main.js"]
 # Web
 # ==============================================================================
 FROM deps AS build-web-false
+COPY scripts scripts
 COPY packages packages
 COPY languages languages
 COPY apps/web apps/web
@@ -153,6 +154,7 @@ CMD ["node", "apps/ide/dist/server.js"]
 # CLI / GitLab CI Runner
 # ==============================================================================
 FROM deps AS build-cli-false
+COPY scripts scripts
 COPY packages packages
 COPY languages languages
 COPY apps/cli apps/cli
@@ -170,7 +172,6 @@ FROM node:24-alpine AS cli
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/languages/modelica/src languages/modelica/src
 COPY --from=build-cli /app/packages packages
 COPY --from=build-cli /app/languages languages
 COPY --from=build-cli /app/apps/cli apps/cli

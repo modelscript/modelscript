@@ -57,10 +57,14 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
   },

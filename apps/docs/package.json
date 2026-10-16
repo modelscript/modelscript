@@ -2,13 +2,14 @@
   "name": "@modelscript/docs",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "build": "vitepress build docs",
     "build:pdf": "tsx scripts/generate-pdf.ts",
     "clean": "rimraf docs/.vitepress/dist",
     "dev": "vitepress dev docs",
-    "lint": "eslint docs",
+    "lint": "eslint docs scripts --no-warn-ignored",
     "preview": "vitepress preview docs",
     "typecheck": "tsc --noEmit"
   },

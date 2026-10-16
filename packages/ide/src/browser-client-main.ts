@@ -40,6 +40,7 @@ import { OWL2DiagramPanel } from "./owl2-diagram-panel";
 import { materializeCfdConfig } from "@modelscript/cfd";
 import { materializeFeaDeck } from "@modelscript/fea";
 import { registerCadMeshingCommands } from "./cad-meshing-commands";
+import { CadViewerPanel } from "./cad-viewer-panel";
 import { CalibrationPanel } from "./calibration-panel";
 import { CandidateTradeStudyPanel } from "./candidate-trade-study-panel";
 import { CfgEditorProvider } from "./cfg-editor-provider";
@@ -1310,6 +1311,10 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
       }
     }),
+    commands.registerCommand("modelscript.openCadViewer", () => {
+      if (!client) return;
+      CadViewerPanel.createOrShow(context.extensionUri, client);
+    }),
     commands.registerCommand("modelscript.openStepViewer", async (uri?: vscode.Uri) => {
       let targetUri = uri;
       if (!targetUri) {
@@ -1376,12 +1381,16 @@ export async function activate(context: vscode.ExtensionContext) {
         if (res && res.step) {
           const stepUri = targetUri.with({ path: targetUri.path.replace(/\.scad$/i, ".step") });
           await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(res.step));
-          await vscode.commands.executeCommand(
-            "vscode.openWith",
-            stepUri,
-            StepEditorProvider.viewType,
-            vscode.ViewColumn.Beside,
-          );
+          if (client && Array.isArray(res.components) && res.components.length > 0) {
+            CadViewerPanel.createOrShow(context.extensionUri, client);
+          } else {
+            await vscode.commands.executeCommand(
+              "vscode.openWith",
+              stepUri,
+              StepEditorProvider.viewType,
+              vscode.ViewColumn.Beside,
+            );
+          }
         } else {
           vscode.window.showWarningMessage("OpenSCAD model evaluated, but produced no 3D solid geometry.");
         }

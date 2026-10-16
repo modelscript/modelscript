@@ -1,7 +1,6 @@
 // name: WhenClocks
 // keywords: synchronous features
 // status: correct
-// xfail:    true
 
 model WhenClocks
   Real x;

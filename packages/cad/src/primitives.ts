@@ -17,7 +17,10 @@ import type {
   CylinderSolid,
   ExtrusionSolid,
   FilletSolid,
+  PolyhedronOptions,
+  PolyhedronSolid,
   Solid,
+  SolidSourceMetadata,
   SphereOptions,
   SphereSolid,
   TaggedPatchSolid,
@@ -59,7 +62,7 @@ export function box(opts: BoxOptions): BoxSolid {
 }
 
 /**
- * Create a cylinder centered at the origin with its axis along Y.
+ * Create a cylinder or cone/frustum centered at the origin with its axis along Y.
  *
  * @example
  * ```ts
@@ -71,8 +74,23 @@ export function cylinder(opts: CylinderOptions): CylinderSolid {
     kind: SolidKind.Cylinder,
     name: opts.name ?? autoName("Cylinder"),
     radius: opts.radius,
+    radiusBottom: opts.radiusBottom ?? opts.radius,
+    radiusTop: opts.radiusTop ?? opts.radius,
     height: opts.height,
     segments: opts.segments ?? 24,
+    sourceMetadata: opts.sourceMetadata,
+  });
+}
+
+/**
+ * Create a polyhedron from 3D points and polygonal face index loops.
+ */
+export function polyhedron(opts: PolyhedronOptions): PolyhedronSolid {
+  return Object.freeze({
+    kind: SolidKind.Polyhedron,
+    name: opts.name ?? autoName("Polyhedron"),
+    points: opts.points,
+    faces: opts.faces,
     sourceMetadata: opts.sourceMetadata,
   });
 }
@@ -148,6 +166,7 @@ export function tagPatch(
       normal: tag.normal,
       surfaceArea: tag.surfaceArea,
     },
+    sourceMetadata: child.sourceMetadata,
   });
 }
 
@@ -167,6 +186,7 @@ export function fillet(child: Solid, radius: number, edges?: string[], name?: st
     child,
     radius,
     edges,
+    sourceMetadata: child.sourceMetadata,
   });
 }
 
@@ -185,6 +205,7 @@ export function chamfer(child: Solid, distance: number, edges?: string[], name?:
     child,
     distance,
     edges,
+    sourceMetadata: child.sourceMetadata,
   });
 }
 
@@ -199,7 +220,7 @@ export function chamfer(child: Solid, distance: number, edges?: string[], name?:
 export function linearExtrude(
   polygon: readonly [number, number][],
   height: number,
-  opts?: { twist?: number; scale?: number; name?: string },
+  opts?: { twist?: number; scale?: number; name?: string; sourceMetadata?: SolidSourceMetadata },
 ): ExtrusionSolid {
   return Object.freeze({
     kind: SolidKind.Extrusion,
@@ -208,5 +229,6 @@ export function linearExtrude(
     height,
     twist: opts?.twist,
     scale: opts?.scale,
+    sourceMetadata: opts?.sourceMetadata,
   });
 }

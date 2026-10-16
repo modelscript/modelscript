@@ -928,7 +928,13 @@ function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Rec
               break;
             }
           }
-          if (cls != 0 && !isClassKind(db, cls, "type") && !isClassKind(db, cls, "class")) continue;
+          if (
+            cls != 0 &&
+            !isClassKind(db, cls, "type") &&
+            !isClassKind(db, cls, "class") &&
+            !isClassKind(db, cls, "connector")
+          )
+            continue;
 
           if ($.enum_list != 0) {
             for (const _ of db.ast.getDescendants(spec, $.enum_list)) {
@@ -971,7 +977,13 @@ function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Rec
               break;
             }
           }
-          if (cls != 0 && !isClassKind(db, cls, "type") && !isClassKind(db, cls, "class")) continue;
+          if (
+            cls != 0 &&
+            !isClassKind(db, cls, "type") &&
+            !isClassKind(db, cls, "class") &&
+            !isClassKind(db, cls, "connector")
+          )
+            continue;
 
           for (const ext of db.ast.getDescendants(spec, $.extends_clause)) {
             for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
@@ -1485,6 +1497,25 @@ function resolveComponentClassDefinitionInternal(
     return findClassByName(db, compType, $);
   }
 
+  // 2.5. Direct import_clause in enclosingClass (e.g. import P = M.Poly; or import M.Poly;)
+  if ($.import_clause != 0) {
+    for (const imp of db.ast.getDescendants(enclosingClass, $.import_clause)) {
+      if (isDescendantOfInnerClass(db, imp, enclosingClass, $)) continue;
+      let firstId: u32 = 0;
+      let lastId: u32 = 0;
+      for (const id of db.ast.getDescendants(imp, $.identifier)) {
+        if (firstId == 0) firstId = id;
+        lastId = id;
+      }
+      if (firstId != 0 && lastId != 0) {
+        if (db.ast.textEqualsNode(compRefNode, firstId) || db.ast.textEqualsNode(compRefNode, lastId)) {
+          const importedClass = findClassByName(db, lastId, $);
+          if (importedClass != 0) return importedClass;
+        }
+      }
+    }
+  }
+
   // 3. Inherited inner classes via extends_clause
   for (const ext of db.ast.getDescendants(enclosingClass, $.extends_clause)) {
     if (isDescendantOfInnerClass(db, ext, enclosingClass, $)) continue;
@@ -1838,6 +1869,37 @@ export function findFlowMismatchInConnectors(db: CodeGraph, lhsClass: u32, rhsCl
 /**
  * Checks if a potentially dotted variable reference is declared with 'stream' variability.
  */
+function isLeafDeclaredStreamInClass(
+  db: CodeGraph,
+  currClass: u32,
+  leafId: u32,
+  $: Record<string, u16>,
+  depth: u32,
+): boolean {
+  if (currClass == 0 || depth > 10) return false;
+  for (const comp of db.ast.getDescendants(currClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, currClass, $)) continue;
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+      if (nameNode != 0 && db.ast.textEqualsNode(nameNode, leafId)) {
+        return hasTypePrefix(db, comp, "stream", $);
+      }
+    }
+  }
+  for (const ext of db.ast.getDescendants(currClass, $.extends_clause)) {
+    if (isDescendantOfInnerClass(db, ext, currClass, $)) continue;
+    for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
+      const baseClass = findClassByName(db, ts, $);
+      if (baseClass != 0 && baseClass != currClass) {
+        if (isLeafDeclaredStreamInClass(db, baseClass, leafId, $, depth + 1)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode: u32, $: Record<string, u16>): boolean {
   if (enclosingClass == 0 || varRefNode == 0) return false;
   let idCount: u32 = 0;
@@ -1860,16 +1922,7 @@ export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode:
     }
   }
 
-  for (const comp of db.ast.getDescendants(currClass, $.component_clause)) {
-    if (isDescendantOfInnerClass(db, comp, currClass, $)) continue;
-    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
-      const nameNode = db.ast.getChildByFieldId(decl, "name");
-      if (nameNode != 0 && db.ast.textEqualsNode(nameNode, leafId)) {
-        return hasTypePrefix(db, comp, "stream", $);
-      }
-    }
-  }
-  return false;
+  return isLeafDeclaredStreamInClass(db, currClass, leafId, $, 0);
 }
 
 /**
@@ -1898,7 +1951,6 @@ export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record
       let baseNameId: u32 = typeSpec;
       for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
         baseNameId = id;
-        break;
       }
 
       const cls = findClassByName(db, baseNameId, $);
@@ -2032,18 +2084,15 @@ function getMemberKindInClassInternal(
           typeIdent = id;
           break;
         }
-        if (resolveBasePrimitiveType(db, typeIdent, $) != TYPE_UNKNOWN) {
-          return MEMBER_RECORD_COMPONENT;
-        }
         const cDef = findClassByName(db, typeIdent, $);
         if (cDef != 0) {
-          if (
-            !isClassKind(db, cDef, "model") &&
-            !isClassKind(db, cDef, "block") &&
-            !isClassKind(db, cDef, "connector")
-          ) {
-            return MEMBER_RECORD_COMPONENT;
+          if (isClassKind(db, cDef, "model") || isClassKind(db, cDef, "block") || isClassKind(db, cDef, "connector")) {
+            return MEMBER_COMPONENT;
           }
+          return MEMBER_RECORD_COMPONENT;
+        }
+        if (resolveBasePrimitiveType(db, typeIdent, $) != TYPE_UNKNOWN) {
+          return MEMBER_RECORD_COMPONENT;
         }
       }
     }

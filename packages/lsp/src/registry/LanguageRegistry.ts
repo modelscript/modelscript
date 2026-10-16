@@ -92,6 +92,15 @@ export class LanguageRegistry {
       if (!plugin.queryEngine && existing.queryEngine) {
         plugin.queryEngine = existing.queryEngine;
       }
+      if (!plugin.customHandlers && existing.customHandlers) {
+        plugin.customHandlers = existing.customHandlers;
+      }
+      if (!plugin.actionHandlers && existing.actionHandlers) {
+        plugin.actionHandlers = existing.actionHandlers;
+      }
+      if (!plugin.languageDef && existing.languageDef) {
+        plugin.languageDef = existing.languageDef;
+      }
     }
     this.plugins.set(id, plugin);
 

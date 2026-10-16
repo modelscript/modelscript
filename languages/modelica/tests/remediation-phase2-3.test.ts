@@ -487,4 +487,104 @@ end ThermalBusToBus;
       `Expected non-electrical expandable bus flow variables in:\n${text}`,
     );
   });
+
+  it("should support redeclare, each modifications, short-class equations, and 4D arrays in pure-WASM kernel", async () => {
+    const src = `
+model BaseSub
+  parameter Real k = 1.0;
+  Real v[2](each start = 0.0);
+  Real x;
+equation
+  x = k;
+end BaseSub;
+
+model DerivedSub
+  extends BaseSub(k = 2.0);
+  Real y = 2.0 * x;
+end DerivedSub;
+
+model AliasSub = DerivedSub(k = 3.0);
+
+model Container
+  replaceable BaseSub s;
+end Container;
+
+model TestWasmRedeclareAnd4D
+  extends Container(redeclare AliasSub s(k = 5.0, each v = 7.0));
+  parameter Real arr4[2, 2, 2, 2](each start = 1.0);
+end TestWasmRedeclareAnd4D;
+`;
+    const ctx = await initContext({ TestWasmRedeclareAnd4D: src });
+    const wasmArena = ctx.flattenArena("TestWasmRedeclareAnd4D", undefined, "file:///test/TestWasmRedeclareAnd4D.mo", {
+      backend: "wasm",
+    });
+    assert(wasmArena !== null);
+    assert.strictEqual(
+      wasmArena.extensionMetadata?.wasmFallbackUsed,
+      undefined,
+      `Expected pure-WASM kernel to succeed without TS fallback, got bailReason: ${wasmArena.extensionMetadata?.wasmBailReasonName}`,
+    );
+    const text = printArena(wasmArena);
+    assert(
+      text.includes("parameter Real s.k = 5.0;"),
+      `Expected redeclared s.k = 5.0 (vars=${wasmArena.varCount}, bail=${JSON.stringify(getFlatteningState(wasmArena).wasmBail)}, diags=${JSON.stringify(wasmArena.diagnostics)}) in:\n${text}`,
+    );
+    assert(
+      text.includes("Real s.v[1] = 7.0") || text.includes("Real s.v[1](start = 0.0) = 7.0"),
+      `Expected each modification on s.v in:\n${text}`,
+    );
+    assert(text.includes("Real s.y = 2.0 * s.x;"), `Expected redeclared DerivedSub component s.y in:\n${text}`);
+    assert(
+      text.includes("s.x = s.k;") || text.includes("s.x = 5.0;"),
+      `Expected equation from short-class AliasSub -> DerivedSub -> BaseSub in:\n${text}`,
+    );
+    assert(text.includes("arr4[2,2,2,2]"), `Expected 4D array scalarization arr4[2,2,2,2] in:\n${text}`);
+    assert.deepStrictEqual(getNamedArrayShape(wasmArena, "arr4"), [2, 2, 2, 2]);
+  });
+
+  it("should resolve cardinality(), eliminate static-true enum asserts, and balance root outside connectors alongside subcomponent outside connectors", async () => {
+    const src = `
+type Extrapolation = enumeration(HoldLastPoint, LastTwoPoints, Periodic, NoExtrapolation);
+
+connector Pin
+  Real v;
+  flow Real i;
+end Pin;
+
+model SubSwitch
+  Pin p;
+  Pin n;
+equation
+  p.v = n.v;
+  p.i + n.i = 0;
+end SubSwitch;
+
+model TestStage3Parity
+  parameter Extrapolation extrap = Extrapolation.HoldLastPoint;
+  Pin p1;
+  SubSwitch s1;
+  Integer c = cardinality(p1);
+equation
+  assert(extrap <> Extrapolation.Periodic and extrap == Extrapolation.HoldLastPoint, "Invalid extrap");
+  connect(p1, s1.p);
+  s1.n.v = 0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+end TestStage3Parity;
+`;
+    const ctx = await initContext({ TestStage3Parity: src });
+    const arena = ctx.flattenArena("TestStage3Parity", undefined, "file:///test/TestStage3Parity.mo", {
+      backend: "ts",
+      omcCompatibility: true,
+      isOldFrontend: true,
+    });
+    assert(arena !== null);
+    const text = printArena(arena);
+    assert(text.includes("Integer c = 1;"), `Expected cardinality(p1) = 1 in:\n${text}`);
+    assert(!text.includes("assert("), `Expected static-true enum assert to be eliminated in:\n${text}`);
+    assert(text.includes("p1.i = 0.0;"), `Expected root outside connector p1.i = 0.0 in:\n${text}`);
+    assert(
+      text.includes("s1.p.i + (-p1.i) = 0.0;") && text.includes("s1.n.i = 0.0;"),
+      `Expected connected inside connector flow equations in:\n${text}`,
+    );
+  });
 });

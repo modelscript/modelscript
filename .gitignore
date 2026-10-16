@@ -12,6 +12,8 @@ packages/runtime/build/
 prebuilds/
 coverage/
 ctrf/
+scratch*
+**/scratch*
 scratch_build*/
 scratch_*
 scratch_test_playground/
@@ -19,6 +21,7 @@ test_lang/
 tests/scratch_playground/
 languages/build/
 scripts/msl/
+scripts/*.zip
 .cache/
 msl_report*.html
 .tmp_*
@@ -91,8 +94,7 @@ apps/api/public/thumbnails/
 apps/api/apps/
 **/public/thumbnails/
 
-# React Router (morsel)
-apps/morsel/.react-router/
+# VS Code Web (IDE)
 apps/ide/vscode-web/
 
 # VitePress
@@ -123,6 +125,15 @@ packages/exchange/validation/fmi/reference_fmus_repo/
 # OpenModelica testsuite generated C/H artifacts
 languages/modelica/testsuite/OpenModelica/flattening/modelica/**/*.c
 languages/modelica/testsuite/OpenModelica/flattening/modelica/**/*.h
-
-
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/external-functions/ExternalFunction1_f.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/external-functions/ExternalFunction2_f.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/external-functions/ExternalFunction3-addmatrices.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/external-functions/addReal1_.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/ffi/FFITest/Resources/C-Sources/FFITestLib.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Resources/Include/ext3.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Resources/Library/ext1.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Resources/SpecialLib/ext2.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Resources/SpecialSources/ext4.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/ext_ExternalFunctionResultOrder.c
+!languages/modelica/testsuite/OpenModelica/flattening/modelica/records/External_C_RecordTest.c
 

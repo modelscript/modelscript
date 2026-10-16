@@ -1746,6 +1746,15 @@ export function foldArenaConstants(
         if (meta) {
           const foldEqList = (list: { kind: EqKind; lhsExprId: number; rhsExprId: number }[]) => {
             for (const bodyEq of list) {
+              if (bodyEq.kind === EqKind.If) {
+                const anyEq = bodyEq as any;
+                if (Array.isArray(anyEq.thenEquations)) foldEqList(anyEq.thenEquations);
+                for (const c of anyEq.elseIfClauses || []) {
+                  if (Array.isArray(c.bodyEquations)) foldEqList(c.bodyEquations);
+                }
+                if (Array.isArray(anyEq.elseEquations)) foldEqList(anyEq.elseEquations);
+                continue;
+              }
               if (bodyEq.kind !== EqKind.Simple) continue;
               if (bodyEq.rhsExprId >= 0) {
                 let foldedRhs = evaluateConstantArenaExpression(
@@ -1821,6 +1830,17 @@ export function foldArenaConstants(
       if (!attrs) continue;
       for (const [attrName, attrExprId] of attrs.entries()) {
         if (attrExprId >= 0) {
+          if (omcCompatibility && attrName === "start" && arena.getExprKind(attrExprId) === ExprKind.Name) {
+            const refName = arena.interner.resolve(arena.getExprData1(attrExprId));
+            const refIdx = refName ? nameToIdx.get(refName) : undefined;
+            if (
+              refIdx !== undefined &&
+              arena.getVarVariability(refIdx) === Variability.Parameter &&
+              !arena.isVarFinal(refIdx)
+            ) {
+              continue;
+            }
+          }
           const evalVal = evaluateConstantArenaExpression(arena, attrExprId, paramMap, nameToIdx, 0, db, scopeId);
           if (evalVal !== null && !isExprAlreadyLiteral(arena, attrExprId, evalVal)) {
             const varType = arena.getVarType(i);
@@ -3299,13 +3319,15 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         isPlugCompatible = false;
       }
       if (!isPlugCompatible) {
-        const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
-        out.diagnostics.push({
-          severity: "error",
-          code: 3003, // NOT_PLUG_COMPATIBLE
-          message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
-          range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
-        });
+        if (!out.diagnostics.some((d) => d.code === 2002)) {
+          const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
+          out.diagnostics.push({
+            severity: "error",
+            code: 3003, // NOT_PLUG_COMPATIBLE
+            message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
+            range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+          });
+        }
         return;
       }
     }
@@ -3372,27 +3394,56 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     if (kind === EqKind.If) {
       const meta = dae.getIfEquationMeta(i);
       if (meta) {
+        const cloneInlineEqList = (
+          srcList: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+          dstList: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+        ) => {
+          for (const eq of srcList) {
+            if (eq.kind === EqKind.If && Array.isArray((eq as any).thenEquations)) {
+              const subCond = cloneExpr(eq.lhsExprId, "", null);
+              const subThen: any[] = [];
+              cloneInlineEqList((eq as any).thenEquations, subThen);
+              const subElseIf: any[] = [];
+              if (Array.isArray((eq as any).elseIfClauses)) {
+                for (const c of (eq as any).elseIfClauses) {
+                  const cCond = cloneExpr(c.conditionExprId, "", null);
+                  const cBody: any[] = [];
+                  cloneInlineEqList(c.bodyEquations ?? c.equations ?? [], cBody);
+                  subElseIf.push({ conditionExprId: cCond, bodyEquations: cBody, equations: [] });
+                }
+              }
+              const subElse: any[] = [];
+              if (Array.isArray((eq as any).elseEquations)) {
+                cloneInlineEqList((eq as any).elseEquations, subElse);
+              }
+              dstList.push({
+                kind: EqKind.If,
+                lhsExprId: subCond,
+                rhsExprId: -1,
+                thenEquations: subThen,
+                elseIfClauses: subElseIf,
+                elseEquations: subElse,
+              });
+            } else {
+              emitEquation(eq.kind, eq.lhsExprId, eq.rhsExprId, 0, dstList);
+            }
+          }
+        };
         const condId = cloneExpr(meta.conditionExprId, "", null);
         const ifIdx = out.addIfEquation(condId);
         const ifRange = dae.getEqSourceRange?.(i);
         if (ifRange) out.setEqSourceRange(ifIdx, ifRange.startByte, ifRange.endByte);
         const outMeta = out.getIfEquationMeta(ifIdx);
         if (outMeta) {
-          for (const eq of meta.thenEquations) {
-            emitEquation(eq.kind, eq.lhsExprId, eq.rhsExprId, 0, outMeta.thenEquations);
-          }
+          cloneInlineEqList(meta.thenEquations, outMeta.thenEquations);
           for (const clause of meta.elseIfClauses) {
             const clauseCond = cloneExpr(clause.conditionExprId, "", null);
             const clauseEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-            for (const eq of clause.bodyEquations) {
-              emitEquation(eq.kind, eq.lhsExprId, eq.rhsExprId, 0, clauseEqs);
-            }
+            cloneInlineEqList(clause.bodyEquations, clauseEqs);
             outMeta.elseIfClauses.push({ conditionExprId: clauseCond, bodyEquations: clauseEqs, equations: [] });
           }
           if (meta.elseEquations) {
-            for (const eq of meta.elseEquations) {
-              emitEquation(eq.kind, eq.lhsExprId, eq.rhsExprId, 0, outMeta.elseEquations);
-            }
+            cloneInlineEqList(meta.elseEquations, outMeta.elseEquations);
           }
         }
         continue;

@@ -78,12 +78,30 @@ export function runTests(argv = process.argv.slice(2)) {
     } else if (arg === "--shard") {
       // Nx pass-through flag for sharding projects across CI jobs: absorb so Node does not reject it
       i++;
-    } else if (arg.startsWith("--parallel=") || arg.startsWith("--projects=") || arg.startsWith("--output-style=")) {
+    } else if (
+      arg.startsWith("--parallel=") ||
+      arg.startsWith("--projects=") ||
+      arg.startsWith("--output-style=") ||
+      arg.startsWith("--base=") ||
+      arg.startsWith("--head=") ||
+      arg.startsWith("--exclude=") ||
+      arg.startsWith("--configuration=") ||
+      arg.startsWith("--runner=")
+    ) {
       // Nx pass-through orchestration flags: absorb
-    } else if (arg === "--parallel" || arg === "--projects" || arg === "--output-style") {
+    } else if (
+      arg === "--parallel" ||
+      arg === "--projects" ||
+      arg === "--output-style" ||
+      arg === "--base" ||
+      arg === "--head" ||
+      arg === "--exclude" ||
+      arg === "--configuration" ||
+      arg === "--runner"
+    ) {
       // Nx pass-through orchestration flags: absorb
       i++;
-    } else if (arg === "--skip-nx-cache" || arg === "--verbose") {
+    } else if (arg === "--skip-nx-cache" || arg === "--verbose" || arg === "--nxBail" || arg === "--no-cloud") {
       // Nx pass-through boolean flags: absorb
     } else if (arg.startsWith("--import=")) {
       customArgs.push(arg);

@@ -195,7 +195,10 @@ export function InstancedCadAssembly({
   renderSingleton,
 }: InstancedCadAssemblyProps) {
   const { clusters, singletonComponents } = useMemo(() => {
-    const descriptors: InstancedPartDescriptor[] = components.map((comp) => ({
+    const gltfComponents = components.filter((c) => !c.proceduralMesh);
+    const proceduralComponents = components.filter((c) => Boolean(c.proceduralMesh));
+
+    const descriptors: InstancedPartDescriptor[] = gltfComponents.map((comp) => ({
       name: comp.name,
       geometryKey: comp.cad.uri,
       position: comp.cad.position ?? [0, 0, 0],
@@ -205,10 +208,11 @@ export function InstancedCadAssembly({
 
     const result = AssemblyClusteringEngine.cluster(descriptors, { minInstanceCount });
 
-    const singletonMap = new Map(components.map((c) => [c.name, c]));
-    const singletonComps = result.singletons
-      .map((s) => singletonMap.get(s.name))
-      .filter((c): c is CadComponent => c !== undefined);
+    const singletonMap = new Map(gltfComponents.map((c) => [c.name, c]));
+    const singletonComps = [
+      ...result.singletons.map((s) => singletonMap.get(s.name)).filter((c): c is CadComponent => c !== undefined),
+      ...proceduralComponents,
+    ];
 
     return {
       clusters: result.clusters,

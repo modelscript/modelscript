@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": "../",
     "noEmit": true,
+    "incremental": false,
     "baseUrl": ".",
     "paths": {
       "@modelscript/modelica": ["../src/index.ts"],
@@ -11,5 +12,6 @@
       "@modelscript/modelica/*": ["../src/*"]
     }
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts"],
+  "exclude": ["scratch*", "**/scratch*"]
 }

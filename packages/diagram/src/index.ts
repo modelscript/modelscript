@@ -834,7 +834,8 @@ export function initGraph(isDark: boolean): Graph | null {
       const source = edge.getSource() as any;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const target = edge.getTarget() as any;
-      if (source?.cell && target?.cell) {
+      const wireId = edge.getData()?.wireId;
+      if ((source?.cell && target?.cell) || wireId) {
         const curVertices = edge.getVertices() || [];
         const srcPt = edge.getSourcePoint();
         const tgtPt = edge.getTargetPoint();
@@ -842,8 +843,16 @@ export function initGraph(isDark: boolean): Graph | null {
           x: Math.round(p.x),
           y: Math.round(-p.y),
         }));
-        const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell);
-        const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell);
+        const srcStr = source?.cell
+          ? source.port
+            ? `${source.cell}.${source.port}`
+            : String(source.cell)
+          : String(wireId || edge.id);
+        const tgtStr = target?.cell
+          ? target.port
+            ? `${target.cell}.${target.port}`
+            : String(target.cell)
+          : String(wireId || edge.id);
         enqueueDiagramAction({
           type: "moveEdge",
           edges: [
@@ -916,10 +925,17 @@ export function initGraph(isDark: boolean): Graph | null {
           const source = cell.getSource() as any;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const target = cell.getTarget() as any;
-          if (source.cell && source.port && target.cell && target.port) {
+          const wireId = cell.getData()?.wireId;
+          if (source?.cell && source?.port && target?.cell && target?.port) {
             edgesToDelete.push({
               source: `${source.cell}.${source.port}`,
               target: `${target.cell}.${target.port}`,
+            });
+          } else if (wireId || cell.id) {
+            const idStr = String(wireId || cell.id);
+            edgesToDelete.push({
+              source: idStr,
+              target: idStr,
             });
           }
         } else if (cell.isNode() && cell.id !== "__diagram_background__") {
@@ -1180,6 +1196,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     }
     // Forward labels (polyglot edge stereotypes like «connect», «satisfy»)
     if (edge.labels) edgeData.labels = edge.labels;
+    if (edge.data) edgeData.data = edge.data;
     edges.push(edgeData);
   }
 
@@ -1562,9 +1579,17 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
           if (nodeData.data) {
             cell.setData(nodeData.data, { overwrite: true });
           }
+
+          // Update markup and attrs (e.g. parameter ratings, breaker open/closed color, labels)
+          if (nodeData.markup) {
+            cell.setMarkup(nodeData.markup);
+          }
+          if (nodeData.attrs) {
+            cell.setAttrs(nodeData.attrs);
+          }
         }
 
-        // Update edge vertices
+        // Update edge vertices, endpoints, attrs, and data
         for (const edgeData of edges) {
           const cell = g.getCellById(edgeData.id);
           if (!cell || !cell.isEdge()) continue;
@@ -1577,6 +1602,12 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
           }
           if (edgeData.target && typeof edgeData.target === "object") {
             cell.setTarget(edgeData.target as any);
+          }
+          if (edgeData.attrs) {
+            cell.setAttrs(edgeData.attrs);
+          }
+          if (edgeData.data) {
+            cell.setData(edgeData.data, { overwrite: true });
           }
         }
       });

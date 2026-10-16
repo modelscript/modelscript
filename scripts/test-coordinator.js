@@ -23,7 +23,9 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
-const nxBin = path.resolve(repoRoot, "node_modules", "nx", "dist", "bin", "nx.js");
+const nxBin = fs.existsSync(path.resolve(repoRoot, "node_modules", "nx", "bin", "nx.js"))
+  ? path.resolve(repoRoot, "node_modules", "nx", "bin", "nx.js")
+  : path.resolve(repoRoot, "node_modules", "nx", "dist", "bin", "nx.js");
 
 export function getAvailableMemory() {
   if (process.platform === "linux") {
@@ -107,33 +109,50 @@ export function runCoordinator(argv = process.argv.slice(2)) {
     } else if (arg === "--dry-run") {
       dryRun = true;
     } else if (arg.startsWith("--parallel=")) {
-      userTasks = parseInt(arg.split("=")[1], 10);
-    } else if (arg === "--parallel") {
-      userTasks = parseInt(argv[++i], 10);
+      const parsed = parseInt(arg.split("=")[1], 10);
+      if (Number.isFinite(parsed) && parsed > 0) userTasks = parsed;
+    } else if (arg === "--parallel" && argv[i + 1]) {
+      const parsed = parseInt(argv[++i], 10);
+      if (Number.isFinite(parsed) && parsed > 0) userTasks = parsed;
     } else if (arg.startsWith("--test-concurrency=") || arg.startsWith("--concurrency=")) {
-      userWorkers = parseInt(arg.split("=")[1], 10);
-    } else if (arg === "--concurrency" || arg === "--test-concurrency") {
-      userWorkers = parseInt(argv[++i], 10);
+      const parsed = parseInt(arg.split("=")[1], 10);
+      if (Number.isFinite(parsed) && parsed > 0) userWorkers = parsed;
+    } else if ((arg === "--concurrency" || arg === "--test-concurrency") && argv[i + 1]) {
+      const parsed = parseInt(argv[++i], 10);
+      if (Number.isFinite(parsed) && parsed > 0) userWorkers = parsed;
     } else {
       passThroughArgs.push(arg);
     }
   }
 
   if (process.env.TEST_PARALLEL_TASKS) {
-    userTasks = userTasks ?? parseInt(process.env.TEST_PARALLEL_TASKS, 10);
+    const parsed = parseInt(process.env.TEST_PARALLEL_TASKS, 10);
+    if (Number.isFinite(parsed) && parsed > 0) userTasks = userTasks ?? parsed;
   }
   if (process.env.TEST_CONCURRENCY) {
-    userWorkers = userWorkers ?? parseInt(process.env.TEST_CONCURRENCY, 10);
+    const parsed = parseInt(process.env.TEST_CONCURRENCY, 10);
+    if (Number.isFinite(parsed) && parsed > 0) userWorkers = userWorkers ?? parsed;
   }
 
   // Quick detection of target count if not explicitly provided
   let targetCount = null;
   try {
-    const targetProjectsArg = passThroughArgs.find((a) => a.startsWith("--projects="));
+    const targetProjectsArg = passThroughArgs.find((a) => a.startsWith("--projects=") || a.startsWith("-p="));
     if (targetProjectsArg) {
       targetCount = targetProjectsArg.split("=")[1].split(",").filter(Boolean).length;
     } else {
-      const showCmd = spawnSync(process.execPath, [nxBin, "show", "projects", `--${mode}`, "--with-target=test"], {
+      const showFilterArgs = passThroughArgs.filter(
+        (a) => a.startsWith("--base=") || a.startsWith("--head=") || a.startsWith("--exclude="),
+      );
+      const showArgs = [
+        nxBin,
+        "show",
+        "projects",
+        ...(mode === "affected" ? ["--affected"] : []),
+        "--with-target=test",
+        ...showFilterArgs,
+      ];
+      const showCmd = spawnSync(process.execPath, showArgs, {
         cwd: repoRoot,
         encoding: "utf-8",
         timeout: 4000,

@@ -59,7 +59,45 @@ export function isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
   if (fname !== "assert") return false;
   const firstArg = dae.getExprLeft(callId);
   if (firstArg < 0) return false;
-  return dae.getExprKind(firstArg) === ExprKind.BoolLiteral && dae.getExprData1(firstArg) === 1;
+  if (dae.getExprKind(firstArg) === ExprKind.BoolLiteral && dae.getExprData1(firstArg) === 1) {
+    return true;
+  }
+  const isStaticOrEnumExpr = (id: number): boolean => {
+    if (id < 0) return false;
+    const k = dae.getExprKind(id);
+    if (
+      k === ExprKind.IntLiteral ||
+      k === ExprKind.RealLiteral ||
+      k === ExprKind.BoolLiteral ||
+      k === ExprKind.StringLiteral ||
+      k === ExprKind.EnumLiteral
+    ) {
+      return true;
+    }
+    if (k === ExprKind.Name) {
+      const name = dae.interner.resolve(dae.getExprData1(id));
+      if (!name) return false;
+      if (name === "true" || name === "false") return true;
+      const vIdx = dae.lookupVariable(name);
+      if (vIdx >= 0) {
+        const v = dae.getVarVariability(vIdx);
+        if (v === Variability.Constant) return true;
+        if (v === Variability.Parameter && (dae.isVarFinal(vIdx) || dae.getVarType(vIdx) === VarType.Enumeration)) {
+          return true;
+        }
+        return false;
+      }
+      return name.includes(".");
+    }
+    if (k === ExprKind.Unary || k === ExprKind.Negate) {
+      return isStaticOrEnumExpr(dae.getExprLeft(id));
+    }
+    if (k === ExprKind.Binary) {
+      return isStaticOrEnumExpr(dae.getExprLeft(id)) && isStaticOrEnumExpr(dae.getExprRight(id));
+    }
+    return false;
+  };
+  return isStaticOrEnumExpr(firstArg) && evalDaeExpr(firstArg, dae) === true;
 }
 
 const sharedAnnotationEvaluator = new AnnotationEvaluator();
@@ -463,6 +501,7 @@ export function extractClassEquations(
           !isPredefinedType(compClassSym)
         ) {
           const childPrefix = prefix ? `${prefix}.${child.name}` : child.name;
+          if (flattener.isComponentDisabled(childPrefix)) continue;
           const matchingArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === child.name);
           const compInst = db.query<ComponentInstanceData>("componentInstance", child.id);
           const compMods = compInst?.modification?.args || [];
@@ -487,6 +526,7 @@ export function extractClassEquations(
           } else if (arrayDims && arrayDims.length > 0) {
             const indices = generateArrayIndices(arrayDims);
             for (const indexStr of indices) {
+              if (flattener.isComponentDisabled(`${childPrefix}${indexStr}`)) continue;
               extractClassEquations(
                 flattener,
                 compClassId,
@@ -908,6 +948,102 @@ export function extractClassEquations(
             const lowerInlineEqs = (n: any): { kind: EqKind; lhsExprId: number; rhsExprId: number }[] => {
               if (!n) return [];
               if (n.type === "some_equation" && n.childCount === 1) n = n.child(0);
+              if (Cst.IfEquation.is(n) || n.type === "if_equation") {
+                const subBranches: IfBranch[] = [];
+                let curB: IfBranch | null = null;
+                let inCond = false;
+                let inB = false;
+                for (const child of n.children || []) {
+                  const text = child.text?.trim() ?? "";
+                  const type = child.type ?? "";
+                  if (text === "if" || type === '"if"' || text === "elseif" || type === '"elseif"') {
+                    inCond = true;
+                    inB = false;
+                    curB = { equationNodes: [] };
+                    subBranches.push(curB);
+                  } else if (text === "else" || type === '"else"') {
+                    inCond = false;
+                    inB = true;
+                    curB = { equationNodes: [] };
+                    subBranches.push(curB);
+                  } else if (text === "then" || type === '"then"') {
+                    inCond = false;
+                    inB = true;
+                  } else if (text === "end if" || type === '"end if"') {
+                    inCond = false;
+                    inB = false;
+                    curB = null;
+                  } else if (inCond && curB && !curB.conditionNode) {
+                    curB.conditionNode = child;
+                  } else if (inB && curB && text !== ";" && type !== '";"') {
+                    curB.equationNodes.push(child);
+                  }
+                }
+                let subStaticIdx: number | null = null;
+                let subDynamic = false;
+                for (let bi = 0; bi < subBranches.length; bi++) {
+                  const sb = subBranches[bi];
+                  if (sb.conditionNode) {
+                    const cId = flattener.lowerExpr(sb.conditionNode, dae, prefix, substitutions);
+                    const ev = evalDaeExpr(cId, dae);
+                    if (ev === null) {
+                      subDynamic = true;
+                      break;
+                    } else if (ev === true) {
+                      subStaticIdx = bi;
+                      break;
+                    }
+                  } else {
+                    subStaticIdx = bi;
+                    break;
+                  }
+                }
+                if (!subDynamic) {
+                  if (subStaticIdx !== null) {
+                    const out: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                    for (const eqN of subBranches[subStaticIdx].equationNodes) {
+                      out.push(...lowerInlineEqs(eqN));
+                    }
+                    return out;
+                  }
+                  return [];
+                }
+                if (subBranches.length > 0 && subBranches[0].conditionNode) {
+                  const subCondId = flattener.lowerExpr(subBranches[0].conditionNode, dae, prefix, substitutions);
+                  const subThen: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  for (const eqN of subBranches[0].equationNodes) {
+                    subThen.push(...lowerInlineEqs(eqN));
+                  }
+                  const subElseIf: {
+                    conditionExprId: number;
+                    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+                    equations: any[];
+                  }[] = [];
+                  const subElse: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  for (let bi = 1; bi < subBranches.length; bi++) {
+                    const sb = subBranches[bi];
+                    if (sb.conditionNode) {
+                      const eCondId = flattener.lowerExpr(sb.conditionNode, dae, prefix, substitutions);
+                      const bEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                      for (const eqN of sb.equationNodes) bEqs.push(...lowerInlineEqs(eqN));
+                      subElseIf.push({ conditionExprId: eCondId, bodyEquations: bEqs, equations: [] });
+                    } else {
+                      for (const eqN of sb.equationNodes) subElse.push(...lowerInlineEqs(eqN));
+                    }
+                  }
+                  return [
+                    {
+                      kind: EqKind.If,
+                      lhsExprId: subCondId,
+                      rhsExprId: -1,
+                      thenEquations: subThen,
+                      elseIfClauses: subElseIf,
+                      elseEquations: subElse,
+                    } as any,
+                  ];
+                }
+                return [];
+              }
               if (n.type === "simple_equation") {
                 const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
                 const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
@@ -1098,6 +1234,41 @@ export function extractClassEquations(
           const expressions = (node.children || []).filter(isEquationExpr);
           if (expressions.length >= 2) {
             let lhsExprId = flattener.lowerExpr(expressions[0], dae, prefix, substitutions, false, true);
+            if (
+              dae.extensionMetadata?.isOldFrontend &&
+              lhsExprId >= 0 &&
+              dae.getExprKind(lhsExprId) === ExprKind.Name
+            ) {
+              const rawLhsText = expressions[0]?.text?.trim() ?? "";
+              if (/^[a-zA-Z_]\w*$/.test(rawLhsText) && classEntry && db) {
+                const vName = dae.interner.resolve(dae.getExprData1(lhsExprId)) ?? "";
+                if (
+                  vName &&
+                  dae.getVarIdxByName(vName) < 0 &&
+                  !dae.hasArrayElements(vName) &&
+                  !flattener.activeLoopVars?.has(rawLhsText) &&
+                  !(substitutions && substitutions.has(rawLhsText))
+                ) {
+                  const allElems = db.query<SymbolEntry[]>("allElements", classId) ?? db.childrenOf(classId) ?? [];
+                  if (!allElems.some((e) => e.name === rawLhsText)) {
+                    const startB = node.startIndex ?? node.startByte;
+                    const endB = node.endIndex ?? node.endByte;
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+                      message: ModelicaErrorCode.VARIABLE_NOT_FOUND.message(rawLhsText, classEntry.name),
+                      range: {
+                        startByte: startB,
+                        endByte: endB,
+                        startPosition: node.startPosition,
+                        endPosition: node.endPosition,
+                      },
+                    });
+                    return;
+                  }
+                }
+              }
+            }
             const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;
             if (isTupleLhs) {
               let isAllCompRefs = true;
@@ -2320,7 +2491,8 @@ export function extractClassEquations(
                 leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
               if (expressions.length >= 2) {
                 let lhsId = flattener.lowerExpr(expressions[0], dae, prefix, substitutions);
-                let rhsId = flattener.lowerExpr(expressions[1], dae, prefix, substitutions);
+                const isTupleLhs = dae.getExprKind(lhsId) === ExprKind.Tuple;
+                let rhsId = flattener.lowerExpr(expressions[1], dae, prefix, substitutions, isTupleLhs);
                 if (isRealExpr(lhsId, dae) && !isRealExpr(rhsId, dae)) {
                   rhsId = castToRealExpr(rhsId, dae);
                 }

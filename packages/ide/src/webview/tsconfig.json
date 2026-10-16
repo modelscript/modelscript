@@ -9,6 +9,7 @@
     "moduleResolution": "bundler",
     "skipLibCheck": true,
     "jsx": "react-jsx",
+    "noEmit": true,
     "esModuleInterop": true
   },
   "include": ["**/*.ts", "**/*.tsx"]

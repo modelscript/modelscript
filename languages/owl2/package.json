@@ -1,6 +1,7 @@
 {
   "name": "@modelscript/owl2",
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {
@@ -44,11 +45,12 @@
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist src-gen *.wasm",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*"
   }

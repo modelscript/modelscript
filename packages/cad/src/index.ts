@@ -22,6 +22,8 @@ export type {
   ParamMeta,
   ParamOptions,
   PartEntry,
+  PolyhedronOptions,
+  PolyhedronSolid,
   Solid,
   SolidSourceMetadata,
   SphereOptions,
@@ -29,6 +31,7 @@ export type {
   TaggedPatchSolid,
   TorusOptions,
   TorusSolid,
+  TransformByteRange,
   TransformSolid,
   Vec3,
 } from "./types.js";
@@ -42,6 +45,7 @@ export {
   cylinder,
   fillet,
   linearExtrude,
+  polyhedron,
   resetNameCounter,
   sphere,
   tagPatch,
@@ -52,6 +56,7 @@ export {
 export {
   IDENTITY,
   mat4Multiply,
+  mergeSourceMetadata,
   mirror,
   mirrorMatrix,
   rotate,
@@ -64,6 +69,20 @@ export {
 
 // Booleans
 export { intersect, subtract, union } from "./booleans.js";
+
+// 3D BSP CSG Clipping & Mesh Metrics
+export {
+  CsgBspNode,
+  computeMeshVolumeAndArea,
+  createPolygon,
+  csgIntersect,
+  csgSubtract,
+  csgUnion,
+  planeFromPoints,
+  type CsgPlane,
+  type CsgPolygon,
+  type CsgVertex,
+} from "./csg-bsp.js";
 
 // Assembly
 export { assembly, part } from "./assembly.js";

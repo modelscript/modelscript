@@ -28,10 +28,14 @@
   "bin": {
     "modelscript-mcp": "./dist/main.js"
   },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --test-coverage-exclude=**/languages/** '--test-coverage-exclude=**/packages/!(mcp)/**'",
     "typecheck": "tsc --noEmit"
   },

@@ -468,6 +468,31 @@ export class DiagramService {
           }
           return [];
         },
+        getInferredSubClassOf: (_uri, axioms) => {
+          if (!axioms || axioms.length === 0) return [];
+          try {
+            const ReasonerCtor = (globalThis as any).TableauReasoner;
+            if (typeof ReasonerCtor !== "function") return [];
+            const reasoner = new ReasonerCtor();
+            reasoner.loadOntology(axioms);
+            reasoner.classify();
+            const taxonomy = reasoner.getTaxonomy();
+            const pairs: { subClassIri: string; superClassIri: string }[] = [];
+            if (Array.isArray(taxonomy)) {
+              for (const node of taxonomy) {
+                for (const sup of node.directSuperClasses || []) {
+                  if (sup !== "owl:Thing" && sup !== node.iri) {
+                    pairs.push({ subClassIri: node.iri, superClassIri: sup });
+                  }
+                }
+              }
+            }
+            return pairs;
+          } catch {
+            return [];
+          }
+        },
+
         getLayout: (uri) => {
           let layout = this.owl2Layouts.get(uri);
           if (!layout && typeof uri === "string" && uri.startsWith("file://")) {

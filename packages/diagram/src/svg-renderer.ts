@@ -38,6 +38,18 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
   const defaultEdgeStroke = isBlueprint ? "#93c5fd" : isDark ? "#38bdf8" : "#0284c7";
 
   // 1. Calculate bounding box enclosing all nodes and edges
+  // If multiple nodes are stacked at (0, 0), assign non-overlapping grid coordinates for headless rendering
+  const unplacedNodes = diagram.nodes.filter((n) => (n.x ?? 0) === 0 && (n.y ?? 0) === 0);
+  const resolvedCoords = new Map<string, { x: number; y: number }>();
+  if (unplacedNodes.length > 1) {
+    const cols = Math.max(1, Math.ceil(Math.sqrt(unplacedNodes.length)));
+    unplacedNodes.forEach((n, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      resolvedCoords.set(n.id, { x: 80 + col * 240, y: 80 + row * 140 });
+    });
+  }
+
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -46,11 +58,13 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
   const nodeMap = new Map<string, DiagramNode>();
 
   for (const node of diagram.nodes) {
-    nodeMap.set(node.id, node);
-    const nx = node.x ?? 0;
-    const ny = node.y ?? 0;
-    const nw = node.width ?? 120;
-    const nh = node.height ?? 60;
+    const override = resolvedCoords.get(node.id);
+    const effectiveNode = override ? { ...node, x: override.x, y: override.y } : node;
+    nodeMap.set(node.id, effectiveNode);
+    const nx = effectiveNode.x ?? 0;
+    const ny = effectiveNode.y ?? 0;
+    const nw = effectiveNode.width ?? 120;
+    const nh = effectiveNode.height ?? 60;
 
     minX = Math.min(minX, nx);
     minY = Math.min(minY, ny);
@@ -286,13 +300,17 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
 
   // 6. Render Nodes
   bodyParts.push(`<g id="nodes">`);
-  for (const node of diagram.nodes) {
+  for (const rawNode of diagram.nodes) {
+    const node = nodeMap.get(rawNode.id) ?? rawNode;
     const nx = node.x ?? 0;
     const ny = node.y ?? 0;
     const nw = node.width ?? 120;
     const nh = node.height ?? 60;
 
-    let fill = (node.attrs?.body?.fill as string) || defaultNodeFill;
+    const markupChildren = Array.isArray((node.markup as any)?.children) ? (node.markup as any).children : [];
+    const markupRect = markupChildren.find((c: any) => c.tagName === "rect");
+
+    let fill = (node.attrs?.body?.fill as string) || (markupRect?.attrs?.fill as string) || defaultNodeFill;
 
     if (node.id.startsWith("solder_dot_") || (node as any).shape === "circle") {
       const r = nw / 2;
@@ -310,12 +328,20 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       fill = "url(#grad-sphere)";
     }
 
-    const stroke = (node.attrs?.body?.stroke as string) || borderColor;
-    const strokeWidth = (node.attrs?.body?.strokeWidth as number) || 1.5;
-    const rx = (node.attrs?.body?.rx as number) || 6;
-    const ry = (node.attrs?.body?.ry as number) || 6;
-    const labelText = (node.attrs?.label?.text as string) || (node.properties?.description as string) || node.id;
-    const stereotype = (node.data?.ruleName as string) || (node.properties?.className as string);
+    const stroke = (node.attrs?.body?.stroke as string) || (markupRect?.attrs?.stroke as string) || borderColor;
+    const strokeWidth =
+      (node.attrs?.body?.strokeWidth as number) || (markupRect?.attrs?.["stroke-width"] as number) || 1.5;
+    const rx = (node.attrs?.body?.rx as number) || (markupRect?.attrs?.rx as number) || 6;
+    const ry = (node.attrs?.body?.ry as number) || (markupRect?.attrs?.ry as number) || 6;
+    const labelText =
+      (node.attrs?.label?.text as string) ||
+      (node.properties?.name as string) ||
+      (node.properties?.description as string) ||
+      node.id;
+    const stereotype =
+      (node.attrs?.header?.text as string)?.replace(/^[«<]+|[»>]+$/g, "") ||
+      (node.data?.ruleName as string) ||
+      (node.properties?.className as string);
     const multiplicity = (node.data?.multiplicity as number) || 1;
     const rawIconUrl =
       (node.attrs?.icon?.href as string) ||
@@ -324,7 +350,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       (node.properties?.icon as string);
     const iconUrl = typeof rawIconUrl === "string" && rawIconUrl.trim().length > 0 ? rawIconUrl.trim() : undefined;
 
-    bodyParts.push(`<g id="${node.id}" transform="translate(${nx}, ${ny})" filter="url(#shadow)">`);
+    bodyParts.push(`<g id="${escapeXml(node.id)}" transform="translate(${nx}, ${ny})" filter="url(#shadow)">`);
 
     // 2.5D Multiplicity Cascade: Stacked background card shadows
     if (multiplicity > 1) {
@@ -475,3 +501,5 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
   ${bodyParts.join("\n  ")}
 </svg>`;
 }
+
+export const renderDiagramDataToSvg = renderPolyglotDiagramToSvg;

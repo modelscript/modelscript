@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { getPscadHover } from "@modelscript/pscad";
 import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
@@ -444,6 +445,15 @@ export function registerHoverProvider(
             start: document.positionAt(tokenStart),
             end: document.positionAt(tokenEnd),
           },
+        };
+      }
+    }
+
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(targetUri)) {
+      const pscadHover = getPscadHover(text, offset);
+      if (pscadHover) {
+        return {
+          contents: { kind: "markdown", value: pscadHover.contents },
         };
       }
     }

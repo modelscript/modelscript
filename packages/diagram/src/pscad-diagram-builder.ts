@@ -11,12 +11,15 @@ import {
   breakerGlyph,
   busbarGlyph,
   converterBridgeGlyph,
+  csmfBlockGlyph,
   faultGlyph,
   generatorGlyph,
   inverterIbrGlyph,
+  meterProbeGlyph,
   surgeArresterGlyph,
   transformerGlyph,
   transmissionLineGlyph,
+  wirelessNetLabelGlyph,
 } from "./glyphs.js";
 
 export interface PscadComponentLike {
@@ -26,7 +29,10 @@ export interface PscadComponentLike {
   position: { x: number; y: number };
   width?: number | undefined;
   height?: number | undefined;
+  rotation?: number | undefined;
+  mirror?: boolean | undefined;
   parameters: Record<string, string | number>;
+  sourceRange?: { startByte: number; endByte: number } | undefined;
   ports?:
     | {
         id: string;
@@ -43,12 +49,16 @@ export interface PscadBusLike {
   voltageBaseKv?: number | undefined;
   position: { x: number; y: number };
   length?: number | undefined;
+  sourceRange?: { startByte: number; endByte: number } | undefined;
 }
 
 export interface PscadWireLike {
   id: string;
   vertices: { x: number; y: number }[];
   connectedPortIds?: string[] | undefined;
+  startPortId?: string | undefined;
+  endPortId?: string | undefined;
+  sourceRange?: { startByte: number; endByte: number } | undefined;
 }
 
 export interface PscadStickyLike {
@@ -65,6 +75,8 @@ export interface PscadModuleLike {
   components: PscadComponentLike[];
   wires: PscadWireLike[];
   stickies?: PscadStickyLike[] | undefined;
+  junctions?: { x: number; y: number }[] | undefined;
+  wirelessNets?: Record<string, string[]> | undefined;
 }
 
 export interface PscadProjectLike {
@@ -81,9 +93,11 @@ export interface X6CellData {
   y?: number;
   width?: number;
   height?: number;
+  angle?: number;
   markup?: any[];
   attrs?: Record<string, any>;
   ports?: any;
+  properties?: Record<string, any>;
   source?: any;
   target?: any;
   vertices?: { x: number; y: number }[];
@@ -111,11 +125,29 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     (moduleName && moduleName.includes(":") ? project.subModules?.get(moduleName.split(":").pop()!) : undefined) ||
     project.rootModule;
 
+  // Map portId or busId -> { cell: nodeId, port: portId, world: { x, y } }
+  const portAnchorMap = new Map<string, { cell: string; port: string; world: { x: number; y: number } }>();
+
   // 1. Convert Buses to Busbar Nodes
   for (const bus of mod.buses) {
     const width = bus.length ?? 80;
     const height = 14;
     const vbase = bus.voltageBaseKv ?? 230;
+    const busPortId = `${bus.id}_bus`;
+    const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
+
+    portAnchorMap.set(bus.id, {
+      cell: bus.id,
+      port: busPortId,
+      world: { x: bus.position.x, y: bus.position.y },
+    });
+
+    const busProps = {
+      name: bus.name,
+      className: "Bus",
+      description: `${bus.name} (${vbase} kV)`,
+      sourceRange: bus.sourceRange,
+    };
 
     cells.push({
       id: bus.id,
@@ -124,11 +156,30 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       y: bus.position.y,
       width,
       height,
-      markup: busbarGlyph({ length: width, voltageBaseKv: vbase }),
+      markup: busbarGlyph({ length: width, voltageBaseKv: vbase, label: bus.name }),
+      attrs: {
+        busbar: { fill: color, width },
+        busLabel: { text: `${bus.name} (${vbase} kV)`, fill: color },
+        label: { text: `${bus.name} (${vbase} kV)` },
+      },
+      ports: {
+        groups: {
+          bus: {
+            position: { name: "absolute", args: { x: 0, y: 3 } },
+            attrs: {
+              circle: { r: 3.5, fill: color, stroke: "#0f172a", strokeWidth: 1, magnet: true },
+            },
+          },
+        },
+        items: [{ id: busPortId, group: "bus" }],
+      },
+      properties: busProps,
       data: {
         kind: "bus",
         name: bus.name,
         vbase,
+        centerPosition: { x: bus.position.x, y: bus.position.y },
+        properties: busProps,
       },
     });
   }
@@ -146,12 +197,27 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     }
 
     const defn = cmp.definitionName.toLowerCase();
+    const cleanName = (cmp.instanceName || cmp.id).includes(":")
+      ? (cmp.instanceName || cmp.id).split(":").pop()!
+      : cmp.instanceName || cmp.id;
+    const cleanDefn = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
+
+    // Build concise instance + rating label for apparatus glyphs
+    const mvaRating = cmp.parameters["MVA"] ?? cmp.parameters["mva"] ?? cmp.parameters["rated_mva"];
+    const vRating = cmp.parameters["V"] ?? cmp.parameters["Vref"] ?? cmp.parameters["v"];
+    const displayLabel =
+      mvaRating !== undefined
+        ? `${cleanName} (${mvaRating} MVA)`
+        : vRating !== undefined && (defn.includes("source") || defn.includes("arrester") || defn.includes("mov"))
+          ? `${cleanName} (${vRating} kV)`
+          : cleanName;
+
     let markup = undefined;
     let width = cmp.width && cmp.width > 60 ? cmp.width : 110;
     let height = cmp.height && cmp.height > 40 ? cmp.height : 60;
 
     if (defn.includes("xfmr") || defn.includes("transformer")) {
-      markup = transformerGlyph();
+      markup = transformerGlyph({ label: displayLabel });
       width = 72;
       height = 60;
     } else if (
@@ -161,42 +227,89 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       defn.includes("ind_machine") ||
       defn.includes("dfig")
     ) {
-      markup = generatorGlyph();
+      markup = generatorGlyph({ label: displayLabel });
       width = 60;
       height = 60;
     } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
-      markup = inverterIbrGlyph();
+      markup = inverterIbrGlyph({ label: displayLabel });
       width = 60;
       height = 60;
     } else if (defn.includes("breaker") || defn.includes("switch")) {
       const statusStr = String(cmp.parameters["Status"] ?? cmp.parameters["status"] ?? "closed").toLowerCase();
-      markup = breakerGlyph({ isOpen: statusStr === "open" || statusStr === "0" });
+      markup = breakerGlyph({ isOpen: statusStr === "open" || statusStr === "0", label: displayLabel });
       width = 48;
       height = 44;
     } else if (defn.includes("arrester") || defn.includes("mov")) {
-      markup = surgeArresterGlyph();
+      markup = surgeArresterGlyph({ label: displayLabel });
       width = 40;
       height = 54;
     } else if (defn.includes("tpflt") || defn.includes("fault")) {
-      markup = faultGlyph();
+      markup = faultGlyph({ label: displayLabel });
       width = 40;
       height = 44;
     } else if (defn.includes("vsc_pwm") || defn.includes("lcc_6pulse") || defn.includes("mmc")) {
       const badge = defn.includes("mmc") ? "MMC" : defn.includes("lcc") ? "LCC" : "VSC";
-      markup = converterBridgeGlyph({ badge });
+      markup = converterBridgeGlyph({ badge, label: displayLabel });
       width = 72;
       height = 60;
     } else if (defn.includes("tline") || defn.includes("cable")) {
-      markup = transmissionLineGlyph({ isCable: defn.includes("cable") });
+      markup = transmissionLineGlyph({ isCable: defn.includes("cable"), label: displayLabel });
       width = 80;
       height = 48;
+    } else if (defn.includes("pi_ctlr") || defn === "pi" || defn.endsWith(":pi")) {
+      markup = csmfBlockGlyph({ kind: "pi", label: cleanName });
+      width = 64;
+      height = 42;
+    } else if (defn.includes("realpole") || defn.includes("lag")) {
+      markup = csmfBlockGlyph({ kind: "lag", label: cleanName });
+      width = 64;
+      height = 42;
+    } else if (defn.includes("sum") || defn.endsWith(":add")) {
+      markup = csmfBlockGlyph({ kind: "sum", label: cleanName });
+      width = 44;
+      height = 44;
+    } else if (defn.includes("gain")) {
+      markup = csmfBlockGlyph({ kind: "gain", label: cleanName });
+      width = 52;
+      height = 40;
+    } else if (defn.includes("limit")) {
+      markup = csmfBlockGlyph({ kind: "limit", label: cleanName });
+      width = 64;
+      height = 42;
+    } else if (defn.includes("compar") || defn.includes("relay")) {
+      markup = csmfBlockGlyph({ kind: "compar", label: cleanName });
+      width = 64;
+      height = 42;
+    } else if (defn.includes("const")) {
+      markup = csmfBlockGlyph({ kind: "const", label: cleanName });
+      width = 64;
+      height = 42;
+    } else if (defn.includes("pgb") || defn.includes("probe") || defn.includes("oscilloscope")) {
+      markup = meterProbeGlyph({ kind: "pgb", label: String(cmp.parameters["Name"] ?? cmp.instanceName ?? "PGB") });
+      width = 54;
+      height = 34;
+    } else if (defn.includes("multimeter") || defn.includes("voltmeter") || defn.includes("ammeter")) {
+      const mKind = defn.includes("voltmeter") ? "voltmeter" : defn.includes("ammeter") ? "ammeter" : "multimeter";
+      markup = meterProbeGlyph({
+        kind: mKind,
+        label: mKind === "voltmeter" ? "V" : mKind === "ammeter" ? "A" : "V/I/PQ",
+      });
+      width = 48;
+      height = 44;
+    } else if (
+      defn.includes("datalabel") ||
+      defn.includes("data_label") ||
+      defn.includes("xnode") ||
+      defn.includes("pin")
+    ) {
+      const isElec = defn.includes("xnode") || defn.includes("pin");
+      markup = wirelessNetLabelGlyph({
+        label: String(cmp.parameters["Name"] ?? cmp.parameters["name"] ?? cleanName),
+        isElectrical: isElec,
+      });
+      width = 44;
+      height = 24;
     }
-
-    const cleanName = (cmp.instanceName || cmp.id).includes(":")
-      ? (cmp.instanceName || cmp.id).split(":").pop()!
-      : cmp.instanceName || cmp.id;
-
-    const cleanDefn = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
 
     // Build ports if present
     const portGroups: Record<string, any> = {
@@ -254,27 +367,61 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         }
         seenPortIds.add(portId);
 
+        const rotRad = (((cmp.rotation ?? 0) % 360) * Math.PI) / 180;
+        const cos = Math.round(Math.cos(rotRad) * 1e6) / 1e6;
+        const sin = Math.round(Math.sin(rotRad) * 1e6) / 1e6;
+        const lx = cmp.mirror ? -(p.position?.x ?? 0) : (p.position?.x ?? 0);
+        const ly = p.position?.y ?? 0;
+        const worldPos = {
+          x: cmp.position.x + (lx * cos - ly * sin),
+          y: cmp.position.y + (lx * sin + ly * cos),
+        };
+        portAnchorMap.set(portId, { cell: cmp.id, port: portId, world: worldPos });
+
+        const isSignalPort =
+          p.kind === "signal" || p.name === "in" || p.name === "out" || p.name === "in1" || p.name === "in2";
         portItems.push({
           id: portId,
           group,
           attrs: {
+            circle: isSignalPort
+              ? { r: 3.5, fill: "#c084fc", stroke: "#1e1b4b", strokeWidth: 1.5, magnet: true }
+              : { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
             text: {
               text: p.name,
-              fill: "#94a3b8",
+              fill: isSignalPort ? "#d8b4fe" : "#94a3b8",
               fontSize: 9,
             },
+          },
+          data: {
+            portKind: isSignalPort ? "signal" : "electrical",
           },
         });
       }
     }
 
+    const isSubModule = Boolean(project.subModules?.has(cleanDefn) || project.subModules?.has(cmp.definitionName));
+    const nodeProperties = {
+      name: cleanName,
+      className: cmp.definitionName,
+      description: isSubModule ? cleanDefn : `${cleanName} (${cleanDefn})`,
+      sourceRange: cmp.sourceRange,
+      ruleName: isSubModule ? "PartUsage" : undefined,
+    };
+
+    // Place X6 node top-left at (cmp.position.x - width/2, cmp.position.y - height/2)
+    // so that cmp.position is the exact geometric center of the apparatus.
+    const topLeftX = Math.round(cmp.position.x - width / 2);
+    const topLeftY = Math.round(cmp.position.y - height / 2);
+
     cells.push({
       id: cmp.id,
       shape: "rect",
-      x: cmp.position.x,
-      y: cmp.position.y,
+      x: topLeftX,
+      y: topLeftY,
       width,
       height,
+      angle: cmp.rotation ?? 0,
       markup: markup ?? [
         { tagName: "rect", selector: "body" },
         { tagName: "rect", selector: "headerBg" },
@@ -282,7 +429,11 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         { tagName: "text", selector: "label" },
       ],
       attrs: markup
-        ? undefined
+        ? {
+            label: {
+              text: displayLabel,
+            },
+          }
         : {
             body: {
               fill: "#1e293b",
@@ -318,43 +469,123 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
             },
           },
       ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
+      properties: nodeProperties,
       data: {
         kind: "component",
         definition: cmp.definitionName,
         name: cmp.instanceName,
         parameters: cmp.parameters,
+        centerPosition: { x: cmp.position.x, y: cmp.position.y },
+        properties: nodeProperties,
       },
     });
   }
 
-  // 3. Convert Wires to Edges
+  // Collect signal port IDs to distinguish CSMF signal wires from 3-phase electrical wires
+  const signalPortIdSet = new Set<string>();
+  for (const cmp of mod.components) {
+    const d = cmp.definitionName.toLowerCase();
+    const isControlBlock =
+      d.includes("pi_ctlr") ||
+      d.includes("realpole") ||
+      d.includes("lag") ||
+      d.includes("sum") ||
+      d.includes("gain") ||
+      d.includes("limit") ||
+      d.includes("compar") ||
+      d.includes("const") ||
+      d.includes("pgb") ||
+      d.includes("datalabel");
+    for (const p of cmp.ports ?? []) {
+      if (isControlBlock || p.kind === "signal") {
+        signalPortIdSet.add(p.id);
+      }
+    }
+  }
+
+  const findNearestPortAnchor = (pt: { x: number; y: number }, preferredId?: string) => {
+    if (preferredId && portAnchorMap.has(preferredId)) {
+      return portAnchorMap.get(preferredId)!;
+    }
+    let best: { cell: string; port: string; world: { x: number; y: number } } | undefined;
+    let bestDist = 15.0;
+    for (const anchor of portAnchorMap.values()) {
+      const d = Math.hypot(pt.x - anchor.world.x, pt.y - anchor.world.y);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = anchor;
+      }
+    }
+    return best;
+  };
+
+  // 3. Convert Wires to Edges (anchoring to component ports/buses when snapped, distinguishing signal vs power)
   for (const wire of mod.wires) {
     if (wire.vertices.length >= 2) {
+      const firstPt = wire.vertices[0]!;
+      const lastPt = wire.vertices[wire.vertices.length - 1]!;
+      const srcAnchor = findNearestPortAnchor(firstPt, wire.startPortId);
+      const tgtAnchor = findNearestPortAnchor(lastPt, wire.endPortId);
+
+      const isSignalWire = (wire.connectedPortIds ?? []).some((pid) => signalPortIdSet.has(pid));
       cells.push({
         id: wire.id,
         shape: "edge",
-        source: { x: wire.vertices[0]!.x, y: wire.vertices[0]!.y },
-        target: {
-          x: wire.vertices[wire.vertices.length - 1]!.x,
-          y: wire.vertices[wire.vertices.length - 1]!.y,
-        },
+        source: srcAnchor ? { cell: srcAnchor.cell, port: srcAnchor.port } : { x: firstPt.x, y: firstPt.y },
+        target: tgtAnchor ? { cell: tgtAnchor.cell, port: tgtAnchor.port } : { x: lastPt.x, y: lastPt.y },
         vertices: wire.vertices.slice(1, -1),
         attrs: {
           line: {
-            stroke: "#81d4fa",
-            strokeWidth: 2,
-            targetMarker: null,
+            stroke: isSignalWire ? "#c084fc" : "#38bdf8",
+            strokeWidth: isSignalWire ? 1.5 : 2.5,
+            strokeDasharray: isSignalWire ? "4,2" : undefined,
+            targetMarker: isSignalWire ? { name: "block", width: 6, height: 5 } : null,
           },
         },
         data: {
           kind: "wire",
+          wireId: wire.id,
+          wireKind: isSignalWire ? "signal" : "electrical",
           connectedPorts: wire.connectedPortIds ?? [],
+          sourcePoint: { x: firstPt.x, y: firstPt.y },
+          targetPoint: { x: lastPt.x, y: lastPt.y },
+          sourceRange: wire.sourceRange,
         },
       });
     }
   }
 
-  // 4. Convert Sticky Notes to Card Nodes
+  // 4. Emit T-Junction Solder Dots where 3+ wire segments or mid-wire taps intersect
+  if (mod.junctions && mod.junctions.length > 0) {
+    for (let idx = 0; idx < mod.junctions.length; idx++) {
+      const j = mod.junctions[idx]!;
+      cells.push({
+        id: `solder_dot_${j.x}_${j.y}_${idx}`,
+        shape: "circle",
+        x: j.x - 4,
+        y: j.y - 4,
+        width: 8,
+        height: 8,
+        markup: [{ tagName: "circle", selector: "dot" }],
+        attrs: {
+          dot: {
+            cx: 4,
+            cy: 4,
+            r: 4,
+            fill: "#38bdf8",
+            stroke: "#0f172a",
+            strokeWidth: 1.5,
+          },
+        },
+        data: {
+          kind: "junction",
+          position: { x: j.x, y: j.y },
+        },
+      });
+    }
+  }
+
+  // 5. Convert Sticky Notes to Card Nodes
   if (mod.stickies) {
     for (const sticky of mod.stickies) {
       const isBanner = sticky.width > 400;
@@ -397,6 +628,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     cells,
     metadata: {
       projectName: project.name,
+      moduleName: mod.name,
       nodeCount: mod.buses.length + mod.components.length + (mod.stickies?.length ?? 0),
       edgeCount: mod.wires.length,
     },
@@ -451,24 +683,31 @@ export function renderPscadSvg(project: PscadProjectLike): string {
   // Render edges (wires) first
   for (const c of diag.cells) {
     if (c.shape === "edge" && c.source && c.target) {
-      let pathData = `M ${c.source.x} ${c.source.y}`;
+      const srcPt = c.data?.sourcePoint ?? c.source;
+      const tgtPt = c.data?.targetPoint ?? c.target;
+      if (srcPt?.x === undefined || tgtPt?.x === undefined) continue;
+      let pathData = `M ${srcPt.x} ${srcPt.y}`;
       if (c.vertices) {
         for (const v of c.vertices) {
           pathData += ` L ${v.x} ${v.y}`;
         }
       }
-      pathData += ` L ${c.target.x} ${c.target.y}`;
+      pathData += ` L ${tgtPt.x} ${tgtPt.y}`;
       elementsSvg += `  <path d="${pathData}" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />\n`;
     }
   }
 
-  // Render nodes (components & buses & stickies)
+  // Render nodes (components, buses, junctions & stickies)
   for (const c of diag.cells) {
     if (c.x !== undefined && c.y !== undefined) {
       const w = c.width ?? 60;
       const h = c.height ?? 60;
 
-      if (c.data?.kind === "bus") {
+      if (c.data?.kind === "junction") {
+        const jx = c.data.position?.x ?? c.x + 4;
+        const jy = c.data.position?.y ?? c.y + 4;
+        elementsSvg += `  <circle cx="${jx}" cy="${jy}" r="4" fill="#38bdf8" stroke="#0f172a" stroke-width="1.5" />\n`;
+      } else if (c.data?.kind === "bus") {
         const vbase = c.data.vbase ?? 230;
         const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;

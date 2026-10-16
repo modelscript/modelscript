@@ -33,6 +33,7 @@
   "scripts": {
     "build": "tsc && mkdir -p dist/vendor && cp -r src/vendor/* dist/vendor/ && chmod +x dist/main.js",
     "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=120000",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch"
@@ -48,11 +49,13 @@
     "@modelscript/fea": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/modelscript": "*",
     "@modelscript/owl2": "*",
     "@modelscript/pscad": "*",
     "@modelscript/runtime": "*",
     "@modelscript/scad": "*",
     "@modelscript/simulate": "*",
+    "@modelscript/ssp": "*",
     "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
     "@npmcli/package-json": "^7.0.0",

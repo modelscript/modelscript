@@ -1,7 +1,6 @@
 // name:     RecordConstant3
 // keywords: record, constant, array
 // status:   correct
-// xfail:    true
 //
 // Checks that it's possible to look up components through record array
 // constants.

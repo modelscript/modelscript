@@ -329,7 +329,16 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       // underline only the first unresolved segment; otherwise defer to Salsa QueryEngine.
       if (identCount > 1) {
         if (firstIdent == 0) return;
-        let currClass = findClassByName(db, firstIdent, $);
+        let currClass: u32 = 0;
+        for (const anc of db.ast.getAncestors(node, 0)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            currClass = findInnerClassInClass(db, anc, firstIdent, $);
+            if (currClass != 0) break;
+          }
+        }
+        if (currClass == 0) {
+          currClass = findClassByName(db, firstIdent, $);
+        }
         if (currClass == 0) return;
         let segIdx: u32 = 0;
         for (const id of db.ast.getDescendants(node, $.identifier)) {

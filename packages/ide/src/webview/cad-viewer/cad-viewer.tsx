@@ -8,6 +8,7 @@
  * interactions via CADPort annotations.
  */
 
+import type { DynamicBindingConfig } from "@modelscript/cad";
 import {
   ContactShadows,
   Environment,
@@ -24,11 +25,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
+import { CadBindingPickerModal } from "./cad-binding-picker-modal";
 import { CfdMeshRenderer, type CfdMeshPayload } from "./cfd-mesh-renderer";
 import { FeaMeshRenderer, type FeaMeshPayload } from "./fea-mesh-renderer";
 import { InstancedCadAssembly } from "./instanced-cad-assembly";
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+export type GizmoMode = "translate" | "rotate" | "scale";
 
 export interface CadAnnotation {
   uri: string;
@@ -49,21 +53,44 @@ export interface CadPortAnnotation {
   offsetScale?: [number, number, number];
 }
 
+export interface CadSourceMetadata {
+  parameterName?: string;
+  dimensionParams?: [string | undefined, string | undefined, string | undefined];
+  dimensions?: [number, number, number];
+  transformMethod?: string;
+  argIndex?: number;
+  startByte?: number;
+  endByte?: number;
+  primitiveStartByte?: number;
+  primitiveEndByte?: number;
+  translateRange?: { startByte: number; endByte: number };
+  rotateRange?: { startByte: number; endByte: number };
+  scaleRange?: { startByte: number; endByte: number };
+  translation?: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
+  color?: [number, number, number, number];
+}
+
+export interface ProceduralMeshData {
+  vertices: number[];
+  indices: number[];
+  normals: number[];
+  color?: [number, number, number, number];
+}
+
 export interface GizmoCommitPayload {
   componentName: string;
+  mode?: GizmoMode;
   delta: [number, number, number];
   newPosition: [number, number, number];
-  sourceMetadata?: {
-    parameterName?: string;
-    transformMethod?: string;
-    argIndex?: number;
-    startByte?: number;
-    endByte?: number;
-  };
+  newRotation?: [number, number, number];
+  newScale?: [number, number, number];
+  sourceMetadata?: CadSourceMetadata;
 }
 
 export interface CadComponent {
-  /** Qualified Modelica variable name, e.g. "body1" */
+  /** Qualified Modelica variable name or OpenSCAD part name, e.g. "body1" */
   name: string;
   /** Parsed CAD annotation */
   cad: CadAnnotation;
@@ -71,14 +98,10 @@ export interface CadComponent {
   ports?: { name: string; port: CadPortAnnotation }[];
   /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
   dynamicBindings?: { property: string; index: number; variable: string }[];
-  /** Source code metadata linking to AST parameters */
-  sourceMetadata?: {
-    parameterName?: string;
-    transformMethod?: string;
-    argIndex?: number;
-    startByte?: number;
-    endByte?: number;
-  };
+  /** Source code metadata linking to AST parameters and CST byte ranges */
+  sourceMetadata?: CadSourceMetadata;
+  /** Procedural triangle mesh for inline CSG/OpenSCAD solids */
+  proceduralMesh?: ProceduralMeshData;
 }
 
 interface CadViewerProps {
@@ -92,6 +115,8 @@ interface CadViewerProps {
   onSelect?: (name: string | null) => void;
   /** Callback when user drags and releases a 3D direct-manipulation transform/dimension gizmo */
   onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
+  /** Callback when user saves dynamic variable bindings from CadBindingPickerModal */
+  onCommitCadBinding?: (payload: { componentName: string; bindings: DynamicBindingConfig[]; uri?: string }) => void;
   /** Dark mode toggle */
   dark?: boolean;
   /** Animation controller for simulation-driven animation */
@@ -151,11 +176,53 @@ function PortIndicator({
   );
 }
 
-/** A single GLTF-based component in the scene. */
+/** Procedural triangle mesh built directly from CSG evaluation arrays. */
+function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
+    if (mesh.normals && mesh.normals.length === mesh.vertices.length) {
+      geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(mesh.normals), 3));
+    }
+    if (mesh.indices && mesh.indices.length > 0) {
+      geo.setIndex(mesh.indices);
+    }
+    if (!mesh.normals || mesh.normals.length !== mesh.vertices.length) {
+      geo.computeVertexNormals();
+    }
+    return geo;
+  }, [mesh]);
+
+  const rgba = mesh.color ?? [0.27, 0.51, 0.71, 1.0];
+  const color = useMemo(() => new THREE.Color(rgba[0], rgba[1], rgba[2]), [rgba]);
+
+  return (
+    <mesh geometry={geometry} castShadow receiveShadow>
+      <meshStandardMaterial
+        color={color}
+        metalness={0.25}
+        roughness={0.45}
+        transparent={rgba[3] < 1.0}
+        opacity={rgba[3]}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+/** GLTF-loaded 3D mesh object. */
+function GltfMeshObject({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+  return <primitive object={cloned} />;
+}
+
+/** A single GLTF or procedural CSG component in the scene. */
 function CadModel({
   component,
   assetBaseUrl,
   selected,
+  gizmoMode,
   onSelect,
   animationController,
   onCommitGizmoDelta,
@@ -163,13 +230,12 @@ function CadModel({
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
+  gizmoMode: GizmoMode;
   onSelect?: (name: string | null) => void;
   animationController?: AnimationController | null;
   onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
-  const { scene } = useGLTF(url);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
   const groupRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
   const [inspectorValues, setInspectorValues] = useState<
@@ -180,39 +246,101 @@ function CadModel({
   const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
   const [gizmoDelta, setGizmoDelta] = useState<[number, number, number]>([0, 0, 0]);
   const initialGizmoPosRef = useRef<[number, number, number]>(component.cad.position ?? [0, 0, 0]);
+  const initialGizmoRotRef = useRef<[number, number, number]>(component.cad.rotation ?? [0, 0, 0]);
+  const initialGizmoSclRef = useRef<[number, number, number]>(component.cad.scale ?? [1, 1, 1]);
 
   useEffect(() => {
     initialGizmoPosRef.current = component.cad.position ?? [0, 0, 0];
+    initialGizmoRotRef.current = component.cad.rotation ?? [0, 0, 0];
+    initialGizmoSclRef.current = component.cad.scale ?? [1, 1, 1];
     setGizmoDelta([0, 0, 0]);
-  }, [component.cad.position]);
+  }, [component.cad.position, component.cad.rotation, component.cad.scale]);
 
   const handleGizmoChange = useCallback(() => {
     if (!groupRef.current) return;
-    const cur = groupRef.current.position;
-    const init = initialGizmoPosRef.current;
-    setGizmoDelta([cur.x - init[0], cur.y - init[1], cur.z - init[2]]);
+    if (gizmoMode === "translate") {
+      const cur = groupRef.current.position;
+      const init = initialGizmoPosRef.current;
+      setGizmoDelta([cur.x - init[0], cur.y - init[1], cur.z - init[2]]);
+    } else if (gizmoMode === "rotate") {
+      const cur = groupRef.current.rotation;
+      const init = initialGizmoRotRef.current;
+      const rxDeg = (cur.x * 180) / Math.PI;
+      const ryDeg = (cur.y * 180) / Math.PI;
+      const rzDeg = (cur.z * 180) / Math.PI;
+      setGizmoDelta([rxDeg - init[0], ryDeg - init[1], rzDeg - init[2]]);
+    } else if (gizmoMode === "scale") {
+      const cur = groupRef.current.scale;
+      const init = initialGizmoSclRef.current;
+      setGizmoDelta([cur.x / (init[0] || 1), cur.y / (init[1] || 1), cur.z / (init[2] || 1)]);
+    }
     setIsDraggingGizmo(true);
-  }, []);
+  }, [gizmoMode]);
 
   const handleGizmoMouseUp = useCallback(() => {
     if (!groupRef.current) return;
     setIsDraggingGizmo(false);
-    const cur = groupRef.current.position;
-    const init = initialGizmoPosRef.current;
-    const dx = cur.x - init[0];
-    const dy = cur.y - init[1];
-    const dz = cur.z - init[2];
-    if (Math.hypot(dx, dy, dz) > 1e-4) {
-      onCommitGizmoDelta?.({
-        componentName: component.name,
-        delta: [dx, dy, dz],
-        newPosition: [cur.x, cur.y, cur.z],
-        sourceMetadata: component.sourceMetadata,
-      });
-      initialGizmoPosRef.current = [cur.x, cur.y, cur.z];
-      setGizmoDelta([0, 0, 0]);
+    const curPos = groupRef.current.position;
+    const curRot = groupRef.current.rotation;
+    const curScl = groupRef.current.scale;
+
+    if (gizmoMode === "translate") {
+      const init = initialGizmoPosRef.current;
+      const dx = curPos.x - init[0];
+      const dy = curPos.y - init[1];
+      const dz = curPos.z - init[2];
+      if (Math.hypot(dx, dy, dz) > 1e-4) {
+        onCommitGizmoDelta?.({
+          componentName: component.name,
+          mode: "translate",
+          delta: [dx, dy, dz],
+          newPosition: [curPos.x, curPos.y, curPos.z],
+          sourceMetadata: component.sourceMetadata,
+        });
+        initialGizmoPosRef.current = [curPos.x, curPos.y, curPos.z];
+        setGizmoDelta([0, 0, 0]);
+      }
+    } else if (gizmoMode === "rotate") {
+      const init = initialGizmoRotRef.current;
+      const rxDeg = (curRot.x * 180) / Math.PI;
+      const ryDeg = (curRot.y * 180) / Math.PI;
+      const rzDeg = (curRot.z * 180) / Math.PI;
+      const drx = rxDeg - init[0];
+      const dry = ryDeg - init[1];
+      const drz = rzDeg - init[2];
+      if (Math.hypot(drx, dry, drz) > 1e-2) {
+        const baseRot = component.sourceMetadata?.rotation ?? init;
+        const newRot: [number, number, number] = [baseRot[0] + drx, baseRot[1] + dry, baseRot[2] + drz];
+        onCommitGizmoDelta?.({
+          componentName: component.name,
+          mode: "rotate",
+          delta: [drx, dry, drz],
+          newPosition: [curPos.x, curPos.y, curPos.z],
+          newRotation: newRot,
+          sourceMetadata: component.sourceMetadata,
+        });
+        initialGizmoRotRef.current = [rxDeg, ryDeg, rzDeg];
+        setGizmoDelta([0, 0, 0]);
+      }
+    } else if (gizmoMode === "scale") {
+      const init = initialGizmoSclRef.current;
+      const sx = curScl.x / (init[0] || 1);
+      const sy = curScl.y / (init[1] || 1);
+      const sz = curScl.z / (init[2] || 1);
+      if (Math.hypot(sx - 1, sy - 1, sz - 1) > 1e-3) {
+        onCommitGizmoDelta?.({
+          componentName: component.name,
+          mode: "scale",
+          delta: [sx - 1, sy - 1, sz - 1],
+          newPosition: [curPos.x, curPos.y, curPos.z],
+          newScale: [sx, sy, sz],
+          sourceMetadata: component.sourceMetadata,
+        });
+        initialGizmoSclRef.current = [curScl.x, curScl.y, curScl.z];
+        setGizmoDelta([0, 0, 0]);
+      }
     }
-  }, [component.name, component.sourceMetadata, onCommitGizmoDelta]);
+  }, [component.name, component.sourceMetadata, gizmoMode, onCommitGizmoDelta]);
 
   // Ghost trail state (bypass React for performance)
   const maxTrailPoints = 300;
@@ -294,6 +422,7 @@ function CadModel({
   });
 
   const showInspector = (hovered || selected) && inspectorValues.length > 0 && animationController?.mode !== "stopped";
+  const gizmoLabelPrefix = gizmoMode === "rotate" ? "Δθ°" : gizmoMode === "scale" ? "×S" : "Δ";
 
   return (
     <>
@@ -313,7 +442,11 @@ function CadModel({
         }}
         onPointerOut={() => setHovered(false)}
       >
-        <primitive object={cloned} />
+        {component.proceduralMesh ? (
+          <ProceduralMeshObject mesh={component.proceduralMesh} />
+        ) : (
+          <GltfMeshObject url={url} />
+        )}
 
         {showInspector && (
           <Html position={[0, 0, 0]} center style={{ pointerEvents: "none", zIndex: 10 }}>
@@ -374,7 +507,7 @@ function CadModel({
                 boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
               }}
             >
-              Δ: [{gizmoDelta[0].toFixed(2)}, {gizmoDelta[1].toFixed(2)}, {gizmoDelta[2].toFixed(2)}]
+              {gizmoLabelPrefix}: [{gizmoDelta[0].toFixed(2)}, {gizmoDelta[1].toFixed(2)}, {gizmoDelta[2].toFixed(2)}]
             </div>
           </Html>
         )}
@@ -393,7 +526,7 @@ function CadModel({
       {selected && (!animationController || animationController.mode === "stopped") && (
         <TransformControls
           object={groupRef}
-          mode="translate"
+          mode={gizmoMode}
           onObjectChange={handleGizmoChange}
           onMouseUp={handleGizmoMouseUp}
         />
@@ -410,6 +543,7 @@ function SceneContents({
   components,
   assetBaseUrl,
   selectedName,
+  gizmoMode,
   onSelect,
   onCommitGizmoDelta,
   dark,
@@ -420,6 +554,7 @@ function SceneContents({
   components: CadComponent[];
   assetBaseUrl: string;
   selectedName?: string | null;
+  gizmoMode: GizmoMode;
   onSelect?: (name: string | null) => void;
   onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
   dark?: boolean;
@@ -486,6 +621,7 @@ function SceneContents({
               component={comp}
               assetBaseUrl={assetBaseUrl}
               selected={selectedName === comp.name}
+              gizmoMode={gizmoMode}
               onSelect={onSelect}
               animationController={animationController}
               onCommitGizmoDelta={onCommitGizmoDelta}
@@ -535,7 +671,7 @@ function EmptyState({ dark }: { dark?: boolean }) {
       </svg>
       <span>No shape classes found</span>
       <span style={{ fontSize: 12, opacity: 0.7 }}>
-        Add <code>shape</code> components to your model
+        Add <code>shape</code> components or OpenSCAD CSG solids to your model
       </span>
     </div>
   );
@@ -549,12 +685,36 @@ export default function CadViewer({
   selectedName,
   onSelect,
   onCommitGizmoDelta,
+  onCommitCadBinding,
   dark = false,
   animationController = null,
   cfdPayload = null,
   feaPayload = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
+  const [gizmoMode, setGizmoMode] = useState<GizmoMode>("translate");
+  const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
+
+  const selectedComponent = useMemo(
+    () => (selectedName ? (components.find((c) => c.name === selectedName) ?? null) : null),
+    [components, selectedName],
+  );
+
+  // Hotkeys W (translate), E (rotate), R (scale)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === "w") setGizmoMode("translate");
+      else if (key === "e") setGizmoMode("rotate");
+      else if (key === "r") setGizmoMode("scale");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   if (error) {
     return (
@@ -589,8 +749,137 @@ export default function CadViewer({
     );
   }
 
+  const modeBtnStyle = (active: boolean): React.CSSProperties => ({
+    padding: "4px 10px",
+    borderRadius: "6px",
+    border: "none",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    background: active ? "#0969da" : "transparent",
+    color: active ? "#ffffff" : dark ? "#c9d1d9" : "#24292f",
+    transition: "background 0.15s ease",
+  });
+
   return (
     <div style={{ height: "100%", position: "relative" }}>
+      {/* Top Toolbar: Gizmo Mode Switcher + Selected Component HUD */}
+      <div
+        style={{
+          position: "absolute",
+          top: 14,
+          left: 14,
+          zIndex: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px",
+            background: dark ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
+            backdropFilter: "blur(12px)",
+            borderRadius: "8px",
+            border: `1px solid ${dark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)"}`,
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setGizmoMode("translate")}
+            style={modeBtnStyle(gizmoMode === "translate")}
+            title="Translate / Move Gizmo (Hotkey: W)"
+          >
+            ✥ Move (W)
+          </button>
+          <button
+            type="button"
+            onClick={() => setGizmoMode("rotate")}
+            style={modeBtnStyle(gizmoMode === "rotate")}
+            title="Rotate Gizmo (Hotkey: E)"
+          >
+            ↻ Rotate (E)
+          </button>
+          <button
+            type="button"
+            onClick={() => setGizmoMode("scale")}
+            style={modeBtnStyle(gizmoMode === "scale")}
+            title="Scale / Dimension Gizmo (Hotkey: R)"
+          >
+            ⤢ Scale (R)
+          </button>
+        </div>
+
+        {selectedComponent && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 12px",
+              background: dark ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
+              backdropFilter: "blur(12px)",
+              borderRadius: "8px",
+              border: `1px solid ${dark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)"}`,
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+              color: dark ? "#f0f6fc" : "#1f2328",
+              fontSize: "12px",
+            }}
+          >
+            <span>🧊</span>
+            <div>
+              <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                <span>{selectedComponent.name}</span>
+                {selectedComponent.sourceMetadata?.parameterName && (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      padding: "1px 6px",
+                      borderRadius: "8px",
+                      background: "rgba(56, 189, 248, 0.18)",
+                      color: "#38bdf8",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    param: {selectedComponent.sourceMetadata.parameterName}
+                  </span>
+                )}
+              </div>
+            </div>
+            {!selectedComponent.proceduralMesh && (
+              <button
+                type="button"
+                onClick={() => setIsBindingPickerOpen(true)}
+                style={{
+                  marginLeft: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 8px",
+                  background: "#0969da",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+                title="Link 3D geometry to simulation variables"
+              >
+                <span>🧵</span>
+                <span>Link Variables</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       <Canvas
         shadows
         camera={{ position: [3, 2.5, 3], fov: 50 }}
@@ -602,6 +891,7 @@ export default function CadViewer({
           components={components}
           assetBaseUrl={assetBaseUrl}
           selectedName={selectedName}
+          gizmoMode={gizmoMode}
           onSelect={onSelect}
           onCommitGizmoDelta={onCommitGizmoDelta}
           dark={dark}
@@ -613,6 +903,24 @@ export default function CadViewer({
 
       {/* Animation timeline overlay */}
       {animationController && <AnimationTimeline controller={animationController} />}
+
+      {/* Interactive Geometry-to-Variable Binding Picker Modal */}
+      {selectedComponent && (
+        <CadBindingPickerModal
+          isOpen={isBindingPickerOpen}
+          onClose={() => setIsBindingPickerOpen(false)}
+          component={selectedComponent}
+          animationController={animationController}
+          onSave={(compName, newBindings) => {
+            onCommitCadBinding?.({
+              componentName: compName,
+              bindings: newBindings,
+              uri: selectedComponent.cad.uri,
+            });
+          }}
+          dark={dark}
+        />
+      )}
     </div>
   );
 }

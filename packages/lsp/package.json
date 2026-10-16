@@ -93,10 +93,14 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "tsc && tsx scripts/build-browser.ts",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests scripts --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=120000",
     "typecheck": "tsc --noEmit"
   },
@@ -113,16 +117,18 @@
     "@modelscript/owl2": "*",
     "@modelscript/pscad": "*",
     "@modelscript/runtime": "*",
+    "@modelscript/scad": "*",
     "@modelscript/simulate": "*",
+    "@modelscript/ssp": "*",
     "@modelscript/step": "*",
-    "@types/sql.js": "^1.4.11",
+    "@modelscript/sysml2": "*",
     "sql.js": "^1.14.2",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
-    "@modelscript/sysml2": "*",
     "@types/node": "^25.3.2",
+    "@types/sql.js": "^1.4.11",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   }

@@ -66,6 +66,27 @@ export const PscadErrorCode = {
     message: (arresterId: string, vRefKv: number, busName: string, vPeakPhaseKv: number) =>
       `MOV surge arrester '${arresterId}' reference voltage (${vRefKv.toFixed(1)} kV) is below connected bus '${busName}' nominal phase-to-ground peak voltage (${vPeakPhaseKv.toFixed(1)} kV), causing continuous thermal conduction.`,
   },
+  DUPLICATE_COMPONENT_ID: {
+    code: "M6009",
+    rule: "duplicate-component-id",
+    severity: "error" as const,
+    message: (id: string, modName: string) =>
+      `Duplicate component or bus ID '${id}' declared in schematic module '${modName}'.`,
+  },
+  BUS_VOLTAGE_CONFLICT: {
+    code: "M6010",
+    rule: "bus-voltage-conflict",
+    severity: "error" as const,
+    message: (busA: string, kvA: number, busB: string, kvB: number) =>
+      `Conductive net shorts bus '${busA}' (${kvA} kV) directly to bus '${busB}' (${kvB} kV) without an intervening transformer.`,
+  },
+  PORT_DOMAIN_MISMATCH: {
+    code: "M6011",
+    rule: "port-domain-mismatch",
+    severity: "error" as const,
+    message: (wireId: string, sigPort: string, elecPort: string) =>
+      `Wire '${wireId}' connects control signal port '${sigPort}' directly to 3-phase electrical port '${elecPort}'.`,
+  },
 };
 
 /**
@@ -383,6 +404,126 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
             column: loc?.column,
             endLine: loc?.line,
             endColumn: loc?.column !== undefined ? loc.column + arr.id.length : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  // 9. M6009, M6010, M6011: Structural net-level lints (Duplicate IDs, Bus Voltage Conflicts, Port Domain Mismatches)
+  for (const mod of allModules) {
+    const seenIds = new Set<string>();
+    for (const cmp of mod.components) {
+      if (seenIds.has(cmp.id)) {
+        diagnostics.push({
+          code: PscadErrorCode.DUPLICATE_COMPONENT_ID.code,
+          rule: PscadErrorCode.DUPLICATE_COMPONENT_ID.rule,
+          severity: PscadErrorCode.DUPLICATE_COMPONENT_ID.severity,
+          message: PscadErrorCode.DUPLICATE_COMPONENT_ID.message(cmp.id, mod.name || "Main"),
+          componentId: cmp.id,
+          line: cmp.line,
+          column: cmp.column,
+          endLine: cmp.line,
+          endColumn: cmp.column !== undefined ? cmp.column + cmp.id.length : undefined,
+        });
+      } else {
+        seenIds.add(cmp.id);
+      }
+    }
+    for (const bus of mod.buses) {
+      if (seenIds.has(bus.id)) {
+        diagnostics.push({
+          code: PscadErrorCode.DUPLICATE_COMPONENT_ID.code,
+          rule: PscadErrorCode.DUPLICATE_COMPONENT_ID.rule,
+          severity: PscadErrorCode.DUPLICATE_COMPONENT_ID.severity,
+          message: PscadErrorCode.DUPLICATE_COMPONENT_ID.message(bus.id, mod.name || "Main"),
+          busId: bus.id,
+          line: bus.line,
+          column: bus.column,
+          endLine: bus.line,
+          endColumn: bus.column !== undefined ? bus.column + bus.id.length : undefined,
+        });
+      } else {
+        seenIds.add(bus.id);
+      }
+    }
+
+    const busById = new Map(mod.buses.map((b) => [b.id, b]));
+    const portMeta = new Map<string, { kind: string; isWirelessAdapter: boolean }>();
+    for (const cmp of mod.components) {
+      const cleanDef = (
+        cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName
+      ).toLowerCase();
+      const isWirelessAdapter =
+        cleanDef === "datalabel" ||
+        cleanDef === "data_label" ||
+        cleanDef === "xnode" ||
+        cleanDef === "pin" ||
+        cleanDef === "radio_link";
+      for (const p of cmp.ports) {
+        portMeta.set(p.id, { kind: p.kind, isWirelessAdapter });
+      }
+    }
+
+    const reportedBusConflictPairs = new Set<string>();
+    const reportedWireDomainMismatch = new Set<string>();
+
+    for (const wire of mod.wires) {
+      // M6010: Check if a single wire net connects two explicit buses with conflicting voltageBaseKv
+      const connectedBuses = wire.connectedPortIds
+        .map((pid) => busById.get(pid))
+        .filter((b): b is NonNullable<typeof b> => b !== undefined && (b.voltageBaseKv ?? 0) > 0);
+      if (connectedBuses.length >= 2) {
+        const bA = connectedBuses[0]!;
+        for (let k = 1; k < connectedBuses.length; k++) {
+          const bB = connectedBuses[k]!;
+          const kvA = bA.voltageBaseKv!;
+          const kvB = bB.voltageBaseKv!;
+          if (Math.abs(kvA - kvB) > 0.05 * Math.max(kvA, kvB)) {
+            const pairKey = [bA.id, bB.id].sort().join("::");
+            if (!reportedBusConflictPairs.has(pairKey)) {
+              reportedBusConflictPairs.add(pairKey);
+              diagnostics.push({
+                code: PscadErrorCode.BUS_VOLTAGE_CONFLICT.code,
+                rule: PscadErrorCode.BUS_VOLTAGE_CONFLICT.rule,
+                severity: PscadErrorCode.BUS_VOLTAGE_CONFLICT.severity,
+                message: PscadErrorCode.BUS_VOLTAGE_CONFLICT.message(bA.name, kvA, bB.name, kvB),
+                busId: bB.id,
+                line: bB.line ?? wire.line,
+                column: bB.column ?? 1,
+                endLine: bB.line ?? wire.line,
+                endColumn: (bB.column ?? 1) + bB.name.length,
+              });
+            }
+          }
+        }
+      }
+
+      // M6011: Check if a wire connects a non-adapter control signal port directly to an electrical port or bus
+      if (!reportedWireDomainMismatch.has(wire.id)) {
+        const sigPorts: string[] = [];
+        const elecPorts: string[] = [];
+        for (const pid of wire.connectedPortIds) {
+          if (busById.has(pid)) {
+            elecPorts.push(pid);
+            continue;
+          }
+          const meta = portMeta.get(pid);
+          if (!meta || meta.isWirelessAdapter) continue;
+          if (meta.kind === "signal") sigPorts.push(pid);
+          else if (meta.kind === "electrical") elecPorts.push(pid);
+        }
+        if (sigPorts.length > 0 && elecPorts.length > 0) {
+          reportedWireDomainMismatch.add(wire.id);
+          diagnostics.push({
+            code: PscadErrorCode.PORT_DOMAIN_MISMATCH.code,
+            rule: PscadErrorCode.PORT_DOMAIN_MISMATCH.rule,
+            severity: PscadErrorCode.PORT_DOMAIN_MISMATCH.severity,
+            message: PscadErrorCode.PORT_DOMAIN_MISMATCH.message(wire.id, sigPorts[0]!, elecPorts[0]!),
+            line: wire.line ?? 1,
+            column: 1,
+            endLine: wire.line ?? 1,
+            endColumn: 20,
           });
         }
       }

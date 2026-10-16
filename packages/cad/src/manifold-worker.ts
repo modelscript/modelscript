@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createPolygon, csgIntersect, csgSubtract, csgUnion, type CsgPolygon } from "./csg-bsp.js";
 import { IDENTITY, mat4Multiply } from "./transforms.js";
 import type { BoundaryPatchTag, Mat4, Solid, SolidSourceMetadata, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
@@ -47,9 +48,14 @@ class SurfaceMeshBuilder {
   private indices: number[] = [];
   private normals: number[] = [];
   private faceTags: number[] = [];
-  private tagMap: Map<string, number> = new Map(); // key -> 1-based index
-  private tags: BoundaryPatchTag[] = [];
+  private tagMap: Map<string, number>; // key -> 1-based index
+  private tags: BoundaryPatchTag[];
   private sourceMetadata?: SolidSourceMetadata;
+
+  constructor(tagMap?: Map<string, number>, tags?: BoundaryPatchTag[]) {
+    this.tagMap = tagMap ?? new Map();
+    this.tags = tags ?? [];
+  }
 
   private getTagIndex(tag?: BoundaryPatchTag): number {
     if (!tag) return 0;
@@ -86,7 +92,14 @@ class SurfaceMeshBuilder {
       }
 
       case SolidKind.Cylinder: {
-        this.emitCylinder(solid.radius, solid.height, solid.segments, parentMat, activeTag);
+        const rBot = solid.radiusBottom ?? solid.radius;
+        const rTop = solid.radiusTop ?? solid.radius;
+        this.emitCylinder(rBot, rTop, solid.height, solid.segments, parentMat, activeTag);
+        break;
+      }
+
+      case SolidKind.Polyhedron: {
+        this.emitPolyhedron(solid.points, solid.faces, parentMat, activeTag);
         break;
       }
 
@@ -108,9 +121,24 @@ class SurfaceMeshBuilder {
       case SolidKind.Union:
       case SolidKind.Subtract:
       case SolidKind.Intersect: {
-        // Evaluate composite CSG branches
-        this.processSolid(solid.left, parentMat, activeTag);
-        this.processSolid(solid.right, parentMat, activeTag);
+        const leftBuilder = new SurfaceMeshBuilder(this.tagMap, this.tags);
+        const rightBuilder = new SurfaceMeshBuilder(this.tagMap, this.tags);
+        leftBuilder.processSolid(solid.left, parentMat, activeTag);
+        rightBuilder.processSolid(solid.right, parentMat, activeTag);
+
+        const leftPolys = leftBuilder.toPolygons();
+        const rightPolys = rightBuilder.toPolygons();
+
+        let resultPolys: CsgPolygon[];
+        if (solid.kind === SolidKind.Union) {
+          resultPolys = csgUnion(leftPolys, rightPolys);
+        } else if (solid.kind === SolidKind.Subtract) {
+          resultPolys = csgSubtract(leftPolys, rightPolys);
+        } else {
+          resultPolys = csgIntersect(leftPolys, rightPolys);
+        }
+
+        this.emitPolygons(resultPolys);
         break;
       }
 
@@ -148,6 +176,53 @@ class SurfaceMeshBuilder {
     }
   }
 
+  public toPolygons(): CsgPolygon[] {
+    const polys: CsgPolygon[] = [];
+    for (let i = 0; i < this.indices.length; i += 3) {
+      const i0 = this.indices[i] * 3;
+      const i1 = this.indices[i + 1] * 3;
+      const i2 = this.indices[i + 2] * 3;
+      const tagIndex = this.faceTags[i / 3] ?? 0;
+
+      const poly = createPolygon(
+        [
+          {
+            pos: [this.vertices[i0], this.vertices[i0 + 1], this.vertices[i0 + 2]],
+            normal: [this.normals[i0], this.normals[i0 + 1], this.normals[i0 + 2]],
+          },
+          {
+            pos: [this.vertices[i1], this.vertices[i1 + 1], this.vertices[i1 + 2]],
+            normal: [this.normals[i1], this.normals[i1 + 1], this.normals[i1 + 2]],
+          },
+          {
+            pos: [this.vertices[i2], this.vertices[i2 + 1], this.vertices[i2 + 2]],
+            normal: [this.normals[i2], this.normals[i2 + 1], this.normals[i2 + 2]],
+          },
+        ],
+        tagIndex,
+      );
+      if (poly) polys.push(poly);
+    }
+    return polys;
+  }
+
+  public emitPolygons(polys: CsgPolygon[]): void {
+    for (let i = 0; i < polys.length; i++) {
+      const poly = polys[i];
+      const verts = poly.vertices;
+      for (let j = 1; j < verts.length - 1; j++) {
+        const v0 = verts[0];
+        const v1 = verts[j];
+        const v2 = verts[j + 1];
+        const baseIdx = this.vertices.length / 3;
+        this.vertices.push(...v0.pos, ...v1.pos, ...v2.pos);
+        this.normals.push(...v0.normal, ...v1.normal, ...v2.normal);
+        this.indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        this.faceTags.push(poly.tagIndex);
+      }
+    }
+  }
+
   private transformPoint(mat: Mat4, x: number, y: number, z: number): [number, number, number] {
     const tx = mat[0] * x + mat[4] * y + mat[8] * z + mat[12];
     const ty = mat[1] * x + mat[5] * y + mat[9] * z + mat[13];
@@ -170,8 +245,24 @@ class SurfaceMeshBuilder {
     normal: [number, number, number],
     tag?: BoundaryPatchTag,
   ): void {
+    // Ensure triangle winding is counter-clockwise with respect to the outward normal
+    const ux = p1[0] - p0[0],
+      uy = p1[1] - p0[1],
+      uz = p1[2] - p0[2];
+    const vx = p2[0] - p0[0],
+      vy = p2[1] - p0[1],
+      vz = p2[2] - p0[2];
+    const cx = uy * vz - uz * vy;
+    const cy = uz * vx - ux * vz;
+    const cz = ux * vy - uy * vx;
+    const dot = cx * normal[0] + cy * normal[1] + cz * normal[2];
+
     const baseIdx = this.vertices.length / 3;
-    this.vertices.push(...p0, ...p1, ...p2);
+    if (dot < 0) {
+      this.vertices.push(...p0, ...p2, ...p1);
+    } else {
+      this.vertices.push(...p0, ...p1, ...p2);
+    }
     this.normals.push(...normal, ...normal, ...normal);
     this.indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
     this.faceTags.push(this.getTagIndex(tag));
@@ -333,11 +424,22 @@ class SurfaceMeshBuilder {
     }
   }
 
-  private emitCylinder(radius: number, height: number, segments: number, mat: Mat4, tag?: BoundaryPatchTag): void {
+  private emitCylinder(
+    radiusBottom: number,
+    radiusTop: number,
+    height: number,
+    segments: number,
+    mat: Mat4,
+    tag?: BoundaryPatchTag,
+  ): void {
     const hh = height / 2;
     const segs = Math.max(8, segments);
+    const dr = radiusBottom - radiusTop;
+    const slantLen = Math.hypot(dr, height) || 1.0;
+    const cosSlope = height / slantLen;
+    const sinSlope = dr / slantLen;
 
-    // Barrel
+    // Barrel / frustum wall
     for (let i = 0; i < segs; i++) {
       const theta0 = (i / segs) * 2 * Math.PI;
       const theta1 = ((i + 1) / segs) * 2 * Math.PI;
@@ -347,38 +449,115 @@ class SurfaceMeshBuilder {
       const c1 = Math.cos(theta1);
       const s1 = Math.sin(theta1);
 
-      const p0 = this.transformPoint(mat, radius * c0, -hh, radius * s0);
-      const p1 = this.transformPoint(mat, radius * c1, -hh, radius * s1);
-      const p2 = this.transformPoint(mat, radius * c1, hh, radius * s1);
-      const p3 = this.transformPoint(mat, radius * c0, hh, radius * s0);
+      const p0 = this.transformPoint(mat, radiusBottom * c0, -hh, radiusBottom * s0);
+      const p1 = this.transformPoint(mat, radiusBottom * c1, -hh, radiusBottom * s1);
+      const p2 = this.transformPoint(mat, radiusTop * c1, hh, radiusTop * s1);
+      const p3 = this.transformPoint(mat, radiusTop * c0, hh, radiusTop * s0);
 
       const midTheta = (theta0 + theta1) / 2;
-      const tNorm = this.transformNormal(mat, Math.cos(midTheta), 0, Math.sin(midTheta));
+      const tNorm = this.transformNormal(mat, Math.cos(midTheta) * cosSlope, sinSlope, Math.sin(midTheta) * cosSlope);
 
-      this.addTriangle(p0, p1, p2, tNorm, tag);
-      this.addTriangle(p0, p2, p3, tNorm, tag);
+      if (radiusBottom > 1e-9) {
+        this.addTriangle(p0, p2, p1, tNorm, tag);
+      }
+      if (radiusTop > 1e-9) {
+        this.addTriangle(p0, p3, p2, tNorm, tag);
+      }
     }
 
     // Top cap (+Y)
-    const topNorm = this.transformNormal(mat, 0, 1, 0);
-    const topCenter = this.transformPoint(mat, 0, hh, 0);
-    for (let i = 0; i < segs; i++) {
-      const theta0 = (i / segs) * 2 * Math.PI;
-      const theta1 = ((i + 1) / segs) * 2 * Math.PI;
-      const p0 = this.transformPoint(mat, radius * Math.cos(theta0), hh, radius * Math.sin(theta0));
-      const p1 = this.transformPoint(mat, radius * Math.cos(theta1), hh, radius * Math.sin(theta1));
-      this.addTriangle(topCenter, p0, p1, topNorm, tag);
+    if (radiusTop > 1e-9) {
+      const topNorm = this.transformNormal(mat, 0, 1, 0);
+      const topCenter = this.transformPoint(mat, 0, hh, 0);
+      for (let i = 0; i < segs; i++) {
+        const theta0 = (i / segs) * 2 * Math.PI;
+        const theta1 = ((i + 1) / segs) * 2 * Math.PI;
+        const p0 = this.transformPoint(mat, radiusTop * Math.cos(theta0), hh, radiusTop * Math.sin(theta0));
+        const p1 = this.transformPoint(mat, radiusTop * Math.cos(theta1), hh, radiusTop * Math.sin(theta1));
+        this.addTriangle(topCenter, p1, p0, topNorm, tag);
+      }
     }
 
     // Bottom cap (-Y)
-    const botNorm = this.transformNormal(mat, 0, -1, 0);
-    const botCenter = this.transformPoint(mat, 0, -hh, 0);
-    for (let i = 0; i < segs; i++) {
-      const theta0 = (i / segs) * 2 * Math.PI;
-      const theta1 = ((i + 1) / segs) * 2 * Math.PI;
-      const p0 = this.transformPoint(mat, radius * Math.cos(theta0), -hh, radius * Math.sin(theta0));
-      const p1 = this.transformPoint(mat, radius * Math.cos(theta1), -hh, radius * Math.sin(theta1));
-      this.addTriangle(botCenter, p1, p0, botNorm, tag);
+    if (radiusBottom > 1e-9) {
+      const botNorm = this.transformNormal(mat, 0, -1, 0);
+      const botCenter = this.transformPoint(mat, 0, -hh, 0);
+      for (let i = 0; i < segs; i++) {
+        const theta0 = (i / segs) * 2 * Math.PI;
+        const theta1 = ((i + 1) / segs) * 2 * Math.PI;
+        const p0 = this.transformPoint(mat, radiusBottom * Math.cos(theta0), -hh, radiusBottom * Math.sin(theta0));
+        const p1 = this.transformPoint(mat, radiusBottom * Math.cos(theta1), -hh, radiusBottom * Math.sin(theta1));
+        this.addTriangle(botCenter, p0, p1, botNorm, tag);
+      }
+    }
+  }
+
+  private emitPolyhedron(
+    points: readonly Vec3[],
+    faces: readonly (readonly number[])[],
+    mat: Mat4,
+    tag?: BoundaryPatchTag,
+  ): void {
+    if (points.length < 3 || faces.length === 0) return;
+
+    // Compute centroid of points to orient face normals outward
+    let cx = 0,
+      cy = 0,
+      cz = 0;
+    for (const pt of points) {
+      cx += pt[0];
+      cy += pt[1];
+      cz += pt[2];
+    }
+    cx /= points.length;
+    cy /= points.length;
+    cz /= points.length;
+    const worldCenter = this.transformPoint(mat, cx, cy, cz);
+
+    for (const face of faces) {
+      if (face.length < 3) continue;
+      const v0 = points[face[0]];
+      const v1 = points[face[1]];
+      const v2 = points[face[2]];
+      if (!v0 || !v1 || !v2) continue;
+
+      const p0 = this.transformPoint(mat, v0[0], v0[1], v0[2]);
+      const p1 = this.transformPoint(mat, v1[0], v1[1], v1[2]);
+      const p2 = this.transformPoint(mat, v2[0], v2[1], v2[2]);
+
+      const ux = p1[0] - p0[0],
+        uy = p1[1] - p0[1],
+        uz = p1[2] - p0[2];
+      const vx = p2[0] - p0[0],
+        vy = p2[1] - p0[1],
+        vz = p2[2] - p0[2];
+      let nx = uy * vz - uz * vy;
+      let ny = uz * vx - ux * vz;
+      let nz = ux * vy - uy * vx;
+      const len = Math.hypot(nx, ny, nz) || 1.0;
+      nx /= len;
+      ny /= len;
+      nz /= len;
+
+      // Orient normal outward from centroid
+      const dx = p0[0] - worldCenter[0];
+      const dy = p0[1] - worldCenter[1];
+      const dz = p0[2] - worldCenter[2];
+      if (nx * dx + ny * dy + nz * dz < 0) {
+        nx = -nx;
+        ny = -ny;
+        nz = -nz;
+      }
+      const norm: [number, number, number] = [nx, ny, nz];
+
+      for (let i = 1; i < face.length - 1; i++) {
+        const va = points[face[i]];
+        const vb = points[face[i + 1]];
+        if (!va || !vb) continue;
+        const pa = this.transformPoint(mat, va[0], va[1], va[2]);
+        const pb = this.transformPoint(mat, vb[0], vb[1], vb[2]);
+        this.addTriangle(p0, pa, pb, norm, tag);
+      }
     }
   }
 

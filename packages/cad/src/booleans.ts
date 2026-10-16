@@ -52,6 +52,7 @@ export function subtract(base: Solid, tool: Solid): BooleanSolid {
     name: `Subtract_${base.name}_${tool.name}`,
     left: base,
     right: tool,
+    sourceMetadata: base.sourceMetadata,
   });
 }
 
@@ -69,5 +70,6 @@ export function intersect(a: Solid, b: Solid): BooleanSolid {
     name: `Intersect_${a.name}_${b.name}`,
     left: a,
     right: b,
+    sourceMetadata: a.sourceMetadata ?? b.sourceMetadata,
   });
 }

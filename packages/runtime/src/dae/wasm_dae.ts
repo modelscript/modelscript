@@ -837,7 +837,12 @@ export class WasmDaeBridge implements IDaeBuilder {
   setVarExpression(varIdx: number, exprId: number): void {
     this.varExpressions.set(varIdx, exprId);
     this.setVarAttrExpr(varIdx, VarAttrKind.Binding, exprId);
-    this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
+    const existingStart = this.exports?.dae_getVarAttrExpr
+      ? this.exports.dae_getVarAttrExpr(this.ptr, varIdx, VarAttrKind.Start)
+      : 0xffffffff;
+    if (existingStart === 0xffffffff || existingStart < 0) {
+      this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
+    }
   }
 
   getVarDescription(varIdx: number): string | undefined {

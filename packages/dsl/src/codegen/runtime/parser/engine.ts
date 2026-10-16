@@ -616,32 +616,6 @@ export function abortSuspend(): void {
   isSuspended = false;
 }
 
-// Token Buffer Arena - Used for caching tokens emitted by the scanner
-export let t_tokenBufferArena: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
-export let t_tokenBufferLenArena: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-export let tokenBufferWriteIdx: u32 = 0;
-export let tokenBufferReadIdx: u32 = 0;
-export let tokenBufferLastPos: u32 = 0;
-
-/**
- * Pushes a newly scanned token into the cyclic token buffer.
- * @param tok The grammar token ID.
- * @param len The byte length of the token string.
- */
-export function pushTokenToBuffer(tok: i32, len: u32): void {
-  let idx = tokenBufferWriteIdx & (ARENA_BUFFER_SIZE - 1);
-  t_tokenBufferArena[idx] = tok;
-  t_tokenBufferLenArena[idx] = len;
-  tokenBufferWriteIdx++;
-}
-
-/** Resets the read and write pointers of the token buffer. */
-export function clearTokenBuffer(): void {
-  tokenBufferWriteIdx = 0;
-  tokenBufferReadIdx = 0;
-}
-
-// ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // GSS Logic Extracted to gss.ts
 // ----------------------------------------------------------------------------
@@ -658,7 +632,6 @@ export {
 
 @external("engine", "debugLog")
 export declare function debugLog(cat: i32, val1: i32, val2: i32, val3: i32): void;
-export let globalLoopGuard: u32 = 0;
 export let globalBestDyingHead: u32 = 0;
 export let globalToken: i32 = -1;
 

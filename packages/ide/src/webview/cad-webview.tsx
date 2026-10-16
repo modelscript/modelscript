@@ -143,6 +143,13 @@ function App() {
     });
   };
 
+  const handleCommitCadBinding = (payload: { componentName: string; bindings: unknown[]; uri?: string }) => {
+    vscode?.postMessage({
+      type: "commitCadBinding",
+      payload,
+    });
+  };
+
   return (
     <div
       className="cad-webview-container"
@@ -153,6 +160,7 @@ function App() {
         selectedName={selectedName}
         onSelect={handleSelect}
         onCommitGizmoDelta={handleCommitGizmoDelta}
+        onCommitCadBinding={handleCommitCadBinding}
         dark={isDark}
         assetBaseUrl={(window as unknown as { __CAD_ASSET_BASE_URL__: string }).__CAD_ASSET_BASE_URL__}
         animationController={animationControllerRef.current}

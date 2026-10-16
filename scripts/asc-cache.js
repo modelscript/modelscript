@@ -54,7 +54,10 @@ function hookFs(fsTarget) {
   if (origWrite && !fsTarget._ascHookedWrite) {
     try {
       fsTarget.writeFileSync = function (file, ...args) {
-        if (typeof file === "string") {
+        if (
+          typeof file === "string" &&
+          (file.includes("scratch_build") || file.includes("scratch_") || file.includes("as-gen"))
+        ) {
           try {
             nodeFs.mkdirSync(path.dirname(file), { recursive: true });
           } catch {}
@@ -117,11 +120,12 @@ hookFs(cjsFsMod);
 // Layer 3: Process execution hook
 function isAscInvocation(cmd, args) {
   if (typeof cmd === "string") {
-    if (cmd.endsWith("/asc") || cmd.endsWith("\\asc") || cmd === "asc") return true;
-    if (cmd.includes(".bin/asc") || (cmd.includes("asc") && !cmd.includes("test"))) return true;
+    const base = path.basename(cmd);
+    if (base === "asc" || base === "asc.cmd" || base === "asc.js" || cmd.includes(".bin/asc")) return true;
   }
-  if (Array.isArray(args) && args.length > 0) {
-    if (args[0] === "asc" || (typeof args[0] === "string" && args[0].endsWith("/asc"))) return true;
+  if (Array.isArray(args) && args.length > 0 && typeof args[0] === "string") {
+    const firstBase = path.basename(args[0]);
+    if (firstBase === "asc" || firstBase === "asc.js" || args[0].includes(".bin/asc")) return true;
   }
   return false;
 }

@@ -39,6 +39,38 @@ export const scadLanguage = language({
       light: "./assets/scad/icon-light.png",
       dark: "./assets/scad/icon-dark.png",
     },
+    handlers: {
+      "modelscript/getCadComponents": async (ctx: any, params: { uri: string; documentText?: string }) => {
+        const uri = params?.uri ?? ctx.uri;
+        let source = params?.documentText ?? ctx.documentText;
+        if (!source && uri && ctx.documents) {
+          source = ctx.documents.get(uri)?.getText();
+        }
+        if (!source && uri && ctx.documentManager) {
+          source = ctx.documentManager.documentTrees?.get(uri)?.text;
+        }
+        if (!source && uri && ctx.sharedFs) {
+          try {
+            source = await ctx.sharedFs.read(uri);
+          } catch {}
+        }
+        if (!source) return [];
+
+        let rootNode: any = uri ? ctx.documentManager?.documentTrees?.get(uri)?.tree?.rootNode : undefined;
+        if (!rootNode && ctx.parserService) {
+          try {
+            const parser = await ctx.parserService.getParser("scad");
+            if (parser) {
+              const tree = parser.parse(source);
+              rootNode = tree?.rootNode;
+            }
+          } catch {}
+        }
+
+        const { extractScadCadComponents } = await import("./index.js");
+        return extractScadCadComponents(source, rootNode, uri);
+      },
+    },
   },
 
   writeback: scadWriteback,
@@ -100,7 +132,9 @@ export const scadLanguage = language({
         }
 
         const { compileToStep } = await import("@modelscript/cad");
+        const { extractScadCadComponents } = await import("./index.js");
         const step = compileToStep(solid);
+        const components = await extractScadCadComponents(source, rootNode, ctx.uri);
         const filename = ctx.uri ? ctx.uri.split("/").pop() || "model" : "model";
         const name = filename.replace(/\.[^/.]+$/, "");
 
@@ -109,6 +143,7 @@ export const scadLanguage = language({
           name,
           step,
           solid,
+          components,
           uri: ctx.uri,
         };
       },

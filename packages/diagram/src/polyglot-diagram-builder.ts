@@ -461,124 +461,129 @@ export function buildPolyglotDiagram(
     }
   }
 
+  const DEFAULT_SYSML_PROJECTIONS: Record<string, any> = {
+    BDD: {
+      label: "Block Definition Diagram",
+      excludeRules: ["PartUsage", "PortUsage", "StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage"],
+      filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
+    },
+    IBD: {
+      label: "Internal Block Diagram",
+      excludeRules: [
+        "Package",
+        "LibraryPackage",
+        "StateDefinition",
+        "StateUsage",
+        "ExhibitStateUsage",
+        "TransitionUsage",
+      ],
+      filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
+    },
+    StateMachine: {
+      label: "State Machine Diagram",
+      includeRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage", "ActionUsage", "Package"],
+      groupRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage"],
+      standaloneRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage"],
+      stateBubbleRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage"],
+      synthesizePseudoStates: true,
+    },
+    Activity: {
+      label: "Activity Diagram",
+      includeRules: [
+        "ActionDefinition",
+        "ActionUsage",
+        "PerformActionUsage",
+        "ForkNode",
+        "JoinNode",
+        "DecisionNode",
+        "MergeNode",
+        "AcceptActionNode",
+        "SendActionNode",
+        "AssignActionNode",
+        "SuccessionAsUsage",
+        "SuccessionFlowUsage",
+        "Package",
+      ],
+      groupRules: ["ActorUsage", "SubjectUsage", "PartUsage", "PartDefinition"],
+      controlNodeRules: ["ForkNode", "JoinNode", "DecisionNode", "MergeNode"],
+    },
+    UseCase: {
+      label: "Use Case Diagram",
+      includeRules: [
+        "UseCaseDefinition",
+        "UseCaseUsage",
+        "IncludeUseCaseUsage",
+        "ActorUsage",
+        "ActorDefinition",
+        "SubjectUsage",
+        "Package",
+      ],
+    },
+    Requirement: {
+      label: "Requirement Diagram",
+      includeRules: [
+        "RequirementDefinition",
+        "RequirementUsage",
+        "SatisfyRequirementUsage",
+        "VerifyRequirementUsage",
+        "ConcernDefinition",
+        "ConcernUsage",
+        "ConstraintDefinition",
+        "ConstraintUsage",
+        "Package",
+      ],
+    },
+    Parametric: {
+      label: "Parametric Diagram",
+      includeRules: [
+        "ConstraintDefinition",
+        "ConstraintUsage",
+        "CalculationDefinition",
+        "CalculationUsage",
+        "AttributeUsage",
+        "BindingConnectorAsUsage",
+        "Package",
+      ],
+    },
+    Package: {
+      label: "Package Diagram",
+      filter: (sym: any) =>
+        sym.ruleName === "Package" ||
+        sym.ruleName === "LibraryPackage" ||
+        (typeof sym.ruleName === "string" && sym.ruleName.endsWith("Definition")),
+    },
+    Sequence: {
+      label: "Sequence Diagram",
+      includeRules: [
+        "PartDefinition",
+        "PartUsage",
+        "ActionDefinition",
+        "ActionUsage",
+        "FlowConnectionUsage",
+        "SuccessionFlowUsage",
+        "SuccessionAsUsage",
+        "SendActionNode",
+        "AcceptActionNode",
+        "Package",
+      ],
+      defaultLayout: "sequence",
+    },
+  };
+
   const nodes: PolyglotDiagramNode[] = [];
   const edges: PolyglotDiagramEdge[] = [];
-  const activeProjection = projectionsMap[diagramType];
+  const activeProjection = projectionsMap[diagramType] ?? DEFAULT_SYSML_PROJECTIONS[diagramType];
 
   // Collect all symbols, optionally filtered to one document
   const allSymbols: SymbolEntry[] = [];
   for (const sym of index.symbols.values()) {
     if (resourceId && sym.resourceId && sym.resourceId !== resourceId) continue;
 
-    // DSL-Declared Custom Projection Filtering
+    // DSL-Declared Projection Filtering
     if (activeProjection) {
       if (activeProjection.includeRules && !activeProjection.includeRules.includes(sym.ruleName)) continue;
       if (activeProjection.excludeRules && activeProjection.excludeRules.includes(sym.ruleName)) continue;
       if (typeof activeProjection.filter === "function" && !activeProjection.filter(sym as any)) continue;
-    } else if (sym.language === "sysml2" || sym.ruleName?.endsWith("Usage") || sym.ruleName?.endsWith("Definition")) {
-      if (diagramType === "BDD") {
-        // Fallback built-in SysML2 BDD
-        if (sym.ruleName === "PartUsage" || sym.ruleName === "PortUsage") continue;
-        if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
-      } else if (diagramType === "IBD") {
-        // In IBD, we only want Parts, Ports, and their connections.
-        // Hide taxonomy and packages. (Wait, Parts need a parent container).
-        if (sym.ruleName === "Package" || sym.ruleName === "LibraryPackage") continue;
-        if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
-      } else if (diagramType === "StateMachine") {
-        // Only show state machine elements
-        if (
-          sym.ruleName !== "StateDefinition" &&
-          sym.ruleName !== "StateUsage" &&
-          sym.ruleName !== "ExhibitStateUsage" &&
-          sym.ruleName !== "TransitionUsage" &&
-          sym.ruleName !== "ActionUsage" &&
-          sym.ruleName !== "Package"
-        ) {
-          continue;
-        }
-      } else if (diagramType === "Activity") {
-        // Only show activity/action elements and control nodes
-        if (
-          sym.ruleName !== "ActionDefinition" &&
-          sym.ruleName !== "ActionUsage" &&
-          sym.ruleName !== "PerformActionUsage" &&
-          sym.ruleName !== "ForkNode" &&
-          sym.ruleName !== "JoinNode" &&
-          sym.ruleName !== "DecisionNode" &&
-          sym.ruleName !== "MergeNode" &&
-          sym.ruleName !== "AcceptActionNode" &&
-          sym.ruleName !== "SendActionNode" &&
-          sym.ruleName !== "AssignActionNode" &&
-          sym.ruleName !== "SuccessionAsUsage" &&
-          sym.ruleName !== "SuccessionFlowUsage" &&
-          sym.ruleName !== "Package"
-        ) {
-          continue;
-        }
-      } else if (diagramType === "UseCase") {
-        // Only show use case elements and actors
-        if (
-          sym.ruleName !== "UseCaseDefinition" &&
-          sym.ruleName !== "UseCaseUsage" &&
-          sym.ruleName !== "IncludeUseCaseUsage" &&
-          sym.ruleName !== "ActorUsage" &&
-          sym.ruleName !== "ActorDefinition" &&
-          sym.ruleName !== "SubjectUsage" &&
-          sym.ruleName !== "Package"
-        ) {
-          continue;
-        }
-      } else if (diagramType === "Requirement") {
-        // Only show requirement elements and satisfy/verify relationships
-        if (
-          sym.ruleName !== "RequirementDefinition" &&
-          sym.ruleName !== "RequirementUsage" &&
-          sym.ruleName !== "SatisfyRequirementUsage" &&
-          sym.ruleName !== "VerifyRequirementUsage" &&
-          sym.ruleName !== "ConcernDefinition" &&
-          sym.ruleName !== "ConcernUsage" &&
-          sym.ruleName !== "ConstraintDefinition" &&
-          sym.ruleName !== "ConstraintUsage" &&
-          sym.ruleName !== "Package"
-        ) {
-          continue;
-        }
-      } else if (diagramType === "Parametric") {
-        // Only show constraint/calculation blocks and bindings
-        if (
-          sym.ruleName !== "ConstraintDefinition" &&
-          sym.ruleName !== "ConstraintUsage" &&
-          sym.ruleName !== "CalculationDefinition" &&
-          sym.ruleName !== "CalculationUsage" &&
-          sym.ruleName !== "AttributeUsage" &&
-          sym.ruleName !== "BindingConnectorAsUsage" &&
-          sym.ruleName !== "Package"
-        ) {
-          continue;
-        }
-      } else if (diagramType === "Package") {
-        // Only show packages and their direct children (definitions)
-        if (sym.ruleName !== "Package" && sym.ruleName !== "LibraryPackage" && !sym.ruleName.endsWith("Definition")) {
-          continue;
-        }
-      } else if (diagramType === "Sequence") {
-        // Sequence: participants (parts/actions), messages (flows/successions/send/accept)
-        if (
-          sym.ruleName !== "PartDefinition" &&
-          sym.ruleName !== "PartUsage" &&
-          sym.ruleName !== "ActionDefinition" &&
-          sym.ruleName !== "ActionUsage" &&
-          sym.ruleName !== "FlowConnectionUsage" &&
-          sym.ruleName !== "SuccessionFlowUsage" &&
-          sym.ruleName !== "SuccessionAsUsage" &&
-          sym.ruleName !== "SendActionNode" &&
-          sym.ruleName !== "AcceptActionNode" &&
-          sym.ruleName !== "Package"
-        ) {
-          continue;
-        }
-      }
     }
 
     allSymbols.push(sym);
@@ -689,15 +694,6 @@ export function buildPolyglotDiagram(
   // Projection-driven group rules
   if ((activeProjection as any)?.groupRules) {
     for (const r of (activeProjection as any).groupRules) groupKinds.add(r);
-  } else if (diagramType === "StateMachine") {
-    groupKinds.add("StateDefinition");
-    groupKinds.add("StateUsage");
-    groupKinds.add("ExhibitStateUsage");
-  } else if (diagramType === "Activity") {
-    groupKinds.add("ActorUsage");
-    groupKinds.add("SubjectUsage");
-    groupKinds.add("PartUsage");
-    groupKinds.add("PartDefinition");
   }
 
   // Kinds that should NOT be absorbed into compartment text — they get their own
@@ -709,11 +705,11 @@ export function buildPolyglotDiagram(
   // Projection-driven standalone child rules
   if ((activeProjection as any)?.standaloneRules) {
     for (const r of (activeProjection as any).standaloneRules) STANDALONE_CHILD_KINDS.add(r);
-  } else if (diagramType === "StateMachine") {
-    STANDALONE_CHILD_KINDS.add("StateDefinition");
-    STANDALONE_CHILD_KINDS.add("StateUsage");
-    STANDALONE_CHILD_KINDS.add("ExhibitStateUsage");
   }
+
+  // Projection-driven state bubble and control node rules
+  const STATE_BUBBLE_KINDS = new Set<string>((activeProjection as any)?.stateBubbleRules ?? []);
+  const CONTROL_NODE_KINDS = new Set<string>((activeProjection as any)?.controlNodeRules ?? []);
 
   // Generalized port kinds: DSL portRules, config role: "port", or fallback
   const PORT_KINDS = opts.portKinds ? new Set(opts.portKinds) : new Set(["PortUsage", "PortDefinition"]);
@@ -1144,11 +1140,8 @@ export function buildPolyglotDiagram(
       continue;
     }
 
-    // ── Special case: State bubble rendering (StateMachine diagram) ──
-    if (
-      diagramType === "StateMachine" &&
-      (sym.ruleName === "StateDefinition" || sym.ruleName === "StateUsage" || sym.ruleName === "ExhibitStateUsage")
-    ) {
+    // ── Special case: State bubble rendering (driven by activeProjection.stateBubbleRules) ──
+    if (STATE_BUBBLE_KINDS.has(sym.ruleName)) {
       // Collect entry/do/exit actions as compartment lines
       const stateChildren = compartmentsByParent.get(sym.id) ?? [];
       const actionLines: string[] = [];
@@ -1276,14 +1269,8 @@ export function buildPolyglotDiagram(
       continue;
     }
 
-    // ── Special case: Activity diagram — Fork/Join bars, Decision/Merge diamonds ──
-    if (
-      diagramType === "Activity" &&
-      (sym.ruleName === "ForkNode" ||
-        sym.ruleName === "JoinNode" ||
-        sym.ruleName === "DecisionNode" ||
-        sym.ruleName === "MergeNode")
-    ) {
+    // ── Special case: Activity control nodes (driven by activeProjection.controlNodeRules) ──
+    if (CONTROL_NODE_KINDS.has(sym.ruleName)) {
       const isForkJoin = sym.ruleName === "ForkNode" || sym.ruleName === "JoinNode";
       const parameters: { name: string; value: string }[] = [];
       for (const [key, value] of Object.entries(sym.metadata || {})) {
@@ -2494,8 +2481,8 @@ export function buildPolyglotDiagram(
     }
   }
 
-  // ── Post-process: synthesize initial/final pseudo-state nodes for StateMachine ──
-  if (diagramType === "StateMachine" && edges.length > 0) {
+  // ── Post-process: synthesize initial/final pseudo-state nodes when enabled by projection ──
+  if ((activeProjection as any)?.synthesizePseudoStates && edges.length > 0) {
     // Analyze edge topology to find states with no incoming/outgoing transitions
     const hasIncoming = new Set<string>();
     const hasOutgoing = new Set<string>();

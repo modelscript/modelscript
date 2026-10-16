@@ -280,7 +280,7 @@ export declare class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  scheduleCompaction(immediate?: boolean): void;
+  scheduleCompaction(_immediate?: boolean): void;
   /**
    * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
    */
@@ -448,7 +448,7 @@ export declare class LspFacade {
   /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */
   getDiagramData(
     astRoot: number,
-    projectionId?: number,
+    _projectionId?: number,
   ): {
     nodes: any[];
     edges: any[];

@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import type { DiagramData } from "../src/protocol.js";
-import { renderPolyglotDiagramToSvg } from "../src/svg-renderer.js";
+import { renderDiagramDataToSvg, renderPolyglotDiagramToSvg } from "../src/svg-renderer.js";
 
 describe("Headless SVG Renderer (Zero DOM)", () => {
   const sampleDiagram: DiagramData = {
@@ -155,5 +155,60 @@ describe("Headless SVG Renderer (Zero DOM)", () => {
     const svg = renderPolyglotDiagramToSvg(iconDiagram);
     assert.ok(svg.includes("<image"), "Must render <image> SVG element");
     assert.ok(svg.includes("data:image/png;base64"), "Must include image data URI");
+  });
+
+  it("auto-grids unplaced (0,0) nodes and resolves markup.children for OWL 2 / SSP diagrams", () => {
+    const unplacedDiagram: DiagramData = {
+      nodes: [
+        {
+          id: "cls1",
+          x: 0,
+          y: 0,
+          width: 140,
+          height: 50,
+          autoLayout: true,
+          properties: { name: "Vehicle", className: "Class" } as any,
+          markup: {
+            tagName: "g",
+            children: [
+              { tagName: "rect", selector: "body", attrs: { fill: "#1e293b", stroke: "#569cd6" } },
+              { tagName: "text", selector: "header", textContent: "«class»" },
+              { tagName: "text", selector: "label", textContent: "Vehicle" },
+            ],
+          } as any,
+        },
+        {
+          id: "cls2",
+          x: 0,
+          y: 0,
+          width: 140,
+          height: 50,
+          autoLayout: true,
+          properties: { name: "Sedan", className: "Class" } as any,
+          markup: {
+            tagName: "g",
+            children: [
+              { tagName: "rect", selector: "body", attrs: { fill: "#1e293b", stroke: "#569cd6" } },
+              { tagName: "text", selector: "header", textContent: "«class»" },
+              { tagName: "text", selector: "label", textContent: "Sedan" },
+            ],
+          } as any,
+        },
+      ],
+      edges: [
+        {
+          id: "sub1",
+          source: { cell: "cls2", port: "right" },
+          target: { cell: "cls1", port: "left" },
+          attrs: { line: { stroke: "#569cd6", strokeWidth: 1.5 } },
+        },
+      ],
+    };
+
+    const svg = renderDiagramDataToSvg(unplacedDiagram, { theme: "dark" });
+    assert.ok(svg.includes("Vehicle"), "Must render Vehicle node title");
+    assert.ok(svg.includes("Sedan"), "Must render Sedan node title");
+    assert.ok(svg.includes("«class»"), "Must render header stereotype from markup.children");
+    assert.ok(!svg.includes('transform="translate(0, 0)"'), "Unplaced nodes should be auto-gridded away from (0, 0)");
   });
 });

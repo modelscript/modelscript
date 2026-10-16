@@ -22,8 +22,7 @@
     "apps/ide/github-fs",
     "packages/*",
     "packages/examples/*",
-    "languages/*",
-    "languages/*/*"
+    "languages/*"
   ],
   "scripts": {
     "bench:parser": "npm run bench:parser --workspace=@modelscript/modelica",
@@ -57,11 +56,12 @@
     "docker:logs": "docker compose logs -f",
     "docker:up": "docker compose up -d",
     "format": "prettier . --write",
-    "lint": "nx affected --target=lint --parallel=4",
-    "lint:all": "nx run-many --target=lint --parallel=4",
+    "lint": "nx affected --target=lint --parallel=4 && npm run lint:scripts",
+    "lint:all": "nx run-many --target=lint --parallel=4 && npm run lint:scripts",
     "lint:cycles": "npx nx graph --file=graph.json && node scripts/check-nx-cycles.js",
     "lint:filenames": "npx tsx scripts/lint-filenames.ts",
     "lint:headers": "npx tsx scripts/normalize-headers.ts --check",
+    "lint:scripts": "eslint scripts eslint.config.ts --no-warn-ignored",
     "package:ide:extension": "npm run build-extension --workspace=@modelscript/ide && (cd apps/ide/dist/extension && npx --yes @vscode/vsce package --no-dependencies --allow-star-activation --out ../)",
     "prepare": "husky",
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
@@ -90,10 +90,10 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "npx tsx scripts/lint-filenames.ts",
-      "node --max-old-space-size=4096 ./node_modules/eslint/bin/eslint.js --config eslint.config.ts --no-warn-ignored",
+      "eslint --config eslint.config.ts --no-warn-ignored",
       "prettier --write --ignore-unknown"
     ],
-    "*.{js,json,md,yml,css}": "prettier --write --ignore-unknown"
+    "*.{js,mjs,cjs,json,md,yml,css}": "prettier --write --ignore-unknown"
   },
   "overrides": {
     "@antv/x6-plugin-selection": {
@@ -176,8 +176,11 @@
     "ajv": "^8.17.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
     "expect": "^30.5.2",
     "glob": "^13.0.6",
+    "globals": "^17.4.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
     "lint-staged": "^16.4.0",

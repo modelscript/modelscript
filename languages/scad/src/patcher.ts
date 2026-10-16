@@ -62,7 +62,8 @@ export class ScadPatcher {
   }
 
   /**
-   * Finds a primary solid or transform method call and updates its numerical parameter.
+   * Finds a primary solid or transform method call (scoped to `targetRange` when provided)
+   * and updates its numerical vector parameter.
    */
   public static patchTransformArgument(
     source: string,
@@ -70,12 +71,14 @@ export class ScadPatcher {
     targetMethod: string,
     argIndex: number,
     newVec: [number, number, number],
+    targetRange?: { startByte: number; endByte: number },
   ): PatchResult | null {
-    const callNode = this.findMethodOrOpCall(rootNode, targetMethod);
+    const callNode = this.findMethodOrOpCall(rootNode, targetMethod, targetRange);
     if (!callNode) return null;
 
     // Find ArgumentList
-    const argListNode = this.findChildByType(callNode, "ArgumentList");
+    const argListNode =
+      this.findChildByType(callNode, "ArgumentList") ?? this.findDescendantByType(callNode, "ArgumentList");
     if (!argListNode) return null;
 
     let currentArgIdx = 0;
@@ -84,7 +87,7 @@ export class ScadPatcher {
       if (!arg || arg.type !== "Argument") continue;
 
       if (currentArgIdx === argIndex) {
-        const formattedVec = `[${newVec[0]}, ${newVec[1]}, ${newVec[2]}]`;
+        const formattedVec = `[${Number(newVec[0].toFixed(4))}, ${Number(newVec[1].toFixed(4))}, ${Number(newVec[2].toFixed(4))}]`;
         return this.patchNode(source, arg, formattedVec);
       }
       currentArgIdx++;
@@ -94,7 +97,8 @@ export class ScadPatcher {
   }
 
   /**
-   * Patches a single component of a vector argument in a transform or method call.
+   * Patches a single component of a vector argument in a transform or method call
+   * (scoped to `targetRange` when provided).
    */
   public static patchVectorComponent(
     source: string,
@@ -103,8 +107,9 @@ export class ScadPatcher {
     argIndex: number,
     compIndex: number,
     newValue: number,
+    targetRange?: { startByte: number; endByte: number },
   ): PatchResult | null {
-    const callNode = this.findMethodOrOpCall(rootNode, targetMethod);
+    const callNode = this.findMethodOrOpCall(rootNode, targetMethod, targetRange);
     if (!callNode) return null;
 
     const argListNode = this.findDescendantByType(callNode, "ArgumentList");
@@ -136,6 +141,103 @@ export class ScadPatcher {
     return null;
   }
 
+  /**
+   * Wraps an untransformed primitive at `primitiveRange` with a new prefix or fluent transform.
+   */
+  public static wrapPrimitiveWithTransform(
+    source: string,
+    primitiveRange: { startByte: number; endByte: number },
+    transformMethod: "translate" | "rotate" | "scale",
+    vec: [number, number, number],
+    preferFluent = false,
+  ): PatchResult {
+    const { startByte, endByte } = primitiveRange;
+    const oldValue = source.slice(startByte, endByte);
+    const formattedVec = `[${Number(vec[0].toFixed(4))}, ${Number(vec[1].toFixed(4))}, ${Number(vec[2].toFixed(4))}]`;
+    const trailingSlice = source.slice(endByte, endByte + 16).trimStart();
+    const isFluentContext = preferFluent || trailingSlice.startsWith(".");
+
+    const newStr = isFluentContext
+      ? `${oldValue}.${transformMethod}(${formattedVec})`
+      : `${transformMethod}(${formattedVec}) ${oldValue}`;
+
+    const updatedSource = source.slice(0, startByte) + newStr + source.slice(endByte);
+    return {
+      updatedSource,
+      replacedRange: { startByte, endByte },
+      oldValue,
+      newValue: newStr,
+    };
+  }
+
+  /**
+   * High-level helper for 3D viewport gizmo writeback: patches the exact transform call
+   * matching `sourceMetadata`, or wraps the underlying primitive if not yet transformed.
+   */
+  public static patchOrInsertTransform(
+    source: string,
+    rootNode: any,
+    targetMethod: "translate" | "rotate" | "scale",
+    newVec: [number, number, number],
+    sourceMetadata?: {
+      transformMethod?: string;
+      argIndex?: number;
+      startByte?: number;
+      endByte?: number;
+      primitiveStartByte?: number;
+      primitiveEndByte?: number;
+      translateRange?: { startByte: number; endByte: number; isFluent?: boolean };
+      rotateRange?: { startByte: number; endByte: number; isFluent?: boolean };
+      scaleRange?: { startByte: number; endByte: number; isFluent?: boolean };
+    },
+  ): PatchResult | null {
+    const specificRange =
+      targetMethod === "translate"
+        ? sourceMetadata?.translateRange
+        : targetMethod === "rotate"
+          ? sourceMetadata?.rotateRange
+          : sourceMetadata?.scaleRange;
+
+    const fallbackRange =
+      sourceMetadata?.transformMethod === targetMethod &&
+      sourceMetadata.startByte !== undefined &&
+      sourceMetadata.endByte !== undefined
+        ? { startByte: sourceMetadata.startByte, endByte: sourceMetadata.endByte }
+        : undefined;
+
+    const range = specificRange ?? fallbackRange;
+    if (range) {
+      const patched = this.patchTransformArgument(
+        source,
+        rootNode,
+        targetMethod,
+        sourceMetadata?.argIndex ?? 0,
+        newVec,
+        range,
+      );
+      if (patched) return patched;
+    }
+
+    if (sourceMetadata?.primitiveStartByte !== undefined && sourceMetadata?.primitiveEndByte !== undefined) {
+      const preferFluent =
+        Boolean(sourceMetadata.translateRange?.isFluent) ||
+        Boolean(sourceMetadata.rotateRange?.isFluent) ||
+        Boolean(sourceMetadata.scaleRange?.isFluent);
+      return this.wrapPrimitiveWithTransform(
+        source,
+        {
+          startByte: sourceMetadata.primitiveStartByte,
+          endByte: sourceMetadata.primitiveEndByte,
+        },
+        targetMethod,
+        newVec,
+        preferFluent,
+      );
+    }
+
+    return this.patchTransformArgument(source, rootNode, targetMethod, sourceMetadata?.argIndex ?? 0, newVec);
+  }
+
   private static findVariableDeclaration(containerNode: any, varName: string): any {
     for (let i = 0; i < containerNode.childCount; i++) {
       const c = containerNode.child(i);
@@ -156,8 +258,17 @@ export class ScadPatcher {
     return null;
   }
 
-  private static findMethodOrOpCall(node: any, name: string): any {
+  private static findMethodOrOpCall(
+    node: any,
+    name: string,
+    targetRange?: { startByte: number; endByte: number },
+  ): any {
     if (!node) return null;
+
+    if (targetRange) {
+      const rangedMatch = this.findMethodOrOpCallInRange(node, name, targetRange);
+      if (rangedMatch) return rangedMatch;
+    }
 
     if (node.type === "MethodCall" || node.type === "TransformOp") {
       if (node.text.includes(name)) return node;
@@ -165,6 +276,34 @@ export class ScadPatcher {
 
     for (let i = 0; i < node.childCount; i++) {
       const res = this.findMethodOrOpCall(node.child(i), name);
+      if (res) return res;
+    }
+    return null;
+  }
+
+  private static findMethodOrOpCallInRange(
+    node: any,
+    name: string,
+    targetRange: { startByte: number; endByte: number },
+  ): any {
+    if (!node) return null;
+
+    const startByte = node.startIndex ?? node.startByte ?? 0;
+    const endByte = node.endIndex ?? node.endByte ?? 0;
+
+    // Skip subtrees completely outside targetRange
+    if (endByte < targetRange.startByte || startByte > targetRange.endByte) {
+      return null;
+    }
+
+    if (node.type === "MethodCall" || node.type === "TransformOp") {
+      if (node.text.includes(name) && startByte >= targetRange.startByte - 2 && endByte <= targetRange.endByte + 2) {
+        return node;
+      }
+    }
+
+    for (let i = 0; i < node.childCount; i++) {
+      const res = this.findMethodOrOpCallInRange(node.child(i), name, targetRange);
       if (res) return res;
     }
     return null;

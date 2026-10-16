@@ -1,7 +1,6 @@
 // name:     DefaultRecordParameters
 // keywords: record parameters with default values, record extends
 // status:   correct
-// xfail:    true
 //
 // Testing of record component parameters with default values and extends of records
 //

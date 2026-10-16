@@ -102,6 +102,71 @@ cube([arm_length, width, 8.0])
   assert.strictEqual(unsafeRes.violations.length, 2);
   assert.strictEqual(unsafeRes.updatedSource, initialSource); // Untouched!
 
+  // 6. Multi-Solid Byte-Range Targeted Gizmo Patching (ensuring 2nd translate is patched, not 1st)
+  const multiSolidScad = `
+translate([10, 20, 30]) cube([15, 15, 15], center = true);
+translate([100, 200, 300]) rotate([0, 45, 0]) color("steelblue") cylinder(h = 20, r1 = 8, r2 = 4, center = true);
+cube([12, 12, 12]);
+`;
+  const { extractScadCadComponents } = await import("../src/index.js");
+  const multiTree = parser.parse(multiSolidScad);
+  const comps = await extractScadCadComponents(multiSolidScad, multiTree.rootNode, "file:///test.scad");
+  assert.strictEqual(comps.length, 3, "Must extract 3 selectable CAD components");
+
+  // Verify 2nd component has steelblue color and exact translateRange / rotateRange
+  const secondComp = comps[1];
+  assert.deepEqual(secondComp.cad.position, [100, 200, 300]);
+  assert.ok(secondComp.proceduralMesh.color, "Second component must carry color('steelblue')");
+  assert.ok(secondComp.sourceMetadata?.translateRange, "Second component must carry translateRange");
+  assert.ok(secondComp.sourceMetadata?.rotateRange, "Second component must carry rotateRange");
+
+  // Patch the 2nd component's translate via patchOrInsertTransform -> must NOT modify the 1st translate([10, 20, 30])!
+  const patchSecondTranslate = ScadPatcher.patchOrInsertTransform(
+    multiSolidScad,
+    multiTree.rootNode,
+    "translate",
+    [125, 210, 305],
+    secondComp.sourceMetadata,
+  );
+  assert.ok(patchSecondTranslate, "Must patch second solid's translate");
+  assert.ok(
+    patchSecondTranslate.updatedSource.includes("translate([10, 20, 30])"),
+    "First solid's translate([10, 20, 30]) must remain untouched!",
+  );
+  assert.ok(
+    patchSecondTranslate.updatedSource.includes("translate([125, 210, 305])"),
+    "Second solid's translate must be updated to [125, 210, 305]",
+  );
+
+  // Patch the 2nd component's rotate via patchOrInsertTransform
+  const patchSecondRotate = ScadPatcher.patchOrInsertTransform(
+    multiSolidScad,
+    multiTree.rootNode,
+    "rotate",
+    [15, 60, 0],
+    secondComp.sourceMetadata,
+  );
+  assert.ok(patchSecondRotate, "Must patch second solid's rotate");
+  assert.ok(
+    patchSecondRotate.updatedSource.includes("rotate([15, 60, 0])"),
+    "Second solid's rotate must be updated to [15, 60, 0]",
+  );
+
+  // 7. Dragging gizmo on 3rd component (untransformed bare primitive `cube([12, 12, 12])`) wraps it with translate
+  const thirdComp = comps[2];
+  const wrapThirdRes = ScadPatcher.patchOrInsertTransform(
+    multiSolidScad,
+    multiTree.rootNode,
+    "translate",
+    [50, 0, -10],
+    thirdComp.sourceMetadata,
+  );
+  assert.ok(wrapThirdRes, "Must wrap untransformed primitive with translate");
+  assert.ok(
+    wrapThirdRes.updatedSource.includes("translate([50, 0, -10]) cube([12, 12, 12]);"),
+    "Bare cube primitive must be wrapped with translate([50, 0, -10])",
+  );
+
   console.log("✔ All Viewport Gizmo Writeback & Safe Guard tests passed cleanly!");
 }
 

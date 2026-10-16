@@ -128,6 +128,8 @@ if [ "$MODE_LINT" = true ]; then
   npm run lint:cycles
   npm run lint:headers
   npm run lint:filenames
+  npm run lint:scripts
+  npx tsc --noEmit
   run_task "lint" "ESLint checking"
   run_task "typecheck" "TypeScript type checking"
 fi
@@ -141,7 +143,13 @@ if [ "$MODE_TEST" = true ]; then
     node scripts/download-msl.cjs
   fi
 
-  run_task "test" "Unit and integration tests"
+  log_info "Starting: Unit and integration tests..."
+  if [ "$RUN_ALL" = true ]; then
+    node scripts/test-coordinator.js run-many
+  else
+    node scripts/test-coordinator.js affected --base="$BASE_REF"
+  fi
+  log_success "Completed: Unit and integration tests"
 
   if [ -f "scripts/consolidate-test-reports.ts" ]; then
     npx tsx scripts/consolidate-test-reports.ts --output-json=ctrf/ctrf-consolidated.json --output-html=ctrf/test-report-unified.html || true
@@ -167,9 +175,9 @@ if [ "$MODE_BUILD" = true ]; then
   echo ""
   log_info "Starting: Package builds..."
   if [ "$RUN_ALL" = true ] || [ "$MODE_FULL" = true ]; then
-    npx nx run-many -t build --exclude=@modelscript/morsel --parallel=4
+    npx nx run-many -t build --parallel=4
   else
-    npx nx affected -t build --base="$BASE_REF" --exclude=@modelscript/morsel --parallel=4
+    npx nx affected -t build --base="$BASE_REF" --parallel=4
   fi
   log_success "Completed: Package builds"
 

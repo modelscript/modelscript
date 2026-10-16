@@ -625,6 +625,19 @@ export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
         strokeWidth,
       },
     },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#e2e8f0",
+        fontSize: 9,
+        fontWeight: "bold",
+        refX: 34,
+        refY: 56,
+        textAnchor: "middle",
+      },
+    },
   ];
 }
 
@@ -659,6 +672,19 @@ export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
         fill: "none",
         stroke,
         strokeWidth: 2,
+      },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#fef08a",
+        fontSize: 9,
+        fontWeight: "bold",
+        refX: 30,
+        refY: 64,
+        textAnchor: "middle",
       },
     },
   ];
@@ -724,16 +750,30 @@ export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
         strokeWidth: 1.5,
       },
     },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#a7f3d0",
+        fontSize: 9,
+        fontWeight: "bold",
+        refX: 30,
+        refY: 66,
+        textAnchor: "middle",
+      },
+    },
   ];
 }
 
 /**
  * High-Voltage Busbar Glyph.
  */
-export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number }): X6Markup[] {
+export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number; label?: string }): X6Markup[] {
   const length = options?.length ?? 80;
   const vbase = options?.voltageBaseKv ?? 230;
   const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
+  const textLabel = options?.label ? `${options.label} (${vbase} kV)` : `${vbase} kV`;
 
   return [
     {
@@ -753,7 +793,7 @@ export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number 
       tagName: "text",
       selector: "busLabel",
       attrs: {
-        text: `${vbase} kV`,
+        text: textLabel,
         fill: color,
         fontSize: 9,
         fontWeight: "bold",
@@ -761,6 +801,15 @@ export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number 
         refX: length / 2,
         refY: -4,
         textAnchor: "middle",
+      },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: textLabel,
+        fill: "none",
+        fontSize: 0,
       },
     },
   ];
@@ -799,6 +848,19 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean }): X6M
       tagName: "line",
       selector: "brkCross2",
       attrs: { x1: 16, y1: 29, x2: 32, y2: 15, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: stroke,
+        fontSize: 8.5,
+        fontWeight: "bold",
+        refX: 24,
+        refY: 44,
+        textAnchor: "middle",
+      },
     },
   ];
 }
@@ -846,6 +908,19 @@ export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
       selector: "gnd3",
       attrs: { x1: 17, y1: 52, x2: 23, y2: 52, stroke, strokeWidth: 1.2 },
     },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#d8b4fe",
+        fontSize: 8.5,
+        fontWeight: "bold",
+        refX: 20,
+        refY: 62,
+        textAnchor: "middle",
+      },
+    },
   ];
 }
 
@@ -865,6 +940,19 @@ export function faultGlyph(options?: GlyphOptions): X6Markup[] {
         fill,
         stroke,
         strokeWidth: 1.8,
+      },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#fca5a5",
+        fontSize: 8.5,
+        fontWeight: "bold",
+        refX: 20,
+        refY: 52,
+        textAnchor: "middle",
       },
     },
   ];
@@ -918,6 +1006,19 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string }
         textAnchor: "middle",
       },
     },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#99f6e4",
+        fontSize: 9,
+        fontWeight: "bold",
+        refX: 36,
+        refY: 66,
+        textAnchor: "middle",
+      },
+    },
   ];
 }
 
@@ -946,6 +1047,267 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
         stroke,
         strokeWidth: 2,
         strokeDasharray: isCable ? "4,2" : undefined,
+      },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "#bae6fd",
+        fontSize: 8.5,
+        fontWeight: "bold",
+        refX: 40,
+        refY: 46,
+        textAnchor: "middle",
+      },
+    },
+  ];
+}
+
+/**
+ * PSCAD CSMF (Continuous System Model Functions) Control Block Glyph.
+ * Supports Summing Junction (Σ), Gain Triangle (K), PI / Lag Transfer Function,
+ * Hard Limiter Saturation Curve, Comparator Relay, and Constant Setpoint.
+ */
+export function csmfBlockGlyph(
+  options?: GlyphOptions & {
+    kind?: "pi" | "lag" | "sum" | "gain" | "limit" | "compar" | "const";
+    label?: string;
+  },
+): X6Markup[] {
+  const kind = options?.kind ?? "pi";
+  const stroke = options?.stroke ?? "#a855f7";
+  const fill = options?.fill ?? "rgba(168, 85, 247, 0.12)";
+  const label = options?.label ?? kind.toUpperCase();
+
+  if (kind === "sum") {
+    return [
+      {
+        tagName: "circle",
+        selector: "csmfSumCircle",
+        attrs: { cx: 22, cy: 22, r: 18, fill, stroke, strokeWidth: 1.8 },
+      },
+      {
+        tagName: "text",
+        selector: "csmfSymbol",
+        attrs: {
+          text: "Σ",
+          fill: "#f3e8ff",
+          fontSize: 14,
+          fontWeight: "bold",
+          refX: 22,
+          refY: 22,
+          textAnchor: "middle",
+          textVerticalAnchor: "middle",
+        },
+      },
+      {
+        tagName: "text",
+        selector: "label",
+        attrs: {
+          text: label,
+          fill: "#cbd5e1",
+          fontSize: 8,
+          refX: 22,
+          refY: 46,
+          textAnchor: "middle",
+        },
+      },
+    ];
+  }
+
+  if (kind === "gain") {
+    return [
+      {
+        tagName: "polygon",
+        selector: "csmfGainTriangle",
+        attrs: { points: "4,4 48,20 4,36", fill, stroke, strokeWidth: 1.8 },
+      },
+      {
+        tagName: "text",
+        selector: "csmfSymbol",
+        attrs: {
+          text: "K",
+          fill: "#f3e8ff",
+          fontSize: 11,
+          fontWeight: "bold",
+          refX: 18,
+          refY: 20,
+          textAnchor: "middle",
+          textVerticalAnchor: "middle",
+        },
+      },
+      {
+        tagName: "text",
+        selector: "label",
+        attrs: {
+          text: label,
+          fill: "#d8b4fe",
+          fontSize: 8,
+          refX: 26,
+          refY: 46,
+          textAnchor: "middle",
+        },
+      },
+    ];
+  }
+
+  const curvePath =
+    kind === "limit"
+      ? "M 12,30 L 22,30 L 40,12 L 50,12"
+      : kind === "compar"
+        ? "M 12,30 L 30,30 L 30,12 L 50,12"
+        : "M 12,30 Q 24,14 50,12";
+
+  return [
+    {
+      tagName: "rect",
+      selector: "csmfBox",
+      attrs: { x: 2, y: 2, width: 60, height: 38, rx: 4, ry: 4, fill, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "path",
+      selector: "csmfCurve",
+      attrs: { d: curvePath, fill: "none", stroke: "#d8b4fe", strokeWidth: 1.5 },
+    },
+    {
+      tagName: "text",
+      selector: "csmfBadge",
+      attrs: {
+        text: kind === "pi" ? "PI" : kind === "lag" ? "1/(1+sT)" : kind === "const" ? "CONST" : kind.toUpperCase(),
+        fill: "#f3e8ff",
+        fontSize: 8,
+        fontWeight: "bold",
+        fontFamily: "monospace",
+        refX: 32,
+        refY: 9,
+        textAnchor: "middle",
+      },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: label,
+        fill: "#d8b4fe",
+        fontSize: 8,
+        refX: 32,
+        refY: 48,
+        textAnchor: "middle",
+      },
+    },
+  ];
+}
+
+/**
+ * PSCAD Oscilloscope Output Channel Probe (`PGB`) & Digital Multimeter (`V, I, P, Q`) Glyph.
+ */
+export function meterProbeGlyph(
+  options?: GlyphOptions & {
+    kind?: "pgb" | "multimeter" | "voltmeter" | "ammeter";
+    label?: string;
+  },
+): X6Markup[] {
+  const kind = options?.kind ?? "pgb";
+  const stroke = options?.stroke ?? "#10b981";
+  const fill = options?.fill ?? "rgba(16, 185, 129, 0.12)";
+  const label = options?.label ?? (kind === "pgb" ? "PGB" : "V/I/PQ");
+
+  if (kind === "pgb") {
+    return [
+      {
+        tagName: "polygon",
+        selector: "pgbTag",
+        attrs: { points: "0,17 12,4 52,4 52,30 12,30", fill, stroke, strokeWidth: 1.8 },
+      },
+      {
+        tagName: "path",
+        selector: "pgbWave",
+        attrs: { d: "M 16,17 Q 21,9 26,17 Q 31,25 36,17", fill: "none", stroke, strokeWidth: 1.5 },
+      },
+      {
+        tagName: "text",
+        selector: "label",
+        attrs: {
+          text: label,
+          fill: "#ecfdf5",
+          fontSize: 8,
+          fontWeight: "bold",
+          fontFamily: "monospace",
+          refX: 34,
+          refY: 27,
+          textAnchor: "middle",
+        },
+      },
+    ];
+  }
+
+  return [
+    {
+      tagName: "circle",
+      selector: "meterCircle",
+      attrs: { cx: 24, cy: 22, r: 18, fill, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "meterNeedle",
+      attrs: { x1: 24, y1: 26, x2: 32, y2: 14, stroke: "#34d399", strokeWidth: 1.6 },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: label,
+        fill: "#ecfdf5",
+        fontSize: 8,
+        fontWeight: "bold",
+        fontFamily: "monospace",
+        refX: 24,
+        refY: 31,
+        textAnchor: "middle",
+      },
+    },
+  ];
+}
+
+/**
+ * PSCAD Wireless Data Label (`master:datalabel`) & XNode (`master:xnode` / `pin`) Tag Glyph.
+ */
+export function wirelessNetLabelGlyph(
+  options?: GlyphOptions & {
+    label?: string;
+    isElectrical?: boolean;
+  },
+): X6Markup[] {
+  const isElectrical = options?.isElectrical ?? false;
+  const stroke = options?.stroke ?? (isElectrical ? "#38bdf8" : "#c084fc");
+  const fill = options?.fill ?? (isElectrical ? "rgba(56, 189, 248, 0.14)" : "rgba(192, 132, 252, 0.14)");
+  const label = options?.label ?? "NET";
+
+  return [
+    {
+      tagName: "circle",
+      selector: "netPin",
+      attrs: { cx: 6, cy: 12, r: 3.5, fill: stroke, stroke: "#0f172a", strokeWidth: 1.5 },
+    },
+    {
+      tagName: "polygon",
+      selector: "netFlag",
+      attrs: { points: "10,12 16,3 44,3 44,21 16,21", fill, stroke, strokeWidth: 1.5 },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: label,
+        fill: "#f8fafc",
+        fontSize: 8.5,
+        fontWeight: "bold",
+        fontFamily: "monospace",
+        refX: 29,
+        refY: 15,
+        textAnchor: "middle",
       },
     },
   ];

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./catalog/master-library-schemas.js";
 export * from "./comtrade/comtrade-reader.js";
 export * from "./comtrade/comtrade-types.js";
 export * from "./comtrade/comtrade-writer.js";

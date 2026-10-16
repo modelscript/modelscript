@@ -67,6 +67,44 @@ describe("OWL2 Diagram Data Generator", () => {
     const dataTaxonomy = buildOWL2DiagramData(axioms, undefined, "ClassTaxonomy");
     assert.ok(dataTaxonomy.nodes.length > 0);
   });
+
+  it("renders inferred DL subsumptions and domain/range edges across views", () => {
+    const axioms = [
+      { type: "ClassDeclaration", iri: ":Transport" },
+      { type: "ClassDeclaration", iri: ":Vehicle" },
+      { type: "ClassDeclaration", iri: ":Sedan" },
+      { type: "ClassDeclaration", iri: ":Engine" },
+      { type: "ObjectPropertyDeclaration", iri: ":hasPowertrain" },
+      { type: "SubClassOf", subClassIri: ":Vehicle", superClassIri: ":Transport" },
+      { type: "SubClassOf", subClassIri: ":Sedan", superClassIri: ":Vehicle" },
+      { type: "ObjectPropertyDomain", propertyIri: ":hasPowertrain", domainIri: ":Vehicle" },
+      { type: "ObjectPropertyRange", propertyIri: ":hasPowertrain", rangeIri: ":Engine" },
+    ];
+
+    const data = buildOWL2DiagramData(axioms, undefined, "All", {
+      inferredSubClassOf: [
+        { subClassIri: ":Vehicle", superClassIri: ":Transport" }, // duplicate of explicit — should be skipped
+        { subClassIri: ":Sedan", superClassIri: ":Transport" }, // inferred transitive subsumption
+      ],
+    });
+
+    assert.strictEqual(data.availableViews?.length, 3);
+    const inferredEdge = data.edges.find((e) => (e as any).style?.type === "inferredSubClassOf");
+    assert.ok(inferredEdge, "Expected inferred SubClassOf edge for :Sedan -> :Transport");
+    assert.strictEqual(inferredEdge?.source.cell, ":Sedan");
+    assert.strictEqual(inferredEdge?.target.cell, ":Transport");
+
+    const domEdge = data.edges.find(
+      (e) => (e as any).style?.type === "domain" && e.source.cell === ":hasPowertrain" && e.target.cell === ":Vehicle",
+    );
+    const rngEdge = data.edges.find(
+      (e) => (e as any).style?.type === "range" && e.source.cell === ":hasPowertrain" && e.target.cell === ":Engine",
+    );
+    assert.ok(domEdge && rngEdge, "Expected domain and range edges for :hasPowertrain");
+
+    const propsView = buildOWL2DiagramData(axioms, undefined, "Properties");
+    assert.ok(propsView.edges.every((e) => (e as any).style?.type !== "subClassOf"));
+  });
 });
 
 describe("OWL2 Diagram Edits Synthesizer", () => {

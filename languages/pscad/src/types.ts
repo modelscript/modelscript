@@ -37,12 +37,17 @@ export interface PscxComponent {
   ports: PscxPort[];
   line?: number | undefined;
   column?: number | undefined;
+  sourceRange?: { startByte: number; endByte: number } | undefined;
 }
 
 export interface PscxWire {
   id: string;
   vertices: Point2D[];
   connectedPortIds: string[];
+  startPortId?: string | undefined;
+  endPortId?: string | undefined;
+  line?: number | undefined;
+  sourceRange?: { startByte: number; endByte: number } | undefined;
 }
 
 export interface PscxBus {
@@ -55,6 +60,7 @@ export interface PscxBus {
   phaseCount: number; // 1 or 3
   line?: number | undefined;
   column?: number | undefined;
+  sourceRange?: { startByte: number; endByte: number } | undefined;
 }
 
 export interface PscxSticky {
@@ -73,6 +79,8 @@ export interface PscxModule {
   buses: PscxBus[];
   wires: PscxWire[];
   stickies?: PscxSticky[] | undefined;
+  junctions?: Point2D[] | undefined;
+  wirelessNets?: Record<string, string[]> | undefined;
 }
 
 export interface PscxProjectSettings {

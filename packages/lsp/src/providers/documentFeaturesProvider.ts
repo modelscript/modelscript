@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getPscadDocumentSymbols, getPscadFoldingRanges } from "@modelscript/pscad";
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -53,6 +54,14 @@ export function registerDocumentFeaturesProvider(
         }
         return undefined;
       };
+
+      if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+        const doc = getDoc(params.textDocument.uri);
+        const text = doc ? doc.getText() : getDocumentTree(params.textDocument.uri)?.text;
+        if (text) {
+          return getPscadDocumentSymbols(text) as any[];
+        }
+      }
 
       // Wait up to 5 seconds for parser to be ready if currently initializing
       if (!isParserReady()) {
@@ -140,6 +149,10 @@ export function registerDocumentFeaturesProvider(
   connection.onFoldingRanges((params) => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
+
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+      return getPscadFoldingRanges(document.getText());
+    }
 
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
     const parser = plugin?.parser ?? (isParserReady() ? (validationService as any)?.parserService?.parser : undefined);

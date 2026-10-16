@@ -557,6 +557,18 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     }
 
     case SolidKind.Extrusion: {
+      if (solid.polygon.length >= 3) {
+        const brepRef = buildExtrusionBrep(
+          ctx,
+          solid.name,
+          solid.polygon,
+          solid.height,
+          solid.twist,
+          solid.scale,
+          parentMatrix,
+        );
+        return [brepRef];
+      }
       let minX = Infinity,
         maxX = -Infinity,
         minY = Infinity,
@@ -577,6 +589,32 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       return [brepRef];
     }
 
+    case SolidKind.Polyhedron: {
+      if (solid.points.length === 0) return [];
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity,
+        minZ = Infinity,
+        maxZ = -Infinity;
+      for (const [x, y, z] of solid.points) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z;
+        if (z > maxZ) maxZ = z;
+      }
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const cz = (minZ + maxZ) / 2;
+      const hw = Math.max(1e-3, (maxX - minX) / 2);
+      const hh = Math.max(1e-3, (maxY - minY) / 2);
+      const hd = Math.max(1e-3, (maxZ - minZ) / 2);
+      const brepRef = buildBoxBrep(ctx, solid.name, cx, cy, cz, hw, hh, hd, parentMatrix);
+      return [brepRef];
+    }
+
     case SolidKind.Transform: {
       const combined = mat4Multiply(parentMatrix, solid.matrix);
       return flattenSolid(ctx, solid.child, combined);
@@ -585,7 +623,6 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     case SolidKind.Union:
     case SolidKind.Subtract:
     case SolidKind.Intersect: {
-      // Phase 1: decompose booleans into separate bodies
       const left = flattenSolid(ctx, solid.left, parentMatrix);
       const right = flattenSolid(ctx, solid.right, parentMatrix);
       return [...left, ...right];
@@ -597,6 +634,134 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       return flattenSolid(ctx, solid.child, parentMatrix);
     }
   }
+}
+
+function buildExtrusionBrep(
+  ctx: StepContext,
+  name: string,
+  polygon: readonly [number, number][],
+  height: number,
+  twist?: number,
+  scaleFactor?: number,
+  worldMatrix?: Mat4,
+): string {
+  const N = polygon.length;
+  let signedArea = 0;
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    signedArea += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1];
+  }
+  const pts2d: [number, number][] = [];
+  if (signedArea < 0) {
+    for (let i = N - 1; i >= 0; i--) pts2d.push([polygon[i][0], polygon[i][1]]);
+  } else {
+    for (let i = 0; i < N; i++) pts2d.push([polygon[i][0], polygon[i][1]]);
+  }
+
+  const rad = twist ? (twist * Math.PI) / 180.0 : 0;
+  const cosT = Math.cos(rad);
+  const sinT = Math.sin(rad);
+  const scl = scaleFactor !== undefined ? scaleFactor : 1.0;
+
+  const localVerts: Vec3[] = [];
+  // 0 .. N-1: bottom vertices
+  for (let i = 0; i < N; i++) {
+    localVerts.push([pts2d[i][0], pts2d[i][1], 0]);
+  }
+  // N .. 2N-1: top vertices
+  for (let i = 0; i < N; i++) {
+    const [x, y] = pts2d[i];
+    const tx = (x * cosT - y * sinT) * scl;
+    const ty = (x * sinT + y * cosT) * scl;
+    localVerts.push([tx, ty, height]);
+  }
+
+  const verts = worldMatrix ? localVerts.map((v) => transformPoint(worldMatrix, v)) : localVerts;
+  const vp: string[] = verts.map((c, i) => {
+    const cp = cartesianPoint(ctx, c);
+    return emit(ctx, allocId(ctx), `VERTEX_POINT('v${i}',${cp})`);
+  });
+
+  function edgeCurve(v0: number, v1: number): string {
+    const p0 = verts[v0] as Vec3;
+    const p1 = verts[v1] as Vec3;
+    const dx = p1[0] - p0[0],
+      dy = p1[1] - p0[1],
+      dz = p1[2] - p0[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const d: Vec3 = len > 0 ? [dx / len, dy / len, dz / len] : [1, 0, 0];
+    const dir = direction(ctx, d);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+    const lineOrigin = cartesianPoint(ctx, p0);
+    const line = emit(ctx, allocId(ctx), `LINE('',${lineOrigin},${vec})`);
+    return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[v0]},${vp[v1]},${line},.T.)`);
+  }
+
+  function orientedEdge(ec: string, forward: boolean): string {
+    return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
+  }
+
+  function buildFace(oes: string[], planeOrigin: Vec3, planeNormal: Vec3, planeRefDir: Vec3): string {
+    const effOrigin = worldMatrix ? transformPoint(worldMatrix, planeOrigin) : planeOrigin;
+    const effNormal = worldMatrix ? transformDir(worldMatrix, planeNormal) : planeNormal;
+    const effRefDir = worldMatrix ? transformDir(worldMatrix, planeRefDir) : planeRefDir;
+    const loop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${oes.join(",")}))`);
+    const bound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${loop},.T.)`);
+    const placeRef = axis2Placement3d(ctx, effOrigin, effNormal, effRefDir);
+    const plane = emit(ctx, allocId(ctx), `PLANE('',${placeRef})`);
+    return emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bound}),${plane},.T.)`);
+  }
+
+  const botEdges: string[] = [];
+  const topEdges: string[] = [];
+  const vertEdges: string[] = [];
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    botEdges.push(edgeCurve(i, j));
+    topEdges.push(edgeCurve(N + i, N + j));
+    vertEdges.push(edgeCurve(i, N + i));
+  }
+
+  const faces: string[] = [];
+  // Bottom cap face (normal [0, 0, -1])
+  const botOes: string[] = [];
+  for (let i = N - 1; i >= 0; i--) {
+    botOes.push(orientedEdge(botEdges[i], false));
+  }
+  faces.push(buildFace(botOes, localVerts[0], [0, 0, -1], [1, 0, 0]));
+
+  // Top cap face (normal [0, 0, 1])
+  const topOes: string[] = [];
+  for (let i = 0; i < N; i++) {
+    topOes.push(orientedEdge(topEdges[i], true));
+  }
+  faces.push(buildFace(topOes, localVerts[N], [0, 0, 1], [1, 0, 0]));
+
+  // Side quad faces
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    const dx = pts2d[j][0] - pts2d[i][0];
+    const dy = pts2d[j][1] - pts2d[i][1];
+    const len = Math.hypot(dx, dy) || 1.0;
+    const sideNormal: Vec3 = [dy / len, -dx / len, 0];
+    const sideRefDir: Vec3 = [dx / len, dy / len, 0];
+    faces.push(
+      buildFace(
+        [
+          orientedEdge(botEdges[i], true),
+          orientedEdge(vertEdges[j], true),
+          orientedEdge(topEdges[i], false),
+          orientedEdge(vertEdges[i], false),
+        ],
+        localVerts[i],
+        sideNormal,
+        sideRefDir,
+      ),
+    );
+  }
+
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${faces.join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
 }
 
 // ── Product definition boilerplate ───────────────────────────────────────

@@ -13,7 +13,21 @@ export interface OWL2Relationship {
   source: string;
   target: string;
   label: string;
-  type: "subClassOf" | "equivalentTo" | "disjointWith" | "domain" | "range" | "objectProperty" | "inverseOf";
+  type:
+    | "subClassOf"
+    | "inferredSubClassOf"
+    | "equivalentTo"
+    | "disjointWith"
+    | "domain"
+    | "range"
+    | "objectProperty"
+    | "inverseOf"
+    | "classAssertion";
+}
+
+export interface OWL2DiagramOptions {
+  /** Inferred SubClassOf pairs computed by TableauReasoner */
+  inferredSubClassOf?: { subClassIri: string; superClassIri: string }[];
 }
 
 export function getShortLabel(iri: string): string {
@@ -39,9 +53,11 @@ export function buildOWL2DiagramData(
   axioms: any[],
   layout?: { elements?: Record<string, { x: number; y: number; width?: number; height?: number }> },
   diagramType: string = "All",
+  options?: OWL2DiagramOptions,
 ): DiagramData {
   const nodesMap = new Map<string, OWL2Entity>();
   const edgesData: OWL2Relationship[] = [];
+  const assertedSubClassPairs = new Set<string>();
 
   // Track defined classes (classes appearing in EquivalentClasses with >1 operands)
   const definedClasses = new Set<string>();
@@ -50,6 +66,18 @@ export function buildOWL2DiagramData(
       for (const c of ax.classIris) definedClasses.add(c);
     }
   }
+
+  const ensureNode = (iri: string, defaultType: OWL2Entity["type"]) => {
+    if (!iri || iri === "owl:Thing" || iri === "owl:Nothing") return;
+    if (!nodesMap.has(iri)) {
+      nodesMap.set(iri, {
+        iri,
+        label: getShortLabel(iri),
+        type: defaultType,
+        ...(defaultType === "class" ? { isDefinedClass: definedClasses.has(iri) } : {}),
+      });
+    }
+  };
 
   for (const ax of axioms) {
     if (ax.type === "ClassDeclaration" || ax.type === "Class") {
@@ -78,51 +106,92 @@ export function buildOWL2DiagramData(
         type: "individual",
       });
     } else if (ax.type === "SubClassOf") {
-      if (!nodesMap.has(ax.subClassIri)) {
-        nodesMap.set(ax.subClassIri, {
-          iri: ax.subClassIri,
-          label: getShortLabel(ax.subClassIri),
-          type: "class",
-          isDefinedClass: definedClasses.has(ax.subClassIri),
-        });
-      }
-      if (!nodesMap.has(ax.superClassIri)) {
-        nodesMap.set(ax.superClassIri, {
-          iri: ax.superClassIri,
-          label: getShortLabel(ax.superClassIri),
-          type: "class",
-          isDefinedClass: definedClasses.has(ax.superClassIri),
-        });
+      ensureNode(ax.subClassIri, "class");
+      ensureNode(ax.superClassIri, "class");
+      const isInferred = Boolean(ax.inferred);
+      if (!isInferred) {
+        assertedSubClassPairs.add(`${ax.subClassIri}→${ax.superClassIri}`);
       }
       edgesData.push({
         source: ax.subClassIri,
         target: ax.superClassIri,
-        label: "subClassOf",
-        type: "subClassOf",
+        label: isInferred ? "«inferred» subClassOf" : "subClassOf",
+        type: isInferred ? "inferredSubClassOf" : "subClassOf",
       });
     } else if (ax.type === "ObjectPropertyAssertion") {
-      if (!nodesMap.has(ax.subjectIri)) {
-        nodesMap.set(ax.subjectIri, {
-          iri: ax.subjectIri,
-          label: getShortLabel(ax.subjectIri),
-          type: "individual",
-        });
-      }
-      if (!nodesMap.has(ax.objectIri)) {
-        nodesMap.set(ax.objectIri, {
-          iri: ax.objectIri,
-          label: getShortLabel(ax.objectIri),
-          type: "individual",
-        });
-      }
+      ensureNode(ax.subjectIri, "individual");
+      ensureNode(ax.objectIri, "individual");
       edgesData.push({
         source: ax.subjectIri,
         target: ax.objectIri,
         label: getShortLabel(ax.propertyIri),
         type: "objectProperty",
       });
+    } else if (ax.type === "ClassAssertion") {
+      const classIri = ax.classIri;
+      const indivIri = ax.individualIri;
+      if (classIri && indivIri) {
+        ensureNode(indivIri, "individual");
+        ensureNode(classIri, "class");
+        edgesData.push({
+          source: indivIri,
+          target: classIri,
+          label: "rdf:type",
+          type: "classAssertion",
+        });
+      }
+    } else if (ax.type === "ObjectPropertyDomain" || ax.type === "DataPropertyDomain") {
+      const propIri = ax.propertyIri;
+      const domainIri = ax.domainIri ?? ax.classIri ?? ax.targetClassIri;
+      if (propIri && domainIri) {
+        ensureNode(propIri, ax.type === "DataPropertyDomain" ? "dataProperty" : "objectProperty");
+        ensureNode(domainIri, "class");
+        edgesData.push({
+          source: propIri,
+          target: domainIri,
+          label: "rdfs:domain",
+          type: "domain",
+        });
+      }
+    } else if (ax.type === "ObjectPropertyRange" || ax.type === "DataPropertyRange") {
+      const propIri = ax.propertyIri;
+      const rangeIri = ax.rangeIri ?? ax.classIri ?? ax.targetClassIri ?? ax.dataRange;
+      if (propIri && rangeIri) {
+        ensureNode(propIri, ax.type === "DataPropertyRange" ? "dataProperty" : "objectProperty");
+        ensureNode(rangeIri, "class");
+        edgesData.push({
+          source: propIri,
+          target: rangeIri,
+          label: "rdfs:range",
+          type: "range",
+        });
+      }
+    } else if (ax.type === "UniversalRestriction" && !ax.classIri && ax.propertyIri && ax.targetClassIri) {
+      ensureNode(ax.propertyIri, "objectProperty");
+      ensureNode(ax.targetClassIri, "class");
+      edgesData.push({
+        source: ax.propertyIri,
+        target: ax.targetClassIri,
+        label: "domain/range",
+        type: "domain",
+      });
+    } else if (ax.type === "InverseObjectProperty" || ax.type === "InverseObjectProperties") {
+      const p1 = ax.propertyIri ?? ax.propertyIris?.[0];
+      const p2 = ax.inversePropertyIri ?? ax.propertyIris?.[1];
+      if (p1 && p2) {
+        ensureNode(p1, "objectProperty");
+        ensureNode(p2, "objectProperty");
+        edgesData.push({
+          source: p1,
+          target: p2,
+          label: "owl:inverseOf",
+          type: "inverseOf",
+        });
+      }
     } else if (ax.type === "EquivalentClasses" && Array.isArray(ax.classIris) && ax.classIris.length >= 2) {
       for (let i = 0; i < ax.classIris.length - 1; i++) {
+        ensureNode(ax.classIris[i], "class");
+        ensureNode(ax.classIris[i + 1], "class");
         edgesData.push({
           source: ax.classIris[i],
           target: ax.classIris[i + 1],
@@ -132,6 +201,8 @@ export function buildOWL2DiagramData(
       }
     } else if (ax.type === "DisjointClasses" && Array.isArray(ax.classIris) && ax.classIris.length >= 2) {
       for (let i = 0; i < ax.classIris.length - 1; i++) {
+        ensureNode(ax.classIris[i], "class");
+        ensureNode(ax.classIris[i + 1], "class");
         edgesData.push({
           source: ax.classIris[i],
           target: ax.classIris[i + 1],
@@ -142,16 +213,51 @@ export function buildOWL2DiagramData(
     }
   }
 
+  // Append DL reasoner inferred SubClassOf edges (skipping owl:Thing, reflexive, and already-asserted pairs)
+  if (options?.inferredSubClassOf) {
+    for (const inf of options.inferredSubClassOf) {
+      if (
+        !inf.subClassIri ||
+        !inf.superClassIri ||
+        inf.subClassIri === inf.superClassIri ||
+        inf.superClassIri === "owl:Thing" ||
+        inf.subClassIri === "owl:Nothing"
+      ) {
+        continue;
+      }
+      const key = `${inf.subClassIri}→${inf.superClassIri}`;
+      if (assertedSubClassPairs.has(key)) continue;
+      assertedSubClassPairs.add(key);
+      ensureNode(inf.subClassIri, "class");
+      ensureNode(inf.superClassIri, "class");
+      edgesData.push({
+        source: inf.subClassIri,
+        target: inf.superClassIri,
+        label: "«inferred» subClassOf",
+        type: "inferredSubClassOf",
+      });
+    }
+  }
+
   // Filter by diagramType if applicable
   let filteredEntities = Array.from(nodesMap.values());
   let filteredEdges = edgesData;
 
   if (diagramType === "Taxonomy" || diagramType === "Hierarchy") {
     filteredEntities = filteredEntities.filter((e) => e.type === "class");
-    filteredEdges = filteredEdges.filter((e) => e.type === "subClassOf" || e.type === "equivalentTo");
+    filteredEdges = filteredEdges.filter(
+      (e) => e.type === "subClassOf" || e.type === "inferredSubClassOf" || e.type === "equivalentTo",
+    );
   } else if (diagramType === "Properties") {
-    filteredEntities = filteredEntities.filter((e) => e.type === "objectProperty" || e.type === "dataProperty");
     filteredEdges = filteredEdges.filter((e) => e.type === "domain" || e.type === "range" || e.type === "inverseOf");
+    const connectedEndpoints = new Set<string>();
+    for (const e of filteredEdges) {
+      connectedEndpoints.add(e.source);
+      connectedEndpoints.add(e.target);
+    }
+    filteredEntities = filteredEntities.filter(
+      (e) => e.type === "objectProperty" || e.type === "dataProperty" || connectedEndpoints.has(e.iri),
+    );
   }
 
   const nodes: DiagramNode[] = [];
@@ -183,6 +289,7 @@ export function buildOWL2DiagramData(
     const x = savedPos?.x ?? 0;
     const y = savedPos?.y ?? 0;
     const autoLayout = !savedPos;
+    const rx = entity.type === "individual" ? 14 : 4;
 
     nodes.push({
       id: entity.iri,
@@ -233,6 +340,27 @@ export function buildOWL2DiagramData(
           },
         ],
       },
+      attrs: {
+        body: {
+          fill: style.fill,
+          stroke: style.stroke,
+          strokeWidth: 2,
+          rx,
+          ry: rx,
+        },
+        header: {
+          text: style.header,
+          fill: style.stroke,
+          fontSize: 9,
+          fontWeight: "600",
+        },
+        label: {
+          text: entity.label,
+          fill: "#e0e0e0",
+          fontSize: 12,
+          fontWeight: "600",
+        },
+      },
       markup: {
         tagName: "g",
         children: [
@@ -241,8 +369,8 @@ export function buildOWL2DiagramData(
             attrs: {
               width,
               height,
-              rx: entity.type === "individual" ? 14 : 4,
-              ry: entity.type === "individual" ? 14 : 4,
+              rx,
+              ry: rx,
               fill: style.fill,
               stroke: style.stroke,
               "stroke-width": 2,
@@ -294,6 +422,15 @@ export function buildOWL2DiagramData(
         fill: "#ffffff",
         stroke: "#569cd6",
       };
+    } else if (rel.type === "inferredSubClassOf") {
+      stroke = "#a855f7";
+      strokeDasharray = "6 3";
+      targetMarker = {
+        name: "path",
+        d: "M 0 -6 L 10 0 L 0 6 Z",
+        fill: "#1e1e1e",
+        stroke: "#a855f7",
+      };
     } else if (rel.type === "equivalentTo") {
       stroke = "#f39c12";
       strokeDasharray = "6 3";
@@ -302,6 +439,20 @@ export function buildOWL2DiagramData(
       strokeDasharray = "4 4";
     } else if (rel.type === "objectProperty") {
       stroke = "#9b59b6";
+      targetMarker = { name: "classic", fill: "#9b59b6" };
+    } else if (rel.type === "domain") {
+      stroke = "#2ecc71";
+      targetMarker = { name: "classic", fill: "#2ecc71" };
+    } else if (rel.type === "range") {
+      stroke = "#e67e22";
+      targetMarker = { name: "classic", fill: "#e67e22" };
+    } else if (rel.type === "inverseOf") {
+      stroke = "#95a5a6";
+      strokeDasharray = "4 4";
+      targetMarker = { name: "classic", fill: "#95a5a6" };
+    } else if (rel.type === "classAssertion") {
+      stroke = "#9b59b6";
+      strokeDasharray = "3 3";
       targetMarker = { name: "classic", fill: "#9b59b6" };
     }
 
@@ -317,7 +468,7 @@ export function buildOWL2DiagramData(
           attrs: {
             text: {
               text: rel.label,
-              fill: "#999",
+              fill: rel.type === "inferredSubClassOf" ? "#c084fc" : "#999",
               fontSize: 10,
             },
             rect: {
@@ -346,5 +497,11 @@ export function buildOWL2DiagramData(
     edges,
     coordinateSystem: { x: 0, y: 0, width: 800, height: 600 },
     diagramBackground: null,
+    availableViews: [
+      { id: "All", label: "All Entities" },
+      { id: "Taxonomy", label: "Class Taxonomy" },
+      { id: "Properties", label: "Properties & Domains" },
+    ],
+    activeView: diagramType,
   };
 }

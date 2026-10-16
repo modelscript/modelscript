@@ -178,11 +178,24 @@ export class ModelicaPortBalancer {
           const rhsStr = dae.interner.resolve(dae.getExprData1(rhsId));
           if (!lhsStr || !rhsStr) continue;
           const isExactVar = dae.getVarIdxByName(lhsStr) !== -1 && dae.getVarIdxByName(rhsStr) !== -1;
-          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !isExactVar && !hasOverconstrained) {
-            outsideOutsidePairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
-          } else {
-            connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId), i]);
+          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !hasOverconstrained) {
+            if (!isExactVar) {
+              outsideOutsidePairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
+              continue;
+            } else if (options?.isOldFrontend && lhsStr.includes(".") && rhsStr.includes(".")) {
+              const lPort = lhsStr.slice(0, lhsStr.lastIndexOf("."));
+              const rPort = rhsStr.slice(0, rhsStr.lastIndexOf("."));
+              if (lPort.includes(".") && rPort.includes(".")) {
+                const lPortId = dae.interner.intern(lPort);
+                const rPortId = dae.interner.intern(rPort);
+                if (!outsideOutsidePairs.some(([a, b]) => a === lPortId && b === rPortId)) {
+                  outsideOutsidePairs.push([lPortId, rPortId]);
+                }
+                continue;
+              }
+            }
           }
+          connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId), i]);
         }
       }
     }
@@ -582,7 +595,8 @@ export class ModelicaPortBalancer {
           isPlugCompatible = false;
         }
 
-        if (!isPlugCompatible && !isBus && fromStr && toStr) {
+        const hasPriorVarNotFound = dae.diagnostics.some((d) => d.code === ModelicaErrorCode.VARIABLE_NOT_FOUND.code);
+        if (!isPlugCompatible && !isBus && fromStr && toStr && !hasPriorVarNotFound) {
           const srcRange = dae.getEqSourceRange?.(eqIdx);
           dae.diagnostics.push({
             severity: "error",
@@ -598,10 +612,11 @@ export class ModelicaPortBalancer {
 
     const outsideVarSet = new Set<number>();
     const outerConnectedVars = new Set<number>();
+    const connectPairEqIndices = new Set(connectPairs.map((p) => p[2]));
     for (let i = 0; i < dae.eqCount; i++) {
       if (dae.getEqKind(i) === EqKind.Connect) {
+        if (!connectPairEqIndices.has(i)) continue;
         const flags = dae.getEqAux(i);
-        if (flags === 3) continue;
         const lhsId = dae.getEqLhs(i);
         const rhsId = dae.getEqRhs(i);
         if (flags & 1) {
@@ -1551,6 +1566,7 @@ export class ModelicaPortBalancer {
         const maxDots = Math.max(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
         const groupHasOutsideVar = group.some((vIdx) => outsideVarSet.has(vIdx));
         const isGroupOutside = (vIdx: number) => {
+          if (minDots === 1 && maxDots > 1 && countDots(dae.getVarName(vIdx)) === 1) return true;
           if (groupHasOutsideVar) return outsideVarSet.has(vIdx);
           if (minDots < maxDots) return countDots(dae.getVarName(vIdx)) === minDots;
           return isOutsideOrOuter(dae.getVarName(vIdx), vIdx);

@@ -13,9 +13,11 @@ import type {
   SspComponent,
   SspConnection,
   SspConnector,
+  SspConnectorGeometry,
   SspConnectorKind,
   SspConnectorType,
   SspDefaultExperiment,
+  SspElementGeometry,
   SspParameterBinding,
   SspParameterValue,
   SspSystem,
@@ -38,21 +40,27 @@ export function parseSsd(xml: string): SspSystem {
   const systemBlock = extractTagBlock(xml, "ssd:System");
   const systemAttrs = systemBlock?.attrs ?? "";
   const systemBody = systemBlock?.body ?? "";
+  const systemBodyOffset = systemBlock?.bodyOffset ?? 0;
 
   const systemName = extractAttrFromStr(systemAttrs, "name") ?? name;
   const systemDescription = extractAttrFromStr(systemAttrs, "description") ?? description;
 
+  // Parse system geometry if present
+  const sysGeomBlock =
+    extractTagBlock(systemBody, "ssd:SystemGeometry") ?? extractTagBlock(systemBody, "SystemGeometry");
+  const systemGeometry = sysGeomBlock ? parseElementGeometryAttrs(sysGeomBlock.attrs) : undefined;
+
   // Parse boundary connectors (connectors directly on the system)
-  const systemConnectors = parseSystemBoundaryConnectors(systemBody);
+  const systemConnectors = parseSystemBoundaryConnectors(systemBody, xml, systemBodyOffset);
 
   // Parse components
-  const components = parseComponents(systemBody);
+  const components = parseComponents(systemBody, xml, systemBodyOffset);
 
   // Parse connections
-  const connections = parseConnections(systemBody);
+  const connections = parseConnections(systemBody, xml, systemBodyOffset);
 
   // Parse parameter bindings
-  const parameterBindings = parseParameterBindings(systemBody);
+  const parameterBindings = parseParameterBindings(systemBody, xml, systemBodyOffset);
 
   // Parse default experiment
   const defaultExperiment = parseDefaultExperiment(xml);
@@ -66,6 +74,7 @@ export function parseSsd(xml: string): SspSystem {
     connections,
     parameterBindings,
     defaultExperiment,
+    ...(systemGeometry ? { geometry: systemGeometry } : {}),
   };
 }
 
@@ -73,21 +82,24 @@ export function parseSsd(xml: string): SspSystem {
  * Parse SSV (System Structure Parameter Values) XML.
  *
  * @param xml The raw XML content of an .ssv file
+ * @param fullXml Optional full XML string for line number calculation
+ * @param baseOffset Optional byte offset of `xml` within `fullXml`
  * @returns Array of parameter values
  */
-export function parseSsv(xml: string): SspParameterValue[] {
+export function parseSsv(xml: string, fullXml: string = xml, baseOffset: number = 0): SspParameterValue[] {
   const values: SspParameterValue[] = [];
   const paramElements = extractTagElements(xml, "ssv:Parameter");
 
-  for (const { attrs, body } of paramElements) {
+  for (const { attrs, body, startIdx } of paramElements) {
     const paramName = extractAttrFromStr(attrs, "name") ?? "";
+    const line = offsetToLine(fullXml, baseOffset + startIdx);
 
     // Determine type and value
     const realBlock = extractTagBlock(body, "ssv:Real");
     if (realBlock) {
       const val = extractAttrFromStr(realBlock.attrs, "value");
       if (val !== undefined) {
-        values.push({ name: paramName, type: "Real", value: parseFloat(val) });
+        values.push({ name: paramName, type: "Real", value: parseFloat(val), line });
       }
       continue;
     }
@@ -96,7 +108,7 @@ export function parseSsv(xml: string): SspParameterValue[] {
     if (intBlock) {
       const val = extractAttrFromStr(intBlock.attrs, "value");
       if (val !== undefined) {
-        values.push({ name: paramName, type: "Integer", value: parseInt(val, 10) });
+        values.push({ name: paramName, type: "Integer", value: parseInt(val, 10), line });
       }
       continue;
     }
@@ -105,7 +117,7 @@ export function parseSsv(xml: string): SspParameterValue[] {
     if (boolBlock) {
       const val = extractAttrFromStr(boolBlock.attrs, "value");
       if (val !== undefined) {
-        values.push({ name: paramName, type: "Boolean", value: val === "true" || val === "1" });
+        values.push({ name: paramName, type: "Boolean", value: val === "true" || val === "1", line });
       }
       continue;
     }
@@ -114,7 +126,7 @@ export function parseSsv(xml: string): SspParameterValue[] {
     if (strBlock) {
       const val = extractAttrFromStr(strBlock.attrs, "value");
       if (val !== undefined) {
-        values.push({ name: paramName, type: "String", value: val });
+        values.push({ name: paramName, type: "String", value: val, line });
       }
     }
   }
@@ -124,51 +136,128 @@ export function parseSsv(xml: string): SspParameterValue[] {
 
 // ── Internal parsers ────────────────────────────────────────────────
 
-function parseSystemBoundaryConnectors(systemBody: string): SspConnector[] {
-  const elementsIdx = systemBody.indexOf("<ssd:Elements>");
-  const connectorsBlock = elementsIdx >= 0 ? systemBody.substring(0, elementsIdx) : systemBody;
-  return parseConnectors(connectorsBlock);
+function offsetToLine(xml: string, offset: number): number {
+  let line = 1;
+  const end = Math.min(offset, xml.length);
+  for (let i = 0; i < end; i++) {
+    if (xml.charCodeAt(i) === 10) line++;
+  }
+  return line;
 }
 
-function parseComponents(systemBody: string): SspComponent[] {
+function parseElementGeometryAttrs(attrs: string): SspElementGeometry | undefined {
+  const x1Str = extractAttrFromStr(attrs, "x1");
+  const y1Str = extractAttrFromStr(attrs, "y1");
+  const x2Str = extractAttrFromStr(attrs, "x2");
+  const y2Str = extractAttrFromStr(attrs, "y2");
+  if (x1Str === undefined || y1Str === undefined || x2Str === undefined || y2Str === undefined) {
+    return undefined;
+  }
+  const x1 = parseFloat(x1Str);
+  const y1 = parseFloat(y1Str);
+  const x2 = parseFloat(x2Str);
+  const y2 = parseFloat(y2Str);
+  if ([x1, y1, x2, y2].some((n) => Number.isNaN(n))) return undefined;
+  const rotStr = extractAttrFromStr(attrs, "rotation");
+  const rotation = rotStr !== undefined ? parseFloat(rotStr) : undefined;
+  return {
+    x1,
+    y1,
+    x2,
+    y2,
+    ...(rotation !== undefined && !Number.isNaN(rotation) ? { rotation } : {}),
+  };
+}
+
+function parseConnectorGeometryAttrs(attrs: string): SspConnectorGeometry | undefined {
+  const xStr = extractAttrFromStr(attrs, "x");
+  const yStr = extractAttrFromStr(attrs, "y");
+  if (xStr === undefined || yStr === undefined) return undefined;
+  const x = parseFloat(xStr);
+  const y = parseFloat(yStr);
+  if (Number.isNaN(x) || Number.isNaN(y)) return undefined;
+  return { x, y };
+}
+
+function parseConnectionGeometryAttrs(attrs: string): { x: number; y: number }[] | undefined {
+  const pxStr = extractAttrFromStr(attrs, "pointsX");
+  const pyStr = extractAttrFromStr(attrs, "pointsY");
+  if (!pxStr || !pyStr) return undefined;
+  const xs = pxStr
+    .trim()
+    .split(/\s+/)
+    .map((s) => parseFloat(s));
+  const ys = pyStr
+    .trim()
+    .split(/\s+/)
+    .map((s) => parseFloat(s));
+  const len = Math.min(xs.length, ys.length);
+  if (len === 0) return undefined;
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < len; i++) {
+    if (!Number.isNaN(xs[i]!) && !Number.isNaN(ys[i]!)) {
+      pts.push({ x: xs[i]!, y: ys[i]! });
+    }
+  }
+  return pts.length > 0 ? pts : undefined;
+}
+
+function parseSystemBoundaryConnectors(systemBody: string, fullXml: string, systemBodyOffset: number): SspConnector[] {
+  const elementsIdx = systemBody.indexOf("<ssd:Elements>");
+  const connectorsBlock = elementsIdx >= 0 ? systemBody.substring(0, elementsIdx) : systemBody;
+  return parseConnectors(connectorsBlock, fullXml, systemBodyOffset);
+}
+
+function parseComponents(systemBody: string, fullXml: string, systemBodyOffset: number): SspComponent[] {
   const components: SspComponent[] = [];
 
   // Extract the <ssd:Elements> block
   const elementsBlock = extractTagBlock(systemBody, "ssd:Elements");
   if (!elementsBlock) return components;
+  const elementsOffset = systemBodyOffset + elementsBlock.bodyOffset;
 
   // Parse each <ssd:Component>
   const compElements = extractTagElements(elementsBlock.body, "ssd:Component");
-  for (const { attrs, body } of compElements) {
+  for (const { attrs, body, startIdx, bodyOffset } of compElements) {
     const compName = extractAttrFromStr(attrs, "name") ?? "";
     const type = extractAttrFromStr(attrs, "type");
     const source = extractAttrFromStr(attrs, "source") ?? "";
+    const line = offsetToLine(fullXml, elementsOffset + startIdx);
+    const compBodyOffset = elementsOffset + bodyOffset;
 
-    const connectors = parseConnectors(body);
+    const connectors = parseConnectors(body, fullXml, compBodyOffset);
+    const geomBlock = extractTagBlock(body, "ssd:ElementGeometry") ?? extractTagBlock(body, "ElementGeometry");
+    const geometry = geomBlock ? parseElementGeometryAttrs(geomBlock.attrs) : undefined;
+    const geometryLine = geomBlock ? offsetToLine(fullXml, compBodyOffset + geomBlock.startIdx) : undefined;
 
     components.push({
       name: compName,
       type,
       source,
       connectors,
+      line,
+      ...(geometry ? { geometry } : {}),
+      ...(geometryLine ? { geometryLine } : {}),
     });
   }
 
   return components;
 }
 
-function parseConnectors(componentBody: string): SspConnector[] {
+function parseConnectors(componentBody: string, fullXml: string, baseOffset: number): SspConnector[] {
   const connectors: SspConnector[] = [];
 
   // Extract the <ssd:Connectors> block
   const connectorsBlock = extractTagBlock(componentBody, "ssd:Connectors");
   if (!connectorsBlock) return connectors;
+  const connBlockOffset = baseOffset + connectorsBlock.bodyOffset;
 
   // Parse each <ssd:Connector>
   const connElements = extractTagElements(connectorsBlock.body, "ssd:Connector");
-  for (const { attrs, body } of connElements) {
+  for (const { attrs, body, startIdx } of connElements) {
     const connName = extractAttrFromStr(attrs, "name") ?? "";
     const kind = (extractAttrFromStr(attrs, "kind") ?? "input") as SspConnectorKind;
+    const line = offsetToLine(fullXml, connBlockOffset + startIdx);
 
     // Determine scalar type from child element
     let type: SspConnectorType = "Real";
@@ -188,47 +277,63 @@ function parseConnectors(componentBody: string): SspConnector[] {
       type = "Enumeration";
     }
 
-    const connector: SspConnector = { name: connName, kind, type };
+    const geomBlock = extractTagBlock(body, "ssd:ConnectorGeometry") ?? extractTagBlock(body, "ConnectorGeometry");
+    const geometry = geomBlock ? parseConnectorGeometryAttrs(geomBlock.attrs) : undefined;
+
+    const connector: SspConnector = { name: connName, kind, type, line };
     if (unit) connector.unit = unit;
+    if (geometry) connector.geometry = geometry;
     connectors.push(connector);
   }
 
   return connectors;
 }
 
-function parseConnections(systemBody: string): SspConnection[] {
+function parseConnections(systemBody: string, fullXml: string, systemBodyOffset: number): SspConnection[] {
   const connections: SspConnection[] = [];
 
   // Extract the <ssd:Connections> block
   const connectionsBlock = extractTagBlock(systemBody, "ssd:Connections");
   if (!connectionsBlock) return connections;
+  const connsOffset = systemBodyOffset + connectionsBlock.bodyOffset;
 
   // Parse each <ssd:Connection>
   const connElements = extractTagElements(connectionsBlock.body, "ssd:Connection");
-  for (const { attrs } of connElements) {
+  for (const { attrs, body, startIdx } of connElements) {
     const startElement = extractAttrFromStr(attrs, "startElement") ?? "";
     const startConnector = extractAttrFromStr(attrs, "startConnector") ?? "";
     const endElement = extractAttrFromStr(attrs, "endElement") ?? "";
     const endConnector = extractAttrFromStr(attrs, "endConnector") ?? "";
+    const line = offsetToLine(fullXml, connsOffset + startIdx);
 
-    connections.push({ startElement, startConnector, endElement, endConnector });
+    const geomBlock = extractTagBlock(body, "ssd:ConnectionGeometry") ?? extractTagBlock(body, "ConnectionGeometry");
+    const points = geomBlock ? parseConnectionGeometryAttrs(geomBlock.attrs) : undefined;
+
+    connections.push({
+      startElement,
+      startConnector,
+      endElement,
+      endConnector,
+      line,
+      ...(points ? { points } : {}),
+    });
   }
 
   return connections;
 }
 
-function parseParameterBindings(systemBody: string): SspParameterBinding[] {
+function parseParameterBindings(systemBody: string, fullXml: string, systemBodyOffset: number): SspParameterBinding[] {
   const bindings: SspParameterBinding[] = [];
   const bindElements = extractTagElements(systemBody, "ssd:ParameterBinding");
 
-  for (const { attrs, body } of bindElements) {
+  for (const { attrs, body, bodyOffset } of bindElements) {
     const prefix = extractAttrFromStr(attrs, "prefix");
     const source = extractAttrFromStr(attrs, "source");
 
     // Parse inline parameter values if present
     const values: SspParameterValue[] = [];
     if (body) {
-      const inlineValues = parseSsv(body);
+      const inlineValues = parseSsv(body, fullXml, systemBodyOffset + bodyOffset);
       values.push(...inlineValues);
     }
 
@@ -255,7 +360,10 @@ function parseDefaultExperiment(xml: string): SspDefaultExperiment | undefined {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function extractTagBlock(xml: string, tag: string): { attrs: string; body: string } | null {
+function extractTagBlock(
+  xml: string,
+  tag: string,
+): { attrs: string; body: string; startIdx: number; bodyOffset: number } | null {
   const openTag = `<${tag}`;
   let pos = 0;
   while (pos < xml.length) {
@@ -280,21 +388,24 @@ function extractTagBlock(xml: string, tag: string): { attrs: string; body: strin
     const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
     const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
     if (isSelfClosing) {
-      return { attrs, body: "" };
+      return { attrs, body: "", startIdx, bodyOffset: tagEnd + 1 };
     }
     const closeTag = `</${tag}>`;
     const endIdx = xml.indexOf(closeTag, tagEnd + 1);
     if (endIdx === -1) {
-      return { attrs, body: "" };
+      return { attrs, body: "", startIdx, bodyOffset: tagEnd + 1 };
     }
     const body = xml.slice(tagEnd + 1, endIdx);
-    return { attrs, body };
+    return { attrs, body, startIdx, bodyOffset: tagEnd + 1 };
   }
   return null;
 }
 
-function extractTagElements(xml: string, tag: string): { attrs: string; body: string }[] {
-  const result: { attrs: string; body: string }[] = [];
+function extractTagElements(
+  xml: string,
+  tag: string,
+): { attrs: string; body: string; startIdx: number; bodyOffset: number }[] {
+  const result: { attrs: string; body: string; startIdx: number; bodyOffset: number }[] = [];
   const openTag = `<${tag}`;
   const closeTag = `</${tag}>`;
   let pos = 0;
@@ -320,15 +431,15 @@ function extractTagElements(xml: string, tag: string): { attrs: string; body: st
     const rawAttrs = xml.slice(startIdx + openTag.length, tagEnd);
     const attrs = isSelfClosing ? rawAttrs.slice(0, -1).trim() : rawAttrs.trim();
     if (isSelfClosing) {
-      result.push({ attrs, body: "" });
+      result.push({ attrs, body: "", startIdx, bodyOffset: tagEnd + 1 });
       pos = tagEnd + 1;
     } else {
       const endIdx = xml.indexOf(closeTag, tagEnd + 1);
       if (endIdx === -1) {
-        result.push({ attrs, body: "" });
+        result.push({ attrs, body: "", startIdx, bodyOffset: tagEnd + 1 });
         pos = tagEnd + 1;
       } else {
-        result.push({ attrs, body: xml.slice(tagEnd + 1, endIdx) });
+        result.push({ attrs, body: xml.slice(tagEnd + 1, endIdx), startIdx, bodyOffset: tagEnd + 1 });
         pos = endIdx + closeTag.length;
       }
     }

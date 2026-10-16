@@ -25,6 +25,7 @@ import type {
 const MASTER_LIBRARY_PORTS: Record<string, { name: string; kind: PortKind; dim: number; x: number; y: number }[]> = {
   source_3p: [{ name: "out", kind: "electrical", dim: 3, x: 20, y: 0 }],
   source3: [{ name: "N", kind: "electrical", dim: 3, x: 36, y: 0 }],
+  source_3: [{ name: "N", kind: "electrical", dim: 3, x: 36, y: 0 }],
   source_1: [{ name: "N", kind: "electrical", dim: 1, x: 36, y: 0 }],
   "xfmr-3p": [
     { name: "P", kind: "electrical", dim: 3, x: -30, y: 0 },
@@ -128,6 +129,23 @@ const MASTER_LIBRARY_PORTS: Record<string, { name: string; kind: PortKind; dim: 
     { name: "in1", kind: "signal", dim: 1, x: -18, y: 0 },
     { name: "in2", kind: "signal", dim: 1, x: 0, y: 18 },
     { name: "out", kind: "signal", dim: 1, x: 18, y: 0 },
+  ],
+  pgb: [{ name: "in", kind: "signal", dim: 1, x: -18, y: 0 }],
+  datalabel: [{ name: "port", kind: "signal", dim: 1, x: 0, y: 0 }],
+  xnode: [{ name: "port", kind: "electrical", dim: 3, x: 0, y: 0 }],
+  pin: [{ name: "port", kind: "electrical", dim: 3, x: 0, y: 0 }],
+  load: [{ name: "N", kind: "electrical", dim: 3, x: 0, y: -18 }],
+  fixed_load: [{ name: "N", kind: "electrical", dim: 3, x: 0, y: -18 }],
+  voltmeter: [{ name: "N1", kind: "electrical", dim: 3, x: 0, y: 18 }],
+  ammeter: [
+    { name: "N1", kind: "electrical", dim: 3, x: -18, y: 0 },
+    { name: "N2", kind: "electrical", dim: 3, x: 18, y: 0 },
+  ],
+  multimeter: [
+    { name: "N1", kind: "electrical", dim: 3, x: -18, y: 0 },
+    { name: "N2", kind: "electrical", dim: 3, x: 18, y: 0 },
+    { name: "P", kind: "signal", dim: 1, x: 0, y: -18 },
+    { name: "Q", kind: "signal", dim: 1, x: 0, y: 18 },
   ],
 };
 
@@ -503,6 +521,7 @@ export function parsePscx(xmlContent: string): PscxProject {
         ports,
         line: loc.line,
         column: loc.column,
+        sourceRange: { startByte: absOffset, endByte: absOffset + cMatch[0].length },
       });
     }
 
@@ -542,6 +561,7 @@ export function parsePscx(xmlContent: string): PscxProject {
         phaseCount: 3,
         line: loc.line,
         column: loc.column,
+        sourceRange: { startByte: absOffset, endByte: absOffset + bMatch[0].length },
       });
     }
 
@@ -609,15 +629,20 @@ export function parsePscx(xmlContent: string): PscxProject {
           phaseCount: 3,
           line: loc.line,
           column: loc.column,
+          sourceRange: { startByte: absOffset, endByte: absOffset + wMatch[0].length },
         });
         continue;
       }
 
       if (vertices.length >= 2) {
+        const attrWireId = /\bid\s*=\s*["']([^"']+)["']/i.exec(wAttrs)?.[1];
+        const wLoc = offsetToLineCol(lineStarts, absOffset);
         mod.wires.push({
-          id: `wire_${wireId++}`,
+          id: attrWireId || `wire_${wireId++}`,
           vertices,
           connectedPortIds: [],
+          line: wLoc.line,
+          sourceRange: { startByte: absOffset, endByte: absOffset + wMatch[0].length },
         });
       }
     }
@@ -711,7 +736,12 @@ function pointToSegmentDistance(p: Point2D, a: Point2D, b: Point2D): number {
 /**
  * Computes world coordinates of a component port accounting for rotation and mirroring.
  */
-function computePortWorldPosition(cmpPos: Point2D, portOffset: Point2D, rotationDeg = 0, mirror = false): Point2D {
+export function computePortWorldPosition(
+  cmpPos: Point2D,
+  portOffset: Point2D,
+  rotationDeg = 0,
+  mirror = false,
+): Point2D {
   const lx = mirror ? -portOffset.x : portOffset.x;
   const ly = portOffset.y;
   const rad = ((rotationDeg % 360) * Math.PI) / 180;
@@ -735,20 +765,43 @@ function snapWireConnections(mod: PscxModule): void {
     }
   }
 
+  const rawJunctions: Point2D[] = [];
+  const addJunction = (pt: Point2D) => {
+    if (!rawJunctions.some((j) => distance(j, pt) <= 6.0)) {
+      rawJunctions.push({ x: Math.round(pt.x), y: Math.round(pt.y) });
+    }
+  };
+
   for (const wire of mod.wires) {
     if (wire.vertices.length < 2) continue;
     const start = wire.vertices[0]!;
     const end = wire.vertices[wire.vertices.length - 1]!;
     const connectedSet = new Set<string>(wire.connectedPortIds);
+    let bestStartDist = SNAP_TOLERANCE + 1;
+    let bestEndDist = SNAP_TOLERANCE + 1;
 
     for (const p of allPorts) {
-      // Check wire endpoints and intermediate vertices against port
-      if (distance(start, p.world) <= SNAP_TOLERANCE || distance(end, p.world) <= SNAP_TOLERANCE) {
+      const dStart = distance(start, p.world);
+      const dEnd = distance(end, p.world);
+      if (dStart <= SNAP_TOLERANCE) {
         connectedSet.add(p.id);
-      } else {
+        if (dStart < bestStartDist) {
+          bestStartDist = dStart;
+          wire.startPortId = p.id;
+        }
+      }
+      if (dEnd <= SNAP_TOLERANCE) {
+        connectedSet.add(p.id);
+        if (dEnd < bestEndDist) {
+          bestEndDist = dEnd;
+          wire.endPortId = p.id;
+        }
+      }
+      if (dStart > SNAP_TOLERANCE && dEnd > SNAP_TOLERANCE) {
         for (let k = 0; k < wire.vertices.length - 1; k++) {
           if (pointToSegmentDistance(p.world, wire.vertices[k]!, wire.vertices[k + 1]!) <= SNAP_TOLERANCE) {
             connectedSet.add(p.id);
+            addJunction(p.world);
             break;
           }
         }
@@ -760,24 +813,26 @@ function snapWireConnections(mod: PscxModule): void {
         for (let k = 0; k < bus.vertices.length - 1; k++) {
           const segA = bus.vertices[k]!;
           const segB = bus.vertices[k + 1]!;
-          if (
-            pointToSegmentDistance(start, segA, segB) <= SNAP_TOLERANCE ||
-            pointToSegmentDistance(end, segA, segB) <= SNAP_TOLERANCE
-          ) {
+          const dStart = pointToSegmentDistance(start, segA, segB);
+          const dEnd = pointToSegmentDistance(end, segA, segB);
+          if (dStart <= SNAP_TOLERANCE || dEnd <= SNAP_TOLERANCE) {
             connectedSet.add(bus.id);
+            if (dStart <= SNAP_TOLERANCE && !wire.startPortId) wire.startPortId = bus.id;
+            if (dEnd <= SNAP_TOLERANCE && !wire.endPortId) wire.endPortId = bus.id;
             break;
           }
         }
       } else {
         const busStart = bus.position;
         const busEnd: Point2D = { x: bus.position.x + (bus.length ?? 50), y: bus.position.y };
+        const dStart = pointToSegmentDistance(start, busStart, busEnd);
+        const dEnd = pointToSegmentDistance(end, busStart, busEnd);
 
         // Check true point-to-segment distance along the entire busbar
-        if (
-          pointToSegmentDistance(start, busStart, busEnd) <= SNAP_TOLERANCE ||
-          pointToSegmentDistance(end, busStart, busEnd) <= SNAP_TOLERANCE
-        ) {
+        if (dStart <= SNAP_TOLERANCE || dEnd <= SNAP_TOLERANCE) {
           connectedSet.add(bus.id);
+          if (dStart <= SNAP_TOLERANCE && !wire.startPortId) wire.startPortId = bus.id;
+          if (dEnd <= SNAP_TOLERANCE && !wire.endPortId) wire.endPortId = bus.id;
         }
       }
     }
@@ -785,9 +840,52 @@ function snapWireConnections(mod: PscxModule): void {
     wire.connectedPortIds = Array.from(connectedSet);
   }
 
-  // Propagate connectivity across multi-segment wire chains / T-junctions
+  // Group wireless Data Label / XNode / Pin components by shared label name
+  const wirelessNetMap = new Map<string, Set<string>>();
+  for (const cmp of mod.components) {
+    const cleanDef = (
+      cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName
+    ).toLowerCase();
+    const isWirelessNode =
+      cleanDef === "datalabel" ||
+      cleanDef === "data_label" ||
+      cleanDef === "xnode" ||
+      cleanDef === "pin" ||
+      cleanDef === "radio_link";
+    if (isWirelessNode) {
+      const labelName = String(
+        cmp.parameters["Name"] ?? cmp.parameters["name"] ?? cmp.parameters["Label"] ?? cmp.instanceName ?? "",
+      ).trim();
+      if (labelName) {
+        let portSet = wirelessNetMap.get(labelName);
+        if (!portSet) {
+          portSet = new Set<string>();
+          wirelessNetMap.set(labelName, portSet);
+        }
+        for (const p of cmp.ports) {
+          portSet.add(p.id);
+        }
+        // Also snap any colocated component port within SNAP_TOLERANCE of the wireless label
+        for (const ap of allPorts) {
+          if (distance(cmp.position, ap.world) <= SNAP_TOLERANCE) {
+            portSet.add(ap.id);
+          }
+        }
+      }
+    }
+  }
+
+  if (wirelessNetMap.size > 0) {
+    const wirelessRecord: Record<string, string[]> = {};
+    for (const [label, pSet] of wirelessNetMap.entries()) {
+      wirelessRecord[label] = Array.from(pSet);
+    }
+    mod.wirelessNets = wirelessRecord;
+  }
+
+  // Propagate connectivity across multi-segment wire chains / T-junctions & wireless nets
   const nWires = mod.wires.length;
-  if (nWires > 1) {
+  if (nWires >= 1) {
     const parent = Array.from({ length: nWires }, (_, i) => i);
     const find = (i: number): number => {
       while (parent[i] !== i) {
@@ -802,6 +900,21 @@ function snapWireConnections(mod: PscxModule): void {
       if (ra !== rb) parent[ra] = rb;
     };
 
+    // Track endpoint clustering for 3+ wire junctions
+    const endpointCounts: { pt: Point2D; count: number }[] = [];
+    for (let i = 0; i < nWires; i++) {
+      const w = mod.wires[i]!;
+      if (w.vertices.length < 2) continue;
+      for (const ep of [w.vertices[0]!, w.vertices[w.vertices.length - 1]!]) {
+        const existing = endpointCounts.find((e) => distance(e.pt, ep) <= SNAP_TOLERANCE);
+        if (existing) existing.count++;
+        else endpointCounts.push({ pt: ep, count: 1 });
+      }
+    }
+    for (const ec of endpointCounts) {
+      if (ec.count >= 3) addJunction(ec.pt);
+    }
+
     for (let i = 0; i < nWires; i++) {
       const wA = mod.wires[i]!;
       if (wA.vertices.length < 2) continue;
@@ -811,36 +924,66 @@ function snapWireConnections(mod: PscxModule): void {
       for (let j = i + 1; j < nWires; j++) {
         const wB = mod.wires[j]!;
         if (wB.vertices.length < 2) continue;
+        const bStart = wB.vertices[0]!;
+        const bEnd = wB.vertices[wB.vertices.length - 1]!;
 
         let touches = false;
         for (let k = 0; k < wB.vertices.length - 1; k++) {
           const segStart = wB.vertices[k]!;
           const segEnd = wB.vertices[k + 1]!;
-          if (
-            pointToSegmentDistance(aStart, segStart, segEnd) <= SNAP_TOLERANCE ||
-            pointToSegmentDistance(aEnd, segStart, segEnd) <= SNAP_TOLERANCE
-          ) {
+          if (pointToSegmentDistance(aStart, segStart, segEnd) <= SNAP_TOLERANCE) {
             touches = true;
+            if (distance(aStart, bStart) > SNAP_TOLERANCE && distance(aStart, bEnd) > SNAP_TOLERANCE) {
+              addJunction(aStart);
+            }
+            break;
+          }
+          if (pointToSegmentDistance(aEnd, segStart, segEnd) <= SNAP_TOLERANCE) {
+            touches = true;
+            if (distance(aEnd, bStart) > SNAP_TOLERANCE && distance(aEnd, bEnd) > SNAP_TOLERANCE) {
+              addJunction(aEnd);
+            }
             break;
           }
         }
         if (!touches) {
-          const bStart = wB.vertices[0]!;
-          const bEnd = wB.vertices[wB.vertices.length - 1]!;
           for (let k = 0; k < wA.vertices.length - 1; k++) {
             const segStart = wA.vertices[k]!;
             const segEnd = wA.vertices[k + 1]!;
-            if (
-              pointToSegmentDistance(bStart, segStart, segEnd) <= SNAP_TOLERANCE ||
-              pointToSegmentDistance(bEnd, segStart, segEnd) <= SNAP_TOLERANCE
-            ) {
+            if (pointToSegmentDistance(bStart, segStart, segEnd) <= SNAP_TOLERANCE) {
               touches = true;
+              if (distance(bStart, aStart) > SNAP_TOLERANCE && distance(bStart, aEnd) > SNAP_TOLERANCE) {
+                addJunction(bStart);
+              }
+              break;
+            }
+            if (pointToSegmentDistance(bEnd, segStart, segEnd) <= SNAP_TOLERANCE) {
+              touches = true;
+              if (distance(bEnd, aStart) > SNAP_TOLERANCE && distance(bEnd, aEnd) > SNAP_TOLERANCE) {
+                addJunction(bEnd);
+              }
               break;
             }
           }
         }
         if (touches) {
           union(i, j);
+        }
+      }
+    }
+
+    // Union wires that connect to the same wireless Data Label / XNode net
+    if (wirelessNetMap.size > 0) {
+      for (const [, portSet] of wirelessNetMap.entries()) {
+        if (portSet.size < 2) continue;
+        const matchingWireIndices: number[] = [];
+        for (let i = 0; i < nWires; i++) {
+          if (mod.wires[i]!.connectedPortIds.some((pid) => portSet.has(pid))) {
+            matchingWireIndices.push(i);
+          }
+        }
+        for (let k = 1; k < matchingWireIndices.length; k++) {
+          union(matchingWireIndices[0]!, matchingWireIndices[k]!);
         }
       }
     }
@@ -861,5 +1004,9 @@ function snapWireConnections(mod: PscxModule): void {
       const root = find(i);
       mod.wires[i]!.connectedPortIds = Array.from(groupPorts.get(root)!);
     }
+  }
+
+  if (rawJunctions.length > 0) {
+    mod.junctions = rawJunctions;
   }
 }

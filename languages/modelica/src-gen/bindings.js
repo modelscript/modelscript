@@ -632,7 +632,7 @@ export class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  scheduleCompaction(immediate = false) {
+  scheduleCompaction(_immediate = false) {
     if (this._idleTimer) {
       clearTimeout(this._idleTimer);
       this._idleTimer = null;
@@ -1290,7 +1290,7 @@ export class LspFacade {
     const offsetCache = new Map();
     if (requiredNodePtrs.size > 0 && astRoot) {
       const encoding = this.getInputEncoding();
-      const encStep = encoding === 1 ? 2 : 1;
+      const _encStep = encoding === 1 ? 2 : 1;
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
@@ -1345,7 +1345,7 @@ export class LspFacade {
           }
           {
             let currOffset = nodeStart;
-            let consumedInParent = 0;
+            let _consumedInParent = 0;
             let idx = 0;
             c = child;
             while (c !== 0 && idx < childCount) {
@@ -1359,7 +1359,7 @@ export class LspFacade {
               stackPtrs[slot] = c;
               stackOffsets[slot] = childStart;
               currOffset = childStart + cLen;
-              consumedInParent += cLen;
+              _consumedInParent += cLen;
               idx++;
               c = memory[(c + 16) / 4];
             }
@@ -2101,7 +2101,7 @@ export class LspFacade {
     };
   }
   /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */
-  getDiagramData(astRoot, projectionId = 0) {
+  getDiagramData(astRoot, _projectionId = 0) {
     const nodes = [];
     const edges = [];
     if (!this.exports.lsp_getDiagramData || !this.exports.lsp_getBinaryBuffer) {
@@ -2122,7 +2122,7 @@ export class LspFacade {
         ? this.exports.inputLength.value
         : Number(this.exports.inputLength) || 0
       : 0;
-    const textBuffer =
+    const _textBuffer =
       inputBufPtr > 0 && lenBytes > 0
         ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes)
         : null;
@@ -2166,7 +2166,7 @@ export class LspFacade {
               ),
             );
             nodeText = decoder.decode(slice);
-          } catch (e) {}
+          } catch (_e) {}
         }
         nodes.push({
           id: `node_${nodePtr}`,
@@ -3728,8 +3728,8 @@ export class LspFacade {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     // Reuse cached error ranges from the last getDiagnostics() call
     // instead of calling lsp_getDiagnostics again (avoids triple traversal)
-    const errorRanges = this.readCachedErrorRanges();
-    const printedErrors = new Set();
+    const _errorRanges = this.readCachedErrorRanges();
+    const _printedErrors = new Set();
     const toSExpr = (ptr, currentOffset, depth) => {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
       if (!ptr) return { strs: [], nextOffset: currentOffset };
@@ -3811,8 +3811,8 @@ export class LspFacade {
     const lineStarts = this.getLineStarts();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     // Reuse cached error ranges from the last getDiagnostics() call
-    const errorRanges = this.readCachedErrorRanges();
-    const printedErrors = new Set();
+    const _errorRanges = this.readCachedErrorRanges();
+    const _printedErrors = new Set();
     const lines = [];
     lines.push(
       `<style>.ast-node, .ast-error { cursor: pointer; margin-top: 4px; display: block; width: fit-content; } .ast-node { color: #0969da; } .ast-error { color: #cf222e; } .ast-node:hover > .hoverable-text, .ast-error:hover > .hoverable-text { text-decoration: underline; }</style>`,
@@ -3852,7 +3852,7 @@ export class LspFacade {
       const startPos = this.offsetToPos(startOffset, lineStarts);
       const endPos = this.offsetToPos(endOffset, lineStarts);
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
-      const isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const _isInvisible = (typeFlags & (1 << 14)) !== 0;
       const shouldPrint = true; // Debug: print all nodes
       let renderedChildren = 0;
       let childOffset = startOffset;
@@ -5639,7 +5639,7 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
       },
     },
     parser: {
-      logInt: (val) => {},
+      logInt: (_val) => {},
     },
     engine: {
       debugLog: (id, p1, p2, p3) => {
@@ -5727,7 +5727,7 @@ export function createWasmParserSync(wasmUrlOrBytes, options) {
       },
     },
     parser: {
-      logInt: (val) => {},
+      logInt: (_val) => {},
     },
     engine: {
       debugLog: (id, p1, p2, p3) => {

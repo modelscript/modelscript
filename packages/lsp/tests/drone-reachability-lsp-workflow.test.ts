@@ -323,4 +323,58 @@ END-ISO-10303-21;
       true,
     );
   });
+
+  it("3. Live OpenSCAD CSG CodeLens metrics & @bounds parameter validation", async () => {
+    const sentDiags = new Map<string, any[]>();
+    let capturedLensHandler: any = null;
+    const mockConnection: any = {
+      console: { log: () => {}, warn: () => {}, error: () => {}, info: () => {} },
+      sendDiagnostics: (params: { uri: string; diagnostics: any[] }) => {
+        sentDiags.set(params.uri, params.diagnostics);
+      },
+      sendNotification: () => {},
+      onRequest: (method: string, handler: any) => {
+        if (method === "textDocument/codeLens") {
+          capturedLensHandler = handler;
+        }
+      },
+    };
+
+    const customScad = `wall_t = 1.5; // @bounds: [2.0, 8.0]
+cube([10, 10, 10]);
+`;
+    const customUri = "file:///workspace/cad/box.scad";
+    const customDoc = TextDocument.create(customUri, "scad", 1, customScad);
+
+    const wm = new WorkspaceManager();
+    const mockDocManager: any = {
+      documents: new Map([[customUri, customDoc]]),
+      documentTrees: new Map(),
+    };
+    const mockParserService: any = {
+      getSharedCstTreeWrapper: () => null,
+      facade: null,
+      sharedContext: null,
+    };
+
+    const vs = new ValidationService(mockConnection, mockDocManager, wm, mockParserService);
+    await vs.validateTextDocument(customDoc);
+
+    const diags = sentDiags.get(customUri) || [];
+    const boundsDiag = diags.find((d: any) => d.message.includes("CAD Parameter Bounds Violation"));
+    expect(boundsDiag).toBeDefined();
+    expect(boundsDiag.severity).toBe(DiagnosticSeverity.Warning);
+
+    registerCodeLensProvider({
+      connection: mockConnection,
+      documents: { get: (u: string) => mockDocManager.documents.get(u) },
+      documentManager: mockDocManager,
+      workspaceManager: wm,
+    } as any);
+
+    const lenses = capturedLensHandler({ textDocument: { uri: customUri } });
+    const titles = lenses.map((l: any) => l.command.title);
+    expect(titles.some((t: string) => t.includes("Volume: 1000.0 mm³"))).toBe(true);
+    expect(titles.some((t: string) => t.includes("Open Interactive 3D CAD Editor"))).toBe(true);
+  });
 });

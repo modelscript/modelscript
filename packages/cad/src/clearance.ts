@@ -118,10 +118,30 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
       return transformAABB(local, currentTransform);
     }
     case SolidKind.Cylinder: {
-      const r = solid.radius;
+      const r = Math.max(solid.radius, solid.radiusBottom ?? solid.radius, solid.radiusTop ?? solid.radius);
       const hh = solid.height / 2;
       const local: AABB = { min: [-r, -hh, -r], max: [r, hh, r] };
       return transformAABB(local, currentTransform);
+    }
+    case SolidKind.Polyhedron: {
+      if (solid.points.length === 0) {
+        return { min: [0, 0, 0], max: [0, 0, 0] };
+      }
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity,
+        minZ = Infinity,
+        maxZ = -Infinity;
+      for (const p of solid.points) {
+        if (p[0] < minX) minX = p[0];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[1] > maxY) maxY = p[1];
+        if (p[2] < minZ) minZ = p[2];
+        if (p[2] > maxZ) maxZ = p[2];
+      }
+      return transformAABB({ min: [minX, minY, minZ], max: [maxX, maxY, maxZ] }, currentTransform);
     }
     case SolidKind.Sphere: {
       const r = solid.radius;

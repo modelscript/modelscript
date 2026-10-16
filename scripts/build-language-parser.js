@@ -25,27 +25,44 @@ export function runLanguageParserBuild(options) {
   const outWasm = path.join(dir, "dist", "parser.wasm");
   const bindingsJs = path.join(dir, "src-gen", "bindings.js");
   const distBindingsJs = path.join(dir, "dist", "src-gen", "bindings.js");
-  const languagePath = path.join(dir, "src", "language.ts");
+  const languagePath = fs.existsSync(path.join(dir, "src", "language.ts"))
+    ? path.join(dir, "src", "language.ts")
+    : path.join(dir, "language.ts");
   const dslDistPath = path.resolve(dir, "../../packages/dsl/dist/index.js");
+  const dslTemplatesPath = path.resolve(dir, "../../packages/dsl/dist/src-gen/runtime-templates.js");
 
   const cacheDir = path.join(dir, ".cache");
   const cacheWasm = path.join(cacheDir, "parser.wasm");
 
+  function getMaxMtime(targetPath) {
+    if (!fs.existsSync(targetPath)) return 0;
+    const stat = fs.statSync(targetPath);
+    if (!stat.isDirectory()) return stat.mtimeMs;
+    let maxMtime = stat.mtimeMs;
+    for (const entry of fs.readdirSync(targetPath, { withFileTypes: true })) {
+      const childMtime = getMaxMtime(path.join(targetPath, entry.name));
+      if (childMtime > maxMtime) maxMtime = childMtime;
+    }
+    return maxMtime;
+  }
+
   function isParserUpToDate() {
     if (forceRebuild) return false;
+
+    const latestInputTime = Math.max(
+      getMaxMtime(languagePath),
+      getMaxMtime(dslDistPath),
+      getMaxMtime(dslTemplatesPath),
+      ...extraWatchFiles.map((extra) => getMaxMtime(path.join(dir, extra))),
+    );
 
     // If outWasm is missing (e.g. wiped by Nx task runner), restore from .cache if valid
     if (!fs.existsSync(outWasm) && fs.existsSync(cacheWasm) && fs.existsSync(bindingsJs)) {
       const cacheStat = fs.statSync(cacheWasm);
-      if (cacheStat.size > 0) {
-        const cacheTime = cacheStat.mtimeMs;
-        const langTime = fs.existsSync(languagePath) ? fs.statSync(languagePath).mtimeMs : 0;
-        const dslTime = fs.existsSync(dslDistPath) ? fs.statSync(dslDistPath).mtimeMs : 0;
-        if (cacheTime > langTime && cacheTime > dslTime) {
-          fs.mkdirSync(path.dirname(outWasm), { recursive: true });
-          fs.copyFileSync(cacheWasm, outWasm);
-          return true;
-        }
+      if (cacheStat.size > 0 && cacheStat.mtimeMs > latestInputTime) {
+        fs.mkdirSync(path.dirname(outWasm), { recursive: true });
+        fs.copyFileSync(cacheWasm, outWasm);
+        return true;
       }
     }
 
@@ -54,22 +71,7 @@ export function runLanguageParserBuild(options) {
     if (wasmStat.size === 0) return false;
     const wasmTime = wasmStat.mtimeMs;
 
-    if (fs.existsSync(languagePath) && fs.statSync(languagePath).mtimeMs > wasmTime) return false;
-    if (fs.existsSync(dslDistPath) && fs.statSync(dslDistPath).mtimeMs > wasmTime) return false;
-
-    for (const extra of extraWatchFiles) {
-      const extraPath = path.join(dir, extra);
-      if (fs.existsSync(extraPath)) {
-        const stat = fs.statSync(extraPath);
-        if (stat.isDirectory()) {
-          for (const f of fs.readdirSync(extraPath)) {
-            if (fs.statSync(path.join(extraPath, f)).mtimeMs > wasmTime) return false;
-          }
-        } else if (stat.mtimeMs > wasmTime) {
-          return false;
-        }
-      }
-    }
+    if (latestInputTime > wasmTime) return false;
 
     // Keep .cache in sync with valid outWasm
     if (!fs.existsSync(cacheWasm) || fs.statSync(cacheWasm).mtimeMs < wasmTime) {
@@ -91,17 +93,21 @@ export function runLanguageParserBuild(options) {
     return;
   }
 
-  // Compile parser and WASM via tsx runner script
-  const buildScriptPath = path.join(dir, "build-parser.ts");
+  // Compile parser and WASM via tsx runner script inside .cache/ so project root is not mutated
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const resolvedLanguageModule = path.resolve(dir, languageModule).replace(/\\/g, "/");
+  const buildScriptPath = path.join(cacheDir, "build-parser.ts");
   const buildScriptContent = `// SPDX-License-Identifier: AGPL-3.0-or-later
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
-import { ${languageExportName} } from "${languageModule}";
+import { ${languageExportName} } from "${resolvedLanguageModule}";
 
 const __dirname = path.resolve("${dir.replace(/\\/g, "/")}");
-const languagePath = path.join(__dirname, "src", "language.ts");
+const languagePath = fs.existsSync(path.join(__dirname, "src", "language.ts"))
+  ? path.join(__dirname, "src", "language.ts")
+  : path.join(__dirname, "language.ts");
 const result = buildParser(${languageExportName}, { sourcePath: languagePath });
 
 // 1. Write AssemblyScript files to as-gen/ for asc
@@ -129,11 +135,9 @@ const ascPath = path.resolve(__dirname, "../../node_modules/.bin/asc");
 const parserTs = path.join(asGenDir, "parser.ts");
 const outWasm = path.join(__dirname, "dist", "parser.wasm");
 
-const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
 execFileSync(
-  ascBin,
+  ascPath,
   [
-    ...ascPrefixArgs,
     parserTs,
     "-o",
     outWasm,

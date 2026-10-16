@@ -1173,12 +1173,10 @@ export function generateParserTables(
     });
   }
 
-  code += extractExports(arenaCode, "./arena");
   code += extractExports(daeBuilderCode, "./dae/builder");
   code += extractExports(daeTypesCode, "./dae/types");
   code += extractExports(daeAccessorsCode, "./dae/accessors");
   code += extractExports(aliasCode, "./dae/alias");
-  code += extractExports(bltCode, "./structural/blt");
   code += extractExports(evalCode, "./dae/eval");
   code += extractExports(eventsCode, "./simulation/events");
   code += extractExports(integratorsCode, "./solvers/integrators");
@@ -1208,8 +1206,6 @@ export function generateParserTables(
   code += extractExports(fmi2_wasmCode, "./fmi/fmi2_wasm");
   code += extractExports(fmi3_wasmCode, "./fmi/fmi3_wasm");
   code += extractExports(vmapCode, "./simulation/vmap");
-  code += extractExports(groebnerCode, "./solvers/groebner");
-  code += extractExports(linalgCode, "./solvers/linalg");
   code += extractExports(integrateCode, "./solvers/integrate");
   code += extractExports(intervalCode, "./autodiff/interval");
   code += extractExports(mccormickCode, "./autodiff/mccormick");

@@ -261,6 +261,11 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**",
+    "build/*.wasm"
+  ],
   "scripts": {
     "asbuild": "node scripts/build-as.js",
     "asbuild:debug": "asc assembly/index.ts --target debug",
@@ -268,7 +273,7 @@
     "asbuild:release": "asc assembly/index.ts --target release",
     "build": "npm run asbuild && tsc",
     "clean": "rimraf dist build",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
   },

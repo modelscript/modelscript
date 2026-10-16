@@ -49,14 +49,25 @@ export enum SolidKind {
   Fillet = "fillet",
   Chamfer = "chamfer",
   Extrusion = "extrusion",
+  Polyhedron = "polyhedron",
 }
 
 // ── Solid source metadata ───────────────────────────────────────────────
 
+export interface TransformByteRange {
+  readonly startByte: number;
+  readonly endByte: number;
+  readonly isFluent?: boolean;
+}
+
 export interface SolidSourceMetadata {
   /** Optional parameter name associated with this solid's dimensions or position (e.g., 'arm_length'). */
   readonly parameterName?: string;
-  /** Fluent transform method name (e.g., 'translate', 'rotate', 'scale'). */
+  /** Optional per-axis dimension parameter names [xParam, yParam, zParam] for primitives (e.g., cube([w, h, d])). */
+  readonly dimensionParams?: readonly (string | undefined)[];
+  /** Evaluated primitive dimensions [w, h, d] or [r, h, r] for scale gizmo parameter inversion. */
+  readonly dimensions?: Vec3;
+  /** Fluent or prefix transform method name (e.g., 'translate', 'rotate', 'scale'). */
   readonly transformMethod?: string;
   /** Index of the argument in the method call. */
   readonly argIndex?: number;
@@ -64,6 +75,22 @@ export interface SolidSourceMetadata {
   readonly startByte?: number;
   /** CST end byte in source code. */
   readonly endByte?: number;
+  /** CST start byte of the underlying primitive call. */
+  readonly primitiveStartByte?: number;
+  /** CST end byte of the underlying primitive call. */
+  readonly primitiveEndByte?: number;
+  /** Specific byte spans for individual transform ops wrapping this solid. */
+  readonly translateRange?: TransformByteRange;
+  readonly rotateRange?: TransformByteRange;
+  readonly scaleRange?: TransformByteRange;
+  /** Explicit user-authored translation offset [tx, ty, tz] in source code. */
+  readonly translation?: Vec3;
+  /** Explicit user-authored Euler rotation [rx, ry, rz] (degrees) in source code. */
+  readonly rotation?: Vec3;
+  /** Explicit user-authored scale factor [sx, sy, sz] in source code. */
+  readonly scale?: Vec3;
+  /** Optional RGBA color [r, g, b, a] in [0, 1] assigned via color(...). */
+  readonly color?: readonly [number, number, number, number];
 }
 
 // ── Primitive option bags ────────────────────────────────────────────────
@@ -81,12 +108,26 @@ export interface BoxOptions {
 }
 
 export interface CylinderOptions {
-  /** Radius of the circular cross-section. */
+  /** Radius of the circular cross-section (or average radius if frustum). */
   radius: number;
+  /** Optional bottom radius (r1) for cones/frustums. Defaults to `radius`. */
+  radiusBottom?: number | undefined;
+  /** Optional top radius (r2) for cones/frustums. Defaults to `radius`. */
+  radiusTop?: number | undefined;
   /** Full height along Y. */
   height: number;
   /** Number of facets for tessellation (default 24). */
   segments?: number | undefined;
+  /** Optional display name. */
+  name?: string | undefined;
+  sourceMetadata?: SolidSourceMetadata | undefined;
+}
+
+export interface PolyhedronOptions {
+  /** 3D vertex coordinates [[x, y, z], ...]. */
+  points: readonly Vec3[];
+  /** Face vertex index loops [[i0, i1, i2, ...], ...]. */
+  faces: readonly (readonly number[])[];
   /** Optional display name. */
   name?: string | undefined;
   sourceMetadata?: SolidSourceMetadata | undefined;
@@ -157,8 +198,18 @@ export interface CylinderSolid {
   readonly kind: SolidKind.Cylinder;
   readonly name: string;
   readonly radius: number;
+  readonly radiusBottom?: number | undefined;
+  readonly radiusTop?: number | undefined;
   readonly height: number;
   readonly segments: number;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
+}
+
+export interface PolyhedronSolid {
+  readonly kind: SolidKind.Polyhedron;
+  readonly name: string;
+  readonly points: readonly Vec3[];
+  readonly faces: readonly (readonly number[])[];
   readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
@@ -245,6 +296,7 @@ export type Solid =
   | SphereSolid
   | TorusSolid
   | ExtrusionSolid
+  | PolyhedronSolid
   | TransformSolid
   | BooleanSolid
   | TaggedPatchSolid

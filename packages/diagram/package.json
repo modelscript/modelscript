@@ -2,6 +2,7 @@
   "name": "@modelscript/diagram",
   "version": "0.0.18",
   "description": "ModelScript diagramming engine — AntV X6 graph renderer, polyglot visual builder, sequence layout, and diagram RPC protocol",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {
@@ -61,7 +62,7 @@
       "default": "./dist/spinner.js"
     },
     "./browser": {
-      "types": "./dist/diagram.browser.js",
+      "types": "./dist/index.d.ts",
       "default": "./dist/diagram.browser.js"
     },
     "./visual-diff": {
@@ -83,10 +84,14 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "tsc && node build-browser.js",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
@@ -95,7 +100,7 @@
     "@antv/x6": "^3.1.7",
     "@antv/x6-plugin-selection": "^2.2.2",
     "helmlab": "^0.11.9",
-    "vscode-languageserver-protocol": "^3.17.5"
+    "vscode-languageserver-protocol": "^3.18.2"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

@@ -19,5 +19,11 @@
     }
   },
   "include": ["**/*"],
-  "exclude": ["scratch*/**/*", "wasm/**/*"]
+  "exclude": [
+    "scratch*/**/*",
+    "wasm/**/*",
+    "fmi/exported_fmus/**/*",
+    "fmi/reference_fmus/**/*",
+    "fmi/reference_fmus_repo/**/*"
+  ]
 }

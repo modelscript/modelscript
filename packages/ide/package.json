@@ -3,11 +3,13 @@
   "version": "0.0.18",
   "private": true,
   "description": "ModelScript VS Code Web Extension client, custom editors, and webview panels",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "src/browser-client-main.ts",
+  "types": "src/browser-client-main.ts",
   "scripts": {
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --tsconfig tsconfig.json",
     "typecheck": "tsc --noEmit"
   },

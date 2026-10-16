@@ -1,6 +1,7 @@
 {
   "name": "@modelscript/sysml2",
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {
@@ -72,7 +73,7 @@
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
-    "lint": "eslint src transformers --no-warn-ignored",
+    "lint": "eslint src transformers tests scripts --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
@@ -80,6 +81,7 @@
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
     "vscode-languageserver": "^9.0.1"
@@ -92,6 +94,7 @@
           "@modelscript/diagram:build",
           "@modelscript/dsl:build",
           "@modelscript/exchange:build",
+          "@modelscript/modelica:build",
           "@modelscript/runtime:build",
           "@modelscript/simulate:build"
         ]

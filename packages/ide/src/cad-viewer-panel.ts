@@ -76,7 +76,7 @@ export class CadViewerPanel {
       cadUpdateTimer = setTimeout(() => {
         cadUpdateTimer = null;
         this.update();
-      }, 2000);
+      }, 250);
     };
 
     vscode.workspace.onDidChangeTextDocument(
@@ -104,17 +104,17 @@ export class CadViewerPanel {
     const uri = editor.document.uri.toString();
     try {
       // Send a custom request to the language server to get the cad components
-      // This endpoint needs to be implemented in the LSP
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cadComponents = await this._client.sendRequest<any[]>("modelscript/getCadComponents", { uri });
 
       const documentUri = vscode.Uri.parse(uri);
       for (const comp of cadComponents) {
+        if (comp.proceduralMesh) continue;
         if (typeof comp.cad === "string") {
           const match = comp.cad.match(/uri\s*=\s*"([^"]+)"/);
           if (match) {
             const cadUri = match[1];
-            if (!cadUri.includes("://") && !cadUri.startsWith("data:")) {
+            if (!cadUri.includes("://") && !cadUri.startsWith("data:") && !cadUri.startsWith("#")) {
               const fileUri = vscode.Uri.joinPath(documentUri, "..", cadUri);
               try {
                 const data = await vscode.workspace.fs.readFile(fileUri);
@@ -186,14 +186,27 @@ export class CadViewerPanel {
    */
   public async handleCommitGizmoDelta(payload: {
     componentName: string;
+    mode?: "translate" | "rotate" | "scale";
     delta: [number, number, number];
     newPosition: [number, number, number];
+    newRotation?: [number, number, number];
+    newScale?: [number, number, number];
     sourceMetadata?: {
       parameterName?: string;
+      dimensionParams?: [string | undefined, string | undefined, string | undefined];
+      dimensions?: [number, number, number];
       transformMethod?: string;
       argIndex?: number;
       startByte?: number;
       endByte?: number;
+      primitiveStartByte?: number;
+      primitiveEndByte?: number;
+      translateRange?: { startByte: number; endByte: number };
+      rotateRange?: { startByte: number; endByte: number };
+      scaleRange?: { startByte: number; endByte: number };
+      translation?: [number, number, number];
+      rotation?: [number, number, number];
+      scale?: [number, number, number];
     };
   }): Promise<void> {
     if (!payload) return;
@@ -202,7 +215,7 @@ export class CadViewerPanel {
 
     const doc = editor.document;
     const source = doc.getText();
-    const { componentName, newPosition, sourceMetadata } = payload;
+    const { componentName, mode = "translate", newPosition, newRotation, newScale, sourceMetadata } = payload;
 
     // 1. OpenSCAD document writeback
     if (doc.languageId === "scad" || doc.fileName.endsWith(".scad")) {
@@ -214,16 +227,59 @@ export class CadViewerPanel {
 
         let patchRes = null;
 
-        if (sourceMetadata?.parameterName) {
-          patchRes = ScadPatcher.patchVariable(source, tree.rootNode, sourceMetadata.parameterName, newPosition[0]);
-        } else if (sourceMetadata?.transformMethod) {
-          patchRes = ScadPatcher.patchTransformArgument(
-            source,
-            tree.rootNode,
-            sourceMetadata.transformMethod,
-            sourceMetadata.argIndex ?? 0,
-            newPosition,
-          );
+        if (mode === "scale") {
+          const scaleFactors = newScale ?? [1, 1, 1];
+          // Check if any scaled axis is bound to a named dimension parameter
+          const dimParams = sourceMetadata?.dimensionParams;
+          const dims = sourceMetadata?.dimensions;
+          if (dimParams && dims) {
+            for (let axis = 0; axis < 3; axis++) {
+              const paramName = dimParams[axis];
+              const baseDim = dims[axis];
+              if (paramName && baseDim !== undefined && Math.abs(scaleFactors[axis] - 1) > 1e-3) {
+                const newDimVal = Number((baseDim * scaleFactors[axis]).toFixed(4));
+                patchRes = ScadPatcher.patchVariable(source, tree.rootNode, paramName, newDimVal);
+                if (patchRes) break;
+              }
+            }
+          }
+          if (!patchRes) {
+            const baseScale = sourceMetadata?.scale ?? [1, 1, 1];
+            const targetScale: [number, number, number] = [
+              Number((baseScale[0] * scaleFactors[0]).toFixed(4)),
+              Number((baseScale[1] * scaleFactors[1]).toFixed(4)),
+              Number((baseScale[2] * scaleFactors[2]).toFixed(4)),
+            ];
+            patchRes = ScadPatcher.patchOrInsertTransform(source, tree.rootNode, "scale", targetScale, sourceMetadata);
+          }
+        } else if (mode === "rotate") {
+          const targetRot = newRotation ?? [0, 0, 0];
+          patchRes = ScadPatcher.patchOrInsertTransform(source, tree.rootNode, "rotate", targetRot, sourceMetadata);
+        } else {
+          // mode === "translate"
+          if (
+            sourceMetadata?.translateRange ||
+            sourceMetadata?.primitiveStartByte !== undefined ||
+            sourceMetadata?.transformMethod === "translate"
+          ) {
+            patchRes = ScadPatcher.patchOrInsertTransform(
+              source,
+              tree.rootNode,
+              "translate",
+              newPosition,
+              sourceMetadata,
+            );
+          } else if (sourceMetadata?.parameterName) {
+            patchRes = ScadPatcher.patchVariable(source, tree.rootNode, sourceMetadata.parameterName, newPosition[0]);
+          } else {
+            patchRes = ScadPatcher.patchOrInsertTransform(
+              source,
+              tree.rootNode,
+              "translate",
+              newPosition,
+              sourceMetadata,
+            );
+          }
         }
 
         if (patchRes) {
@@ -232,6 +288,7 @@ export class CadViewerPanel {
           const endPos = doc.positionAt(patchRes.replacedRange.endByte);
           edit.replace(doc.uri, new vscode.Range(startPos, endPos), patchRes.newValue);
           await vscode.workspace.applyEdit(edit);
+          await this.update();
           return;
         }
       } catch (e) {
@@ -239,21 +296,36 @@ export class CadViewerPanel {
       }
     }
 
-    // 2. Modelica document writeback (annotation CAD(..., position={...}))
+    // 2. Modelica document writeback (annotation CAD(..., position/rotation/scale={...}))
     if (doc.languageId === "modelica" || doc.fileName.endsWith(".mo")) {
+      const propName = mode === "rotate" ? "rotation" : mode === "scale" ? "scale" : "position";
+      const vec =
+        mode === "rotate" ? (newRotation ?? [0, 0, 0]) : mode === "scale" ? (newScale ?? [1, 1, 1]) : newPosition;
+      const newCoords = `${vec[0].toFixed(2)}, ${vec[1].toFixed(2)}, ${vec[2].toFixed(2)}`;
+
       const compRegex = new RegExp(
-        `(${componentName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*?position\\s*=\\s*\\{)[^}]*(\\}[\\s\\S]*?\\))`,
+        `(${componentName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*?${propName}\\s*=\\s*\\{)[^}]*(\\}[\\s\\S]*?\\))`,
       );
       const match = compRegex.exec(source);
       if (match) {
         const edit = new vscode.WorkspaceEdit();
         const startIdx = match.index + match[1].length;
         const endIdx = startIdx + match[0].length - match[1].length - match[2].length;
-        const newCoords = `${newPosition[0].toFixed(2)}, ${newPosition[1].toFixed(2)}, ${newPosition[2].toFixed(2)}`;
         const startPos = doc.positionAt(startIdx);
         const endPos = doc.positionAt(endIdx);
         edit.replace(doc.uri, new vscode.Range(startPos, endPos), newCoords);
         await vscode.workspace.applyEdit(edit);
+      } else {
+        // Insert property into existing CAD(...) annotation if not present yet
+        const cadInsertRegex = new RegExp(`(${componentName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*)(\\))`);
+        const insertMatch = cadInsertRegex.exec(source);
+        if (insertMatch) {
+          const edit = new vscode.WorkspaceEdit();
+          const insertIdx = insertMatch.index + insertMatch[1].length;
+          const pos = doc.positionAt(insertIdx);
+          edit.insert(doc.uri, pos, `, ${propName}={${newCoords}}`);
+          await vscode.workspace.applyEdit(edit);
+        }
       }
     }
   }

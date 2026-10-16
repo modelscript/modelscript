@@ -151,20 +151,26 @@ export class ModelicaFlattener {
   private nodeProtectionCache = new WeakMap<any, boolean>();
   public useLocalDirection = false;
 
-  private getFileSymbols(resourceId: string): any[] {
+  private _fileSymbolsCache = new Map<string, any[]>();
+
+  private getFileSymbols(resourceId?: string): any[] {
+    const cacheKey = resourceId ?? "__all__";
+    const cached = this._fileSymbolsCache.get(cacheKey);
+    if (cached !== undefined) return cached;
     const result: any[] = [];
-    const roots = (this.db.childrenOf(null) ?? []).filter((s: any) => s.resourceId === resourceId);
+    const roots = (this.db.childrenOf(null) ?? []).filter((s: any) => !resourceId || s.resourceId === resourceId);
     const queue = [...roots];
     while (queue.length > 0) {
       const sym = queue.pop()!;
       result.push(sym);
       const children = this.db.childrenOf(sym.id) ?? [];
       for (const child of children) {
-        if (child.resourceId === resourceId) {
+        if (!resourceId || child.resourceId === resourceId) {
           queue.push(child);
         }
       }
     }
+    this._fileSymbolsCache.set(cacheKey, result);
     return result;
   }
 
@@ -385,6 +391,7 @@ export class ModelicaFlattener {
   }
 
   private _hasOperatorRecordsCache = new Map<SymbolId, boolean>();
+  private _globalHasOperatorRecords?: boolean;
 
   hasOperatorRecords(rootClassId?: SymbolId | null): boolean {
     if (!rootClassId) return true;
@@ -398,9 +405,13 @@ export class ModelicaFlattener {
         return true;
       }
     }
-    const res = (this.db.allEntries?.() ?? []).some((s: any) => s.kind === "Class" && this.isOperatorRecordSym(s));
-    this._hasOperatorRecordsCache.set(rootClassId, res);
-    return res;
+    if (this._globalHasOperatorRecords === undefined) {
+      this._globalHasOperatorRecords = (this.db.allEntries?.() ?? []).some(
+        (s: any) => s.kind === "Class" && this.isOperatorRecordSym(s),
+      );
+    }
+    this._hasOperatorRecordsCache.set(rootClassId, this._globalHasOperatorRecords);
+    return this._globalHasOperatorRecords;
   }
 
   validateOperatorRecords(dae: DAEBuilder, rootClassId: SymbolId): void {
@@ -1068,6 +1079,8 @@ export class ModelicaFlattener {
       /\bStateSelect\s*\[/.test(text) ||
       /\bConnections\s*\./.test(text) ||
       /\bequalityConstraint\b/.test(text) ||
+      /\[\s*:\s*\]\s*=/.test(text) ||
+      /\bfill\s*\([^,]+,\s*\d+\.\d+/.test(text) ||
       /\b(?:homotopy|semiLinear|outerProduct)\s*\(/.test(text)
     ) {
       this._unsupportedWasmCache.set(classId, true);
@@ -1179,16 +1192,14 @@ export class ModelicaFlattener {
         seenNames.add(child.name);
       }
     }
-    if (sym?.resourceId) {
-      const src = (this.db as any).source?.(sym.resourceId);
-      if (typeof src === "string" && /\bexternal\s+"builtin"/.test(src)) {
+    {
+      const src = sym?.resourceId ? (this.db as any).source?.(sym.resourceId) : undefined;
+      if (typeof src === "string" && (/\bexternal\s+"builtin"/.test(src) || /\bderivative\s*=/.test(src))) {
         this._unsupportedWasmCache.set(classId, true);
         return true;
       }
-      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
-      const topSymbols = (allSyms as SymbolEntry[]).filter(
-        (s: any) => s.resourceId === sym.resourceId && (s.parentId === null || s.parentId === 0),
-      );
+      const rootChildren = this.db.childrenOf(null) ?? [];
+      const topSymbols = rootChildren.filter((s: any) => !sym?.resourceId || s.resourceId === sym.resourceId);
       const topNames = new Set<string>();
       for (const s of topSymbols) {
         if (s.name === "Clock" || topNames.has(s.name)) {
@@ -1196,6 +1207,19 @@ export class ModelicaFlattener {
           return true;
         }
         topNames.add(s.name);
+        if (s.kind === "Function" || s.kind === "Class") {
+          let fnText = "";
+          if (s.startByte != null && s.endByte != null && typeof (this.db as any).cstText === "function") {
+            fnText = (this.db as any).cstText(s.startByte, s.endByte, s) ?? "";
+          }
+          if (!fnText) {
+            fnText = (this.db.cstNode(s.id) as any)?.text ?? "";
+          }
+          if (/\bexternal\s+"builtin"/.test(fnText) || /\bderivative\s*=/.test(fnText)) {
+            this._unsupportedWasmCache.set(classId, true);
+            return true;
+          }
+        }
       }
     }
 
@@ -1694,9 +1718,9 @@ export class ModelicaFlattener {
       }
     }
     if (rootSym?.resourceId) {
-      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
-      for (const s of allSyms) {
-        if (s.resourceId === rootSym.resourceId && s.kind === "Class" && !checkedClassSyms.has(s.id)) {
+      const fileSyms = this.getFileSymbols(rootSym.resourceId);
+      for (const s of fileSyms) {
+        if (s.kind === "Class" && !checkedClassSyms.has(s.id)) {
           const violation = this.checkTypeAliasSpecialization(s.id);
           if (violation) {
             dae.diagnostics.push({
@@ -1752,12 +1776,8 @@ export class ModelicaFlattener {
 
     // 1. Check for duplicate top-level symbols in the same file (DoubleClassDeclaration1, ErrorMultipleClasses, Clock2)
     if (rootSym?.resourceId) {
-      const allSyms = typeof (this.db as any).allEntries === "function" ? (this.db as any).allEntries() : [];
-      const topLevelSymbols = (allSyms as SymbolEntry[]).filter(
-        (s: any) =>
-          s.resourceId === rootSym.resourceId &&
-          (s.parentId === null || s.parentId === 0) &&
-          (s.kind === "Class" || s.kind === "Component"),
+      const topLevelSymbols = (this.db.childrenOf(null) ?? []).filter(
+        (s: any) => s.resourceId === rootSym.resourceId && (s.kind === "Class" || s.kind === "Component"),
       );
 
       const seenTop = new Map<string, SymbolEntry>();
@@ -2364,10 +2384,15 @@ export class ModelicaFlattener {
                   const d1 = exArr.flattener_getArrayDim1(wasmFlattener, a);
                   const d2 = exArr.flattener_getArrayDim2(wasmFlattener, a);
                   const d3 = exArr.flattener_getArrayDim3(wasmFlattener, a);
+                  const d4 =
+                    typeof exArr.flattener_getArrayDim4 === "function"
+                      ? exArr.flattener_getArrayDim4(wasmFlattener, a)
+                      : 0;
                   const shape: number[] = [];
                   if (nDims >= 1) shape.push(d1);
                   if (nDims >= 2) shape.push(d2);
                   if (nDims >= 3) shape.push(d3);
+                  if (nDims >= 4) shape.push(d4);
                   dae.setNamedArrayShape(name, shape);
                 }
               }
@@ -2587,6 +2612,64 @@ export class ModelicaFlattener {
 
     expandArrayConnectEquations(dae);
 
+    for (let vIdx = 0; vIdx < dae.varCount; vIdx++) {
+      let exprId = dae.getVarExpression(vIdx);
+      if (exprId === undefined || exprId < 0 || exprId === 0xffffffff) continue;
+      let innerId = exprId;
+      if (
+        dae.getExprKind(innerId) === ExprKind.Call &&
+        dae.interner.resolve(dae.getExprData1(innerId)) === "/*Real*/"
+      ) {
+        innerId = dae.getExprLeft(innerId);
+      }
+      if (innerId >= 0) {
+        let refName = "";
+        if (dae.getExprKind(innerId) === ExprKind.Name) {
+          refName = dae.interner.resolve(dae.getExprData1(innerId)) || "";
+        } else {
+          const vEntry = (this.db as any).symbol?.(
+            this.getFileSymbols().find((s) => s.kind === "Component" && s.name === dae.getVarName(vIdx))?.id,
+          );
+          if (vEntry) {
+            const compInst = this.db.query<any>("componentInstance", vEntry.id);
+            const rawVal = compInst?.modification?.value?.text?.trim();
+            if (rawVal && rawVal.includes(".")) refName = rawVal;
+          }
+        }
+        if (refName && refName.includes(".")) {
+          const parts = refName.split(".");
+          if (parts.length >= 3) {
+            const pkgName = parts[0]!;
+            const compName = parts[1]!.replace(/\[.*\]$/, "");
+            const pkgSym = this.db.byName(pkgName).find((e) => e.kind === "Package" || e.kind === "Class");
+            const compSym = pkgSym
+              ? this.db.childrenOf(pkgSym.id).find((c) => c.kind === "Component" && c.name === compName)
+              : null;
+            if (compSym) {
+              const compInst = this.db.query<any>("componentInstance", compSym.id);
+              const firstField = parts[2]!.replace(/\[.*\]$/, "");
+              const arg = compInst?.modification?.args?.find((a: any) => a.name === firstField);
+              let valText: string | undefined = arg?.value?.text?.trim();
+              for (let pIdx = 3; pIdx < parts.length && valText; pIdx++) {
+                const subField = parts[pIdx]!.replace(/\[.*\]$/, "");
+                const m = new RegExp(`\\b${subField}\\s*=\\s*([^,)]+)`).exec(valText);
+                valText = m ? m[1]!.trim() : undefined;
+              }
+              if (valText !== undefined) {
+                const num = Number(valText);
+                if (!Number.isNaN(num)) {
+                  const vType = dae.getVarType(vIdx);
+                  const newExprId =
+                    vType === VarType.Integer ? dae.addIntLiteral(Math.round(num)) : dae.addRealLiteral(num);
+                  dae.setVarExpression(vIdx, newExprId);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // 2.5 Fold constants on initial DAE so parameters, dimensions, and expressions are resolved
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
 
@@ -2697,6 +2780,7 @@ export class ModelicaFlattener {
     const walkEqs = (node: any): void => {
       if (!node) return;
       if (
+        (node !== cst && node.type === "class_definition") ||
         node.type === "extends_clause" ||
         node.type === "component_clause" ||
         node.type === "component_clause1" ||
@@ -2736,6 +2820,7 @@ export class ModelicaFlattener {
 
     const walkVars = (node: any): void => {
       if (!node) return;
+      if (node !== cst && node.type === "class_definition") return;
       if (
         node.type === "component_declaration" ||
         node.type === "component_declaration1" ||

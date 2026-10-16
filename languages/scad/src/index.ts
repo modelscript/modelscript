@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compileToStep, type Solid } from "@modelscript/cad";
+import { compileToStep, ManifoldWorker, SolidKind, type Solid, type SolidSourceMetadata } from "@modelscript/cad";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,31 @@ import { ScadPatcher } from "./patcher.js";
 
 export { lintScadCst, ScadEvaluator, scadLanguage, ScadPatcher };
 export type { ScadDiagnostic, ScadEvaluationOptions };
+
+export interface ScadCadComponent {
+  name: string;
+  cad: {
+    uri: string;
+    position?: [number, number, number];
+    rotation?: [number, number, number];
+    scale?: [number, number, number];
+  };
+  proceduralMesh: {
+    vertices: number[];
+    indices: number[];
+    normals: number[];
+    color?: [number, number, number, number];
+  };
+  ports: {
+    name: string;
+    port: {
+      feature: string;
+      offsetPosition?: [number, number, number];
+    };
+  }[];
+  dynamicBindings: any[];
+  sourceMetadata?: SolidSourceMetadata;
+}
 
 let cachedParser: TreeSitterParser | null = null;
 
@@ -60,6 +85,92 @@ export async function compileScadToSolid(source: string, options?: ScadEvaluatio
   if (!tree) return null;
   const evaluator = new ScadEvaluator(options);
   return evaluator.evaluate(tree.rootNode);
+}
+
+function collectSelectableParts(solid: Solid, out: Solid[]): void {
+  if (solid.kind === SolidKind.Union) {
+    collectSelectableParts(solid.left, out);
+    collectSelectableParts(solid.right, out);
+    return;
+  }
+  out.push(solid);
+}
+
+/**
+ * Evaluates SCAD source into interactive 3D `CadComponent` objects with procedural triangle meshes
+ * and AST `sourceMetadata` for 3D gizmo manipulation in `CadViewerPanel`.
+ */
+export async function extractScadCadComponents(
+  source: string,
+  rootNode?: any,
+  uri?: string,
+  options?: ScadEvaluationOptions,
+): Promise<ScadCadComponent[]> {
+  let root = rootNode;
+  if (!root) {
+    const parser = await getScadParser();
+    const tree = parser.parse(source);
+    root = tree?.rootNode;
+  }
+  if (!root) return [];
+
+  const evaluator = new ScadEvaluator(options);
+  const topSolids = evaluator.evaluateParts(root);
+  const parts: Solid[] = [];
+  for (const s of topSolids) {
+    collectSelectableParts(s, parts);
+  }
+
+  const components: ScadCadComponent[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const mesh = ManifoldWorker.evaluateSolid(part);
+    if (mesh.indices.length === 0) continue;
+
+    const meta = part.sourceMetadata ?? mesh.sourceMetadata;
+    const userPos: [number, number, number] = meta?.translation
+      ? [meta.translation[0], meta.translation[1], meta.translation[2]]
+      : [0, 0, 0];
+
+    // Shift vertices into the component's local frame so `<group position={userPos}>`
+    // places the TransformControls gizmo at `userPos` without double-translating the mesh.
+    const shiftedVerts = new Array<number>(mesh.vertices.length);
+    for (let v = 0; v < mesh.vertices.length; v += 3) {
+      shiftedVerts[v] = mesh.vertices[v] - userPos[0];
+      shiftedVerts[v + 1] = mesh.vertices[v + 1] - userPos[1];
+      shiftedVerts[v + 2] = mesh.vertices[v + 2] - userPos[2];
+    }
+
+    const ports = mesh.tags.map((t) => ({
+      name: t.portName,
+      port: {
+        feature: t.portType,
+        offsetPosition: (t.normal ? [t.normal[0], t.normal[1], t.normal[2]] : [0, 0, 0]) as [number, number, number],
+      },
+    }));
+
+    const compName = `${part.name || "part"}_${i + 1}`;
+    components.push({
+      name: compName,
+      cad: {
+        uri: uri ? `${uri}#${compName}` : `scad://${compName}`,
+        position: userPos,
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+      },
+      proceduralMesh: {
+        vertices: shiftedVerts,
+        indices: Array.from(mesh.indices),
+        normals: Array.from(mesh.normals),
+        color: meta?.color ? [meta.color[0], meta.color[1], meta.color[2], meta.color[3]] : undefined,
+      },
+      ports,
+      dynamicBindings: [],
+      sourceMetadata: meta,
+    });
+  }
+
+  return components;
 }
 
 /**

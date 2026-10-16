@@ -543,6 +543,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
 export interface Owl2BackendDeps {
   getDocumentText: (uri: string) => string | undefined;
   getAxioms: (uri: string) => any[];
+  getInferredSubClassOf?: (uri: string, axioms: any[]) => { subClassIri: string; superClassIri: string }[];
   getLayout?: (uri: string) => any;
   setLayout?: (uri: string, layout: any) => void;
   createEmptyLayout?: () => any;
@@ -557,7 +558,7 @@ export interface Owl2BackendDeps {
   computeElementInsert?: (text: string, elementType: string, name: string) => TextEdit[];
   computeElementDelete?: (text: string, names: string[]) => TextEdit[];
   computeNameEdit?: (text: string, oldIri: string, newIri: string) => TextEdit[];
-  buildDiagramData?: (axioms: any[], layout?: any, diagramType?: string) => DiagramData;
+  buildDiagramData?: (axioms: any[], layout?: any, diagramType?: string, options?: any) => DiagramData;
   getEntityData?: (
     uri: string,
     entityIri: string,
@@ -575,8 +576,11 @@ export class Owl2DiagramBackend implements DiagramBackend {
   getData(params: DiagramGetDataParams): DiagramData | null {
     const axioms = this.deps.getAxioms(params.uri);
     const layout = this.deps.getLayout ? this.deps.getLayout(params.uri) : undefined;
+    const inferredSubClassOf = this.deps.getInferredSubClassOf
+      ? this.deps.getInferredSubClassOf(params.uri, axioms)
+      : undefined;
     const builder = this.deps.buildDiagramData ?? buildOWL2DiagramData;
-    return builder(axioms, layout, params.diagramType);
+    return builder(axioms, layout, params.diagramType, inferredSubClassOf ? { inferredSubClassOf } : undefined);
   }
 
   getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
@@ -1706,7 +1710,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
           try {
             const text = await readPscxSource(params.uri);
             if (!text) return null;
-            const { parsePscx } = await import("@modelscript/pscad");
+            const { parsePscx, getMasterComponentSchema } = await import("@modelscript/pscad");
             const project = parsePscx(text);
             const mod =
               params.className && project.subModules.has(params.className)
@@ -1717,42 +1721,142 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
             const strippedCmpId = rawName.startsWith("cmp_") ? rawName.slice(4) : rawName;
             const strippedBusId = rawName.startsWith("bus_") ? rawName.slice(4) : rawName;
 
-            const cmp = mod.components.find(
-              (c) => c.id === strippedCmpId || c.id === rawName || c.instanceName === rawName,
-            );
+            const allMods = [project.rootModule, ...Array.from(project.subModules.values())];
+            const cmp =
+              mod.components.find((c) => c.id === strippedCmpId || c.id === rawName || c.instanceName === rawName) ??
+              allMods
+                .flatMap((m) => m.components)
+                .find((c) => c.id === strippedCmpId || c.id === rawName || c.instanceName === rawName);
+
             if (cmp) {
-              const parameters = Object.entries(cmp.parameters).map(([k, v]) => ({
-                name: k,
-                value: String(v),
-                description: `PSCAD parameter '${k}'`,
-              }));
-              const fields: PropertyFieldConfig[] = Object.entries(cmp.parameters).map(([k, v]) => ({
-                key: k,
-                label: k,
-                kind: typeof v === "number" ? "number" : "string",
-                defaultValue: v,
-              }));
+              const masterSchema = getMasterComponentSchema(cmp.definitionName);
+              const mergedValues: Record<string, any> = {};
+              if (masterSchema) {
+                for (const p of masterSchema.parameters) {
+                  mergedValues[p.key] = p.defaultValue;
+                }
+              }
+              for (const [k, v] of Object.entries(cmp.parameters)) {
+                mergedValues[k] = v;
+              }
+
+              const parameters: ComponentPropertyData["parameters"] = [];
+              const tabs: PropertyTabConfig[] = [];
+
+              if (masterSchema) {
+                const seenKeys = new Set<string>();
+                const tabMap = new Map<string, Map<string, PropertyFieldConfig[]>>();
+
+                for (const p of masterSchema.parameters) {
+                  seenKeys.add(p.key);
+                  const currentVal = mergedValues[p.key] ?? p.defaultValue;
+                  parameters.push({
+                    name: p.key,
+                    localizedName: p.label,
+                    value: String(currentVal),
+                    defaultValue: String(p.defaultValue),
+                    description: p.description,
+                    unit: p.unit,
+                    tab: p.tab,
+                    group: p.group || "Configuration",
+                  });
+
+                  const tabName = p.tab || "General";
+                  const groupName = p.group || "Configuration";
+                  if (!tabMap.has(tabName)) tabMap.set(tabName, new Map());
+                  const groupMap = tabMap.get(tabName)!;
+                  if (!groupMap.has(groupName)) groupMap.set(groupName, []);
+
+                  const field: PropertyFieldConfig = {
+                    key: p.key,
+                    label: p.label,
+                    kind: p.kind === "select" ? "choice" : p.kind,
+                    description: p.description,
+                    defaultValue: p.defaultValue,
+                    unit: p.unit,
+                    choices: p.options?.map((o) => ({ label: o.label, value: o.value })),
+                    validation: p.min !== undefined || p.max !== undefined ? { min: p.min, max: p.max } : undefined,
+                  };
+                  groupMap.get(groupName)!.push(field);
+                }
+
+                // Include any additional instance-specific parameters not in the catalog schema
+                for (const [k, v] of Object.entries(cmp.parameters)) {
+                  if (seenKeys.has(k)) continue;
+                  parameters.push({
+                    name: k,
+                    value: String(v),
+                    description: `PSCAD parameter '${k}'`,
+                    tab: "General",
+                    group: "Instance Parameters",
+                  });
+                  if (!tabMap.has("General")) tabMap.set("General", new Map());
+                  const gMap = tabMap.get("General")!;
+                  if (!gMap.has("Instance Parameters")) gMap.set("Instance Parameters", []);
+                  gMap.get("Instance Parameters")!.push({
+                    key: k,
+                    label: k,
+                    kind: typeof v === "number" ? "number" : "string",
+                    defaultValue: v,
+                  });
+                }
+
+                for (const [tabLabel, groupMap] of tabMap.entries()) {
+                  const groups: PropertyGroupConfig[] = [];
+                  for (const [groupLabel, fields] of groupMap.entries()) {
+                    groups.push({
+                      id: groupLabel.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+                      label: groupLabel,
+                      fields,
+                    });
+                  }
+                  tabs.push({
+                    id: tabLabel.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+                    label: tabLabel,
+                    groups,
+                  });
+                }
+              } else {
+                const fields: PropertyFieldConfig[] = Object.entries(cmp.parameters).map(([k, v]) => {
+                  parameters.push({
+                    name: k,
+                    value: String(v),
+                    description: `PSCAD parameter '${k}'`,
+                  });
+                  return {
+                    key: k,
+                    label: k,
+                    kind: typeof v === "number" ? "number" : "string",
+                    defaultValue: v,
+                  };
+                });
+                tabs.push({
+                  id: "general",
+                  label: "General",
+                  groups: [{ id: "configuration", label: "Configuration", fields }],
+                });
+              }
+
               return {
                 classKind: "component",
                 className: cmp.definitionName,
+                localizedClassName: masterSchema?.label,
                 name: cmp.instanceName || cmp.id,
-                description: `PSCAD ${cmp.definitionName} (${cmp.id})`,
+                description: masterSchema?.description || `PSCAD ${cmp.definitionName} (${cmp.id})`,
                 parameters,
                 schema: {
-                  title: cmp.instanceName || cmp.definitionName,
-                  tabs: [
-                    {
-                      id: "parameters",
-                      label: "Parameters",
-                      groups: [{ id: "general", label: "Configuration", fields }],
-                    },
-                  ],
+                  title: masterSchema?.label || cmp.instanceName || cmp.definitionName,
+                  tabs,
                 },
-                values: { ...cmp.parameters },
+                values: mergedValues,
               };
             }
 
-            const bus = mod.buses.find((b) => b.id === strippedBusId || b.id === rawName || b.name === rawName);
+            const bus =
+              mod.buses.find((b) => b.id === strippedBusId || b.id === rawName || b.name === rawName) ??
+              allMods
+                .flatMap((m) => m.buses)
+                .find((b) => b.id === strippedBusId || b.id === rawName || b.name === rawName);
             if (bus) {
               return {
                 classKind: "bus",
@@ -1768,6 +1872,31 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
                     description: "Base line-to-line RMS voltage",
                   },
                 ],
+                schema: {
+                  title: `3-Phase Electrical Bus (${bus.name})`,
+                  tabs: [
+                    {
+                      id: "general",
+                      label: "General",
+                      groups: [
+                        {
+                          id: "ratings",
+                          label: "Bus Ratings",
+                          fields: [
+                            { key: "Name", label: "Bus Name", kind: "string", defaultValue: bus.name },
+                            {
+                              key: "BaseKV",
+                              label: "Base Voltage (L-L RMS)",
+                              kind: "number",
+                              unit: "kV",
+                              defaultValue: bus.voltageBaseKv ?? 230.0,
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
                 values: {
                   Name: bus.name,
                   BaseKV: bus.voltageBaseKv ?? 230.0,
@@ -1784,7 +1913,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
           try {
             const text = await readPscxSource(params.uri);
             if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
-            const { parsePscx } = await import("@modelscript/pscad");
+            const { parsePscx, buildComponentXmlSnippet } = await import("@modelscript/pscad");
             const project = parsePscx(text);
             const lines = text.split("\n");
             const allEdits: TextEdit[] = [];
@@ -1798,15 +1927,160 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
               ...project.rootModule.buses,
               ...Array.from(project.subModules.values()).flatMap((m) => m.buses),
             ];
+            const allWires = [
+              ...project.rootModule.wires,
+              ...Array.from(project.subModules.values()).flatMap((m) => m.wires),
+            ];
+
+            const stripPrefix = (raw: string) =>
+              raw.startsWith("cmp_") || raw.startsWith("bus_")
+                ? raw.slice(4)
+                : raw.startsWith("wire_")
+                  ? raw.slice(5)
+                  : raw;
+
+            const findSchematicEndLine = (sectionName?: string): number => {
+              if (sectionName) {
+                const defLineIdx = lines.findIndex(
+                  (l) => /<Definition\b/i.test(l) && new RegExp(`name\\s*=\\s*["']${sectionName}["']`, "i").test(l),
+                );
+                if (defLineIdx >= 0) {
+                  for (let i = defLineIdx; i < lines.length; i++) {
+                    if (/<\/schematic>/i.test(lines[i]!)) return i;
+                    if (/<\/Definition>/i.test(lines[i]!)) return i;
+                  }
+                }
+              }
+              for (let i = lines.length - 1; i >= 0; i--) {
+                if (/<\/schematic>/i.test(lines[i]!)) return i;
+              }
+              for (let i = lines.length - 1; i >= 0; i--) {
+                if (/<\/project>/i.test(lines[i]!)) return i;
+              }
+              return Math.max(0, lines.length - 1);
+            };
+
+            const resolveEndpointCoords = (
+              cellOrPortId: string,
+              explicitPortName?: string,
+            ): { x: number; y: number } | null => {
+              const cleanId = stripPrefix(cellOrPortId);
+              const cmp = allComponents.find(
+                (c) =>
+                  c.id === cleanId ||
+                  c.id === cellOrPortId ||
+                  c.instanceName === cellOrPortId ||
+                  c.ports.some((p) => p.id === cellOrPortId || p.id === cleanId),
+              );
+              if (cmp) {
+                const matchedPort =
+                  (explicitPortName
+                    ? cmp.ports.find(
+                        (p) =>
+                          p.name === explicitPortName ||
+                          p.id === explicitPortName ||
+                          p.id === `${cmp.id}_${explicitPortName}`,
+                      )
+                    : undefined) ??
+                  cmp.ports.find((p) => p.id === cellOrPortId || p.id === cleanId) ??
+                  cmp.ports[0];
+                if (matchedPort) {
+                  const rotRad = (((cmp.rotation ?? 0) % 360) * Math.PI) / 180;
+                  const cos = Math.round(Math.cos(rotRad) * 1e6) / 1e6;
+                  const sin = Math.round(Math.sin(rotRad) * 1e6) / 1e6;
+                  const lx = cmp.mirror ? -matchedPort.position.x : matchedPort.position.x;
+                  const ly = matchedPort.position.y;
+                  return {
+                    x: Math.round(cmp.position.x + (lx * cos - ly * sin)),
+                    y: Math.round(cmp.position.y + (lx * sin + ly * cos)),
+                  };
+                }
+                return { x: Math.round(cmp.position.x), y: Math.round(cmp.position.y) };
+              }
+              const bus = allBuses.find((b) => b.id === cleanId || b.id === cellOrPortId || b.name === cellOrPortId);
+              if (bus) {
+                return { x: Math.round(bus.position.x), y: Math.round(bus.position.y) };
+              }
+              return null;
+            };
+
+            const hasPositiveY =
+              allComponents.some((c) => c.position.y > 0) ||
+              allBuses.some((b) => b.position.y > 0) ||
+              allWires.some((w) => w.vertices.some((v) => v.y > 0));
+            const normalizeWirePt = (pt: { x: number; y: number }): { x: number; y: number } => ({
+              x: Math.round(pt.x),
+              y: Math.round(hasPositiveY && pt.y < 0 ? Math.abs(pt.y) : pt.y),
+            });
+
+            const parseEndpointTokens = (ep: string): string[] => {
+              const raw = ep.trim();
+              const tokens = new Set<string>([raw, stripPrefix(raw)]);
+              if (raw.includes(".")) {
+                const [cellPart, portPart] = raw.split(".", 2);
+                if (cellPart) {
+                  tokens.add(cellPart);
+                  tokens.add(stripPrefix(cellPart));
+                }
+                if (portPart) {
+                  tokens.add(portPart);
+                  tokens.add(stripPrefix(portPart));
+                }
+              }
+              return [...tokens];
+            };
+
+            const wireMatchesEndpoint = (w: (typeof allWires)[number], ep: string): boolean => {
+              const tokens = parseEndpointTokens(ep);
+              if (tokens.some((t) => w.id === t || `wire_${w.id}` === t)) return true;
+              if (w.startPortId && tokens.some((t) => w.startPortId === t || stripPrefix(w.startPortId!) === t)) {
+                return true;
+              }
+              if (w.endPortId && tokens.some((t) => w.endPortId === t || stripPrefix(w.endPortId!) === t)) {
+                return true;
+              }
+              return w.connectedPortIds.some((pid) =>
+                tokens.some((t) => pid === t || pid.startsWith(`${t}_`) || stripPrefix(pid) === t),
+              );
+            };
+
+            const findMatchingWire = (src: string, dst: string) =>
+              allWires.find((w) => {
+                if (w.id === src || w.id === stripPrefix(src) || `wire_${w.id}` === src) return true;
+                return wireMatchesEndpoint(w, src) && wireMatchesEndpoint(w, dst);
+              });
+
+            const editedWireIds = new Set<string>();
+            const rewriteWireVertices = (w: (typeof allWires)[number], pts: { x: number; y: number }[]) => {
+              if (!w.line || w.line - 1 >= lines.length || editedWireIds.has(w.id)) return;
+              editedWireIds.add(w.id);
+              const startLine = w.line - 1;
+              let endLine = startLine;
+              while (endLine < lines.length && !/<\/Wire>/i.test(lines[endLine]!)) {
+                endLine++;
+              }
+              const openLine = lines[startLine]!;
+              const indent = /^(\s*)/.exec(openLine)?.[1] ?? "          ";
+              const vertexLines = pts
+                .map((pt) => {
+                  const np = normalizeWirePt(pt);
+                  return `${indent}  <vertex x="${np.x}" y="${np.y}" />`;
+                })
+                .join("\n");
+              const replacement = `${openLine}\n${vertexLines}\n${indent}</Wire>`;
+              allEdits.push({
+                range: {
+                  start: { line: startLine, character: 0 },
+                  end: { line: endLine, character: lines[endLine]?.length ?? 0 },
+                },
+                newText: replacement,
+              });
+            };
 
             for (const action of params.actions) {
               if (action.type === "move") {
                 for (const item of action.items) {
-                  const strippedId = item.name.startsWith("cmp_")
-                    ? item.name.slice(4)
-                    : item.name.startsWith("bus_")
-                      ? item.name.slice(4)
-                      : item.name;
+                  const strippedId = stripPrefix(item.name);
                   const cmp = allComponents.find(
                     (c) => c.id === strippedId || c.id === item.name || c.instanceName === item.name,
                   );
@@ -1814,11 +2088,20 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
                   const newX = Math.round(item.width > 0 ? item.x + item.width / 2 : item.x);
                   const newY = Math.round(item.height > 0 ? item.y + item.height / 2 : item.y);
 
-                  if (targetLineIdx >= 0 && targetLineIdx < lines.length) {
+                  if (targetLineIdx >= 0 && targetLineIdx < lines.length && cmp) {
                     const lineText = lines[targetLineIdx]!;
-                    const updatedLine = lineText
+                    let updatedLine = lineText
                       .replace(/\bx\s*=\s*(["'])[^"']*\1/i, `x=$1${newX}$1`)
                       .replace(/\by\s*=\s*(["'])[^"']*\1/i, `y=$1${newY}$1`);
+                    if (item.rotation !== undefined) {
+                      const deg = ((Math.round(item.rotation) % 360) + 360) % 360;
+                      const orientCode = deg % 90 === 0 ? (deg / 90) % 4 : deg;
+                      if (/\borient\s*=\s*["'][^"']*["']/i.test(updatedLine)) {
+                        updatedLine = updatedLine.replace(/\borient\s*=\s*(["'])[^"']*\1/i, `orient=$1${orientCode}$1`);
+                      } else {
+                        updatedLine = updatedLine.replace(/(\s*\/?>)\s*$/, ` orient="${orientCode}"$1`);
+                      }
+                    }
                     if (updatedLine !== lineText) {
                       allEdits.push({
                         range: {
@@ -1828,14 +2111,45 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
                         newText: updatedLine,
                       });
                     }
+
+                    // Update connected wire vertices from item.edges or rubber-band snapped endpoints
+                    if (item.edges && item.edges.length > 0) {
+                      for (const edge of item.edges) {
+                        if (!edge.points || edge.points.length < 2) continue;
+                        const matched = findMatchingWire(edge.source, edge.target);
+                        if (matched) {
+                          rewriteWireVertices(matched, edge.points);
+                        }
+                      }
+                    }
+                    const dx = newX - cmp.position.x;
+                    const dy = newY - cmp.position.y;
+                    if (dx !== 0 || dy !== 0) {
+                      const cmpPortIds = new Set(cmp.ports.map((p) => p.id));
+                      for (const w of allWires) {
+                        if (editedWireIds.has(w.id) || w.vertices.length < 2) continue;
+                        const startAttached = Boolean(w.startPortId && cmpPortIds.has(w.startPortId));
+                        const endAttached = Boolean(w.endPortId && cmpPortIds.has(w.endPortId));
+                        if (!startAttached && !endAttached) continue;
+                        const updatedPts = w.vertices.map((v, idx) => {
+                          if (idx === 0 && startAttached) return { x: v.x + dx, y: v.y + dy };
+                          if (idx === w.vertices.length - 1 && endAttached) return { x: v.x + dx, y: v.y + dy };
+                          return { x: v.x, y: v.y };
+                        });
+                        rewriteWireVertices(w, updatedPts);
+                      }
+                    }
                   } else {
                     const bus = allBuses.find((b) => b.id === strippedId || b.id === item.name || b.name === item.name);
                     if (bus?.line && bus.line - 1 < lines.length) {
                       const bLineIdx = bus.line - 1;
                       const lineText = lines[bLineIdx]!;
+                      // Buses are left-aligned horizontally at bus.position.x
+                      const busX = Math.round(item.x);
+                      const busY = Math.round(item.height > 0 && item.height <= 16 ? item.y + item.height / 2 : item.y);
                       const updatedLine = lineText
-                        .replace(/\bx\s*=\s*(["'])[^"']*\1/i, `x=$1${newX}$1`)
-                        .replace(/\by\s*=\s*(["'])[^"']*\1/i, `y=$1${newY}$1`);
+                        .replace(/\bx\s*=\s*(["'])[^"']*\1/i, `x=$1${busX}$1`)
+                        .replace(/\by\s*=\s*(["'])[^"']*\1/i, `y=$1${busY}$1`);
                       if (updatedLine !== lineText) {
                         allEdits.push({
                           range: {
@@ -1848,32 +2162,179 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
                     }
                   }
                 }
-              } else if (action.type === "updateParameter" || action.type === "updateProperty") {
-                const paramName = action.type === "updateProperty" ? action.key : action.parameter;
-                const paramVal = String(action.value);
-                const strippedId = action.name.startsWith("cmp_") ? action.name.slice(4) : action.name;
+              } else if (action.type === "rotate") {
+                const strippedId = stripPrefix(action.item.name);
                 const cmp = allComponents.find(
-                  (c) => c.id === strippedId || c.id === action.name || c.instanceName === action.name,
+                  (c) => c.id === strippedId || c.id === action.item.name || c.instanceName === action.item.name,
                 );
-                const paramLoc = cmp?.paramLocations?.[paramName];
-                if (paramLoc && paramLoc.line - 1 < lines.length) {
-                  const pLineIdx = paramLoc.line - 1;
-                  const lineText = lines[pLineIdx]!;
-                  const updatedLine = lineText.replace(/(value\s*=\s*["'])([^"']*)(["'])/i, `$1${paramVal}$3`);
+                if (cmp?.line && cmp.line - 1 < lines.length) {
+                  const lineIdx = cmp.line - 1;
+                  const lineText = lines[lineIdx]!;
+                  const deg = ((Math.round(action.item.rotation ?? 0) % 360) + 360) % 360;
+                  const orientCode = deg % 90 === 0 ? (deg / 90) % 4 : deg;
+                  let updatedLine = lineText;
+                  if (/\borient\s*=\s*["'][^"']*["']/i.test(lineText)) {
+                    updatedLine = lineText.replace(/\borient\s*=\s*(["'])[^"']*\1/i, `orient=$1${orientCode}$1`);
+                  } else {
+                    updatedLine = lineText.replace(/(\s*\/?>)\s*$/, ` orient="${orientCode}"$1`);
+                  }
                   if (updatedLine !== lineText) {
                     allEdits.push({
                       range: {
-                        start: { line: pLineIdx, character: 0 },
-                        end: { line: pLineIdx, character: lineText.length },
+                        start: { line: lineIdx, character: 0 },
+                        end: { line: lineIdx, character: lineText.length },
                       },
                       newText: updatedLine,
                     });
-                    renderHint = "debounced";
+                    renderHint = "immediate";
                   }
                 }
+              } else if (action.type === "resize") {
+                const strippedId = stripPrefix(action.item.name);
+                const bus = allBuses.find(
+                  (b) => b.id === strippedId || b.id === action.item.name || b.name === action.item.name,
+                );
+                if (bus?.line && bus.line - 1 < lines.length) {
+                  const bLineIdx = bus.line - 1;
+                  const lineText = lines[bLineIdx]!;
+                  const newLen = Math.max(20, Math.round(Math.max(action.item.width || 0, action.item.height || 0)));
+                  let updatedLine = lineText;
+                  if (/\blength\s*=\s*["'][^"']*["']/i.test(lineText)) {
+                    updatedLine = lineText.replace(/\blength\s*=\s*(["'])[^"']*\1/i, `length=$1${newLen}$1`);
+                  } else {
+                    updatedLine = lineText.replace(/(\s*\/?>)\s*$/, ` length="${newLen}"$1`);
+                  }
+                  if (updatedLine !== lineText) {
+                    allEdits.push({
+                      range: {
+                        start: { line: bLineIdx, character: 0 },
+                        end: { line: bLineIdx, character: lineText.length },
+                      },
+                      newText: updatedLine,
+                    });
+                    renderHint = "immediate";
+                  }
+                }
+              } else if (action.type === "updateParameter" || action.type === "updateProperty") {
+                const paramName = action.type === "updateProperty" ? action.key : action.parameter;
+                const paramVal = String(action.value);
+                const strippedId = stripPrefix(action.name);
+                const cmp = allComponents.find(
+                  (c) => c.id === strippedId || c.id === action.name || c.instanceName === action.name,
+                );
+                if (cmp) {
+                  const paramLoc = cmp.paramLocations?.[paramName];
+                  if (paramLoc && paramLoc.line - 1 < lines.length) {
+                    const pLineIdx = paramLoc.line - 1;
+                    const lineText = lines[pLineIdx]!;
+                    const updatedLine = lineText.replace(/(value\s*=\s*["'])([^"']*)(["'])/i, `$1${paramVal}$3`);
+                    if (updatedLine !== lineText) {
+                      allEdits.push({
+                        range: {
+                          start: { line: pLineIdx, character: 0 },
+                          end: { line: pLineIdx, character: lineText.length },
+                        },
+                        newText: updatedLine,
+                      });
+                      renderHint = "debounced";
+                    }
+                  } else if (cmp.line && cmp.line - 1 < lines.length) {
+                    // Upsert new <param name="..." value="..." /> inside <paramlist> or expand self-closing component
+                    const startLine = cmp.line - 1;
+                    const openLineText = lines[startLine]!;
+                    const indentMatch = /^(\s*)/.exec(openLineText);
+                    const baseIndent = indentMatch?.[1] ?? "          ";
+
+                    if (/\/>\s*$/.test(openLineText)) {
+                      const tagMatch = /^(\s*<(?:User|Component)\b)/i.exec(openLineText);
+                      const tagName = tagMatch?.[1]?.toLowerCase().includes("user") ? "User" : "Component";
+                      const expanded =
+                        openLineText.replace(/\s*\/>\s*$/, ">") +
+                        `\n${baseIndent}  <paramlist>\n${baseIndent}    <param name="${paramName}" value="${paramVal}" />\n${baseIndent}  </paramlist>\n${baseIndent}</${tagName}>`;
+                      allEdits.push({
+                        range: {
+                          start: { line: startLine, character: 0 },
+                          end: { line: startLine, character: openLineText.length },
+                        },
+                        newText: expanded,
+                      });
+                      renderHint = "debounced";
+                    } else {
+                      let plistLine = -1;
+                      let endCmpLine = startLine;
+                      while (endCmpLine < lines.length && !/<\/(?:User|Component)>/i.test(lines[endCmpLine]!)) {
+                        if (plistLine < 0 && /<paramlist\b/i.test(lines[endCmpLine]!)) {
+                          plistLine = endCmpLine;
+                        }
+                        endCmpLine++;
+                      }
+                      if (plistLine >= 0) {
+                        const plistText = lines[plistLine]!;
+                        allEdits.push({
+                          range: {
+                            start: { line: plistLine, character: plistText.length },
+                            end: { line: plistLine, character: plistText.length },
+                          },
+                          newText: `\n${baseIndent}    <param name="${paramName}" value="${paramVal}" />`,
+                        });
+                        renderHint = "debounced";
+                      } else if (endCmpLine < lines.length) {
+                        allEdits.push({
+                          range: {
+                            start: { line: endCmpLine, character: 0 },
+                            end: { line: endCmpLine, character: 0 },
+                          },
+                          newText: `${baseIndent}  <paramlist>\n${baseIndent}    <param name="${paramName}" value="${paramVal}" />\n${baseIndent}  </paramlist>\n`,
+                        });
+                        renderHint = "debounced";
+                      }
+                    }
+                  }
+                } else {
+                  const bus = allBuses.find(
+                    (b) => b.id === strippedId || b.id === action.name || b.name === action.name,
+                  );
+                  if (bus?.line && bus.line - 1 < lines.length) {
+                    const bLineIdx = bus.line - 1;
+                    const lineText = lines[bLineIdx]!;
+                    let updatedLine = lineText;
+                    if (paramName.toLowerCase() === "name") {
+                      updatedLine = lineText.replace(/\bname\s*=\s*(["'])[^"']*\1/i, `name=$1${paramVal}$1`);
+                    } else if (paramName.toLowerCase() === "basekv" || paramName.toLowerCase() === "vbase") {
+                      if (/\bv_?base\s*=\s*["'][^"']*["']/i.test(lineText)) {
+                        updatedLine = lineText.replace(/\bv_?base\s*=\s*(["'])[^"']*\1/i, `vbase=$1${paramVal}$1`);
+                      } else {
+                        updatedLine = lineText.replace(/(\s*\/?>)\s*$/, ` vbase="${paramVal}"$1`);
+                      }
+                    }
+                    if (updatedLine !== lineText) {
+                      allEdits.push({
+                        range: {
+                          start: { line: bLineIdx, character: 0 },
+                          end: { line: bLineIdx, character: lineText.length },
+                        },
+                        newText: updatedLine,
+                      });
+                      renderHint = "debounced";
+                    }
+                  }
+                }
+              } else if (action.type === "addComponent") {
+                const shortDef = (action.className.split(":").pop() || "Cmp").replace(/[^a-zA-Z0-9_]/g, "_");
+                const instanceId = action.name || `${shortDef}_${allComponents.length + 1}`;
+                const snippet = buildComponentXmlSnippet(action.className, instanceId, action.x, action.y);
+                const insertLine = findSchematicEndLine(action.section);
+                allEdits.push({
+                  range: {
+                    start: { line: insertLine, character: 0 },
+                    end: { line: insertLine, character: 0 },
+                  },
+                  newText: `${snippet}\n`,
+                });
+                renderHint = "immediate";
               } else if (action.type === "deleteComponents") {
                 for (const name of action.names) {
-                  const strippedId = name.startsWith("cmp_") ? name.slice(4) : name;
+                  const strippedId = stripPrefix(name);
                   const cmp = allComponents.find(
                     (c) => c.id === strippedId || c.id === name || c.instanceName === name,
                   );
@@ -1893,6 +2354,164 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
                       newText: "",
                     });
                     renderHint = "immediate";
+                    continue;
+                  }
+                  const bus = allBuses.find((b) => b.id === strippedId || b.id === name || b.name === name);
+                  if (bus?.line && bus.line - 1 < lines.length) {
+                    const startLine = bus.line - 1;
+                    let endLine = startLine;
+                    if (!/\/>\s*$/.test(lines[startLine]!)) {
+                      while (endLine < lines.length && !/<\/(?:Bus|Wire)>/i.test(lines[endLine]!)) {
+                        endLine++;
+                      }
+                    }
+                    allEdits.push({
+                      range: {
+                        start: { line: startLine, character: 0 },
+                        end: { line: Math.min(lines.length, endLine + 1), character: 0 },
+                      },
+                      newText: "",
+                    });
+                    renderHint = "immediate";
+                  }
+                }
+              } else if (action.type === "connect") {
+                let vertices: { x: number; y: number }[] = [];
+                if (action.points && action.points.length >= 2) {
+                  vertices = action.points.map((pt) => normalizeWirePt(pt));
+                } else {
+                  const srcPt = resolveEndpointCoords(action.source, action.sourcePort) ?? { x: 100, y: 100 };
+                  const dstPt = resolveEndpointCoords(action.target, action.targetPort) ?? {
+                    x: srcPt.x + 80,
+                    y: srcPt.y,
+                  };
+                  if (srcPt.x !== dstPt.x && srcPt.y !== dstPt.y) {
+                    vertices = [srcPt, { x: dstPt.x, y: srcPt.y }, dstPt];
+                  } else {
+                    vertices = [srcPt, dstPt];
+                  }
+                }
+                const wireId = `w_${allWires.length + 1}_${vertices[0]!.x}_${vertices[0]!.y}`;
+                const vertexLines = vertices.map((v) => `            <vertex x="${v.x}" y="${v.y}" />`).join("\n");
+                const wireSnippet = `          <Wire classid="WireOrthogonal" id="${wireId}">\n${vertexLines}\n          </Wire>\n`;
+                const insertLine = findSchematicEndLine(action.section);
+                allEdits.push({
+                  range: {
+                    start: { line: insertLine, character: 0 },
+                    end: { line: insertLine, character: 0 },
+                  },
+                  newText: wireSnippet,
+                });
+                renderHint = "immediate";
+              } else if (action.type === "disconnect") {
+                const matchedWire = findMatchingWire(action.source, action.target);
+                if (matchedWire?.line && matchedWire.line - 1 < lines.length) {
+                  const startLine = matchedWire.line - 1;
+                  let endLine = startLine;
+                  if (!/\/>\s*$/.test(lines[startLine]!)) {
+                    while (endLine < lines.length && !/<\/Wire>/i.test(lines[endLine]!)) {
+                      endLine++;
+                    }
+                  }
+                  allEdits.push({
+                    range: {
+                      start: { line: startLine, character: 0 },
+                      end: { line: Math.min(lines.length, endLine + 1), character: 0 },
+                    },
+                    newText: "",
+                  });
+                  renderHint = "immediate";
+                }
+              } else if (action.type === "moveEdge") {
+                for (const edge of action.edges) {
+                  if (!edge.points || edge.points.length < 2) continue;
+                  const matchedWire = findMatchingWire(edge.source, edge.target);
+                  if (matchedWire) {
+                    rewriteWireVertices(matchedWire, edge.points);
+                    renderHint = "immediate";
+                  }
+                }
+              } else if (action.type === "reconnect") {
+                const matchedWire =
+                  (action.edgeId ? findMatchingWire(action.edgeId, action.edgeId) : undefined) ??
+                  findMatchingWire(action.oldSource, action.oldTarget);
+                if (matchedWire) {
+                  let newVertices: { x: number; y: number }[] = [];
+                  if (action.points && action.points.length >= 2) {
+                    newVertices = action.points.map((pt) => normalizeWirePt(pt));
+                  } else {
+                    const srcPt = resolveEndpointCoords(action.newSource, action.newSourcePort) ??
+                      matchedWire.vertices[0] ?? { x: 100, y: 100 };
+                    const dstPt = resolveEndpointCoords(action.newTarget, action.newTargetPort) ??
+                      matchedWire.vertices[matchedWire.vertices.length - 1] ?? { x: srcPt.x + 80, y: srcPt.y };
+                    if (srcPt.x !== dstPt.x && srcPt.y !== dstPt.y) {
+                      newVertices = [srcPt, { x: dstPt.x, y: srcPt.y }, dstPt];
+                    } else {
+                      newVertices = [srcPt, dstPt];
+                    }
+                  }
+                  rewriteWireVertices(matchedWire, newVertices);
+                  renderHint = "immediate";
+                }
+              } else if (action.type === "updateName") {
+                const strippedOld = stripPrefix(action.oldName);
+                const cmp = allComponents.find(
+                  (c) => c.id === strippedOld || c.id === action.oldName || c.instanceName === action.oldName,
+                );
+                if (cmp) {
+                  const nameLoc = cmp.paramLocations?.["Name"] ?? cmp.paramLocations?.["name"];
+                  if (nameLoc && nameLoc.line - 1 < lines.length) {
+                    const pLineIdx = nameLoc.line - 1;
+                    const lineText = lines[pLineIdx]!;
+                    const updatedLine = lineText.replace(/(value\s*=\s*["'])([^"']*)(["'])/i, `$1${action.newName}$3`);
+                    if (updatedLine !== lineText) {
+                      allEdits.push({
+                        range: {
+                          start: { line: pLineIdx, character: 0 },
+                          end: { line: pLineIdx, character: lineText.length },
+                        },
+                        newText: updatedLine,
+                      });
+                      renderHint = "immediate";
+                    }
+                  } else if (cmp.line && cmp.line - 1 < lines.length) {
+                    const cLineIdx = cmp.line - 1;
+                    const lineText = lines[cLineIdx]!;
+                    let updatedLine = lineText;
+                    if (/\bname\s*=\s*["'][^"']*["']/i.test(lineText)) {
+                      updatedLine = lineText.replace(/\bname\s*=\s*(["'])[^"']*\1/i, `name=$1${action.newName}$1`);
+                    } else {
+                      updatedLine = lineText.replace(/(\s*\/?>)\s*$/, ` name="${action.newName}"$1`);
+                    }
+                    if (updatedLine !== lineText) {
+                      allEdits.push({
+                        range: {
+                          start: { line: cLineIdx, character: 0 },
+                          end: { line: cLineIdx, character: lineText.length },
+                        },
+                        newText: updatedLine,
+                      });
+                      renderHint = "immediate";
+                    }
+                  }
+                } else {
+                  const bus = allBuses.find(
+                    (b) => b.id === strippedOld || b.id === action.oldName || b.name === action.oldName,
+                  );
+                  if (bus?.line && bus.line - 1 < lines.length) {
+                    const bLineIdx = bus.line - 1;
+                    const lineText = lines[bLineIdx]!;
+                    const updatedLine = lineText.replace(/\bname\s*=\s*(["'])[^"']*\1/i, `name=$1${action.newName}$1`);
+                    if (updatedLine !== lineText) {
+                      allEdits.push({
+                        range: {
+                          start: { line: bLineIdx, character: 0 },
+                          end: { line: bLineIdx, character: lineText.length },
+                        },
+                        newText: updatedLine,
+                      });
+                      renderHint = "immediate";
+                    }
                   }
                 }
               }
@@ -1919,9 +2538,14 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
             const candidateId = params.componentId || params.nodeId || params.componentName || params.className || "";
             const strippedId = candidateId.startsWith("cmp_") ? candidateId.slice(4) : candidateId;
 
+            const allComponents = [
+              ...project.rootModule.components,
+              ...Array.from(project.subModules.values()).flatMap((m) => m.components),
+            ];
+
             let targetModuleName = params.className || "";
             if (!targetModuleName || !project.subModules.has(targetModuleName)) {
-              const cmp = project.rootModule.components.find(
+              const cmp = allComponents.find(
                 (c) => c.id === strippedId || c.id === candidateId || c.instanceName === candidateId,
               );
               if (cmp) {
@@ -1956,90 +2580,158 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         },
 
         async getPalette(): Promise<DiagramPalette> {
+          const { getPscadPaletteCategories } = await import("@modelscript/pscad");
           return {
-            categories: [
-              {
-                name: "Sources & Rotating Machines",
-                items: [
-                  {
-                    label: "3-Phase Voltage Source",
-                    className: "master:source3",
-                    description: "Three-phase AC Thevenin voltage source",
-                  },
-                  {
-                    label: "Synchronous Machine (Subtransient)",
-                    className: "master:sync_machine",
-                    description: "6th-order dq0 synchronous generator with IEEE ST1A AVR & TGOV1 governor",
-                  },
-                  {
-                    label: "Induction Machine / DFIG",
-                    className: "master:ind_machine",
-                    description: "5th-order 3-phase squirrel-cage / wound-rotor DFIG induction machine",
-                  },
-                ],
-              },
-              {
-                name: "Transformers, Lines & Cables",
-                items: [
-                  {
-                    label: "3-Phase 2-Winding Transformer",
-                    className: "master:xfmr-3p2w",
-                    description: "Three-phase transformer with vector group & anhysteretic saturation",
-                  },
-                  {
-                    label: "Overhead Transmission Line",
-                    className: "master:tline",
-                    description: "Bergeron / Frequency-Dependent Phase Model (FDPM) overhead line",
-                  },
-                  {
-                    label: "Underground / Submarine Coaxial Cable",
-                    className: "master:cable",
-                    description: "Wedepohl-Wilcox coaxial core-sheath-armour cable with Pollaczek earth return",
-                  },
-                ],
-              },
-              {
-                name: "Power Electronics, HVDC & FACTS",
-                items: [
-                  {
-                    label: "Two-Level VSC PWM Converter",
-                    className: "master:vsc_pwm",
-                    description: "Switched / averaged 3-phase voltage-source converter with interpolated firing",
-                  },
-                  {
-                    label: "6-Pulse Graetz LCC HVDC Bridge",
-                    className: "master:lcc_6pulse",
-                    description:
-                      "Line-commutated thyristor converter bridge with firing angle alpha & commutation overlap",
-                  },
-                  {
-                    label: "Modular Multilevel Converter (MMC)",
-                    className: "master:mmc_thevenin",
-                    description: "Half-bridge / full-bridge Thévenin arm equivalent MMC with capacitor sorting",
-                  },
-                ],
-              },
-              {
-                name: "Switchgear & Protection",
-                items: [
-                  {
-                    label: "3-Phase Circuit Breaker",
-                    className: "master:breaker3",
-                    description: "3-phase breaker with current-zero extinction & single-pole tripping",
-                  },
-                  {
-                    label: "3-Phase Timed Fault",
-                    className: "master:tpflt",
-                    description: "Timed 3LG / SLG / LL / LLG fault switch",
-                  },
-                  {
-                    label: "ZnO Metal-Oxide Surge Arrester",
-                    className: "master:arrester",
-                    description: "Piecewise power-law ZnO surge arrester with Newton-Raphson iteration",
-                  },
-                ],
-              },
-            ],
+            categories: getPscadPaletteCategories(),
+          };
+        },
+      };
+    }
+    if (uri.endsWith(".ssd") || uri.endsWith(".ssp")) {
+      const readSsdSource = async (targetUri: string): Promise<string | null> => {
+        const memText =
+          (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
+          (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+        if (typeof memText === "string") return memText;
+        try {
+          const fs = await import("node:fs");
+          const { fileURLToPath } = await import("node:url");
+          const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+          if (fs.existsSync(filePath)) {
+            if (filePath.endsWith(".ssp")) {
+              const { defaultContainerToolkit } = await import("@modelscript/runtime");
+              const bytes = new Uint8Array(fs.readFileSync(filePath));
+              return defaultContainerToolkit.zip.readText(bytes, "SystemStructure.ssd") ?? null;
+            }
+            return fs.readFileSync(filePath, "utf-8");
+          }
+        } catch {
+          // ignore fs errors
+        }
+        return null;
+      };
+
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const text = await readSsdSource(params.uri);
+            if (!text) return null;
+            const { buildSspDiagramData } = await import("@modelscript/ssp/diagram");
+            return buildSspDiagramData(text);
+          } catch {
+            return null;
+          }
+        },
+
+        async getComponentProperties(
+          params: DiagramGetComponentPropertiesParams,
+        ): Promise<ComponentPropertyData | null> {
+          try {
+            const text = await readSsdSource(params.uri);
+            if (!text) return null;
+            const { parseSsd } = await import("@modelscript/ssp");
+            const system = parseSsd(text);
+            const cmp = system.components.find((c) => c.name === params.componentName);
+            if (cmp) {
+              const parameters: ComponentPropertyData["parameters"] = [
+                { name: "source", value: cmp.source, description: "FMU archive path", group: "FMU Resource" },
+                ...(cmp.type
+                  ? [{ name: "type", value: cmp.type, description: "MIME type", group: "FMU Resource" }]
+                  : []),
+              ];
+              const fields: PropertyFieldConfig[] = [
+                { key: "source", label: "FMU Source", kind: "string", defaultValue: cmp.source },
+                {
+                  key: "type",
+                  label: "Component Type",
+                  kind: "string",
+                  defaultValue: cmp.type ?? "application/x-fmu-sharedlibrary",
+                },
+              ];
+              const values: Record<string, any> = {
+                source: cmp.source,
+                type: cmp.type ?? "application/x-fmu-sharedlibrary",
+              };
+
+              for (const b of system.parameterBindings || []) {
+                if (!b.prefix || b.prefix === cmp.name) {
+                  for (const pv of b.values) {
+                    const shortKey = pv.name.startsWith(`${cmp.name}.`) ? pv.name.slice(cmp.name.length + 1) : pv.name;
+                    parameters.push({
+                      name: shortKey,
+                      value: String(pv.value),
+                      description: `SSP bound parameter (${pv.type})`,
+                      group: "Parameters",
+                    });
+                    fields.push({
+                      key: shortKey,
+                      label: shortKey,
+                      kind:
+                        pv.type === "Real" || pv.type === "Integer"
+                          ? "number"
+                          : pv.type === "Boolean"
+                            ? "boolean"
+                            : "string",
+                      defaultValue: pv.value,
+                    });
+                    values[shortKey] = pv.value;
+                  }
+                }
+              }
+
+              return {
+                classKind: "component",
+                className: cmp.type || "FMUComponent",
+                name: cmp.name,
+                description: cmp.source,
+                parameters,
+                schema: {
+                  title: `SSP Component (${cmp.name})`,
+                  tabs: [
+                    {
+                      id: "general",
+                      label: "General",
+                      groups: [{ id: "fmu", label: "Configuration", fields }],
+                    },
+                  ],
+                },
+                values,
+              };
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        },
+
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          try {
+            const text = await readSsdSource(params.uri);
+            if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+            const { applySspDiagramEdits } = await import("@modelscript/ssp/diagram");
+            const rawEdits = applySspDiagramEdits(text, params.actions);
+            const hasStructural = params.actions.some(
+              (a) =>
+                a.type === "connect" ||
+                a.type === "disconnect" ||
+                a.type === "addComponent" ||
+                a.type === "deleteComponents" ||
+                a.type === "updateName",
+            );
+            return {
+              seq: params.seq,
+              edits: deduplicateAndSort(rawEdits),
+              renderHint: hasStructural ? "immediate" : "none",
+            };
+          } catch {
+            return { seq: params.seq, edits: [], renderHint: "none" };
+          }
+        },
+
+        async getPalette(): Promise<DiagramPalette> {
+          const { getSspPaletteCategories } = await import("@modelscript/ssp/diagram");
+          return {
+            categories: getSspPaletteCategories(),
           };
         },
       };

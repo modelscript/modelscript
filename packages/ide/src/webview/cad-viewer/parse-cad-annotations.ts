@@ -78,6 +78,17 @@ export function extractCadComponents(daeVariables: any[]): CadComponent[] {
 
   for (const v of daeVariables) {
     if (!v || typeof v !== "object" || !v.cad) continue;
+    if (typeof v.cad === "object") {
+      components.push({
+        name: v.name,
+        cad: v.cad as CadAnnotation,
+        ports: v.ports ?? [],
+        dynamicBindings: v.dynamicBindings ?? undefined,
+        sourceMetadata: v.sourceMetadata ?? undefined,
+        proceduralMesh: v.proceduralMesh ?? undefined,
+      });
+      continue;
+    }
     const cadStr = v.cad as string;
     const parsed = parseCadAnnotationString(cadStr);
     if (!parsed) continue;
@@ -89,6 +100,7 @@ export function extractCadComponents(daeVariables: any[]): CadComponent[] {
         ports: [],
         dynamicBindings: v.dynamicBindings ?? undefined,
         sourceMetadata: v.sourceMetadata ?? undefined,
+        proceduralMesh: v.proceduralMesh ?? undefined,
       });
     } else if (cadStr.startsWith("CADPort(")) {
       // CADPort annotations are on leaf variables like "body.port1"

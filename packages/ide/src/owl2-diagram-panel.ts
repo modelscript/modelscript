@@ -37,7 +37,13 @@ export class OWL2DiagramPanel {
   private _documentUri: string | undefined;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(client: LanguageClient, documentUri?: string): void {
+  public static createOrShow(client: LanguageClient, documentUri?: string, forceLegacyPanel = false): void {
+    const activeUri = documentUri ?? vscode.window.activeTextEditor?.document.uri.toString();
+    if (activeUri && !forceLegacyPanel) {
+      void vscode.commands.executeCommand("modelscript.openDiagram", vscode.Uri.parse(activeUri));
+      return;
+    }
+
     const column = vscode.ViewColumn.Beside;
 
     if (OWL2DiagramPanel.currentPanel) {

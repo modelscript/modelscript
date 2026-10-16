@@ -195,14 +195,15 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 // Internal decode helpers
 export function peekChar(pos: u32): i32 {
     if (pos >= inputLength) return 0;
+    let buf: usize = getInputBuffer();
     if (inputEncoding == 0) {
-        let b0: u32 = load<u8>(getInputBuffer() + pos);
+        let b0: u32 = load<u8>(buf + pos);
         if (b0 >= 0xC0) {
             if (b0 >= 0xF0) {
                 if (pos + 3 < inputLength) {
-                    let b1: u32 = load<u8>(getInputBuffer() + pos + 1);
-                    let b2: u32 = load<u8>(getInputBuffer() + pos + 2);
-                    let b3: u32 = load<u8>(getInputBuffer() + pos + 3);
+                    let b1: u32 = load<u8>(buf + pos + 1);
+                    let b2: u32 = load<u8>(buf + pos + 2);
+                    let b3: u32 = load<u8>(buf + pos + 3);
                     if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80 && (b3 & 0xC0) == 0x80) {
                         return ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
                     }
@@ -210,15 +211,15 @@ export function peekChar(pos: u32): i32 {
                 return 0xFFFD;
             } else if (b0 >= 0xE0) {
                 if (pos + 2 < inputLength) {
-                    let b1: u32 = load<u8>(getInputBuffer() + pos + 1);
-                    let b2: u32 = load<u8>(getInputBuffer() + pos + 2);
+                    let b1: u32 = load<u8>(buf + pos + 1);
+                    let b2: u32 = load<u8>(buf + pos + 2);
                     if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80) {
                         return ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
                     }
                 }
                 return 0xFFFD;
             } else if (pos + 1 < inputLength) {
-                let b1: u32 = load<u8>(getInputBuffer() + pos + 1);
+                let b1: u32 = load<u8>(buf + pos + 1);
                 if ((b1 & 0xC0) == 0x80) {
                     return ((b0 & 0x1F) << 6) | (b1 & 0x3F);
                 }
@@ -229,20 +230,20 @@ export function peekChar(pos: u32): i32 {
         if (b0 >= 0x80) return 0xFFFD;
         return b0;
     } else if (inputEncoding == 1) {
-        if (pos + 1 >= inputLength) return load<u8>(getInputBuffer() + pos);
-        let b0: u32 = load<u16>(getInputBuffer() + pos);
+        if (pos + 1 >= inputLength) return load<u8>(buf + pos);
+        let b0: u32 = load<u16>(buf + pos);
         if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 3 < inputLength) {
-            let b1: u32 = load<u16>(getInputBuffer() + pos + 2);
+            let b1: u32 = load<u16>(buf + pos + 2);
             if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
                 return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
             }
         }
         return b0;
     } else if (inputEncoding == 2) {
-        if (pos + 1 >= inputLength) return load<u8>(getInputBuffer() + pos);
-        let b0: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos));
+        if (pos + 1 >= inputLength) return load<u8>(buf + pos);
+        let b0: u32 = bswap<u16>(load<u16>(buf + pos));
         if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 3 < inputLength) {
-            let b1: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos + 2));
+            let b1: u32 = bswap<u16>(load<u16>(buf + pos + 2));
             if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
                 return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
             }
@@ -250,10 +251,10 @@ export function peekChar(pos: u32): i32 {
         return b0;
     } else if (inputEncoding == 3) {
         if (pos + 3 >= inputLength) return 0;
-        return load<u32>(getInputBuffer() + pos);
+        return load<u32>(buf + pos);
     } else if (inputEncoding == 4) {
         if (pos + 3 >= inputLength) return 0;
-        return bswap<u32>(load<u32>(getInputBuffer() + pos));
+        return bswap<u32>(load<u32>(buf + pos));
     }
     return 0;
 }
@@ -261,25 +262,26 @@ export function peekChar(pos: u32): i32 {
 export function peekCharLen(pos: u32): u32 {
     if (pos >= inputLength) return 0;
     let rem: u32 = inputLength - pos;
+    let buf: usize = getInputBuffer();
     if (inputEncoding == 0) {
-        let b0: u32 = load<u8>(getInputBuffer() + pos);
+        let b0: u32 = load<u8>(buf + pos);
         if (b0 >= 0xF0) return rem >= 4 ? 4 : rem;
         if (b0 >= 0xE0) return rem >= 3 ? 3 : rem;
         if (b0 >= 0xC0) return rem >= 2 ? 2 : rem;
         return 1;
     } else if (inputEncoding == 1) {
         if (rem < 2) return rem;
-        let b0: u32 = load<u16>(getInputBuffer() + pos);
+        let b0: u32 = load<u16>(buf + pos);
         if (b0 >= 0xD800 && b0 <= 0xDBFF && rem >= 4) {
-            let b1: u32 = load<u16>(getInputBuffer() + pos + 2);
+            let b1: u32 = load<u16>(buf + pos + 2);
             if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 4;
         }
         return 2;
     } else if (inputEncoding == 2) {
         if (rem < 2) return rem;
-        let b0: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos));
+        let b0: u32 = bswap<u16>(load<u16>(buf + pos));
         if (b0 >= 0xD800 && b0 <= 0xDBFF && rem >= 4) {
-            let b1: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos + 2));
+            let b1: u32 = bswap<u16>(load<u16>(buf + pos + 2));
             if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 4;
         }
         return 2;
@@ -289,16 +291,17 @@ export function peekCharLen(pos: u32): u32 {
 
 export function peekPrevChar(pos: u32): i32 {
     if (pos == 0 || pos > inputLength) return 0;
+    let buf: usize = getInputBuffer();
     if (inputEncoding == 0) {
         let p: u32 = pos - 1;
-        let b: u32 = load<u8>(getInputBuffer() + p);
+        let b: u32 = load<u8>(buf + p);
         if ((b & 0x80) == 0) return b;
         let count: u32 = 1;
-        while (p > 0 && (load<u8>(getInputBuffer() + p) & 0xC0) == 0x80 && count < 4) {
+        while (p > 0 && (load<u8>(buf + p) & 0xC0) == 0x80 && count < 4) {
             p--;
             count++;
         }
-        let lead: u32 = load<u8>(getInputBuffer() + p);
+        let lead: u32 = load<u8>(buf + p);
         if ((lead & 0xC0) != 0x80) {
             let ch = peekChar(p);
             let len = peekCharLen(p);
@@ -307,9 +310,9 @@ export function peekPrevChar(pos: u32): i32 {
         return b;
     } else if (inputEncoding == 1) {
         if (pos < 2) return 0;
-        let b0: u32 = load<u16>(getInputBuffer() + pos - 2);
+        let b0: u32 = load<u16>(buf + pos - 2);
         if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
-            let b1: u32 = load<u16>(getInputBuffer() + pos - 4);
+            let b1: u32 = load<u16>(buf + pos - 4);
             if (b1 >= 0xD800 && b1 <= 0xDBFF) {
                 return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
             }
@@ -317,9 +320,9 @@ export function peekPrevChar(pos: u32): i32 {
         return b0;
     } else if (inputEncoding == 2) {
         if (pos < 2) return 0;
-        let b0: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos - 2));
+        let b0: u32 = bswap<u16>(load<u16>(buf + pos - 2));
         if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
-            let b1: u32 = bswap<u16>(load<u16>(getInputBuffer() + pos - 4));
+            let b1: u32 = bswap<u16>(load<u16>(buf + pos - 4));
             if (b1 >= 0xD800 && b1 <= 0xDBFF) {
                 return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
             }
@@ -327,26 +330,27 @@ export function peekPrevChar(pos: u32): i32 {
         return b0;
     } else if (inputEncoding == 3) {
         if (pos < 4) return 0;
-        return load<u32>(getInputBuffer() + pos - 4);
+        return load<u32>(buf + pos - 4);
     } else if (inputEncoding == 4) {
         if (pos < 4) return 0;
-        return bswap<u32>(load<u32>(getInputBuffer() + pos - 4));
+        return bswap<u32>(load<u32>(buf + pos - 4));
     }
     return 0;
 }
 
 export function peekPrevCharLen(pos: u32): u32 {
     if (pos == 0 || pos > inputLength) return 0;
+    let buf: usize = getInputBuffer();
     if (inputEncoding == 0) {
         let p: u32 = pos - 1;
-        let b: u32 = load<u8>(getInputBuffer() + p);
+        let b: u32 = load<u8>(buf + p);
         if ((b & 0x80) == 0) return 1;
         let count: u32 = 1;
-        while (p > 0 && (load<u8>(getInputBuffer() + p) & 0xC0) == 0x80 && count < 4) {
+        while (p > 0 && (load<u8>(buf + p) & 0xC0) == 0x80 && count < 4) {
             p--;
             count++;
         }
-        let lead: u32 = load<u8>(getInputBuffer() + p);
+        let lead: u32 = load<u8>(buf + p);
         if ((lead & 0xC0) != 0x80) {
             let len = peekCharLen(p);
             if (p + len == pos) return len;
@@ -354,9 +358,9 @@ export function peekPrevCharLen(pos: u32): u32 {
         return 1;
     } else if (inputEncoding == 1 || inputEncoding == 2) {
         if (pos < 2) return pos;
-        let b0: u32 = inputEncoding == 1 ? load<u16>(getInputBuffer() + pos - 2) : bswap<u16>(load<u16>(getInputBuffer() + pos - 2));
+        let b0: u32 = inputEncoding == 1 ? load<u16>(buf + pos - 2) : bswap<u16>(load<u16>(buf + pos - 2));
         if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
-            let b1: u32 = inputEncoding == 1 ? load<u16>(getInputBuffer() + pos - 4) : bswap<u16>(load<u16>(getInputBuffer() + pos - 4));
+            let b1: u32 = inputEncoding == 1 ? load<u16>(buf + pos - 4) : bswap<u16>(load<u16>(buf + pos - 4));
             if (b1 >= 0xD800 && b1 <= 0xDBFF) return 4;
         }
         return 2;

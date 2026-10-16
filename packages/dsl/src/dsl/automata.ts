@@ -46,7 +46,18 @@ export class LRAutomaton {
   /** O(1) state lookup by canonical core item signature to prevent duplicate states. */
   private stateIndex = new Map<string, LRState>();
 
+  /** Pre-indexed productions by left-hand side non-terminal. */
+  private prodsByLhs = new Map<SymbolName, Production[]>();
+
   constructor(public grammar: NormalizedGrammar) {
+    for (const prod of this.grammar.productions) {
+      let list = this.prodsByLhs.get(prod.left);
+      if (!list) {
+        list = [];
+        this.prodsByLhs.set(prod.left, list);
+      }
+      list.push(prod);
+    }
     this.computeFirstSets();
     this.buildLR0();
     this.computeLALR1Lookaheads();
@@ -122,45 +133,39 @@ export class LRAutomaton {
     const I0 = new LRState(0);
     I0.items = this.closure([startItem]);
     this.states.push(I0);
-    this.stateIndex.set(this.itemSetKey(I0.items), I0);
+    this.stateIndex.set(this.itemSetKey([startItem]), I0);
 
-    // 2. Build states iteratively
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (let i = 0; i < this.states.length; i++) {
-        const state = this.states[i];
+    // 2. Build states iteratively in a single worklist pass
+    for (let i = 0; i < this.states.length; i++) {
+      const state = this.states[i];
 
-        const nextSymbols = new Set<SymbolName>();
+      const nextSymbols = new Set<SymbolName>();
+      for (const item of state.items) {
+        if (item.dot < item.production.right.length) {
+          nextSymbols.add(item.production.right[item.dot]);
+        }
+      }
+
+      for (const sym of nextSymbols) {
+        const nextItems: LR0Item[] = [];
         for (const item of state.items) {
-          if (item.dot < item.production.right.length) {
-            nextSymbols.add(item.production.right[item.dot]);
+          if (item.dot < item.production.right.length && item.production.right[item.dot] === sym) {
+            nextItems.push({ production: item.production, dot: item.dot + 1, lookahead: new Set() });
           }
         }
 
-        for (const sym of nextSymbols) {
-          const nextItems: LR0Item[] = [];
-          for (const item of state.items) {
-            if (item.dot < item.production.right.length && item.production.right[item.dot] === sym) {
-              nextItems.push({ production: item.production, dot: item.dot + 1, lookahead: new Set() });
-            }
-          }
-
-          const closureItems = this.closure(nextItems);
-          const key = this.itemSetKey(closureItems);
-
-          // O(1) state lookup by canonical key
-          let targetState = this.stateIndex.get(key);
-          if (!targetState) {
-            targetState = new LRState(this.states.length);
-            targetState.items = closureItems;
-            this.states.push(targetState);
-            this.stateIndex.set(key, targetState);
-            changed = true;
-          }
-
-          state.transitions.set(sym, targetState);
+        // Key by kernel items before computing closure: two LR(0) states have identical
+        // closures if and only if they have identical kernel items.
+        const key = this.itemSetKey(nextItems);
+        let targetState = this.stateIndex.get(key);
+        if (!targetState) {
+          targetState = new LRState(this.states.length);
+          targetState.items = this.closure(nextItems);
+          this.states.push(targetState);
+          this.stateIndex.set(key, targetState);
         }
+
+        state.transitions.set(sym, targetState);
       }
     }
   }
@@ -230,15 +235,7 @@ export class LRAutomaton {
     const includes = new Map<string, string[]>();
     for (const k of allKeys) includes.set(k, []);
 
-    const prodsByLhs = new Map<string, Production[]>();
-    for (const prod of this.grammar.productions) {
-      let list = prodsByLhs.get(prod.left);
-      if (!list) {
-        list = [];
-        prodsByLhs.set(prod.left, list);
-      }
-      list.push(prod);
-    }
+    const prodsByLhs = this.prodsByLhs;
 
     const lookback = new Map<string, string[]>();
 
@@ -448,21 +445,24 @@ export class LRAutomaton {
 
   private closure(items: LR0Item[]): LR0Item[] {
     const result = [...items];
-    let changed = true;
+    const expandedNonTerminals = new Set<SymbolName>();
+    const hasDotZeroProd = new Set<number>();
+    for (const item of items) {
+      if (item.dot === 0) hasDotZeroProd.add(item.production.id);
+    }
 
-    while (changed) {
-      changed = false;
-      for (let i = 0; i < result.length; i++) {
-        const item = result[i];
-        if (item.dot < item.production.right.length) {
-          const nextSym = item.production.right[item.dot];
-          if (this.grammar.nonTerminals.has(nextSym)) {
-            const prods = this.grammar.productions.filter((p) => p.left === nextSym);
+    for (let i = 0; i < result.length; i++) {
+      const item = result[i];
+      if (item.dot < item.production.right.length) {
+        const nextSym = item.production.right[item.dot];
+        if (!expandedNonTerminals.has(nextSym) && this.grammar.nonTerminals.has(nextSym)) {
+          expandedNonTerminals.add(nextSym);
+          const prods = this.prodsByLhs.get(nextSym);
+          if (prods) {
             for (const p of prods) {
-              const newItem: LR0Item = { production: p, dot: 0, lookahead: new Set() };
-              if (!this.hasItem(result, newItem)) {
-                result.push(newItem);
-                changed = true;
+              if (!hasDotZeroProd.has(p.id)) {
+                hasDotZeroProd.add(p.id);
+                result.push({ production: p, dot: 0, lookahead: new Set() });
               }
             }
           }
@@ -470,10 +470,6 @@ export class LRAutomaton {
       }
     }
     return result;
-  }
-
-  private hasItem(items: LR0Item[], item: LR0Item): boolean {
-    return items.some((i) => i.production.id === item.production.id && i.dot === item.dot);
   }
 }
 

@@ -102,12 +102,14 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
       if (lhs != 0 && rhs != 0) {
         const lhsClass = resolveDottedComponentClass(db, enclosingClass, lhs, $);
         const rhsClass = resolveDottedComponentClass(db, enclosingClass, rhs, $);
-        const lhsExp = lhsClass != 0 && isExpandableConnector(db, lhsClass, $);
-        const rhsExp = rhsClass != 0 && isExpandableConnector(db, rhsClass, $);
-        if (lhsExp !== rhsExp) {
-          const expRef = lhsExp ? lhs : rhs;
-          const nonExpRef = lhsExp ? rhs : lhs;
-          db.diagnostic(node, expRef, nonExpRef);
+        if (lhsClass != 0 && rhsClass != 0) {
+          const lhsExp = isExpandableConnector(db, lhsClass, $);
+          const rhsExp = isExpandableConnector(db, rhsClass, $);
+          if (lhsExp !== rhsExp) {
+            const expRef = lhsExp ? lhs : rhs;
+            const nonExpRef = lhsExp ? rhs : lhs;
+            db.diagnostic(node, expRef, nonExpRef);
+          }
         }
       }
     },

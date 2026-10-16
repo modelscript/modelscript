@@ -2,7 +2,9 @@
 
 import eslint from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
 import { defineConfig } from "eslint/config";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 
 const licenseHeaderPlugin = {
@@ -48,12 +50,14 @@ const licenseHeaderPlugin = {
 export default defineConfig([
   {
     ignores: [
-      "**/.react-router/**",
+      "**/.cache/**",
       "**/.vitepress/cache/**",
       "**/.vitepress/dist/**",
       "**/dist/**",
       "**/build/**",
       "**/coverage/**",
+      "**/ctrf/**",
+      "**/data/**",
       "**/vendor/**",
       "**/as-pect.config.js",
       "packages/dsl/bin/**",
@@ -65,20 +69,27 @@ export default defineConfig([
       "packages/runtime/build/**",
       "packages/dsl/src/codegen/runtime/**",
       "packages/runtime/tests/wasm/**",
+      "packages/exchange/validation/fmi/exported_fmus/**",
+      "packages/exchange/validation/fmi/reference_fmus/**",
+      "packages/exchange/validation/fmi/reference_fmus_repo/**",
+      "**/scratch*",
       "**/scratch*/**",
       "packages/simulate/src/wasm/**",
       "languages/**/src-gen/**",
       "**/src-gen/**",
+      "**/as-gen/**",
       "languages/**/bindings/**",
       "**/grammar.js",
       "apps/ide/vscode-web/**",
       "apps/ide/models/**",
+      "apps/web/public/**",
     ],
   },
   {
     plugins: {
       "modelscript-headers": licenseHeaderPlugin as any,
       "react-hooks": reactHooks as any,
+      "react-refresh": reactRefresh as any,
     },
     rules: {
       "modelscript-headers/header-presence": "error",
@@ -89,79 +100,19 @@ export default defineConfig([
   tseslint.configs.stylistic,
   {
     languageOptions: {
+      globals: {
+        ...globals.node,
+      },
       parserOptions: {
-        projectService: {
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 500,
-          allowDefaultProject: [
-            "languages/modelica/tests/*.ts",
-            "apps/api/scripts/*.ts",
-            "apps/ide/scripts/*.ts",
-            "languages/sysml2/scripts/*.ts",
-            "packages/lsp/scripts/*.ts",
-            "packages/examples/drone-chassis/cad/drone.mcad.ts",
-            "packages/examples/drone-chassis/evaluate-manufacturing.ts",
-            "apps/cli/tests/*.ts",
-            "apps/web/tests/*.ts",
-            "languages/ssp/tests/*.ts",
-            "languages/step/tests/*.ts",
-            "languages/sysml2/tests/*.ts",
-            "languages/cfd/tests/*.ts",
-            "languages/fea/tests/*.ts",
-            "languages/csv/tests/*.ts",
-            "languages/modelscript/tests/*.ts",
-            "languages/pscad/tests/*.ts",
-            "apps/api/tests/*.ts",
-            "scripts/benchmark-polyglot-incremental.ts",
-          ],
-        },
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },
-  },
-  {
-    files: ["eslint.config.ts", "scripts/**/*.ts", "packages/exchange/validation/**/*.ts", "apps/cli/tests/**/*.ts"],
     rules: {
-      "@typescript-eslint/no-non-null-assertion": "off",
-      "@typescript-eslint/consistent-generic-constructors": "off",
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": "off",
-      "@typescript-eslint/prefer-for-of": "off",
-      "no-useless-escape": "off",
-      "no-useless-assignment": "off",
-      "preserve-caught-error": "off",
-    },
-  },
-  {
-    files: ["apps/cli/src/commands/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-empty-object-type": "off",
-      "@typescript-eslint/no-empty-function": "off",
-      "@typescript-eslint/no-unused-vars": "off",
-      "prefer-const": "off",
-      "no-empty": "off",
-    },
-  },
-  {
-    files: ["languages/**/tests/**/*.ts", "packages/**/tests/**/*.ts", "apps/**/tests/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": "off",
-      "@typescript-eslint/no-empty-function": "off",
-      "@typescript-eslint/no-empty-object-type": "off",
-      "@typescript-eslint/no-non-null-assertion": "off",
-      "no-empty": "off",
-      "prefer-const": "off",
-    },
-  },
-  {
-    files: [
-      "packages/*/src/**/*.{ts,tsx}",
-      "languages/**/src/**/*.{ts,tsx}",
-      "languages/**/transformers/**/*.ts",
-      "apps/*/src/**/*.{ts,tsx}",
-    ],
-    rules: {
+      "@typescript-eslint/await-thenable": "off",
+      "@typescript-eslint/no-for-in-array": "error",
+      "@typescript-eslint/no-implied-eval": "off",
+      "@typescript-eslint/only-throw-error": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-unused-vars": [
@@ -184,6 +135,71 @@ export default defineConfig([
     },
     linterOptions: {
       reportUnusedDisableDirectives: "off",
+    },
+  },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+    },
+    rules: {
+      ...reactHooks.configs.flat.recommended.rules,
+      "react-hooks/set-state-in-effect": "off",
+      "react-refresh/only-export-components": "warn",
+    },
+  },
+  {
+    files: ["apps/web/src/components/morsel/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "no-useless-assignment": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/immutability": "off",
+    },
+  },
+  {
+    files: [
+      "eslint.config.ts",
+      "scripts/**/*.{ts,js,cjs,mjs}",
+      "apps/**/scripts/**/*.{ts,js,cjs,mjs}",
+      "packages/**/scripts/**/*.{ts,js,cjs,mjs}",
+      "languages/**/scripts/**/*.{ts,js,cjs,mjs}",
+      "packages/exchange/validation/**/*.{ts,js,cjs,mjs}",
+      "apps/**/tests/**/*.{ts,js,cjs,mjs}",
+      "packages/**/tests/**/*.{ts,js,cjs,mjs}",
+      "languages/**/tests/**/*.{ts,js,cjs,mjs}",
+      "packages/examples/**/*.{ts,js,cjs,mjs}",
+    ],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/consistent-generic-constructors": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/no-implied-eval": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/prefer-for-of": "off",
+      "no-useless-escape": "off",
+      "no-useless-assignment": "off",
+      "preserve-caught-error": "off",
+      "require-yield": "off",
+      "prefer-const": "off",
+      "no-empty": "off",
+    },
+  },
+  {
+    files: ["apps/cli/src/commands/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "prefer-const": "off",
+      "no-empty": "off",
     },
   },
 ]);

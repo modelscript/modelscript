@@ -1,0 +1,473 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * @modelscript/cad — 3D Binary Space Partitioning (BSP) CSG Clipping Engine & Mesh Metrics.
+ *
+ * Implements exact 3D polygon clipping for Union, Subtract (Difference), and Intersect
+ * boolean operations on triangulated manifold boundary representations, plus exact
+ * signed tetrahedral volume and surface area computation.
+ */
+
+import type { ManifoldSurfaceMesh } from "./manifold-worker.js";
+import type { Vec3 } from "./types.js";
+
+const CSG_EPSILON = 1e-5;
+const MAX_BSP_DEPTH = 64;
+
+export interface CsgVertex {
+  pos: [number, number, number];
+  normal: [number, number, number];
+}
+
+export interface CsgPlane {
+  normal: [number, number, number];
+  w: number;
+}
+
+export interface CsgPolygon {
+  vertices: CsgVertex[];
+  plane: CsgPlane;
+  tagIndex: number;
+}
+
+function cloneVertex(v: CsgVertex): CsgVertex {
+  return {
+    pos: [v.pos[0], v.pos[1], v.pos[2]],
+    normal: [v.normal[0], v.normal[1], v.normal[2]],
+  };
+}
+
+function flipVertex(v: CsgVertex): CsgVertex {
+  return {
+    pos: [v.pos[0], v.pos[1], v.pos[2]],
+    normal: [-v.normal[0], -v.normal[1], -v.normal[2]],
+  };
+}
+
+function interpolateVertex(a: CsgVertex, b: CsgVertex, t: number): CsgVertex {
+  const px = a.pos[0] + (b.pos[0] - a.pos[0]) * t;
+  const py = a.pos[1] + (b.pos[1] - a.pos[1]) * t;
+  const pz = a.pos[2] + (b.pos[2] - a.pos[2]) * t;
+
+  const nx = a.normal[0] + (b.normal[0] - a.normal[0]) * t;
+  const ny = a.normal[1] + (b.normal[1] - a.normal[1]) * t;
+  const nz = a.normal[2] + (b.normal[2] - a.normal[2]) * t;
+  const nLen = Math.hypot(nx, ny, nz) || 1.0;
+
+  return {
+    pos: [px, py, pz],
+    normal: [nx / nLen, ny / nLen, nz / nLen],
+  };
+}
+
+export function planeFromPoints(a: Vec3, b: Vec3, c: Vec3): CsgPlane | null {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const uz = b[2] - a[2];
+  const vx = c[0] - a[0];
+  const vy = c[1] - a[1];
+  const vz = c[2] - a[2];
+
+  const nx = uy * vz - uz * vy;
+  const ny = uz * vx - ux * vz;
+  const nz = ux * vy - uy * vx;
+  const len = Math.hypot(nx, ny, nz);
+  if (len <= 1e-11) return null;
+
+  const normal: [number, number, number] = [nx / len, ny / len, nz / len];
+  const w = normal[0] * a[0] + normal[1] * a[1] + normal[2] * a[2];
+  return { normal, w };
+}
+
+function flipPlane(p: CsgPlane): CsgPlane {
+  return {
+    normal: [-p.normal[0], -p.normal[1], -p.normal[2]],
+    w: -p.w,
+  };
+}
+
+export function createPolygon(vertices: CsgVertex[], tagIndex: number, plane?: CsgPlane): CsgPolygon | null {
+  if (vertices.length < 3) return null;
+  if (plane) {
+    return {
+      vertices,
+      plane: {
+        normal: [plane.normal[0], plane.normal[1], plane.normal[2]],
+        w: plane.w,
+      },
+      tagIndex,
+    };
+  }
+  let computedPlane = planeFromPoints(vertices[0].pos, vertices[1].pos, vertices[2].pos);
+  if (!computedPlane) return null;
+
+  // Ensure geometric winding and plane normal match the vertex outward normal if provided
+  const vn = vertices[0].normal;
+  const dot = computedPlane.normal[0] * vn[0] + computedPlane.normal[1] * vn[1] + computedPlane.normal[2] * vn[2];
+  if (dot < 0) {
+    vertices.reverse();
+    computedPlane = flipPlane(computedPlane);
+  }
+
+  return {
+    vertices,
+    plane: computedPlane,
+    tagIndex,
+  };
+}
+
+function clonePolygon(p: CsgPolygon): CsgPolygon {
+  return {
+    vertices: p.vertices.map(cloneVertex),
+    plane: {
+      normal: [p.plane.normal[0], p.plane.normal[1], p.plane.normal[2]],
+      w: p.plane.w,
+    },
+    tagIndex: p.tagIndex,
+  };
+}
+
+function flipPolygon(p: CsgPolygon): void {
+  p.vertices.reverse();
+  for (let i = 0; i < p.vertices.length; i++) {
+    p.vertices[i] = flipVertex(p.vertices[i]);
+  }
+  p.plane = flipPlane(p.plane);
+}
+
+const COPLANAR = 0;
+const FRONT = 1;
+const BACK = 2;
+const SPANNING = 3;
+
+function splitPolygon(
+  plane: CsgPlane,
+  polygon: CsgPolygon,
+  coplanarFront: CsgPolygon[],
+  coplanarBack: CsgPolygon[],
+  front: CsgPolygon[],
+  back: CsgPolygon[],
+): void {
+  let polygonType = 0;
+  const types: number[] = [];
+
+  const nx = plane.normal[0];
+  const ny = plane.normal[1];
+  const nz = plane.normal[2];
+  const w = plane.w;
+
+  for (let i = 0; i < polygon.vertices.length; i++) {
+    const pos = polygon.vertices[i].pos;
+    const t = nx * pos[0] + ny * pos[1] + nz * pos[2] - w;
+    const type = t < -CSG_EPSILON ? BACK : t > CSG_EPSILON ? FRONT : COPLANAR;
+    polygonType |= type;
+    types.push(type);
+  }
+
+  switch (polygonType) {
+    case COPLANAR: {
+      const dot = nx * polygon.plane.normal[0] + ny * polygon.plane.normal[1] + nz * polygon.plane.normal[2];
+      if (dot > 0) {
+        coplanarFront.push(polygon);
+      } else {
+        coplanarBack.push(polygon);
+      }
+      break;
+    }
+    case FRONT: {
+      front.push(polygon);
+      break;
+    }
+    case BACK: {
+      back.push(polygon);
+      break;
+    }
+    case SPANNING: {
+      const f: CsgVertex[] = [];
+      const b: CsgVertex[] = [];
+      const len = polygon.vertices.length;
+      for (let i = 0; i < len; i++) {
+        const j = (i + 1) % len;
+        const ti = types[i];
+        const tj = types[j];
+        const vi = polygon.vertices[i];
+        const vj = polygon.vertices[j];
+
+        if (ti !== BACK) f.push(vi);
+        if (ti !== FRONT) b.push(ti !== BACK ? cloneVertex(vi) : vi);
+
+        if ((ti | tj) === SPANNING) {
+          const d0 = nx * vi.pos[0] + ny * vi.pos[1] + nz * vi.pos[2];
+          const d1 = nx * vj.pos[0] + ny * vj.pos[1] + nz * vj.pos[2];
+          const denom = d1 - d0;
+          const t = Math.abs(denom) > 1e-12 ? Math.max(0, Math.min(1, (w - d0) / denom)) : 0.5;
+          const vMid = interpolateVertex(vi, vj, t);
+          f.push(vMid);
+          b.push(cloneVertex(vMid));
+        }
+      }
+      if (f.length >= 3) {
+        const fp = createPolygon(f, polygon.tagIndex, polygon.plane);
+        if (fp) front.push(fp);
+      }
+      if (b.length >= 3) {
+        const bp = createPolygon(b, polygon.tagIndex, polygon.plane);
+        if (bp) back.push(bp);
+      }
+      break;
+    }
+  }
+}
+
+export class CsgBspNode {
+  private plane: CsgPlane | null = null;
+  private front: CsgBspNode | null = null;
+  private back: CsgBspNode | null = null;
+  private polygons: CsgPolygon[] = [];
+
+  constructor(polygons?: CsgPolygon[]) {
+    if (polygons && polygons.length > 0) {
+      this.build(polygons, 0);
+    }
+  }
+
+  public invert(): void {
+    for (let i = 0; i < this.polygons.length; i++) {
+      flipPolygon(this.polygons[i]);
+    }
+    if (this.plane) {
+      this.plane = flipPlane(this.plane);
+    }
+    if (this.front) this.front.invert();
+    if (this.back) this.back.invert();
+    const temp = this.front;
+    this.front = this.back;
+    this.back = temp;
+  }
+
+  public clipPolygons(polygons: CsgPolygon[]): CsgPolygon[] {
+    if (!this.plane) return polygons.slice();
+    let front: CsgPolygon[] = [];
+    let back: CsgPolygon[] = [];
+
+    for (let i = 0; i < polygons.length; i++) {
+      splitPolygon(this.plane, polygons[i], front, back, front, back);
+    }
+
+    if (this.front) {
+      front = this.front.clipPolygons(front);
+    }
+    if (this.back) {
+      back = this.back.clipPolygons(back);
+    } else {
+      back = [];
+    }
+
+    return front.concat(back);
+  }
+
+  public clipTo(bsp: CsgBspNode): void {
+    this.polygons = bsp.clipPolygons(this.polygons);
+    if (this.front) this.front.clipTo(bsp);
+    if (this.back) this.back.clipTo(bsp);
+  }
+
+  public allPolygons(): CsgPolygon[] {
+    let polys = this.polygons.slice();
+    if (this.front) polys = polys.concat(this.front.allPolygons());
+    if (this.back) polys = polys.concat(this.back.allPolygons());
+    return polys;
+  }
+
+  public build(polygons: CsgPolygon[], depth = 0): void {
+    if (polygons.length === 0) return;
+    if (depth >= MAX_BSP_DEPTH) {
+      for (const p of polygons) this.polygons.push(p);
+      return;
+    }
+
+    if (!this.plane) {
+      // Choose a balanced splitting plane near the middle of the polygon list
+      const midIdx = Math.floor(polygons.length / 2);
+      this.plane = {
+        normal: [polygons[midIdx].plane.normal[0], polygons[midIdx].plane.normal[1], polygons[midIdx].plane.normal[2]],
+        w: polygons[midIdx].plane.w,
+      };
+    }
+
+    const front: CsgPolygon[] = [];
+    const back: CsgPolygon[] = [];
+
+    for (let i = 0; i < polygons.length; i++) {
+      splitPolygon(this.plane, polygons[i], this.polygons, this.polygons, front, back);
+    }
+
+    if (front.length > 0) {
+      if (!this.front) this.front = new CsgBspNode();
+      this.front.build(front, depth + 1);
+    }
+    if (back.length > 0) {
+      if (!this.back) this.back = new CsgBspNode();
+      this.back.build(back, depth + 1);
+    }
+  }
+}
+
+interface PolyBounds {
+  minX: number;
+  minY: number;
+  minZ: number;
+  maxX: number;
+  maxY: number;
+  maxZ: number;
+}
+
+function computePolygonBounds(polys: CsgPolygon[]): PolyBounds {
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
+  for (let i = 0; i < polys.length; i++) {
+    const verts = polys[i].vertices;
+    for (let j = 0; j < verts.length; j++) {
+      const p = verts[j].pos;
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+      if (p[2] < minZ) minZ = p[2];
+      if (p[2] > maxZ) maxZ = p[2];
+    }
+  }
+  return { minX, minY, minZ, maxX, maxY, maxZ };
+}
+
+function boundsOverlap(a: PolyBounds, b: PolyBounds): boolean {
+  return (
+    a.maxX >= b.minX - CSG_EPSILON &&
+    a.minX <= b.maxX + CSG_EPSILON &&
+    a.maxY >= b.minY - CSG_EPSILON &&
+    a.minY <= b.maxY + CSG_EPSILON &&
+    a.maxZ >= b.minZ - CSG_EPSILON &&
+    a.minZ <= b.maxZ + CSG_EPSILON
+  );
+}
+
+export function csgUnion(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): CsgPolygon[] {
+  if (leftPolys.length === 0) return rightPolys.map(clonePolygon);
+  if (rightPolys.length === 0) return leftPolys.map(clonePolygon);
+
+  const boundsA = computePolygonBounds(leftPolys);
+  const boundsB = computePolygonBounds(rightPolys);
+  if (!boundsOverlap(boundsA, boundsB)) {
+    return [...leftPolys.map(clonePolygon), ...rightPolys.map(clonePolygon)];
+  }
+
+  const a = new CsgBspNode(leftPolys.map(clonePolygon));
+  const b = new CsgBspNode(rightPolys.map(clonePolygon));
+  a.clipTo(b);
+  b.clipTo(a);
+  b.invert();
+  b.clipTo(a);
+  b.invert();
+  a.build(b.allPolygons());
+  return a.allPolygons();
+}
+
+export function csgSubtract(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): CsgPolygon[] {
+  if (leftPolys.length === 0) return [];
+  if (rightPolys.length === 0) return leftPolys.map(clonePolygon);
+
+  const boundsA = computePolygonBounds(leftPolys);
+  const boundsB = computePolygonBounds(rightPolys);
+  if (!boundsOverlap(boundsA, boundsB)) {
+    return leftPolys.map(clonePolygon);
+  }
+
+  const a = new CsgBspNode(leftPolys.map(clonePolygon));
+  const b = new CsgBspNode(rightPolys.map(clonePolygon));
+  a.invert();
+  a.clipTo(b);
+  b.clipTo(a);
+  b.invert();
+  b.clipTo(a);
+  b.invert();
+  a.build(b.allPolygons());
+  a.invert();
+  return a.allPolygons();
+}
+
+export function csgIntersect(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): CsgPolygon[] {
+  if (leftPolys.length === 0 || rightPolys.length === 0) return [];
+
+  const boundsA = computePolygonBounds(leftPolys);
+  const boundsB = computePolygonBounds(rightPolys);
+  if (!boundsOverlap(boundsA, boundsB)) {
+    return [];
+  }
+
+  const a = new CsgBspNode(leftPolys.map(clonePolygon));
+  const b = new CsgBspNode(rightPolys.map(clonePolygon));
+  a.invert();
+  b.clipTo(a);
+  b.invert();
+  a.clipTo(b);
+  b.clipTo(a);
+  a.build(b.allPolygons());
+  a.invert();
+  return a.allPolygons();
+}
+
+/**
+ * Computes exact signed volume and total surface area of a watertight triangle mesh
+ * using the divergence theorem (signed tetrahedral volume from the origin).
+ */
+export function computeMeshVolumeAndArea(mesh: ManifoldSurfaceMesh): {
+  volume: number;
+  surfaceArea: number;
+} {
+  const { vertices, indices } = mesh;
+  let signedVol6 = 0;
+  let totalArea = 0;
+
+  for (let i = 0; i < indices.length; i += 3) {
+    const i0 = indices[i] * 3;
+    const i1 = indices[i + 1] * 3;
+    const i2 = indices[i + 2] * 3;
+
+    const x0 = vertices[i0],
+      y0 = vertices[i0 + 1],
+      z0 = vertices[i0 + 2];
+    const x1 = vertices[i1],
+      y1 = vertices[i1 + 1],
+      z1 = vertices[i1 + 2];
+    const x2 = vertices[i2],
+      y2 = vertices[i2 + 1],
+      z2 = vertices[i2 + 2];
+
+    // Cross product p1 x p2 for signed tetrahedron volume with origin
+    const cx = y1 * z2 - z1 * y2;
+    const cy = z1 * x2 - x1 * z2;
+    const cz = x1 * y2 - y1 * x2;
+    signedVol6 += x0 * cx + y0 * cy + z0 * cz;
+
+    // Triangle surface area = 0.5 * ||(p1 - p0) x (p2 - p0)||
+    const ux = x1 - x0,
+      uy = y1 - y0,
+      uz = z1 - z0;
+    const vx = x2 - x0,
+      vy = y2 - y0,
+      vz = z2 - z0;
+    const nx = uy * vz - uz * vy;
+    const ny = uz * vx - ux * vz;
+    const nz = ux * vy - uy * vx;
+    totalArea += 0.5 * Math.hypot(nx, ny, nz);
+  }
+
+  return {
+    volume: Math.abs(signedVol6) / 6.0,
+    surfaceArea: totalArea,
+  };
+}

@@ -201,6 +201,38 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       }
     }
 
+    // Also link wireless Data Label / XNode nets across signal and electrical ports
+    if (mod.wirelessNets) {
+      for (const [netLabel, portList] of Object.entries(mod.wirelessNets)) {
+        const connectedSignalOut = portList.find((id) => signalOutPortToBlockId.has(id));
+        if (connectedSignalOut) {
+          const srcBlockId = signalOutPortToBlockId.get(connectedSignalOut)!;
+          for (const pId of portList) {
+            if (pId !== connectedSignalOut && signalPortIds.has(pId)) {
+              signalPortSourceMap.set(pId, srcBlockId);
+            }
+          }
+        }
+        const elecIds = portList.filter((id) => !signalPortIds.has(id));
+        if (elecIds.length >= 2) {
+          const existingBusId = elecIds.map((id) => portToBusMap.get(id)).find((b) => b !== undefined);
+          const sharedBusId = existingBusId ?? qualifyId(netLabel);
+          if (!buses.has(sharedBusId) && sharedBusId !== "GND" && sharedBusId !== "0") {
+            buses.set(sharedBusId, {
+              id: sharedBusId,
+              name: sharedBusId,
+              baseKv: 230.0,
+              phaseCount: 3,
+              connectedBranchIds: [],
+            });
+          }
+          for (const pId of elecIds) {
+            portToBusMap.set(pId, sharedBusId);
+          }
+        }
+      }
+    }
+
     function getOrCreateBus(portId?: string, defaultPrefix = "Node"): string {
       if (portId && portToBusMap.has(portId)) {
         return portToBusMap.get(portId)!;
@@ -367,8 +399,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const xq = parseFloat(String(p["Xq"] ?? p["xq"] ?? "1.7"));
         const xdPrime = parseFloat(String(p["Xd_p"] ?? p["xdPrime"] ?? "0.3"));
         const xqPrime = parseFloat(String(p["Xq_p"] ?? p["xqPrime"] ?? "0.55"));
-        const xdSub = parseFloat(String(p["Xd_pp"] ?? p["xdSub"] ?? "0.2"));
-        const xqSub = parseFloat(String(p["Xq_pp"] ?? p["xqSub"] ?? "0.25"));
+        const xdSub = parseFloat(String(p["Xd_pp"] ?? p["Xd_sub"] ?? p["xdSub"] ?? "0.2"));
+        const xqSub = parseFloat(String(p["Xq_pp"] ?? p["Xq_sub"] ?? p["xqSub"] ?? "0.25"));
         const h = parseFloat(String(p["H"] ?? p["h"] ?? "3.5"));
         const d = parseFloat(String(p["D"] ?? p["d"] ?? "2.0"));
         const pm = parseFloat(String(p["Pm"] ?? p["pm"] ?? "0.8"));

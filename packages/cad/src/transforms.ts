@@ -99,12 +99,77 @@ export function mirrorMatrix(planeNormal: Vec3): Mat4 {
 
 // ── Transform constructors ───────────────────────────────────────────────
 
+export function mergeSourceMetadata(
+  inner?: SolidSourceMetadata,
+  outer?: SolidSourceMetadata,
+): SolidSourceMetadata | undefined {
+  if (!inner && !outer) return undefined;
+  if (!inner) {
+    if (!outer) return undefined;
+    return {
+      ...outer,
+      translateRange:
+        outer.translateRange ??
+        (outer.transformMethod === "translate" && outer.startByte !== undefined && outer.endByte !== undefined
+          ? { startByte: outer.startByte, endByte: outer.endByte }
+          : undefined),
+      rotateRange:
+        outer.rotateRange ??
+        (outer.transformMethod === "rotate" && outer.startByte !== undefined && outer.endByte !== undefined
+          ? { startByte: outer.startByte, endByte: outer.endByte }
+          : undefined),
+      scaleRange:
+        outer.scaleRange ??
+        (outer.transformMethod === "scale" && outer.startByte !== undefined && outer.endByte !== undefined
+          ? { startByte: outer.startByte, endByte: outer.endByte }
+          : undefined),
+    };
+  }
+  if (!outer) return inner;
+
+  const translateRange =
+    outer.translateRange ??
+    (outer.transformMethod === "translate" && outer.startByte !== undefined && outer.endByte !== undefined
+      ? { startByte: outer.startByte, endByte: outer.endByte }
+      : inner.translateRange);
+  const rotateRange =
+    outer.rotateRange ??
+    (outer.transformMethod === "rotate" && outer.startByte !== undefined && outer.endByte !== undefined
+      ? { startByte: outer.startByte, endByte: outer.endByte }
+      : inner.rotateRange);
+  const scaleRange =
+    outer.scaleRange ??
+    (outer.transformMethod === "scale" && outer.startByte !== undefined && outer.endByte !== undefined
+      ? { startByte: outer.startByte, endByte: outer.endByte }
+      : inner.scaleRange);
+
+  return {
+    parameterName: outer.parameterName ?? inner.parameterName,
+    dimensionParams: outer.dimensionParams ?? inner.dimensionParams,
+    dimensions: outer.dimensions ?? inner.dimensions,
+    transformMethod: outer.transformMethod ?? inner.transformMethod,
+    argIndex: outer.argIndex ?? inner.argIndex,
+    startByte: outer.startByte ?? inner.startByte,
+    endByte: outer.endByte ?? inner.endByte,
+    primitiveStartByte: outer.primitiveStartByte ?? inner.primitiveStartByte,
+    primitiveEndByte: outer.primitiveEndByte ?? inner.primitiveEndByte,
+    translateRange,
+    rotateRange,
+    scaleRange,
+    translation: outer.translation ?? inner.translation,
+    rotation: outer.rotation ?? inner.rotation,
+    scale: outer.scale ?? inner.scale,
+    color: outer.color ?? inner.color,
+  };
+}
+
 function wrapTransform(
   child: Solid,
   matrix: Mat4,
   namePrefix: string,
   sourceMetadata?: SolidSourceMetadata,
 ): TransformSolid {
+  const mergedMeta = mergeSourceMetadata(child.sourceMetadata, sourceMetadata);
   // If the child is already a transform, compose the matrices
   if (child.kind === SolidKind.Transform) {
     return Object.freeze({
@@ -112,7 +177,7 @@ function wrapTransform(
       name: child.name,
       child: child.child,
       matrix: mat4Multiply(matrix, child.matrix),
-      sourceMetadata: sourceMetadata ?? child.sourceMetadata,
+      sourceMetadata: mergedMeta,
     });
   }
   return Object.freeze({
@@ -120,7 +185,7 @@ function wrapTransform(
     name: `${namePrefix}_${child.name}`,
     child,
     matrix,
-    sourceMetadata: sourceMetadata ?? child.sourceMetadata,
+    sourceMetadata: mergedMeta,
   });
 }
 

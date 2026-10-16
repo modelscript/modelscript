@@ -220,8 +220,11 @@ function cleanFlatText(text: string): string {
   if (cleaned.startsWith("true\n") || cleaned.startsWith("true\r\n")) {
     cleaned = cleaned.replace(/^true\r?\n/, "").trim();
   }
-  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-    cleaned = cleaned.slice(1, -1);
+  if (cleaned.startsWith('"')) {
+    cleaned = cleaned.slice(1);
+  }
+  if (cleaned.endsWith('"')) {
+    cleaned = cleaned.slice(0, -1);
   }
   cleaned = cleaned.replace(/\\"/g, '"');
   return cleaned;
@@ -231,21 +234,31 @@ function parseFlatModel(rawText: string): { vars: string[]; eqs: string[] } {
   const text = cleanFlatText(rawText);
   const vars: string[] = [];
   const eqs: string[] = [];
+  let inClass = false;
   let inEquation = false;
 
   for (const rawLine of text.split("\n")) {
-    const line = rawLine.trim();
+    const line = rawLine.trim().replace(/^"/, "");
     if (!line || line.startsWith("//")) continue;
-    if (line === "equation") {
+    if (!inClass) {
+      if (line.startsWith("class ")) {
+        inClass = true;
+      }
+      continue;
+    }
+    if (line === "equation" || line === "initial equation" || line === "algorithm" || line === "initial algorithm") {
       inEquation = true;
       continue;
     }
-    if (line.startsWith("end ")) {
+    if (line === "public" || line === "protected") {
+      continue;
+    }
+    if (line.startsWith("end ") && !/^end\s+(when|if|for|while)\b/.test(line)) {
       break;
     }
     if (inEquation) {
       eqs.push(line);
-    } else if (!line.startsWith("class ")) {
+    } else {
       vars.push(line);
     }
   }

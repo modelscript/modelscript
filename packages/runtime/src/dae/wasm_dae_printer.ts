@@ -533,6 +533,7 @@ export class ArenaDAEPrinter {
           if (
             this.omcCompatibility &&
             !isStringConcat &&
+            (a.classKind !== "function" || Boolean(a.extensionMetadata?.isOldFrontend)) &&
             (op === BinOp.Mul || this.isInsideAlgorithm || !hasCall) &&
             (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))
           ) {
@@ -597,7 +598,7 @@ export class ArenaDAEPrinter {
                   if (rx !== ry) return rx - ry;
                   const nx = a.interner.resolve(a.getExprData1(x)) || "";
                   const ny = a.interner.resolve(a.getExprData1(y)) || "";
-                  if (!nx.includes("[") && !ny.includes("[")) {
+                  if (!nx.includes("[") && !ny.includes("[") && !nx.includes(".") && !ny.includes(".")) {
                     return nx.localeCompare(ny);
                   }
                   return 0;
@@ -673,7 +674,15 @@ export class ArenaDAEPrinter {
             } else {
               const lName = a.interner.resolve(a.getExprData1(lhs));
               const rName = a.interner.resolve(a.getExprData1(rhs));
-              if (lName && rName && !lName.includes("[") && !rName.includes("[") && lName.localeCompare(rName) > 0) {
+              if (
+                lName &&
+                rName &&
+                !lName.includes("[") &&
+                !rName.includes("[") &&
+                !lName.includes(".") &&
+                !rName.includes(".") &&
+                lName.localeCompare(rName) > 0
+              ) {
                 finalLhs = rhs;
                 finalRhs = lhs;
               }
@@ -1237,6 +1246,37 @@ export class ArenaDAEPrinter {
 
   /** Print an inline body equation (from when/for/if side-tables). */
   private printInlineEq(body: { kind: EqKind; lhsExprId: number; rhsExprId: number }): void {
+    const anyBody = body as any;
+    if (body.kind === EqKind.If && Array.isArray(anyBody.thenEquations)) {
+      this.out.write(this.indent() + "if ");
+      this.printExpr(body.lhsExprId);
+      this.out.write(" then\n");
+      this.depth++;
+      for (const sub of anyBody.thenEquations) {
+        this.printInlineEq(sub);
+      }
+      this.depth--;
+      for (const clause of anyBody.elseIfClauses || []) {
+        this.out.write(this.indent() + "elseif ");
+        this.printExpr(clause.conditionExprId);
+        this.out.write(" then\n");
+        this.depth++;
+        for (const sub of clause.bodyEquations) {
+          this.printInlineEq(sub);
+        }
+        this.depth--;
+      }
+      if (Array.isArray(anyBody.elseEquations) && anyBody.elseEquations.length > 0) {
+        this.out.write(this.indent() + "else\n");
+        this.depth++;
+        for (const sub of anyBody.elseEquations) {
+          this.printInlineEq(sub);
+        }
+        this.depth--;
+      }
+      this.out.write(this.indent() + "end if;\n");
+      return;
+    }
     this.out.write(this.indent());
     if (body.kind === EqKind.FunctionCall || body.kind === EqKind.InitialFunctionCall) {
       this.printExpr(body.lhsExprId);
@@ -1882,17 +1922,29 @@ export class ArenaDAEPrinter {
       ) {
         return false;
       }
+      if ((fn as any).wasInlined) {
+        return false;
+      }
       if (this.omcCompatibility && !isOldFrontend) {
         if (fn.name.includes("$")) {
           return false;
         }
         if (dae.classKind !== "function") {
           const baseName = fn.name.split(".").pop()!;
+          const parentTypeName =
+            (baseName === "constructor" || baseName === "destructor") && fn.name.includes(".")
+              ? fn.name.slice(0, fn.name.lastIndexOf("."))
+              : "";
           const isCalled =
             activeCalledFnNames.has(fn.name) ||
             activeCalledFnNames.has(baseName) ||
             Array.from(activeCalledFnNames).some((c) => c.endsWith(`.${fn.name}`) || c.endsWith(`.${baseName}`));
-          const isTypeUsed = usedTypeNames.has(fn.name) || usedTypeNames.has(baseName);
+          const isTypeUsed =
+            usedTypeNames.has(fn.name) ||
+            usedTypeNames.has(baseName) ||
+            (parentTypeName !== "" &&
+              (usedTypeNames.has(parentTypeName) || usedTypeNames.has(parentTypeName.split(".").pop()!))) ||
+            Boolean((fn as any).isDerivativeFunction);
           const hasActiveOp =
             Boolean((fn as any).isOperatorRecord || fn.extensionMetadata?.isOperatorRecord) &&
             Array.from(activeCalledFnNames).some((c) => c.startsWith(`${fn.name}.'`) || c.startsWith(`${baseName}.'`));

@@ -10,6 +10,7 @@ export const sysml2Views: Record<string, DiagramProjectionConfig> = {
     label: "Block Definition Diagram",
     description: "System taxonomy, definitions, classifications, and general structure",
     excludeRules: ["PartUsage", "PortUsage", "StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage"],
+    filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
   },
   IBD: {
     label: "Internal Block Diagram",
@@ -22,6 +23,7 @@ export const sysml2Views: Record<string, DiagramProjectionConfig> = {
       "ExhibitStateUsage",
       "TransitionUsage",
     ],
+    filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
   },
   StateMachine: {
     label: "State Machine Diagram",
@@ -29,6 +31,8 @@ export const sysml2Views: Record<string, DiagramProjectionConfig> = {
     includeRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage", "ActionUsage", "Package"],
     groupRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage"],
     standaloneRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage"],
+    stateBubbleRules: ["StateDefinition", "StateUsage", "ExhibitStateUsage"],
+    synthesizePseudoStates: true,
   },
   Activity: {
     label: "Activity Diagram",
@@ -49,6 +53,7 @@ export const sysml2Views: Record<string, DiagramProjectionConfig> = {
       "Package",
     ],
     groupRules: ["ActorUsage", "SubjectUsage", "PartUsage", "PartDefinition"],
+    controlNodeRules: ["ForkNode", "JoinNode", "DecisionNode", "MergeNode"],
   },
   UseCase: {
     label: "Use Case Diagram",

@@ -111,6 +111,19 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
 
   while (curr != null && curr != endHead && maxHops-- > 0) {
     let node = curr.astNode;
+    let nextHead: ParseHead | null = curr.prev;
+    if (nextHead != endHead && curr.firstEdge != 0) {
+      let edgePtr = curr.firstEdge;
+      while (edgePtr != 0) {
+        let edge = changetype<GssEdge>(edgePtr);
+        if (edge.targetHead == endHead) {
+          node = edge.astNode;
+          nextHead = edge.targetHead;
+          break;
+        }
+        edgePtr = edge.nextEdge;
+      }
+    }
     if (node != 0) {
       if (count < (MAX_CHILD_NODES as u32)) {
         t_globalChildNodes[count] = node;
@@ -118,22 +131,7 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
       }
       totalBytes += getNodePadding(node) + getNodeByteLength(node);
     }
-    // If an alternative edge directly reaches endHead, take it
-    let edgePtr = curr.firstEdge;
-    let foundEdgeTarget: ParseHead | null = null;
-    while (edgePtr != 0) {
-      let edge = changetype<GssEdge>(edgePtr);
-      if (edge.targetHead == endHead) {
-        foundEdgeTarget = edge.targetHead;
-        break;
-      }
-      edgePtr = edge.nextEdge;
-    }
-    if (foundEdgeTarget != null) {
-      curr = foundEdgeTarget;
-    } else {
-      curr = curr.prev;
-    }
+    curr = nextHead;
   }
 
   let pad: u32 = 0;
@@ -179,6 +177,15 @@ export class StackSummaryEntry {
 
 export const SIZEOF_STACK_SUMMARY_ENTRY: u32 = 16;
 
+@inline
+function hasSummaryAncestor(summaryMem: u32, count: u32, anc: ParseHead): boolean {
+  for (let i: u32 = 0; i < count; i++) {
+    let existing = changetype<StackSummaryEntry>(summaryMem + i * SIZEOF_STACK_SUMMARY_ENTRY);
+    if (existing.ancHead == anc) return true;
+  }
+  return false;
+}
+
 /**
  * Records a single-pass summary of ancestor stack states up to MAX_SUMMARY_DEPTH (16).
  * Follows Tree-sitter's ts_stack_record_summary.
@@ -189,22 +196,24 @@ export function recordStackSummary(head: ParseHead): void {
   let count: u32 = 0;
   let curr = head.prev;
   let d: u32 = 1;
-  while (curr != null && d <= MAX_SUMMARY_DEPTH) {
+  while (curr != null && d <= MAX_SUMMARY_DEPTH && count < MAX_SUMMARY_DEPTH) {
     if (!(curr.pos == 0 && head.pos > 20 && d > 2)) {
-      let entryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
-      let entry = changetype<StackSummaryEntry>(entryPtr);
-      entry.ancHead = curr;
-      entry.state = curr.state;
-      entry.depth = d;
-      entry.pos = curr.pos;
-      count++;
+      if (!hasSummaryAncestor(summaryMem, count, curr)) {
+        let entryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
+        let entry = changetype<StackSummaryEntry>(entryPtr);
+        entry.ancHead = curr;
+        entry.state = curr.state;
+        entry.depth = d;
+        entry.pos = curr.pos;
+        count++;
+      }
 
       // Also record alternative predecessors along firstEdge at this depth
       let edgePtr = curr.firstEdge;
       while (edgePtr != 0 && count < MAX_SUMMARY_DEPTH) {
         let edge = changetype<GssEdge>(edgePtr);
         let altCurr = edge.targetHead;
-        if (altCurr != null) {
+        if (altCurr != null && !hasSummaryAncestor(summaryMem, count, altCurr)) {
           let altEntryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
           let altEntry = changetype<StackSummaryEntry>(altEntryPtr);
           altEntry.ancHead = altCurr;
@@ -590,63 +599,55 @@ function findShiftTargetThroughEpsilons(head: ParseHead, state: i32, sym: i32): 
   let maxHops = 10;
 
   while (maxHops-- > 0) {
-    if (currState < 0 || currState >= action_offsets.length) return null;
-    let actionOffset = action_offsets[currState];
-    if (actionOffset < 0 || actionOffset >= action_data.length) return null;
+    let matchIdx = findActionEntry(currState, sym);
+    if (matchIdx == -1) return null;
 
-    let rCount = action_data[actionOffset];
-    let rIdx = actionOffset + 1;
+    let actCount = action_data[matchIdx + 1];
+    let rIdx = matchIdx + 2;
     let found = false;
 
-    for (let j = 0; j < rCount; j++) {
-      let s = action_data[rIdx++];
-      let actCount = action_data[rIdx++];
-      for (let a = 0; a < actCount; a++) {
-        let aType = action_data[rIdx++];
-        let aTarget = action_data[rIdx++];
-        if (s == sym) {
-          if (aType == ACTION_SHIFT) {
-            return allocParseHead(
-              aTarget,
-              0,
-              currHead,
-              currHead.pos,
-              currHead.scannerState,
-              currHead.errorCost,
-              currHead.successfulShifts,
-              currHead.balanceHash,
-              currHead.consecutiveInsertions,
-              currHead.dynamicPrec,
-              currHead.pendingPadding,
-              currHead.errorTail
-            );
-          } else if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lengths.length && prod_lengths[aTarget] == 0) {
-            let lhs = prod_lhs[aTarget];
-            let nextSt = lookupGoto(currState, lhs);
-            if (nextSt != -1) {
-              let redNode = allocNode(lhs as u16, 0, 0, 0, false);
-              currHead = allocParseHead(
-                nextSt,
-                redNode,
-                currHead,
-                currHead.pos,
-                currHead.scannerState,
-                currHead.errorCost,
-                currHead.successfulShifts,
-                currHead.balanceHash,
-                currHead.consecutiveInsertions,
-                currHead.dynamicPrec,
-                currHead.pendingPadding,
-                currHead.errorTail
-              );
-              currState = nextSt;
-              found = true;
-              break;
-            }
-          }
+    for (let a = 0; a < actCount; a++) {
+      let aType = action_data[rIdx++];
+      let aTarget = action_data[rIdx++];
+      if (aType == ACTION_SHIFT) {
+        return allocParseHead(
+          aTarget,
+          0,
+          currHead,
+          currHead.pos,
+          currHead.scannerState,
+          currHead.errorCost,
+          currHead.successfulShifts,
+          currHead.balanceHash,
+          currHead.consecutiveInsertions,
+          currHead.dynamicPrec,
+          currHead.pendingPadding,
+          currHead.errorTail
+        );
+      } else if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lengths.length && prod_lengths[aTarget] == 0) {
+        let lhs = prod_lhs[aTarget];
+        let nextSt = lookupGoto(currState, lhs);
+        if (nextSt != -1) {
+          let redNode = allocNode(lhs as u16, 0, 0, 0, false);
+          currHead = allocParseHead(
+            nextSt,
+            redNode,
+            currHead,
+            currHead.pos,
+            currHead.scannerState,
+            currHead.errorCost,
+            currHead.successfulShifts,
+            currHead.balanceHash,
+            currHead.consecutiveInsertions,
+            currHead.dynamicPrec,
+            currHead.pendingPadding,
+            currHead.errorTail
+          );
+          currState = nextSt;
+          found = true;
+          break;
         }
       }
-      if (found) break;
     }
     if (!found) break;
   }

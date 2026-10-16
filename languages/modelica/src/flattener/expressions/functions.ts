@@ -288,9 +288,7 @@ export function vectorizeFunctionCall(
       if (!state.tmpVarMap) state.tmpVarMap = new Map<string, string>();
       let tmpVarName = state.tmpVarMap.get(targetName);
       if (!tmpVarName) {
-        const initialCounter = (state.linspaceCounter ?? 0) > 0 ? 5 : 0;
-        const tmpVarNum =
-          state.tmpVarCounter !== undefined ? ++state.tmpVarCounter : (state.tmpVarCounter = initialCounter);
+        const tmpVarNum = state.tmpVarCounter !== undefined ? ++state.tmpVarCounter : (state.tmpVarCounter = 0);
         tmpVarName = `$tmpVar${tmpVarNum}`;
         state.tmpVarMap.set(targetName, tmpVarName);
       }

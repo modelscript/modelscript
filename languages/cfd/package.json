@@ -1,6 +1,7 @@
 {
   "name": "@modelscript/cfd",
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {
@@ -28,7 +29,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },

@@ -1,7 +1,6 @@
 // name:     RecordDefaultArgMod
 // keywords: record, default argument, modifier, #2643
 // status:   correct
-// xfail:    true
 //
 // Tests that default arguments in records are properly overwritten by
 // modifications.

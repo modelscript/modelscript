@@ -2,6 +2,7 @@
   "name": "@modelscript/dsl",
   "version": "0.0.18",
   "description": "ModelScript DSL syntax combinators, GLR parser generator, and term-rewriting engines",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {
@@ -162,13 +163,18 @@
   "bin": {
     "language-generate": "./bin/language-generate.js"
   },
+  "files": [
+    "bin/**",
+    "src/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "npm run build:templates && tsc && npm run build:browser",
     "build:browser": "node scripts/build-browser.js",
     "build:templates": "node scripts/bundle-templates.js",
     "check:as": "node scripts/check-as.js",
     "clean": "rimraf dist src/src-gen build",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=300000",
     "typecheck": "tsc --noEmit"
   },
@@ -191,7 +197,22 @@
   "nx": {
     "targets": {
       "build": {
-        "dependsOn": []
+        "dependsOn": [],
+        "inputs": [
+          "production",
+          "^production",
+          "{workspaceRoot}/packages/runtime/src/wasm/**/*"
+        ]
+      },
+      "lint": {
+        "dependsOn": [
+          "build"
+        ]
+      },
+      "typecheck": {
+        "dependsOn": [
+          "build"
+        ]
       }
     }
   }

@@ -37,3 +37,4 @@ export * from "./sysml2-container-exporter.js";
 export * from "./sysml2-dae-lowerer.js";
 export * from "./sysmlx-interchange.js";
 export * from "./type-checker.js";
+export * from "./views.js";

@@ -47,10 +47,6 @@ function isKebabCase(str: string): boolean {
   return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(str);
 }
 
-function isSnakeCase(str: string): boolean {
-  return /^[a-z0-9]+(_[a-z0-9]+)*$/.test(str);
-}
-
 export function checkFile(relPath: string): Violation[] {
   if (shouldExclude(relPath)) return [];
   if (ALLOWED_SHIMS.has(relPath)) return [];
@@ -134,16 +130,18 @@ export function run(fileList?: string[]): { checked: number; violations: Violati
 }
 
 // CLI Execution
-const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-const { checked, violations } = run(args.length > 0 ? args : undefined);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename)) {
+  const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  const { checked, violations } = run(args.length > 0 ? args : undefined);
 
-if (violations.length > 0) {
-  console.error(`\n❌ Found ${violations.length} filename violation(s) across ${checked} checked file(s):\n`);
-  for (const v of violations) {
-    console.error(`  - [${v.rule}] ${v.file}: ${v.message}`);
+  if (violations.length > 0) {
+    console.error(`\n❌ Found ${violations.length} filename violation(s) across ${checked} checked file(s):\n`);
+    for (const v of violations) {
+      console.error(`  - [${v.rule}] ${v.file}: ${v.message}`);
+    }
+    process.exit(1);
+  } else {
+    console.log(`✓ All ${checked} checked filename(s) conform to repository naming standards.`);
+    process.exit(0);
   }
-  process.exit(1);
-} else {
-  console.log(`✓ All ${checked} checked filename(s) conform to repository naming standards.`);
-  process.exit(0);
 }

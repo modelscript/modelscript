@@ -6,6 +6,18 @@
 
 import { buildPscadDiagram } from "../../../packages/diagram/src/pscad-diagram-builder.js";
 import { EmtSolver } from "../../../packages/simulate/src/solvers/emt/index.js";
+import {
+  buildComponentXmlSnippet,
+  getAllMasterComponentSchemas,
+  getMasterComponentSchema,
+  getPscadCompletions,
+  getPscadDefinitionLocation,
+  getPscadDocumentSymbols,
+  getPscadFoldingRanges,
+  getPscadHover,
+  getPscadPaletteCategories,
+  getPscadQuickFixes,
+} from "../src/catalog/master-library-schemas.js";
 import { pscadLanguage, runPscadSimulationPipeline } from "../src/language.js";
 import { lintPscx } from "../src/lints/index.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "../src/netlist/emt-netlist.js";
@@ -845,7 +857,275 @@ async function main() {
     );
   }
 
-  console.log("ALL TESTS PASSED SUCCESSFULLY! Milestones 1, 2, 3, 4 & 5 + Phases 1-9 SOTA verified.");
+  // 16. Test 4-Pillar SOTA PSCAD Authoring Suite (Master Schemas, Canvas Creation, Signal/Power Visuals, LSP Intelligence)
+  console.log("16. Testing 4-Pillar SOTA PSCAD Authoring Suite...");
+  const allSchemas = getAllMasterComponentSchemas();
+  const paletteCats = getPscadPaletteCategories();
+  if (allSchemas.length < 20 || paletteCats.length !== 6) {
+    throw new Error(
+      `Expected >=20 Master Library schemas across 6 palette categories, got ${allSchemas.length} / ${paletteCats.length}`,
+    );
+  }
+  const syncSchema = getMasterComponentSchema("master:sync_machine");
+  if (!syncSchema || syncSchema.parameters.length < 10) {
+    throw new Error("Expected rich multi-tab parameter schema for master:sync_machine");
+  }
+
+  // Synthesize CSMF PI controller + PGB oscilloscope probe via buildComponentXmlSnippet
+  const piSnippet = buildComponentXmlSnippet("master:pi_ctlr", "PI_Reg", 300, 300, { Kp: 2.5, Ti: 0.04 });
+  const pgbSnippet = buildComponentXmlSnippet("master:pgb", "PGB_Vq", 360, 300, { Name: "Vq_Out" });
+  const authoredPscx = apparatusPscx.replace(
+    "</schematic>",
+    `${piSnippet}\n${pgbSnippet}\n          <Wire classid="WireOrthogonal" id="w_sig_1">\n            <vertex x="318" y="300" />\n            <vertex x="342" y="300" />\n          </Wire>\n        </schematic>`,
+  );
+  const authoredProj = parsePscx(authoredPscx);
+  const authoredDiag = buildPscadDiagram(authoredProj);
+
+  const piCell = authoredDiag.cells.find((c) => c.id === "PI_Reg");
+  const pgbCell = authoredDiag.cells.find((c) => c.id === "PGB_Vq");
+  if (
+    !piCell?.markup?.some((m: any) => m.selector === "csmfCurve" || m.selector === "csmfBox") ||
+    !pgbCell?.markup?.some((m: any) => m.selector === "pgbTag" || m.selector === "pgbWave")
+  ) {
+    throw new Error("Expected CSMF and PGB meter vector glyphs on synthesized PI_Reg and PGB_Vq nodes");
+  }
+
+  const sigEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.wireKind === "signal");
+  const pwrEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.wireKind === "electrical");
+  if (!sigEdge || sigEdge.attrs?.line?.stroke !== "#c084fc" || !sigEdge.attrs?.line?.strokeDasharray) {
+    throw new Error("Expected CSMF signal wire to render with #c084fc dashed stroke and directional arrowhead");
+  }
+  if (!pwrEdge || pwrEdge.attrs?.line?.stroke !== "#38bdf8") {
+    throw new Error("Expected 3-phase power wire to render with #38bdf8 solid stroke");
+  }
+
+  // Test .pscx LSP Completions, Hover, Definition, Document Symbols, and Quick Fixes
+  const cmpOffset = authoredPscx.indexOf('name="master:sync_machine"') + 'name="master:'.length;
+  const completions = getPscadCompletions(authoredPscx, cmpOffset);
+  if (!completions.some((c) => c.label === "master:sync_machine")) {
+    throw new Error('Expected getPscadCompletions to suggest master:sync_machine inside <User name="...');
+  }
+
+  const smOffset = authoredPscx.indexOf('id="SM1"');
+  const hoverRes = getPscadHover(authoredPscx, smOffset);
+  if (!hoverRes || !hoverRes.contents.includes("Z_{\\text{base}}") || !hoverRes.contents.includes("L_d''")) {
+    throw new Error("Expected getPscadHover on SM1 to compute base impedance Z_base and subtransient inductance Ld''");
+  }
+
+  const docSymbols = getPscadDocumentSymbols(authoredPscx);
+  if (docSymbols.length === 0 || !docSymbols[0]?.children?.length) {
+    throw new Error("Expected getPscadDocumentSymbols to return hierarchical project -> module -> apparatus symbols");
+  }
+
+  const subModPscx = `<project name="HierTest">
+    <definitions>
+      <Definition classid="UserCmpDefn" name="HVDC_Sub">
+        <schematic><Bus id="B1" name="SubBus" x="100" y="100" vbase="230"/></schematic>
+      </Definition>
+      <Definition name="Main" type="module">
+        <schematic>
+          <User classid="UserCmp" defn="User:HVDC_Sub" id="U1" x="200" y="200" />
+        </schematic>
+      </Definition>
+    </definitions>
+  </project>`;
+  const callOffset = subModPscx.indexOf('defn="User:HVDC_Sub"') + 10;
+  const defLoc = getPscadDefinitionLocation(subModPscx, callOffset, "file:///test.pscx");
+  if (!defLoc || defLoc.range.start.line !== 2) {
+    throw new Error(
+      `Expected getPscadDefinitionLocation to jump to line 2 (<Definition name="HVDC_Sub">), got ${JSON.stringify(defLoc)}`,
+    );
+  }
+
+  const brokenPscx = `<project name="QuickFixTest">
+    <paramlist name="Settings">
+      <param name="time_step" value="50.0"/>
+    </paramlist>
+    <definitions>
+      <Definition name="Main" type="module">
+        <schematic>
+          <Bus id="B1" name="HVBus" x="100" y="100" length="80" vbase="230.0"/>
+          <User classid="UserCmp" name="master:sync_machine" id="SM_Bad" x="64" y="100">
+            <paramlist>
+              <param name="MVA" value="-100.0"/>
+              <param name="Xd" value="1.8"/>
+              <param name="Xd_p" value="0.30"/>
+              <param name="Xd_sub" value="0.45"/>
+            </paramlist>
+          </User>
+          <User classid="UserCmp" name="master:arrester" id="MOV_Low" x="120" y="118">
+            <paramlist>
+              <param name="Vref" value="150.0"/>
+            </paramlist>
+          </User>
+        </schematic>
+      </Definition>
+    </definitions>
+  </project>`;
+  const qFixes = getPscadQuickFixes(brokenPscx, "file:///broken.pscx");
+  const fixCodes = new Set(qFixes.map((f) => f.code));
+  if (!fixCodes.has("M6003") || !fixCodes.has("M6007") || !fixCodes.has("M6008")) {
+    throw new Error(`Expected QuickFixes for M6003, M6007, and M6008, got ${Array.from(fixCodes).join(", ")}`);
+  }
+
+  // ── 17. Phase 11: SOTA Core Editing Polish (Port-Anchored Edges, Center Origin, Wireless Nets, T-Junctions, M6009-M6011, Folding) ──
+  console.log("Testing Phase 11 SOTA Core Editing Polish...");
+  const phase11Pscx = `<project name="Phase11CoreEditing">
+    <paramlist name="Settings">
+      <param name="time_step" value="50.0"/>
+    </paramlist>
+    <definitions>
+      <Definition name="Main" type="module">
+        <schematic>
+          <Bus id="B1" name="Bus230" x="200" y="100" length="120" vbase="230.0"/>
+          <Bus id="B2" name="Bus34" x="400" y="100" length="120" vbase="34.5"/>
+          <User classid="UserCmp" name="master:source_3" id="G1" x="100" y="100" orient="1">
+            <paramlist>
+              <param name="Name" value="GenMain"/>
+              <param name="MVA" value="250.0"/>
+              <param name="Vm" value="230.0"/>
+            </paramlist>
+          </User>
+          <!-- Duplicate ID G1 for M6009 -->
+          <User classid="UserCmp" name="master:source_3" id="G1" x="100" y="260">
+            <paramlist>
+              <param name="Name" value="GenDup"/>
+            </paramlist>
+          </User>
+          <!-- Wireless DataLabels linking PI_Out -> GateDrive_In without physical wire -->
+          <User classid="UserCmp" name="master:pi_ctlr" id="PI1" x="100" y="360">
+            <paramlist>
+              <param name="Name" value="VregPI"/>
+              <param name="Kp" value="2.5"/>
+              <param name="Ti" value="0.02"/>
+            </paramlist>
+          </User>
+          <User classid="UserCmp" name="master:datalabel" id="DL_TX" x="118" y="360">
+            <paramlist>
+              <param name="Name" value="Vref_Sig"/>
+            </paramlist>
+          </User>
+          <User classid="UserCmp" name="master:datalabel" id="DL_RX" x="282" y="360">
+            <paramlist>
+              <param name="Name" value="Vref_Sig"/>
+            </paramlist>
+          </User>
+          <User classid="UserCmp" name="master:pgb" id="PGB_Wireless" x="300" y="360">
+            <paramlist>
+              <param name="Name" value="VrefProbe"/>
+            </paramlist>
+          </User>
+          <!-- Wire from G1 (orient=1 -> port N at (100, 136)) to Bus B1 (200..320, 100) -->
+          <Wire classid="WireOrthogonal" id="W_G1_B1">
+            <vertex x="100" y="136"/>
+            <vertex x="200" y="136"/>
+            <vertex x="200" y="100"/>
+          </Wire>
+          <!-- T-Junction tap at (200, 136) -->
+          <Wire classid="WireOrthogonal" id="W_Tap">
+            <vertex x="200" y="136"/>
+            <vertex x="200" y="200"/>
+          </Wire>
+          <!-- Direct wire shorting Bus230 (230kV) and Bus34 (34.5kV) without transformer -> M6010 -->
+          <Wire classid="WireOrthogonal" id="W_B1_B2_Conflict">
+            <vertex x="320" y="100"/>
+            <vertex x="400" y="100"/>
+          </Wire>
+          <!-- Control block PI1 output (118, 360) wired into 3-phase Bus1 (220, 100) -> M6011 -->
+          <Wire classid="WireOrthogonal" id="W_Domain_Mismatch">
+            <vertex x="118" y="360"/>
+            <vertex x="220" y="100"/>
+          </Wire>
+        </schematic>
+      </Definition>
+    </definitions>
+  </project>`;
+
+  const p11Proj = parsePscx(phase11Pscx);
+  const p11Mod = p11Proj.rootModule;
+
+  // 1. Verify wirelessNets & T-junctions in parser
+  if (!p11Mod.wirelessNets || !p11Mod.wirelessNets["Vref_Sig"] || p11Mod.wirelessNets["Vref_Sig"].length < 2) {
+    throw new Error(
+      `Expected wireless net 'Vref_Sig' to group DL_TX and DL_RX ports, got ${JSON.stringify(p11Mod.wirelessNets)}`,
+    );
+  }
+  if (!p11Mod.junctions || !p11Mod.junctions.some((j) => j.x === 200 && j.y === 136)) {
+    throw new Error(`Expected T-junction detected at (200, 136), got ${JSON.stringify(p11Mod.junctions)}`);
+  }
+
+  // 2. Verify startPortId / endPortId on W_G1_B1
+  const wG1B1 = p11Mod.wires.find((w) => w.id === "W_G1_B1");
+  if (!wG1B1 || wG1B1.startPortId !== "G1_N" || wG1B1.endPortId !== "B1") {
+    throw new Error(`Expected W_G1_B1 to snap startPortId='G1_N' and endPortId='B1', got ${JSON.stringify(wG1B1)}`);
+  }
+
+  // 3. Verify diagram builder: center-origin offset, rotation angle, instance label, sourceRange, port-anchored edge, wireless glyph, solder dot
+  const p11Diag = buildPscadDiagram(p11Proj);
+  const g1Cell = p11Diag.cells.find((c) => c.id === "G1");
+  if (!g1Cell || g1Cell.x === undefined || g1Cell.y === undefined || !g1Cell.width || !g1Cell.height) {
+    throw new Error("Expected G1 node in buildPscadDiagram output");
+  }
+  // Center is (100, 100), size is (60, 60) -> top-left must be (70, 70)
+  if (g1Cell.x !== 100 - g1Cell.width / 2 || g1Cell.y !== 100 - g1Cell.height / 2) {
+    throw new Error(
+      `Expected G1 top-left at (${100 - g1Cell.width / 2}, ${100 - g1Cell.height / 2}), got (${g1Cell.x}, ${g1Cell.y})`,
+    );
+  }
+  if (g1Cell.angle !== 90) {
+    throw new Error(`Expected G1 angle=90 from orient="1", got ${g1Cell.angle}`);
+  }
+  if (!g1Cell.attrs?.label?.text || !String(g1Cell.attrs.label.text).includes("GenMain")) {
+    throw new Error(`Expected G1 attrs.label.text to include 'GenMain', got ${JSON.stringify(g1Cell.attrs?.label)}`);
+  }
+  if (!g1Cell.properties?.sourceRange) {
+    throw new Error("Expected G1 properties to include sourceRange");
+  }
+
+  const wEdge = p11Diag.cells.find((c) => c.id === "W_G1_B1");
+  if (!wEdge || wEdge.source?.cell !== "G1" || wEdge.source?.port !== "G1_N" || wEdge.target?.cell !== "B1") {
+    throw new Error(
+      `Expected W_G1_B1 edge to be port-anchored to G1/G1_N -> B1, got ${JSON.stringify({ source: wEdge?.source, target: wEdge?.target })}`,
+    );
+  }
+
+  const dlCell = p11Diag.cells.find((c) => c.id === "DL_TX");
+  if (!dlCell || !dlCell.markup?.some((m: any) => m.selector === "netFlag")) {
+    throw new Error("Expected DL_TX to render wirelessNetLabelGlyph with netFlag selector");
+  }
+
+  const solderCell = p11Diag.cells.find((c) => c.id.startsWith("solder_dot_"));
+  if (!solderCell) {
+    throw new Error("Expected buildPscadDiagram to emit solder_dot_ node for T-junction");
+  }
+
+  // 4. Verify wireless netlist resolution in extractEmtNetlist
+  const p11Netlist = extractEmtNetlist(p11Proj);
+  if (p11Netlist.controlBlocks.length < 1) {
+    throw new Error("Expected PI1 control block in netlist");
+  }
+
+  // 5. Verify M6009, M6010, M6011 lints and quick fixes
+  const p11Diags = lintPscx(p11Proj);
+  const p11Codes = new Set(p11Diags.map((d) => d.code));
+  if (!p11Codes.has("M6009") || !p11Codes.has("M6010") || !p11Codes.has("M6011")) {
+    throw new Error(
+      `Expected M6009, M6010, and M6011 diagnostics, got: ${p11Diags.map((d) => `${d.code}: ${d.message}`).join(" | ")}`,
+    );
+  }
+  const p11Fixes = getPscadQuickFixes(phase11Pscx, "file:///phase11.pscx");
+  const p11FixCodes = new Set(p11Fixes.map((f) => f.code));
+  if (!p11FixCodes.has("M6009") || !p11FixCodes.has("M6010")) {
+    throw new Error(`Expected QuickFixes for M6009 and M6010, got ${Array.from(p11FixCodes).join(", ")}`);
+  }
+
+  // 6. Verify XML code folding ranges
+  const folds = getPscadFoldingRanges(phase11Pscx);
+  if (folds.length < 5) {
+    throw new Error(`Expected at least 5 XML folding ranges in phase11Pscx, got ${folds.length}`);
+  }
+
+  console.log("ALL TESTS PASSED SUCCESSFULLY! Milestones 1-5 + Phases 1-11 + SOTA Core Editing Suite verified.");
 }
 
 main().catch((err) => {

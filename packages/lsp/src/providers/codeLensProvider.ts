@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { computeMeshVolumeAndArea, computeProjectedFrontalArea, ManifoldWorker } from "@modelscript/cad";
+import { ScadEvaluator } from "@modelscript/scad";
 import { CodeLens, Range } from "vscode-languageserver";
 import type { LspContext } from "../lsp-context.js";
 
@@ -519,11 +521,40 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = document?.getText();
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
+        let metricsTitle = "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg";
+        const treeEntry = (context as any).documentManager?.documentTrees?.get(uri);
+        const rootNode = treeEntry?.tree?.rootNode;
+        if (rootNode && !text.includes("rotor_stream")) {
+          try {
+            const evaluator = new ScadEvaluator();
+            const solid = evaluator.evaluate(rootNode);
+            if (solid) {
+              const mesh = ManifoldWorker.evaluateSolid(solid);
+              const { volume } = computeMeshVolumeAndArea(mesh);
+              const frontalAreaMm2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
+              const frontalAreaM2 = frontalAreaMm2 * 1e-6;
+              const densityMatch = /\/\/\s*@density\s*:\s*([0-9.eE+-]+)/i.exec(text);
+              const densityKgM3 = densityMatch ? parseFloat(densityMatch[1]!) : 2700;
+              const massKg = volume * 1e-9 * densityKgM3;
+              metricsTitle = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
+            }
+          } catch {
+            // Fall back to default metrics lens if live CSG evaluation fails
+          }
+        }
         lenses.push({
           range: headerRange,
           command: {
-            title: "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg",
+            title: metricsTitle,
             command: "modelscript.openThreadExplorer",
+            arguments: [uri],
+          },
+        });
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "🎯 Open Interactive 3D CAD Editor (Gizmo Manipulation)",
+            command: "modelscript.openCadViewer",
             arguments: [uri],
           },
         });

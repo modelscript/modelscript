@@ -17,7 +17,13 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
   beforeAll(async () => {
     const target = path.join(__dirname, "..", "..", "..", "languages", "modelica", "src", "language.ts");
     const mod = await import("file://" + target);
-    const result = buildParser({ ...mod.modelicaLanguage, classes: [], lints: [] } as any);
+    const result = buildParser({
+      ...mod.modelicaLanguage,
+      classes: [],
+      lints: [],
+      runtimeFiles: [],
+      runtimeDir: undefined,
+    } as any);
     buildResult = result;
     tmpDir = path.join(__dirname, "scratch_build_full_modelica_hang");
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });

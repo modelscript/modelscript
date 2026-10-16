@@ -1,8 +1,13 @@
 {
   "name": "@modelscript/csv",
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/language.d.ts",
+      "default": "./dist/language.js"
+    },
     "./language": {
       "types": "./dist/language.d.ts",
       "default": "./dist/language.js"
@@ -18,11 +23,17 @@
     "./parser.wasm": "./dist/parser.wasm",
     "./dist/parser.wasm": "./dist/parser.wasm"
   },
+  "files": [
+    "language.ts",
+    "src/**",
+    "src-gen/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist build src-gen as-gen *.wasm",
-    "lint": "eslint language.ts src --no-warn-ignored",
+    "lint": "eslint language.ts src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },

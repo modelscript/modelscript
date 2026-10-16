@@ -15,6 +15,7 @@ import {
 } from "@modelscript/runtime";
 import { getExprArrayShape, getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import { exprReferencesRuntimeParameter } from "./binary-ops.js";
+import { evaluateCSTNumber } from "./cst-utils.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "./functions.js";
 
 export function isArrayLiteral(text: string): boolean {
@@ -611,6 +612,10 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
     const vName = dae.interner.resolve(dae.getExprData1(exprId));
     if (vName) {
       const flat = flattener ?? state.flattener;
+      const leafVarName = vName.includes(".") ? vName.split(".").pop()! : vName;
+      if (state.activeLoopVars?.has(vName) || state.activeLoopVars?.has(leafVarName)) {
+        return null;
+      }
       if (dae.classKind === "function" && flat?.currentBindingCompName === vName) {
         return null;
       }
@@ -663,7 +668,8 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         for (const s of syms) {
           if (s.kind === "Component") {
             const fullName = db.query("symbolFullName", s.id) ?? s.name;
-            if (fullName === vName || s.name === vName) {
+            const matchesScope = !currentScopeId || s === sym || s.parentId === currentScopeId;
+            if (fullName === vName || (s.name === vName && matchesScope)) {
               const rawDims = db.query("arrayDimensions", s.id);
               const dims = normalizeDims(rawDims);
               if (dims) return dims;
@@ -710,6 +716,13 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
     return subDims ? [count, ...subDims] : [count];
   }
   if (kind === ExprKind.IfElse) {
+    const condVal = evalDaeExpr(dae.getExprData1(exprId), dae);
+    if (condVal === true) {
+      return getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
+    }
+    if (condVal === false) {
+      return getExprDims(dae.getExprRight(exprId), dae, db, flattener);
+    }
     const thenDims = getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
     const elseDims = getExprDims(dae.getExprRight(exprId), dae, db, flattener);
     if (thenDims && elseDims) {
@@ -1018,16 +1031,21 @@ export function evalDaeExpr(
             return elemVals;
           }
         }
-        if (dae.classKind === "function") {
+        {
           const flat = state.flattener;
           const db = state.db ?? flat?.db;
           const scopeId =
             (dae as any).enclosingScopeId ??
             ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??
-            flat?.currentClassId;
+            flat?.currentClassId ??
+            state.currentClassId;
           if (scopeId && db) {
-            const parentChild = db.childrenOf(scopeId)?.find((c: any) => c.name === name && c.kind === "Component");
-            if (parentChild) {
+            const simpleName = name.includes(".") ? name.split(".").pop()! : name;
+            const prefixPart = name.includes(".") ? name.split(".").slice(0, -1).join(".") : "";
+            const parentChild =
+              db.childrenOf(scopeId)?.find((c: any) => c.name === simpleName && c.kind === "Component") ??
+              db.query("resolveSimpleName", scopeId)?.(simpleName);
+            if (parentChild && parentChild.kind === "Component") {
               const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
               if (v === "constant" || v === "parameter") {
                 const compMod: any = db.query("effectiveModification", parentChild.id);
@@ -1053,6 +1071,10 @@ export function evalDaeExpr(
                   if (!isNaN(num)) return num;
                   if (bText === "true") return true;
                   if (bText === "false") return false;
+                  if (bText !== simpleName && bText !== name) {
+                    const evalVal = evaluateCSTNumber(bText, undefined, scopeId, db, dae, prefixPart);
+                    if (evalVal !== null) return evalVal;
+                  }
                 }
               }
             }
@@ -1085,7 +1107,40 @@ export function evalDaeExpr(
         const op = dae.getExprData1(exprId);
         const left = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
         const right = evalDaeExpr(dae.getExprRight(exprId), dae, visitedExprs, visitedVars);
-        if (left === null || right === null) return null;
+        if (left === null || right === null) {
+          if (op === BinOp.Eq || op === BinOp.Neq) {
+            const resolveEnumName = (id: number, depth = 0): string | null => {
+              if (id < 0 || depth > 8 || dae.getExprKind(id) !== ExprKind.Name) return null;
+              const n = dae.interner.resolve(dae.getExprData1(id));
+              if (!n) return null;
+              const vIdx = dae.lookupVariable(n);
+              if (vIdx >= 0) {
+                const v = dae.getVarVariability(vIdx);
+                if (
+                  (v === Variability.Constant || v === Variability.Parameter) &&
+                  dae.getVarType(vIdx) === VarType.Enumeration
+                ) {
+                  const bId = dae.getVarExpression(vIdx);
+                  if (bId !== undefined && bId >= 0 && bId !== id) {
+                    return resolveEnumName(bId, depth + 1);
+                  }
+                }
+                return null;
+              }
+              return n.includes(".") ? n : null;
+            };
+            const lEnum = resolveEnumName(dae.getExprLeft(exprId));
+            const rEnum = resolveEnumName(dae.getExprRight(exprId));
+            if (lEnum && rEnum) {
+              const lPre = lEnum.slice(0, lEnum.lastIndexOf("."));
+              const rPre = rEnum.slice(0, rEnum.lastIndexOf("."));
+              if (lPre && lPre === rPre) {
+                return op === BinOp.Eq ? lEnum === rEnum : lEnum !== rEnum;
+              }
+            }
+          }
+          return null;
+        }
         if (typeof left === "number" && typeof right === "number") {
           switch (op) {
             case BinOp.Add:

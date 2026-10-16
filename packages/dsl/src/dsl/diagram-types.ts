@@ -288,6 +288,12 @@ export interface DiagramProjectionConfig<RuleName extends string = string, Field
   groupRules?: (RuleName | string)[];
   /** Explicit list of grammar rules rendered as standalone nodes */
   standaloneRules?: (RuleName | string)[];
+  /** Explicit list of grammar rules rendered as state bubbles with entry/do/exit compartments */
+  stateBubbleRules?: (RuleName | string)[];
+  /** Explicit list of grammar rules rendered as activity control nodes (fork/join bars, decision/merge diamonds) */
+  controlNodeRules?: (RuleName | string)[];
+  /** Synthesize initial and final pseudostate nodes for states without incoming/outgoing transitions */
+  synthesizePseudoStates?: boolean;
   /** Scope query: which AST nodes are candidate entities */
   scope?: (db: CodeGraph, root: u32) => Cursor;
   expose?: string[] | ((db: CodeGraph, root: u32) => Cursor);

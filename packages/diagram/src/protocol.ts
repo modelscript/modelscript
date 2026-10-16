@@ -246,6 +246,8 @@ export interface DiagramData {
   coordinateSystem: CoordinateSystem;
   diagramBackground: X6Markup | null;
   isLoading?: boolean;
+  availableViews?: { id: string; label: string; description?: string }[];
+  activeView?: string;
 }
 
 // ── Diagram Edit Actions ──

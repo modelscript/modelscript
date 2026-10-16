@@ -33,6 +33,7 @@ import {
   intersect,
   linearExtrude,
   mirror,
+  polyhedron,
   rotate,
   scale,
   SolidKind,
@@ -49,6 +50,70 @@ import {
 
 export interface ScadEvaluationOptions {
   variables?: Record<string, any>;
+}
+
+const NAMED_COLORS: Record<string, [number, number, number, number]> = {
+  red: [0.9, 0.2, 0.2, 1],
+  green: [0.2, 0.8, 0.3, 1],
+  blue: [0.2, 0.45, 0.95, 1],
+  yellow: [0.95, 0.85, 0.2, 1],
+  cyan: [0.2, 0.85, 0.9, 1],
+  magenta: [0.9, 0.25, 0.85, 1],
+  orange: [0.95, 0.55, 0.15, 1],
+  white: [0.95, 0.95, 0.95, 1],
+  gray: [0.6, 0.63, 0.68, 1],
+  grey: [0.6, 0.63, 0.68, 1],
+  silver: [0.75, 0.78, 0.82, 1],
+  black: [0.15, 0.15, 0.18, 1],
+  gold: [0.92, 0.75, 0.2, 1],
+  steelblue: [0.27, 0.51, 0.71, 1],
+};
+
+function parseScadColor(arg0: any, alphaArg?: any): [number, number, number, number] | undefined {
+  const alpha = typeof alphaArg === "number" ? Math.max(0, Math.min(1, alphaArg)) : undefined;
+  if (typeof arg0 === "string") {
+    const key = arg0.toLowerCase().trim();
+    const named = NAMED_COLORS[key];
+    if (named) {
+      return [named[0], named[1], named[2], alpha ?? named[3]];
+    }
+    if (key.startsWith("#") && (key.length === 7 || key.length === 9)) {
+      const r = parseInt(key.slice(1, 3), 16) / 255;
+      const g = parseInt(key.slice(3, 5), 16) / 255;
+      const b = parseInt(key.slice(5, 7), 16) / 255;
+      const a = key.length === 9 ? parseInt(key.slice(7, 9), 16) / 255 : (alpha ?? 1);
+      return [r, g, b, a];
+    }
+  }
+  if (Array.isArray(arg0) && arg0.length >= 3) {
+    let r = Number(arg0[0] ?? 0.7);
+    let g = Number(arg0[1] ?? 0.7);
+    let b = Number(arg0[2] ?? 0.7);
+    let a = arg0[3] !== undefined ? Number(arg0[3]) : (alpha ?? 1);
+    if (r > 1 || g > 1 || b > 1) {
+      r /= 255;
+      g /= 255;
+      b /= 255;
+    }
+    return [
+      Math.max(0, Math.min(1, r)),
+      Math.max(0, Math.min(1, g)),
+      Math.max(0, Math.min(1, b)),
+      Math.max(0, Math.min(1, a)),
+    ];
+  }
+  return undefined;
+}
+
+function withSolidColor(solid: Solid, color?: [number, number, number, number]): Solid {
+  if (!color) return solid;
+  return Object.freeze({
+    ...solid,
+    sourceMetadata: {
+      ...(solid.sourceMetadata ?? {}),
+      color,
+    },
+  }) as Solid;
 }
 
 class Scope {
@@ -98,6 +163,9 @@ function applyEulerRotation(solid: Solid, rot: Vec3, sourceMeta?: SolidSourceMet
   if (rot[0]) s = rotate(s, [1, 0, 0], rot[0], sourceMeta);
   if (rot[1]) s = rotate(s, [0, 1, 0], rot[1], sourceMeta);
   if (rot[2]) s = rotate(s, [0, 0, 1], rot[2], sourceMeta);
+  if (!rot[0] && !rot[1] && !rot[2] && sourceMeta) {
+    s = rotate(s, [0, 0, 1], 0, sourceMeta);
+  }
   return s;
 }
 
@@ -114,11 +182,19 @@ export class ScadEvaluator {
   }
 
   /**
+   * Evaluates a parsed SourceFile CST root node into a list of top-level Solid parts.
+   */
+  public evaluateParts(rootNode: any): Solid[] {
+    const solids: Solid[] = [];
+    this.evaluateStatements(rootNode, this.globalScope, solids);
+    return solids;
+  }
+
+  /**
    * Evaluates a parsed SourceFile CST root node into a combined Solid geometry tree.
    */
   public evaluate(rootNode: any): Solid | null {
-    const solids: Solid[] = [];
-    this.evaluateStatements(rootNode, this.globalScope, solids);
+    const solids = this.evaluateParts(rootNode);
 
     if (solids.length === 0) return null;
     if (solids.length === 1) return solids[0];
@@ -255,12 +331,17 @@ export class ScadEvaluator {
       const argListNode = this.findChildByType(c, "ArgumentList");
       const methodName = methodNameNode ? methodNameNode.text.trim() : "";
       const args = this.evaluateArgumentList(argListNode, scope);
+      const startByte = c.startIndex ?? c.startByte;
+      const endByte = c.endIndex ?? c.endByte;
 
       const sourceMeta: SolidSourceMetadata = {
         transformMethod: methodName,
         argIndex: 0,
-        startByte: c.startIndex ?? c.startByte,
-        endByte: c.endIndex ?? c.endByte,
+        startByte,
+        endByte,
+        translateRange: methodName === "translate" ? { startByte, endByte, isFluent: true } : undefined,
+        rotateRange: methodName === "rotate" ? { startByte, endByte, isFluent: true } : undefined,
+        scaleRange: methodName === "scale" ? { startByte, endByte, isFluent: true } : undefined,
       };
 
       currentSolid = this.applyMethod(currentSolid, methodName, args, sourceMeta);
@@ -286,23 +367,30 @@ export class ScadEvaluator {
       }
       case "translate": {
         const v = args.positional[0] ?? [0, 0, 0];
-        const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0];
-        return translate(target, vec, sourceMeta);
+        const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
+        return translate(target, vec, sourceMeta ? { ...sourceMeta, translation: vec } : { translation: vec });
       }
       case "rotate": {
         const v = args.positional[0] ?? [0, 0, 0];
-        const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0];
-        return applyEulerRotation(target, vec, sourceMeta);
+        const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
+        return applyEulerRotation(target, vec, sourceMeta ? { ...sourceMeta, rotation: vec } : { rotation: vec });
       }
       case "scale": {
         const v = args.positional[0] ?? [1, 1, 1];
-        const vec: Vec3 = [v[0] ?? 1, v[1] ?? 1, v[2] ?? 1];
-        return scale(target, vec, sourceMeta);
+        const vec: Vec3 = Array.isArray(v)
+          ? [Number(v[0] ?? 1), Number(v[1] ?? 1), Number(v[2] ?? 1)]
+          : [Number(v), Number(v), Number(v)];
+        return scale(target, vec, sourceMeta ? { ...sourceMeta, scale: vec } : { scale: vec });
       }
       case "mirror": {
         const v = args.positional[0] ?? [0, 0, 1];
         const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 1];
         return mirror(target, vec, sourceMeta);
+      }
+      case "color": {
+        const cArg = args.positional[0] ?? args.named.get("c");
+        const alphaArg = args.positional[1] ?? args.named.get("alpha");
+        return withSolidColor(target, parseScadColor(cArg, alphaArg));
       }
       default:
         return target;
@@ -334,14 +422,18 @@ export class ScadEvaluator {
       const args = this.evaluateArgumentList(argListNode, scope);
       const height = Number(args.positional[0] ?? args.named.get("height") ?? 10);
       const twist = args.named.has("twist") ? Number(args.named.get("twist")) : undefined;
-      const scale = args.named.has("scale") ? Number(args.named.get("scale")) : undefined;
+      const scaleVal = args.named.has("scale") ? Number(args.named.get("scale")) : undefined;
 
       const childSolids: Solid[] = [];
       this.evaluateStatement(childNode, scope, childSolids);
       if (childSolids.length > 0) {
         const first = childSolids[0];
         if (first.kind === SolidKind.Extrusion) {
-          return linearExtrude(first.polygon, height, { twist, scale });
+          return linearExtrude(first.polygon, height, {
+            twist,
+            scale: scaleVal,
+            sourceMetadata: first.sourceMetadata,
+          });
         }
         return first;
       }
@@ -396,7 +488,7 @@ export class ScadEvaluator {
       }
     }
 
-    // 3. TransformOp: translate, rotate, scale, mirror
+    // 3. TransformOp: translate, rotate, scale, mirror, color
     const argListNode = this.findChildByType(opNode, "ArgumentList");
     const args = this.evaluateArgumentList(argListNode, scope);
 
@@ -405,35 +497,50 @@ export class ScadEvaluator {
       combinedChild = union(combinedChild, childSolids[i]);
     }
 
+    if (opText.startsWith("color")) {
+      const cArg = args.positional[0] ?? args.named.get("c");
+      const alphaArg = args.positional[1] ?? args.named.get("alpha");
+      return withSolidColor(combinedChild, parseScadColor(cArg, alphaArg));
+    }
+
+    const startByte = opNode.startIndex ?? opNode.startByte;
+    const endByte = opNode.endIndex ?? opNode.endByte;
+    const transformMethod = opText.startsWith("translate")
+      ? "translate"
+      : opText.startsWith("rotate")
+        ? "rotate"
+        : opText.startsWith("scale")
+          ? "scale"
+          : opText.startsWith("mirror")
+            ? "mirror"
+            : undefined;
+
     const sourceMeta: SolidSourceMetadata = {
-      transformMethod: opText.startsWith("translate")
-        ? "translate"
-        : opText.startsWith("rotate")
-          ? "rotate"
-          : opText.startsWith("scale")
-            ? "scale"
-            : opText.startsWith("mirror")
-              ? "mirror"
-              : undefined,
+      transformMethod,
       argIndex: 0,
-      startByte: opNode.startIndex ?? opNode.startByte,
-      endByte: opNode.endIndex ?? opNode.endByte,
+      startByte,
+      endByte,
+      translateRange: transformMethod === "translate" ? { startByte, endByte, isFluent: false } : undefined,
+      rotateRange: transformMethod === "rotate" ? { startByte, endByte, isFluent: false } : undefined,
+      scaleRange: transformMethod === "scale" ? { startByte, endByte, isFluent: false } : undefined,
     };
 
     if (opText.startsWith("translate")) {
       const v = args.positional[0] ?? [0, 0, 0];
-      const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0];
-      return translate(combinedChild, vec, sourceMeta);
+      const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
+      return translate(combinedChild, vec, { ...sourceMeta, translation: vec });
     }
     if (opText.startsWith("rotate")) {
       const v = args.positional[0] ?? [0, 0, 0];
-      const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 0];
-      return applyEulerRotation(combinedChild, vec, sourceMeta);
+      const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
+      return applyEulerRotation(combinedChild, vec, { ...sourceMeta, rotation: vec });
     }
     if (opText.startsWith("scale")) {
       const v = args.positional[0] ?? [1, 1, 1];
-      const vec: Vec3 = [v[0] ?? 1, v[1] ?? 1, v[2] ?? 1];
-      return scale(combinedChild, vec, sourceMeta);
+      const vec: Vec3 = Array.isArray(v)
+        ? [Number(v[0] ?? 1), Number(v[1] ?? 1), Number(v[2] ?? 1)]
+        : [Number(v), Number(v), Number(v)];
+      return scale(combinedChild, vec, { ...sourceMeta, scale: vec });
     }
     if (opText.startsWith("mirror")) {
       const v = args.positional[0] ?? [0, 0, 1];
@@ -467,52 +574,91 @@ export class ScadEvaluator {
       const args = this.evaluateArgumentList(argListNode, scope);
       const size = args.positional[0] ?? args.named.get("size") ?? [1, 1, 1];
       const center = args.named.get("center") ?? false;
-      const w = Array.isArray(size) ? (size[0] ?? 1) : Number(size);
-      const h = Array.isArray(size) ? (size[1] ?? 1) : Number(size);
-      const d = Array.isArray(size) ? (size[2] ?? 1) : Number(size);
+      const w = Number(Array.isArray(size) ? (size[0] ?? 1) : size);
+      const h = Number(Array.isArray(size) ? (size[1] ?? 1) : size);
+      const d = Number(Array.isArray(size) ? (size[2] ?? 1) : size);
 
       let paramName: string | undefined;
+      let dimensionParams: [string | undefined, string | undefined, string | undefined] | undefined;
       if (argListNode) {
-        const idents = this.collectIdentifiers(argListNode);
-        if (idents.length > 0) paramName = idents[0];
+        const idents = this.collectIdentifiers(argListNode).filter((id) => id !== "size" && id !== "center");
+        if (idents.length > 0) {
+          paramName = idents[0];
+          dimensionParams = [idents[0], idents[1] ?? idents[0], idents[2] ?? idents[0]];
+        }
       }
 
+      const startByte = node.startIndex ?? node.startByte;
+      const endByte = node.endIndex ?? node.endByte;
       const sourceMeta: SolidSourceMetadata = {
         parameterName: paramName,
-        startByte: node.startIndex ?? node.startByte,
-        endByte: node.endIndex ?? node.endByte,
+        dimensionParams,
+        dimensions: [w, h, d],
+        startByte,
+        endByte,
+        primitiveStartByte: startByte,
+        primitiveEndByte: endByte,
       };
 
       const b = box({ width: w, height: h, depth: d, sourceMetadata: sourceMeta });
       if (center) return b;
-      return translate(b, [w / 2, h / 2, d / 2], sourceMeta);
+      return translate(b, [w / 2, h / 2, d / 2]);
     }
 
     if (type === "CylinderPrimitive") {
       const argListNode = this.findChildByType(node, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
       const h = Number(args.positional[0] ?? args.named.get("h") ?? 1);
-      const r = Number(
-        args.named.get("r") ?? (args.named.has("d") ? args.named.get("d") / 2 : (args.positional[1] ?? 1)),
+      const rDefault = Number(
+        args.named.get("r") ?? (args.named.has("d") ? Number(args.named.get("d")) / 2 : (args.positional[1] ?? 1)),
       );
+      const hasR1 = args.named.has("r1") || args.named.has("d1");
+      const hasR2 = args.named.has("r2") || args.named.has("d2");
+      const r1 = hasR1 ? Number(args.named.get("r1") ?? Number(args.named.get("d1")) / 2) : rDefault;
+      const r2 = hasR2
+        ? Number(args.named.get("r2") ?? Number(args.named.get("d2")) / 2)
+        : args.positional[2] !== undefined
+          ? Number(args.positional[2])
+          : rDefault;
+      const rAvg = (r1 + r2) / 2 || rDefault;
+
       const fn = scope.getVar("$fn") ?? 24;
       const center = args.named.get("center") ?? false;
 
       let paramName: string | undefined;
+      let dimensionParams: [string | undefined, string | undefined, string | undefined] | undefined;
       if (argListNode) {
-        const idents = this.collectIdentifiers(argListNode);
-        if (idents.length > 0) paramName = idents[0];
+        const idents = this.collectIdentifiers(argListNode).filter(
+          (id) => !["h", "r", "r1", "r2", "d", "d1", "d2", "center", "$fn"].includes(id),
+        );
+        if (idents.length > 0) {
+          paramName = idents[0];
+          dimensionParams = [idents[0], idents[1] ?? idents[0], idents[2] ?? idents[0]];
+        }
       }
 
+      const startByte = node.startIndex ?? node.startByte;
+      const endByte = node.endIndex ?? node.endByte;
       const sourceMeta: SolidSourceMetadata = {
         parameterName: paramName,
-        startByte: node.startIndex ?? node.startByte,
-        endByte: node.endIndex ?? node.endByte,
+        dimensionParams,
+        dimensions: [rAvg, h, rAvg],
+        startByte,
+        endByte,
+        primitiveStartByte: startByte,
+        primitiveEndByte: endByte,
       };
 
-      const c = cylinder({ radius: r, height: h, segments: Math.max(8, Number(fn)), sourceMetadata: sourceMeta });
+      const c = cylinder({
+        radius: rAvg,
+        radiusBottom: r1,
+        radiusTop: r2,
+        height: h,
+        segments: Math.max(8, Number(fn)),
+        sourceMetadata: sourceMeta,
+      });
       if (center) return c;
-      return translate(c, [0, h / 2, 0], sourceMeta);
+      return translate(c, [0, h / 2, 0]);
     }
 
     if (type === "SpherePrimitive") {
@@ -525,14 +671,20 @@ export class ScadEvaluator {
 
       let paramName: string | undefined;
       if (argListNode) {
-        const idents = this.collectIdentifiers(argListNode);
+        const idents = this.collectIdentifiers(argListNode).filter((id) => !["r", "d", "$fn"].includes(id));
         if (idents.length > 0) paramName = idents[0];
       }
 
+      const startByte = node.startIndex ?? node.startByte;
+      const endByte = node.endIndex ?? node.endByte;
       const sourceMeta: SolidSourceMetadata = {
         parameterName: paramName,
-        startByte: node.startIndex ?? node.startByte,
-        endByte: node.endIndex ?? node.endByte,
+        dimensionParams: paramName ? [paramName, paramName, paramName] : undefined,
+        dimensions: [r, r, r],
+        startByte,
+        endByte,
+        primitiveStartByte: startByte,
+        primitiveEndByte: endByte,
       };
 
       return sphere({
@@ -540,6 +692,43 @@ export class ScadEvaluator {
         widthSegments: Math.max(8, Number(fn)),
         heightSegments: Math.max(6, Math.floor(Number(fn) / 2)),
         sourceMetadata: sourceMeta,
+      });
+    }
+
+    if (type === "PolyhedronPrimitive") {
+      const argListNode = this.findChildByType(node, "ArgumentList");
+      const args = this.evaluateArgumentList(argListNode, scope);
+      const rawPoints = args.positional[0] ?? args.named.get("points") ?? [];
+      const rawFaces = args.positional[1] ?? args.named.get("faces") ?? args.named.get("triangles") ?? [];
+
+      const pts: Vec3[] = [];
+      if (Array.isArray(rawPoints)) {
+        for (const p of rawPoints) {
+          if (Array.isArray(p) && p.length >= 3) {
+            pts.push([Number(p[0] ?? 0), Number(p[1] ?? 0), Number(p[2] ?? 0)]);
+          }
+        }
+      }
+      const faces: number[][] = [];
+      if (Array.isArray(rawFaces)) {
+        for (const f of rawFaces) {
+          if (Array.isArray(f) && f.length >= 3) {
+            faces.push(f.map((idx) => Number(idx)));
+          }
+        }
+      }
+
+      const startByte = node.startIndex ?? node.startByte;
+      const endByte = node.endIndex ?? node.endByte;
+      return polyhedron({
+        points: pts,
+        faces,
+        sourceMetadata: {
+          startByte,
+          endByte,
+          primitiveStartByte: startByte,
+          primitiveEndByte: endByte,
+        },
       });
     }
 

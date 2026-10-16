@@ -1489,6 +1489,33 @@ export class ValidationService {
             });
           }
         }
+
+        const boundsMatch =
+          /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*;.*\/\/\s*@bounds\s*:\s*\[\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\]/i.exec(
+            rawLine,
+          );
+        if (boundsMatch) {
+          const paramName = boundsMatch[1]!;
+          const val = parseFloat(boundsMatch[2]!);
+          const minVal = parseFloat(boundsMatch[3]!);
+          const maxVal = parseFloat(boundsMatch[4]!);
+          const col = rawLine.indexOf(paramName);
+          if (val < minVal || val > maxVal) {
+            scadDiagnostics.push({
+              severity: DiagnosticSeverity.Warning,
+              range: { start: { line: i, character: col }, end: { line: i, character: col + paramName.length } },
+              message: `[CAD Parameter Bounds Violation] Parameter '${paramName}' (${val}) is outside certified bounds [${minVal}, ${maxVal}].`,
+              source: "scad",
+            });
+          } else {
+            scadDiagnostics.push({
+              severity: DiagnosticSeverity.Information,
+              range: { start: { line: i, character: col }, end: { line: i, character: col + paramName.length } },
+              message: `[CAD Parameter Bounds Verified] Parameter '${paramName}' (${val}) satisfies certified bounds [${minVal}, ${maxVal}].`,
+              source: "scad",
+            });
+          }
+        }
       }
     } catch (e: any) {
       this.connection.console.warn(`[scad] Validation failed for ${textDocument.uri}: ${e.message}`);

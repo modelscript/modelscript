@@ -1,7 +1,6 @@
 // name:     Cardinality
 // keywords: cardinality
 // status:   correct
-// xfail:    true
 //
 // Testing the cardinality operator
 //

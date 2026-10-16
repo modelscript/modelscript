@@ -2105,11 +2105,16 @@ export const classDefinitionQueries: Record<string, any> = {
           invalidElements.push({ name: `extends ${child.name}`, entry: child });
         }
       } else if (child.kind === "Class") {
+        const classPrefixes = String((child.metadata as any)?.classPrefixes ?? "");
         const isFunction =
           text.startsWith("function ") ||
           text.startsWith("pure function ") ||
           text.startsWith("impure function ") ||
+          text.startsWith("encapsulated function ") ||
+          text.startsWith("encapsulated pure function ") ||
+          text.startsWith("encapsulated impure function ") ||
           (child.metadata as any)?.classKind === "function" ||
+          /\bfunction\b/.test(classPrefixes) ||
           child.ruleName === "function_definition";
 
         if (child.name === "constructor" && isFunction) {
@@ -5304,7 +5309,7 @@ export const connectEquationQueries: Record<string, any> = {
     }
 
     // 3. Expandable connector compatibility (M4055)
-    if (lhsRes.isExpandable && !rhsRes.isExpandable) {
+    if (lhsRes.isExpandable && !rhsRes.isExpandable && !rhsRes.isInsideExpandable) {
       diags.push(
         error(ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.message(lhsText, rhsText), {
           ...getRange(cst),
@@ -5312,7 +5317,7 @@ export const connectEquationQueries: Record<string, any> = {
         }),
       );
       return diags;
-    } else if (rhsRes.isExpandable && !lhsRes.isExpandable) {
+    } else if (rhsRes.isExpandable && !lhsRes.isExpandable && !lhsRes.isInsideExpandable) {
       diags.push(
         error(ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.message(rhsText, lhsText), {
           ...getRange(cst),

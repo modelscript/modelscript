@@ -1,7 +1,6 @@
 // name:     RecordConstant1
 // keywords: record, constant
 // status:   correct
-// xfail:    true
 //
 // Checks that it's possible to look up components through record constants.
 //

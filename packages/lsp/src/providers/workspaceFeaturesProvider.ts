@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-useless-assignment */
+import { getPscadQuickFixes } from "@modelscript/pscad";
 import {
   CodeAction,
   CodeActionKind,
@@ -246,6 +247,17 @@ export function registerWorkspaceFeaturesProvider(
     const actions: CodeAction[] = [];
     const document = documents.get(params.textDocument.uri);
     if (!document) return actions;
+
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+      const pscadFixes = getPscadQuickFixes(document.getText(), params.textDocument.uri);
+      for (const fix of pscadFixes) {
+        actions.push({
+          title: fix.title,
+          kind: CodeActionKind.QuickFix,
+          edit: fix.edit,
+        });
+      }
+    }
 
     for (const diagnostic of params.context.diagnostics) {
       // ── Digital Thread Quick-Fixes ──────────────────────────────────

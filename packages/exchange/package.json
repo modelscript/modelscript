@@ -2,6 +2,7 @@
   "name": "@modelscript/exchange",
   "version": "0.0.18",
   "description": "ModelScript Standards & Model Exchange engine — FMI 2.0/3.0 export, SSP packaging, and MQTT co-simulation orchestrator",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": {
@@ -59,11 +60,15 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
     "fetch:fmusim": "tsx validation/fmi/scripts/fetch-fmusim.ts",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src validation --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js validation/*.test.ts validation/test-*.ts validation/lens-*.ts",
     "test:fmusim": "tsx validation/fmi/scripts/fmusim-verify.ts",
     "test:omc": "tsx validation/fmi/scripts/omc-verify.ts",
@@ -78,7 +83,7 @@
     "fflate": "^0.8.3",
     "mqtt": "^5.10.0",
     "pako": "^2.1.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "target": "ES2022",
     "noEmit": true,
+    "incremental": false,
     "strict": true
   },
   "include": ["docs/**/*", "docs/.vitepress/**/*", "scripts/**/*"]

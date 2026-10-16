@@ -234,6 +234,88 @@ async function main() {
   }
   console.log("✓ SSP & SSV semantic linter & narrow XML attribute range tests passed");
 
+  // 6. Test Native SSP 2D Diagram Builder & Bidirectional XML Writeback
+  const { applySspDiagramEdits, applySspTextEdits, buildSspDiagramData, getSspPaletteCategories } =
+    await import("../src/diagram.js");
+  const ssdWithGeometry = `<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                                name="GeoSys" version="1.0">
+  <ssd:System name="GeoSys">
+    <ssd:SystemGeometry x1="-200" y1="-200" x2="600" y2="400" />
+    <ssd:Connectors>
+      <ssd:Connector name="sys_in" kind="input">
+        <ssc:Real />
+        <ssd:ConnectorGeometry x="0.0" y="0.5" />
+      </ssd:Connector>
+    </ssd:Connectors>
+    <ssd:Elements>
+      <ssd:Component name="Ctrl" source="resources/Ctrl.fmu">
+        <ssd:ElementGeometry x1="50" y1="60" x2="230" y2="160" rotation="0" />
+        <ssd:Connectors>
+          <ssd:Connector name="u" kind="input"><ssc:Real /></ssd:Connector>
+          <ssd:Connector name="y" kind="output"><ssc:Real /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Plant" source="resources/Plant.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="in1" kind="input"><ssc:Real /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="Ctrl" startConnector="y" endElement="Plant" endConnector="in1">
+        <ssd:ConnectionGeometry pointsX="240 300" pointsY="110 110" />
+      </ssd:Connection>
+    </ssd:Connections>
+  </ssd:System>
+</ssd:SystemStructureDescription>`;
+
+  const diagramData = buildSspDiagramData(ssdWithGeometry);
+  if (diagramData.nodes.length < 3) {
+    throw new Error(`Expected at least 3 nodes (2 components + 1 system port), got ${diagramData.nodes.length}`);
+  }
+  const ctrlNode = diagramData.nodes.find((n) => n.id === "Ctrl");
+  if (!ctrlNode || ctrlNode.x !== 50 || ctrlNode.y !== 60 || ctrlNode.width !== 180 || ctrlNode.height !== 100) {
+    throw new Error(`Unexpected Ctrl node geometry: ${JSON.stringify(ctrlNode)}`);
+  }
+  if (diagramData.edges.length !== 1 || diagramData.edges[0].vertices?.length !== 2) {
+    throw new Error(`Unexpected SSP diagram edges: ${JSON.stringify(diagramData.edges)}`);
+  }
+
+  // Test move edit writeback
+  const moveEdits = applySspDiagramEdits(ssdWithGeometry, [{ action: "move", name: "Ctrl", x: 120, y: 140 }]);
+  const movedXml = applySspTextEdits(ssdWithGeometry, moveEdits);
+  const movedData = buildSspDiagramData(movedXml);
+  const movedCtrl = movedData.nodes.find((n) => n.id === "Ctrl");
+  if (!movedCtrl || movedCtrl.x !== 120 || movedCtrl.y !== 140) {
+    throw new Error(`Expected Ctrl moved to (120, 140), got (${movedCtrl?.x}, ${movedCtrl?.y})`);
+  }
+
+  // Test addComponent + connect writeback
+  const addEdits = applySspDiagramEdits(movedXml, [
+    { action: "addComponent", className: "FMUComponent", x: 320, y: 180 },
+    {
+      action: "connect",
+      sourceComponent: "",
+      sourcePort: "sys_in",
+      targetComponent: "Ctrl",
+      targetPort: "u",
+    },
+  ]);
+  const withAddedXml = applySspTextEdits(movedXml, addEdits);
+  const addedData = buildSspDiagramData(withAddedXml);
+  if (!addedData.nodes.some((n) => n.id === "FMUComponent")) {
+    throw new Error(`Expected newly added FMUComponent in SSP diagram, got: ${addedData.nodes.map((n) => n.id)}`);
+  }
+  if (addedData.edges.length !== 2) {
+    throw new Error(`Expected 2 connections after connect edit, got ${addedData.edges.length}`);
+  }
+
+  const palette = getSspPaletteCategories();
+  if (palette.length === 0) throw new Error("Expected non-empty SSP palette categories");
+  console.log("✓ Native SSP 2D diagram builder & bidirectional XML writeback tests passed");
+
   console.log("ALL TESTS PASSED SUCCESSFULLY! ✨");
 }
 

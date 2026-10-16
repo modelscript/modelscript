@@ -1,7 +1,6 @@
 // name:     StepAdvanced
 // keywords:
 // status:   correct
-// xfail:    true
 //
 
 

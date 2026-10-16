@@ -1134,8 +1134,13 @@ export function evaluateCSTNumber(
         if (resolved) {
           const mod = db.query("effectiveModification", resolved.id);
           if (mod?.bindingExpression?.text) {
-            const bVal = parseInt(mod.bindingExpression.text.trim(), 10);
-            if (!isNaN(bVal)) return bVal;
+            const bStr = mod.bindingExpression.text.trim();
+            const bVal = parseInt(bStr, 10);
+            if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
+            if (bStr && bStr !== ident && bStr !== text) {
+              const evalVal = evaluateCSTNumber(bStr, subs, scopeId, db, dae, prefix);
+              if (evalVal !== null) return evalVal;
+            }
           }
         }
       }
@@ -1209,12 +1214,16 @@ export function resolveScopedName(
 ): string {
   const state = getFlatteningState(dae);
   if (state.outerToInner) {
-    if (state.outerToInner.has(name)) {
-      return state.outerToInner.get(name)!;
-    }
     const full = prefix ? `${prefix}.${name}` : name;
-    if (state.outerToInner.has(full)) {
-      return state.outerToInner.get(full)!;
+    const isStateOutput =
+      !state.isInsidePrevious && (state.stateOutputVars?.has(name) || state.stateOutputVars?.has(full));
+    if (!isStateOutput) {
+      if (state.outerToInner.has(name)) {
+        return state.outerToInner.get(name)!;
+      }
+      if (state.outerToInner.has(full)) {
+        return state.outerToInner.get(full)!;
+      }
     }
   }
   if (state.constantAliases?.has(name)) {
@@ -1281,7 +1290,13 @@ export function resolveScopedName(
             const flattener = state.flattener;
             const currentClassId = flattener?.currentClassId ?? state.currentClassId;
             const currentRootClassId = flattener?.currentRootClassId ?? state.currentRootClassId;
-            if (currentClassId && currentRootClassId && currentClassId !== currentRootClassId) {
+            if (
+              p === "" &&
+              prefix !== "" &&
+              currentClassId &&
+              currentRootClassId &&
+              currentClassId !== currentRootClassId
+            ) {
               if (recordDiagnostics) {
                 if (!state.outerNonConstantAccess) {
                   state.outerNonConstantAccess = [];
@@ -1454,13 +1469,23 @@ export function lookupDbConstant(
     if (resolver) {
       const resolved = resolver(fullName);
       if (resolved && resolved.kind === "Component") {
-        const res = extractDbConstantValue(resolved, db);
-        if (res) return res;
+        return extractDbConstantValue(resolved, db);
       }
     }
   }
   const parts = fullName.split(".");
   if (parts.length === 0) return null;
+  if (parts.length === 1 && scopeId) {
+    const scopeResId = db.symbol(scopeId)?.resourceId;
+    const candidates = db.byName(parts[0]);
+    for (const c of candidates) {
+      if (c.kind === "Component" && c.resourceId === scopeResId) {
+        const res = extractDbConstantValue(c, db);
+        if (res) return res;
+      }
+    }
+    return null;
+  }
   const leafName = parts[parts.length - 1];
   const candidates = db.byName(leafName);
   for (const c of candidates) {

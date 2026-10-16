@@ -32,7 +32,11 @@
     "sharedGlobals": [
       "{workspaceRoot}/package-lock.json",
       "{workspaceRoot}/tsconfig.base.json",
-      "{workspaceRoot}/eslint.config.ts"
+      "{workspaceRoot}/eslint.config.ts",
+      "{workspaceRoot}/scripts/build-language-parser.js",
+      "{workspaceRoot}/scripts/test-runner.js",
+      "{workspaceRoot}/scripts/asc-cache.js",
+      "{workspaceRoot}/scripts/node-test-ctrf-reporter.cjs"
     ]
   },
   "targetDefaults": {
@@ -46,8 +50,6 @@
         "{projectRoot}/src-gen",
         "{projectRoot}/src/src-gen",
         "{projectRoot}/as-gen",
-        "{projectRoot}/public",
-        "{projectRoot}/src/**/*.js",
         "{projectRoot}/*.wasm",
         "{projectRoot}/build/**/*.wasm",
         "{projectRoot}/.cache",
@@ -86,12 +88,12 @@
       "packages/lsp",
       "packages/cad",
       "packages/mcp",
-      "packages/ide",
       "languages/modelica",
       "languages/sysml2",
       "languages/step",
       "languages/scad",
       "languages/owl2",
+      "languages/pscad",
       "languages/ssp",
       "languages/csv",
       "languages/cfd",

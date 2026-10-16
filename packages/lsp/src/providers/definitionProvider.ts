@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { getPscadDefinitionLocation } from "@modelscript/pscad";
 import { Connection, Definition, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -9,6 +10,10 @@ import { symbolEntryToLocation } from "../utils/lsp-utils.js";
 
 function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
+}
+
+function isPscadDocument(document: TextDocument): boolean {
+  return document.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)$/i.test(document.uri);
 }
 
 /**
@@ -360,6 +365,12 @@ export function registerDefinitionProvider(
       }
 
       return null;
+    }
+
+    // ── PSCAD-specific go-to-definition (.pscx / .pslx) ──
+    if (isPscadDocument(document)) {
+      const pscadLoc = getPscadDefinitionLocation(document.getText(), offset, document.uri);
+      if (pscadLoc) return pscadLoc as Definition;
     }
 
     // ── Standard polyglot go-to-definition ──
