@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/prefer-for-of */
-// @ts-nocheck
+import type { Context } from "@modelscript/modelica";
+import { computeComponentInsert } from "@modelscript/modelica/diagram";
+import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
-import { getCompositeName } from "../utils/hierarchy-utils.js";
+import { isClassInstance } from "../utils/ast-utils.js";
+import {
+  buildClassHierarchy,
+  buildComponentTree,
+  classKindFromEntry,
+  getCompositeName,
+  hasClassChildren,
+  isTreeVisible,
+} from "../utils/hierarchy-utils.js";
 
 export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
@@ -40,19 +50,20 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
 
           const kind = String(instance.classKind ?? instance.kind ?? "").toLowerCase();
+          const modelicaKind = (globalThis as any).ModelicaClassKind;
           const isSimulatable =
             kind === "model" ||
             kind === "block" ||
             kind === "class" ||
-            instance.classKind === ModelicaClassKind?.MODEL ||
-            instance.classKind === ModelicaClassKind?.BLOCK ||
-            instance.classKind === ModelicaClassKind?.CLASS;
+            instance.classKind === modelicaKind?.MODEL ||
+            instance.classKind === modelicaKind?.BLOCK ||
+            instance.classKind === modelicaKind?.CLASS;
           if (!isSimulatable) continue;
 
           // Check for experiment annotation
           try {
             const docContext = context.workspaceManager.documentContexts.get(uri);
-            if (!context) continue;
+            if (!docContext) continue;
 
             const arena = flattenArenaFromInstance(instance, docContext);
             const exp = arena.experiment;
@@ -124,7 +135,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getClassSource",
-    (params: { className: string }): { content: string | null; error?: string } => {
+    (params: { className: string }): { content: string | null; uri?: string; error?: string } => {
       try {
         const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         const parts = params.className.split(".");
@@ -334,7 +345,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
         // Find unique name
         let name = baseName;
         let i = 1;
-        const existingNames = new Set(Array.from(classInstance.components).map((c) => c.name));
+        const existingNames = new Set(Array.from<any>(classInstance.components ?? []).map((c: any) => c.name));
         while (existingNames.has(name)) {
           name = `${baseName}${i}`;
           i++;
@@ -417,18 +428,18 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
         }
 
-        let context = params.uri ? context.workspaceManager.documentContexts.get(params.uri) : undefined;
+        let docContext = params.uri ? context.workspaceManager.documentContexts.get(params.uri) : undefined;
         if (!docContext) {
-          context = context.workspaceManager.documentContexts.values().next().value;
+          docContext = context.workspaceManager.documentContexts.values().next().value;
         }
         if (!docContext) {
           return { text: null, error: "No Modelica context found." };
         }
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
-        return { text: printArenaDAE(arena) };
+        return { text: (globalThis as any).printArenaDAE ? (globalThis as any).printArenaDAE(arena) : String(arena) };
       } catch (e) {
-        return { text: null, error: e instanceof Error ? e.stack : String(e) };
+        return { text: null, error: e instanceof Error ? (e.stack ?? e.message) : String(e) };
       }
     },
   );
@@ -468,14 +479,19 @@ export function registerClassQueryEndpoints(context: LspContext) {
           currentId = res.id ?? null;
         }
         if (currentId == null) return null;
-        const element = new ModelicaClassInstance(currentId, db);
+        const ModelicaClassInstanceCtor = (globalThis as any).ModelicaClassInstance;
+        const element = ModelicaClassInstanceCtor ? new ModelicaClassInstanceCtor(currentId, db) : null;
 
         if (!isClassInstance(element)) return null;
 
         const components: { name: string; type: string; description: string }[] = [];
         const childClasses: { name: string; kind: string }[] = [];
+        const ModelicaComponentInstanceCtor = (globalThis as any).ModelicaComponentInstance;
         for (const child of element.elements) {
-          if (child instanceof ModelicaComponentInstance) {
+          if (
+            (ModelicaComponentInstanceCtor && child instanceof ModelicaComponentInstanceCtor) ||
+            (!isClassInstance(child) && child?.classInstance)
+          ) {
             components.push({
               name: child.name ?? "",
               type: child.classInstance?.name ?? "",
@@ -668,5 +684,3 @@ export function registerClassQueryEndpoints(context: LspContext) {
     },
   );
 }
-
-// @ts-nocheck

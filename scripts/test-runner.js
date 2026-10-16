@@ -186,10 +186,50 @@ export function runTests(argv = process.argv.slice(2)) {
     ...testFiles,
   ];
 
+  let exitCode = 0;
   try {
     execFileSync(tsxPath, execArgs, { stdio: "inherit", cwd });
   } catch (err) {
-    process.exit(err.status ?? 1);
+    exitCode = err.status ?? 1;
+  } finally {
+    if (enableCoverage) {
+      try {
+        const lcovAbsPath = path.resolve(cwd, lcovDest);
+        if (fs.existsSync(lcovAbsPath)) {
+          const rawLcov = fs.readFileSync(lcovAbsPath, "utf8");
+          const normalizedLcov = rawLcov
+            .split(/\r?\n/)
+            .map((line) => {
+              if (line.startsWith("SF:")) {
+                const origSf = line.slice(3).trim();
+                const absSf = path.isAbsolute(origSf) ? origSf : path.resolve(cwd, origSf);
+                const relToRoot = path.relative(repoRoot, absSf).replace(/\\/g, "/");
+                if (!relToRoot.startsWith("..")) {
+                  return `SF:${relToRoot}`;
+                }
+              }
+              return line;
+            })
+            .join("\n");
+          fs.writeFileSync(lcovAbsPath, normalizedLcov, "utf8");
+
+          const pkgJsonPath = path.join(cwd, "package.json");
+          if (fs.existsSync(pkgJsonPath)) {
+            const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+            if (pkg.name) {
+              const pkgSafeName = pkg.name.replace(/[@/]/g, "-").replace(/^-+/, "");
+              const namedLcovPath = path.join(path.dirname(lcovAbsPath), `lcov-${pkgSafeName}.info`);
+              if (namedLcovPath !== lcovAbsPath) {
+                fs.writeFileSync(namedLcovPath, normalizedLcov, "utf8");
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+  if (exitCode !== 0) {
+    process.exit(exitCode);
   }
 }
 

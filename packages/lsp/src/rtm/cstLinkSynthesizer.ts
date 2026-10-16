@@ -25,9 +25,28 @@ export class CstLinkSynthesizer {
    */
   static offsetToPosition(text: string, offset: number): TextPosition {
     const clamped = Math.max(0, Math.min(offset, text.length));
-    const lines = text.substring(0, clamped).split("\n");
-    const line = lines.length - 1;
-    const character = lines[lines.length - 1]!.length;
+    let line = 0;
+    let character = 0;
+    for (let i = 0; i < clamped; i++) {
+      const code = text.charCodeAt(i);
+      if (code === 13) {
+        if (i + 1 < text.length && text.charCodeAt(i + 1) === 10) {
+          if (i + 1 < clamped) {
+            i++;
+            line++;
+            character = 0;
+          }
+        } else {
+          line++;
+          character = 0;
+        }
+      } else if (code === 10) {
+        line++;
+        character = 0;
+      } else {
+        character++;
+      }
+    }
     return { line, character };
   }
 

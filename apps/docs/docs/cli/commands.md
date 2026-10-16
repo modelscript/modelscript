@@ -1,274 +1,942 @@
-# CLI Command Reference
+# CLI Commands Reference
 
-Comprehensive syntax, arguments, options, and usage examples for all primary `msx` subcommands.
-
----
-
-## `msx flatten`
-
-Flattens a hierarchical Modelica model into a flat Differential Algebraic Equation (DAE) system.
-
-```bash
-msx flatten <model> [paths...] [options]
-```
-
-### Options
-
-- `--flattener <hybrid|wasm|ts|diff>`: Flattener backend (default: `hybrid`).
-- `--no-fold`: Disable constant folding optimizations.
-- `--no-alias`: Disable alias elimination.
-- `--format <text|json>`: Output format (default: `text`).
-
-### Example
-
-```bash
-msx flatten Modelica.Electrical.Analog.Examples.ChuaCircuit path/to/MSL
-```
+This reference documents every command, subcommand, and flag registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All commands can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
-## `msx simulate`
+## Compilation, Simulation & Optimization
 
-Runs a time-domain numerical simulation of a Modelica model.
+### `compile` / `flatten`
+
+Compiles and flattens a hierarchical Modelica class into a canonical Differential-Algebraic Equation (DAE) representation in linear WebAssembly memory (`DAEBuilder`). `flatten` is an exact alias for `compile`.
 
 ```bash
-msx simulate <model> [paths...] [options]
+msx compile <name> <paths...> [options]
+msx flatten <name> <paths...> [options]
 ```
 
-### Options
-
-- `--start-time <t>`: Initial simulation time (default: `0.0`).
-- `--stop-time <t>`: Final simulation time (default: `1.0`).
-- `--step-size <h>`: Fixed or initial integrator step size.
-- `--solver <cvode|ida|dopri5|rk4>`: Numerical integrator (default: `cvode`).
-- `--tolerance <tol>`: Relative integration tolerance (default: `1e-6`).
-- `--format <csv|json|parquet>`: Trajectory output format (default: `csv`).
-- `--output <file>`: Destination file for simulation results.
-
-### Example
+| Option                         | Type                           | Default                    | Description                                                                                                                                      |
+| :----------------------------- | :----------------------------- | :------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-L, --modelica-path <string>` | `string`                       | `process.env.MODELICAPATH` | Colon- or semicolon-separated search paths for resolving external Modelica libraries (such as MSL).                                              |
+| `-F, --flattener <backend>`    | `ts \| wasm \| hybrid \| diff` | `"hybrid"`                 | Flattener execution backend (`hybrid` pairs the Salsa query engine with the AssemblyScript WASM kernel; `diff` cross-checks TS vs. WASM parity). |
+| `--timing`                     | `boolean`                      | `false`                    | Print per-stage compilation timing breakdowns (parsing, indexing, Salsa instantiation, DAE lowering).                                            |
+| `--memory-profile`             | `boolean`                      | `false`                    | Print WebAssembly linear memory arena utilization and V8 heap statistics.                                                                        |
 
 ```bash
-msx simulate BouncingBall model.mo --stop-time 10 --solver cvode --output trajectory.csv
+# Flatten a model using the hybrid WASM kernel with timing breakdowns
+msx flatten Modelica.Electrical.Analog.Examples.ChuaCircuit -L ./libraries --timing
 ```
 
 ---
 
-## `msx optimize`
+### `instantiate`
 
-Solves dynamic optimal control problems via direct collocation.
+Instantiates a Modelica class via the Salsa `QueryEngine` and prints the resolved component hierarchy, inherited modifications, and bindings prior to DAE index reduction.
 
 ```bash
-msx optimize <model> [paths...] [options]
+msx instantiate <name> <paths...> [options]
 ```
 
-### Options
+| Option                         | Type                           | Default                    | Description                                             |
+| :----------------------------- | :----------------------------- | :------------------------- | :------------------------------------------------------ |
+| `-L, --modelica-path <string>` | `string`                       | `process.env.MODELICAPATH` | Library search paths for resolving package imports.     |
+| `-F, --flattener <backend>`    | `ts \| wasm \| hybrid \| diff` | `"hybrid"`                 | Flattener backend used to resolve class specialization. |
+| `--timing`                     | `boolean`                      | `false`                    | Print instantiation query timing.                       |
 
-- `--objective <expr>`: Objective function to minimize (e.g. `"u^2"`).
-- `--controls <vars>`: Comma-separated list of control variables.
-- `--control-bounds <var:min:max>`: Bound limits on control inputs.
-- `--stop-time <t>`: Optimization horizon.
+---
 
-### Example
+### `simulate`
+
+Compiles a model, performs Block Lower Triangular (BLT) Pantelides index reduction and tearing, and executes a numerical time-domain or steady-state simulation locally or on a remote Slurm HPC cluster.
 
 ```bash
-msx optimize InvertedPendulum model.mo \
-  --objective "theta^2 + 0.1*u^2" \
-  --controls "u" \
-  --control-bounds "u:-10:10" \
-  --stop-time 5
+msx simulate <name> <paths..> [options]
+```
+
+| Option                      | Type                                                                                     | Default                | Description                                                                                                                                                        |
+| :-------------------------- | :--------------------------------------------------------------------------------------- | :--------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--start-time <number>`     | `number`                                                                                 | `0.0` (or annotation)  | Simulation start time $t_0$ in seconds.                                                                                                                            |
+| `--stop-time <number>`      | `number`                                                                                 | `1.0` (or annotation)  | Simulation stop time $t_f$ in seconds.                                                                                                                             |
+| `--tolerance <number>`      | `number`                                                                                 | `1e-6`                 | Relative/absolute local error tolerance for adaptive step-size control.                                                                                            |
+| `--interval <number>`       | `number`                                                                                 | `(stop - start) / 500` | Output communication interval $\Delta t_{\text{out}}$ in seconds.                                                                                                  |
+| `--format <fmt>`            | `csv \| json \| none`                                                                    | `"csv"`                | Trajectory output format (`none` suppresses trajectory serialization for benchmarking).                                                                            |
+| `--solver <solver>`         | `euler \| rk4 \| dopri5 \| tsit5 \| trbdf2 \| rodas4p \| bdf \| auto \| cvode \| webgpu` | `"dopri5"`             | Numerical integration method (`bdf`, `trbdf2`, `rodas4p`, and SUNDIALS `cvode` handle stiff DAEs; `webgpu` executes batched GPU kernels).                          |
+| `--realtime <number>`       | `number`                                                                                 | Unset                  | Pace simulation execution to a real-time clock multiplier (e.g., `1.0` for 1x wall-clock HIL pacing).                                                              |
+| `--engine <engine>`         | `js \| arena \| wasm \| c \| jit`                                                        | `"js"`                 | Residual evaluation runtime (`arena` evaluates directly on `DAEBuilder` linear memory; `wasm` and `c` compile native kernels; `jit` uses dynamic JS/WASM codegen). |
+| `--jit`                     | `boolean`                                                                                | `false`                | Shorthand flag to enable JIT compilation of residual and Jacobian evaluators.                                                                                      |
+| `--jacobian <mode>`         | `dense \| sparse \| fd`                                                                  | `"sparse"`             | Jacobian evaluation strategy (symbolic CSC `sparse`, `dense`, or finite-difference `fd`).                                                                          |
+| `-F, --flattener <backend>` | `ts \| wasm \| hybrid \| diff`                                                           | `"hybrid"`             | Flattener backend used during compilation.                                                                                                                         |
+| `--steady-state`            | `boolean`                                                                                | `false`                | Solve for the equilibrium point $\dot{\mathbf{x}} = \mathbf{0}$ using Newton-Raphson with homotopy continuation instead of time-stepping.                          |
+| `--timing`                  | `boolean`                                                                                | `false`                | Report per-phase compilation, BLT, and solver wall-clock time.                                                                                                     |
+| `--memory-profile`          | `boolean`                                                                                | `false`                | Report peak memory usage across the linear DAE arena and integrator buffers.                                                                                       |
+| `--cloud`                   | `boolean`                                                                                | `false`                | Offload simulation execution to a remote ModelScript Cloud / Slurm HPC cluster.                                                                                    |
+| `--profile <string>`        | `string`                                                                                 | `"standard"`           | Cloud compute hardware profile (`standard`, `high-cpu`, `gpu-a100`, etc.) when `--cloud` is enabled.                                                               |
+| `--async`                   | `boolean`                                                                                | `false`                | Submit the `--cloud` job and return the job ID immediately without blocking for completion.                                                                        |
+| `--poll-interval <number>`  | `number`                                                                                 | `1500`                 | Polling interval in milliseconds when waiting on a synchronous `--cloud` job.                                                                                      |
+| `--output-dir <string>`     | `string`                                                                                 | `"./results"`          | Local directory where downloaded `--cloud` simulation artifacts are saved.                                                                                         |
+| `--api-url <string>`        | `string`                                                                                 | `MODELSCRIPT_API_URL`  | Override the ModelScript Cloud API base URL.                                                                                                                       |
+
+```bash
+# Run a stiff DAE simulation using the 4th-order Rosenbrock solver and sparse symbolic Jacobians
+msx simulate RLC_Circuit circuit.mo --stop-time 10.0 --solver rodas4p --engine arena --jacobian sparse --format csv > trajectory.csv
+
+# Dispatch a heavy multi-domain simulation to the Cloud HPC cluster
+msx simulate ThermalGrid plant.mo --cloud --profile high-cpu --stop-time 3600 --output-dir ./runs/thermal
 ```
 
 ---
 
-## `msx lint`
+### `optimize`
 
-Runs static analysis and linter rules across Modelica and polyglot source files.
+Formulates and solves a nonlinear Dynamic Optimization / Optimal Control Problem (OCP) over a flattened DAE using direct collocation and sequential quadratic programming (SQP).
 
 ```bash
-msx lint [paths...] [options]
+msx optimize <name> <paths..> [options]
 ```
 
-### Options
-
-- `--format <text|sarif|ctrf>`: Diagnostic output format.
-- `--max-warnings <n>`: Maximum warning threshold before exiting with non-zero code.
-
-### Example
-
-```bash
-# Output SARIF format for GitHub Code Scanning
-msx lint models/ --format sarif > results.sarif
-```
-
----
-
-## `msx render`
-
-Renders Modelica annotations into interactive SVG diagrams.
+| Option                      | Type          | Default      | Description                                                                                     |
+| :-------------------------- | :------------ | :----------- | :---------------------------------------------------------------------------------------------- |
+| `--objective <string>`      | `string`      | **Required** | Mayer or Lagrange objective variable/expression to minimize at `--stop-time`.                   |
+| `--controls <string>`       | `string`      | **Required** | Comma-separated list of free control input variables $u_i(t)$.                                  |
+| `--control-bounds <string>` | `string`      | Unset        | Bounds specification formatted as `u1:min:max,u2:min:max` (e.g., `throttle:0:1,brake:-5000:0`). |
+| `--start-time <number>`     | `number`      | `0.0`        | Horizon start time $t_0$.                                                                       |
+| `--stop-time <number>`      | `number`      | `1.0`        | Horizon terminal time $t_f$.                                                                    |
+| `--num-intervals <number>`  | `number`      | `50`         | Number of collocation finite elements across $[t_0, t_f]$.                                      |
+| `--tolerance <number>`      | `number`      | `1e-6`       | KKT optimality convergence tolerance.                                                           |
+| `--max-iterations <number>` | `number`      | `200`        | Maximum NLP solver iterations.                                                                  |
+| `--format <fmt>`            | `csv \| json` | `"csv"`      | Output format for optimal state and control trajectories.                                       |
 
 ```bash
-msx render <model> [paths...] [options]
-```
-
-### Options
-
-- `--view <diagram|icon>`: Render schematic diagram or component icon (default: `diagram`).
-- `--theme <light|dark|auto>`: Color theme (default: `auto`).
-
-### Example
-
-```bash
-msx render ChuaCircuit model.mo --view diagram > diagram.svg
+msx optimize EV_BatteryPack vehicle.mo \
+  --objective energyLoss \
+  --controls currentCommand \
+  --control-bounds "currentCommand:-200:200" \
+  --stop-time 600 \
+  --num-intervals 100 \
+  --format json > optimal_profile.json
 ```
 
 ---
 
-## `msx fmu export`
+### `grad`
 
-Exports a Modelica model as a standardized Functional Mock-up Unit (FMU).
+Computes forward, adjoint, or central finite-difference parameter sensitivities ($\nabla_{\mathbf{p}} J$) of scalar objective metrics with respect to model parameters.
 
 ```bash
-msx fmu export <model> [paths...] [options]
+msx grad <name> <paths..> [options]
 ```
 
-### Options
+| Option                  | Type                   | Default      | Description                                                                        |
+| :---------------------- | :--------------------- | :----------- | :--------------------------------------------------------------------------------- |
+| `--params <string>`     | `string`               | **Required** | Comma-separated list of model parameters $p_i$ to differentiate with respect to.   |
+| `--objectives <string>` | `string`               | **Required** | Comma-separated list of state or output variables evaluated at `--stop-time`.      |
+| `--start-time <number>` | `number`               | `0.0`        | Integration start time.                                                            |
+| `--stop-time <number>`  | `number`               | `1.0`        | Integration stop time.                                                             |
+| `--tolerance <number>`  | `number`               | `1e-6`       | Integrator tolerance.                                                              |
+| `--step-size <number>`  | `number`               | `1e-4`       | Relative perturbation step $\epsilon$ when validating against finite differences.  |
+| `--format <fmt>`        | `json \| table \| csv` | `"table"`    | Output format for the Jacobian matrix $\partial \mathbf{J} / \partial \mathbf{p}$. |
 
-- `--version <2.0|3.0>`: FMI standard version (default: `3.0`).
-- `--type <me|cs>`: Model Exchange (`me`) or Co-Simulation (`cs`).
-- `--output <file.fmu>`: Destination archive path.
+---
 
-### Example
+### `surrogate`
+
+Executes a Design of Experiments (DoE) campaign over a physics model, trains a Reduced-Order Model (ROM) surrogate, attaches convex-hull/bounding-box extrapolation guardrails, and exports standalone C, ONNX, or Modelica `.mo` blocks.
 
 ```bash
-msx fmu export DC_Motor motor.mo --version 3.0 --type cs --output DC_Motor.fmu
+msx surrogate <name> [paths..] [options]
+```
+
+| Option                         | Type                                                              | Default                         | Description                                                                                                                        |
+| :----------------------------- | :---------------------------------------------------------------- | :------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------- |
+| `--inputs <string>`            | `string`                                                          | Required (unless `--from-onnx`) | Comma-separated list of input parameter/variable names.                                                                            |
+| `--input-bounds <string>`      | `string`                                                          | Required (unless `--from-onnx`) | Parameter sampling bounds formatted as `p1:min:max,p2:min:max`.                                                                    |
+| `--outputs <string>`           | `string`                                                          | Required (unless `--from-onnx`) | Comma-separated list of target output variables to approximate.                                                                    |
+| `--strategy <strategy>`        | `full-factorial \| latin-hypercube \| sobol \| central-composite` | `"latin-hypercube"`             | Space-filling experimental design sampler.                                                                                         |
+| `--num-samples <number>`       | `number`                                                          | `50`                            | Number of full-order physics simulations to execute.                                                                               |
+| `--architecture <arch>`        | `mlp \| polynomial \| rbf`                                        | `"mlp"`                         | Surrogate model architecture (Multi-Layer Perceptron, multivariate polynomial response surface, or Radial Basis Function network). |
+| `--start-time <number>`        | `number`                                                          | `0.0`                           | Simulation start time per DoE sample.                                                                                              |
+| `--stop-time <number>`         | `number`                                                          | `1.0`                           | Simulation stop time per DoE sample.                                                                                               |
+| `--format <fmt>`               | `c \| onnx \| mo \| all`                                          | `"c"`                           | Target artifact format (`mo` synthesizes a drop-in pure Modelica `block` with embedded weights).                                   |
+| `--from-onnx <string>`         | `string`                                                          | Unset                           | Bypass DoE training and import an existing pre-trained `.onnx` neural network directly into Modelica/C.                            |
+| `--extrapolation-guardrails`   | `boolean`                                                         | `true`                          | Emit runtime domain-validity checks (`assert()` statements in `.mo` / bounds checks in C) when queried outside training bounds.    |
+| `--extrapolation-level <lvl>`  | `warning \| error`                                                | `"warning"`                     | Severity passed to generated Modelica `AssertionLevel.warning` or `AssertionLevel.error`.                                          |
+| `--extrapolation-flag`         | `boolean`                                                         | `true`                          | Emit a boolean output port `isExtrapolating` on the generated surrogate block.                                                     |
+| `--out-file <string>`          | `string`                                                          | Auto-derived                    | Output file path for the generated surrogate artifact.                                                                             |
+| `--replace-component <string>` | `string`                                                          | Unset                           | Automatically substitute the specified component instance inside the parent model with the trained surrogate block.                |
+| `--replace-out <string>`       | `string`                                                          | Unset                           | File path to write the rewritten parent model when `--replace-component` is used.                                                  |
+| `--report <string>`            | `string`                                                          | `"report.json"`                 | Output path for validation metrics ($R^2$, RMSE, max error, and training loss history).                                            |
+
+```bash
+msx surrogate HeatExchanger thermal.mo \
+  --inputs "massFlow,inletTemp" \
+  --input-bounds "massFlow:0.1:5.0,inletTemp:280:380" \
+  --outputs "outletTemp,pressureDrop" \
+  --strategy sobol \
+  --num-samples 128 \
+  --architecture mlp \
+  --format all \
+  --out-file build/hx_rom
 ```
 
 ---
 
-## `msx csg evaluate`
+### `mc`
 
-Evaluates OpenSCAD scripts or STEP CAD solids.
+Runs high-throughput Monte Carlo uncertainty propagation across stochastic parameter distributions using worker threads and the linear-memory WASM evaluator.
 
 ```bash
-msx csg evaluate <file.scad> [options]
+msx mc <name> <paths..> [options]
 ```
 
-### Options
-
-- `--output <file>`: Output format deduced from extension (`.step`, `.stl`, `.svg`).
-- `--mass-properties`: Compute volume, mass center, and inertia tensor.
-
-### Example
-
-```bash
-msx csg evaluate bracket.scad --output bracket.step --mass-properties
-```
-
----
-
-## `msx surrogate`
-
-Trains or evaluates parametric reduced-order surrogate models.
+| Option               | Type          | Default      | Description                                                                                                                                                                                                        |
+| :------------------- | :------------ | :----------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--params <string>`  | `string`      | **Required** | Comma-separated stochastic distribution specs: `name:dist:arg1:arg2` where `dist` is `gaussian` ($\mu,\sigma$), `uniform` ($a,b$), `lognormal` ($\mu,\sigma$), `beta` ($\alpha,\beta$), or `triangular` ($a,b,c$). |
+| `--runs <number>`    | `number`      | `1000`       | Total number of Monte Carlo realizations.                                                                                                                                                                          |
+| `--threads <number>` | `number`      | `1`          | Number of parallel worker threads.                                                                                                                                                                                 |
+| `--seed <number>`    | `number`      | Random       | Deterministic PRNG seed for reproducible ensembles.                                                                                                                                                                |
+| `--lhs`              | `boolean`     | `false`      | Use stratified Latin Hypercube Sampling (LHS) instead of pseudo-random sampling.                                                                                                                                   |
+| `--engine <engine>`  | `wasm \| js`  | `"wasm"`     | Simulation kernel (`wasm` uses the zero-allocation WebAssembly arena solver).                                                                                                                                      |
+| `--format <fmt>`     | `csv \| json` | `"json"`     | Output format for ensemble quantiles (mean, std, P5, P50, P95) and trajectories.                                                                                                                                   |
+| `--output <string>`  | `string`      | `stdout`     | File path to write the ensemble results.                                                                                                                                                                           |
 
 ```bash
-msx surrogate <train|eval> [options]
-```
-
-### Options
-
-- `--model <fmu|mo>`: Input model or plant FMU.
-- `--samples <n>`: Number of Latin Hypercube design samples (default: `500`).
-- `--method <pce|gp|node>`: Polynomial Chaos, Gaussian Process, or Neural ODE.
-- `--output <file.json>`: Serialized surrogate weights and hyper-parameters.
-
-### Example
-
-```bash
-msx surrogate train plant.fmu --samples 1000 --method gp --output surrogate.json
+msx mc RLC_Filter filter.mo \
+  --params "R:gaussian:100:5,C:uniform:1e-6:1.2e-6" \
+  --runs 5000 \
+  --lhs \
+  --threads 8 \
+  --seed 42 \
+  --output mc_summary.json
 ```
 
 ---
 
-## `msx mc`
+### `csg`
 
-Runs high-throughput Monte Carlo simulations under parameter uncertainty.
-
-```bash
-msx mc <model> [paths...] [options]
-```
-
-### Options
-
-- `--runs <n>`: Number of Monte Carlo trajectories (default: `1000`).
-- `--gpu`: Enable WebGPU acceleration for parallel execution.
-- `--distribution <param:dist:args>`: Parameter uncertainty distributions.
-
-### Example
+Extracts Constructive Solid Geometry (CSG) primitives and kinematic frame transformations from a Modelica class, writes `build/csg/execution_graph.json`, and invokes the OpenCASCADE (`@modelscript/cad`) worker to generate 3D CAD meshes.
 
 ```bash
-msx mc Circuit model.mo --runs 5000 --gpu --distribution "R:normal:100:5"
+msx csg <name> <paths...>
 ```
 
 ---
 
-## `msx pr-diff`
+## Linting, Formatting, Diffing & Compiler Inspection
 
-Computes semantic AST diffs between Git branches or revisions.
+### `lint`
+
+Executes the static analysis pipeline (WASM GLR parse validation, CST lint rules, Salsa semantic queries, unit checking, and control-flow analysis) across one or more files or directories.
 
 ```bash
-msx pr-diff <source-ref> <target-ref> [options]
+msx lint <path> [paths...] [options]
 ```
 
-### Example
+| Option                    | Type               | Default                    | Description                                                                                                                      |
+| :------------------------ | :----------------- | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| `-l, --language <string>` | `string`           | Auto-detected by extension | Force a specific language linter (`modelica`, `sysml2`, `modelscript`, `pscad`, `scad`, `ssp`, `csv`).                           |
+| `-f, --format <fmt>`      | `terminal \| json` | `"terminal"`               | Diagnostic output format (`terminal` renders source snippets with ANSI underlines; `json` outputs structured diagnostic arrays). |
 
 ```bash
-msx pr-diff main HEAD --models
+# Lint an entire polyglot workspace and emit JSON for CI processing
+msx lint ./models ./requirements --format json
 ```
 
 ---
 
-## `msx pscad`
+### `parse`
 
-Comprehensive management, simulation, and verification for PSCAD™ (`.pscx`, `.pswx`, `.psmx`) power system models.
+Parses a file using its registered native WebAssembly GLR parser (`parser.wasm`) and prints the concrete syntax tree (CST), node byte offsets, or parse errors.
 
 ```bash
-msx pscad <action> <files...> [options]
+msx parse <file> [options]
 ```
 
-### Actions
+| Option                    | Type      | Default       | Description                                                                 |
+| :------------------------ | :-------- | :------------ | :-------------------------------------------------------------------------- |
+| `-l, --language <string>` | `string`  | Auto-detected | Language ID override.                                                       |
+| `--json`                  | `boolean` | `false`       | Emit the CST as a structured JSON tree instead of an indented S-expression. |
+| `--cst`                   | `boolean` | `false`       | Include trivia tokens (whitespace and comments) from the linear CST buffer. |
 
-- `lint`: Performs static pre-flight electrical topology and parameter bounds checks (`M6001`–`M6004`).
-- `diagram`: Generates a standalone SVG schematic or Single-Line Diagram (SLD).
-- `diff`: Computes semantic and visual diffs between two PSCAD project revisions.
-- `sim`: Executes a high-speed WebAssembly Dommel companion-circuit EMT simulation.
-- `verify-ieee2800`: Evaluates ride-through, fast reactive current injection, and overvoltage ceilings against IEEE 2800-2022.
-- `export-modelica`: Translates PSCAD networks into standard `Modelica.Electrical.Analog` models.
-- `export-ssp`: Packages the system and inverter FMUs into an SSP `SystemStructure.ssd` container.
+---
 
-### Options
+### `format`
 
-- `--step <duration>`: EMT simulation time step (e.g. `20us`, `50us`, `1ms`, default: `20us`).
-- `--tstop <seconds>`: Simulation study stop time in seconds.
-- `--out <file>`: Destination output path for SVGs, Modelica, or SSP exports.
-
-### Examples
+Formats source files canonically using the grammar's CST-preserving pretty-printer while preserving comments and annotations.
 
 ```bash
-# Lint a PSCAD project for floating nodes and parameter errors
-msx pscad lint IEEE9Bus.pscx
+msx format <files...> [options]
+```
 
-# Export high-resolution SVG Single-Line Diagram
-msx pscad diagram IEEE9Bus.pscx --out=schematic.svg
+| Option                    | Type      | Default       | Description                                                                 |
+| :------------------------ | :-------- | :------------ | :-------------------------------------------------------------------------- |
+| `-w, --write`             | `boolean` | `false`       | Overwrite files in-place with formatted output.                             |
+| `-c, --check`             | `boolean` | `false`       | Exit with code `1` if any file is not canonically formatted (ideal for CI). |
+| `-l, --language <string>` | `string`  | Auto-detected | Override language grammar.                                                  |
 
-# Compare two project versions and highlight visual modifications
-msx pscad diff v1/IEEE9Bus.pscx v2/IEEE9Bus.pscx
+---
 
-# Run 20 µs fixed-step EMT transient simulation
-msx pscad sim IEEE9Bus.pscx --step=20us --tstop=0.5
+### `unparse`
 
-# Run automated IEEE 2800-2022 IBR grid compliance audit
-msx pscad verify-ieee2800 IEEE9Bus.pscx
+Parses a source file into linear CST memory and unparses it back into text to verify lossless round-trip grammar rules.
 
-# Convert PSCAD project to Modelica OpenIPSL
-msx pscad export-modelica IEEE9Bus.pscx --out=IEEE9Bus.mo
+```bash
+msx unparse <file> [options]
+```
+
+| Option                    | Type     | Default       | Description                      |
+| :------------------------ | :------- | :------------ | :------------------------------- |
+| `-l, --language <string>` | `string` | Auto-detected | Override language grammar.       |
+| `-o, --output <string>`   | `string` | `stdout`      | Write unparsed source to a file. |
+
+---
+
+### `diff`
+
+Computes a structural CST/AST and semantic DAE comparison between two files (`oldFile` and `newFile`), identifying added/removed components, modified parameter bindings, and altered equations regardless of whitespace formatting.
+
+```bash
+msx diff <oldFile> <newFile> [options]
+```
+
+| Option               | Type                           | Default      | Description                                                    |
+| :------------------- | :----------------------------- | :----------- | :------------------------------------------------------------- |
+| `-f, --format <fmt>` | `terminal \| json \| markdown` | `"terminal"` | Output format for structural change hunks.                     |
+| `--semantic`         | `boolean`                      | `true`       | Include flattened DAE variable and equation parity comparison. |
+
+---
+
+### `pr-diff`
+
+Generates visual schematic/architectural diffs (highlighting added components in green, modified in amber, and deleted in red) and PR review summaries between two Git revisions.
+
+```bash
+msx pr-diff [file] [options]
+```
+
+| Option                | Type                                                          | Default               | Description                                                                                          |
+| :-------------------- | :------------------------------------------------------------ | :-------------------- | :--------------------------------------------------------------------------------------------------- |
+| `-b, --base <ref>`    | `string`                                                      | `"HEAD~1"`            | Base Git revision, branch, or commit SHA.                                                            |
+| `-h, --head <ref>`    | `string`                                                      | Working tree / `HEAD` | Target head Git revision.                                                                            |
+| `-f, --format <fmt>`  | `visual-html \| visual-svg \| pr-comment \| json \| terminal` | `"visual-html"`       | Diff output format (`pr-comment` generates GitHub/GitLab Markdown with embedded Mermaid/SVG tables). |
+| `-v, --view <view>`   | `All \| BDD \| IBD \| StateMachine`                           | `"All"`               | Architectural diagram view to diff.                                                                  |
+| `-o, --output <path>` | `string`                                                      | `stdout`              | Output file path.                                                                                    |
+| `--breaking-only`     | `boolean`                                                     | `false`               | Filter report to breaking interface, port, or contract changes only.                                 |
+| `--open`              | `boolean`                                                     | `false`               | Automatically open the generated HTML report in the default browser.                                 |
+
+---
+
+### `i18n`
+
+Extracts translatable descriptions, documentation strings, and identifier aliases from models (`extract`), compiles translation catalogs (`compile`), or translates a model into a target locale (`translate`).
+
+```bash
+msx i18n <extract|compile|translate> <files...> [options]
+```
+
+| Option                  | Type     | Default  | Description                                                       |
+| :---------------------- | :------- | :------- | :---------------------------------------------------------------- |
+| `--locale <string>`     | `string` | `"en"`   | Target ISO locale code (e.g., `de`, `fr`, `ja`, `zh-CN`).         |
+| `-o, --output <string>` | `string` | `stdout` | Output catalog or translated source file path.                    |
+| `--catalog <string>`    | `string` | Unset    | Path to the JSON/PO translation catalog when running `translate`. |
+
+---
+
+## Formal Verification, Safety & Test Synthesis
+
+### `verify`
+
+Verifies formal contracts, `assert()` invariants, and SysML v2 requirement constraints using Bounded Model Checking (BMC), $k$-induction, IC3/Property-Directed Reachability (PDR), and Z3 SMT solving. Also emits standardized CI/CD and regulatory compliance reports.
+
+```bash
+msx verify <paths...> [options]
+```
+
+| Option                  | Type                                                | Default         | Description                                                                                                                   |
+| :---------------------- | :-------------------------------------------------- | :-------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| `-m, --model <name>`    | `string`                                            | Top-level model | Target model or requirement definition FQN to verify.                                                                         |
+| `-e, --engine <engine>` | `bmc \| kind \| ic3 \| smt \| all`                  | `"all"`         | Verification engine (`bmc` bounded unrolling, `kind` $k$-induction, `ic3` PDR invariant synthesis, `smt` inductive Z3 check). |
+| `-k, --bound <number>`  | `number`                                            | `20`            | Maximum discrete step bound $k$ for BMC and $k$-induction.                                                                    |
+| `--dt <number>`         | `number`                                            | `0.01`          | Discretization time step $\Delta t$ for continuous DAE unrolling.                                                             |
+| `-f, --format <fmt>`    | `terminal \| json \| sarif \| junit \| ctrf \| dhf` | `"terminal"`    | Output format (`sarif` v2.1.0 for GitHub Code Scanning, `junit` XML, `ctrf` JSON, or `dhf` Markdown compliance dossier).      |
+| `-r, --report <path>`   | `string`                                            | `stdout`        | File path to write the formatted verification report.                                                                         |
+| `--witness`             | `boolean`                                           | `true`          | Emit concrete counterexample state traces when a property is falsified.                                                       |
+
+```bash
+# Run k-induction and emit a GitHub Code Scanning SARIF report
+msx verify BrakingController brake.mo --engine kind --bound 50 --format sarif --report results.sarif
+```
+
+---
+
+### `falsify`
+
+Performs optimization-guided falsification of Signal Temporal Logic (STL) safety properties ($\square_{[a,b]} \phi$, $\lozenge_{[a,b]} \phi$, $\phi_1 \mathcal{U}_{[a,b]} \phi_2$) by searching disturbance and parameter spaces to minimize quantitative robustness $\rho(\phi, \mathbf{x}, t) < 0$.
+
+```bash
+msx falsify <name> <paths...> [options]
+```
+
+| Option                 | Type     | Default      | Description                                                                                                |
+| :--------------------- | :------- | :----------- | :--------------------------------------------------------------------------------------------------------- |
+| `--stl <formula>`      | `string` | **Required** | Signal Temporal Logic formula (e.g., `"G[0,10](speed < 35.0 and temp < 120.0)"`).                          |
+| `--params <string>`    | `string` | **Required** | Search bounds for uncertain parameters/inputs (`p1:min:max,p2:min:max`).                                   |
+| `--budget <number>`    | `number` | `200`        | Maximum number of simulation rollouts for the CMA-ES / simulated annealing optimizer.                      |
+| `--stop-time <number>` | `number` | `10.0`       | Simulation horizon $t_f$.                                                                                  |
+| `--seed <number>`      | `number` | Random       | PRNG seed for reproducible falsification search.                                                           |
+| `-o, --output <path>`  | `string` | `stdout`     | Output JSON file containing minimum robustness $\rho_{\min}$ and the falsifying counterexample trajectory. |
+
+---
+
+### `export-formal`
+
+Translates a flattened Modelica DAE or state machine into external formal verification and theorem-proving languages.
+
+```bash
+msx export-formal <name> <paths...> [options]
+```
+
+| Option                | Type                                         | Default  | Description                                                                                                                                                             |
+| :-------------------- | :------------------------------------------- | :------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-f, --format <fmt>`  | `smt2 \| lustre \| nusmv \| tla \| keymaera` | `"smt2"` | Target formal specification language: SMT-LIB v2 (`.smt2`), Lustre v6 (`.lus`), NuSMV/nuXmv (`.smv`), TLA+ (`.tla`), or KeYmaera X differential dynamic logic (`.kyx`). |
+| `--dt <number>`       | `number`                                     | `0.01`   | Discretization step size $\Delta t$ when encoding continuous ODEs as transition systems (`smt2`, `lustre`, `nusmv`, `tla`).                                             |
+| `-o, --output <path>` | `string`                                     | `stdout` | Output file path.                                                                                                                                                       |
+
+```bash
+# Export a hybrid cyber-physical controller to KeYmaera X dL format
+msx export-formal ACC_Controller acc.mo --format keymaera -o proofs/acc_safety.kyx
+```
+
+---
+
+### `verify-decisions`
+
+Evaluates Architectural Decision Records (ADRs) and SysML v2 trade-study constraints against flattened simulation parameters and formal bounds.
+
+```bash
+msx verify-decisions <paths...> [options]
+```
+
+| Option               | Type                           | Default      | Description                                                                                   |
+| :------------------- | :----------------------------- | :----------- | :-------------------------------------------------------------------------------------------- |
+| `-f, --format <fmt>` | `terminal \| json \| markdown` | `"terminal"` | Output format for decision verification status.                                               |
+| `--strict`           | `boolean`                      | `false`      | Fail with exit code `1` if any architectural decision lacks a linked verification constraint. |
+
+---
+
+### `decompose`
+
+Performs structural subsystem partitioning and Assume-Guarantee ($A/G$) contract decomposition across large system models, checking whether top-level system guarantees follow compositionally from subsystem contracts ($\bigwedge_i (A_i \Rightarrow G_i) \vdash G_{\text{sys}}$).
+
+```bash
+msx decompose <name> <paths...> [options]
+```
+
+| Option                | Type                           | Default       | Description                                                                                                               |
+| :-------------------- | :----------------------------- | :------------ | :------------------------------------------------------------------------------------------------------------------------ |
+| `--strategy <mode>`   | `scc \| spectral \| contracts` | `"contracts"` | Decomposition algorithm (strongly connected components, spectral graph min-cut, or assume-guarantee contract boundaries). |
+| `-f, --format <fmt>`  | `terminal \| json \| dot`      | `"terminal"`  | Output format (`dot` emits Graphviz subsystem dependency graphs).                                                         |
+| `-o, --output <path>` | `string`                       | `stdout`      | Output file path.                                                                                                         |
+
+---
+
+### `generate-tests`
+
+Synthesizes deterministic test vectors and stimulus harnesses from model guard conditions and assertions to achieve Modified Condition/Decision Coverage (MC/DC) and boundary-value coverage.
+
+```bash
+msx generate-tests <name> <paths...> [options]
+```
+
+| Option                   | Type                                | Default  | Description                                                                                                                                               |
+| :----------------------- | :---------------------------------- | :------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--coverage <criterion>` | `branch \| mcdc \| boundary`        | `"mcdc"` | Coverage criterion solved via SMT constraint generation.                                                                                                  |
+| `-f, --format <fmt>`     | `json \| csv \| modelica \| vitest` | `"json"` | Output format (`modelica` generates a standalone verification `model` with `CombiTimeTable` stimuli; `vitest` emits an executable TypeScript test suite). |
+| `-o, --output <path>`    | `string`                            | `stdout` | Output file path.                                                                                                                                         |
+
+---
+
+## Polyglot Digital Thread, Co-Simulation & Standards Interop
+
+### `render`
+
+Renders headless, publication-grade SVG diagrams for Modelica component icons/schematics, SysML v2 architectural views, and PSCAD Single-Line Diagrams (SLDs) using `@modelscript/diagram`.
+
+```bash
+msx render <name> [paths..] [options]
+```
+
+| Option                | Type                                                                             | Default       | Description                                                                                              |
+| :-------------------- | :------------------------------------------------------------------------------- | :------------ | :------------------------------------------------------------------------------------------------------- |
+| `-i, --icon`          | `boolean`                                                                        | `false`       | Render the Modelica `Icon(...)` coordinate graphics layer instead of the `Diagram(...)` schematic layer. |
+| `-v, --view <view>`   | `All \| BDD \| IBD \| StateMachine \| Activity \| SLD \| Taxonomy \| Properties` | Auto-selected | Diagram view kind for SysML v2, OWL2 ontologies, or PSCAD power networks.                                |
+| `-t, --theme <theme>` | `light \| dark \| blueprint`                                                     | `"light"`     | Color palette and automatic dark-mode contrast inversion preset.                                         |
+| `-o, --output <path>` | `string`                                                                         | `stdout`      | Output `.svg` file path.                                                                                 |
+
+```bash
+# Render a SysML v2 Internal Block Diagram in blueprint theme
+msx render SpacecraftPower spacecraft.sysml --view IBD --theme blueprint -o docs/ibd.svg
+```
+
+---
+
+### `fmu`
+
+Exports a Modelica class as a Functional Mock-up Unit (`.fmu` ZIP archive) compliant with **FMI 2.0** and/or **FMI 3.0** for Model Exchange (`me`) and Co-Simulation (`cs`), or imports/inspects an existing `.fmu` via `msx fmu import <file.fmu>`. `export-fmu` is an alias for `fmu`.
+
+```bash
+msx fmu <name> <paths..> [options]
+msx export-fmu <name> <paths..> [options]
+msx fmu import <path.fmu> [options]
+```
+
+| Option                      | Type                           | Default           | Description                                                                                                                                                           |
+| :-------------------------- | :----------------------------- | :---------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-o, --output <path>`       | `string`                       | `<name>.fmu`      | Output `.fmu` file path (or output `.mo` wrapper path when running `fmu import`).                                                                                     |
+| `--fmi-version <ver>`       | `2 \| 3 \| both`               | `"both"`          | FMI standard version (`2` emits FMI 2.0 `modelDescription.xml`; `3` emits FMI 3.0 with multidimensional arrays and clocks; `both` bundles multi-version descriptors). |
+| `--type <kind>`             | `me \| cs \| both`             | `"both"`          | FMU interface kind: Model Exchange (`me`), Co-Simulation (`cs`), or `both`.                                                                                           |
+| `--target <runtime>`        | `wasm \| c \| js \| all`       | `"all"`           | Compiled binary/source payloads packaged inside `binaries/` and `sources/`.                                                                                           |
+| `--source`                  | `boolean`                      | `true`            | Include standalone ANSI C99 source code (`sources/*.c`) inside the FMU archive.                                                                                       |
+| `--compile`                 | `boolean`                      | `false`           | Invoke the host C compiler (`cc`/`clang`/`gcc`) to build native shared libraries (`.so`/`.dylib`/`.dll`) inside `binaries/`.                                          |
+| `--wasm`                    | `boolean`                      | `false`           | Compile and bundle a self-contained WebAssembly module (`binaries/wasm32-wasi/<name>.wasm`).                                                                          |
+| `--xml-only`                | `boolean`                      | `false`           | Emit only the `modelDescription.xml` manifest without packaging a `.fmu` archive.                                                                                     |
+| `--description <string>`    | `string`                       | Model description | Override the `description` attribute in `modelDescription.xml`.                                                                                                       |
+| `--start-time <number>`     | `number`                       | `0.0`             | Default experiment `startTime` in `modelDescription.xml`.                                                                                                             |
+| `--stop-time <number>`      | `number`                       | `1.0`             | Default experiment `stopTime` in `modelDescription.xml`.                                                                                                              |
+| `--step-size <number>`      | `number`                       | `0.001`           | Default Co-Simulation communication `stepSize` in `modelDescription.xml`.                                                                                             |
+| `-F, --flattener <backend>` | `ts \| wasm \| hybrid \| diff` | `"hybrid"`        | Flattener backend used during compilation.                                                                                                                            |
+| `--timing`                  | `boolean`                      | `false`           | Print FMU codegen and packaging timing.                                                                                                                               |
+
+```bash
+# Export an FMI 3.0 Co-Simulation FMU with embedded C sources and WebAssembly binary
+msx fmu DC_Motor motor.mo --fmi-version 3 --type cs --wasm --output build/DC_Motor.fmu
+```
+
+---
+
+### `import-fmu`
+
+Unpacks an external FMI 2.0 or FMI 3.0 `.fmu` archive, parses its `modelDescription.xml`, and generates a strongly typed Modelica wrapper `block` (and optional SSP system binding) so the FMU can be connected and simulated inside ModelScript. `fmu-import` is an alias for `import-fmu`.
+
+```bash
+msx import-fmu <fmuPath> [options]
+msx fmu-import <fmuPath> [options]
+```
+
+| Option                 | Type     | Default               | Description                                               |
+| :--------------------- | :------- | :-------------------- | :-------------------------------------------------------- |
+| `-o, --output <path>`  | `string` | `<modelName>.mo`      | Output path for the generated Modelica wrapper file.      |
+| `--extract-dir <path>` | `string` | `./.fmu_cache/<name>` | Directory where FMU binaries and resources are extracted. |
+
+---
+
+### `cosim`
+
+Manages distributed FMI/SSP Co-Simulation master orchestration sessions, participant FMUs, recorded trajectory histories, and adaptive communication step-size optimization against the ModelScript Hub / Co-Simulation service.
+
+```bash
+msx cosim <subcommand> [args...] [options]
+```
+
+| Subcommand     | Arguments     | Description                                                                                                         |
+| :------------- | :------------ | :------------------------------------------------------------------------------------------------------------------ |
+| `status`       | —             | Display health and active worker metrics of the Co-Simulation master orchestrator.                                  |
+| `sessions`     | —             | List active and completed distributed Co-Simulation sessions.                                                       |
+| `participants` | `<sessionId>` | List connected FMU/simulator participants, port couplings, and current simulation time $t$ in a session.            |
+| `fmus`         | —             | List registered FMU artifacts available in the Co-Simulation repository.                                            |
+| `upload`       | `<path.fmu>`  | Upload a local `.fmu` archive to the Co-Simulation registry.                                                        |
+| `replay`       | `<sessionId>` | Deterministically replay a recorded Co-Simulation session from its saved input/coupling log.                        |
+| `history`      | `<sessionId>` | Fetch step-by-step coupling residuals, rollbacks, and trajectory history for a session.                             |
+| `optimize`     | `<sessionId>` | Run post-mortem Richardson extrapolation analysis on a session to recommend optimal communication step sizes $H_i$. |
+
+---
+
+### `pscad`
+
+Provides full lifecycle tooling for Manitoba Hydro **PSCAD** electromagnetic transient (EMT) workspaces (`.pscx` cases and `.pswx` workspaces), including domain-specific electrical linting, Single-Line Diagram (SLD) generation, EMT simulation, **IEEE Std 2800-2022** grid interconnection verification, and conversion to Modelica/SSP.
+
+```bash
+msx pscad <action> [files...] [options]
+```
+
+| Action            | Description                                                                                                                                                                                                      |
+| :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lint`            | Validate `.pscx`/`.pswx` schematics against electrical EMT rules (`M6001`–`M6011`, including floating nodes, transformer winding ratios, CSMF unconnected inputs, and traveling-wave line $\Delta t$ underflow). |
+| `diagram`         | Render a publication-quality SVG Single-Line Diagram (SLD) from a `.pscx` project.                                                                                                                               |
+| `diff`            | Compute a topological and parameter diff between two `.pscx` revisions.                                                                                                                                          |
+| `sim`             | Execute a fixed-step nodal admittance ($\mathbf{G}\mathbf{v}(t) = \mathbf{i}_{\text{hist}}(t - \Delta t)$) EMT simulation.                                                                                       |
+| `verify-ieee2800` | Run automated **IEEE Std 2800-2022** Inverter-Based Resource (IBR) compliance checks (Low/High Voltage Ride-Through LVRT/HVRT, frequency ride-through, and reactive current injection step response).            |
+| `export-modelica` | Translate a `.pscx` schematic into an equivalent Modelica `.mo` model using `Modelica.Electrical`.                                                                                                               |
+| `export-ssp`      | Package a `.pswx` multi-project workspace into an SSP 1.0 `.ssp` architecture container.                                                                                                                         |
+
+| Option             | Type     | Default  | Description                                                                                      |
+| :----------------- | :------- | :------- | :----------------------------------------------------------------------------------------------- |
+| `-o, --out <path>` | `string` | `stdout` | Output file path for diagrams, trajectories, compliance reports, or exported `.mo`/`.ssp` files. |
+| `--tstop <number>` | `number` | `1.0`    | EMT simulation stop time in seconds (for `sim` and `verify-ieee2800`).                           |
+| `--step <string>`  | `string` | `"20us"` | EMT integration step size (e.g., `"10us"`, `"50us"`).                                            |
+
+```bash
+# Verify IEEE 2800-2022 LVRT/HVRT compliance on a solar plant PSCAD case
+msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2800_report.json
+```
+
+---
+
+### `polyglot`
+
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 12 supported languages.
+
+```bash
+msx polyglot <subcommand> [path] [options]
+```
+
+| Subcommand          | Description                                                                                                                                                                                 |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project [dir]`     | Summarize all indexed languages, files, symbols, and cross-language bindings in a workspace.                                                                                                |
+| `verify [dir]`      | Verify cross-language dimensional consistency, port types, requirement satisfaction, and digital thread integrity.                                                                          |
+| `thread <symbol>`   | Trace the upstream/downstream polyglot digital thread for a symbol (from OWL2 ontology $\to$ SysML v2 requirement $\to$ Modelica equation $\to$ STEP CAD geometry $\to$ ReqIF/DHF dossier). |
+| `query <expr>`      | Execute a cross-language symbol or FLWOR query against the unified `WorkspaceIndex`.                                                                                                        |
+| `check-twins [dir]` | Compare live telemetry streams or CSV logs against nominal model predictions to detect parameter drift and anomalies.                                                                       |
+| `index [dir]`       | Build and serialize the workspace-wide polyglot symbol and dependency index (`polyglot-index.json`).                                                                                        |
+
+| Option                | Type                                 | Default      | Description                                               |
+| :-------------------- | :----------------------------------- | :----------- | :-------------------------------------------------------- |
+| `-f, --format <fmt>`  | `terminal \| json \| dot \| mermaid` | `"terminal"` | Output format for thread graphs and verification reports. |
+| `-o, --output <path>` | `string`                             | `stdout`     | Output file path.                                         |
+
+---
+
+### `align`
+
+Executes the Triple Graph Grammar (TGG) and Critical Pair Analysis (CPA) bidirectional synchronization engine across paired architectural, physical, and geometric models.
+
+```bash
+msx align <sourceFile> <targetFile> [options]
+```
+
+| Option                | Type                                                            | Default              | Description                                                                                                                                                                          |
+| :-------------------- | :-------------------------------------------------------------- | :------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--corr <path>`       | `string`                                                        | Auto-derived         | Path to the `.corr.json` correspondence graph file tracking persistent element links.                                                                                                |
+| `--direction <dir>`   | `forward \| backward \| sync \| check`                          | `"check"`            | TGG execution mode (`check` reports drift/conflicts; `forward` propagates source $\to$ target; `backward` propagates target $\to$ source; `sync` reconciles non-conflicting deltas). |
+| `--strategy <mode>`   | `source-wins \| target-wins \| interactive \| fail-on-conflict` | `"fail-on-conflict"` | Conflict resolution policy when Critical Pair Analysis detects overlapping edits.                                                                                                    |
+| `-o, --output <path>` | `string`                                                        | In-place / `stdout`  | Output path for the synchronized target model or diagnostic report.                                                                                                                  |
+
+---
+
+### `sysml`
+
+Provides dedicated interoperability workflows between **OMG SysML v2** (`.sysml`) and **Modelica** (`.mo`) models.
+
+```bash
+msx sysml <export|import|check|info|sync> <files...> [options]
+```
+
+| Subcommand                    | Description                                                                                                                      |
+| :---------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| `export <file.mo>`            | Project a Modelica class hierarchy into a SysML v2 `.sysml` `part def` / `port def` / `connection` architecture model.           |
+| `import <file.sysml>`         | Synthesize executable Modelica `.mo` skeleton classes, connectors, and `connect()` equations from a SysML v2 file.               |
+| `check <files...>`            | Validate SysML v2 $\leftrightarrow$ Modelica port compatibility, KerML quantity units, and `@satisfies` requirement constraints. |
+| `info <file.sysml>`           | Print package metrics (part definitions, ports, state machines, requirements, and constraint blocks).                            |
+| `sync <file.sysml> <file.mo>` | Synchronize structural changes and parameter values bi-directionally between `.sysml` and `.mo` files.                           |
+
+| Option                | Type               | Default      | Description                                         |
+| :-------------------- | :----------------- | :----------- | :-------------------------------------------------- |
+| `-o, --output <path>` | `string`           | `stdout`     | Output file path for `export`, `import`, or `sync`. |
+| `-f, --format <fmt>`  | `terminal \| json` | `"terminal"` | Output format for `check` and `info`.               |
+
+---
+
+### `oslc`
+
+Exposes workspace models and requirements as **OASIS OSLC 3.0** Linked Data resources (Requirements Management `oslc_rm` and Architecture Management `oslc_am`) with **TRS 3.0** (Tracked Resource Set) changelog feeds for IBM DOORS Next, Polarion, and Jira integration.
+
+```bash
+msx oslc <export|serve> [path] [options]
+```
+
+| Subcommand      | Description                                                                                                    |
+| :-------------- | :------------------------------------------------------------------------------------------------------------- |
+| `export [path]` | Serialize workspace symbols, requirements, and traceability links as static OSLC 3.0 RDF documents.            |
+| `serve [path]`  | Start an HTTP OSLC 3.0 Service Provider catalog, delegated UI preview server, and TRS 3.0 change log endpoint. |
+
+| Option                | Type                         | Default                        | Description                                                                                |
+| :-------------------- | :--------------------------- | :----------------------------- | :----------------------------------------------------------------------------------------- |
+| `-f, --format <fmt>`  | `turtle \| jsonld \| rdfxml` | `"turtle"`                     | RDF serialization format (`text/turtle`, `application/ld+json`, or `application/rdf+xml`). |
+| `-p, --port <number>` | `number`                     | `3080`                         | Listening TCP port when running `msx oslc serve`.                                          |
+| `--base-uri <uri>`    | `string`                     | `"http://localhost:3080/oslc"` | Base URI prefix minted for OSLC resource IRIs.                                             |
+| `-o, --output <path>` | `string`                     | `stdout`                       | Output file path when running `msx oslc export`.                                           |
+
+---
+
+### `reqif`
+
+Imports and exports **OMG ReqIF 1.2** (Requirements Interchange Format `.reqif` XML and `.reqifz` archives), translating specification hierarchies and attributes directly to and from SysML v2 `requirement def` blocks.
+
+```bash
+msx reqif <import|export> <file> [options]
+```
+
+| Option                | Type      | Default  | Description                                                                            |
+| :-------------------- | :-------- | :------- | :------------------------------------------------------------------------------------- |
+| `-o, --output <path>` | `string`  | `stdout` | Target `.sysml` file path (on `import`) or `.reqif`/`.reqifz` path (on `export`).      |
+| `--archive`           | `boolean` | `false`  | Package exported ReqIF XML and embedded SVG diagrams as a compressed `.reqifz` bundle. |
+
+---
+
+### `ddp`
+
+Inspects, packs, and converts **ISO/PAS 81346** Digital Data Packages (`.ddp`) and **IDTA Asset Administration Shell (AAS v3.0)** packages (`.aasx`) for industrial digital twin handover.
+
+```bash
+msx ddp <inspect|pack|to-aasx> <target> [options]
+```
+
+| Subcommand           | Description                                                                                                                                          |
+| :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect <file.ddp>` | Validate and list reference designations (`=`, `+`, `-` aspect trees), models, and documents inside a `.ddp` archive.                                |
+| `pack <dir>`         | Bundle a workspace directory into a signed ISO/PAS 81346 `.ddp` archive.                                                                             |
+| `to-aasx <file.ddp>` | Convert a `.ddp` package or workspace manifest into an IDTA AAS v3.0 `.aasx` Digital Twin package with TechnicalData and SimulationModels submodels. |
+
+| Option                | Type     | Default                      | Description          |
+| :-------------------- | :------- | :--------------------------- | :------------------- |
+| `-o, --output <path>` | `string` | `<name>.ddp` / `<name>.aasx` | Output archive path. |
+
+---
+
+### `dhf`
+
+Generates, inspects, and cryptographically audits **Design History File (DHF)** compliance dossiers structured for **FDA 21 CFR Part 820.30**, **ISO 13485**, **ISO 26262**, and **DO-178C** regulatory submissions.
+
+```bash
+msx dhf <export|status|audit> [path] [options]
+```
+
+| Subcommand      | Description                                                                                                                                         |
+| :-------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `export [path]` | Compile requirements traceability matrices (RTM), formal verification proofs, simulation summaries, and SHA-256 artifact hashes into a DHF dossier. |
+| `status [path]` | Report requirement verification coverage, unverified hazards, and suspect links across the workspace.                                               |
+| `audit [file]`  | Verify the cryptographic SHA-256 hash chain and Ed25519 signatures of an exported DHF bundle.                                                       |
+
+| Option                | Type                           | Default            | Description            |
+| :-------------------- | :----------------------------- | :----------------- | :--------------------- |
+| `-f, --format <fmt>`  | `markdown \| json \| pdf-html` | `"markdown"`       | Output dossier format. |
+| `-o, --output <path>` | `string`                       | `"DHF_Dossier.md"` | Output file path.      |
+
+---
+
+## Language Workbench, Daemon & IDE Tooling
+
+### `daemon`
+
+Controls the lifecycle of the persistent background ModelScript compiler daemon (`~/.modelscript/daemon.sock`).
+
+```bash
+msx daemon <start|stop|status|restart>
+```
+
+| Subcommand | Description                                                                        |
+| :--------- | :--------------------------------------------------------------------------------- |
+| `start`    | Spawn the background compiler daemon if not already running.                       |
+| `stop`     | Gracefully shut down the running daemon and remove its socket file.                |
+| `status`   | Report whether the daemon is running, its PID, uptime, and cached workspace count. |
+| `restart`  | Stop any active daemon instance and immediately start a fresh one.                 |
+
+---
+
+### `build`
+
+Compiles a `@modelscript/dsl` grammar definition into a zero-dependency native WebAssembly GLR parser (`parser.wasm`) along with strongly typed TypeScript CST node definitions.
+
+```bash
+msx build [grammarFile] [options]
+```
+
+| Option                | Type      | Default    | Description                                                        |
+| :-------------------- | :-------- | :--------- | :----------------------------------------------------------------- |
+| `-o, --out-dir <dir>` | `string`  | `"./dist"` | Output directory for `parser.wasm` and generated `.d.ts` bindings. |
+| `--optimize`          | `boolean` | `true`     | Run LR state table compaction and WASM binary size optimization.   |
+
+---
+
+### `generate`
+
+Scaffolds a new WebAssembly GLR parser (`parser`) or a complete standalone VS Code language extension (`extension` including TextMate grammars, LSP wiring, and `package.json` contributions) from a `@modelscript/dsl` language definition.
+
+```bash
+msx generate <parser|extension> <grammarFile> [options]
+```
+
+| Option                | Type     | Default         | Description                                    |
+| :-------------------- | :------- | :-------------- | :--------------------------------------------- |
+| `-o, --out-dir <dir>` | `string` | `"./generated"` | Destination directory for generated artifacts. |
+
+---
+
+### `language`
+
+Manages the dynamic polyglot language registry (`lang` is an alias for `language`).
+
+```bash
+msx language <list|register|unregister> [target]
+msx lang <list|register|unregister> [target]
+```
+
+| Subcommand        | Description                                                                                                                                                               |
+| :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list`            | List all registered languages (`.mo`, `.sysml`, `.msx`, `.pscx`, `.scad`, `.stp`, `.owl`, `.ssp`, `.csv`, `.su2`, `.inp`, `.gbr`) and their loaded `.wasm` parser states. |
+| `register <path>` | Dynamically register a custom language plugin module into `~/.modelscript/languages.json`.                                                                                |
+| `unregister <id>` | Remove a dynamically registered language plugin by language ID.                                                                                                           |
+
+---
+
+### `lsp`
+
+Starts the multi-language ModelScript Language Server Protocol (`@modelscript/lsp`) server.
+
+```bash
+msx lsp [options]
+```
+
+| Option            | Type      | Default | Description                                                                          |
+| :---------------- | :-------- | :------ | :----------------------------------------------------------------------------------- |
+| `--stdio`         | `boolean` | `true`  | Communicate over standard input/output streams.                                      |
+| `--socket <port>` | `number`  | Unset   | Communicate over a local TCP socket on the specified port.                           |
+| `--node-ipc`      | `boolean` | `false` | Communicate using Node.js IPC channels (used by the VS Code desktop extension host). |
+
+---
+
+### `playground`
+
+Launches a local interactive web playground server for live grammar authoring, GLR parse tree visualization, Salsa query inspection, and DAE simulation.
+
+```bash
+msx playground [options]
+```
+
+| Option                | Type      | Default | Description                                                   |
+| :-------------------- | :-------- | :------ | :------------------------------------------------------------ |
+| `-p, --port <number>` | `number`  | `4173`  | Local HTTP port for the playground web UI.                    |
+| `--open`              | `boolean` | `true`  | Automatically open the playground URL in the default browser. |
+
+---
+
+### `sandbox`
+
+Executes untrusted `.msx` scripts or `.mo` simulations inside a memory-capped, capability-isolated WebAssembly sandbox with no host filesystem or network access.
+
+```bash
+msx sandbox <file> [options]
+```
+
+| Option              | Type     | Default | Description                                             |
+| :------------------ | :------- | :------ | :------------------------------------------------------ |
+| `--timeout <ms>`    | `number` | `5000`  | Maximum execution wall-clock timeout in milliseconds.   |
+| `--max-memory <mb>` | `number` | `128`   | Maximum WebAssembly linear memory ceiling in megabytes. |
+
+---
+
+## Package Registry, Cloud HPC & Hub Administration
+
+### `init`
+
+Initializes a new `modelscript.json` package manifest in the current directory.
+
+```bash
+msx init [options]
+```
+
+| Option          | Type      | Default | Description                                                                                                  |
+| :-------------- | :-------- | :------ | :----------------------------------------------------------------------------------------------------------- |
+| `-y, --yes`     | `boolean` | `false` | Populate default manifest fields (`name`, `version: "0.1.0"`, `license: "MIT"`) without interactive prompts. |
+| `--scope <org>` | `string`  | Unset   | Prefix package name with an organization scope (e.g., `@aerospace/flight-dynamics`).                         |
+
+---
+
+### `login`, `logout`, `whoami`
+
+Manages authentication sessions against a ModelScript Registry or self-hosted Enterprise Hub. Credentials and Ed25519 signing keys are stored in `~/.modelscriptrc`.
+
+```bash
+msx login [--registry <url>] [--token <token>]
+msx logout
+msx whoami
+```
+
+| Option             | Type     | Default               | Description                                                                               |
+| :----------------- | :------- | :-------------------- | :---------------------------------------------------------------------------------------- |
+| `--registry <url>` | `string` | `MODELSCRIPT_API_URL` | Target ModelScript Hub / Registry URL.                                                    |
+| `--token <token>`  | `string` | Interactive prompt    | Authenticate non-interactively using a personal access token or `ms_bot_*` service token. |
+
+---
+
+### `install`
+
+Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `modelscript.lock`. Aliases: `i`, `add`.
+
+```bash
+msx install [packages...] [options]
+msx i [packages...] [options]
+msx add <packages...> [options]
+```
+
+| Option                | Type      | Default               | Description                                                                                                   |
+| :-------------------- | :-------- | :-------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `--frozen-lockfile`   | `boolean` | `false`               | Fail with exit code `1` if `modelscript.lock` does not exactly match `modelscript.json` (recommended for CI). |
+| `--registry <url>`    | `string`  | `MODELSCRIPT_API_URL` | Override registry URL.                                                                                        |
+| `--verify-signatures` | `boolean` | `true`                | Enforce Ed25519 cryptographic signature verification on downloaded tarballs.                                  |
+
+---
+
+### `pack`, `publish`, `unpublish`
+
+Packages, cryptographically signs, and publishes libraries to the ModelScript Registry.
+
+```bash
+msx pack [options]
+msx publish [tarballOrDir] [options]
+msx unpublish <pkg>@<version> [options]
+```
+
+| Option              | Type                   | Default                     | Description                                                                                       |
+| :------------------ | :--------------------- | :-------------------------- | :------------------------------------------------------------------------------------------------ |
+| `--tag <tag>`       | `string`               | `"latest"`                  | Distribution tag assigned on `publish` (e.g., `latest`, `next`, `rc`).                            |
+| `--access <level>`  | `public \| restricted` | `"public"`                  | Visibility level for scoped `@org/pkg` packages.                                                  |
+| `--sign-key <path>` | `string`               | `~/.modelscript/id_ed25519` | Path to the Ed25519 private key used to sign the package SHA-256 digest.                          |
+| `--dry-run`         | `boolean`              | `false`                     | Validate manifest, run lint checks, and compute tarball digest without uploading to the registry. |
+
+---
+
+### `cloud`
+
+Manages remote high-performance computing (HPC) simulation sweeps, Slurm batch jobs, and organization compute credit wallets on ModelScript Cloud.
+
+```bash
+msx cloud <subcommand> [args...] [options]
+```
+
+| Subcommand           | Arguments           | Description                                                                                                                 |
+| :------------------- | :------------------ | :-------------------------------------------------------------------------------------------------------------------------- |
+| `profiles`           | —                   | List available CPU/GPU hardware execution profiles (`standard`, `high-cpu`, `gpu-a100`, `slurm-mpi`) and credit burn rates. |
+| `balance` / `wallet` | —                   | Display current organization compute credit balance, active reservations, and ledger history.                               |
+| `jobs` / `list`      | —                   | List recent and running cloud simulation jobs.                                                                              |
+| `status`             | `<jobId>`           | Query real-time queue state (`QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`) and progress percentage for a job.                 |
+| `logs`               | `<jobId>`           | Stream stdout/stderr compiler and solver logs from a cloud worker.                                                          |
+| `cancel`             | `<jobId>`           | Terminate a queued or running cloud job and refund unused reserved credits.                                                 |
+| `download`           | `<jobId> [outDir]`  | Download completed trajectory CSV/Parquet artifacts and diagnostic reports.                                                 |
+| `dispatch`           | `<name> <paths...>` | Directly submit a containerized simulation or DoE sweep job to the cloud queue.                                             |
+
+---
+
+### `hub`, `db`, `archive`
+
+Administrative CLI commands for operators managing a self-hosted **ModelScript Enterprise Hub** instance (see [Platform Administration Guide](../guide/administration.md)).
+
+```bash
+# Initialize Hub configuration or query cluster service health
+msx hub <init|status> [--api-url <url>]
+
+# Inspect PostgreSQL migration state, apply schema upgrades, or verify the SHA-256 audit ledger chain
+msx db <status|upgrade|verify> [--connection-string <postgres://...>]
+
+# Request, poll, or download long-term regulatory cold-storage archives
+msx archive <request|status|download> <targetId> [-o <path>]
 ```

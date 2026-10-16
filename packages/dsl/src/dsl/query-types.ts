@@ -57,6 +57,8 @@ export interface CompilerLintFix<_RuleName extends string = string, FieldName ex
   ) => {
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     newText: string;
   } | null;
 }

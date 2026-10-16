@@ -35,6 +35,8 @@
  *   - Direct extraction of Gram matrix SOS witness certificates for Nelson-Oppen theory propagation.
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
+
 export interface SdpProblem {
   /** Dimension of symmetric matrix X (n x n) */
   n: number;
@@ -108,6 +110,29 @@ export class SdpSolver {
    */
   public static projectPsdCone(X: number[][], eps = 1e-8): number[][] {
     const n = X.length;
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.sdp_project_psd_cone === "function" && typeof wasm.__new === "function" && n > 0) {
+      const xPtr = wasm.__new(n * n * 8, 0);
+      const outPtr = wasm.__new(n * n * 8, 0);
+      const xView = new Float64Array(wasm.memory.buffer, xPtr, n * n);
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          xView[i * n + j] = X[i]?.[j] ?? 0;
+        }
+      }
+      wasm.sdp_project_psd_cone(n, xPtr, eps, outPtr);
+      const outView = new Float64Array(wasm.memory.buffer, outPtr, n * n);
+      const X_proj: number[][] = [];
+      for (let i = 0; i < n; i++) {
+        const row = new Array<number>(n);
+        for (let j = 0; j < n; j++) {
+          row[j] = outView[i * n + j]!;
+        }
+        X_proj.push(row);
+      }
+      return X_proj;
+    }
+
     // Symmetrize input copy
     const A: number[][] = [];
     const V: number[][] = [];

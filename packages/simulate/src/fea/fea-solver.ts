@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import { Tet10Element } from "./tet10-stiffness.js";
 import { Tet4Element } from "./tet4-stiffness.js";
 import type { FeaBoundaryConditions, FeaStepResult, MaterialProperties, Tet4Mesh } from "./tet4-types.js";
@@ -151,6 +152,13 @@ export class FeaSolver {
     }
   }
 
+  private wasmCorotScratch?: {
+    wasm: any;
+    coordsPtr: number;
+    uElemPtr: number;
+    rPtr: number;
+  };
+
   /**
    * Computes the 3x3 rotation matrix R_e via polar decomposition of element deformation.
    */
@@ -162,6 +170,36 @@ export class FeaSolver {
     const n1 = elements[e * npe + 1];
     const n2 = elements[e * npe + 2];
     const n3 = elements[e * npe + 3];
+
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.fea_compute_corotational_rotation === "function" && typeof wasm.__new === "function") {
+      if (!this.wasmCorotScratch || this.wasmCorotScratch.wasm !== wasm) {
+        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        this.wasmCorotScratch = {
+          wasm,
+          coordsPtr: alloc(12 * 8),
+          uElemPtr: alloc(12 * 8),
+          rPtr: alloc(9 * 8),
+        };
+      }
+      const s = this.wasmCorotScratch;
+      const cView = new Float64Array(wasm.memory.buffer, s.coordsPtr, 12);
+      const uView = new Float64Array(wasm.memory.buffer, s.uElemPtr, 12);
+      const ns = [n0, n1, n2, n3];
+      for (let i = 0; i < 4; i++) {
+        const ni = ns[i]! * 3;
+        cView[i * 3 + 0] = nodeCoords[ni + 0];
+        cView[i * 3 + 1] = nodeCoords[ni + 1];
+        cView[i * 3 + 2] = nodeCoords[ni + 2];
+        uView[i * 3 + 0] = u[ni + 0];
+        uView[i * 3 + 1] = u[ni + 1];
+        uView[i * 3 + 2] = u[ni + 2];
+      }
+      wasm.fea_compute_corotational_rotation(s.coordsPtr, s.uElemPtr, s.rPtr);
+      const R = new Float64Array(9);
+      R.set(new Float64Array(wasm.memory.buffer, s.rPtr, 9));
+      return R;
+    }
 
     // Undeformed edges
     const X0 = [nodeCoords[n0 * 3], nodeCoords[n0 * 3 + 1], nodeCoords[n0 * 3 + 2]];
@@ -521,8 +559,88 @@ export class FeaSolver {
     return this.postProcess(u, corotational, isTransient);
   }
 
+  private wasmPcgBuffers?: {
+    wasm: any;
+    n: number;
+    nnz: number;
+    rowOffsetsPtr: number;
+    colIndicesPtr: number;
+    valuesPtr: number;
+    diagInvPtr: number;
+    bPtr: number;
+    xPtr: number;
+    rPtr: number;
+    zPtr: number;
+    pPtr: number;
+    apPtr: number;
+  };
+
   private solvePcg(b: Float64Array, x: Float64Array, tol: number, maxIters: number): void {
     const n = this.numDofs;
+    const nnz = this.values.length;
+    const wasm: any = getDefaultWasmExports();
+
+    if (wasm && typeof wasm.fea_solve_csr_pcg === "function" && typeof wasm.__new === "function" && n > 0 && nnz > 0) {
+      if (!this.wasmPcgBuffers || this.wasmPcgBuffers.n !== n || this.wasmPcgBuffers.nnz !== nnz) {
+        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        const rowOffsetsPtr = alloc((n + 1) * 4);
+        const colIndicesPtr = alloc(nnz * 4);
+        const valuesPtr = alloc(nnz * 8);
+        const diagInvPtr = alloc(n * 8);
+        const bPtr = alloc(n * 8);
+        const xPtr = alloc(n * 8);
+        const rPtr = alloc(n * 8);
+        const zPtr = alloc(n * 8);
+        const pPtr = alloc(n * 8);
+        const apPtr = alloc(n * 8);
+
+        new Int32Array(wasm.memory.buffer, rowOffsetsPtr, n + 1).set(this.rowOffsets);
+        new Int32Array(wasm.memory.buffer, colIndicesPtr, nnz).set(this.colIndices);
+
+        this.wasmPcgBuffers = {
+          wasm,
+          n,
+          nnz,
+          rowOffsetsPtr,
+          colIndicesPtr,
+          valuesPtr,
+          diagInvPtr,
+          bPtr,
+          xPtr,
+          rPtr,
+          zPtr,
+          pPtr,
+          apPtr,
+        };
+      }
+
+      const bufs = this.wasmPcgBuffers;
+      const memBuf = wasm.memory.buffer;
+      new Float64Array(memBuf, bufs.valuesPtr, nnz).set(this.values);
+      new Float64Array(memBuf, bufs.diagInvPtr, n).set(this.diagInv);
+      new Float64Array(memBuf, bufs.bPtr, n).set(b);
+      new Float64Array(memBuf, bufs.xPtr, n).set(x);
+
+      wasm.fea_solve_csr_pcg(
+        n,
+        bufs.rowOffsetsPtr,
+        bufs.colIndicesPtr,
+        bufs.valuesPtr,
+        bufs.diagInvPtr,
+        bufs.bPtr,
+        bufs.xPtr,
+        bufs.rPtr,
+        bufs.zPtr,
+        bufs.pPtr,
+        bufs.apPtr,
+        tol,
+        maxIters,
+      );
+
+      x.set(new Float64Array(wasm.memory.buffer, bufs.xPtr, n));
+      return;
+    }
+
     const r = new Float64Array(n);
     const z = new Float64Array(n);
     const p = new Float64Array(n);

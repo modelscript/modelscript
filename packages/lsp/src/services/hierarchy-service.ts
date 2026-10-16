@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-// @ts-nocheck
-import { type ClassHierarchyNode, type ComponentTreeNode, type TreeNodeInfo } from "@modelscript/runtime";
+import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
 import { Connection } from "vscode-languageserver";
 import {
+  buildClassHierarchy,
+  buildComponentTree,
   classKindFromEntry,
   fqnCacheState,
   getCompositeName,
@@ -107,72 +108,11 @@ export class HierarchyService {
     return false;
   }
 
-  buildClassHierarchy(classInstance: ModelicaClassInstance, visited = new Set<string>()): ClassHierarchyNode {
-    const name = classInstance.compositeName || classInstance.name || "<unknown>";
-    if (visited.has(name)) {
-      return { name, kind: classInstance.classKind || "class", description: classInstance.description, children: [] };
-    }
-    visited.add(name);
-
-    const children: ClassHierarchyNode[] = [];
-    try {
-      for (const ext of classInstance.extendsClassInstances) {
-        if (ext.classInstance) {
-          children.push(buildClassHierarchy(ext.classInstance, visited));
-        }
-      }
-    } catch {
-      // ignore errors during hierarchy traversal
-    }
-
-    return {
-      name,
-      kind: classInstance.classKind || "class",
-      description: classInstance.description,
-      children,
-    };
+  buildClassHierarchy(classInstance: any, visited = new Set<string>()): ClassHierarchyNode {
+    return buildClassHierarchy(classInstance, visited);
   }
 
-  buildComponentTree(classInstance: ModelicaClassInstance, depth = 0): ComponentTreeNode {
-    const children: ComponentTreeNode[] = [];
-    if (depth < 5) {
-      try {
-        for (const comp of classInstance.components) {
-          if (comp instanceof ModelicaComponentInstance) {
-            const childCI = comp.classInstance;
-            const childNode: ComponentTreeNode = {
-              name: comp.name || "<unnamed>",
-              typeName: childCI?.name || "<unknown>",
-              kind: childCI?.classKind || "unknown",
-              variability: comp.variability,
-              causality: comp.causality,
-              description: comp.description,
-              children: [],
-            };
-            if (childCI) {
-              try {
-                const subtree = buildComponentTree(childCI, depth + 1);
-                childNode.children = subtree.children;
-              } catch {
-                // ignore
-              }
-            }
-            children.push(childNode);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    return {
-      name: classInstance.name || "<unnamed>",
-      typeName: classInstance.compositeName || classInstance.name || "<unnamed>",
-      kind: classInstance.classKind || "class",
-      variability: null,
-      causality: null,
-      description: classInstance.description,
-      children,
-    };
+  buildComponentTree(classInstance: any, depth = 0): ComponentTreeNode {
+    return buildComponentTree(classInstance, depth);
   }
 }

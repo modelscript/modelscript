@@ -11,6 +11,7 @@ import {
   getNodeNextSibling,
   getNodePadding,
   getNodeType,
+  inputEncoding,
   stringArenaPtr,
   stringArenaCapacity,
 } from "../arena";
@@ -34,6 +35,25 @@ function isCleanNode(nodeId: u32): boolean {
   return (flags & (FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0;
 }
 
+@inline
+function emitCodePointUtf8(cp: u32): void {
+  if (cp < 0x80) {
+    t_unparseBuffer.push(cp);
+  } else if (cp < 0x800) {
+    t_unparseBuffer.push(0xc0 | (cp >> 6));
+    t_unparseBuffer.push(0x80 | (cp & 0x3f));
+  } else if (cp < 0x10000) {
+    t_unparseBuffer.push(0xe0 | (cp >> 12));
+    t_unparseBuffer.push(0x80 | ((cp >> 6) & 0x3f));
+    t_unparseBuffer.push(0x80 | (cp & 0x3f));
+  } else {
+    t_unparseBuffer.push(0xf0 | (cp >> 18));
+    t_unparseBuffer.push(0x80 | ((cp >> 12) & 0x3f));
+    t_unparseBuffer.push(0x80 | ((cp >> 6) & 0x3f));
+    t_unparseBuffer.push(0x80 | (cp & 0x3f));
+  }
+}
+
 /**
  * Emits verbatim bytes of clean node from input buffer or string override arena.
  */
@@ -44,14 +64,51 @@ export function emitVerbatimNode(nodeId: u32): void {
   let span = ast_getTextSpan(nodeId);
   let start = (span >> 32) as u32;
   let len = (span & 0xffffffff) as u32;
+  if (len == 0) return;
 
-  let basePtr: usize = (stringArenaPtr != 0 && start >= (stringArenaPtr as u32) && start < (stringArenaPtr + stringArenaCapacity) as u32)
+  let isOverride =
+    stringArenaPtr != 0 &&
+    start >= (stringArenaPtr as u32) + 4 &&
+    start < ((stringArenaPtr + stringArenaCapacity) as u32);
+  let basePtr: usize = isOverride
     ? (start as usize)
     : getInputBuffer() + (start as usize);
 
-  for (let i: u32 = 0; i < len; i++) {
-    let b = load<u8>(basePtr + i);
-    t_unparseBuffer.push(b as u32);
+  let isUtf8: boolean;
+  let step: u32 = 1;
+  if (isOverride) {
+    let header = load<u32>((start - 4) as usize);
+    isUtf8 = (header & 0x80000000) != 0;
+    step = isUtf8 ? 1 : 2;
+  } else {
+    isUtf8 = inputEncoding == 0;
+    step = inputEncoding == 0 ? 1 : inputEncoding <= 2 ? 2 : 4;
+  }
+
+  if (isUtf8) {
+    for (let i: u32 = 0; i < len; i++) {
+      let b = load<u8>(basePtr + i);
+      t_unparseBuffer.push(b as u32);
+    }
+  } else if (step == 2) {
+    let i: u32 = 0;
+    while (i + 1 < len) {
+      let code = load<u16>(basePtr + i) as u32;
+      i += 2;
+      if (code >= 0xd800 && code <= 0xdbff && i + 1 < len) {
+        let low = load<u16>(basePtr + i) as u32;
+        if (low >= 0xdc00 && low <= 0xdfff) {
+          code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+          i += 2;
+        }
+      }
+      emitCodePointUtf8(code);
+    }
+  } else {
+    for (let i: u32 = 0; i + 3 < len; i += 4) {
+      let cp = load<u32>(basePtr + i);
+      emitCodePointUtf8(cp);
+    }
   }
 }
 

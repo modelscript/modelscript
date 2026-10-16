@@ -49,6 +49,14 @@ export class WasmEmtSolver {
   maxMachines: u32;
   nConverters: u32;
   maxConverters: u32;
+  nIndMachines: u32;
+  maxIndMachines: u32;
+  nFdLines: u32;
+  maxFdLines: u32;
+  nCtrlBlocks: u32;
+  maxCtrlBlocks: u32;
+  nPlls: u32;
+  maxPlls: u32;
 
   dt: f64;
   t: f64;
@@ -206,6 +214,91 @@ export class WasmEmtSolver {
   convIInjBPtr: usize;       // Float64Array[maxConverters]
   convIInjCPtr: usize;       // Float64Array[maxConverters]
 
+  // 5th-Order Krause d-q Induction Machine & Type-3 DFIG Crowbar data
+  indNodeAPtr: usize;        // Int32Array[maxIndMachines]
+  indNodeBPtr: usize;        // Int32Array[maxIndMachines]
+  indNodeCPtr: usize;        // Int32Array[maxIndMachines]
+  indVBasePeakPtr: usize;    // Float64Array[maxIndMachines]
+  indOmegaSyncPtr: usize;    // Float64Array[maxIndMachines]
+  indGEqPtr: usize;          // Float64Array[maxIndMachines]
+  indRsPuPtr: usize;         // Float64Array[maxIndMachines]
+  indXsPuPtr: usize;         // Float64Array[maxIndMachines]
+  indXmPuPtr: usize;         // Float64Array[maxIndMachines]
+  indRrPuPtr: usize;         // Float64Array[maxIndMachines]
+  indXrPuPtr: usize;         // Float64Array[maxIndMachines]
+  indXPrimePtr: usize;       // Float64Array[maxIndMachines]
+  indT0PrimePtr: usize;      // Float64Array[maxIndMachines]
+  indHInertiaPtr: usize;     // Float64Array[maxIndMachines]
+  indDampingPtr: usize;      // Float64Array[maxIndMachines]
+  indTmLoadPuPtr: usize;     // Float64Array[maxIndMachines]
+  indCrowbarThPtr: usize;    // Float64Array[maxIndMachines]
+  indIsDfigPtr: usize;       // Uint32Array[maxIndMachines]
+  indCrowbarActivePtr: usize;// Uint32Array[maxIndMachines]
+  indOmegaRPuPtr: usize;     // Float64Array[maxIndMachines]
+  indEdPrimePtr: usize;      // Float64Array[maxIndMachines]
+  indEqPrimePtr: usize;      // Float64Array[maxIndMachines]
+  indTePuPtr: usize;         // Float64Array[maxIndMachines]
+
+  // Marti / Gustavsen Rational Pole-Residue Frequency-Dependent Transmission Line (FD-Line) data
+  fdFromPtr: usize;          // Int32Array[maxFdLines]
+  fdToPtr: usize;            // Int32Array[maxFdLines]
+  fdGInfPtr: usize;          // Float64Array[maxFdLines]
+  fdGEqPtr: usize;           // Float64Array[maxFdLines]
+  fdDelayStepsPtr: usize;    // Int32Array[maxFdLines]
+  fdDelayFracPtr: usize;     // Float64Array[maxFdLines]
+  fdBufLenPtr: usize;        // Int32Array[maxFdLines]
+  fdBufIdxPtr: usize;        // Int32Array[maxFdLines]
+  fdBufFromPtrs: usize;      // usize[maxFdLines]
+  fdBufToPtrs: usize;        // usize[maxFdLines]
+  fdVFromPrevPtr: usize;     // Float64Array[maxFdLines]
+  fdVToPrevPtr: usize;       // Float64Array[maxFdLines]
+  fdIHistFromPtr: usize;     // Float64Array[maxFdLines]
+  fdIHistToPtr: usize;       // Float64Array[maxFdLines]
+  fdNYPolesPtr: usize;       // Uint32Array[maxFdLines]
+  fdNHPolesPtr: usize;       // Uint32Array[maxFdLines]
+  fdMaxYPolesPtr: usize;     // Uint32Array[maxFdLines]
+  fdMaxHPolesPtr: usize;     // Uint32Array[maxFdLines]
+  fdYAlphaPtrs: usize;       // usize[maxFdLines]
+  fdYBetaPtrs: usize;        // usize[maxFdLines]
+  fdYGammaPtrs: usize;       // usize[maxFdLines]
+  fdYStateFromPtrs: usize;   // usize[maxFdLines]
+  fdYStateToPtrs: usize;     // usize[maxFdLines]
+  fdHAlphaPtrs: usize;       // usize[maxFdLines]
+  fdHBetaPtrs: usize;        // usize[maxFdLines]
+  fdHGammaPtrs: usize;       // usize[maxFdLines]
+  fdHStateFromPtrs: usize;   // usize[maxFdLines]
+  fdHStateToPtrs: usize;     // usize[maxFdLines]
+
+  // CSMF Control Block Graph data
+  ctrlKindPtr: usize;        // Uint32Array[maxCtrlBlocks]
+  ctrlIn0Ptr: usize;         // Int32Array[maxCtrlBlocks]
+  ctrlIn1Ptr: usize;         // Int32Array[maxCtrlBlocks]
+  ctrlParam0Ptr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlParam1Ptr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlParam2Ptr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlMinOutPtr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlMaxOutPtr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlExtIn0Ptr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlExtIn1Ptr: usize;      // Float64Array[maxCtrlBlocks]
+  ctrlUPrevPtr: usize;       // Float64Array[maxCtrlBlocks]
+  ctrlYPrevPtr: usize;       // Float64Array[maxCtrlBlocks]
+  ctrlIntStatePtr: usize;    // Float64Array[maxCtrlBlocks]
+  ctrlOutPtr: usize;         // Float64Array[maxCtrlBlocks]
+
+  // 3-Phase Synchronous Reference Frame PLL (SRF-PLL) data
+  pllNodeAPtr: usize;        // Int32Array[maxPlls]
+  pllNodeBPtr: usize;        // Int32Array[maxPlls]
+  pllNodeCPtr: usize;        // Int32Array[maxPlls]
+  pllVBasePeakPtr: usize;    // Float64Array[maxPlls]
+  pllOmegaNomPtr: usize;     // Float64Array[maxPlls]
+  pllKpPtr: usize;           // Float64Array[maxPlls]
+  pllKiPtr: usize;           // Float64Array[maxPlls]
+  pllThetaRadPtr: usize;     // Float64Array[maxPlls]
+  pllIntStatePtr: usize;     // Float64Array[maxPlls]
+  pllFreqHzPtr: usize;       // Float64Array[maxPlls]
+  pllVdPuPtr: usize;         // Float64Array[maxPlls]
+  pllVqPuPtr: usize;         // Float64Array[maxPlls]
+
   // Trajectory recording buffer in linear memory (zero-copy streaming)
   trajectoryBufferPtr: usize;
   trajectoryCapacitySteps: u32;
@@ -224,6 +317,10 @@ export class WasmEmtSolver {
     this.maxArresters = 16;
     this.maxMachines = 8;
     this.maxConverters = 8;
+    this.maxIndMachines = 8;
+    this.maxFdLines = 16;
+    this.maxCtrlBlocks = 64;
+    this.maxPlls = 16;
 
     this.nBranches = 0;
     this.nSources = 0;
@@ -235,6 +332,10 @@ export class WasmEmtSolver {
     this.nArresters = 0;
     this.nMachines = 0;
     this.nConverters = 0;
+    this.nIndMachines = 0;
+    this.nFdLines = 0;
+    this.nCtrlBlocks = 0;
+    this.nPlls = 0;
 
     this.dt = dt;
     this.t = 0.0;
@@ -390,6 +491,91 @@ export class WasmEmtSolver {
     this.convIInjAPtr = atomicChunkAlloc(this.maxConverters * sizeof<f64>());
     this.convIInjBPtr = atomicChunkAlloc(this.maxConverters * sizeof<f64>());
     this.convIInjCPtr = atomicChunkAlloc(this.maxConverters * sizeof<f64>());
+
+    // Allocate induction machine buffers
+    this.indNodeAPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<i32>());
+    this.indNodeBPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<i32>());
+    this.indNodeCPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<i32>());
+    this.indVBasePeakPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indOmegaSyncPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indGEqPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indRsPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indXsPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indXmPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indRrPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indXrPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indXPrimePtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indT0PrimePtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indHInertiaPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indDampingPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indTmLoadPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indCrowbarThPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indIsDfigPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<u32>());
+    this.indCrowbarActivePtr = atomicChunkAlloc(this.maxIndMachines * sizeof<u32>());
+    this.indOmegaRPuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indEdPrimePtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indEqPrimePtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+    this.indTePuPtr = atomicChunkAlloc(this.maxIndMachines * sizeof<f64>());
+
+    // Allocate FD-Line buffers
+    this.fdFromPtr = atomicChunkAlloc(this.maxFdLines * sizeof<i32>());
+    this.fdToPtr = atomicChunkAlloc(this.maxFdLines * sizeof<i32>());
+    this.fdGInfPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdGEqPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdDelayStepsPtr = atomicChunkAlloc(this.maxFdLines * sizeof<i32>());
+    this.fdDelayFracPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdBufLenPtr = atomicChunkAlloc(this.maxFdLines * sizeof<i32>());
+    this.fdBufIdxPtr = atomicChunkAlloc(this.maxFdLines * sizeof<i32>());
+    this.fdBufFromPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdBufToPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdVFromPrevPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdVToPrevPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdIHistFromPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdIHistToPtr = atomicChunkAlloc(this.maxFdLines * sizeof<f64>());
+    this.fdNYPolesPtr = atomicChunkAlloc(this.maxFdLines * sizeof<u32>());
+    this.fdNHPolesPtr = atomicChunkAlloc(this.maxFdLines * sizeof<u32>());
+    this.fdMaxYPolesPtr = atomicChunkAlloc(this.maxFdLines * sizeof<u32>());
+    this.fdMaxHPolesPtr = atomicChunkAlloc(this.maxFdLines * sizeof<u32>());
+    this.fdYAlphaPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdYBetaPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdYGammaPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdYStateFromPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdYStateToPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdHAlphaPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdHBetaPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdHGammaPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdHStateFromPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+    this.fdHStateToPtrs = atomicChunkAlloc(this.maxFdLines * sizeof<usize>());
+
+    // Allocate CSMF control block buffers
+    this.ctrlKindPtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<u32>());
+    this.ctrlIn0Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<i32>());
+    this.ctrlIn1Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<i32>());
+    this.ctrlParam0Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlParam1Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlParam2Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlMinOutPtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlMaxOutPtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlExtIn0Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlExtIn1Ptr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlUPrevPtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlYPrevPtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlIntStatePtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+    this.ctrlOutPtr = atomicChunkAlloc(this.maxCtrlBlocks * sizeof<f64>());
+
+    // Allocate 3-phase SRF-PLL buffers
+    this.pllNodeAPtr = atomicChunkAlloc(this.maxPlls * sizeof<i32>());
+    this.pllNodeBPtr = atomicChunkAlloc(this.maxPlls * sizeof<i32>());
+    this.pllNodeCPtr = atomicChunkAlloc(this.maxPlls * sizeof<i32>());
+    this.pllVBasePeakPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllOmegaNomPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllKpPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllKiPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllThetaRadPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllIntStatePtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllFreqHzPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllVdPuPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
+    this.pllVqPuPtr = atomicChunkAlloc(this.maxPlls * sizeof<f64>());
 
     this.trajectoryBufferPtr = 0;
     this.trajectoryCapacitySteps = 0;
@@ -724,6 +910,276 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  addInductionMachine(
+    nodeA: i32,
+    nodeB: i32,
+    nodeC: i32,
+    sBaseMva: f64,
+    vBaseKvLL: f64,
+    freqHz: f64,
+    rsPu: f64,
+    xsPu: f64,
+    xmPu: f64,
+    rrPu: f64,
+    xrPu: f64,
+    hInertia: f64,
+    dampingD: f64,
+    tmLoadPu: f64,
+    isDfig: bool,
+    crowbarThresholdPu: f64
+  ): i32 {
+    if (this.nIndMachines >= this.maxIndMachines) return -1;
+    let idx = this.nIndMachines++;
+
+    let vBasePeak = (vBaseKvLL * 1000.0) * Math.sqrt(2.0 / 3.0);
+    let zBase = (vBaseKvLL * vBaseKvLL) / Math.max(1e-3, sBaseMva);
+    let xPrime = xsPu + (xmPu * xrPu) / Math.max(1e-4, xmPu + xrPu);
+    let omegaSync = 2.0 * Math.PI * (freqHz > 1.0 ? freqHz : 60.0);
+    let t0Prime = (xrPu + xmPu) / (omegaSync * Math.max(1e-5, rrPu));
+    let gEq = 1.0 / Math.max(1e-4, xPrime * zBase);
+
+    store<i32>(this.indNodeAPtr + (((idx as usize)) << 2), nodeA);
+    store<i32>(this.indNodeBPtr + (((idx as usize)) << 2), nodeB);
+    store<i32>(this.indNodeCPtr + (((idx as usize)) << 2), nodeC);
+    store<f64>(this.indVBasePeakPtr + (((idx as usize)) << 3), vBasePeak);
+    store<f64>(this.indOmegaSyncPtr + (((idx as usize)) << 3), omegaSync);
+    store<f64>(this.indGEqPtr + (((idx as usize)) << 3), gEq);
+    store<f64>(this.indRsPuPtr + (((idx as usize)) << 3), rsPu);
+    store<f64>(this.indXsPuPtr + (((idx as usize)) << 3), xsPu);
+    store<f64>(this.indXmPuPtr + (((idx as usize)) << 3), xmPu);
+    store<f64>(this.indRrPuPtr + (((idx as usize)) << 3), rrPu);
+    store<f64>(this.indXrPuPtr + (((idx as usize)) << 3), xrPu);
+    store<f64>(this.indXPrimePtr + (((idx as usize)) << 3), xPrime);
+    store<f64>(this.indT0PrimePtr + (((idx as usize)) << 3), t0Prime);
+    store<f64>(this.indHInertiaPtr + (((idx as usize)) << 3), hInertia > 0.05 ? hInertia : 0.8);
+    store<f64>(this.indDampingPtr + (((idx as usize)) << 3), dampingD);
+    store<f64>(this.indTmLoadPuPtr + (((idx as usize)) << 3), tmLoadPu);
+    store<f64>(this.indCrowbarThPtr + (((idx as usize)) << 3), crowbarThresholdPu > 0.1 ? crowbarThresholdPu : 2.2);
+    store<u32>(this.indIsDfigPtr + (((idx as usize)) << 2), isDfig ? 1 : 0);
+    store<u32>(this.indCrowbarActivePtr + (((idx as usize)) << 2), 0);
+    store<f64>(this.indOmegaRPuPtr + (((idx as usize)) << 3), 0.985);
+    store<f64>(this.indEdPrimePtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.indEqPrimePtr + (((idx as usize)) << 3), 0.92);
+    store<f64>(this.indTePuPtr + (((idx as usize)) << 3), tmLoadPu);
+
+    return idx as i32;
+  }
+
+  addFrequencyDependentLine(
+    fromNode: i32,
+    toNode: i32,
+    gInf: f64,
+    tauSec: f64,
+    maxPolesY: u32,
+    maxPolesH: u32
+  ): i32 {
+    if (this.nFdLines >= this.maxFdLines) return -1;
+    let idx = this.nFdLines++;
+
+    let exactSteps: f64 = tauSec / this.dt;
+    if (exactSteps < 1.0) exactSteps = 1.0;
+    let delaySteps: i32 = <i32>Math.floor(exactSteps);
+    if (delaySteps < 1) delaySteps = 1;
+    let delayFrac: f64 = exactSteps - <f64>delaySteps;
+    let bufLen: i32 = delaySteps + 2;
+
+    let bufFrom = atomicChunkAlloc((bufLen as u32) * sizeof<f64>());
+    let bufTo = atomicChunkAlloc((bufLen as u32) * sizeof<f64>());
+    for (let k: i32 = 0; k < bufLen; k++) {
+      store<f64>(bufFrom + (((k as usize)) << 3), 0.0);
+      store<f64>(bufTo + (((k as usize)) << 3), 0.0);
+    }
+
+    let capY: u32 = maxPolesY > 0 ? maxPolesY : 16;
+    let capH: u32 = maxPolesH > 0 ? maxPolesH : 16;
+
+    let yAlpha = atomicChunkAlloc(capY * sizeof<f64>());
+    let yBeta = atomicChunkAlloc(capY * sizeof<f64>());
+    let yGamma = atomicChunkAlloc(capY * sizeof<f64>());
+    let yStateFrom = atomicChunkAlloc(capY * sizeof<f64>());
+    let yStateTo = atomicChunkAlloc(capY * sizeof<f64>());
+    for (let k: u32 = 0; k < capY; k++) {
+      store<f64>(yStateFrom + (((k as usize)) << 3), 0.0);
+      store<f64>(yStateTo + (((k as usize)) << 3), 0.0);
+    }
+
+    let hAlpha = atomicChunkAlloc(capH * sizeof<f64>());
+    let hBeta = atomicChunkAlloc(capH * sizeof<f64>());
+    let hGamma = atomicChunkAlloc(capH * sizeof<f64>());
+    let hStateFrom = atomicChunkAlloc(capH * sizeof<f64>());
+    let hStateTo = atomicChunkAlloc(capH * sizeof<f64>());
+    for (let k: u32 = 0; k < capH; k++) {
+      store<f64>(hStateFrom + (((k as usize)) << 3), 0.0);
+      store<f64>(hStateTo + (((k as usize)) << 3), 0.0);
+    }
+
+    let gInfSafe = gInf > 0.0 ? gInf : 1.0 / 300.0;
+    store<i32>(this.fdFromPtr + (((idx as usize)) << 2), fromNode);
+    store<i32>(this.fdToPtr + (((idx as usize)) << 2), toNode);
+    store<f64>(this.fdGInfPtr + (((idx as usize)) << 3), gInfSafe);
+    store<f64>(this.fdGEqPtr + (((idx as usize)) << 3), gInfSafe);
+    store<i32>(this.fdDelayStepsPtr + (((idx as usize)) << 2), delaySteps);
+    store<f64>(this.fdDelayFracPtr + (((idx as usize)) << 3), delayFrac);
+    store<i32>(this.fdBufLenPtr + (((idx as usize)) << 2), bufLen);
+    store<i32>(this.fdBufIdxPtr + (((idx as usize)) << 2), 0);
+    store<usize>(this.fdBufFromPtrs + ((idx as usize) * sizeof<usize>()), bufFrom);
+    store<usize>(this.fdBufToPtrs + ((idx as usize) * sizeof<usize>()), bufTo);
+    store<f64>(this.fdVFromPrevPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.fdVToPrevPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.fdIHistFromPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.fdIHistToPtr + (((idx as usize)) << 3), 0.0);
+    store<u32>(this.fdNYPolesPtr + (((idx as usize)) << 2), 0);
+    store<u32>(this.fdNHPolesPtr + (((idx as usize)) << 2), 0);
+    store<u32>(this.fdMaxYPolesPtr + (((idx as usize)) << 2), capY);
+    store<u32>(this.fdMaxHPolesPtr + (((idx as usize)) << 2), capH);
+    store<usize>(this.fdYAlphaPtrs + ((idx as usize) * sizeof<usize>()), yAlpha);
+    store<usize>(this.fdYBetaPtrs + ((idx as usize) * sizeof<usize>()), yBeta);
+    store<usize>(this.fdYGammaPtrs + ((idx as usize) * sizeof<usize>()), yGamma);
+    store<usize>(this.fdYStateFromPtrs + ((idx as usize) * sizeof<usize>()), yStateFrom);
+    store<usize>(this.fdYStateToPtrs + ((idx as usize) * sizeof<usize>()), yStateTo);
+    store<usize>(this.fdHAlphaPtrs + ((idx as usize) * sizeof<usize>()), hAlpha);
+    store<usize>(this.fdHBetaPtrs + ((idx as usize) * sizeof<usize>()), hBeta);
+    store<usize>(this.fdHGammaPtrs + ((idx as usize) * sizeof<usize>()), hGamma);
+    store<usize>(this.fdHStateFromPtrs + ((idx as usize) * sizeof<usize>()), hStateFrom);
+    store<usize>(this.fdHStateToPtrs + ((idx as usize) * sizeof<usize>()), hStateTo);
+
+    return idx as i32;
+  }
+
+  addFdLineYPole(fdLineIdx: u32, poleRad: f64, residueSiemens: f64): i32 {
+    if (fdLineIdx >= this.nFdLines) return -1;
+    let nY = load<u32>(this.fdNYPolesPtr + (((fdLineIdx as usize)) << 2));
+    let maxY = load<u32>(this.fdMaxYPolesPtr + (((fdLineIdx as usize)) << 2));
+    if (nY >= maxY) return -1;
+
+    let pdt = poleRad * this.dt;
+    let alpha = Math.exp(pdt);
+    let beta: f64 = 0.0;
+    let gamma: f64 = 0.0;
+    if (Math.abs(pdt) < 1e-7) {
+      beta = 0.5 * residueSiemens * this.dt;
+      gamma = 0.5 * residueSiemens * this.dt;
+    } else {
+      let invNegP = -1.0 / poleRad;
+      let k = (1.0 - pdt - alpha) / -pdt;
+      beta = residueSiemens * invNegP * (1.0 - alpha - k);
+      gamma = residueSiemens * invNegP * k;
+    }
+
+    let yAlpha = load<usize>(this.fdYAlphaPtrs + ((fdLineIdx as usize) * sizeof<usize>()));
+    let yBeta = load<usize>(this.fdYBetaPtrs + ((fdLineIdx as usize) * sizeof<usize>()));
+    let yGamma = load<usize>(this.fdYGammaPtrs + ((fdLineIdx as usize) * sizeof<usize>()));
+    store<f64>(yAlpha + (((nY as usize)) << 3), alpha);
+    store<f64>(yBeta + (((nY as usize)) << 3), beta);
+    store<f64>(yGamma + (((nY as usize)) << 3), gamma);
+    store<u32>(this.fdNYPolesPtr + (((fdLineIdx as usize)) << 2), nY + 1);
+
+    let gEqPtr = this.fdGEqPtr + (((fdLineIdx as usize)) << 3);
+    store<f64>(gEqPtr, load<f64>(gEqPtr) + beta);
+
+    return nY as i32;
+  }
+
+  addFdLineHPole(fdLineIdx: u32, poleRad: f64, residueDimless: f64): i32 {
+    if (fdLineIdx >= this.nFdLines) return -1;
+    let nH = load<u32>(this.fdNHPolesPtr + (((fdLineIdx as usize)) << 2));
+    let maxH = load<u32>(this.fdMaxHPolesPtr + (((fdLineIdx as usize)) << 2));
+    if (nH >= maxH) return -1;
+
+    let pdt = poleRad * this.dt;
+    let alpha = Math.exp(pdt);
+    let beta: f64 = 0.0;
+    let gamma: f64 = 0.0;
+    if (Math.abs(pdt) < 1e-7) {
+      beta = 0.5 * residueDimless * this.dt;
+      gamma = 0.5 * residueDimless * this.dt;
+    } else {
+      let invNegP = -1.0 / poleRad;
+      let k = (1.0 - pdt - alpha) / -pdt;
+      beta = residueDimless * invNegP * (1.0 - alpha - k);
+      gamma = residueDimless * invNegP * k;
+    }
+
+    let hAlpha = load<usize>(this.fdHAlphaPtrs + ((fdLineIdx as usize) * sizeof<usize>()));
+    let hBeta = load<usize>(this.fdHBetaPtrs + ((fdLineIdx as usize) * sizeof<usize>()));
+    let hGamma = load<usize>(this.fdHGammaPtrs + ((fdLineIdx as usize) * sizeof<usize>()));
+    store<f64>(hAlpha + (((nH as usize)) << 3), alpha);
+    store<f64>(hBeta + (((nH as usize)) << 3), beta);
+    store<f64>(hGamma + (((nH as usize)) << 3), gamma);
+    store<u32>(this.fdNHPolesPtr + (((fdLineIdx as usize)) << 2), nH + 1);
+
+    return nH as i32;
+  }
+
+  addControlBlock(
+    kind: u32,
+    in0: i32,
+    in1: i32,
+    p0: f64,
+    p1: f64,
+    p2: f64,
+    minOut: f64,
+    maxOut: f64
+  ): i32 {
+    if (this.nCtrlBlocks >= this.maxCtrlBlocks) return -1;
+    let idx = this.nCtrlBlocks++;
+    let initOut: f64 = kind == 0 ? p0 : 0.0;
+    store<u32>(this.ctrlKindPtr + (((idx as usize)) << 2), kind);
+    store<i32>(this.ctrlIn0Ptr + (((idx as usize)) << 2), in0);
+    store<i32>(this.ctrlIn1Ptr + (((idx as usize)) << 2), in1);
+    store<f64>(this.ctrlParam0Ptr + (((idx as usize)) << 3), p0);
+    store<f64>(this.ctrlParam1Ptr + (((idx as usize)) << 3), p1);
+    store<f64>(this.ctrlParam2Ptr + (((idx as usize)) << 3), p2);
+    store<f64>(this.ctrlMinOutPtr + (((idx as usize)) << 3), minOut);
+    store<f64>(this.ctrlMaxOutPtr + (((idx as usize)) << 3), maxOut);
+    store<f64>(this.ctrlExtIn0Ptr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.ctrlExtIn1Ptr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.ctrlUPrevPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.ctrlYPrevPtr + (((idx as usize)) << 3), initOut);
+    store<f64>(this.ctrlIntStatePtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.ctrlOutPtr + (((idx as usize)) << 3), initOut);
+    return idx as i32;
+  }
+
+  setControlInput(blockIdx: u32, u0: f64, u1: f64): void {
+    if (blockIdx >= this.nCtrlBlocks) return;
+    store<f64>(this.ctrlExtIn0Ptr + (((blockIdx as usize)) << 3), u0);
+    store<f64>(this.ctrlExtIn1Ptr + (((blockIdx as usize)) << 3), u1);
+  }
+
+  getControlOutput(blockIdx: u32): f64 {
+    if (blockIdx >= this.nCtrlBlocks) return 0.0;
+    return load<f64>(this.ctrlOutPtr + (((blockIdx as usize)) << 3));
+  }
+
+  addPll(
+    nodeA: i32,
+    nodeB: i32,
+    nodeC: i32,
+    vBaseKvLL: f64,
+    freqNomHz: f64,
+    kp: f64,
+    ki: f64
+  ): i32 {
+    if (this.nPlls >= this.maxPlls) return -1;
+    let idx = this.nPlls++;
+    let vBasePeak = Math.max(1.0, (vBaseKvLL * 1000.0 * Math.SQRT2) / Math.sqrt(3.0));
+    let omegaNom = 2.0 * Math.PI * (freqNomHz > 0.0 ? freqNomHz : 60.0);
+    store<i32>(this.pllNodeAPtr + (((idx as usize)) << 2), nodeA);
+    store<i32>(this.pllNodeBPtr + (((idx as usize)) << 2), nodeB);
+    store<i32>(this.pllNodeCPtr + (((idx as usize)) << 2), nodeC);
+    store<f64>(this.pllVBasePeakPtr + (((idx as usize)) << 3), vBasePeak);
+    store<f64>(this.pllOmegaNomPtr + (((idx as usize)) << 3), omegaNom);
+    store<f64>(this.pllKpPtr + (((idx as usize)) << 3), kp > 0.0 ? kp : 50.0);
+    store<f64>(this.pllKiPtr + (((idx as usize)) << 3), ki > 0.0 ? ki : 500.0);
+    store<f64>(this.pllThetaRadPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.pllIntStatePtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.pllFreqHzPtr + (((idx as usize)) << 3), freqNomHz > 0.0 ? freqNomHz : 60.0);
+    store<f64>(this.pllVdPuPtr + (((idx as usize)) << 3), 0.0);
+    store<f64>(this.pllVqPuPtr + (((idx as usize)) << 3), 1.0);
+    return idx as i32;
+  }
+
   @inline
   private addG(r: u32, c: u32, delta: f64): void {
     let ptr = this.gDensePtr + ((((r * this.nNodes + c) as usize)) << 3);
@@ -815,6 +1271,15 @@ export class WasmEmtSolver {
       this.stampShunt(toNode, gc);
     }
 
+    // 1b2. Stamp Frequency-Dependent (FD) line surge + pole admittances
+    for (let fd: u32 = 0; fd < this.nFdLines; fd++) {
+      let fromNode = load<i32>(this.fdFromPtr + (((fd as usize)) << 2));
+      let toNode = load<i32>(this.fdToPtr + (((fd as usize)) << 2));
+      let gEq = load<f64>(this.fdGEqPtr + (((fd as usize)) << 3));
+      this.stampShunt(fromNode, gEq);
+      this.stampShunt(toNode, gEq);
+    }
+
     // 1c. Stamp 4-terminal coupled transformer windings
     for (let w: u32 = 0; w < this.nWindings; w++) {
       let pPos = load<i32>(this.xfmrPPosPtr + (((w as usize)) << 2));
@@ -858,6 +1323,17 @@ export class WasmEmtSolver {
       this.stampShunt(nodeA, gSub);
       this.stampShunt(nodeB, gSub);
       this.stampShunt(nodeC, gSub);
+    }
+
+    // 1g2. Stamp induction machine transient Norton admittances
+    for (let im: u32 = 0; im < this.nIndMachines; im++) {
+      let nodeA = load<i32>(this.indNodeAPtr + (((im as usize)) << 2));
+      let nodeB = load<i32>(this.indNodeBPtr + (((im as usize)) << 2));
+      let nodeC = load<i32>(this.indNodeCPtr + (((im as usize)) << 2));
+      let gEq = load<f64>(this.indGEqPtr + (((im as usize)) << 3));
+      this.stampShunt(nodeA, gEq);
+      this.stampShunt(nodeB, gEq);
+      this.stampShunt(nodeC, gEq);
     }
 
     // 1h. Stamp power electronics converter bridge filter Norton admittances
@@ -930,10 +1406,55 @@ export class WasmEmtSolver {
         store<f64>(bufTo + (((k as usize)) << 3), 0.0);
       }
     }
+    for (let fd: u32 = 0; fd < this.nFdLines; fd++) {
+      let bufLen = load<i32>(this.fdBufLenPtr + (((fd as usize)) << 2));
+      let bufFrom = load<usize>(this.fdBufFromPtrs + ((fd as usize) * sizeof<usize>()));
+      let bufTo = load<usize>(this.fdBufToPtrs + ((fd as usize) * sizeof<usize>()));
+      store<i32>(this.fdBufIdxPtr + (((fd as usize)) << 2), 0);
+      store<f64>(this.fdVFromPrevPtr + (((fd as usize)) << 3), 0.0);
+      store<f64>(this.fdVToPrevPtr + (((fd as usize)) << 3), 0.0);
+      store<f64>(this.fdIHistFromPtr + (((fd as usize)) << 3), 0.0);
+      store<f64>(this.fdIHistToPtr + (((fd as usize)) << 3), 0.0);
+      for (let k: i32 = 0; k < bufLen; k++) {
+        store<f64>(bufFrom + (((k as usize)) << 3), 0.0);
+        store<f64>(bufTo + (((k as usize)) << 3), 0.0);
+      }
+      let nY = load<u32>(this.fdNYPolesPtr + (((fd as usize)) << 2));
+      let yStateFrom = load<usize>(this.fdYStateFromPtrs + ((fd as usize) * sizeof<usize>()));
+      let yStateTo = load<usize>(this.fdYStateToPtrs + ((fd as usize) * sizeof<usize>()));
+      for (let k: u32 = 0; k < nY; k++) {
+        store<f64>(yStateFrom + (((k as usize)) << 3), 0.0);
+        store<f64>(yStateTo + (((k as usize)) << 3), 0.0);
+      }
+      let nH = load<u32>(this.fdNHPolesPtr + (((fd as usize)) << 2));
+      let hStateFrom = load<usize>(this.fdHStateFromPtrs + ((fd as usize) * sizeof<usize>()));
+      let hStateTo = load<usize>(this.fdHStateToPtrs + ((fd as usize) * sizeof<usize>()));
+      for (let k: u32 = 0; k < nH; k++) {
+        store<f64>(hStateFrom + (((k as usize)) << 3), 0.0);
+        store<f64>(hStateTo + (((k as usize)) << 3), 0.0);
+      }
+    }
     for (let arr: u32 = 0; arr < this.nArresters; arr++) {
       store<f64>(this.arrIHistPtr + (((arr as usize)) << 3), 0.0);
       store<f64>(this.arrCurrentPtr + (((arr as usize)) << 3), 0.0);
       store<f64>(this.arrEnergyJPtr + (((arr as usize)) << 3), 0.0);
+    }
+    for (let cb: u32 = 0; cb < this.nCtrlBlocks; cb++) {
+      let kind = load<u32>(this.ctrlKindPtr + (((cb as usize)) << 2));
+      let p0 = load<f64>(this.ctrlParam0Ptr + (((cb as usize)) << 3));
+      let initOut: f64 = kind == 0 ? p0 : 0.0;
+      store<f64>(this.ctrlUPrevPtr + (((cb as usize)) << 3), 0.0);
+      store<f64>(this.ctrlYPrevPtr + (((cb as usize)) << 3), initOut);
+      store<f64>(this.ctrlIntStatePtr + (((cb as usize)) << 3), 0.0);
+      store<f64>(this.ctrlOutPtr + (((cb as usize)) << 3), initOut);
+    }
+    for (let pll: u32 = 0; pll < this.nPlls; pll++) {
+      let omegaNom = load<f64>(this.pllOmegaNomPtr + (((pll as usize)) << 3));
+      store<f64>(this.pllThetaRadPtr + (((pll as usize)) << 3), 0.0);
+      store<f64>(this.pllIntStatePtr + (((pll as usize)) << 3), 0.0);
+      store<f64>(this.pllFreqHzPtr + (((pll as usize)) << 3), omegaNom / (2.0 * Math.PI));
+      store<f64>(this.pllVdPuPtr + (((pll as usize)) << 3), 0.0);
+      store<f64>(this.pllVqPuPtr + (((pll as usize)) << 3), 1.0);
     }
   }
 
@@ -1065,6 +1586,39 @@ export class WasmEmtSolver {
       }
     }
 
+    // 2b2. Inject 5th-order induction machine transient Norton currents
+    for (let im: u32 = 0; im < this.nIndMachines; im++) {
+      let nodeA = load<i32>(this.indNodeAPtr + (((im as usize)) << 2));
+      let nodeB = load<i32>(this.indNodeBPtr + (((im as usize)) << 2));
+      let nodeC = load<i32>(this.indNodeCPtr + (((im as usize)) << 2));
+      let vBasePeak = load<f64>(this.indVBasePeakPtr + (((im as usize)) << 3));
+      let omegaSync = load<f64>(this.indOmegaSyncPtr + (((im as usize)) << 3));
+      let gEq = load<f64>(this.indGEqPtr + (((im as usize)) << 3));
+      let edPrime = load<f64>(this.indEdPrimePtr + (((im as usize)) << 3));
+      let eqPrime = load<f64>(this.indEqPrimePtr + (((im as usize)) << 3));
+
+      let thetaA = omegaSync * t;
+      let thetaB = thetaA - (2.0 * Math.PI) / 3.0;
+      let thetaC = thetaA + (2.0 * Math.PI) / 3.0;
+
+      let ea = (eqPrime * Math.sin(thetaA) + edPrime * Math.cos(thetaA)) * vBasePeak;
+      let eb = (eqPrime * Math.sin(thetaB) + edPrime * Math.cos(thetaB)) * vBasePeak;
+      let ec = (eqPrime * Math.sin(thetaC) + edPrime * Math.cos(thetaC)) * vBasePeak;
+
+      if (nodeA >= 0 && (nodeA as u32) < n) {
+        let p = this.bVecPtr + (((nodeA as usize)) << 3);
+        store<f64>(p, load<f64>(p) + gEq * ea);
+      }
+      if (nodeB >= 0 && (nodeB as u32) < n) {
+        let p = this.bVecPtr + (((nodeB as usize)) << 3);
+        store<f64>(p, load<f64>(p) + gEq * eb);
+      }
+      if (nodeC >= 0 && (nodeC as u32) < n) {
+        let p = this.bVecPtr + (((nodeC as usize)) << 3);
+        store<f64>(p, load<f64>(p) + gEq * ec);
+      }
+    }
+
     // 2c. Inject power electronics converter bridge Norton currents
     for (let c: u32 = 0; c < this.nConverters; c++) {
       let nodeA = load<i32>(this.convNodeAPtr + (((c as usize)) << 2));
@@ -1162,6 +1716,22 @@ export class WasmEmtSolver {
       if (fromNode >= 0 && (fromNode as u32) < n) {
         let p = this.bVecPtr + (((fromNode as usize)) << 3);
         store<f64>(p, load<f64>(p) + waveFromM);
+      }
+    }
+
+    // 3c2. Inject Frequency-Dependent (FD) line recursive convolution history currents
+    for (let fd: u32 = 0; fd < this.nFdLines; fd++) {
+      let fromNode = load<i32>(this.fdFromPtr + (((fd as usize)) << 2));
+      let toNode = load<i32>(this.fdToPtr + (((fd as usize)) << 2));
+      let iHistFrom = load<f64>(this.fdIHistFromPtr + (((fd as usize)) << 3));
+      let iHistTo = load<f64>(this.fdIHistToPtr + (((fd as usize)) << 3));
+      if (fromNode >= 0 && (fromNode as u32) < n) {
+        let p = this.bVecPtr + (((fromNode as usize)) << 3);
+        store<f64>(p, load<f64>(p) - iHistFrom);
+      }
+      if (toNode >= 0 && (toNode as u32) < n) {
+        let p = this.bVecPtr + (((toNode as usize)) << 3);
+        store<f64>(p, load<f64>(p) - iHistTo);
       }
     }
 
@@ -1480,6 +2050,85 @@ export class WasmEmtSolver {
       store<i32>(this.lineBufIdxPtr + (((l as usize)) << 2), (bufIdx + 1) % bufLen);
     }
 
+    // 5c2. Update Frequency-Dependent (FD) transmission line recursive convolutions & wave buffers
+    for (let fd: u32 = 0; fd < this.nFdLines; fd++) {
+      let fromNode = load<i32>(this.fdFromPtr + (((fd as usize)) << 2));
+      let toNode = load<i32>(this.fdToPtr + (((fd as usize)) << 2));
+      let vFrom: f64 = (fromNode >= 0 && (fromNode as u32) < n) ? vVec[fromNode] : 0.0;
+      let vTo: f64 = (toNode >= 0 && (toNode as u32) < n) ? vVec[toNode] : 0.0;
+
+      let gEq = load<f64>(this.fdGEqPtr + (((fd as usize)) << 3));
+      let nY = load<u32>(this.fdNYPolesPtr + (((fd as usize)) << 2));
+      let nH = load<u32>(this.fdNHPolesPtr + (((fd as usize)) << 2));
+      let yAlpha = load<usize>(this.fdYAlphaPtrs + ((fd as usize) * sizeof<usize>()));
+      let yBeta = load<usize>(this.fdYBetaPtrs + ((fd as usize) * sizeof<usize>()));
+      let yGamma = load<usize>(this.fdYGammaPtrs + ((fd as usize) * sizeof<usize>()));
+      let yStateFrom = load<usize>(this.fdYStateFromPtrs + ((fd as usize) * sizeof<usize>()));
+      let yStateTo = load<usize>(this.fdYStateToPtrs + ((fd as usize) * sizeof<usize>()));
+
+      let iYFrom: f64 = 0.0;
+      let iYTo: f64 = 0.0;
+      for (let m: u32 = 0; m < nY; m++) {
+        let off = (m as usize) << 3;
+        let alpha = load<f64>(yAlpha + off);
+        let bg = load<f64>(yBeta + off) + load<f64>(yGamma + off);
+        let sf = alpha * load<f64>(yStateFrom + off) + bg * vFrom;
+        let st = alpha * load<f64>(yStateTo + off) + bg * vTo;
+        store<f64>(yStateFrom + off, sf);
+        store<f64>(yStateTo + off, st);
+        iYFrom += sf;
+        iYTo += st;
+      }
+
+      let aFrom = 2.0 * vFrom * gEq - iYFrom;
+      let aTo = 2.0 * vTo * gEq - iYTo;
+
+      let delaySteps = load<i32>(this.fdDelayStepsPtr + (((fd as usize)) << 2));
+      let frac = load<f64>(this.fdDelayFracPtr + (((fd as usize)) << 3));
+      let bufLen = load<i32>(this.fdBufLenPtr + (((fd as usize)) << 2));
+      let bufIdx = load<i32>(this.fdBufIdxPtr + (((fd as usize)) << 2));
+      let bufFrom = load<usize>(this.fdBufFromPtrs + ((fd as usize) * sizeof<usize>()));
+      let bufTo = load<usize>(this.fdBufToPtrs + ((fd as usize) * sizeof<usize>()));
+
+      store<f64>(bufFrom + (((bufIdx as usize)) << 3), aFrom);
+      store<f64>(bufTo + (((bufIdx as usize)) << 3), aTo);
+
+      let readIdx1 = (bufIdx - delaySteps + bufLen) % bufLen;
+      let readIdx2 = (readIdx1 - 1 + bufLen) % bufLen;
+      let delayedWaveAtFrom =
+        (1.0 - frac) * load<f64>(bufTo + (((readIdx1 as usize)) << 3)) +
+        frac * load<f64>(bufTo + (((readIdx2 as usize)) << 3));
+      let delayedWaveAtTo =
+        (1.0 - frac) * load<f64>(bufFrom + (((readIdx1 as usize)) << 3)) +
+        frac * load<f64>(bufFrom + (((readIdx2 as usize)) << 3));
+
+      let hAlpha = load<usize>(this.fdHAlphaPtrs + ((fd as usize) * sizeof<usize>()));
+      let hBeta = load<usize>(this.fdHBetaPtrs + ((fd as usize) * sizeof<usize>()));
+      let hGamma = load<usize>(this.fdHGammaPtrs + ((fd as usize) * sizeof<usize>()));
+      let hStateFrom = load<usize>(this.fdHStateFromPtrs + ((fd as usize) * sizeof<usize>()));
+      let hStateTo = load<usize>(this.fdHStateToPtrs + ((fd as usize) * sizeof<usize>()));
+
+      let bFrom: f64 = 0.0;
+      let bTo: f64 = 0.0;
+      for (let k: u32 = 0; k < nH; k++) {
+        let off = (k as usize) << 3;
+        let alpha = load<f64>(hAlpha + off);
+        let bg = load<f64>(hBeta + off) + load<f64>(hGamma + off);
+        let sf = alpha * load<f64>(hStateFrom + off) + bg * delayedWaveAtFrom;
+        let st = alpha * load<f64>(hStateTo + off) + bg * delayedWaveAtTo;
+        store<f64>(hStateFrom + off, sf);
+        store<f64>(hStateTo + off, st);
+        bFrom += sf;
+        bTo += st;
+      }
+
+      store<f64>(this.fdVFromPrevPtr + (((fd as usize)) << 3), vFrom);
+      store<f64>(this.fdVToPrevPtr + (((fd as usize)) << 3), vTo);
+      store<f64>(this.fdIHistFromPtr + (((fd as usize)) << 3), -(iYFrom + bFrom));
+      store<f64>(this.fdIHistToPtr + (((fd as usize)) << 3), -(iYTo + bTo));
+      store<i32>(this.fdBufIdxPtr + (((fd as usize)) << 2), (bufIdx + 1) % bufLen);
+    }
+
     // 5d. Update piecewise-linear saturable cores
     let satChanged: bool = false;
     for (let sc: u32 = 0; sc < this.nSatCores; sc++) {
@@ -1631,6 +2280,96 @@ export class WasmEmtSolver {
       store<f64>(this.macTePuPtr + (((m as usize)) << 3), tePu);
     }
 
+    // 5f2. Update 5th-order induction machines & DFIGs (Krause dq0 + rotor crowbar protection)
+    for (let im: u32 = 0; im < this.nIndMachines; im++) {
+      let nodeA = load<i32>(this.indNodeAPtr + (((im as usize)) << 2));
+      let nodeB = load<i32>(this.indNodeBPtr + (((im as usize)) << 2));
+      let nodeC = load<i32>(this.indNodeCPtr + (((im as usize)) << 2));
+      let va: f64 = (nodeA >= 0 && (nodeA as u32) < n) ? vVec[nodeA] : 0.0;
+      let vb: f64 = (nodeB >= 0 && (nodeB as u32) < n) ? vVec[nodeB] : 0.0;
+      let vc: f64 = (nodeC >= 0 && (nodeC as u32) < n) ? vVec[nodeC] : 0.0;
+
+      let vBasePeak = load<f64>(this.indVBasePeakPtr + (((im as usize)) << 3));
+      let omegaSync = load<f64>(this.indOmegaSyncPtr + (((im as usize)) << 3));
+      let rs = load<f64>(this.indRsPuPtr + (((im as usize)) << 3));
+      let xs = load<f64>(this.indXsPuPtr + (((im as usize)) << 3));
+      let xm = load<f64>(this.indXmPuPtr + (((im as usize)) << 3));
+      let rr = load<f64>(this.indRrPuPtr + (((im as usize)) << 3));
+      let xr = load<f64>(this.indXrPuPtr + (((im as usize)) << 3));
+      let xPrime = load<f64>(this.indXPrimePtr + (((im as usize)) << 3));
+      let hInertia = load<f64>(this.indHInertiaPtr + (((im as usize)) << 3));
+      let dampingD = load<f64>(this.indDampingPtr + (((im as usize)) << 3));
+      let tmLoadPu = load<f64>(this.indTmLoadPuPtr + (((im as usize)) << 3));
+      let crowbarTh = load<f64>(this.indCrowbarThPtr + (((im as usize)) << 3));
+      let isDfig = load<u32>(this.indIsDfigPtr + (((im as usize)) << 2));
+      let crowbarActive = load<u32>(this.indCrowbarActivePtr + (((im as usize)) << 2));
+      let omegaRPu = load<f64>(this.indOmegaRPuPtr + (((im as usize)) << 3));
+      let edPrime = load<f64>(this.indEdPrimePtr + (((im as usize)) << 3));
+      let eqPrime = load<f64>(this.indEqPrimePtr + (((im as usize)) << 3));
+
+      let thetaA = omegaSync * t;
+      let thetaB = thetaA - (2.0 * Math.PI) / 3.0;
+      let thetaC = thetaA + (2.0 * Math.PI) / 3.0;
+
+      let vqPu: f64 = 0.0;
+      let vdPu: f64 = 0.0;
+      if (nodeB >= 0 && nodeC >= 0) {
+        vqPu = (2.0 / 3.0) * ((va * Math.sin(thetaA) + vb * Math.sin(thetaB) + vc * Math.sin(thetaC)) / vBasePeak);
+        vdPu = (2.0 / 3.0) * ((va * Math.cos(thetaA) + vb * Math.cos(thetaB) + vc * Math.cos(thetaC)) / vBasePeak);
+      } else {
+        vqPu = Math.min(1.5, Math.max(0.2, (Math.abs(va) / vBasePeak) * Math.SQRT2));
+        vdPu = 0.0;
+      }
+
+      let vTermMagPu = Math.max(0.05, Math.hypot(vqPu, vdPu));
+      let slip = 1.0 - omegaRPu;
+      let xStator = xs + xm;
+      let xRotor = xr + xm;
+      let rrEff = crowbarActive != 0 ? rr + 0.15 : rr;
+      let t0Prime = xRotor / (omegaSync * Math.max(1e-4, rrEff));
+
+      let denom = rs * rs + xPrime * xPrime;
+      let dvq = vqPu - eqPrime;
+      let dvd = vdPu - edPrime;
+      let iqsPu = Math.max(-6.0, Math.min(6.0, (rs * dvq - xPrime * dvd) / denom));
+      let idsPu = Math.max(-6.0, Math.min(6.0, (xPrime * dvq + rs * dvd) / denom));
+
+      let zSlip = Math.hypot(rrEff / Math.max(1e-3, Math.abs(slip)), xPrime);
+      let iSlipMag = vTermMagPu / Math.max(0.08, zSlip);
+      let iDynMag = Math.hypot(iqsPu, idsPu);
+      let statorCurrentMagPu = 0.5 * iDynMag + 0.5 * iSlipMag;
+      let rotorCurrentMagPu = (xm / xRotor) * statorCurrentMagPu;
+
+      if (isDfig != 0 && rotorCurrentMagPu > crowbarTh) {
+        crowbarActive = 1;
+        store<u32>(this.indCrowbarActivePtr + (((im as usize)) << 2), 1);
+      }
+
+      let r2OverS = Math.abs(slip) > 1e-4 ? rrEff / slip : rrEff * 1e4 * (slip >= 0.0 ? 1.0 : -1.0);
+      let teSteadyPu =
+        (vTermMagPu * vTermMagPu * r2OverS) / ((rs + r2OverS) * (rs + r2OverS) + xPrime * xPrime);
+      let teDynPu = eqPrime * iqsPu + edPrime * idsPu;
+      let tePu = 0.75 * teSteadyPu + 0.25 * teDynPu;
+
+      let dtSub = dt * 0.25;
+      let xDiff = xStator - xPrime;
+      let slipOmega = slip * omegaSync;
+      for (let k: i32 = 0; k < 4; k++) {
+        let dEq = -(eqPrime - xDiff * idsPu) / t0Prime - slipOmega * edPrime;
+        let dEd = -(edPrime + xDiff * iqsPu) / t0Prime + slipOmega * eqPrime;
+        eqPrime = Math.max(-1.5, Math.min(1.5, eqPrime + dEq * dtSub));
+        edPrime = Math.max(-1.5, Math.min(1.5, edPrime + dEd * dtSub));
+      }
+
+      let dOmega = (tePu - tmLoadPu - dampingD * (omegaRPu - 1.0)) / (2.0 * hInertia);
+      omegaRPu = Math.max(0.0, Math.min(2.0, omegaRPu + dOmega * dt));
+
+      store<f64>(this.indOmegaRPuPtr + (((im as usize)) << 3), omegaRPu);
+      store<f64>(this.indEdPrimePtr + (((im as usize)) << 3), edPrime);
+      store<f64>(this.indEqPrimePtr + (((im as usize)) << 3), eqPrime);
+      store<f64>(this.indTePuPtr + (((im as usize)) << 3), tePu);
+    }
+
     // 5g. Advance Power Electronics Converter Bridges (0=vsc_pwm, 1=lcc_6pulse, 2=mmc_thevenin)
     for (let c: u32 = 0; c < this.nConverters; c++) {
       let nodeA = load<i32>(this.convNodeAPtr + (((c as usize)) << 2));
@@ -1709,6 +2448,144 @@ export class WasmEmtSolver {
 
     if (satChanged) {
       this.factorizeCurrentG();
+    }
+
+    // 5h. Advance 3-Phase Synchronous Reference Frame PLLs (SRF-PLL)
+    for (let pll: u32 = 0; pll < this.nPlls; pll++) {
+      let nodeA = load<i32>(this.pllNodeAPtr + (((pll as usize)) << 2));
+      let nodeB = load<i32>(this.pllNodeBPtr + (((pll as usize)) << 2));
+      let nodeC = load<i32>(this.pllNodeCPtr + (((pll as usize)) << 2));
+      let va: f64 = (nodeA >= 0 && (nodeA as u32) < n) ? vVec[nodeA] : 0.0;
+      let vb: f64 = (nodeB >= 0 && (nodeB as u32) < n) ? vVec[nodeB] : 0.0;
+      let vc: f64 = (nodeC >= 0 && (nodeC as u32) < n) ? vVec[nodeC] : 0.0;
+
+      let vBasePeak = load<f64>(this.pllVBasePeakPtr + (((pll as usize)) << 3));
+      let omegaNom = load<f64>(this.pllOmegaNomPtr + (((pll as usize)) << 3));
+      let kp = load<f64>(this.pllKpPtr + (((pll as usize)) << 3));
+      let ki = load<f64>(this.pllKiPtr + (((pll as usize)) << 3));
+      let theta = load<f64>(this.pllThetaRadPtr + (((pll as usize)) << 3));
+      let intState = load<f64>(this.pllIntStatePtr + (((pll as usize)) << 3));
+
+      let thetaA = theta;
+      let thetaB = theta - (2.0 * Math.PI) / 3.0;
+      let thetaC = theta + (2.0 * Math.PI) / 3.0;
+
+      let vqPu = (2.0 / 3.0) * ((va * Math.sin(thetaA) + vb * Math.sin(thetaB) + vc * Math.sin(thetaC)) / vBasePeak);
+      let vdPu = (2.0 / 3.0) * ((va * Math.cos(thetaA) + vb * Math.cos(thetaB) + vc * Math.cos(thetaC)) / vBasePeak);
+
+      intState = Math.max(-100.0, Math.min(100.0, intState + ki * vdPu * dt));
+      let dOmega = kp * vdPu + intState;
+      let omegaEst = Math.max(0.2 * omegaNom, Math.min(2.0 * omegaNom, omegaNom + dOmega));
+      theta += omegaEst * dt;
+      if (theta > 2.0 * Math.PI) theta -= 2.0 * Math.PI;
+      else if (theta < 0.0) theta += 2.0 * Math.PI;
+
+      store<f64>(this.pllThetaRadPtr + (((pll as usize)) << 3), theta);
+      store<f64>(this.pllIntStatePtr + (((pll as usize)) << 3), intState);
+      store<f64>(this.pllFreqHzPtr + (((pll as usize)) << 3), omegaEst / (2.0 * Math.PI));
+      store<f64>(this.pllVdPuPtr + (((pll as usize)) << 3), vdPu);
+      store<f64>(this.pllVqPuPtr + (((pll as usize)) << 3), vqPu);
+    }
+
+    // 5i. Advance CSMF Control Block Graph (Bilinear Tustin integration)
+    for (let cb: u32 = 0; cb < this.nCtrlBlocks; cb++) {
+      let kind = load<u32>(this.ctrlKindPtr + (((cb as usize)) << 2));
+      let in0 = load<i32>(this.ctrlIn0Ptr + (((cb as usize)) << 2));
+      let in1 = load<i32>(this.ctrlIn1Ptr + (((cb as usize)) << 2));
+      let p0 = load<f64>(this.ctrlParam0Ptr + (((cb as usize)) << 3));
+      let p1 = load<f64>(this.ctrlParam1Ptr + (((cb as usize)) << 3));
+      let p2 = load<f64>(this.ctrlParam2Ptr + (((cb as usize)) << 3));
+      let minOut = load<f64>(this.ctrlMinOutPtr + (((cb as usize)) << 3));
+      let maxOut = load<f64>(this.ctrlMaxOutPtr + (((cb as usize)) << 3));
+      let uPrev = load<f64>(this.ctrlUPrevPtr + (((cb as usize)) << 3));
+      let yPrev = load<f64>(this.ctrlYPrevPtr + (((cb as usize)) << 3));
+      let intState = load<f64>(this.ctrlIntStatePtr + (((cb as usize)) << 3));
+
+      let u0: f64 = (in0 >= 0 && (in0 as u32) < this.nCtrlBlocks)
+        ? load<f64>(this.ctrlOutPtr + (((in0 as usize)) << 3))
+        : load<f64>(this.ctrlExtIn0Ptr + (((cb as usize)) << 3));
+      let u1: f64 = (in1 >= 0 && (in1 as u32) < this.nCtrlBlocks)
+        ? load<f64>(this.ctrlOutPtr + (((in1 as usize)) << 3))
+        : load<f64>(this.ctrlExtIn1Ptr + (((cb as usize)) << 3));
+
+      let y: f64 = 0.0;
+      if (kind == 0) {
+        // const
+        y = p0;
+      } else if (kind == 1) {
+        // gain
+        y = p0 * u0;
+      } else if (kind == 2) {
+        // sum (p0 * u0 + p1 * u1)
+        let s0 = p0 != 0.0 ? p0 : 1.0;
+        let s1 = p1 != 0.0 ? p1 : 1.0;
+        y = s0 * u0 + s1 * u1;
+      } else if (kind == 3) {
+        // sub
+        y = u0 - u1;
+      } else if (kind == 4) {
+        // mult
+        y = u0 * u1;
+      } else if (kind == 5) {
+        // div
+        let den = Math.abs(u1) < 1e-9 ? (u1 >= 0.0 ? 1e-9 : -1e-9) : u1;
+        y = u0 / den;
+      } else if (kind == 6) {
+        // limit
+        y = Math.min(maxOut, Math.max(minOut, u0));
+      } else if (kind == 7) {
+        // pi (Bilinear Tustin with anti-windup)
+        let kp = p0;
+        let ki = p1;
+        let nextInt = intState + 0.5 * ki * dt * (u0 + uPrev);
+        nextInt = Math.min(maxOut, Math.max(minOut, nextInt));
+        store<f64>(this.ctrlIntStatePtr + (((cb as usize)) << 3), nextInt);
+        y = Math.min(maxOut, Math.max(minOut, kp * u0 + nextInt));
+      } else if (kind == 8) {
+        // lag: G / (1 + s * T1) via Bilinear Tustin
+        let g = p0 != 0.0 ? p0 : 1.0;
+        let T1 = Math.max(1e-9, p1);
+        let a = (2.0 * T1 - dt) / (2.0 * T1 + dt);
+        let c = (g * dt) / (2.0 * T1 + dt);
+        y = a * yPrev + c * (u0 + uPrev);
+      } else if (kind == 9) {
+        // leadlag: G * (1 + s * T1) / (1 + s * T2) via Bilinear Tustin
+        let g = p0 != 0.0 ? p0 : 1.0;
+        let T1 = Math.max(0.0, p1);
+        let T2 = Math.max(1e-9, p2);
+        let denom = 2.0 * T2 + dt;
+        let a = (2.0 * T2 - dt) / denom;
+        let b0 = (g * (2.0 * T1 + dt)) / denom;
+        let b1 = (g * (dt - 2.0 * T1)) / denom;
+        y = a * yPrev + b0 * u0 + b1 * uPrev;
+      } else if (kind == 10) {
+        // compar
+        let highVal = p1 != 0.0 ? p1 : 1.0;
+        let lowVal = p2;
+        let thresh = in1 >= 0 ? u1 : p0;
+        y = u0 >= thresh ? highVal : lowVal;
+      } else if (kind == 11) {
+        // sensor_v (node index in in0, scale in p0)
+        let rawV: f64 = (in0 >= 0 && (in0 as u32) < n) ? vVec[in0] : 0.0;
+        let scale = p0 != 0.0 ? p0 : 1.0;
+        y = rawV * scale;
+      } else if (kind == 12) {
+        // sensor_i (branch index in in0, scale in p0)
+        let rawI: f64 = (in0 >= 0 && (in0 as u32) < this.nBranches)
+          ? load<f64>(this.branchCurrentPtr + (((in0 as usize)) << 3))
+          : 0.0;
+        let scale = p0 != 0.0 ? p0 : 1.0;
+        y = rawI * scale;
+      }
+
+      if (kind != 6 && kind != 7) {
+        if (y < minOut) y = minOut;
+        if (y > maxOut) y = maxOut;
+      }
+
+      store<f64>(this.ctrlUPrevPtr + (((cb as usize)) << 3), u0);
+      store<f64>(this.ctrlYPrevPtr + (((cb as usize)) << 3), y);
+      store<f64>(this.ctrlOutPtr + (((cb as usize)) << 3), y);
     }
 
     // 6. Record trajectory step if buffer allocated
@@ -1948,6 +2825,109 @@ export function emt_get_converter_dc_voltage_kv(solverPtr: usize, convIdx: u32):
   return load<f64>(solver.convVdcVoltsPtr + (((convIdx as usize)) << 3)) / 1000.0;
 }
 
+export function emt_add_induction_machine(
+  solverPtr: usize,
+  nodeA: i32,
+  nodeB: i32,
+  nodeC: i32,
+  sBaseMva: f64,
+  vBaseKvLL: f64,
+  freqHz: f64,
+  rsPu: f64,
+  xsPu: f64,
+  xmPu: f64,
+  rrPu: f64,
+  xrPu: f64,
+  hInertia: f64,
+  dampingD: f64,
+  tmLoadPu: f64,
+  isDfig: bool,
+  crowbarThresholdPu: f64
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addInductionMachine(
+    nodeA,
+    nodeB,
+    nodeC,
+    sBaseMva,
+    vBaseKvLL,
+    freqHz,
+    rsPu,
+    xsPu,
+    xmPu,
+    rrPu,
+    xrPu,
+    hInertia,
+    dampingD,
+    tmLoadPu,
+    isDfig,
+    crowbarThresholdPu
+  );
+}
+
+export function emt_get_induction_machine_speed_pu(solverPtr: usize, indIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (indIdx >= solver.nIndMachines) return 1.0;
+  return load<f64>(solver.indOmegaRPuPtr + (((indIdx as usize)) << 3));
+}
+
+export function emt_get_induction_machine_torque_pu(solverPtr: usize, indIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (indIdx >= solver.nIndMachines) return 0.0;
+  return load<f64>(solver.indTePuPtr + (((indIdx as usize)) << 3));
+}
+
+export function emt_get_induction_machine_crowbar(solverPtr: usize, indIdx: u32): u32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (indIdx >= solver.nIndMachines) return 0;
+  return load<u32>(solver.indCrowbarActivePtr + (((indIdx as usize)) << 2));
+}
+
+export function emt_add_fd_line(
+  solverPtr: usize,
+  fromNode: i32,
+  toNode: i32,
+  gInf: f64,
+  tauSec: f64,
+  maxPolesY: u32,
+  maxPolesH: u32
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addFrequencyDependentLine(fromNode, toNode, gInf, tauSec, maxPolesY, maxPolesH);
+}
+
+export function emt_add_fd_line_y_pole(
+  solverPtr: usize,
+  fdLineIdx: u32,
+  poleRad: f64,
+  residueSiemens: f64
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addFdLineYPole(fdLineIdx, poleRad, residueSiemens);
+}
+
+export function emt_add_fd_line_h_pole(
+  solverPtr: usize,
+  fdLineIdx: u32,
+  poleRad: f64,
+  residueDimless: f64
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addFdLineHPole(fdLineIdx, poleRad, residueDimless);
+}
+
+export function emt_get_fd_line_hist_from(solverPtr: usize, fdLineIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (fdLineIdx >= solver.nFdLines) return 0.0;
+  return load<f64>(solver.fdIHistFromPtr + (((fdLineIdx as usize)) << 3));
+}
+
+export function emt_get_fd_line_hist_to(solverPtr: usize, fdLineIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (fdLineIdx >= solver.nFdLines) return 0.0;
+  return load<f64>(solver.fdIHistToPtr + (((fdLineIdx as usize)) << 3));
+}
+
 export function emt_build_and_factorize(solverPtr: usize): bool {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.buildAndFactorize();
@@ -2021,4 +3001,68 @@ export function emt_get_machine_angle_deg(solverPtr: usize, macIdx: u32): f64 {
   if (macIdx >= solver.nMachines) return 0.0;
   return (load<f64>(solver.macDeltaRadPtr + (((macIdx as usize)) << 3)) * 180.0) / Math.PI;
 }
+
+export function emt_add_control_block(
+  solverPtr: usize,
+  kind: u32,
+  in0: i32,
+  in1: i32,
+  p0: f64,
+  p1: f64,
+  p2: f64,
+  minOut: f64,
+  maxOut: f64
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addControlBlock(kind, in0, in1, p0, p1, p2, minOut, maxOut);
+}
+
+export function emt_set_control_input(solverPtr: usize, blockIdx: u32, u0: f64, u1: f64): void {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  solver.setControlInput(blockIdx, u0, u1);
+}
+
+export function emt_get_control_output(solverPtr: usize, blockIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.getControlOutput(blockIdx);
+}
+
+export function emt_add_pll(
+  solverPtr: usize,
+  nodeA: i32,
+  nodeB: i32,
+  nodeC: i32,
+  vBaseKvLL: f64,
+  freqNomHz: f64,
+  kp: f64,
+  ki: f64
+): i32 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  return solver.addPll(nodeA, nodeB, nodeC, vBaseKvLL, freqNomHz, kp, ki);
+}
+
+export function emt_get_pll_freq_hz(solverPtr: usize, pllIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (pllIdx >= solver.nPlls) return 60.0;
+  return load<f64>(solver.pllFreqHzPtr + (((pllIdx as usize)) << 3));
+}
+
+export function emt_get_pll_angle_rad(solverPtr: usize, pllIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (pllIdx >= solver.nPlls) return 0.0;
+  return load<f64>(solver.pllThetaRadPtr + (((pllIdx as usize)) << 3));
+}
+
+export function emt_get_pll_vd_pu(solverPtr: usize, pllIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (pllIdx >= solver.nPlls) return 0.0;
+  return load<f64>(solver.pllVdPuPtr + (((pllIdx as usize)) << 3));
+}
+
+export function emt_get_pll_vq_pu(solverPtr: usize, pllIdx: u32): f64 {
+  let solver = changetype<WasmEmtSolver>(solverPtr);
+  if (pllIdx >= solver.nPlls) return 0.0;
+  return load<f64>(solver.pllVqPuPtr + (((pllIdx as usize)) << 3));
+}
+
 

@@ -33,10 +33,41 @@ export interface FrustumPlane {
   distance: number;
 }
 
+let bvhWasmScratch: {
+  wasm: any;
+  capItems: number;
+  aabbsPtr: number;
+  idsPtr: number;
+  rayOriginPtr: number;
+  rayDirPtr: number;
+  hitOutPtr: number;
+} | null = null;
+
+function ensureBvhWasmScratch(wasm: any, nItems: number) {
+  const reqItems = Math.max(nItems, 64);
+  if (bvhWasmScratch && bvhWasmScratch.wasm === wasm && bvhWasmScratch.capItems >= reqItems) {
+    return bvhWasmScratch;
+  }
+  const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+  const capItems = Math.max(reqItems, bvhWasmScratch ? bvhWasmScratch.capItems * 2 : 256);
+  bvhWasmScratch = {
+    wasm,
+    capItems,
+    aabbsPtr: alloc(capItems * 6 * 8),
+    idsPtr: alloc(capItems * 4),
+    rayOriginPtr: alloc(3 * 8),
+    rayDirPtr: alloc(3 * 8),
+    hitOutPtr: alloc(4 * 8),
+  };
+  return bvhWasmScratch;
+}
+
 export class AssemblyBVH {
   readonly root: BVHNode;
   readonly totalItems: number;
   readonly depth: number;
+  readonly flatAABBs: Float64Array;
+  readonly flatItemIds: Int32Array;
 
   constructor(items: BVHItem[], maxLeafSize = 4) {
     this.totalItems = items.length;
@@ -87,9 +118,24 @@ export class AssemblyBVH {
         items: [],
       };
       this.depth = 0;
+      this.flatAABBs = new Float64Array(0);
+      this.flatItemIds = new Int32Array(0);
     } else {
       this.root = build([...items], 1);
       this.depth = maxDepth;
+      this.flatAABBs = new Float64Array(items.length * 6);
+      this.flatItemIds = new Int32Array(items.length);
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const off = i * 6;
+        this.flatAABBs[off] = item.aabb.min[0];
+        this.flatAABBs[off + 1] = item.aabb.min[1];
+        this.flatAABBs[off + 2] = item.aabb.min[2];
+        this.flatAABBs[off + 3] = item.aabb.max[0];
+        this.flatAABBs[off + 4] = item.aabb.max[1];
+        this.flatAABBs[off + 5] = item.aabb.max[2];
+        this.flatItemIds[i] = item.id;
+      }
     }
   }
 
@@ -176,13 +222,47 @@ export class AssemblyBVH {
     rayDir: [number, number, number],
     maxDist = Infinity,
   ): RaycastHit | null {
-    let closestHit: RaycastHit | null = null;
-    let closestDist = maxDist;
-
     // Normalize direction
     const len = Math.hypot(rayDir[0], rayDir[1], rayDir[2]);
     if (len === 0) return null;
     const dir: [number, number, number] = [rayDir[0] / len, rayDir[1] / len, rayDir[2] / len];
+
+    const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+    if (this.totalItems > 0 && wasm && typeof wasm.cad_bvh_raycast === "function") {
+      const n = this.totalItems;
+      const sc = ensureBvhWasmScratch(wasm, n);
+      const buf = wasm.memory.buffer as ArrayBuffer;
+      new Float64Array(buf, sc.aabbsPtr, n * 6).set(this.flatAABBs);
+      new Int32Array(buf, sc.idsPtr, n).set(this.flatItemIds);
+      const o = new Float64Array(buf, sc.rayOriginPtr, 3);
+      o[0] = rayOrigin[0];
+      o[1] = rayOrigin[1];
+      o[2] = rayOrigin[2];
+      const d = new Float64Array(buf, sc.rayDirPtr, 3);
+      d[0] = dir[0];
+      d[1] = dir[1];
+      d[2] = dir[2];
+
+      const hitId: number = wasm.cad_bvh_raycast(
+        n,
+        sc.aabbsPtr,
+        sc.idsPtr,
+        sc.rayOriginPtr,
+        sc.rayDirPtr,
+        Number.isFinite(maxDist) ? maxDist : 1e30,
+        sc.hitOutPtr,
+      );
+      if (hitId < 0) return null;
+      const hitOut = new Float64Array(wasm.memory.buffer, sc.hitOutPtr, 4);
+      return {
+        id: hitId,
+        distance: hitOut[0]!,
+        point: [hitOut[1]!, hitOut[2]!, hitOut[3]!],
+      };
+    }
+
+    let closestHit: RaycastHit | null = null;
+    let closestDist = maxDist;
 
     const traverse = (node: BVHNode) => {
       const boxHit = intersectRayAABB(rayOrigin, dir, node.aabb);

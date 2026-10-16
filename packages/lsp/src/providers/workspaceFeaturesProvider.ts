@@ -32,6 +32,18 @@ export function registerWorkspaceFeaturesProvider(
 
   const resolveRef = (entry: any, index: any): any[] => {
     if (isDecl(entry)) return [entry];
+    let current = entry.parentId ?? null;
+    while (current !== null && current !== undefined) {
+      const children = index.childrenOf?.get(current) || [];
+      for (const childId of children) {
+        const sym = index.symbols.get(childId);
+        if (sym && sym.name === entry.name && isDecl(sym)) {
+          return [sym];
+        }
+      }
+      const parent = index.symbols.get(current);
+      current = parent?.parentId ?? null;
+    }
     const ids = index.byName.get(entry.name) || [];
     const decls: any[] = [];
     for (const id of ids) {
@@ -48,7 +60,12 @@ export function registerWorkspaceFeaturesProvider(
     const refs: any[] = [];
     for (const id of ids) {
       const sym = index.symbols.get(id);
-      if (sym && !isDecl(sym)) refs.push(sym);
+      if (sym && !isDecl(sym)) {
+        const resolved = resolveRef(sym, index);
+        if (resolved.some((d: any) => d.id === declId)) {
+          refs.push(sym);
+        }
+      }
     }
     return refs;
   };
@@ -76,8 +93,12 @@ export function registerWorkspaceFeaturesProvider(
     let targetEntry: any = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
-      if (entry.resourceId === params.textDocument.uri && entry.startByte <= offset && offset < entry.endByte) {
-        if (!targetEntry || entry.endByte - entry.startByte < targetEntry.endByte - targetEntry.startByte) {
+      const eStart = entry.startOffset ?? entry.startByte;
+      const eEnd = entry.endOffset ?? entry.endByte;
+      if (entry.resourceId === params.textDocument.uri && eStart <= offset && offset < eEnd) {
+        const targetStart = targetEntry ? (targetEntry.startOffset ?? targetEntry.startByte) : 0;
+        const targetEnd = targetEntry ? (targetEntry.endOffset ?? targetEntry.endByte) : 0;
+        if (!targetEntry || eEnd - eStart < targetEnd - targetStart) {
           targetEntry = entry;
         }
       }
@@ -106,7 +127,7 @@ export function registerWorkspaceFeaturesProvider(
     const results: any[] = [];
     const seen = new Set<string>();
 
-    const addLocation = (uri: string, startByte: number, endByte: number) => {
+    const addLocation = (uri: string, startOffset: number, endOffset: number) => {
       let text = documents.get(uri)?.getText();
       if (!text) {
         const cached = documentTrees.get(uri);
@@ -115,8 +136,8 @@ export function registerWorkspaceFeaturesProvider(
       if (!text) return;
 
       const dummyDoc = TextDocument.create(uri, "temp", 1, text);
-      const start = dummyDoc.positionAt(startByte);
-      const end = dummyDoc.positionAt(endByte);
+      const start = dummyDoc.positionAt(startOffset);
+      const end = dummyDoc.positionAt(endOffset);
       const key = `${uri}:${start.line}:${start.character}`;
 
       if (!seen.has(key)) {
@@ -131,28 +152,32 @@ export function registerWorkspaceFeaturesProvider(
       if (declEntry && declEntry.resourceId) {
         const nameField = declEntry.fieldRanges?.name;
         if (nameField) {
-          addLocation(declEntry.resourceId, nameField.startByte, nameField.endByte);
+          addLocation(
+            declEntry.resourceId,
+            nameField.startOffset ?? nameField.startByte,
+            nameField.endOffset ?? nameField.endByte,
+          );
         } else {
-          let sByte = declEntry.startByte;
-          let eByte = declEntry.endByte;
+          let sOff = declEntry.startOffset ?? declEntry.startByte;
+          let eOff = declEntry.endOffset ?? declEntry.endByte;
           const declText =
             documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
           if (declText && declEntry.name && declEntry.name !== "<anonymous>") {
-            const slice = declText.slice(sByte, Math.min(sByte + 300, eByte));
+            const slice = declText.slice(sOff, Math.min(sOff + 300, eOff));
             const idx = slice.indexOf(declEntry.name);
             if (idx !== -1) {
-              sByte += idx;
-              eByte = sByte + declEntry.name.length;
+              sOff += idx;
+              eOff = sOff + declEntry.name.length;
             }
           }
-          addLocation(declEntry.resourceId, sByte, eByte);
+          addLocation(declEntry.resourceId, sOff, eOff);
         }
       }
       // Include references
       const refs = findRefs(declId, unifiedIndex);
       for (const ref of refs) {
         if (ref.resourceId) {
-          addLocation(ref.resourceId, ref.startByte, ref.endByte);
+          addLocation(ref.resourceId, ref.startOffset ?? ref.startByte, ref.endOffset ?? ref.endByte);
         }
       }
     }
@@ -171,8 +196,12 @@ export function registerWorkspaceFeaturesProvider(
     let targetEntry: any = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
-      if (entry.resourceId === params.textDocument.uri && entry.startByte <= offset && offset < entry.endByte) {
-        if (!targetEntry || entry.endByte - entry.startByte < targetEntry.endByte - targetEntry.startByte) {
+      const eStart = entry.startOffset ?? entry.startByte;
+      const eEnd = entry.endOffset ?? entry.endByte;
+      if (entry.resourceId === params.textDocument.uri && eStart <= offset && offset < eEnd) {
+        const targetStart = targetEntry ? (targetEntry.startOffset ?? targetEntry.startByte) : 0;
+        const targetEnd = targetEntry ? (targetEntry.endOffset ?? targetEntry.endByte) : 0;
+        if (!targetEntry || eEnd - eStart < targetEnd - targetStart) {
           targetEntry = entry;
         }
       }
@@ -193,7 +222,7 @@ export function registerWorkspaceFeaturesProvider(
     const changes: WorkspaceEdit["changes"] = {};
     const seen = new Set<string>();
 
-    const addEdit = (uri: string, startByte: number, endByte: number) => {
+    const addEdit = (uri: string, startOffset: number, endOffset: number) => {
       let text = documents.get(uri)?.getText();
       if (!text) {
         const cached = documentTrees.get(uri);
@@ -202,8 +231,8 @@ export function registerWorkspaceFeaturesProvider(
       if (!text) return;
 
       const dummyDoc = TextDocument.create(uri, "temp", 1, text);
-      const start = dummyDoc.positionAt(startByte);
-      const end = dummyDoc.positionAt(endByte);
+      const start = dummyDoc.positionAt(startOffset);
+      const end = dummyDoc.positionAt(endOffset);
       const key = `${uri}:${start.line}:${start.character}`;
 
       if (!seen.has(key)) {
@@ -223,9 +252,11 @@ export function registerWorkspaceFeaturesProvider(
         const text = documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
         if (text) {
           const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);
-          const nameMatch = text.substring(declEntry.startByte, declEntry.endByte).indexOf(declEntry.name);
+          const declStart = declEntry.startOffset ?? declEntry.startByte;
+          const declEnd = declEntry.endOffset ?? declEntry.endByte;
+          const nameMatch = text.substring(declStart, declEnd).indexOf(declEntry.name);
           if (nameMatch !== -1) {
-            const matchStart = declEntry.startByte + nameMatch;
+            const matchStart = declStart + nameMatch;
             const matchEnd = matchStart + declEntry.name.length;
             addEdit(declEntry.resourceId, matchStart, matchEnd);
           }
@@ -235,7 +266,7 @@ export function registerWorkspaceFeaturesProvider(
       const refs = findRefs(declId, unifiedIndex);
       for (const ref of refs) {
         if (ref.resourceId) {
-          addEdit(ref.resourceId, ref.startByte, ref.endByte);
+          addEdit(ref.resourceId, ref.startOffset ?? ref.startByte, ref.endOffset ?? ref.endByte);
         }
       }
     }

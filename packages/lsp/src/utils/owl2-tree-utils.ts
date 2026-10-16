@@ -157,22 +157,52 @@ export function getOntologyCategoryNodes(ontologyParentId: string, store: any): 
   return categories;
 }
 
+const owl2TaxonomyCache = new WeakMap<
+  object,
+  {
+    axiomsRef: any[];
+    axiomsLen: number;
+    taxonomy: ReturnType<TableauReasoner["getTaxonomy"]>;
+    taxMap: Map<string, ReturnType<TableauReasoner["getTaxonomy"]>[0]>;
+  }
+>();
+
+export async function getCachedOwl2Taxonomy(store: any): Promise<{
+  taxonomy: ReturnType<TableauReasoner["getTaxonomy"]>;
+  taxMap: Map<string, ReturnType<TableauReasoner["getTaxonomy"]>[0]>;
+}> {
+  if (!store?.axioms || store.axioms.length === 0) {
+    return { taxonomy: [], taxMap: new Map() };
+  }
+  const cached = owl2TaxonomyCache.get(store);
+  if (cached && cached.axiomsRef === store.axioms && cached.axiomsLen === store.axioms.length) {
+    return { taxonomy: cached.taxonomy, taxMap: cached.taxMap };
+  }
+  const reasoner = new TableauReasoner();
+  await reasoner.init();
+  reasoner.loadOntology(store.axioms);
+  reasoner.classify();
+  const taxonomy = reasoner.getTaxonomy();
+  const taxMap = new Map<string, (typeof taxonomy)[0]>();
+  for (const node of taxonomy) {
+    taxMap.set(node.iri, node);
+  }
+  owl2TaxonomyCache.set(store, {
+    axiomsRef: store.axioms,
+    axiomsLen: store.axioms.length,
+    taxonomy,
+    taxMap,
+  });
+  return { taxonomy, taxMap };
+}
+
 /**
  * Returns class nodes for the taxonomy subsumption hierarchy.
  */
 export async function getOwlClassTreeNodes(store: any, parentIri: string | null): Promise<TreeNodeInfo[]> {
   if (!store?.axioms || store.axioms.length === 0) return [];
 
-  const reasoner = new TableauReasoner();
-  await reasoner.init();
-  reasoner.loadOntology(store.axioms);
-  reasoner.classify();
-
-  const taxonomy = reasoner.getTaxonomy();
-  const taxMap = new Map<string, (typeof taxonomy)[0]>();
-  for (const node of taxonomy) {
-    taxMap.set(node.iri, node);
-  }
+  const { taxonomy, taxMap } = await getCachedOwl2Taxonomy(store);
 
   const definedClasses = new Set<string>();
   for (const ax of store.axioms) {

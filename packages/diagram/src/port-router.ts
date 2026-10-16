@@ -220,6 +220,73 @@ interface GridNode {
 }
 
 /**
+ * Routes an orthogonal path on a 2D occupancy grid (`cols x rows`) using the WebAssembly
+ * binary-heap A* kernel (`diagram_route_orthogonal_astar`) when available.
+ */
+export function routeOrthogonalGridAStar(options: {
+  cols: number;
+  rows: number;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  startDir?: number;
+  bendPenalty?: number;
+  crossingPenalty?: number;
+  grid: Uint8Array;
+}): [number, number][] {
+  const { cols, rows, startX, startY, endX, endY, grid } = options;
+  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+  if (wasm && typeof wasm.diagram_route_orthogonal_astar === "function") {
+    const totalCells = cols * rows;
+    const totalStates = totalCells * 4;
+    const maxWaypoints = Math.min(totalCells, 1024);
+    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+    const gridPtr = alloc(totalCells);
+    const gScorePtr = alloc(totalStates * 8);
+    const parentPtr = alloc(totalStates * 4);
+    const closedPtr = alloc(totalStates);
+    const heapStatesPtr = alloc(totalStates * 4);
+    const heapPrioritiesPtr = alloc(totalStates * 8);
+    const outWaypointsPtr = alloc(maxWaypoints * 2 * 4);
+
+    new Uint8Array(wasm.memory.buffer, gridPtr, totalCells).set(grid.subarray(0, totalCells));
+
+    const count: number = wasm.diagram_route_orthogonal_astar(
+      cols,
+      rows,
+      startX,
+      startY,
+      endX,
+      endY,
+      options.startDir ?? -1,
+      options.bendPenalty ?? 2.5,
+      options.crossingPenalty ?? 4.0,
+      gridPtr,
+      gScorePtr,
+      parentPtr,
+      closedPtr,
+      heapStatesPtr,
+      heapPrioritiesPtr,
+      outWaypointsPtr,
+      maxWaypoints,
+    );
+
+    const outView = new Int32Array(wasm.memory.buffer, outWaypointsPtr, count * 2);
+    const waypoints: [number, number][] = [];
+    for (let i = 0; i < count; i++) {
+      waypoints.push([outView[i * 2]!, outView[i * 2 + 1]!]);
+    }
+    return waypoints;
+  }
+
+  return [
+    [startX, startY],
+    [endX, endY],
+  ];
+}
+
+/**
  * Discovers and traverses internal corridor channels between obstacles using A* pathfinding.
  * Prefers minimal-bend highway corridors through inter-block gaps over outer bounding box detours.
  */

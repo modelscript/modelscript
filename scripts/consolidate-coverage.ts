@@ -101,6 +101,10 @@ function findLcovFiles(dir: string, baseDir: string = dir): { filePath: string; 
   if (!fs.existsSync(dir)) return results;
 
   const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const hasNamedLcov = entries.some(
+    (e) => e.isFile() && e.name.toLowerCase().startsWith("lcov-") && e.name.toLowerCase().endsWith(".info"),
+  );
+
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
 
@@ -118,6 +122,9 @@ function findLcovFiles(dir: string, baseDir: string = dir): { filePath: string; 
       results.push(...findLcovFiles(fullPath, baseDir));
     } else if (entry.isFile()) {
       const lower = entry.name.toLowerCase();
+      if (lower === "lcov.info" && hasNamedLcov) {
+        continue;
+      }
       if ((lower === "lcov.info" || lower.endsWith(".lcov") || lower.includes("lcov")) && !lower.endsWith(".json")) {
         const relativeDir = path.dirname(path.relative(baseDir, fullPath));
         results.push({ filePath: fullPath, relativeDir });

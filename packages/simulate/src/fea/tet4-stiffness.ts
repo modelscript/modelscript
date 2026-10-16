@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { MaterialProperties } from "./tet4-types.js";
 
 /**
  * Closed-form 4-node linear tetrahedral (Tet4) element formulation.
  */
 export class Tet4Element {
+  private static wasmScratch?: {
+    wasm: any;
+    coordsPtr: number;
+    dPtr: number;
+    keOutPtr: number;
+    bOutPtr: number;
+  };
+
   /**
    * Builds the 6x6 isotropic elasticity constitutive matrix D.
    *
@@ -53,6 +62,45 @@ export class Tet4Element {
     p3: [number, number, number],
     D: Float64Array,
   ): { Ke: Float64Array; B: Float64Array; volume: number } {
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.fea_compute_tet4_stiffness === "function" && typeof wasm.__new === "function") {
+      if (!Tet4Element.wasmScratch || Tet4Element.wasmScratch.wasm !== wasm) {
+        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        Tet4Element.wasmScratch = {
+          wasm,
+          coordsPtr: alloc(12 * 8),
+          dPtr: alloc(36 * 8),
+          keOutPtr: alloc(144 * 8),
+          bOutPtr: alloc(72 * 8),
+        };
+      }
+      const s = Tet4Element.wasmScratch;
+      const coords = new Float64Array(wasm.memory.buffer, s.coordsPtr, 12);
+      coords[0] = p0[0];
+      coords[1] = p0[1];
+      coords[2] = p0[2];
+      coords[3] = p1[0];
+      coords[4] = p1[1];
+      coords[5] = p1[2];
+      coords[6] = p2[0];
+      coords[7] = p2[1];
+      coords[8] = p2[2];
+      coords[9] = p3[0];
+      coords[10] = p3[1];
+      coords[11] = p3[2];
+      new Float64Array(wasm.memory.buffer, s.dPtr, 36).set(D);
+
+      const volume: number = wasm.fea_compute_tet4_stiffness(s.coordsPtr, s.dPtr, s.keOutPtr, s.bOutPtr);
+      if (volume <= 1e-18) {
+        throw new Error(`Degenerate or zero-volume tetrahedron encountered (volume = ${volume}).`);
+      }
+      const Ke = new Float64Array(144);
+      Ke.set(new Float64Array(wasm.memory.buffer, s.keOutPtr, 144));
+      const B = new Float64Array(72);
+      B.set(new Float64Array(wasm.memory.buffer, s.bOutPtr, 72));
+      return { Ke, B, volume };
+    }
+
     // Coordinate differences relative to p0
     const x21 = p1[0] - p0[0],
       y21 = p1[1] - p0[1],

@@ -889,10 +889,9 @@ self.onmessage = async (e) => {
             });
             
             let wasmBytes = wasm;
-            if (wasmBytes && !(wasmBytes instanceof ArrayBuffer) && wasmBytes.buffer) {
-                wasmBytes = wasmBytes.buffer;
-            }
-            if (wasmBytes && wasmBytes instanceof ArrayBuffer) {
+            if (wasmBytes && ArrayBuffer.isView(wasmBytes)) {
+                wasmBytes = new Uint8Array(wasmBytes.buffer, wasmBytes.byteOffset, wasmBytes.byteLength);
+            } else if (wasmBytes && wasmBytes instanceof ArrayBuffer) {
                 wasmBytes = new Uint8Array(wasmBytes);
             }
 
@@ -1019,10 +1018,11 @@ self.onmessage = async (e) => {
         if (pos.line < lineStarts.length) {
             offset = lineStarts[pos.line] + (pos.character * charMult);
         }
-        const def = lspFacade.getDefinition(globalAstRoot, offset);
+        const charOffset = Math.floor(offset / charMult);
+        const def = lspFacade.getDefinition(globalAstRoot, charOffset);
         if (def) {
-            const startPos = lspFacade.offsetToPos(def.start, lineStarts);
-            const endPos = lspFacade.offsetToPos(def.end, lineStarts);
+            const startPos = lspFacade.offsetToPos(def.start * charMult, lineStarts);
+            const endPos = lspFacade.offsetToPos(def.end * charMult, lineStarts);
             const targetUri = (def.fileId && uriByFileId.get(def.fileId)) || latestUri;
             self.postMessage({
                 jsonrpc: '2.0',
@@ -1041,12 +1041,13 @@ self.onmessage = async (e) => {
         if (pos.line < lineStarts.length) {
             offset = lineStarts[pos.line] + (pos.character * charMult);
         }
-        const refs = lspFacade.getReferences(globalAstRoot, offset);
+        const charOffset = Math.floor(offset / charMult);
+        const refs = lspFacade.getReferences(globalAstRoot, charOffset);
         const result = refs.map(ref => ({
             uri: (ref.fileId && uriByFileId.get(ref.fileId)) || latestUri,
             range: {
-                start: lspFacade.offsetToPos(ref.start, lineStarts),
-                end: lspFacade.offsetToPos(ref.end, lineStarts)
+                start: lspFacade.offsetToPos(ref.start * charMult, lineStarts),
+                end: lspFacade.offsetToPos(ref.end * charMult, lineStarts)
             }
         }));
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
@@ -1113,9 +1114,10 @@ self.onmessage = async (e) => {
         if (pos.line < lineStarts.length) {
             offset = lineStarts[pos.line] + (pos.character * charMult);
         }
+        const charOffset = Math.floor(offset / charMult);
         
         // Find all references
-        const refs = lspFacade.getReferences(globalAstRoot, offset);
+        const refs = lspFacade.getReferences(globalAstRoot, charOffset);
         
         // getReferences already finds the definition identifier itself because it evaluates all nodes
         // with the matching hash, avoiding the need to explicitly include getDefinition() which would return
@@ -1125,8 +1127,8 @@ self.onmessage = async (e) => {
         for (const ref of refs) {
              changes.push({
                  range: {
-                     start: lspFacade.offsetToPos(ref.start, lineStarts),
-                     end: lspFacade.offsetToPos(ref.end, lineStarts)
+                     start: lspFacade.offsetToPos(ref.start * charMult, lineStarts),
+                     end: lspFacade.offsetToPos(ref.end * charMult, lineStarts)
                  },
                  newText: newName
              });
@@ -1176,9 +1178,10 @@ self.onmessage = async (e) => {
             } else if (lineStarts && pos.line < lineStarts.length) {
                 cursorOffset = lineStarts[pos.line] + (pos.character * charMult);
             }
+            const charOffset = Math.floor(cursorOffset / charMult);
 
             const cstCtx = (lspFacade && globalAstRoot > 0 && typeof lspFacade.getCompletionContext === 'function')
-                ? lspFacade.getCompletionContext(globalAstRoot, cursorOffset)
+                ? lspFacade.getCompletionContext(globalAstRoot, charOffset)
                 : null;
 
             let targetExpr = "";
@@ -1192,10 +1195,10 @@ self.onmessage = async (e) => {
             if (cstCtx && cstCtx.hasTarget && cstCtx.targetText) {
                 targetExpr = cstCtx.targetText;
                 const startPos = (lspFacade && typeof lspFacade.offsetToPos === 'function')
-                    ? lspFacade.offsetToPos(cstCtx.replaceRange.start, lineStarts)
+                    ? lspFacade.offsetToPos(cstCtx.replaceRange.start * charMult, lineStarts)
                     : { line: pos.line, character: pos.character };
                 const endPos = (lspFacade && typeof lspFacade.offsetToPos === 'function')
-                    ? lspFacade.offsetToPos(cstCtx.replaceRange.end, lineStarts)
+                    ? lspFacade.offsetToPos(cstCtx.replaceRange.end * charMult, lineStarts)
                     : { line: pos.line, character: pos.character };
                 replaceRange = { start: startPos, end: endPos };
             } else if (memberMatch) {

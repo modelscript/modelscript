@@ -23,7 +23,22 @@ export default defineConfig({
   markdown: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     languages: modelicaGrammar ? [modelicaGrammar as any] : [],
+    languageAlias: {
+      abaqus: "ini",
+      owl: "lisp",
+      scad: "c",
+    },
     config(md) {
+      const defaultCodeInline = md.renderer.rules.code_inline;
+      md.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
+        const token = tokens[idx];
+        if (token.content.includes("{{") || token.content.includes("}}")) {
+          token.attrSet("v-pre", "");
+        }
+        return defaultCodeInline
+          ? defaultCodeInline(tokens, idx, options, env, self)
+          : self.renderToken(tokens, idx, options);
+      };
       const defaultFence = md.renderer.rules.fence;
       md.renderer.rules.fence = (tokens, idx, options, env, self) => {
         const token = tokens[idx];
@@ -145,9 +160,9 @@ export default defineConfig({
           { text: "Web IDE", link: "https://ide.modelscript.org" },
           {
             text: "VS Code Extension",
-            link: "https://marketplace.visualstudio.com/items?itemName=modelscript.vscode",
+            link: "https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript",
           },
-          { text: "PDF Manual (110p)", link: "/modelscript-reference-manual.pdf", target: "_blank" },
+          { text: "PDF Manual (164p)", link: "/modelscript-reference-manual.pdf", target: "_blank" },
         ],
       },
     ],
@@ -206,6 +221,7 @@ export default defineConfig({
           text: "Polyglot Languages",
           items: [
             { text: "Overview & Matrix", link: "/languages/overview" },
+            { text: "ModelScript (.msx)", link: "/languages/modelscript" },
             { text: "Modelica", link: "/languages/modelica" },
             { text: "SysML v2 / KerML", link: "/languages/sysml2" },
             { text: "PSCAD Power Systems", link: "/languages/pscad" },
@@ -234,6 +250,7 @@ export default defineConfig({
           items: [
             { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
             { text: "Standards & Export Formats", link: "/reference/export-formats" },
+            { text: "MCP Server & IDE Workbench", link: "/reference/mcp-and-ide" },
           ],
         },
       ],

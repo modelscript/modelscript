@@ -13,6 +13,7 @@
  * Designed to run in a WebWorker for non-blocking UI.
  */
 
+import { computeEcadTracePairMinClearanceWasm } from "@modelscript/runtime";
 import type { Point2D, RenderPad, RenderTrace, RenderVia } from "./renderer.js";
 
 // ── Types ──
@@ -297,7 +298,7 @@ function traceCenter(trace: RenderTrace): Point2D {
   return { x: sx / trace.points.length, y: sy / trace.points.length };
 }
 
-/** Minimum clearance between two traces (approximate). */
+/** Minimum clearance between two traces (exact segment-to-segment via WASM with vertex fallback). */
 function minTraceToTraceClearance(t1: RenderTrace, t2: RenderTrace): number {
   let minDist = Infinity;
 
@@ -305,6 +306,25 @@ function minTraceToTraceClearance(t1: RenderTrace, t2: RenderTrace): number {
     for (const p2 of t2.points) {
       const d = distance(p1, p2) - t1.width / 2 - t2.width / 2;
       if (d < minDist) minDist = d;
+    }
+  }
+
+  if (t1.points.length >= 2 && t2.points.length >= 2) {
+    try {
+      const pts1 = new Float64Array(t1.points.length * 2);
+      for (let i = 0; i < t1.points.length; i++) {
+        pts1[i * 2] = t1.points[i]!.x;
+        pts1[i * 2 + 1] = t1.points[i]!.y;
+      }
+      const pts2 = new Float64Array(t2.points.length * 2);
+      for (let i = 0; i < t2.points.length; i++) {
+        pts2[i * 2] = t2.points[i]!.x;
+        pts2[i * 2 + 1] = t2.points[i]!.y;
+      }
+      const wasmClearance = computeEcadTracePairMinClearanceWasm(pts1, t1.width, pts2, t2.width);
+      if (wasmClearance < minDist) minDist = wasmClearance;
+    } catch {
+      // Fallback to vertex distance above
     }
   }
 

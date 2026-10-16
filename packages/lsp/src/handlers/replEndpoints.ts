@@ -30,28 +30,31 @@ export function registerReplEndpoints(context: LspContext) {
 
       // We append a newline to ensure tree-sitter treats single-line statements correctly
       const tree = parser.parse(params.input + "\n");
-
-      // If there's an error and the user hasn't explicitly terminated the statement or block
-      if (tree.rootNode.hasError) {
-        const trimmed = params.input.trim();
-        if (
-          !trimmed.endsWith(";") &&
-          !trimmed.endsWith("end if") &&
-          !trimmed.endsWith("end for") &&
-          !trimmed.endsWith("end while")
-        ) {
-          return { status: "incomplete" };
+      try {
+        // If there's an error and the user hasn't explicitly terminated the statement or block
+        if (tree.rootNode.hasError) {
+          const trimmed = params.input.trim();
+          if (
+            !trimmed.endsWith(";") &&
+            !trimmed.endsWith("end if") &&
+            !trimmed.endsWith("end for") &&
+            !trimmed.endsWith("end while")
+          ) {
+            return { status: "incomplete" };
+          }
         }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = replInterpreter.execute(tree.rootNode as any);
+
+        if (result.error) {
+          return { status: "error", error: result.error, result: result.output };
+        }
+
+        return { status: "success", result: result.output };
+      } finally {
+        tree?.delete?.();
       }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = replInterpreter.execute(tree.rootNode as any);
-
-      if (result.error) {
-        return { status: "error", error: result.error, result: result.output };
-      }
-
-      return { status: "success", result: result.output };
     } catch (e: unknown) {
       return { status: "error", error: e instanceof Error ? e.message : String(e) };
     }

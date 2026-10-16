@@ -26,13 +26,6 @@ import {
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
-let registryUrl: any = undefined;
-let savedLoaderCtx: any = undefined;
-let projectTreeChangedTimer: any = undefined;
-let projectTreeChangedPending: any = undefined;
-let documentLSPBridges: any = undefined;
-let ModelicaClassInstance: any = undefined;
-
 export class ParserService {
   private parserEntries = new Map<string, { parser: any; facade: any; ready: boolean }>();
   public sharedContext: any = null;
@@ -53,6 +46,22 @@ export class ParserService {
         altPlugin.parser = parser;
         altPlugin.facade = facade;
       }
+    }
+    if (norm === "modelica") {
+      (globalThis as any).parser = parser;
+      (globalThis as any).parserReady = !!parser;
+    } else if (norm === "sysml2" || norm === "sysml") {
+      (globalThis as any).sysml2Parser = parser;
+      (globalThis as any).sysml2ParserReady = !!parser;
+    } else if (norm === "step") {
+      (globalThis as any).stepParser = parser;
+      (globalThis as any).stepParserReady = !!parser;
+    } else if (norm === "owl2") {
+      (globalThis as any).owl2Parser = parser;
+      (globalThis as any).owl2ParserReady = !!parser;
+    } else if (norm === "csv") {
+      (globalThis as any).csvParser = parser;
+      (globalThis as any).csvParserReady = !!parser;
     }
   }
 
@@ -498,13 +507,32 @@ export class ParserService {
 
     const walk = (node: SyntaxNode) => {
       if (node.childCount === 0) {
-        tokensData.push({
-          line: node.startPosition.row,
-          startCol: node.startPosition.column,
-          endCol: node.endPosition.column,
-          nodeId: node.id,
-        });
-        nodes.push(node);
+        const startRow = node.startPosition.row;
+        const endRow = node.endPosition.row;
+        if (startRow === endRow) {
+          tokensData.push({
+            line: startRow,
+            startCol: node.startPosition.column,
+            endCol: node.endPosition.column,
+            nodeId: node.id,
+          });
+          nodes.push(node);
+        } else {
+          const tokenLines = (node.text ?? "").split(/\r?\n|\r/);
+          for (let r = startRow; r <= endRow; r++) {
+            const lineIdx = r - startRow;
+            const lineStr = tokenLines[lineIdx] ?? "";
+            const startCol = r === startRow ? node.startPosition.column : 0;
+            const endCol = r === endRow ? node.endPosition.column : startCol + lineStr.length;
+            tokensData.push({
+              line: r,
+              startCol,
+              endCol,
+              nodeId: node.id,
+            });
+            nodes.push(node);
+          }
+        }
       } else {
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
@@ -514,7 +542,7 @@ export class ParserService {
     };
 
     walk(cached.tree.rootNode);
-    const totalLines = cached.text.split("\n").length;
+    const totalLines = cached.text.split(/\r?\n|\r/).length;
     cached.lineIndex = new LineIndex(totalLines, tokensData);
     cached.tokens = nodes;
 
@@ -600,7 +628,6 @@ export class ParserService {
             new Set([
               `${serverDistBase}/${entry.wasm}`,
               `${serverDistBase}/${entry.id}.wasm`,
-              `${serverDistBase}/tree-sitter-${entry.id}.wasm`,
               `${serverDistBase}/parser.wasm`,
             ]),
           );

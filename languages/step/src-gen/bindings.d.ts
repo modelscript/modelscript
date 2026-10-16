@@ -30,6 +30,9 @@ export interface EditRange {
   startByte: number;
   oldEndByte: number;
   newEndByte: number;
+  startOffset?: number;
+  oldEndOffset?: number;
+  newEndOffset?: number;
 }
 export interface SemanticTokensEdit {
   start: number;
@@ -174,6 +177,10 @@ export interface Diagnostic {
   startCharOffset?: number;
   /** @deprecated Use {@link endOffset} instead. */
   endCharOffset?: number;
+  /** @deprecated Use {@link startOffset} instead. */
+  startByte?: number;
+  /** @deprecated Use {@link endOffset} instead. */
+  endByte?: number;
 }
 export declare const SYNTAX_NAMES: string[];
 export declare const LINT_MESSAGES: Record<string, string>;
@@ -280,7 +287,7 @@ export declare class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  scheduleCompaction(immediate?: boolean): void;
+  scheduleCompaction(_immediate?: boolean): void;
   /**
    * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
    */
@@ -371,7 +378,7 @@ export declare class LspFacade {
   /**
    * Retrieves semantic tokens for syntax highlighting.
    * Returns a raw `Uint32Array` mapped directly from WASM memory for speed.
-   * Array layout is: [lineDelta, charDelta, length, typeId] repeating.
+   * Array layout is: [byteStart, byteLen, tokenTypeId, bitmask] repeating.
    */
   getSemanticTokens(astRoot: number, sourceCode?: string): Uint32Array;
   /**
@@ -382,7 +389,7 @@ export declare class LspFacade {
     prevResultId: number,
   ): SemanticTokensDeltaResponse;
   /**
-   * Compares oldTree and newTree to compute the precise modified byte spans (ts_tree_get_changed_ranges equivalent).
+   * Compares oldTree and newTree to compute the precise modified character spans (ts_tree_get_changed_ranges equivalent).
    */
   getChangedRanges(
     oldTree: number,
@@ -390,6 +397,10 @@ export declare class LspFacade {
   ): {
     start: number;
     end: number;
+    startByte: number;
+    endByte: number;
+    startOffset?: number;
+    endOffset?: number;
   }[];
   /**
    * Instantiates a new value-type TreeCursor rooted at rootNode.
@@ -404,6 +415,10 @@ export declare class LspFacade {
   getDocumentSymbols(astRoot: number): {
     start: Position;
     end: Position;
+    startOffset: number;
+    endOffset: number;
+    startByte: number;
+    endByte: number;
     typeId: number;
     nodePtr: number;
   }[];
@@ -448,7 +463,7 @@ export declare class LspFacade {
   /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */
   getDiagramData(
     astRoot: number,
-    projectionId?: number,
+    _projectionId?: number,
   ): {
     nodes: any[];
     edges: any[];
@@ -506,6 +521,8 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     merkleLow?: number;
     merkleHigh?: number;
   }[];
@@ -522,6 +539,8 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     merkleLow?: number;
     merkleHigh?: number;
   }[];
@@ -535,6 +554,8 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     merkleLow?: number;
     merkleHigh?: number;
   }[];
@@ -548,6 +569,8 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     merkleLow?: number;
     merkleHigh?: number;
   }[];
@@ -575,6 +598,8 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     score: number;
   }[];
   /** Shifts byte offsets in-place across all stubs in a file after an interior edit. */
@@ -1146,6 +1171,7 @@ export declare class Tree {
   readonly rootPtr: number;
   readonly sourceCode: string;
   lineStarts: number[];
+  readonly _encoding: number;
   readonly _encMult: number;
   private _mem32;
   get mem32(): Uint32Array;
@@ -1158,6 +1184,8 @@ export declare class Tree {
   offsetToPoint(offset: number): Point;
   /** Converts a row and column Point into a linear character offset. */
   pointToOffset(point: Point): number;
+  /** Releases any resources associated with this syntax tree wrapper. */
+  delete(): void;
 }
 /**
  * Tree-sitter standard Parser class interface.
@@ -1233,6 +1261,8 @@ export declare class LspWorkspaceManager {
     kind: number;
     startByte: number;
     endByte: number;
+    startOffset?: number;
+    endOffset?: number;
     score: number;
   }[];
 }

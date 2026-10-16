@@ -10,7 +10,7 @@ The parser compiler is implemented in `@modelscript/dsl` under `packages/dsl/src
 
 1. **Handling Complex Engineering Grammars**: Engineering modeling languages like Modelica and SysML v2 possess ambiguities that cannot be parsed by strict deterministic LR(1) or LALR parsers. The GLR algorithm handles non-deterministic grammar paths by branching parse stacks and pruning invalid branches dynamically.
 2. **Zero-Allocation Memory Footprint**: Rather than allocating JavaScript AST object wrappers for every identifier and operator, tokens and CST nodes are laid out in a flat WebAssembly linear memory arena.
-3. **Web-Native Performance**: The compiled `parser.wasm` executes at near-native speeds in both Node.js server environments and client-side browser contexts (such as the IDE and Morsel).
+3. **Web-Native Performance**: The compiled `parser.wasm` executes at near-native speeds in both Node.js server environments and client-side browser contexts (such as the IDE and the Web Playground).
 
 ---
 

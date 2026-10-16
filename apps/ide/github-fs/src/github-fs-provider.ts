@@ -63,6 +63,10 @@ async function githubFetch(apiPath: string): Promise<Response> {
     Accept: "application/vnd.github.v3+json",
     "User-Agent": "ModelScript-IDE",
   };
+  const token = vscode.workspace.getConfiguration("github-fs").get<string>("token")?.trim();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   const response = await fetch(url, { headers });
 
@@ -73,7 +77,7 @@ async function githubFetch(apiPath: string): Promise<Response> {
     if (response.status === 403) {
       const remaining = response.headers.get("X-RateLimit-Remaining");
       if (remaining === "0") {
-        throw new Error("GitHub API rate limit exceeded. Set GITHUB_TOKEN on the server.");
+        throw new Error("GitHub API rate limit exceeded. Set GITHUB_TOKEN on the server or configure github-fs.token.");
       }
     }
     throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
@@ -118,6 +122,9 @@ async function getTree(owner: string, repo: string, ref: string): Promise<Map<st
   console.log(`[github-fs] Fetching tree: ${owner}/${repo}@${ref}`);
   const response = await githubFetch(`/repos/${owner}/${repo}/git/trees/${ref}?recursive=1`);
   const data: TreeResponse = await response.json();
+  if (data.truncated) {
+    console.warn(`[github-fs] Repository tree for ${owner}/${repo}@${ref} was truncated by the GitHub API.`);
+  }
 
   const entries = new Map<string, TreeEntry>();
   for (const entry of data.tree) {
@@ -225,14 +232,27 @@ export class GitHubFileSystemProvider implements vscode.FileSystemProvider {
     const cached = FILE_CACHE.get(cacheKey);
     if (cached) return cached;
 
-    // Use the Contents API to get file content
-    const response = await githubFetch(`/repos/${owner}/${repo}/contents${filePath}?ref=${ref}`);
-    const data: ContentResponse = await response.json();
+    const cachedTree = TREE_CACHE.get(treeKey(owner, repo, ref))?.entries;
+    const treeEntry = cachedTree?.get(filePath);
+
+    let data: ContentResponse;
+    if (treeEntry?.sha && (treeEntry.size ?? 0) > 1000000) {
+      const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${treeEntry.sha}`);
+      data = await blobResp.json();
+    } else {
+      // Use the Contents API to get file content, falling back to Git Blobs API for >1MB files
+      const response = await githubFetch(`/repos/${owner}/${repo}/contents${filePath}?ref=${ref}`);
+      data = await response.json();
+      if ((!data.content || data.content.length === 0) && data.sha && data.size > 0) {
+        const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${data.sha}`);
+        data = await blobResp.json();
+      }
+    }
 
     let content: Uint8Array;
     if (data.encoding === "base64") {
       // Decode base64
-      const binary = atob(data.content.replace(/\n/g, ""));
+      const binary = atob(data.content.replace(/\s+/g, ""));
       content = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
         content[i] = binary.charCodeAt(i);
@@ -240,7 +260,7 @@ export class GitHubFileSystemProvider implements vscode.FileSystemProvider {
     } else {
       // Plain text
       const encoder = new TextEncoder();
-      content = encoder.encode(data.content);
+      content = encoder.encode(data.content ?? "");
     }
 
     // Cache with LRU eviction

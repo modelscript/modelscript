@@ -19,6 +19,7 @@ interface TreeNodeInfo {
   hasChildren: boolean;
   iconSvg?: string;
   iconUri?: vscode.Uri;
+  uri?: string;
   language?: string;
   description?: string;
   /** True when the icon is being lazily fetched — show a spinner placeholder. */

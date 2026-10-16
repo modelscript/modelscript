@@ -25,6 +25,8 @@ const tokenTypes = [
   "number",
   "operator",
   "comment",
+  "namespace",
+  "enumMember",
 ];
 
 const tokenModifiers = ["declaration", "readonly"];
@@ -646,7 +648,11 @@ function computeSysML2SemanticTokens(
     }
   };
 
-  traverse(tree.rootNode);
+  try {
+    traverse(tree.rootNode);
+  } finally {
+    tree.delete?.();
+  }
 
   rawTokens.sort((a, b) => (a.line === b.line ? a.char - b.char : a.line - b.line));
   for (const token of rawTokens) {
@@ -707,6 +713,7 @@ export function registerSemanticTokensProvider(
     const docTree = getDocumentTree(textDocument.uri);
     let tree: any = (docTree as any)?.tree ?? docTree;
     const treeText = (docTree as any)?.text ?? tree?.sourceCode;
+    let ownsFallbackTree = false;
 
     if ((!tree || !tree.rootNode || (treeText && treeText !== text)) && parseFallback) {
       try {
@@ -716,6 +723,7 @@ export function registerSemanticTokensProvider(
         ) as any;
         if (fallbackTree) {
           tree = fallbackTree.tree ?? fallbackTree;
+          ownsFallbackTree = true;
         }
       } catch {
         // fallback to old tree, but it will cause invalid tokens
@@ -859,7 +867,13 @@ export function registerSemanticTokensProvider(
       }
     };
 
-    traverseTree(tree.rootNode);
+    try {
+      traverseTree(tree.rootNode);
+    } finally {
+      if (ownsFallbackTree) {
+        tree.delete?.();
+      }
+    }
 
     rawTokens.sort((a, b) => {
       if (a.line === b.line) {

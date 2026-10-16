@@ -996,6 +996,48 @@ end FinalAndAttributes;
     console.log("   ✔ array colon slicing verified in wasm & hybrid backends");
   }
 
+  // ---------------------------------------------------------------------------
+  // Test 25: der(array), Array If-Expressions & Algorithm Implicit For-Range in WASM & Hybrid
+  // ---------------------------------------------------------------------------
+  {
+    console.log("\n25. Testing der(array), array if-expressions & algorithm implicit for-range in WASM & Hybrid...");
+    const modelCode = `
+      model TestWasmPhase12
+        Real x[2](start = {1.0, 2.0});
+        Real y[2];
+        Real z[3];
+      equation
+        der(x) = -x;
+        y = if time > 0.5 then {1.0, 2.0} else {3.0, 4.0};
+      algorithm
+        for i loop
+          z[i] := i * 2.0;
+        end for;
+      end TestWasmPhase12;
+    `;
+    const { ctx, uri } = await initContext(modelCode, "TestWasmPhase12");
+    const wasmRes = ctx.flattenArena("TestWasmPhase12", undefined, uri, { backend: "wasm" });
+    assert(wasmRes !== null, "wasm arena should not be null");
+    assert.strictEqual((wasmRes as any).wasmErrorCode ?? 0, 0, "wasmErrorCode should be 0");
+    assert.strictEqual(wasmRes.varCount, 7, `wasm should have 7 variables, got ${wasmRes.varCount}`);
+    const printedWasm = printArenaDAE(wasmRes);
+    assert(printedWasm.includes("der(x[1]) = -x[1];"), "WASM should expand der(x) element-wise");
+    assert(printedWasm.includes("der(x[2]) = -x[2];"), "WASM should expand der(x[2]) element-wise");
+    assert(
+      printedWasm.includes("y[1] = if time > 0.5 then 1.0 else 3.0;"),
+      "WASM should distribute array if-expression",
+    );
+    assert(printedWasm.includes("for i in 1:3 loop"), "WASM should infer implicit for-statement loop range 1:3");
+
+    const hybridRes = ctx.flattenArena("TestWasmPhase12", undefined, uri, { backend: "hybrid" });
+    assert(hybridRes !== null, "hybrid arena should not be null");
+    assert.strictEqual((hybridRes as any).wasmErrorCode ?? 0, 0, "hybrid should execute in WASM without fallback");
+    const printedHybrid = printArenaDAE(hybridRes);
+    assert.strictEqual(printedHybrid, printedWasm, "hybrid and wasm DAE output should match identically");
+
+    console.log("   ✔ der(array), array if-expressions & algorithm implicit for-range verified in wasm & hybrid");
+  }
+
   console.log("\nAll dual-engine backend tests passed successfully!");
 }
 

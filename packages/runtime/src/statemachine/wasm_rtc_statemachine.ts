@@ -12,6 +12,8 @@
  *   - Reversible step execution (stepForward, stepBack) for interactive IDE debugging
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
+
 export type StateId = number;
 export type TransitionId = number;
 
@@ -442,6 +444,30 @@ export class WasmRtcStateMachine {
    * Computes the Least Common Ancestor state ID of two states.
    */
   private findLCA(s1: StateId, s2: StateId): StateId | undefined {
+    const p1 = this.states.get(s1)?.parentId;
+    const p2 = this.states.get(s2)?.parentId;
+    if (p1 === undefined || p2 === undefined) return undefined;
+
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.statemachine_find_lca === "function" &&
+      typeof wasm.__new === "function" &&
+      this.nextStateId > 1
+    ) {
+      const n = this.nextStateId;
+      const parentsPtr = wasm.__new(n * 4, 0);
+      const view = new Int32Array(wasm.memory.buffer, parentsPtr, n);
+      view.fill(-1);
+      for (const [id, st] of this.states.entries()) {
+        if (st.parentId !== undefined) {
+          view[id] = st.parentId;
+        }
+      }
+      const lca: number = wasm.statemachine_find_lca(n, parentsPtr, p1, p2);
+      return lca >= 0 ? lca : undefined;
+    }
+
     const ancestors1 = new Set<StateId>();
     let curr: StateId | undefined = s1;
     while (curr !== undefined) {

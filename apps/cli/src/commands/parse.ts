@@ -193,11 +193,42 @@ export const Parse: CommandModule<any, any> = {
       }
     }
 
-    function getPosition(offset: number): [number, number] {
+    function byteOffsetToCharOffset(byteOffset: number): number {
+      if (encEnum === InputEncoding.UTF16LE || encEnum === InputEncoding.UTF16BE) {
+        return Math.floor(byteOffset / 2);
+      }
+      if (encEnum === InputEncoding.UTF32LE || encEnum === InputEncoding.UTF32BE) {
+        let bytes = 0;
+        let i = 0;
+        while (i < text.length && bytes < byteOffset) {
+          const cp = text.codePointAt(i) || 0;
+          bytes += 4;
+          i += cp > 0xffff ? 2 : 1;
+        }
+        return i;
+      }
+      let bytes = 0;
+      let i = 0;
+      while (i < text.length && bytes < byteOffset) {
+        const cp = text.codePointAt(i) || 0;
+        bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+        i += cp > 0xffff ? 2 : 1;
+      }
+      return i;
+    }
+
+    function getPosition(byteOffset: number): [number, number] {
+      const offset = byteOffsetToCharOffset(byteOffset);
       let row = 0;
       let col = 0;
       for (let i = 0; i < offset && i < text.length; i++) {
         if (text[i] === "\n") {
+          row++;
+          col = 0;
+        } else if (text[i] === "\r") {
+          if (i + 1 < text.length && text[i + 1] === "\n") {
+            continue;
+          }
           row++;
           col = 0;
         } else {

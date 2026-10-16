@@ -271,7 +271,7 @@ export class SspEditorProvider implements vscode.CustomReadonlyEditorProvider<Ss
       uri.path
         .split("/")
         .pop()
-        ?.replace(/\\.ssp$/, "") ?? "SSP";
+        ?.replace(/\.ssp$/i, "") ?? "SSP";
 
     // Use pre-registered bytes if available, otherwise read from filesystem
     let sspBytes = this.contentProvider.getSspBytes(name);

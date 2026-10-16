@@ -387,10 +387,12 @@ export class CandidateTradeStudyPanel {
   }
 
   private _getHtmlForWebview(): string {
+    const nonce = getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Candidate Trade Study & Tier-3 Confirmation</title>
   <style>
@@ -582,7 +584,7 @@ export class CandidateTradeStudyPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let candidates = [];
     let selectedId = "cand_1";
@@ -702,4 +704,13 @@ export class CandidateTradeStudyPanel {
 </body>
 </html>`;
   }
+}
+
+function getNonce() {
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }

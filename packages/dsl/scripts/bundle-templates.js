@@ -209,16 +209,36 @@ if (fs.existsSync(wrapperTemplatePath)) {
   dtsOut += `export declare const bindingsTemplateDtsCode: string;\n`;
 }
 
-for (const targetDir of [
-  path.resolve(__dirname, "../build/src-gen"),
-  path.resolve(__dirname, "../src/src-gen"),
-  path.resolve(__dirname, "../dist/src-gen"),
-]) {
+function writeFileIfChanged(filePath, content) {
+  if (fs.existsSync(filePath)) {
+    try {
+      const existing = fs.readFileSync(filePath, "utf-8");
+      if (existing === content) return false;
+    } catch {}
+  }
+  fs.writeFileSync(filePath, content, "utf-8");
+  return true;
+}
+
+const srcGenDir = path.resolve(__dirname, "../src/src-gen");
+fs.mkdirSync(srcGenDir, { recursive: true });
+const tsChanged = writeFileIfChanged(path.resolve(srcGenDir, "runtime-templates.ts"), tsOut);
+writeFileIfChanged(path.resolve(srcGenDir, "runtime-templates.js"), jsOut);
+writeFileIfChanged(path.resolve(srcGenDir, "runtime-templates.d.ts"), dtsOut);
+console.log(`Bundled templates into ${srcGenDir}`);
+
+for (const targetDir of [path.resolve(__dirname, "../build/src-gen"), path.resolve(__dirname, "../dist/src-gen")]) {
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
-  fs.writeFileSync(path.resolve(targetDir, "runtime-templates.js"), jsOut, "utf-8");
-  fs.writeFileSync(path.resolve(targetDir, "runtime-templates.ts"), tsOut, "utf-8");
-  fs.writeFileSync(path.resolve(targetDir, "runtime-templates.d.ts"), dtsOut, "utf-8");
+  const jsTarget = path.resolve(targetDir, "runtime-templates.js");
+  const dtsTarget = path.resolve(targetDir, "runtime-templates.d.ts");
+  if (tsChanged || !fs.existsSync(jsTarget)) {
+    writeFileIfChanged(jsTarget, jsOut);
+  }
+  if (tsChanged || !fs.existsSync(dtsTarget)) {
+    writeFileIfChanged(dtsTarget, dtsOut);
+  }
+  writeFileIfChanged(path.resolve(targetDir, "runtime-templates.ts"), tsOut);
   console.log(`Bundled templates into ${targetDir}`);
 }

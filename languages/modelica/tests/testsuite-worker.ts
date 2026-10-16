@@ -1034,6 +1034,17 @@ function runTestCaseCore(
             startPosition: byteToPosition(rangeRec.startByte),
             endPosition: byteToPosition(rangeRec.endByte),
           };
+        } else if (range?.startPosition && range?.endPosition) {
+          range = {
+            startPosition: {
+              row: range.startPosition.row,
+              column: lspPositionToUtf8Column(range.startPosition.row, range.startPosition.column),
+            },
+            endPosition: {
+              row: range.endPosition.row,
+              column: lspPositionToUtf8Column(range.endPosition.row, range.endPosition.column),
+            },
+          };
         }
         diagnostics.push({
           type: diag.severity,

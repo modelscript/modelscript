@@ -217,7 +217,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
   }
 
-  // SysML Requirements Matrix Custom Editor
+  // SysML Requirements Matrix & Element Table Custom Editors
   if (languages.some((l) => l.id === "sysml2" || l.id === "sysml")) {
     customEditors.push({
       viewType: "modelscript.requirementsEditor",
@@ -225,7 +225,54 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       selector: [{ filenamePattern: "*.sysml" }, { filenamePattern: "*.sysml2" }],
       priority: "option",
     });
+    customEditors.push({
+      viewType: "modelscript.elementTable",
+      displayName: "SysML Element Table",
+      selector: [{ filenamePattern: "*.sysml" }, { filenamePattern: "*.sysml2" }],
+      priority: "option",
+    });
   }
+
+  // Generic ModelScript Diagram Custom Editor
+  if (options?.features?.diagramEditor !== false) {
+    customEditors.push({
+      viewType: "modelscript.diagram",
+      displayName: "ModelScript Diagram Editor",
+      selector: [
+        { filenamePattern: "*.mo" },
+        { filenamePattern: "*.sysml" },
+        { filenamePattern: "*.sysml2" },
+        { filenamePattern: "*.owl" },
+        { filenamePattern: "*.ofn" },
+        { filenamePattern: "*.ttl" },
+        { filenamePattern: "*.pscx" },
+        { filenamePattern: "*.ssd" },
+      ],
+      priority: "option",
+    });
+  }
+
+  // FMU, SSP, and G-Code Custom Editors
+  customEditors.push(
+    {
+      viewType: "modelscript.fmuViewer",
+      displayName: "FMU Archive Inspector",
+      selector: [{ filenamePattern: "*.fmu" }],
+      priority: "default",
+    },
+    {
+      viewType: "modelscript.sspViewer",
+      displayName: "SSP System Structure Viewer",
+      selector: [{ filenamePattern: "*.ssp" }],
+      priority: "default",
+    },
+    {
+      viewType: "modelscript.gcodeViewer",
+      displayName: "3D G-Code Toolpath Viewer",
+      selector: [{ filenamePattern: "*.gcode" }, { filenamePattern: "*.nc" }],
+      priority: "default",
+    },
+  );
 
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: any[] = [
@@ -820,6 +867,15 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     },
   ];
+  contributes.viewsContainers = {
+    activitybar: [
+      {
+        id: "modelscript-sidebar",
+        title: "ModelScript",
+        icon: "$(circuit-board)",
+      },
+    ],
+  };
   contributes.views = {
     explorer: [
       {
@@ -834,6 +890,32 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         id: "modelscript.experimentsView",
         name: "Experiments",
       },
+      {
+        id: "modelscript.registryView",
+        name: "ModelScript Packages",
+      },
+      {
+        id: "modelscript.owl2ClassHierarchy",
+        name: "OWL2 Class Hierarchy",
+        when: "modelscript.owl2Active",
+      },
+      {
+        id: "modelscript.owl2PropertyHierarchy",
+        name: "OWL2 Property Hierarchy",
+        when: "modelscript.owl2Active",
+      },
+    ],
+    "modelscript-sidebar": [
+      {
+        id: "modelscript.chat",
+        name: "ModelScript AI Copilot",
+        type: "webview",
+      },
+      {
+        id: "modelscript.cosimPanel",
+        name: "Co-Simulation Orchestrator",
+        type: "webview",
+      },
     ],
     scm: [
       {
@@ -841,6 +923,57 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         name: "Model Structural Changes",
       },
     ],
+  };
+  contributes.configuration = {
+    title: "ModelScript",
+    properties: {
+      "modelscript.registryUrl": {
+        type: "string",
+        default: "https://api.modelscript.org",
+        description: "Base URL for the ModelScript package registry and backend API.",
+      },
+      "modelscript.library.useApiRegistry": {
+        type: "boolean",
+        default: false,
+        description: "Fetch standard library packages from the remote API registry instead of bundled local snapshots.",
+      },
+      "modelscript.llm.provider": {
+        type: "string",
+        enum: ["webllm", "ollama", "openai", "anthropic", "gemini"],
+        default: "webllm",
+        description: "AI language model provider for ModelScript chat and code synthesis.",
+      },
+      "modelscript.llm.apiKey": {
+        type: "string",
+        default: "",
+        description: "API key for cloud LLM providers (OpenAI, Anthropic, Gemini).",
+      },
+      "modelscript.llm.endpoint": {
+        type: "string",
+        default: "http://localhost:11434",
+        description: "Custom endpoint URL for local or self-hosted LLM providers (e.g. Ollama).",
+      },
+      "modelscript.llm.model": {
+        type: "string",
+        default: "",
+        description: "Model identifier override for the configured LLM provider.",
+      },
+      "modelscript.mqtt.brokerUrl": {
+        type: "string",
+        default: "ws://localhost:9001",
+        description: "WebSocket MQTT broker URL for live digital twin and hardware-in-the-loop streaming.",
+      },
+      "modelscript.cloud.apiUrl": {
+        type: "string",
+        default: "https://api.modelscript.org",
+        description: "Endpoint URL for ModelScript Cloud HPC simulation jobs.",
+      },
+      "modelscript.cloud.apiKey": {
+        type: "string",
+        default: "",
+        description: "Authentication API key for ModelScript Cloud simulation services.",
+      },
+    },
   };
 
   const manifest: Record<string, any> = {
@@ -1784,7 +1917,7 @@ module.exports.default = module.exports;
         "duplicate-object-key": "silent",
         "empty-import-meta": "silent",
       },
-      sourcemap: "inline",
+      sourcemap: "linked",
     });
   }
 
@@ -1810,7 +1943,7 @@ module.exports.default = module.exports;
       bundle: true,
       format: "iife",
       platform: "browser",
-      sourcemap: "inline",
+      sourcemap: "linked",
       external: ["@kitware/vtk.js", "@kitware/vtk.js/*"],
       define: {
         "process.env": JSON.stringify({}),
@@ -1837,23 +1970,6 @@ module.exports.default = module.exports;
       },
       plugins: [ignorePlugin],
     });
-
-    // Provide camelCase aliases for all kebab-case webviews for backward compatibility
-    const distDir = path.join(outDir, "dist");
-    if (fs.existsSync(distDir)) {
-      const distFiles = fs.readdirSync(distDir);
-      for (const f of distFiles) {
-        if (f.includes("-")) {
-          // Convert kebab-case to camelCase: e.g. simulation-webview.js -> simulationWebview.js
-          const camel = f.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
-          if (camel !== f) {
-            const srcPath = path.join(distDir, f);
-            const dstPath = path.join(distDir, camel);
-            fs.copyFileSync(srcPath, dstPath);
-          }
-        }
-      }
-    }
   }
 
   // Build notebook renderer
@@ -1864,22 +1980,18 @@ module.exports.default = module.exports;
 
   if (notebookRendererPath) {
     const nbOut = path.join(outDir, "dist", "notebook-renderer.js");
-    const nbAlias = path.join(outDir, "dist", "notebookRenderer.js");
     await esbuild.build({
       entryPoints: [notebookRendererPath],
       outfile: nbOut,
       bundle: true,
       format: "esm",
       platform: "browser",
-      sourcemap: "inline",
+      sourcemap: "linked",
       logOverride: {
         "duplicate-object-key": "silent",
         "empty-import-meta": "silent",
       },
     });
-    if (fs.existsSync(nbOut)) {
-      fs.copyFileSync(nbOut, nbAlias);
-    }
   }
 
   // 5. Copy WASM and library assets
@@ -1900,7 +2012,6 @@ module.exports.default = module.exports;
       "server/dist/ModelicaStandardLibrary_v4.1.0.zip",
     ],
     [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
-    [path.join(repoRoot, "packages/lsp/dist"), "server/dist"],
     [path.join(repoRoot, "languages/modelica/assets"), "assets"],
   ];
 
@@ -1930,9 +2041,15 @@ module.exports.default = module.exports;
   const lspDir = path.join(repoRoot, "packages/lsp");
   const browserServerMain = path.join(lspDir, "src/browserServerMain.ts");
   const destBrowserServer = path.join(outDir, "server/dist/browserServerMain.js");
+  const destIndexerWorker = path.join(outDir, "server/dist/workers/indexer.worker.js");
   const lspDist = path.join(lspDir, "dist");
   if (fs.existsSync(path.join(lspDist, "browserServerMain.js"))) {
-    fs.cpSync(lspDist, path.join(outDir, "server/dist"), { recursive: true });
+    fs.mkdirSync(path.dirname(destBrowserServer), { recursive: true });
+    fs.cpSync(path.join(lspDist, "browserServerMain.js"), destBrowserServer);
+    if (fs.existsSync(path.join(lspDist, "workers/indexer.worker.js"))) {
+      fs.mkdirSync(path.dirname(destIndexerWorker), { recursive: true });
+      fs.cpSync(path.join(lspDist, "workers/indexer.worker.js"), destIndexerWorker);
+    }
   } else if (fs.existsSync(browserServerMain)) {
     await esbuild.build({
       entryPoints: [browserServerMain],
@@ -1943,7 +2060,7 @@ module.exports.default = module.exports;
       target: "es2022",
       minify: false,
       keepNames: true,
-      sourcemap: "inline",
+      sourcemap: "linked",
       define: {
         "process.env": "{}",
         "process.browser": "true",
@@ -1957,7 +2074,6 @@ module.exports.default = module.exports;
     });
 
     const indexerWorker = path.join(lspDir, "src/workers/indexer.worker.ts");
-    const destIndexerWorker = path.join(outDir, "server/dist/workers/indexer.worker.js");
     if (fs.existsSync(indexerWorker)) {
       await esbuild.build({
         entryPoints: [indexerWorker],
@@ -1968,7 +2084,7 @@ module.exports.default = module.exports;
         target: "es2022",
         minify: false,
         keepNames: true,
-        sourcemap: "inline",
+        sourcemap: "linked",
         define: {
           "process.env": "{}",
           "process.browser": "true",

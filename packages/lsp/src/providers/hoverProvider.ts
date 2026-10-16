@@ -589,13 +589,11 @@ export function registerHoverProvider(
             // 1. Try finding a basic block spanning the hovered cursor offset
             if (proof.cfg?.blocks) {
               for (const [bId, block] of proof.cfg.blocks) {
-                const inBlock = block.instructions.some(
-                  (inst: any) =>
-                    inst.startByte !== undefined &&
-                    inst.endByte !== undefined &&
-                    offset >= inst.startByte &&
-                    offset <= inst.endByte,
-                );
+                const inBlock = block.instructions.some((inst: any) => {
+                  const startOff = inst.startOffset ?? inst.startByte;
+                  const endOff = inst.endOffset ?? inst.endByte;
+                  return startOff !== undefined && endOff !== undefined && offset >= startOff && offset <= endOff;
+                });
                 if (inBlock) {
                   const state = exitStates?.get(bId) || entryStates?.get(bId);
                   const ival = state?.intervals?.get?.(token);

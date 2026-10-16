@@ -1595,6 +1595,18 @@ export function arena_allocStringBytes(srcPtr: usize, lenBytes: u32): u32 {
   return handle;
 }
 
+export function arena_allocStringBytesUtf8(srcPtr: usize, lenBytes: u32): u32 {
+  if (srcPtr == 0 || lenBytes == 0) return 0;
+  let byteSize = 4 + lenBytes;
+  ensureStringArena(byteSize);
+
+  let handle = stringArenaOffset;
+  store<u32>(stringArenaPtr + handle, lenBytes | 0x80000000);
+  memory.copy(stringArenaPtr + handle + 4, srcPtr, lenBytes);
+  stringArenaOffset += byteSize;
+  return handle;
+}
+
 export function ast_setLiteralFloat(ptr: u32, val: f64): void {
   if (ptr != 0) {
     logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));

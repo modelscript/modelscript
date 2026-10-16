@@ -862,45 +862,162 @@ export class AstAPI {
       if (offset < 0) return false;
       let step = getEncodingStep();
       let actualOffset = offset as u32;
+      let endOffset = actualOffset + getNodeByteLength(nodeId);
       let buffer = getInputBuffer();
-      while (true) {
-          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+      while (actualOffset + step <= endOffset) {
+          let ch: u32 = step == 2
+              ? (load<u16>(buffer + actualOffset) as u32)
+              : (step == 4 ? load<u32>(buffer + actualOffset) : (load<u8>(buffer + actualOffset) as u32));
           if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
               actualOffset += step;
           } else {
               break;
           }
       }
-      for (let i = 0; i < prefix.length; i++) {
-          let code = prefix.charCodeAt(i);
-          if (step == 2) {
-              if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
-          } else {
-              if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
+      if (step == 2) {
+          let needed = (prefix.length as u32) << 1;
+          if (actualOffset + needed > endOffset) return false;
+          for (let i = 0; i < prefix.length; i++) {
+              let code = prefix.charCodeAt(i);
+              if (load<u16>(buffer + actualOffset + ((i as u32) << 1)) != (code as u16)) return false;
           }
+          return true;
+      } else if (step == 4) {
+          let bPos = actualOffset;
+          for (let i = 0; i < prefix.length; i++) {
+              if (bPos + 4 > endOffset) return false;
+              let code: u32 = prefix.charCodeAt(i) as u32;
+              if (code >= 0xd800 && code <= 0xdbff && i + 1 < prefix.length) {
+                  let low: u32 = prefix.charCodeAt(i + 1) as u32;
+                  if (low >= 0xdc00 && low <= 0xdfff) {
+                      code = 0x10000 + (((code - 0xd800) << 10) | (low - 0xdc00));
+                      i++;
+                  }
+              }
+              if (load<u32>(buffer + bPos) != code) return false;
+              bPos += 4;
+          }
+          return true;
+      } else {
+          let bPos = actualOffset;
+          for (let i = 0; i < prefix.length; i++) {
+              let code: u32 = prefix.charCodeAt(i) as u32;
+              if (code <= 0x7f) {
+                  if (bPos >= endOffset || load<u8>(buffer + bPos) != (code as u8)) return false;
+                  bPos += 1;
+              } else if (code <= 0x7ff) {
+                  if (bPos + 2 > endOffset) return false;
+                  if (load<u8>(buffer + bPos) != ((0xc0 | ((code >> 6) & 0x1f)) as u8)) return false;
+                  if (load<u8>(buffer + bPos + 1) != ((0x80 | (code & 0x3f)) as u8)) return false;
+                  bPos += 2;
+              } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < prefix.length) {
+                  let low: u32 = prefix.charCodeAt(i + 1) as u32;
+                  if (low >= 0xdc00 && low <= 0xdfff) {
+                      let cp: u32 = 0x10000 + (((code - 0xd800) << 10) | (low - 0xdc00));
+                      if (bPos + 4 > endOffset) return false;
+                      if (load<u8>(buffer + bPos) != ((0xf0 | ((cp >> 18) & 0x07)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 1) != ((0x80 | ((cp >> 12) & 0x3f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 2) != ((0x80 | ((cp >> 6) & 0x3f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 3) != ((0x80 | (cp & 0x3f)) as u8)) return false;
+                      bPos += 4;
+                      i++;
+                  } else {
+                      if (bPos + 3 > endOffset) return false;
+                      if (load<u8>(buffer + bPos) != ((0xe0 | ((code >> 12) & 0x0f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 1) != ((0x80 | ((code >> 6) & 0x3f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 2) != ((0x80 | (code & 0x3f)) as u8)) return false;
+                      bPos += 3;
+                  }
+              } else {
+                  if (bPos + 3 > endOffset) return false;
+                  if (load<u8>(buffer + bPos) != ((0xe0 | ((code >> 12) & 0x0f)) as u8)) return false;
+                  if (load<u8>(buffer + bPos + 1) != ((0x80 | ((code >> 6) & 0x3f)) as u8)) return false;
+                  if (load<u8>(buffer + bPos + 2) != ((0x80 | (code & 0x3f)) as u8)) return false;
+                  bPos += 3;
+              }
+          }
+          return true;
       }
-      return true;
   }
 
   @inline textEquals(nodeId: u32, text: string): boolean {
       if (nodeId == 0) return false;
       let step = getEncodingStep();
       let nodeLen = getNodeByteLength(nodeId);
-      let expectedByteLen = (text.length as u32) * step;
-      if (nodeLen != expectedByteLen) return false;
+      if (step == 2) {
+          let expectedByteLen = (text.length as u32) << 1;
+          if (nodeLen != expectedByteLen) return false;
+          let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
+          if (offset < 0) return false;
+          let actualOffset = offset as u32;
+          let buffer = getInputBuffer();
+          for (let i = 0; i < text.length; i++) {
+              let code = text.charCodeAt(i);
+              if (load<u16>(buffer + actualOffset + ((i as u32) << 1)) != (code as u16)) return false;
+          }
+          return true;
+      }
       let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return false;
       let actualOffset = offset as u32;
+      let endOffset = actualOffset + nodeLen;
       let buffer = getInputBuffer();
-      for (let i = 0; i < text.length; i++) {
-          let code = text.charCodeAt(i);
-          if (step == 2) {
-              if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
-          } else {
-              if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
+      if (step == 4) {
+          let bPos = actualOffset;
+          for (let i = 0; i < text.length; i++) {
+              if (bPos + 4 > endOffset) return false;
+              let code: u32 = text.charCodeAt(i) as u32;
+              if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+                  let low: u32 = text.charCodeAt(i + 1) as u32;
+                  if (low >= 0xdc00 && low <= 0xdfff) {
+                      code = 0x10000 + (((code - 0xd800) << 10) | (low - 0xdc00));
+                      i++;
+                  }
+              }
+              if (load<u32>(buffer + bPos) != code) return false;
+              bPos += 4;
           }
+          return bPos == endOffset;
+      } else {
+          let bPos = actualOffset;
+          for (let i = 0; i < text.length; i++) {
+              let code: u32 = text.charCodeAt(i) as u32;
+              if (code <= 0x7f) {
+                  if (bPos >= endOffset || load<u8>(buffer + bPos) != (code as u8)) return false;
+                  bPos += 1;
+              } else if (code <= 0x7ff) {
+                  if (bPos + 2 > endOffset) return false;
+                  if (load<u8>(buffer + bPos) != ((0xc0 | ((code >> 6) & 0x1f)) as u8)) return false;
+                  if (load<u8>(buffer + bPos + 1) != ((0x80 | (code & 0x3f)) as u8)) return false;
+                  bPos += 2;
+              } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+                  let low: u32 = text.charCodeAt(i + 1) as u32;
+                  if (low >= 0xdc00 && low <= 0xdfff) {
+                      let cp: u32 = 0x10000 + (((code - 0xd800) << 10) | (low - 0xdc00));
+                      if (bPos + 4 > endOffset) return false;
+                      if (load<u8>(buffer + bPos) != ((0xf0 | ((cp >> 18) & 0x07)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 1) != ((0x80 | ((cp >> 12) & 0x3f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 2) != ((0x80 | ((cp >> 6) & 0x3f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 3) != ((0x80 | (cp & 0x3f)) as u8)) return false;
+                      bPos += 4;
+                      i++;
+                  } else {
+                      if (bPos + 3 > endOffset) return false;
+                      if (load<u8>(buffer + bPos) != ((0xe0 | ((code >> 12) & 0x0f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 1) != ((0x80 | ((code >> 6) & 0x3f)) as u8)) return false;
+                      if (load<u8>(buffer + bPos + 2) != ((0x80 | (code & 0x3f)) as u8)) return false;
+                      bPos += 3;
+                  }
+              } else {
+                  if (bPos + 3 > endOffset) return false;
+                  if (load<u8>(buffer + bPos) != ((0xe0 | ((code >> 12) & 0x0f)) as u8)) return false;
+                  if (load<u8>(buffer + bPos + 1) != ((0x80 | ((code >> 6) & 0x3f)) as u8)) return false;
+                  if (load<u8>(buffer + bPos + 2) != ((0x80 | (code & 0x3f)) as u8)) return false;
+                  bPos += 3;
+              }
+          }
+          return bPos == endOffset;
       }
-      return true;
   }
 
   @inline textEqualsNode(nodeA: u32, nodeB: u32): boolean {
@@ -1154,23 +1271,27 @@ class ScopeAPI {
     let actualOffset: u32 = offset as u32;
     let buffer: usize = getInputBuffer();
 
-    while (true) {
-      let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+    while (len >= step) {
+      let ch: u32 = step == 2
+        ? (load<u16>(buffer + actualOffset) as u32)
+        : (step == 4 ? load<u32>(buffer + actualOffset) : (load<u8>(buffer + actualOffset) as u32));
       if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
         actualOffset += step;
-        if (len >= step) len -= step;
+        len -= step;
       } else {
         break;
       }
     }
 
-    let charLen: u32 = len / step;
-    if (charLen == 0) return 0;
+    if (len < step) return 0;
     let srcPtr = buffer + actualOffset;
     if (step == 2) {
       return this.pool.internUtf16(srcPtr, len);
     }
-    return this.pool.intern(srcPtr, charLen);
+    if (step == 4) {
+      return this.pool.internUtf32(srcPtr, len);
+    }
+    return this.pool.intern(srcPtr, len);
   }
 
   @inline concatPrefix(prefixId: u32, suffixId: u32): u32 {

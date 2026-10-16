@@ -603,6 +603,10 @@ export interface SourceLocation {
   startCol: number;
   endLine: number;
   endCol: number;
+  startByte?: number;
+  endByte?: number;
+  startOffset?: number;
+  endOffset?: number;
 }
 
 export interface Diagnostic {
@@ -611,6 +615,10 @@ export interface Diagnostic {
   severity: "error" | "warning" | "info";
   message: string;
   range: { startPosition: { row: number; column: number }; endPosition: { row: number; column: number } } | null;
+  startByte?: number;
+  endByte?: number;
+  startOffset?: number;
+  endOffset?: number;
 }
 
 export interface ClassHierarchyNode {

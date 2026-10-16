@@ -39,6 +39,54 @@ export * from "../src/wasm/dae/interval_eval";
 export * from "../src/wasm/formal/sat";
 export * from "../src/wasm/formal/zonotope";
 export * from "../src/wasm/solvers/wasm_emt";
+export {
+  cas_getRealValue,
+  cas_isZero,
+  cas_isOne,
+  cas_isConstant,
+  cas_simplify,
+  cas_differentiate,
+  cas_export_simplify,
+  cas_export_differentiate,
+} from "../src/wasm/dae/cas";
+export * from "../src/wasm/dae/eval";
+export * from "../src/wasm/dae/statements";
+export * from "../src/wasm/dae/builtins_math";
+export {
+  dae_evalDualExpr,
+  dae_evalDualEquationResidual,
+  dae_evalDualJacobianColumn,
+} from "../src/wasm/autodiff/dual";
+export * from "../src/wasm/fmi/fmi2_wasm";
+export * from "../src/wasm/fmi/fmi3_wasm";
+export * from "../src/wasm/fmi/cosim";
+export * from "../src/wasm/indexing/correspondence";
+export * from "../src/wasm/simulation/verifier";
+export * from "../src/wasm/simulation/vmap";
+export * from "../src/wasm/solvers/integrate";
+export * from "../src/wasm/solvers/linalg";
+export * from "../src/wasm/structural/blt";
+export {
+  isTargetVar,
+  countVarOccurrences,
+  isExplicitlySolvable,
+  invertSingleOccurrence,
+  isolateSymbolically,
+  dae_isolateEquation,
+  inverseSinh,
+  inverseCosh,
+  inverseTanh,
+  lambertW0,
+  initWarmStartCache,
+  getWarmStartValue,
+  setWarmStartValue,
+  solve1x1Newton,
+  solveHomotopy,
+} from "../src/wasm/optimization/isolation";
+export * from "../src/wasm/fea/wasm_fea";
+export * from "../src/wasm/cad/wasm_bsp_bvh";
+export * from "../src/wasm/diagram/wasm_layout";
+export * from "../src/wasm/solvers/wasm_advanced_solvers";
 
 
 // We will use Typed Arrays instead of Map/Set for much higher performance

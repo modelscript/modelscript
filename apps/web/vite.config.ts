@@ -33,11 +33,6 @@ export default defineConfig({
         {
           src: "../../languages/modelica/dist/parser.wasm",
           dest: "lsp/server/dist",
-          rename: "tree-sitter-modelica.wasm",
-        },
-        {
-          src: "../../languages/modelica/dist/parser.wasm",
-          dest: "lsp/server/dist",
         },
         {
           src: "../../languages/sysml2/dist/parser.wasm",
@@ -45,19 +40,9 @@ export default defineConfig({
           rename: "sysml2.wasm",
         },
         {
-          src: "../../languages/sysml2/dist/parser.wasm",
-          dest: "lsp/server/dist",
-          rename: "tree-sitter-sysml2.wasm",
-        },
-        {
           src: "../../languages/step/dist/parser.wasm",
           dest: "lsp/server/dist",
           rename: "step.wasm",
-        },
-        {
-          src: "../../languages/step/dist/parser.wasm",
-          dest: "lsp/server/dist",
-          rename: "tree-sitter-step.wasm",
         },
         {
           src: "../../languages/owl2/dist/parser.wasm",
@@ -65,19 +50,9 @@ export default defineConfig({
           rename: "owl2.wasm",
         },
         {
-          src: "../../languages/owl2/dist/parser.wasm",
-          dest: "lsp/server/dist",
-          rename: "tree-sitter-owl2.wasm",
-        },
-        {
           src: "../../languages/csv/dist/parser.wasm",
           dest: "lsp/server/dist",
           rename: "csv.wasm",
-        },
-        {
-          src: "../../languages/csv/dist/parser.wasm",
-          dest: "lsp/server/dist",
-          rename: "tree-sitter-csv.wasm",
         },
         {
           src: "../../languages/scad/dist/parser.wasm",

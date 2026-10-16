@@ -467,6 +467,8 @@ export class SysML2DiagramBackend implements DiagramBackend {
       this.deps.setLayout(params.uri, layout);
     } catch (e) {
       console.error("[sysml2-diagram] diagramEdit error:", e);
+    } finally {
+      tree?.delete?.();
     }
 
     let sidecarUri: string | undefined;

@@ -249,12 +249,14 @@ export function patchModelicaCadAnnotation(
     const existingContent = annotMatch[1].trim();
     const updatedAnnot = `annotation(${existingContent ? existingContent + ",\n  " : ""}${newCadStr})`;
     const updatedCompBody = compBody.replace(annotRegex, updatedAnnot);
-    const updatedSource =
-      source.slice(0, compStart + compMatch[0].indexOf(compBody)) + updatedCompBody + source.slice(compEnd - 1);
+    const bodyStart = compStart + compMatch[0].indexOf(compBody);
+    const bodyEnd = compEnd - 1;
+    const updatedSource = source.slice(0, bodyStart) + updatedCompBody + source.slice(bodyEnd);
 
     return {
       updatedSource,
-      replacedRange: { start: compStart, end: compEnd },
+      replacedRange: { start: bodyStart, end: bodyEnd },
+      newText: updatedCompBody,
     };
   }
 
@@ -273,7 +275,7 @@ export function patchModelicaCadAnnotation(
 
   return {
     updatedSource,
-    replacedRange: { start: semicolonIdx, end: semicolonIdx + insertion.length },
+    replacedRange: { start: semicolonIdx, end: semicolonIdx },
     newText: insertion,
   };
 }

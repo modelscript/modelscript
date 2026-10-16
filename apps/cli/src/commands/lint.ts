@@ -249,7 +249,8 @@ export const Lint: CommandModule<any, any> = {
       if (engineM && d.symbolId) entry = engineM.toQueryDB().symbol(d.symbolId);
       if (!entry && engineS && d.symbolId) entry = engineS.toQueryDB().symbol(d.symbolId);
 
-      const resource = d.resourceId ?? (entry?.resourceId ? entry.resourceId.replace("file://", "") : "unknown");
+      const rawRes = d.resourceId ?? entry?.resourceId;
+      const resource = rawRes ? rawRes.replace(/^file:\/\//, "") : "unknown";
       const docText = textMap.get(resource) ?? "";
       const pos = byteToLineCol(docText, d.startByte);
       return {

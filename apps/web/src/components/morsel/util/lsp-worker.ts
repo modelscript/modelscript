@@ -104,7 +104,7 @@ export async function startLsp(): Promise<ProtocolConnection> {
       },
       initializationOptions: {
         // This URI is used by the LSP to construct paths like
-        // ${extensionUri}/server/dist/tree-sitter-modelica.wasm
+        // ${extensionUri}/server/dist/modelica.wasm
         extensionUri: globalThis.location.origin + "/lsp",
         useLocalMsl: true,
       },

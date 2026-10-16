@@ -35,6 +35,8 @@
  *   - Incremental solving with temporary assumption literals and minimal UNSAT core derivation for IC3.
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
+
 export type VarId = number; // 1-indexed: 1, 2, 3, ...
 export type LitId = number; // Positive: +v, Negative: -v
 
@@ -764,6 +766,56 @@ export class CdclSatSolver {
 
     if (this.currentLevel > 0) {
       this.backtrack(0);
+    }
+
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.sat_create === "function" &&
+      typeof wasm.sat_addClause === "function" &&
+      typeof wasm.sat_solve === "function" &&
+      typeof wasm.__new === "function" &&
+      this.maxVarId > 0
+    ) {
+      const satPtr: number = wasm.sat_create(this.maxVarId);
+      if (satPtr !== 0) {
+        let maxClauseLen = Math.max(assumptions.length, 4);
+        for (const cl of this.clauses) {
+          if (cl.length > maxClauseLen) maxClauseLen = cl.length;
+        }
+        const litsPtr = wasm.__new(maxClauseLen * 4, 0);
+        let rootOk = true;
+        for (const cl of this.clauses) {
+          const view = new Int32Array(wasm.memory.buffer, litsPtr, cl.length);
+          for (let i = 0; i < cl.length; i++) view[i] = cl[i]!;
+          if (!wasm.sat_addClause(satPtr, litsPtr, cl.length)) {
+            rootOk = false;
+            break;
+          }
+        }
+        if (!rootOk) {
+          if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
+          return { status: "UNSAT", unsatCore: assumptions.length > 0 ? [...assumptions] : undefined };
+        }
+        const aView = new Int32Array(wasm.memory.buffer, litsPtr, assumptions.length);
+        for (let i = 0; i < assumptions.length; i++) aView[i] = assumptions[i]!;
+        const statusCode: number = wasm.sat_solve(satPtr, litsPtr, assumptions.length);
+        if (statusCode === 1) {
+          const model = new Map<VarId, boolean>();
+          for (let v = 1; v <= this.maxVarId; v++) {
+            const val: number = wasm.sat_getValue(satPtr, v);
+            const isTrue = val >= 0;
+            model.set(v, isTrue);
+            this.assignments.set(v, isTrue ? 1 : -1);
+          }
+          if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
+          return { status: "SAT", model };
+        } else if (statusCode === 2 && assumptions.length === 0) {
+          if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
+          return { status: "UNSAT" };
+        }
+        if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
+      }
     }
 
     // Check level 0 consistency

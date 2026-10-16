@@ -524,39 +524,43 @@ export function registerPolyglotEndpoints(
           const sp = getScadParser();
           if (sp) {
             const tree = sp.parse(text);
-            const root = tree.rootNode;
-            const modDecls = findNodes(root, "ModuleDeclaration");
-            let name = baseName;
-            if (modDecls.length > 0) {
-              const idNode = findNodes(modDecls[0], "IDENTIFIER")[0];
-              if (idNode) name = idNode.text.trim();
-            }
-            const attributes: { name: string; type: string; value?: string }[] = [];
-            const varDecls = findNodes(root, "VariableDeclaration");
-            for (const vd of varDecls) {
-              const idNode = findNodes(vd, "IDENTIFIER")[0];
-              const exprNode = findNodes(vd, "Expression")[0] || findNodes(vd, "PrimaryExpression")[0];
-              if (idNode && !idNode.text.startsWith("//") && idNode.text !== "module") {
-                const valStr = exprNode
-                  ? exprNode.text.trim()
-                  : vd.text
-                      .replace(/^[^=]+=\s*/, "")
-                      .replace(/;$/, "")
-                      .trim();
-                attributes.push({ name: idNode.text.trim(), type: "Real", value: valStr });
+            try {
+              const root = tree.rootNode;
+              const modDecls = findNodes(root, "ModuleDeclaration");
+              let name = baseName;
+              if (modDecls.length > 0) {
+                const idNode = findNodes(modDecls[0], "IDENTIFIER")[0];
+                if (idNode) name = idNode.text.trim();
               }
+              const attributes: { name: string; type: string; value?: string }[] = [];
+              const varDecls = findNodes(root, "VariableDeclaration");
+              for (const vd of varDecls) {
+                const idNode = findNodes(vd, "IDENTIFIER")[0];
+                const exprNode = findNodes(vd, "Expression")[0] || findNodes(vd, "PrimaryExpression")[0];
+                if (idNode && !idNode.text.startsWith("//") && idNode.text !== "module") {
+                  const valStr = exprNode
+                    ? exprNode.text.trim()
+                    : vd.text
+                        .replace(/^[^=]+=\s*/, "")
+                        .replace(/;$/, "")
+                        .trim();
+                  attributes.push({ name: idNode.text.trim(), type: "Real", value: valStr });
+                }
+              }
+              const components: { name: string; typeSpecifier: string }[] = [];
+              if (findNodes(root, "CubePrimitive").length > 0 || /cube\s*\(/.test(text)) {
+                components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
+              }
+              if (findNodes(root, "CylinderPrimitive").length > 0 || /cylinder\s*\(/.test(text)) {
+                components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
+              }
+              if (findNodes(root, "SpherePrimitive").length > 0 || /sphere\s*\(/.test(text)) {
+                components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
+              }
+              node = { name: name || baseName, kind: "module", attributes, components };
+            } finally {
+              tree?.delete?.();
             }
-            const components: { name: string; typeSpecifier: string }[] = [];
-            if (findNodes(root, "CubePrimitive").length > 0 || /cube\s*\(/.test(text)) {
-              components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
-            }
-            if (findNodes(root, "CylinderPrimitive").length > 0 || /cylinder\s*\(/.test(text)) {
-              components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
-            }
-            if (findNodes(root, "SpherePrimitive").length > 0 || /sphere\s*\(/.test(text)) {
-              components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
-            }
-            node = { name: name || baseName, kind: "module", attributes, components };
           } else {
             const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
             const name = modMatch ? modMatch[1] : baseName;
@@ -584,20 +588,24 @@ export function registerPolyglotEndpoints(
           const op = getOwlParser();
           if (op) {
             const tree = op.parse(text);
-            const root = tree.rootNode;
-            const decls = findNodes(root, "Declaration");
-            const classes: string[] = [];
-            for (const d of decls) {
-              const clsNodes = findNodes(d, "Class");
-              for (const cn of clsNodes) {
-                const clsName = cn.text.replace(/^[:\s<]+|[:>\s]+$/g, "").trim();
-                if (clsName && !classes.includes(clsName)) classes.push(clsName);
+            try {
+              const root = tree.rootNode;
+              const decls = findNodes(root, "Declaration");
+              const classes: string[] = [];
+              for (const d of decls) {
+                const clsNodes = findNodes(d, "Class");
+                for (const cn of clsNodes) {
+                  const clsName = cn.text.replace(/^[:\s<]+|[:>\s]+$/g, "").trim();
+                  if (clsName && !classes.includes(clsName)) classes.push(clsName);
+                }
               }
-            }
-            if (classes.length > 0 && classes[0]) {
-              node = { name: classes[0], kind: "ontology_class", superclasses: classes.slice(1) };
-            } else {
-              node = { name: baseName, kind: "ontology_class" };
+              if (classes.length > 0 && classes[0]) {
+                node = { name: classes[0], kind: "ontology_class", superclasses: classes.slice(1) };
+              } else {
+                node = { name: baseName, kind: "ontology_class" };
+              }
+            } finally {
+              tree?.delete?.();
             }
           } else {
             const classMatches = text.matchAll(

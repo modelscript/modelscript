@@ -28,6 +28,20 @@
  * - Incorporates node padding, port snapping, and bend penalty heuristics for fast interactive re-layout.
  */
 
+function tryCompactTsm1DWasm(coords: Int32Array): Int32Array | null {
+  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+  if (!wasm || typeof wasm.diagram_tsm_compact_1d !== "function") return null;
+  const n = coords.length;
+  if (n === 0) return new Int32Array(0);
+  const coordsPtr = wasm.__new(n * 4, 0);
+  const outPtr = wasm.__new(n * 4, 0);
+  new Int32Array(wasm.memory.buffer, coordsPtr, n).set(coords);
+  wasm.diagram_tsm_compact_1d(n, coordsPtr, outPtr);
+  const compacted = new Int32Array(n);
+  compacted.set(new Int32Array(wasm.memory.buffer, outPtr, n));
+  return compacted;
+}
+
 export interface TsmNode {
   id: string;
   width: number;
@@ -341,6 +355,29 @@ export class TsmOrthogonalLayout {
    * topological ordering and non-overlap constraints.
    */
   private compactGrid(vertices: Map<string, InternalVertex>, edges: InternalEdge[]): void {
+    const vList = Array.from(vertices.values());
+    if (vList.length > 0 && edges.every((e) => e.bends.length === 0)) {
+      try {
+        const rawX = new Int32Array(vList.length);
+        const rawY = new Int32Array(vList.length);
+        for (let i = 0; i < vList.length; i++) {
+          rawX[i] = vList[i]!.gridX;
+          rawY[i] = vList[i]!.gridY;
+        }
+        const compX = tryCompactTsm1DWasm(rawX);
+        const compY = tryCompactTsm1DWasm(rawY);
+        if (compX && compY) {
+          for (let i = 0; i < vList.length; i++) {
+            vList[i]!.gridX = compX[i]! * 2;
+            vList[i]!.gridY = compY[i]! * 2;
+          }
+          return;
+        }
+      } catch {
+        // Fallback to JS compaction below
+      }
+    }
+
     // 1. Horizontal Compaction
     const xCoords = Array.from(new Set(Array.from(vertices.values()).map((v) => v.gridX))).sort((a, b) => a - b);
     const xMap = new Map<number, number>();

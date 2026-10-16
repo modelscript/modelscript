@@ -63,10 +63,20 @@ export function registerDocumentFeaturesProvider(
         }
       }
 
-      // Wait up to 5 seconds for parser to be ready if currently initializing
-      if (!isParserReady()) {
+      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+      const isModelicaUri = !plugin || plugin.id === "modelica";
+      const isSysmlUri = plugin?.id === "sysml2" || plugin?.id === "sysml";
+      const isTargetParserReady = () => {
+        if (plugin?.parser) return true;
+        if (isSysmlUri) return isSysml2ParserReady();
+        if (isModelicaUri) return isParserReady();
+        return Boolean(plugin?.parser);
+      };
+
+      // Wait up to 5 seconds for the relevant parser to be ready if currently initializing
+      if (!isTargetParserReady()) {
         const start = Date.now();
-        while (!isParserReady() && Date.now() - start < 5000) {
+        while (!isTargetParserReady() && Date.now() - start < 5000) {
           await new Promise((r) => setTimeout(r, 50));
         }
       }
@@ -74,15 +84,21 @@ export function registerDocumentFeaturesProvider(
       let bridge = findBridge(params.textDocument.uri);
 
       // Fast instant bridge creation for immediate Outline response (0-5ms)
-      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
-      const parser = plugin?.parser ?? (validationService as any)?.parserService?.parser;
+      const parser =
+        plugin?.parser ??
+        (isSysmlUri
+          ? getSysml2Parser()
+          : isModelicaUri
+            ? (validationService as any)?.parserService?.parser
+            : undefined);
       if (!bridge && parser) {
         const doc = getDoc(params.textDocument.uri);
         const text = doc ? doc.getText() : getDocumentTree(params.textDocument.uri)?.text;
         const wm = validationService?.workspaceManager;
         if (text) {
+          let tree: any = null;
           try {
-            const tree = parser.parse(text);
+            tree = parser.parse(text);
             const langId = plugin?.id ?? "modelica";
             const ws = plugin?.workspaceIndex ?? wm?.getWorkspaceIndex(langId);
             if (!ws) return [];
@@ -91,15 +107,19 @@ export function registerDocumentFeaturesProvider(
             const unified =
               wm?.unifiedWorkspace?.toUnifiedPartial?.() ??
               (typeof ws.toUnifiedPartial === "function" ? ws.toUnifiedPartial() : ws.toUnified());
-            const engine = plugin?.queryEngine ??
-              wm?.getQueryEngine(langId) ?? {
-                toQueryDB: () => ({ index: unified }),
-                index: unified,
-              };
+            const realEngine = plugin?.queryEngine ?? wm?.getQueryEngine(langId);
+            const engine = realEngine ?? {
+              toQueryDB: () => ({ index: unified }),
+              index: unified,
+            };
             bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri);
-            documentLSPBridges.set(params.textDocument.uri, bridge);
+            if (realEngine) {
+              documentLSPBridges.set(params.textDocument.uri, bridge);
+            }
           } catch (fastErr) {
             connection.console.warn(`[onDocumentSymbol] Fast bridge build error: ${fastErr}`);
+          } finally {
+            tree?.delete?.();
           }
         }
       }
@@ -127,10 +147,14 @@ export function registerDocumentFeaturesProvider(
               const text = doc?.getText() ?? getDocumentTree(params.textDocument.uri)?.text;
               if (text) {
                 const tree = parser.parse(text);
-                const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
-                if (rootPtr) {
-                  const symbols = plugin.facade.getDocumentSymbols(rootPtr);
-                  if (symbols && symbols.length > 0) return symbols;
+                try {
+                  const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+                  if (rootPtr) {
+                    const symbols = plugin.facade.getDocumentSymbols(rootPtr);
+                    if (symbols && symbols.length > 0) return symbols;
+                  }
+                } finally {
+                  tree?.delete?.();
                 }
               }
             } catch {}
@@ -157,77 +181,84 @@ export function registerDocumentFeaturesProvider(
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
     const parser = plugin?.parser ?? (isParserReady() ? (validationService as any)?.parserService?.parser : undefined);
 
-    let treeWrapper = getDocumentTree(document.uri);
+    const treeWrapper = getDocumentTree(document.uri);
     let tree = treeWrapper?.tree ?? treeWrapper;
+    let ownsTree = false;
     if (!tree && parser) {
       try {
         tree = parser.parse(document.getText());
+        ownsTree = true;
       } catch {}
     }
     if (!tree) return [];
 
-    const rootNode = tree.rootNode ?? tree;
-    const rootPtr = rootNode?.id ?? rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+    try {
+      const rootNode = tree.rootNode ?? tree;
+      const rootPtr = rootNode?.id ?? rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
 
-    if (plugin?.facade?.getFoldingRanges && rootPtr) {
-      try {
-        const folds = plugin.facade.getFoldingRanges(rootPtr);
-        if (folds && folds.length > 0) return folds;
-      } catch {}
-    }
+      if (plugin?.facade?.getFoldingRanges && rootPtr) {
+        try {
+          const folds = plugin.facade.getFoldingRanges(rootPtr);
+          if (folds && folds.length > 0) return folds;
+        } catch {}
+      }
 
-    const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
-    const FOLDABLE_NODES = new Set([
-      "ClassDefinition",
-      "EquationSection",
-      "InitialEquationSection",
-      "AlgorithmSection",
-      "InitialAlgorithmSection",
-      "IfEquation",
-      "ForEquation",
-      "WhenEquation",
-      "IfStatement",
-      "ForStatement",
-      "WhileStatement",
-      "WhenStatement",
-      "AnnotationClause",
-      "Package",
-      "LibraryPackage",
-      "Namespace",
-    ]);
+      const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
+      const FOLDABLE_NODES = new Set([
+        "ClassDefinition",
+        "EquationSection",
+        "InitialEquationSection",
+        "AlgorithmSection",
+        "InitialAlgorithmSection",
+        "IfEquation",
+        "ForEquation",
+        "WhenEquation",
+        "IfStatement",
+        "ForStatement",
+        "WhileStatement",
+        "WhenStatement",
+        "AnnotationClause",
+        "Package",
+        "LibraryPackage",
+        "Namespace",
+      ]);
 
-    const collectFolds = (node: any) => {
-      if (!node) return;
-      const t = node.type || "";
-      const isComment = t === "Comment" || t === "comment";
-      const isFoldable =
-        FOLDABLE_NODES.has(t) || t.endsWith("Definition") || t.endsWith("Usage") || t.endsWith("Block") || isComment;
+      const collectFolds = (node: any) => {
+        if (!node) return;
+        const t = node.type || "";
+        const isComment = t === "Comment" || t === "comment";
+        const isFoldable =
+          FOLDABLE_NODES.has(t) || t.endsWith("Definition") || t.endsWith("Usage") || t.endsWith("Block") || isComment;
 
-      if (isFoldable && node.startPosition && node.endPosition) {
-        const startLine = node.startPosition.row ?? node.startPosition.line;
-        const endLine = node.endPosition.row ?? node.endPosition.line;
-        if (endLine > startLine) {
-          ranges.push({
-            startLine,
-            endLine,
-            kind: isComment ? "comment" : undefined,
-          });
+        if (isFoldable && node.startPosition && node.endPosition) {
+          const startLine = node.startPosition.row ?? node.startPosition.line;
+          const endLine = node.endPosition.row ?? node.endPosition.line;
+          if (endLine > startLine) {
+            ranges.push({
+              startLine,
+              endLine,
+              kind: isComment ? "comment" : undefined,
+            });
+          }
         }
-      }
 
-      const children = node.children || [];
-      for (let i = 0; i < children.length; i++) {
-        collectFolds(children[i]);
-      }
-    };
+        const children = node.children || [];
+        for (let i = 0; i < children.length; i++) {
+          collectFolds(children[i]);
+        }
+      };
 
-    collectFolds(rootNode);
-    return ranges as any[];
+      collectFolds(rootNode);
+      return ranges as any[];
+    } finally {
+      if (ownsTree) {
+        tree?.delete?.();
+      }
+    }
   });
 
   /* Selection Ranges — enables smart Expand/Shrink selection */
   connection.onSelectionRanges((params) => {
-    if (!isParserReady()) return [];
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
 

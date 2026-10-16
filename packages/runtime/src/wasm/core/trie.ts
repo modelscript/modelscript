@@ -211,10 +211,10 @@ export class FrontCodedDictionary {
 
   /**
    * Reconstructs the string with given 1-indexed ID and copies it to outPtr.
-   * Returns reconstructed length in bytes.
+   * Returns reconstructed length in bytes (clamped to maxLen if provided).
    */
-  extractString(id: u32, outPtr: usize): u32 {
-    if (id == 0 || id > this.stringCount) return 0;
+  extractString(id: u32, outPtr: usize, maxLen: u32 = 0xffffffff): u32 {
+    if (id == 0 || id > this.stringCount || maxLen == 0) return 0;
 
     let bIdx = (id - 1) / FRONT_CODING_BLOCK_SIZE;
     let localIdx = (id - 1) % FRONT_CODING_BLOCK_SIZE;
@@ -234,10 +234,11 @@ export class FrontCodedDictionary {
 
     if (localIdx == 0) {
       // Requested string is the header itself
-      for (let i: u32 = 0; i < headerLen; i++) {
+      let copyLen = headerLen < maxLen ? headerLen : maxLen;
+      for (let i: u32 = 0; i < copyLen; i++) {
         store<u8>(outPtr + (i as usize), this.tempDecodeBuf.get(i));
       }
-      return headerLen;
+      return copyLen;
     }
 
     // Step through block up to localIdx
@@ -268,11 +269,12 @@ export class FrontCodedDictionary {
     }
 
     // Copy reconstructed string to outPtr
-    for (let i: u32 = 0; i < currentLen; i++) {
+    let copyLen = currentLen < maxLen ? currentLen : maxLen;
+    for (let i: u32 = 0; i < copyLen; i++) {
       store<u8>(outPtr + (i as usize), this.tempDecodeBuf.get(i));
     }
 
-    return currentLen;
+    return copyLen;
   }
 
   @inline

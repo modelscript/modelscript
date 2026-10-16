@@ -261,6 +261,7 @@ workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { prior
 import { cfdLanguage } from "@modelscript/cfd";
 import { feaLanguage } from "@modelscript/fea";
 import modelicaLangFallback from "@modelscript/modelica/language";
+import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { PscadWorkspaceIndex, pscadLanguage } from "@modelscript/pscad";
 import scadLangFallback from "@modelscript/scad/language";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
@@ -273,6 +274,7 @@ import { registerInteropEndpoints } from "./handlers/interopEndpoints.js";
 import { registerMiscEndpoints } from "./handlers/miscEndpoints.js";
 import { registerOwl2Endpoints } from "./handlers/owl2Endpoints.js";
 import { registerPolyglotEndpoints } from "./handlers/polyglotEndpoints.js";
+import { registerReplEndpoints } from "./handlers/replEndpoints.js";
 import { registerRtmEndpoints } from "./handlers/rtmEndpoints.js";
 import { registerSimulationEndpoints } from "./handlers/simulationEndpoints.js";
 import { registerTreeHandlers } from "./handlers/treeHandler.js";
@@ -581,6 +583,34 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     });
 
     globalLanguageRegistry.register({
+      id: "modelscript",
+      name: "ModelScript",
+      extensions: [".modelscript", ".msx"],
+      get parser() {
+        return parserService.getParser("modelscript");
+      },
+      set parser(val: any) {
+        if (val) parserService.registerParser("modelscript", val, parserService.getFacade("modelscript"));
+      },
+      get facade() {
+        return parserService.getFacade("modelscript");
+      },
+      set facade(val: any) {
+        const p = parserService.getParser("modelscript");
+        if (p) parserService.registerParser("modelscript", p, val);
+      },
+      workspaceIndex: workspaceManager.getWorkspaceIndex("modelscript"),
+      get queryEngine() {
+        return workspaceManager.getQueryEngine("modelscript") ?? undefined;
+      },
+      set queryEngine(val) {
+        workspaceManager.setQueryEngine("modelscript", val ?? null);
+      },
+      languageDef: modelscriptLangFallback,
+      handlers: modelscriptLangFallback.lsp?.handlers,
+    });
+
+    globalLanguageRegistry.register({
       id: "cfd",
       name: "CFD",
       extensions: [".cfd", ".cfg", ".cfgt", ".su2"],
@@ -715,7 +745,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     positionEncoding: PositionEncodingKind.UTF16,
     textDocumentSync: TextDocumentSyncKind.Full,
     completionProvider: {
-      triggerCharacters: ["."],
+      resolveProvider: false,
+      triggerCharacters: [".", ":", "$", "@"],
     },
     hoverProvider: true,
     semanticTokensProvider: {
@@ -900,6 +931,9 @@ documents.onDidChangeContent((change) => {
       }
 
       if (tree) {
+        if (oldCached?.tree && oldCached.tree !== tree) {
+          oldCached.tree.delete?.();
+        }
         documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
         const { syntaxDiags } = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
         const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
@@ -949,12 +983,38 @@ documents.onDidChangeContent((change) => {
           const effectiveUri = uri.startsWith("modelscript-lib://global")
             ? "file://" + uri.substring("modelscript-lib://global".length)
             : uri;
-          if (wsIndex.has(effectiveUri)) {
-            wsIndex.reindexDocument?.(effectiveUri, () => cached.tree.rootNode);
-          } else {
-            wsIndex.register?.(effectiveUri, () => cached.tree.rootNode);
+          const prevIndexedText = validationService.lastIndexedText.get(effectiveUri);
+          if (prevIndexedText !== cached.text) {
+            validationService.lastIndexedText.set(effectiveUri, cached.text);
+            let actualEditRanges: { oldStartByte: number; oldEndByte: number }[] | undefined;
+            let totalDelta: number | undefined;
+            if (prevIndexedText !== undefined) {
+              const edit = computeTreeEdit(prevIndexedText, cached.text);
+              actualEditRanges = [{ oldStartByte: edit.startIndex, oldEndByte: edit.oldEndIndex }];
+              totalDelta = edit.newEndIndex - edit.oldEndIndex;
+            }
+            if (wsIndex.has(effectiveUri)) {
+              wsIndex.reindexDocument?.(effectiveUri, () => cached.tree.rootNode, actualEditRanges, totalDelta);
+            } else {
+              wsIndex.register?.(effectiveUri, () => cached.tree.rootNode);
+            }
+            wsIndex.getFileIndex?.(effectiveUri);
+            const wsInstances = workspaceManager.workspaceInstances;
+            if (wsInstances) {
+              for (const key of wsInstances.keys()) {
+                if (key.startsWith(effectiveUri + "#")) {
+                  wsInstances.delete(key);
+                }
+              }
+            }
+            workspaceManager.documentInstances.delete(uri);
+            workspaceManager.documentInstances.delete(effectiveUri);
+            const activeEngine = plugin?.queryEngine ?? workspaceManager.getQueryEngine(langId);
+            if (activeEngine && typeof activeEngine.disposeDocument === "function") {
+              activeEngine.disposeDocument(effectiveUri);
+              if (uri !== effectiveUri) activeEngine.disposeDocument(uri);
+            }
           }
-          wsIndex.getFileIndex?.(effectiveUri);
         }
       }
     }, 60),
@@ -984,25 +1044,34 @@ documents.onDidChangeContent((change) => {
 
 // Clean up when a document is closed
 documents.onDidClose((event) => {
-  const syntaxTimer = activeSyntaxDebounceTimers.get(event.document.uri);
+  const uri = event.document.uri;
+  const syntaxTimer = activeSyntaxDebounceTimers.get(uri);
   if (syntaxTimer) {
     clearTimeout(syntaxTimer);
-    activeSyntaxDebounceTimers.delete(event.document.uri);
+    activeSyntaxDebounceTimers.delete(uri);
   }
-  activeShortDebounceTimers.delete(event.document.uri);
-  lastSyntaxErrorsCount.delete(event.document.uri);
-  validationService.disposeDocument(event.document.uri);
-  workspaceManager.disposeDocument(event.document.uri);
-  const oldTree = documentManager.documentTrees.get(event.document.uri);
-  if (oldTree) {
-    oldTree.tree.delete();
-    documentManager.documentTrees.delete(event.document.uri);
+  const shortTimer = activeShortDebounceTimers.get(uri);
+  if (shortTimer) {
+    clearTimeout(shortTimer);
+    activeShortDebounceTimers.delete(uri);
+  }
+  lastSyntaxErrorsCount.delete(uri);
+  validationService.disposeDocument(uri);
+  workspaceManager.disposeDocument(uri);
+  const normUri = uri.replace(/^file:\/\/\/+/, "file:///");
+  const oneSlashUri = uri.replace(/^file:\/\/\/+/, "file:/");
+  for (const u of new Set([uri, normUri, oneSlashUri])) {
+    const oldTree = documentManager.documentTrees.get(u);
+    if (oldTree) {
+      oldTree.tree?.delete?.();
+      documentManager.documentTrees.delete(u);
+    }
   }
   const persistentDiags = [
-    ...(validationService.reasonerDiagnosticsByUri?.get(event.document.uri) || []),
-    ...(validationService.verificationDiagnosticsByUri?.get(event.document.uri) || []),
+    ...(validationService.reasonerDiagnosticsByUri?.get(uri) || []),
+    ...(validationService.verificationDiagnosticsByUri?.get(uri) || []),
   ];
-  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: persistentDiags });
+  connection.sendDiagnostics({ uri, diagnostics: persistentDiags });
 
   // Re-validate remaining open documents
   for (const doc of documents.all()) {
@@ -1362,6 +1431,7 @@ registerInteropEndpoints(lspContext);
 registerClassQueryEndpoints(lspContext);
 registerOwl2Endpoints(lspContext);
 registerMiscEndpoints(lspContext);
+registerReplEndpoints(lspContext);
 registerPolyglotEndpoints(connection, documents, validationService, documentManager, workspaceManager);
 
 registerSignatureHelpProvider(

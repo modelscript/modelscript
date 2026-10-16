@@ -224,10 +224,11 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   // Notify parent window when embedded in ModelScript Hub shell
   if (window.parent && window.parent !== window) {
     try {
-      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, window.location.origin);
     } catch (e) {}
 
     window.addEventListener('message', function(ev) {
+      if (ev.origin !== window.location.origin && !ev.origin.endsWith('.modelscript.org')) return;
       if (!ev.data || typeof ev.data !== 'object') return;
       if (ev.data.type === 'MODELSCRIPT_AUTH_SYNC' && ev.data.token) {
         try {

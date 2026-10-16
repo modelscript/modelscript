@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-// @ts-nocheck
 
+import type { TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
 import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchy-utils.js";
+
+export interface ProjectTreeNodeInfo {
+  id: string;
+  name: string;
+  uri?: string;
+  compositeName?: string;
+  classKind?: string;
+  hasChildren: boolean;
+  isFile: boolean;
+  iconSvg?: string;
+  line?: number;
+}
 
 export const iconCache = new Map<string, string | null>();
 
@@ -221,8 +233,9 @@ export function registerTreeHandlers(context: LspContext) {
           for (const id of symIds) {
             const entry = unified.symbols.get(id);
             if (entry?.metadata?.iconSvg) {
-              iconCache.set(params.className, entry.metadata.iconSvg);
-              return entry.metadata.iconSvg;
+              const svg = String(entry.metadata.iconSvg);
+              iconCache.set(params.className, svg);
+              return svg;
             }
           }
         }

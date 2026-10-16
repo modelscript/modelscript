@@ -30,9 +30,54 @@ export let t_trigramPostingCount: u32 = 1;
 
 const STRING_VIEW_SLOTS: u32 = 16;
 const STRING_VIEW_MASK: u32 = STRING_VIEW_SLOTS - 1;
+const UTF8_DECODE_SLOT_BYTES: u32 = 2048;
 let g_stringViewIdx: u32 = 0;
 let g_stringViewBuf: usize = 0;
+let g_utf8DecodeBuf: usize = 0;
 let g_queryStringViewPtr: usize = 0;
+let g_queryUtf8DecodeBuf: usize = 0;
+
+@inline
+function decodeUtf8ToUtf16(srcPtr: usize, lenBytes: u32, dstPtr: usize, maxU16Units: u32): u32 {
+  let i: u32 = 0;
+  let outIdx: u32 = 0;
+  while (i < lenBytes && outIdx < maxU16Units) {
+    let b0 = load<u8>(srcPtr + i) as u32;
+    if (b0 < 0x80) {
+      store<u16>(dstPtr + (outIdx << 1), b0 as u16);
+      outIdx++;
+      i++;
+    } else if ((b0 & 0xe0) == 0xc0 && i + 1 < lenBytes) {
+      let b1 = load<u8>(srcPtr + i + 1) as u32;
+      let cp = ((b0 & 0x1f) << 6) | (b1 & 0x3f);
+      store<u16>(dstPtr + (outIdx << 1), cp as u16);
+      outIdx++;
+      i += 2;
+    } else if ((b0 & 0xf0) == 0xe0 && i + 2 < lenBytes) {
+      let b1 = load<u8>(srcPtr + i + 1) as u32;
+      let b2 = load<u8>(srcPtr + i + 2) as u32;
+      let cp = ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f);
+      store<u16>(dstPtr + (outIdx << 1), cp as u16);
+      outIdx++;
+      i += 3;
+    } else if ((b0 & 0xf8) == 0xf0 && i + 3 < lenBytes && outIdx + 1 < maxU16Units) {
+      let b1 = load<u8>(srcPtr + i + 1) as u32;
+      let b2 = load<u8>(srcPtr + i + 2) as u32;
+      let b3 = load<u8>(srcPtr + i + 3) as u32;
+      let cp = ((b0 & 0x07) << 18) | ((b1 & 0x3f) << 12) | ((b2 & 0x3f) << 6) | (b3 & 0x3f);
+      cp -= 0x10000;
+      store<u16>(dstPtr + (outIdx << 1), (0xd800 | ((cp >> 10) & 0x3ff)) as u16);
+      store<u16>(dstPtr + ((outIdx + 1) << 1), (0xdc00 | (cp & 0x3ff)) as u16);
+      outIdx += 2;
+      i += 4;
+    } else {
+      store<u16>(dstPtr + (outIdx << 1), 0xfffd);
+      outIdx++;
+      i++;
+    }
+  }
+  return outIdx;
+}
 
 /**
  * Zero-cost unmanaged string view over linear memory in the string arena.
@@ -44,9 +89,9 @@ let g_queryStringViewPtr: usize = 0;
 export class StringView {
   /** Absolute pointer in linear memory to the first character of the string payload. */
   ptr: usize;
-  /** Character length (count of UTF-8 bytes or UTF-16 code units). */
+  /** Character length (count of UTF-8 ASCII bytes or UTF-16 code units). */
   len: u32;
-  /** True if encoded in UTF-8, false if encoded in UTF-16. */
+  /** True if encoded in single-byte UTF-8 (ASCII), false if encoded in UTF-16. */
   isUtf8: bool;
 
   @inline
@@ -69,7 +114,15 @@ export class StringView {
     }
     let v = changetype<StringView>(g_queryStringViewPtr);
     let tmp = StringView.fromHandle(handle);
-    v.ptr = tmp.ptr;
+    if (!tmp.isUtf8 && g_utf8DecodeBuf != 0 && tmp.ptr >= g_utf8DecodeBuf && tmp.ptr < g_utf8DecodeBuf + STRING_VIEW_SLOTS * UTF8_DECODE_SLOT_BYTES) {
+      if (g_queryUtf8DecodeBuf == 0) {
+        g_queryUtf8DecodeBuf = atomicChunkAlloc(UTF8_DECODE_SLOT_BYTES);
+      }
+      memory.copy(g_queryUtf8DecodeBuf, tmp.ptr, tmp.len << 1);
+      v.ptr = g_queryUtf8DecodeBuf;
+    } else {
+      v.ptr = tmp.ptr;
+    }
     v.len = tmp.len;
     v.isUtf8 = tmp.isUtf8;
     return v;
@@ -92,9 +145,28 @@ export class StringView {
       return StringView.create(0, 0, false);
     }
     let isUtf8 = (header & 0x80000000) != 0;
-    let len = isUtf8 ? lenBytes : (lenBytes >> 1);
     let ptr = stringArenaPtr + handle + 4;
-    return StringView.create(ptr, len, isUtf8);
+    if (isUtf8) {
+      let hasMultiByte = false;
+      for (let i: u32 = 0; i < lenBytes; i++) {
+        if (load<u8>(ptr + i) >= 0x80) {
+          hasMultiByte = true;
+          break;
+        }
+      }
+      if (hasMultiByte) {
+        if (g_utf8DecodeBuf == 0) {
+          g_utf8DecodeBuf = atomicChunkAlloc(STRING_VIEW_SLOTS * UTF8_DECODE_SLOT_BYTES);
+        }
+        let slot = g_stringViewIdx & STRING_VIEW_MASK;
+        let dstPtr = g_utf8DecodeBuf + slot * UTF8_DECODE_SLOT_BYTES;
+        let u16Len = decodeUtf8ToUtf16(ptr, lenBytes, dstPtr, UTF8_DECODE_SLOT_BYTES >> 1);
+        return StringView.create(dstPtr, u16Len, false);
+      }
+      return StringView.create(ptr, lenBytes, true);
+    }
+    let len = lenBytes >> 1;
+    return StringView.create(ptr, len, false);
   }
 
   /**

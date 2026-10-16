@@ -89,7 +89,19 @@ function decodeBase64ToArray(base64: string): Uint8Array {
   return bytes;
 }
 
+let activeClient: LanguageClient | undefined;
 let client: LanguageClient | undefined;
+const clientProxy = new Proxy({} as LanguageClient, {
+  get(_target, prop, receiver) {
+    if (!activeClient) return undefined;
+    const val = Reflect.get(activeClient as object, prop, receiver);
+    return typeof val === "function" ? val.bind(activeClient) : val;
+  },
+  set(_target, prop, value, receiver) {
+    if (!activeClient) return false;
+    return Reflect.set(activeClient as object, prop, value, receiver);
+  },
+});
 let fmuContentProvider: FmuContentProvider | undefined;
 let sspContentProvider: SspContentProvider | undefined;
 
@@ -666,10 +678,11 @@ export async function activate(context: vscode.ExtensionContext) {
     outputChannel: lspOutputChannel,
   };
 
-  client = await createWorkerLanguageClient(context, clientOptions);
+  activeClient = await createWorkerLanguageClient(context, clientOptions);
+  client = clientProxy;
 
   try {
-    await client.start();
+    await activeClient.start();
     console.log("ModelScript language server is ready");
     lspOutputChannel.appendLine("[client] Language server started successfully");
 
@@ -811,15 +824,6 @@ export async function activate(context: vscode.ExtensionContext) {
     console.error("ModelScript language server failed to start:", e);
     lspOutputChannel.appendLine(`[client] Language server FAILED to start: ${e}`);
   }
-
-  client.onNotification("modelscript/debuggerStopped", (params: { uri?: string; line?: number; column?: number }) => {
-    if (activeDebugSession) {
-      activeDebugSession.lastStoppedUri = params.uri;
-      activeDebugSession.lastStoppedLine = params.line;
-      activeDebugSession.lastStoppedColumn = params.column;
-      activeDebugSession.sendEvent(new StoppedEvent("step", 1));
-    }
-  });
 
   // Register AI integration components (proposed APIs — may not be available in web builds)
   try {
@@ -1016,8 +1020,21 @@ export async function activate(context: vscode.ExtensionContext) {
       dragAndDropController: mqttTreeProvider,
       canSelectMany: false,
     });
-    context.subscriptions.push(mqttTreeView);
-    mqttTreeProvider.startPolling();
+    context.subscriptions.push(mqttTreeView, mqttTreeProvider);
+    if (mqttTreeView.visible) {
+      mqttTreeProvider.startPolling();
+    }
+    if (typeof mqttTreeView.onDidChangeVisibility === "function") {
+      context.subscriptions.push(
+        mqttTreeView.onDidChangeVisibility((e) => {
+          if (e.visible) {
+            mqttTreeProvider?.startPolling();
+          } else {
+            mqttTreeProvider?.stopPolling();
+          }
+        }),
+      );
+    }
   } catch (e) {
     console.warn("Could not register modelscript.mqttTree view:", e);
   }
@@ -1085,21 +1102,134 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   };
 
+  // Listen for status notifications from the LSP server
+  let isScmRegistered = false;
+  let hideTimeout: NodeJS.Timeout | null = null;
+
+  const bindClientNotifications = (targetClient: LanguageClient) => {
+    targetClient.onNotification(
+      "modelscript/debuggerStopped",
+      (params: { uri?: string; line?: number; column?: number }) => {
+        if (activeDebugSession) {
+          activeDebugSession.lastStoppedUri = params.uri;
+          activeDebugSession.lastStoppedLine = params.line;
+          activeDebugSession.lastStoppedColumn = params.column;
+          activeDebugSession.sendEvent(new StoppedEvent("step", 1));
+        }
+      },
+    );
+
+    targetClient.onNotification("modelscript/status", (params: { state: string; message: string }) => {
+      if (hideTimeout) {
+        clearTimeout(hideTimeout);
+        hideTimeout = null;
+      }
+      switch (params.state) {
+        case "loading":
+          statusItem.show();
+          statusItem.text = `$(sync~spin) ${params.message}`;
+          statusItem.tooltip = "ModelScript is loading...";
+          statusItem.command = undefined;
+          broadcastLspStatus("loading", params.message);
+          break;
+        case "ready":
+          statusItem.show();
+          statusItem.text = `$(check) ${params.message}`;
+          statusItem.tooltip = "ModelScript language server is ready";
+          statusItem.command = undefined;
+          broadcastLspStatus("ready", params.message);
+          hideTimeout = setTimeout(() => statusItem.hide(), 5000);
+          // Auto-refresh UI components now that LSP is fully initialized
+          treeProvider.refresh();
+          experimentsTreeProvider?.refresh();
+
+          // Register integrations only once
+          if (!isScmRegistered && client) {
+            isScmRegistered = true;
+            // Register SCM Integration
+            registerScmIntegration(context, client);
+
+            // Register SCM Structural Tree View
+            registerScmTreeView(context, client);
+
+            // Register Semantic Diff Comments for diff editors
+            registerSemanticDiffComments(context, client);
+          }
+
+          // Resolve markdown variable values, requirements, and diagram data.
+          setTimeout(() => refreshMarkdownData(), 3000);
+          break;
+        case "error":
+          statusItem.show();
+          statusItem.text = `$(warning) ${params.message}`;
+          statusItem.tooltip = "ModelScript encountered an error. Click to restart.";
+          statusItem.command = "modelscript.restartLsp";
+          broadcastLspStatus("error", params.message);
+          break;
+      }
+    });
+
+    targetClient.onNotification("modelscript/warning", (params: { message: string }) => {
+      vscode.window.showWarningMessage(params.message);
+    });
+
+    targetClient.onNotification(
+      "modelscript/cosimStream",
+      async (msg: { type: string; participantId: string; time: number; data?: number[]; payload?: any }) => {
+        // Forward the co-simulation streaming events to the CAD Viewer React webview
+        const { CadViewerPanel } = await import("./cad-viewer-panel");
+        if (CadViewerPanel.currentPanel) {
+          // Send message with type VTK_PAYLOAD so that VtkRenderer can pick it up
+          if (msg.type === "vtk") {
+            CadViewerPanel.currentPanel.postMessage({
+              type: "VTK_PAYLOAD",
+              data: {
+                pid: msg.participantId,
+                time: msg.time,
+                buffer: new Uint8Array(msg.data || []), // Parse Array back to typed array
+              },
+            });
+          } else if (msg.type === "fea-frame" || msg.type === "fea") {
+            CadViewerPanel.currentPanel.sendFeaPayload(msg.payload || msg);
+          } else {
+            // Forward general step or complete events
+            CadViewerPanel.currentPanel.postMessage(msg);
+          }
+        }
+      },
+    );
+  };
+
+  if (activeClient) {
+    bindClientNotifications(activeClient);
+  }
+
   safeRegisterCommand("modelscript.restartLsp", async () => {
     statusItem.show();
     statusItem.text = "$(sync~spin) Restarting LSP…";
     broadcastLspStatus("loading", "Restarting language server…");
 
     try {
-      if (client) {
+      const oldWorker = languageWorker;
+      if (activeClient) {
         try {
-          await client.stop();
+          await activeClient.stop();
         } catch (e) {
           console.warn("[lsp-restart] Clean stop error:", e);
         }
       }
-      client = await createWorkerLanguageClient(context, clientOptions);
-      await client.start();
+      if (oldWorker) {
+        try {
+          oldWorker.terminate();
+        } catch {
+          // ignore worker termination errors
+        }
+      }
+      activeClient = await createWorkerLanguageClient(context, clientOptions);
+      client = clientProxy;
+      await activeClient.start();
+      bindClientNotifications(activeClient);
+      notebookController.client = client;
       treeProvider.refresh();
       experimentsTreeProvider?.refresh();
       statusItem.text = "$(check) LSP Ready";
@@ -1114,89 +1244,6 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.showErrorMessage(`Failed to restart language server: ${err?.message || err}`);
     }
   });
-
-  // Listen for status notifications from the LSP server
-  let isScmRegistered = false;
-  let hideTimeout: NodeJS.Timeout | null = null;
-  client.onNotification("modelscript/status", (params: { state: string; message: string }) => {
-    if (hideTimeout) {
-      clearTimeout(hideTimeout);
-      hideTimeout = null;
-    }
-    switch (params.state) {
-      case "loading":
-        statusItem.show();
-        statusItem.text = `$(sync~spin) ${params.message}`;
-        statusItem.tooltip = "ModelScript is loading...";
-        statusItem.command = undefined;
-        broadcastLspStatus("loading", params.message);
-        break;
-      case "ready":
-        statusItem.show();
-        statusItem.text = `$(check) ${params.message}`;
-        statusItem.tooltip = "ModelScript language server is ready";
-        statusItem.command = undefined;
-        broadcastLspStatus("ready", params.message);
-        hideTimeout = setTimeout(() => statusItem.hide(), 5000);
-        // Auto-refresh UI components now that LSP is fully initialized
-        treeProvider.refresh();
-        experimentsTreeProvider?.refresh();
-
-        // Register integrations only once
-        if (!isScmRegistered) {
-          isScmRegistered = true;
-          // Register SCM Integration
-          registerScmIntegration(context, client);
-
-          // Register SCM Structural Tree View
-          registerScmTreeView(context, client);
-
-          // Register Semantic Diff Comments for diff editors
-          registerSemanticDiffComments(context, client);
-        }
-
-        // Resolve markdown variable values, requirements, and diagram data.
-        setTimeout(() => refreshMarkdownData(), 3000);
-        break;
-      case "error":
-        statusItem.show();
-        statusItem.text = `$(warning) ${params.message}`;
-        statusItem.tooltip = "ModelScript encountered an error. Click to restart.";
-        statusItem.command = "modelscript.restartLsp";
-        broadcastLspStatus("error", params.message);
-        break;
-    }
-  });
-
-  client.onNotification("modelscript/warning", (params: { message: string }) => {
-    vscode.window.showWarningMessage(params.message);
-  });
-
-  client.onNotification(
-    "modelscript/cosimStream",
-    async (msg: { type: string; participantId: string; time: number; data?: number[]; payload?: any }) => {
-      // Forward the co-simulation streaming events to the CAD Viewer React webview
-      const { CadViewerPanel } = await import("./cad-viewer-panel");
-      if (CadViewerPanel.currentPanel) {
-        // Send message with type VTK_PAYLOAD so that VtkRenderer can pick it up
-        if (msg.type === "vtk") {
-          CadViewerPanel.currentPanel.postMessage({
-            type: "VTK_PAYLOAD",
-            data: {
-              pid: msg.participantId,
-              time: msg.time,
-              buffer: new Uint8Array(msg.data || []), // Parse Array back to typed array
-            },
-          });
-        } else if (msg.type === "fea-frame" || msg.type === "fea") {
-          CadViewerPanel.currentPanel.sendFeaPayload(msg.payload || msg);
-        } else {
-          // Forward general step or complete events
-          CadViewerPanel.currentPanel.postMessage(msg);
-        }
-      }
-    },
-  );
 
   // Update tree when active editor changes to a .mo or .owl2 file
   context.subscriptions.push(
@@ -3129,16 +3176,16 @@ END-ISO-10303-21;`;
       if (!targetUri && vscode.window.activeTextEditor) {
         targetUri = vscode.window.activeTextEditor.document.uri;
       }
-      if (!targetUri || !targetUri.fsPath.match(/\.(step|stp)$/i)) {
+      if (!targetUri || !targetUri.path.match(/\.(step|stp)$/i)) {
         vscode.window.showErrorMessage("Please select a STEP file to create an FEA setup.");
         return;
       }
       const studyName =
-        targetUri.fsPath
+        targetUri.path
           .split("/")
           .pop()
           ?.replace(/\.(step|stp)$/i, "") + "_FEA";
-      const setupUri = vscode.Uri.file(targetUri.fsPath + ".fea.mo");
+      const setupUri = targetUri.with({ path: targetUri.path + ".fea.mo" });
       const moContent = `model ${studyName}
   extends ModelScript.Studies.StaticStructuralFEA(
     meshResolution = 0.05
@@ -3147,7 +3194,7 @@ END-ISO-10303-21;`;
 end ${studyName};
 `;
       await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(moContent));
-      vscode.window.showInformationMessage(`Created FEA study: ${setupUri.fsPath}`);
+      vscode.window.showInformationMessage(`Created FEA study: ${setupUri.path}`);
       const doc = await vscode.workspace.openTextDocument(setupUri);
       await vscode.window.showTextDocument(doc);
     }),
@@ -3156,16 +3203,16 @@ end ${studyName};
       if (!targetUri && vscode.window.activeTextEditor) {
         targetUri = vscode.window.activeTextEditor.document.uri;
       }
-      if (!targetUri || !targetUri.fsPath.match(/\.(step|stp)$/i)) {
+      if (!targetUri || !targetUri.path.match(/\.(step|stp)$/i)) {
         vscode.window.showErrorMessage("Please select a STEP file to create a CFD setup.");
         return;
       }
       const studyName =
-        targetUri.fsPath
+        targetUri.path
           .split("/")
           .pop()
           ?.replace(/\.(step|stp)$/i, "") + "_CFD";
-      const setupUri = vscode.Uri.file(targetUri.fsPath + ".cfd.mo");
+      const setupUri = targetUri.with({ path: targetUri.path + ".cfd.mo" });
       const moContent = `model ${studyName}
   extends ModelScript.Studies.SteadyStateCFD(
     meshResolution = 0.05
@@ -3174,7 +3221,7 @@ end ${studyName};
 end ${studyName};
 `;
       await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(moContent));
-      vscode.window.showInformationMessage(`Created CFD study: ${setupUri.fsPath}`);
+      vscode.window.showInformationMessage(`Created CFD study: ${setupUri.path}`);
       const doc = await vscode.workspace.openTextDocument(setupUri);
       await vscode.window.showTextDocument(doc);
     }),
@@ -3386,8 +3433,21 @@ end ${studyName};
 }
 
 export async function deactivate(): Promise<void> {
-  if (client !== undefined) {
-    await client.stop();
+  if (activeClient !== undefined) {
+    try {
+      await activeClient.stop();
+    } catch {
+      // ignore stop errors
+    }
+    activeClient = undefined;
+  }
+  if (languageWorker !== undefined) {
+    try {
+      languageWorker.terminate();
+    } catch {
+      // ignore worker termination errors
+    }
+    languageWorker = undefined;
   }
 }
 

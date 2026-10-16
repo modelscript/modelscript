@@ -22,6 +22,8 @@ export interface CFGInstruction {
   astNodeId?: number;
   startByte?: number;
   endByte?: number;
+  startOffset?: number;
+  endOffset?: number;
   operands?: any[];
   targetVar?: string;
   metadata?: Record<string, any>;
@@ -81,16 +83,27 @@ export class GenericCFG {
     op: string,
     targetVar?: string,
     operands?: any[],
-    meta?: { astNodeId?: number; startByte?: number; endByte?: number; [key: string]: any },
+    meta?: {
+      astNodeId?: number;
+      startByte?: number;
+      endByte?: number;
+      startOffset?: number;
+      endOffset?: number;
+      [key: string]: any;
+    },
   ): CFGInstruction {
+    const startOff = meta?.startOffset ?? meta?.startByte;
+    const endOff = meta?.endOffset ?? meta?.endByte;
     return {
       id: this.nextInstId++,
       op,
       targetVar,
       operands,
       astNodeId: meta?.astNodeId,
-      startByte: meta?.startByte,
-      endByte: meta?.endByte,
+      startByte: meta?.startByte ?? startOff,
+      endByte: meta?.endByte ?? endOff,
+      startOffset: startOff,
+      endOffset: endOff,
       metadata: meta,
     };
   }

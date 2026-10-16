@@ -33,7 +33,7 @@ export class GCodeEditorProvider implements vscode.CustomTextEditorProvider {
       }
     };
 
-    webviewPanel.webview.onDidReceiveMessage((message) => {
+    const msgSubscription = webviewPanel.webview.onDidReceiveMessage((message) => {
       switch (message.type) {
         case "ready":
           loadGCode();
@@ -49,6 +49,7 @@ export class GCodeEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       disposed = true;
+      msgSubscription.dispose();
       changeSubscription.dispose();
     });
   }
@@ -61,6 +62,7 @@ export class GCodeEditorProvider implements vscode.CustomTextEditorProvider {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} data: blob:; worker-src 'self' blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GCode Viewer</title>
     <style>

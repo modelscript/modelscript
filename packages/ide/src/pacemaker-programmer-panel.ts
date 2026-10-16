@@ -247,10 +247,12 @@ export class PacemakerProgrammerPanel {
   }
 
   private _getHtmlForWebview(): string {
+    const nonce = getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Clinical Pacemaker Programmer</title>
   <style>
@@ -578,7 +580,7 @@ export class PacemakerProgrammerPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     const modeSelect = document.getElementById("mode-select");
@@ -699,4 +701,13 @@ export class PacemakerProgrammerPanel {
 </body>
 </html>`;
   }
+}
+
+function getNonce() {
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }

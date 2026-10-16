@@ -2976,6 +2976,16 @@ export function ontology_extractString(id: u32, outPtr: usize): u32 {
   return t_ontologyStore.iriDict.extractString(id, outPtr);
 }
 
+export function ontology_extractStringBounded(id: u32, outPtr: usize, maxLen: u32): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.iriDict.extractString(id, outPtr, maxLen);
+}
+
+export function ontology_getStringLen(id: u32): u32 {
+  if (changetype<usize>(t_ontologyStore) == 0) return 0;
+  return t_ontologyStore.iriDict.getStringLen(id);
+}
+
 export function ontology_getStringCompressionRatio(): f32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 1.0;
   return t_ontologyStore.iriDict.getCompressionRatio();

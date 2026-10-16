@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, prefer-const */
-// @ts-nocheck
 
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
 import { LspContext } from "../lsp-context.js";

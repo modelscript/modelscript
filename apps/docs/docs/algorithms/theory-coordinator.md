@@ -13,7 +13,7 @@
   DOI: [10.1145/357073.357079](https://doi.org/10.1145/357073.357079)
 - **Nieuwenhuis, R., Oliveras, A., & Tinelli, C. (2006)**. _"Solving SAT and SAT Modulo Theories: From an abstract Davis--Putnam--Logemann--Loveland procedure to DPLL(T)."_  
   **Journal of the ACM**, 53(6), pp. 937–977.  
-  DOI: [10.1217856.1217859](https://doi.org/10.1217856.1217859)
+  DOI: [10.1145/1217856.1217859](https://doi.org/10.1145/1217856.1217859)
 
 ### ModelScript Rationale & Modifications
 

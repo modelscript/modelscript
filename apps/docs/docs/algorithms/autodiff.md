@@ -7,6 +7,8 @@
 - Sparse Jacobian Coloring: `CCSMatrix` & `ColoringEngine` in [`packages/runtime/src/wasm/autodiff/coloring.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/wasm/autodiff/coloring.ts)
 - McCormick Envelopes: `McCormickTuple` in [`packages/runtime/src/wasm/autodiff/mccormick.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/wasm/autodiff/mccormick.ts)
 - Affine Arithmetic: `AffineForm` in [`packages/runtime/src/wasm/autodiff/affine.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/wasm/autodiff/affine.ts)
+- Hybrid Adjoint Sensitivity & Saltation Matrices: `HybridAdjointSolver` in [`packages/simulate/src/core/hybrid-adjoint.ts`](https://github.com/modelscript/modelscript/tree/main/packages/simulate/src/core/hybrid-adjoint.ts)
+- Aitken Dynamic $\Delta$-Relaxation & Multi-Rate Sub-Cycling: `VectorAitkenRelaxation` & `MultiRateSubCycleScheduler` in [`packages/simulate/src/core/fsi-relaxation.ts`](https://github.com/modelscript/modelscript/tree/main/packages/simulate/src/core/fsi-relaxation.ts)
 
 ---
 
@@ -60,6 +62,27 @@
   **Numerical Algorithms**, 37(1), pp. 147–158.  
   DOI: [10.1023/B:NUMA.0000049462.70970.b6](https://doi.org/10.1023/B:NUMA.0000049462.70970.b6)
 
+### Hybrid Adjoint Sensitivity & Saltation Matrices
+
+- **Barton, P. I., & Lee, C. K. (2002)**. _"Modeling, simulation, sensitivity analysis, and optimization of hybrid systems."_  
+  **ACM Transactions on Modeling and Computer Simulation**, 12(4), pp. 256–289.  
+  DOI: [10.1145/643120.643122](https://doi.org/10.1145/643120.643122)
+- **Filippov, A. F. (1988)**. _Differential Equations with Discontinuous Righthand Sides._  
+  **Mathematics and Its Applications**, 18, Springer.  
+  DOI: [10.1007/978-94-015-7793-9](https://doi.org/10.1007/978-94-015-7793-9)
+- **Corner, S., Sandu, A., & Sandu, C. (2019)**. _"Adjoint sensitivity analysis of hybrid multibody dynamical systems."_  
+  **Multibody System Dynamics**, 49, pp. 395–420.  
+  DOI: [10.1007/s11044-019-09725-2](https://doi.org/10.1007/s11044-019-09725-2)
+
+### Aitken Dynamic $\Delta$-Relaxation for Partitioned Co-Simulation
+
+- **Küttler, U., & Wall, W. A. (2008)**. _"Fixed-point fluid–structure interaction solvers with dynamic relaxation."_  
+  **Computational Mechanics**, 43(1), pp. 61–72.  
+  DOI: [10.1007/s00466-008-0255-5](https://doi.org/10.1007/s00466-008-0255-5)
+- **Irons, B. M., & Tuck, R. C. (1969)**. _"A version of the Aitken accelerator for computer iteration."_  
+  **International Journal for Numerical Methods in Engineering**, 1(3), pp. 275–277.  
+  DOI: [10.1002/nme.1620010306](https://doi.org/10.1002/nme.1620010306)
+
 ---
 
 ## ModelScript Architectural Rationale
@@ -72,6 +95,8 @@ ModelScript implements an integrated suite of **exact differentiation and contin
 2. **Reverse-Mode Computational Tape**: Evaluates scalar objective gradients $\nabla f(x) \in \mathbb{R}^N$ with cost proportional to $O(1)$ evaluations of $f$, enabling gradient-based parameter estimation and surrogate neural network training.
 3. **CPR Distance-2 Graph Coloring**: For large-scale DAE systems ($N = 10{,}000+$ equations), evaluating the full $N \times N$ Jacobian naively requires $N$ forward passes. CPR distance-2 coloring partitions structural columns into $p \ll N$ non-interfering groups (typically $p \le 15$ for sparse physical networks), reducing Jacobian assembly time by orders of magnitude.
 4. **McCormick Envelopes & Affine Arithmetic**: Classical interval arithmetic suffers from the **dependency problem**: evaluating $x - x$ for $x \in [0, 1]$ yields $[-1, 1]$ instead of $0$, causing rapid exponential bounding blowup. Affine arithmetic tracks first-order noise symbols ($\epsilon_i \in [-1, 1]$) across state equations, while McCormick relaxations compute rigorous convex lower bounds ($f^R$) and concave upper bounds ($f^{AR}$) for non-convex global optimization.
+5. **Hybrid Adjoint Sensitivity with Saltation Matrices**: Standard continuous adjoint solvers break down across Modelica `when`/`reinit` events, impact mechanics, or switching surfaces because Dirac delta impulses arise at event-crossing times $t^*$. ModelScript propagates reverse-mode adjoints across non-smooth mode transitions using exact saltation matrix jump conditions alongside optional sigmoidal equation smoothing (`DAEEventRelaxer`).
+6. **Aitken Dynamic $\Delta$-Relaxation**: Partitioned co-simulation of strongly coupled multi-physics domains (such as lightweight aerodynamic structures coupled to dense fluids or algebraic FMU loops) diverges under explicit Gauss-Seidel macro-steps due to the artificial added-mass effect. Dynamic vector Aitken acceleration stabilizes fixed-point iterations without requiring monolithic cross-FMU Jacobians.
 
 ---
 
@@ -88,6 +113,8 @@ flowchart TD
     COMPRESSED_JAC --> NEWTON["WASM Newton-Raphson Solver<br/>(TR-BDF2, Rodas-4P, Tearing)"]
     DAE --> RELAX["McCormick Envelopes & Affine Noise Form"]
     RELAX --> GLOBAL["Global Branch-and-Bound & HC4 Contractor"]
+    DAE --> HYBRID_ADJ["HybridAdjointSolver<br/>Hermite Checkpoint Tape & Saltation Jumps"]
+    DAE --> AITKEN["VectorAitkenRelaxation<br/>Coupled FSI & FMU Macro-Step Convergence"]
 ```
 
 ### 1. Zero-GC Dual Number Arithmetic
@@ -130,13 +157,43 @@ $$z^{cv} = \max\left(x^L y + x y^L - x^L y^L, \; x^U y + x y^U - x^U y^U\right)$
 $$z^{cc} = \min\left(x^U y + x y^L - x^U y^L, \; x^L y + x y^U - x^L y^U\right)$$
 ModelScript evaluates McCormick tuples $[z^{cv}, z^{cc}, \nabla z^{cv}, \nabla z^{cc}]$ directly on WASM arrays.
 
+### 5. Hybrid Adjoint Sensitivity with Saltation Matrices (`hybrid-adjoint.ts`)
+
+When a hybrid DAE trajectory crosses a discrete event surface $g(x(t^*), p) = 0$ with state reset map $x(t^{*+}) = h(x(t^{*-}), p)$ (such as Modelica `when` clauses, `reinit(x, expr)` impulses, or mechanical contact restitution), the forward sensitivity transition matrix undergoes a discontinuous rank-1 update governed by the **saltation matrix**:
+$$\Xi = I + \frac{\left(f^+ - f^- - \frac{\partial h}{\partial t}\right) (\nabla_x g)^T}{(\nabla_x g)^T f^- + \frac{\partial g}{\partial t}}$$
+
+`HybridAdjointSolver` (`solveHybridAdjoint` in `packages/simulate/src/core/hybrid-adjoint.ts`) implements a three-phase hybrid sensitivity pipeline:
+
+1. **Forward Integration & Event Localization**: Integrates the primal DAE arena while streaming cubic Hermite segments into `DenseHermiteCheckpointTape`. Whenever an event indicator $h(t, x, p)$ changes sign across a step, a 20-iteration bisection root-finder isolates the exact crossing time $t_e$, records pre-event limits $(x^-, \dot{x}^-)$, applies the discrete reset map $x^+ = \Delta(x^-, p)$, and re-evaluates post-event derivatives $(x^+, \dot{x}^+)$.
+2. **Adjoint Jump across Event Surfaces**: During backward Heun integration of the co-state $\lambda(t)$, crossing $t_e$ in reverse applies the transposed saltation jump condition to $\lambda(t_e^-)$ and accumulates the discrete event timing contribution into the parameter gradient $\frac{d\mathcal{L}}{dp}$:
+   $$\lambda(t_e^-) = \left[\frac{\partial \Delta}{\partial x}\right]^T \lambda(t_e^+) + \frac{\left(\frac{d\Delta}{dt}\right)^- - \dot{x}^+}{\dot{h}^-} \nabla_x h(t_e^-)$$
+   $$\Delta\left(\frac{d\mathcal{L}}{dp}\right) = \left[\frac{\partial \Delta}{\partial p}\right]^T \lambda(t_e^+) + \frac{\left(\frac{d\Delta}{dt}\right)^- - \dot{x}^+}{\dot{h}^-} \nabla_p h(t_e^-)$$
+3. **Optional Sigmoidal Event Relaxation**: For models with dense chattering or non-smooth algebraic switches (`if`, `abs`, `min`, `max`), `HybridAdjointSolver` optionally invokes `DAEEventRelaxer` to smooth C0 discontinuities into $C^\infty$ sigmoidal transitions prior to adjoint integration.
+
+### 6. Aitken Dynamic $\Delta$-Relaxation for Coupled Co-Simulation (`fsi-relaxation.ts`)
+
+In partitioned Fluid-Structure Interaction (FSI) and multi-FMU co-simulation macro-steps, exchanging boundary loads and displacements via unrelaxed fixed-point iteration $x_{k+1} = \tilde{x}(x_k)$ often diverges due to artificial added-mass instability.
+
+`VectorAitkenRelaxation` (`packages/simulate/src/core/fsi-relaxation.ts`) accelerates and stabilizes convergence over scalar variables, multi-DOF nodal displacement vectors, or 3D boundary traction maps (`relaxBoundaryLoads`):
+
+1. **Fixed-Point Residual**: At macro-step sub-iteration $k$, computes the interface residual $r_k = \tilde{x}_k - x_{k-1}$ and residual difference $\Delta r_k = r_k - r_{k-1}$.
+2. **Secant Aitken Factor Update**: Updates the dynamic relaxation factor $\omega_k$ via the multidimensional Aitken $\Delta^2$ projection:
+   $$\omega_k = -\omega_{k-1} \frac{r_{k-1}^T (r_k - r_{k-1})}{\|r_k - r_{k-1}\|_2^2}$$
+   clamped to a safe stability interval $\omega_k \in [\omega_{\min}, \omega_{\max}]$ (default $[0.02, 1.0]$).
+3. **Relaxed State Update**: Advances the interface state via under-relaxation:
+   $$x_{k+1} = x_k + \omega_k r_k$$
+   terminating when the relative residual norm $\|r_k\|_2 / (\|x_k\|_2 + \epsilon) < \text{tol}$.
+4. **Multi-Rate Sub-Cycling (`MultiRateSubCycleScheduler`)**: Synchronizes fast acoustic CFD steps ($\Delta t_{\text{CFD}} \sim 10^{-4}\text{ s}$), intermediate elastodynamic FEA steps ($\Delta t_{\text{FEA}} \sim 10^{-3}\text{ s}$), and macro 1D DAE steps ($\Delta t_{\text{macro}} \sim 10^{-2}\text{ s}$) using linear sub-step boundary interpolation $\mathbf{u}(\tau) = (1 - \tau)\mathbf{u}_{\text{prev}} + \tau \mathbf{u}_{\text{target}}$.
+
 ---
 
 ## Upstream & Downstream Integration
 
-| Pipeline Component     | Upstream Dependencies                       | Downstream Consumers                                         |
-| :--------------------- | :------------------------------------------ | :----------------------------------------------------------- |
-| **Dual Numbers**       | `DAEBuilder` AST, Variable seed vector      | Algebraic loop tearing, Newton solvers, sensitivity analysis |
-| **AdTape**             | `DAEBuilder` objective expressions          | L-BFGS-B optimizer, surrogate loss backprop                  |
-| **CPR Coloring**       | Bipartite incidence matrix from `BltEngine` | Sparse Jacobian generation, SUNDIALS/TR-BDF2 linear solves   |
-| **McCormick & Affine** | Bound intervals from `QueryEngine`          | HC4 contractor, Nelson-Oppen theory coordinator, SOS bounds  |
+| Pipeline Component         | Upstream Dependencies                              | Downstream Consumers                                               |
+| :------------------------- | :------------------------------------------------- | :----------------------------------------------------------------- |
+| **Dual Numbers**           | `DAEBuilder` AST, Variable seed vector             | Algebraic loop tearing, Newton solvers, sensitivity analysis       |
+| **AdTape**                 | `DAEBuilder` objective expressions                 | L-BFGS-B optimizer, surrogate loss backprop                        |
+| **CPR Coloring**           | Bipartite incidence matrix from `BltEngine`        | Sparse Jacobian generation, SUNDIALS/TR-BDF2 linear solves         |
+| **McCormick & Affine**     | Bound intervals from `QueryEngine`                 | HC4 contractor, Nelson-Oppen theory coordinator, SOS bounds        |
+| **HybridAdjointSolver**    | `DAEBuilder`, `DenseHermiteCheckpointTape`, Events | Hybrid parameter calibration, optimal control across mode switches |
+| **VectorAitkenRelaxation** | Partitioned CFD/FEA boundary loads & FMU ports     | Coupled aeroelastic FSI solver, SSP co-simulation master           |

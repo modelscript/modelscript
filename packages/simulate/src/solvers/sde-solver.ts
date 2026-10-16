@@ -32,6 +32,7 @@
  *   with minimal memory footprint.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import { Xoshiro256pp } from "@modelscript/runtime/wasm_monte_carlo.js";
 import type {
   SDEEnsembleResult,
@@ -89,6 +90,27 @@ export function eulerMaruyama(problem: SDEProblem, options: SDEOptions = {}): SD
   const m = problem.mBrownian ?? n;
   const dW = new Float64Array(m);
 
+  const wasm: any = getDefaultWasmExports();
+  const useWasmEm =
+    noiseType === "diagonal" &&
+    wasm &&
+    typeof wasm.sde_euler_maruyama_step === "function" &&
+    typeof wasm.__new === "function" &&
+    n > 0;
+  let yPtr = 0,
+    driftPtr = 0,
+    diffPtr = 0,
+    dWPtr = 0,
+    yNextPtr = 0;
+  if (useWasmEm) {
+    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+    yPtr = alloc(n * 8);
+    driftPtr = alloc(n * 8);
+    diffPtr = alloc(n * 8);
+    dWPtr = alloc(n * 8);
+    yNextPtr = alloc(n * 8);
+  }
+
   for (let step = 0; step < steps; step++) {
     // Generate Wiener increments dW_j = sqrt(dt) * xi_j
     for (let j = 0; j < m; j++) {
@@ -105,8 +127,25 @@ export function eulerMaruyama(problem: SDEProblem, options: SDEOptions = {}): SD
     const yNext = new Array<number>(n);
     if (noiseType === "diagonal") {
       const gVec = diffusion as number[];
-      for (let i = 0; i < n; i++) {
-        yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + (gVec[i] ?? 0) * (dW[i] ?? 0);
+      if (useWasmEm) {
+        const buf = wasm.memory.buffer;
+        const yV = new Float64Array(buf, yPtr, n);
+        const fV = new Float64Array(buf, driftPtr, n);
+        const gV = new Float64Array(buf, diffPtr, n);
+        const wV = new Float64Array(buf, dWPtr, n);
+        for (let i = 0; i < n; i++) {
+          yV[i] = y[i] ?? 0;
+          fV[i] = drift[i] ?? 0;
+          gV[i] = gVec[i] ?? 0;
+          wV[i] = dW[i] ?? 0;
+        }
+        wasm.sde_euler_maruyama_step(n, yPtr, driftPtr, diffPtr, dWPtr, actualDt, yNextPtr);
+        const outV = new Float64Array(wasm.memory.buffer, yNextPtr, n);
+        for (let i = 0; i < n; i++) yNext[i] = outV[i]!;
+      } else {
+        for (let i = 0; i < n; i++) {
+          yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + (gVec[i] ?? 0) * (dW[i] ?? 0);
+        }
       }
     } else if (noiseType === "scalar") {
       const gVal = typeof diffusion === "number" ? diffusion : ((diffusion as number[])[0] ?? 0);

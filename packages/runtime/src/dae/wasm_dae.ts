@@ -282,10 +282,17 @@ let cachedWasmExports: any = null;
 
 export function setCachedWasmExports(exports: any): void {
   cachedWasmExports = exports;
+  if (typeof globalThis !== "undefined") {
+    (globalThis as any).__modelscript_wasm_exports__ = exports;
+  }
 }
 
 export function getDefaultWasmExports(): any {
   if (cachedWasmExports) return cachedWasmExports;
+  if (typeof globalThis !== "undefined" && (globalThis as any).__modelscript_wasm_exports__) {
+    cachedWasmExports = (globalThis as any).__modelscript_wasm_exports__;
+    return cachedWasmExports;
+  }
   if (typeof process !== "undefined" && process.versions?.node != null) {
     try {
       const dir = typeof import.meta.dirname === "string" ? import.meta.dirname : "";
@@ -315,6 +322,9 @@ export function getDefaultWasmExports(): any {
           },
         });
         cachedWasmExports = inst.exports;
+        if (typeof globalThis !== "undefined") {
+          (globalThis as any).__modelscript_wasm_exports__ = cachedWasmExports;
+        }
         return cachedWasmExports;
       }
     } catch {
@@ -557,9 +567,15 @@ export class WasmDaeBridge implements IDaeBuilder {
   private forMeta = new Map<number, ForEquationMeta>();
   private ifMeta = new Map<number, IfEquationMeta>();
   public stateMachines: ArenaStateMachine[] = [];
-  private eqSourceRanges = new Map<number, { startByte: number; endByte: number }>();
+  private eqSourceRanges = new Map<
+    number,
+    { startByte: number; endByte: number; startOffset?: number; endOffset?: number }
+  >();
   private eqOrders = new Map<number, number>();
-  private varSourceRanges = new Map<number, { startByte: number; endByte: number }>();
+  private varSourceRanges = new Map<
+    number,
+    { startByte: number; endByte: number; startOffset?: number; endOffset?: number }
+  >();
   private paramNameToEqs = new Map<string, Set<number>>();
   private eqKinds = new Map<number, EqKind>();
   public origEqRhs = new Map<number, number>();
@@ -1295,10 +1311,12 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   setEqSourceRange(eqIdx: number, startByte: number, endByte: number): void {
-    this.eqSourceRanges.set(eqIdx, { startByte, endByte });
+    this.eqSourceRanges.set(eqIdx, { startByte, endByte, startOffset: startByte, endOffset: endByte });
   }
 
-  getEqSourceRange(eqIdx: number): { startByte: number; endByte: number } | undefined {
+  getEqSourceRange(
+    eqIdx: number,
+  ): { startByte: number; endByte: number; startOffset?: number; endOffset?: number } | undefined {
     return this.eqSourceRanges.get(eqIdx);
   }
 
@@ -1320,10 +1338,12 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   findEqAtRange(startByte: number, endByte: number): number {
     for (const [idx, range] of this.eqSourceRanges.entries()) {
-      if (startByte >= range.startByte && endByte <= range.endByte) {
+      const rStart = range.startOffset ?? range.startByte;
+      const rEnd = range.endOffset ?? range.endByte;
+      if (startByte >= rStart && endByte <= rEnd) {
         return idx;
       }
-      if (startByte < range.endByte && endByte > range.startByte) {
+      if (startByte < rEnd && endByte > rStart) {
         return idx;
       }
     }
@@ -1331,19 +1351,23 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   setVarSourceRange(varIdx: number, startByte: number, endByte: number): void {
-    this.varSourceRanges.set(varIdx, { startByte, endByte });
+    this.varSourceRanges.set(varIdx, { startByte, endByte, startOffset: startByte, endOffset: endByte });
   }
 
-  getVarSourceRange(varIdx: number): { startByte: number; endByte: number } | undefined {
+  getVarSourceRange(
+    varIdx: number,
+  ): { startByte: number; endByte: number; startOffset?: number; endOffset?: number } | undefined {
     return this.varSourceRanges.get(varIdx);
   }
 
   findVarAtRange(startByte: number, endByte: number): number {
     for (const [idx, range] of this.varSourceRanges.entries()) {
-      if (startByte >= range.startByte && endByte <= range.endByte) {
+      const rStart = range.startOffset ?? range.startByte;
+      const rEnd = range.endOffset ?? range.endByte;
+      if (startByte >= rStart && endByte <= rEnd) {
         return idx;
       }
-      if (startByte < range.endByte && endByte > range.startByte) {
+      if (startByte < rEnd && endByte > rStart) {
         return idx;
       }
     }
@@ -1359,18 +1383,26 @@ export class WasmDaeBridge implements IDaeBuilder {
   shiftSourceRanges(afterByte: number, delta: number): void {
     if (delta === 0) return;
     for (const [idx, range] of this.eqSourceRanges.entries()) {
-      if (range.startByte > afterByte) {
+      const rStart = range.startOffset ?? range.startByte;
+      const rEnd = range.endOffset ?? range.endByte;
+      if (rStart > afterByte) {
         this.eqSourceRanges.set(idx, {
-          startByte: range.startByte + delta,
-          endByte: range.endByte + delta,
+          startByte: rStart + delta,
+          endByte: rEnd + delta,
+          startOffset: rStart + delta,
+          endOffset: rEnd + delta,
         });
       }
     }
     for (const [idx, range] of this.varSourceRanges.entries()) {
-      if (range.startByte > afterByte) {
+      const rStart = range.startOffset ?? range.startByte;
+      const rEnd = range.endOffset ?? range.endByte;
+      if (rStart > afterByte) {
         this.varSourceRanges.set(idx, {
-          startByte: range.startByte + delta,
-          endByte: range.endByte + delta,
+          startByte: rStart + delta,
+          endByte: rEnd + delta,
+          startOffset: rStart + delta,
+          endOffset: rEnd + delta,
         });
       }
     }

@@ -21,10 +21,6 @@ import { ReasonerService } from "./reasoner-service.js";
 
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
 
-let verificationTimer: any = undefined;
-let activeVerification: any = undefined;
-let flattenArenaFromInstance: any = undefined;
-
 /**
  * Canonical error code information extracted from diagnostic code or lint name.
  */
@@ -281,7 +277,10 @@ export class ValidationService {
    * Per-document viewport byte ranges, updated by `modelscript/visibleRanges` notifications.
    * When set, linting and reference resolution prioritize symbols within this range.
    */
-  public documentViewports = new Map<string, { startByte: number; endByte: number }>();
+  public documentViewports = new Map<
+    string,
+    { startOffset?: number; endOffset?: number; startByte: number; endByte: number }
+  >();
 
   public reasonerService: ReasonerService;
 
@@ -463,8 +462,8 @@ export class ValidationService {
               if (isSyntax) {
                 // Syntax Error
                 let range = d.range;
-                const startOff = d.startOffset ?? d.startCharOffset;
-                const endOff = d.endOffset ?? d.endCharOffset;
+                const startOff = d.startOffset ?? d.startCharOffset ?? d.startByte;
+                const endOff = d.endOffset ?? d.endCharOffset ?? d.endByte;
                 if (startOff !== undefined && endOff !== undefined) {
                   range = {
                     start: textDocument.positionAt(startOff),
@@ -509,14 +508,18 @@ export class ValidationService {
       const hasErr = typeof node.hasError === "function" ? node.hasError() : node.hasError;
       const isMissing = typeof node.isMissing === "function" ? node.isMissing() : node.isMissing;
 
-      let start = textDocument.positionAt(node.startIndex);
-      let end = textDocument.positionAt(node.endIndex);
+      let start = textDocument.positionAt(node.startOffset ?? node.startIndex ?? node.startByte);
+      let end = textDocument.positionAt(node.endOffset ?? node.endIndex ?? node.endByte);
 
       if (isMissing) {
         if (start.line === end.line && start.character === end.character) {
           if (node.previousSibling) {
-            start = textDocument.positionAt(node.previousSibling.startIndex);
-            end = textDocument.positionAt(node.previousSibling.endIndex);
+            start = textDocument.positionAt(
+              node.previousSibling.startOffset ?? node.previousSibling.startIndex ?? node.previousSibling.startByte,
+            );
+            end = textDocument.positionAt(
+              node.previousSibling.endOffset ?? node.previousSibling.endIndex ?? node.previousSibling.endByte,
+            );
           } else {
             end = { line: start.line, character: start.character + 1 };
           }
@@ -680,7 +683,7 @@ export class ValidationService {
 
     const oldCached = this.documentManager.documentTrees.get(uri);
     let tree: any;
-    let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+    let editRanges: Array<{ startOffset?: number; endOffset?: number; startByte: number; endByte: number }> | undefined;
 
     try {
       if (oldCached && oldCached.text !== text) {
@@ -704,7 +707,14 @@ export class ValidationService {
             editNewEnd: edit.newEndIndex,
           });
         }
-        editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+        editRanges = [
+          {
+            startOffset: edit.startIndex,
+            endOffset: edit.newEndIndex,
+            startByte: edit.startIndex,
+            endByte: edit.newEndIndex,
+          },
+        ];
       } else if (oldCached) {
         tree = oldCached.tree;
         const facade = plugin?.facade ?? tree?.facade ?? tree?.rootNode?.tree?.facade ?? this.parserService.facade;
@@ -727,6 +737,9 @@ export class ValidationService {
       return;
     }
 
+    if (oldCached?.tree && oldCached.tree !== tree) {
+      oldCached.tree.delete?.();
+    }
     const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
     const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
     const docEntry = {
@@ -788,7 +801,7 @@ export class ValidationService {
     uri: string;
     text: string;
     tree: any;
-    editRanges?: Array<{ startByte: number; endByte: number }>;
+    editRanges?: Array<{ startOffset?: number; endOffset?: number; startByte: number; endByte: number }>;
     baseDiagnostics: Diagnostic[];
     wasmLintDiags?: any[];
     revisionAtStart: number | null;
@@ -841,7 +854,14 @@ export class ValidationService {
             const lastText = this.lastIndexedText.get(effectiveUri);
             if (lastText) {
               const edit = computeTreeEdit(lastText, text);
-              actualEditRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+              actualEditRanges = [
+                {
+                  startOffset: edit.startIndex,
+                  endOffset: edit.newEndIndex,
+                  startByte: edit.startIndex,
+                  endByte: edit.newEndIndex,
+                },
+              ];
               totalDelta = edit.newEndIndex - edit.oldEndIndex;
             }
           }
@@ -975,9 +995,9 @@ export class ValidationService {
           const pluginSource = plugin?.name ? plugin.name.toLowerCase() : "modelscript";
 
           for (const d of wasmLintDiags) {
-            // Resolve character offsets — prefer startOffset (new), fall back to startCharOffset (deprecated)
-            const startOff = d.startOffset ?? d.startCharOffset;
-            const endOff = d.endOffset ?? d.endCharOffset;
+            // Resolve character offsets — prefer startOffset (new), fall back to startCharOffset / startByte (deprecated)
+            const startOff = d.startOffset ?? d.startCharOffset ?? d.startByte;
+            const endOff = d.endOffset ?? d.endCharOffset ?? d.endByte;
 
             // Compute range from character offsets
             let range = d.range;
@@ -1379,7 +1399,7 @@ export class ValidationService {
     uri: string,
     text: string,
     tree: any,
-    editRanges: Array<{ startByte: number; endByte: number }> | undefined,
+    editRanges: Array<{ startOffset?: number; endOffset?: number; startByte: number; endByte: number }> | undefined,
     baseDiagnostics: Diagnostic[],
     revisionAtStart: number | null,
     context: any,
@@ -1440,8 +1460,8 @@ export class ValidationService {
                       ? DiagnosticSeverity.Information
                       : DiagnosticSeverity.Warning,
                 range: {
-                  start: textDocument.positionAt(d.startByte),
-                  end: textDocument.positionAt(d.endByte),
+                  start: textDocument.positionAt((d as any).startOffset ?? d.startByte),
+                  end: textDocument.positionAt((d as any).endOffset ?? d.endByte),
                 },
                 code: d.code,
                 message: d.message,
@@ -1633,8 +1653,8 @@ export class ValidationService {
                 ? DiagnosticSeverity.Information
                 : DiagnosticSeverity.Warning,
           range: {
-            start: textDocument.positionAt(lint.startByte),
-            end: textDocument.positionAt(lint.endByte),
+            start: textDocument.positionAt((lint as any).startOffset ?? lint.startByte),
+            end: textDocument.positionAt((lint as any).endOffset ?? lint.endByte),
           },
           code: lint.code,
           message: lint.message,
@@ -1674,8 +1694,8 @@ export class ValidationService {
                 ? DiagnosticSeverity.Information
                 : DiagnosticSeverity.Warning,
           range: {
-            start: textDocument.positionAt(lint.startByte),
-            end: textDocument.positionAt(lint.endByte),
+            start: textDocument.positionAt((lint as any).startOffset ?? lint.startByte),
+            end: textDocument.positionAt((lint as any).endOffset ?? lint.endByte),
           },
           code: lint.code,
           message: lint.message,
@@ -2582,29 +2602,45 @@ export class ValidationService {
   /**
    * Lists the model/block/class definitions of a document from the symbol index (no text scanning).
    */
-  protected listModelicaClassesForUri(
-    uri: string,
-  ): Array<{ name: string; symbolId: number; startByte: number; endByte: number }> {
+  protected listModelicaClassesForUri(uri: string): Array<{
+    name: string;
+    symbolId: number;
+    startOffset: number;
+    endOffset: number;
+    startByte: number;
+    endByte: number;
+  }> {
     const engine: any =
       this.workspaceManager?.globalModelicaQueryEngine ?? this.workspaceManager?.getQueryEngine?.("modelica");
     const symbols: Map<number, any> | undefined = engine?.index?.symbols;
     if (!symbols) return [];
     const norm = (u: string | undefined) => (u ? u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "");
     const target = norm(uri);
-    const out: Array<{ name: string; symbolId: number; startByte: number; endByte: number }> = [];
+    const out: Array<{
+      name: string;
+      symbolId: number;
+      startOffset: number;
+      endOffset: number;
+      startByte: number;
+      endByte: number;
+    }> = [];
     for (const [id, entry] of symbols.entries()) {
       if (norm(entry.resourceId) !== target) continue;
       if (entry.kind !== "Class" && entry.kind !== "Def") continue;
       const classKind = (entry.metadata?.classKind as string | undefined) ?? "class";
       if (classKind !== "model" && classKind !== "block" && classKind !== "class") continue;
+      const startOff = entry.startOffset ?? entry.startByte ?? 0;
+      const endOff = entry.endOffset ?? entry.endByte ?? 0;
       out.push({
         name: entry.name,
         symbolId: id,
-        startByte: entry.startByte ?? 0,
-        endByte: entry.endByte ?? 0,
+        startOffset: startOff,
+        endOffset: endOff,
+        startByte: startOff,
+        endByte: endOff,
       });
     }
-    out.sort((a, b) => a.startByte - b.startByte);
+    out.sort((a, b) => a.startOffset - b.startOffset);
     return out;
   }
 
@@ -2631,18 +2667,6 @@ export class ValidationService {
       } = await import("@modelscript/runtime");
 
       const text = textDocument.getText();
-      const byteToChar = (byteOffset: number): number => {
-        if (!/[\u0080-\uFFFF]/.test(text)) return byteOffset;
-        let bytes = 0;
-        let i = 0;
-        while (i < text.length && bytes < byteOffset) {
-          const cp = text.codePointAt(i)!;
-          bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
-          i += cp > 0xffff ? 2 : 1;
-        }
-        return i;
-      };
-
       const twinMap = extractModelicaTwinAnnotations(text);
       const sysmlReqs: any[] = [];
       let candidateDocs: any[] = [];
@@ -2762,8 +2786,9 @@ export class ValidationService {
 
         daeMap.set(cls.name, record);
 
-        const classStart = byteToChar(cls.startByte);
-        const classEnd = cls.endByte > cls.startByte ? byteToChar(cls.endByte) : text.length;
+        const classStart = cls.startOffset ?? cls.startByte;
+        const rawClassEnd = cls.endOffset ?? cls.endByte;
+        const classEnd = rawClassEnd > classStart ? rawClassEnd : text.length;
         const body = text.slice(classStart, classEnd);
         for (const issue of record.issues) {
           let issueOffset = classStart;

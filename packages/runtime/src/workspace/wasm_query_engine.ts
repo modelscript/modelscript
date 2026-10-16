@@ -404,21 +404,23 @@ export class WasmQueryEngine {
   }
 
   public getCstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
+    const start = startByte !== undefined ? startByte : entry ? (entry.startOffset ?? entry.startByte) : 0;
+    const end = endByte !== undefined ? endByte : entry ? (entry.endOffset ?? entry.endByte) : 0;
     if (this.tree && typeof (this.tree as any).getText === "function") {
-      const text = (this.tree as any).getText(startByte, endByte, entry);
+      const text = (this.tree as any).getText(start, end, entry);
       if (text !== null && text !== undefined) return text;
     }
     if (entry?.resourceId && (this.index as any).documents) {
       const doc = (this.index as any).documents.get(entry.resourceId);
       if (doc && typeof doc.getText === "function") {
-        return doc.getText().substring(startByte, endByte);
+        return doc.getText().substring(start, end);
       }
     }
     if (this.tree && (this.tree as any).rootNode) {
       const root = (this.tree as any).rootNode;
       const text = root.text ?? root.tree?.text;
-      if (typeof text === "string" && startByte >= 0 && endByte <= text.length) {
-        return text.substring(startByte, endByte);
+      if (typeof text === "string" && start >= 0 && end <= text.length) {
+        return text.substring(start, end);
       }
     }
     return null;
@@ -431,6 +433,8 @@ export class WasmQueryEngine {
   }
 
   public getCstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
+    const start = startByte !== undefined ? startByte : entry ? (entry.startOffset ?? entry.startByte) : 0;
+    const end = endByte !== undefined ? endByte : entry ? (entry.endOffset ?? entry.endByte) : 0;
     let treeToUse = this.tree;
     if (entry?.resourceId && (this.index as any).documents) {
       const doc = (this.index as any).documents.get(entry.resourceId);
@@ -439,30 +443,30 @@ export class WasmQueryEngine {
       }
     }
     if (treeToUse && typeof (treeToUse as any).getNode === "function") {
-      const node = (treeToUse as any).getNode(startByte, endByte, entry);
+      const node = (treeToUse as any).getNode(start, end, entry);
       if (node) return node;
     }
     if (treeToUse && (treeToUse as any).rootNode) {
       const root = (treeToUse as any).rootNode;
       if (typeof root.descendantForIndex === "function") {
-        return root.descendantForIndex(startByte, endByte);
+        return root.descendantForIndex(start, end);
       }
       if (typeof root.descendantForByteRange === "function") {
-        return root.descendantForByteRange(startByte, endByte);
+        return root.descendantForByteRange(start, end);
       }
       const findNode = (n: any): any | null => {
         const s = n.startOffset ?? n.startIndex ?? n.startByte ?? -1;
         const e = n.endOffset ?? n.endIndex ?? n.endByte ?? -1;
-        if (s === startByte && e === endByte) return n;
+        if (s === start && e === end) return n;
         for (const c of n.children || []) {
           const cs = c.startOffset ?? c.startIndex ?? c.startByte ?? -1;
           const ce = c.endOffset ?? c.endIndex ?? c.endByte ?? -1;
-          if (cs <= startByte && ce >= endByte) {
+          if (cs <= start && ce >= end) {
             const found = findNode(c);
             if (found) return found;
           }
         }
-        return s <= startByte && e >= endByte ? n : null;
+        return s <= start && e >= end ? n : null;
       };
       return findNode(root);
     }
@@ -531,8 +535,8 @@ export class WasmQueryEngine {
           if (entry.name) changedNames.add(entry.name);
         } else if (
           (old &&
-            (old.startByte !== entry.startByte ||
-              old.endByte !== entry.endByte ||
+            ((old.startOffset ?? old.startByte) !== (entry.startOffset ?? entry.startByte) ||
+              (old.endOffset ?? old.endByte) !== (entry.endOffset ?? entry.endByte) ||
               old.name !== entry.name ||
               old.kind !== entry.kind ||
               old.parentId !== entry.parentId ||
@@ -727,48 +731,48 @@ export class WasmQueryEngine {
     startOffset: number;
     endOffset: number;
   } {
-    const rStartByte = result.startByte ?? result.startOffset ?? (result as any).startCharOffset;
-    const rEndByte = result.endByte ?? result.endOffset ?? (result as any).endCharOffset;
-    const isWholeEntryRange = rStartByte === entry.startByte && rEndByte === entry.endByte;
+    const entryStart = entry.startOffset ?? entry.startByte;
+    const entryEnd = entry.endOffset ?? entry.endByte;
+    const rStart = result.startOffset ?? (result as any).startCharOffset ?? result.startByte;
+    const rEnd = result.endOffset ?? (result as any).endCharOffset ?? result.endByte;
+    const isWholeEntryRange = rStart === entryStart && rEnd === entryEnd;
 
-    if (rStartByte !== undefined && rEndByte !== undefined && rEndByte >= rStartByte && !isWholeEntryRange) {
-      const startOffset =
-        result.startOffset ??
-        (result as any).startCharOffset ??
-        result.startByte ??
-        entry.startOffset ??
-        entry.startByte;
-      const endOffset =
-        result.endOffset ?? (result as any).endCharOffset ?? result.endByte ?? entry.endOffset ?? entry.endByte;
-      return { startByte: rStartByte, endByte: rEndByte, startOffset, endOffset };
+    if (rStart !== undefined && rEnd !== undefined && rEnd >= rStart && !isWholeEntryRange) {
+      const startByte = result.startByte ?? rStart;
+      const endByte = result.endByte ?? rEnd;
+      return { startByte, endByte, startOffset: rStart, endOffset: rEnd };
     }
 
     const fieldRange = result.field ? entry.fieldRanges?.[result.field] : undefined;
     if (fieldRange) {
+      const startOffset = fieldRange.startOffset ?? fieldRange.startByte;
+      const endOffset = fieldRange.endOffset ?? fieldRange.endByte;
       return {
-        startByte: fieldRange.startByte,
-        endByte: fieldRange.endByte,
-        startOffset: fieldRange.startOffset ?? fieldRange.startByte,
-        endOffset: fieldRange.endOffset ?? fieldRange.endByte,
+        startByte: fieldRange.startByte ?? startOffset,
+        endByte: fieldRange.endByte ?? endOffset,
+        startOffset,
+        endOffset,
       };
     }
 
     const fallbackField =
       entry.fieldRanges?.["declaredName"] ?? entry.fieldRanges?.["name"] ?? entry.fieldRanges?.["id"];
     if (fallbackField) {
+      const startOffset = fallbackField.startOffset ?? fallbackField.startByte;
+      const endOffset = fallbackField.endOffset ?? fallbackField.endByte;
       return {
-        startByte: fallbackField.startByte,
-        endByte: fallbackField.endByte,
-        startOffset: fallbackField.startOffset ?? fallbackField.startByte,
-        endOffset: fallbackField.endOffset ?? fallbackField.endByte,
+        startByte: fallbackField.startByte ?? startOffset,
+        endByte: fallbackField.endByte ?? endOffset,
+        startOffset,
+        endOffset,
       };
     }
 
     return {
-      startByte: entry.startByte,
-      endByte: entry.endByte,
-      startOffset: entry.startOffset ?? entry.startByte,
-      endOffset: entry.endOffset ?? entry.endByte,
+      startByte: entry.startByte ?? entryStart,
+      endByte: entry.endByte ?? entryEnd,
+      startOffset: entryStart,
+      endOffset: entryEnd,
     };
   }
 
@@ -809,7 +813,7 @@ export class WasmQueryEngine {
   public async runAllLintsAsync(
     resourceId?: string,
     yieldFn?: () => Promise<boolean>,
-    viewportRange?: { startByte: number; endByte: number },
+    viewportRange?: { startByte?: number; endByte?: number; startOffset?: number; endOffset?: number },
   ): Promise<LintDiagnostic[]> {
     const cacheKey = resourceId ?? "__all__";
     let perSymbolCache = this.lintCache.get(cacheKey);
@@ -841,12 +845,15 @@ export class WasmQueryEngine {
     }
 
     if (viewportRange && symbolsToRelint.length > 1) {
-      const { startByte: vpStart, endByte: vpEnd } = viewportRange;
+      const vpStart = viewportRange.startOffset ?? viewportRange.startByte ?? 0;
+      const vpEnd = viewportRange.endOffset ?? viewportRange.endByte ?? Infinity;
       const inViewport: [SymbolId, SymbolEntry][] = [];
       const outViewport: [SymbolId, SymbolEntry][] = [];
       for (const pair of symbolsToRelint) {
         const entry = pair[1];
-        if (entry.startByte <= vpEnd && entry.endByte >= vpStart) {
+        const entryStart = entry.startOffset ?? entry.startByte;
+        const entryEnd = entry.endOffset ?? entry.endByte;
+        if (entryStart <= vpEnd && entryEnd >= vpStart) {
           inViewport.push(pair);
         } else {
           outViewport.push(pair);
@@ -1267,9 +1274,15 @@ export class WasmQueryEngine {
         if (!base) throw new Error(`Cannot specialize unknown symbol ${baseId}`);
 
         const virtualId = engine.nextVirtualId--;
+        const baseStart = base.startOffset ?? base.startByte;
+        const baseEnd = base.endOffset ?? base.endByte;
         const virtualEntry: SymbolEntry = {
           ...base,
           id: virtualId,
+          startByte: base.startByte ?? baseStart,
+          endByte: base.endByte ?? baseEnd,
+          startOffset: baseStart,
+          endOffset: baseEnd,
           metadata: { ...base.metadata },
         };
 
@@ -1714,9 +1727,15 @@ export class WasmQueryEngine {
         if (!base) throw new Error(`Cannot specialize unknown symbol ${baseId}`);
 
         const virtualId = engine.nextVirtualId--;
+        const baseStart = base.startOffset ?? base.startByte;
+        const baseEnd = base.endOffset ?? base.endByte;
         const virtualEntry: SymbolEntry = {
           ...base,
           id: virtualId,
+          startByte: base.startByte ?? baseStart,
+          endByte: base.endByte ?? baseEnd,
+          startOffset: baseStart,
+          endOffset: baseEnd,
           metadata: { ...base.metadata },
         };
 

@@ -1,106 +1,95 @@
-# Compiler Architecture Overview
+# Architecture Overview
 
-ModelScript is an open-source, web-native polyglot compiler and multi-domain engineering intelligence platform. Designed to bridge the historical silos between system architecture, physical simulation, 3D CAD geometry, continuum analysis (FEA/CFD), and formal verification, ModelScript operates on a unified, high-performance **computable digital thread**.
+ModelScript is built on a **data-oriented, WebAssembly-first compiler architecture**. Rather than allocating deep hierarchies of garbage-collected JavaScript AST wrapper objects, every stage of the compiler—from GLR parsing to DAE flattening, sparse linear algebra, and formal verification—operates on contiguous **Struct-of-Arrays (SoA)** arenas in WebAssembly linear memory.
 
 ---
 
 ## End-to-End Compilation Pipeline
 
-The compilation pipeline transforms polyglot source code into low-level, high-efficiency representations in linear WebAssembly memory without intermediate AST object allocations.
-
 ```mermaid
-flowchart TD
-    subgraph Inputs ["Source Layer"]
-        S_MO["Modelica (.mo)"]
-        S_SYS["SysML v2 (.sysml)"]
-        S_STEP["STEP CAD (.step)"]
-        S_OWL["OWL2 (.owl)"]
-        S_OTHER["FEA / CFD / CSV / SCAD / SSP"]
+flowchart TB
+    subgraph Languages["Polyglot Source Languages (11 Domains)"]
+        MO[".mo (Modelica)"]
+        SYS[".sysml / .kerml (SysML v2)"]
+        STEP[".step / .stp (ISO 10303)"]
+        OWL[".owl / .ofn / .ttl (OWL2)"]
+        SCAD[".scad (OpenSCAD)"]
+        SSP[".ssp / .ssd / .ssv (SSP)"]
+        PSCAD[".pscx / .pslx / .cfg (PSCAD/EMT)"]
+        CAE[".cfd / .su2 / .fea / .inp / .bdf"]
+        CSV[".csv (Tabular Data)"]
+        MSX[".msx / .modelscript (ModelScript)"]
     end
 
-    subgraph ParserLayer ["1. Parser & CST Arena"]
-        P_GLR["Native WebAssembly GLR Parser"]
-        CST["Linear Memory CST Arena\n(Zero-allocation struct-of-arrays)"]
+    subgraph Frontend["1. Linear-Memory Parsing & Indexing (@modelscript/dsl)"]
+        GLR["Native WASM GLR Parser (parser.wasm)"]
+        CST["Linear Memory CST Arena"]
+        IDX["SymbolIndexer & Unified WorkspaceIndex"]
     end
 
-    subgraph IndexingLayer ["2. Indexing & Incremental Queries"]
-        SI["SymbolIndexer → Flat Symbol Table"]
-        WI["WorkspaceIndex (Multi-file resolution)"]
-        QE["Salsa QueryEngine\n(fetch → deep_verify → execute → backdate)"]
+    subgraph Semantics["2. Incremental Semantic Engine (@modelscript/runtime)"]
+        SALSA["Salsa QueryEngine (Memoized Dependency Graph)"]
+        TGG["Triple Graph Grammar (TGG) & DPO Rewriting Engine"]
+        LINT["CompilerLint & Multi-Domain Semantic Lints"]
     end
 
-    subgraph TransformationLayer ["3. Semantic Lowering & Graph Rewriting"]
-        LINT["CompilerLint & CodeGraph Diagnostics"]
-        TGG["Triple Graph Grammars (TGG)\n(Bidirectional AOT Graph Rewriting)"]
-        FLAT["ModelicaFlattener\n(AssemblyScript Kernel & TS Bridge)"]
+    subgraph Lowering["3. Arena DAE Lowering & Formal Verification"]
+        FLAT["ModelicaFlattener (AssemblyScript WASM Kernel + TS Bridge)"]
+        DAE["DAEBuilder (SoA Linear Memory: varData, exprData, eqData)"]
+        THEORY["Multi-Domain Theory Coordinator (13 Domain Oracles)"]
     end
 
-    subgraph VerificationLayer ["4. Formal Reasoning & Theory Combination"]
-        NO["Nelson-Oppen Semantic Theory Coordinator"]
-        THEORIES["6 Theory Oracles\n(Ontology, Constraint, AbstractDomain, ContinuousSafety, DynamicSimulation, SpatialPhysics)"]
+    subgraph Backend["4. Causalization, Codegen & Execution (@modelscript/simulate)"]
+        BLT["Hopcroft-Karp Matching + Tarjan BLT + Pantelides Index Reduction"]
+        SOLVE["SUNDIALS IDA / CVODE / Radau IIA / Dommel EMT / WebGPU"]
+        FMU["FMI 2.0 / 3.0 C99 & WASM FMU Exporter (@modelscript/exchange)"]
     end
 
-    subgraph ExecutionLayer ["5. DAE Arena & Solvers"]
-        DAE["DAEBuilder (Linear Memory Struct-of-Arrays)"]
-        TRANS["Pantelides Index Reduction & Tarjan BLT Partitioning"]
-        SOLV["SUNDIALS CVODE/IDA & WebGPU Batched Solvers"]
-        EXP["FMI 2.0/3.0 FMU Export & CTRF/SARIF Reports"]
-    end
-
-    Inputs --> P_GLR
-    P_GLR --> CST
-    CST --> SI
-    SI --> WI
-    WI --> QE
-    QE --> LINT
-    QE --> TGG
-    QE --> FLAT
-    TGG --> NO
-    FLAT --> NO
-    NO --> THEORIES
-    FLAT --> DAE
-    DAE --> TRANS
-    TRANS --> SOLV
-    SOLV --> EXP
+    Languages --> GLR --> CST --> IDX --> SALSA
+    SALSA --> LINT
+    SALSA --> TGG
+    SALSA --> FLAT --> DAE
+    DAE --> THEORY
+    DAE --> BLT --> SOLVE
+    DAE --> FMU
 ```
 
 ---
 
-## Key Architectural Principles
+## Core Architectural Pillars
 
-### 1. Data-Oriented Struct-of-Arrays (SoA) in Linear Memory
+### 1. Zero-Wrapper Linear Memory CST & DAE Arena
 
-Traditional compilers instantiate millions of object-oriented AST nodes, leading to massive memory overhead, pointer chasing, and garbage collection pressure. ModelScript lowers expressions, equations, and statements directly from native WebAssembly parser buffers into `DAEBuilder` integer handles (`ExprId`, `EqId`, `VarId`) packed into contiguous typed arrays.
+Equations, expressions, and statements are lowered directly from 32-bit linear-memory CST node pointers (`u32`) into `DAEBuilder` integer IDs (`VarId`, `ExprId`, `EqId`, `StmtId`). This eliminates garbage-collection pauses even when flattening multi-thousand-equation Modelica Standard Library (MSL) models.
 
-### 2. Zero-Allocation Incremental GLR Parsing
+### 2. Demand-Driven Incremental Compilation (Salsa)
 
-Grammars in `@modelscript/dsl` compile ahead-of-time to native WebAssembly GLR (Generalized LR) parsing engines. Tokens stream directly through linear memory, resolving ambiguous and non-deterministic grammar constructs without back-tracking allocations.
+Inspired by the Rust compiler (`rust-analyzer`), `QueryEngine` implements the **Salsa** incremental recomputation algorithm (`fetch → deep_verify → execute → backdate`). When a user edits a parameter in the IDE, only queries whose transitive input hashes actually changed are recomputed.
 
-### 3. Demand-Driven Salsa Incremental Computation
+### 3. Polyglot Synchronization via Triple Graph Grammars (TGG)
 
-All name resolution, component specialization, and inheritance hierarchies are governed by a Salsa-inspired query engine. Queries cache results and track fine-grained dependency edges:
-$$\text{fetch} \longrightarrow \text{deep\_verify} \longrightarrow \text{execute} \longrightarrow \text{backdate}$$
-Modifying a single parameter or equation re-evaluates only transitively invalidated DAE components.
+Cross-language traceability is enforced algebraically via **Double-Pushout (DPO)** graph rewriting (`packages/dsl/src/tgg.ts`) with **Critical Pair Analysis (CPA)** confluence verification (`packages/dsl/src/cpa.ts`). Changes in SysML v2 requirements, Modelica parameters, STEP CAD assemblies, or ModelScript `@unmanaged` structs propagate bidirectionally without losing comments or formatting.
 
-### 4. Coordinated Nelson-Oppen Multi-Theory Solvers
+### 4. Multi-Domain Theory Coordinator ($\text{CDCL}(\mathcal{T})$)
 
-Formal verification combines distinct formal domains (Description Logic, non-linear interval arithmetic, continuous zonotope reachability, and 3D CAD collision checks) through an extensible Nelson-Oppen theory coordinator using CDCL(T) case splitting.
-
-### 5. N-Ary Computable Digital Thread Hypergraph
-
-Unlike legacy point-to-point integrations or passive PLM metadata links, ModelScript connects all engineering domains through a linear-memory alignment hypergraph (`@modelscript/runtime/interop/thread_hypergraph`). Hyperedges link requirements (SysML v2), physical states (Modelica), 3D solid geometry (STEP), continuum patches (CFD/FEA), and domain ontologies (OWL2). The thread is _computable_: changes propagate automatically via TGG graph rewrite rules, physical states drive dynamic CAD transformations, and multi-theory oracles verify cross-domain contracts with cryptographically verifiable proof manifests.
+Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic (`OntologyTheoryOracle`), SysML v2 intervals (`ConstraintTheoryOracle`), Zones/Octagons (`AbstractDomainOracle`), Barrier Certificates & Taylor Flowpipes (`ContinuousSafetyOracle`), DAE trajectories (`DynamicSimulationOracle`), 3D B-Rep clearance (`SpatialPhysicsOracle`), FEA/CFD contracts (`CaeContractOracle`), DAE structural matching (`CausalizationOracle`), SI dimensional analysis (`DimensionalOracle`), Assume-Guarantee refinement (`EntailmentOracle`), Kirchhoff/stream conservation (`FlowAlgebraOracle`), AP242 GD&T stack-up (`ToleranceStackOracle`), and Conformal UQ (`UqOracle`)—exchange variable bounds and Nelson-Oppen equalities until a global fixpoint or minimal unsatisfiable core (`UnsatCore`) is reached.
 
 ---
 
 ## Monorepo Package Matrix
 
-| Package                                                                                           | Workspace           | Role                                                                                               |
-| :------------------------------------------------------------------------------------------------ | :------------------ | :------------------------------------------------------------------------------------------------- |
-| [`@modelscript/dsl`](https://github.com/modelscript/modelscript/tree/main/packages/dsl)           | `packages/dsl`      | Grammar combinators, WASM GLR parser compiler (`buildParser`), TGG compiler, and E-graph rewriting |
-| [`@modelscript/runtime`](https://github.com/modelscript/modelscript/tree/main/packages/runtime)   | `packages/runtime`  | `DAEBuilder`, linear memory CST arenas, Salsa `QueryEngine`, and Nelson-Oppen theory coordinator   |
-| [`@modelscript/simulate`](https://github.com/modelscript/modelscript/tree/main/packages/simulate) | `packages/simulate` | SUNDIALS CVODE/IDA numerical integrators, WebGPU batched ODE solver, and surrogate ROM models      |
-| [`@modelscript/lsp`](https://github.com/modelscript/modelscript/tree/main/packages/lsp)           | `packages/lsp`      | Multi-language Language Server Protocol server and background worker pool                          |
-| [`@modelscript/diagram`](https://github.com/modelscript/modelscript/tree/main/packages/diagram)   | `packages/diagram`  | Polyglot diagram engine, auto-layout, and SVG rendering                                            |
-| [`@modelscript/exchange`](https://github.com/modelscript/modelscript/tree/main/packages/exchange) | `packages/exchange` | FMI 2.0/3.0 FMU export/import and SSP container packaging                                          |
-| [`@modelscript/cad`](https://github.com/modelscript/modelscript/tree/main/packages/cad)           | `packages/cad`      | CAD engine: CSG primitives, OpenCascade kernels, and STEP B-Rep parsing                            |
-| [`@modelscript/mcp`](https://github.com/modelscript/modelscript/tree/main/packages/mcp)           | `packages/mcp`      | Model Context Protocol server exposing compiler and simulation tools to AI agents                  |
+| Package                   | Path                | Primary Responsibility                                                                                                                |
+| :------------------------ | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------ |
+| `@modelscript/dsl`        | `packages/dsl`      | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs         |
+| `@modelscript/runtime`    | `packages/runtime`  | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, 13 Formal Theory Oracles |
+| `@modelscript/simulate`   | `packages/simulate` | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, DOPRI5, Dommel EMT), WebGPU batched solver, FNO surrogates, Monte Carlo         |
+| `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, Gerber ECAD parser            |
+| `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan connection router, SVG/Canvas renderer, dark-mode color inversion              |
+| `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, WebSerial/AudioWorklet HIL           |
+| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server, semantic tokens, hover, go-to-definition, code actions, background worker pool                             |
+| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 25+ polyglot compilation, simulation, CAD, and verification tools to AI agents         |
+| `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports                   |
+| `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)             |
+| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)         |
+| `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                        |
+| `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Polyglot Playground and visual modeling environment                                                        |

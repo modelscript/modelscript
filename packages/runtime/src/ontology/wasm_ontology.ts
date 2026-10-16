@@ -14,6 +14,8 @@ export interface ProvenanceToken {
   readonly sourceUri?: string;
   readonly startByte?: number;
   readonly endByte?: number;
+  readonly startOffset?: number;
+  readonly endOffset?: number;
   readonly symbolId?: string | number;
 }
 
@@ -24,6 +26,8 @@ export interface OntologyProjectionResult {
     uri?: string;
     startByte?: number;
     endByte?: number;
+    startOffset?: number;
+    endOffset?: number;
     sourceLang?: string;
     symbolId?: string | number;
   }[];
@@ -384,6 +388,8 @@ export interface SHACLViolation {
     uri?: string;
     startByte?: number;
     endByte?: number;
+    startOffset?: number;
+    endOffset?: number;
     sourceLang?: string;
     symbolId?: string | number;
   }[];
@@ -996,6 +1002,8 @@ export interface WasmOntologyInstance {
   projection_projectAllStubs?(sourceLangId: number): number;
   ontology_internString?(strPtr: number, strLen: number, hashLo: number, hashHi: number): number;
   ontology_extractString?(id: number, outPtr: number): number;
+  ontology_extractStringBounded?(id: number, outPtr: number, maxLen: number): number;
+  ontology_getStringLen?(id: number): number;
   ontology_getStringCompressionRatio?(): number;
   ontology_getStringCount?(): number;
   ontology_getRawStringBytes?(): number;
@@ -4353,14 +4361,18 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   public extractStringWasm(id: number): string {
     if (!this._wasmInstance?.ontology_extractString || !this._wasmInstance.memory) return "";
     let ptr = 0;
-    const maxLen = 4096;
+    const exactLen = this._wasmInstance.ontology_getStringLen ? this._wasmInstance.ontology_getStringLen(id) : 0;
+    const maxLen = exactLen > 0 ? exactLen : 4096;
     if (this._wasmInstance.alloc) {
       ptr = this._wasmInstance.alloc(maxLen);
     } else {
       ptr = this._wasmInstance.ontology_getQueryBuffer ? this._wasmInstance.ontology_getQueryBuffer() : 1024;
     }
-    const len = this._wasmInstance.ontology_extractString(id, ptr);
-    const mem8 = new Uint8Array(this._wasmInstance.memory.buffer, ptr, len);
+    const len = this._wasmInstance.ontology_extractStringBounded
+      ? this._wasmInstance.ontology_extractStringBounded(id, ptr, maxLen)
+      : this._wasmInstance.ontology_extractString(id, ptr);
+    const safeLen = Math.min(len, maxLen);
+    const mem8 = new Uint8Array(this._wasmInstance.memory.buffer, ptr, safeLen);
     const decoder = new TextDecoder();
     const str = decoder.decode(mem8);
     if (this._wasmInstance.alloc && this._wasmInstance.free) {
@@ -5056,6 +5068,8 @@ export function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | 
     namePath: "iri",
     startByte: 0,
     endByte: 0,
+    startOffset: 0,
+    endOffset: 0,
     parentId: null,
     exports: [],
     inherits: [],

@@ -29,7 +29,7 @@ features:
     link: /architecture/glr-parser
   - icon: 🔍
     title: Real-Time Linting & Diagnostics
-    details: Over 15 compiler lint rules covering syntax errors, unresolved references, type mismatches, and structural consistency checks.
+    details: Over 200 compiler lint rules across 7 languages covering syntax errors, unresolved references, type mismatches, and structural consistency checks.
     link: /reference/linter-rules
   - icon: 🧬
     title: Arena DAE Flattening

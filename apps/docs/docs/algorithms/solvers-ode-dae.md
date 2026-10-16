@@ -91,6 +91,46 @@ Coordinates multi-rate, multi-vendor FMI Functional Mock-up Units (FMUs) and SSP
 
 ---
 
+## 6. Dommel Companion-Circuit EMT & Bergeron Traveling-Wave Solver
+
+### Academic Citations
+
+- **Dommel, H. W. (1969)**. _"Digital Computer Solution of Electromagnetic Transients in Single- and Multiphase Networks."_  
+  **IEEE Transactions on Power Apparatus and Systems**, PAS-88(4), pp. 388–399.  
+  DOI: [10.1109/TPAS.1969.292459](https://doi.org/10.1109/TPAS.1969.292459)
+- **Marti, J. R. (1982)**. _"Accurate Modelling of Frequency-Dependent Transmission Lines in Electromagnetic Transient Simulations."_  
+  **IEEE Transactions on Power Apparatus and Systems**, PAS-101(1), pp. 147–157.  
+  DOI: [10.1109/TPAS.1982.317332](https://doi.org/10.1109/TPAS.1982.317332)
+
+### ModelScript Rationale & Modifications
+
+Implemented in `EmtSolver` (`packages/simulate/src/solvers/emt/emt-solver.ts`), this solver targets microsecond-scale electromagnetic transients, power electronics switching (IGBTs/breakers), and distributed transmission lines imported from `@modelscript/pscad`:
+
+- **Trapezoidal Companion Models & Constant Nodal Matrix**: Inductors ($G_L = \frac{\Delta t}{2L}$) and capacitors ($G_C = \frac{2C}{\Delta t}$) are discretized into Norton companion equivalents $\mathbf{G}\mathbf{v}(t) = \mathbf{i}_{\text{hist}}(t - \Delta t) + \mathbf{i}_{\text{src}}(t)$, allowing $\mathbf{G}$ to remain constant between switching events.
+- **Critical Damping Adjustment (CDA)**: Automatically transitions from Trapezoidal to Backward Euler integration ($G_L = \frac{\Delta t}{L}, G_C = \frac{C}{\Delta t}$) for two half-steps ($\Delta t / 2$) immediately after any breaker or semiconductor switching discontinuity to suppress artificial $dv/dt$ numerical oscillations.
+- **Bergeron Traveling-Wave Line Decoupling & Norton FMU Interface**: Distributed transmission lines with propagation delay $\tau = \ell / v \ge \Delta t$ decouple the nodal admittance matrix into independent sub-grids using interpolated history ring buffers, and expose `getNortonEquivalent(portNode)` ($I_{\text{eq}}, G_{\text{eq}}$) for zero-delay FMI Co-Simulation coupling.
+
+---
+
+## 7. High-Order Taylor Model Flowpipe Integration
+
+### Academic Citations
+
+- **Makino, K., & Berz, M. (2003)**. _"Taylor Models and Other Validated Functional Inclusion Methods."_  
+  **International Journal of Pure and Applied Mathematics**, 4(4), pp. 379–456.
+- **Chen, X., Ábrahám, E., & Sankaranarayanan, S. (2013)**. _"Flow\*: An Analyzer for Non-Linear Hybrid Systems."_  
+  **Computer Aided Verification (CAV 2013)**, LNCS vol. 8044, pp. 258–263.  
+  DOI: [10.1007/978-3-642-39799-8_18](https://doi.org/10.1007/978-3-642-39799-8_18)
+
+### ModelScript Rationale & Modifications
+
+Implemented in `TaylorModel` (`packages/runtime/src/analysis/wasm_taylor_model.ts`), validated Taylor Model arithmetic bounds all trajectories of a non-linear ODE/DAE system subject to uncertain initial sets $x(0) \in X_0$ and parameter intervals without wrapping-effect blowup:
+
+- **Polynomial + Interval Remainder Representation**: Represents each state reachable tube over normalized domain $\mathbf{z} \in [-1, 1]^d$ as a multivariate polynomial $P_k(\mathbf{z})$ of order $k$ plus a sound interval remainder $I = [\underline{r}, \overline{r}]$, where truncated higher-order terms ($> k$) are conservatively swept into $I$.
+- **Picard-Lindelöf Validated Operator**: Evaluates the contractive Picard integral operator $\mathcal{P}(X)(t) = X_0 + \int_0^t f(s, X(s))\,ds$ directly on Taylor models to construct guaranteed continuous-time flowpipes consumed by `ContinuousSafetyOracle` and SysML v2 hybrid state-machine reachability (`hybrid-flowpipe-bridge.ts`).
+
+---
+
 ## Upstream & Downstream Pipeline Connections
 
 - **Upstream Inputs**:
@@ -98,4 +138,4 @@ Coordinates multi-rate, multi-vendor FMI Functional Mock-up Units (FMUs) and SSP
   - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./surrogates-linear-algebra.md).
 - **Downstream Consumers**:
   - Powers `msx simulate`, `msx optimize`, and the Web IDE charting canvas.
-  - Feeds state trajectories into [`Signal Temporal Logic (STL) Monitor`](./theory-coordinator.md) and formal verification oracles.
+  - Feeds state trajectories and validated flowpipes into [`Signal Temporal Logic (STL) Monitor & Theory Coordinator`](./theory-coordinator.md) and formal verification oracles.

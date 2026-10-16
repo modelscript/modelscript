@@ -110,7 +110,9 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
       }
     };
 
-    webviewPanel.webview.onDidReceiveMessage(async (message) => {
+    const cleanupCallbacks: (() => void)[] = [];
+
+    const msgSubscription = webviewPanel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
         case "ready":
           await parseAndSendConfig();
@@ -167,7 +169,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
 
             let resultsLoaded = false;
             const loadResults = async () => {
-              if (resultsLoaded) return;
+              if (resultsLoaded || disposed) return;
               resultsLoaded = true;
               try {
                 const meshPayload = await cloudClient.fetchMeshPayload(jobId);
@@ -184,16 +186,21 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
                     pressureDrop: meshPayload.stats?.maxStress ?? 101325,
                   },
                 };
-                webviewPanel.webview.postMessage({ type: "cfdResults", data: cfdPayload });
+                if (!disposed) {
+                  webviewPanel.webview.postMessage({ type: "cfdResults", data: cfdPayload });
+                }
                 vscode.window.showInformationMessage(`SU2 job #${jobId} completed. Streamed results to 3D viewport.`);
               } catch (fetchErr: any) {
                 console.warn(`[cfgEditorProvider] Could not load mesh payload for job #${jobId}:`, fetchErr?.message);
               } finally {
-                webviewPanel.webview.postMessage({ type: "setLoading", data: false });
+                if (!disposed) {
+                  webviewPanel.webview.postMessage({ type: "setLoading", data: false });
+                }
               }
             };
 
-            cloudClient.connectTelemetry(jobId, (event) => {
+            const disconnectTelemetry = cloudClient.connectTelemetry(jobId, (event) => {
+              if (disposed) return;
               webviewPanel.webview.postMessage({ type: "telemetryEvent", data: event });
 
               if (
@@ -203,6 +210,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
                 loadResults();
               }
             });
+            cleanupCallbacks.push(disconnectTelemetry);
 
             const pollInterval = setInterval(async () => {
               if (resultsLoaded || disposed) {
@@ -216,7 +224,9 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
                   loadResults();
                 } else if (status.status === "failed" || status.status === "cancelled") {
                   clearInterval(pollInterval);
-                  webviewPanel.webview.postMessage({ type: "setLoading", data: false });
+                  if (!disposed) {
+                    webviewPanel.webview.postMessage({ type: "setLoading", data: false });
+                  }
                   vscode.window.showErrorMessage(`Cloud SU2 CFD job #${jobId} ${status.status}.`);
                 }
               } catch {
@@ -224,7 +234,11 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
               }
             }, 1000);
 
-            setTimeout(() => clearInterval(pollInterval), 600000);
+            const pollTimeout = setTimeout(() => clearInterval(pollInterval), 600000);
+            cleanupCallbacks.push(() => {
+              clearInterval(pollInterval);
+              clearTimeout(pollTimeout);
+            });
           } catch (err: any) {
             vscode.window.showErrorMessage(`Cloud CFD dispatch failed: ${err.message || err}`);
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
@@ -422,6 +436,10 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
           });
 
           const interval = setInterval(() => {
+            if (disposed) {
+              clearInterval(interval);
+              return;
+            }
             if (completed < total) {
               runs[completed].status = "completed";
               runs[completed].scalars = {
@@ -447,6 +465,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
               vscode.window.showInformationMessage(`DoE Sweep completed: ${total} runs successful.`);
             }
           }, 150);
+          cleanupCallbacks.push(() => clearInterval(interval));
           break;
         }
 
@@ -482,7 +501,14 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       disposed = true;
+      msgSubscription.dispose();
       changeSubscription.dispose();
+      for (const cleanup of cleanupCallbacks) {
+        try {
+          cleanup();
+        } catch {}
+      }
+      cleanupCallbacks.length = 0;
     });
   }
 
@@ -496,6 +522,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} https: http: ws: wss: data: blob:; worker-src 'self' blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CFD Config 3D Viewer</title>
     <style>

@@ -26,6 +26,7 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
       { title: "Introduction", relativePath: "guide/introduction.md" },
       { title: "Installation & Requirements", relativePath: "guide/installation.md" },
       { title: "Getting Started", relativePath: "guide/getting-started.md" },
+      { title: "Platform Administration", relativePath: "guide/administration.md" },
     ],
   },
   {
@@ -38,14 +39,17 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
       { title: "Triple Graph Grammars", relativePath: "architecture/tgg.md" },
       { title: "Nelson-Oppen Coordinator", relativePath: "architecture/theory-coordinator.md" },
       { title: "Simulation Solvers", relativePath: "architecture/simulation-solvers.md" },
+      { title: "SIL & Real-Time HIL Runtime", relativePath: "architecture/hil-wasm-runtime.md" },
     ],
   },
   {
     partTitle: "Part III: Polyglot Languages & Formats",
     files: [
       { title: "Language Support Overview", relativePath: "languages/overview.md" },
+      { title: "ModelScript (.msx) Native Language", relativePath: "languages/modelscript.md" },
       { title: "Modelica Physical Modeling", relativePath: "languages/modelica.md" },
       { title: "SysML v2 & KerML", relativePath: "languages/sysml2.md" },
+      { title: "PSCAD Power Systems", relativePath: "languages/pscad.md" },
       { title: "STEP CAD (ISO 10303)", relativePath: "languages/step.md" },
       { title: "OWL2 Ontologies", relativePath: "languages/owl2.md" },
       { title: "CSV Telemetry", relativePath: "languages/csv.md" },
@@ -88,30 +92,81 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
     files: [
       { title: "Compiler Linter Rules", relativePath: "reference/linter-rules.md" },
       { title: "Standards & Export Formats", relativePath: "reference/export-formats.md" },
+      { title: "MCP Server & IDE Workbench", relativePath: "reference/mcp-and-ide.md" },
     ],
   },
 ];
 
-function renderMath(text: string): string {
-  // Render display math: $$ ... $$
-  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
-    try {
-      return `<div class="math-display">${katex.renderToString(math.trim(), { displayMode: true, throwOnError: false })}</div>`;
-    } catch {
-      return `<pre>$$${math}$$</pre>`;
-    }
+function toSectionId(relativePath: string): string {
+  return relativePath.replace(/\.md$/, "").replace(/\//g, "-");
+}
+
+function preprocessAndParseMarkdown(raw: string, currentRelativePath: string): string {
+  const codePlaceholders: string[] = [];
+  const mathPlaceholders: string[] = [];
+
+  // 1. Convert ```mermaid ... ``` into <div class="mermaid">...</div> and stash so math/code regexes skip it
+  raw = raw.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
+    const idx = codePlaceholders.length;
+    codePlaceholders.push(`<div class="mermaid">\n${code.trim()}\n</div>`);
+    return `\n\n<!--CODE_PLACEHOLDER_${idx}-->\n\n`;
   });
 
-  // Render inline math: $ ... $
-  text = text.replace(/\$([^$\n]+?)\$/g, (_, math) => {
-    try {
-      return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
-    } catch {
-      return `<code>$${math}$</code>`;
-    }
+  // 2. Temporarily stash fenced code blocks (``` ... ```) so $ inside code is never treated as math
+  raw = raw.replace(/```[\s\S]*?```/g, (match) => {
+    const idx = codePlaceholders.length;
+    codePlaceholders.push(match);
+    return `<!--CODE_PLACEHOLDER_${idx}-->`;
   });
 
-  return text;
+  // 3. Temporarily stash inline code spans (` ... `) so $ inside inline code is never treated as math
+  raw = raw.replace(/`[^`\n]+`/g, (match) => {
+    const idx = codePlaceholders.length;
+    codePlaceholders.push(match);
+    return `<!--CODE_PLACEHOLDER_${idx}-->`;
+  });
+
+  // 4. Stash display math: $$ ... $$
+  raw = raw.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
+    const idx = mathPlaceholders.length;
+    try {
+      mathPlaceholders.push(
+        `<div class="math-display">${katex.renderToString(math.trim(), { displayMode: true, throwOnError: false })}</div>`,
+      );
+    } catch {
+      mathPlaceholders.push(`<pre>$$${math}$$</pre>`);
+    }
+    return `<!--MATH_PLACEHOLDER_${idx}-->`;
+  });
+
+  // 5. Stash inline math: $ ... $
+  raw = raw.replace(/\$([^$\n]+?)\$/g, (_, math) => {
+    const idx = mathPlaceholders.length;
+    try {
+      mathPlaceholders.push(katex.renderToString(math.trim(), { displayMode: false, throwOnError: false }));
+    } catch {
+      mathPlaceholders.push(`<code>$${math}$</code>`);
+    }
+    return `<!--MATH_PLACEHOLDER_${idx}-->`;
+  });
+
+  // 6. Restore fenced and inline code blocks for marked.parse
+  raw = raw.replace(/<!--CODE_PLACEHOLDER_(\d+)-->/g, (_, idxStr) => codePlaceholders[Number(idxStr)]);
+
+  // 7. Normalize relative markdown links: [foo](./bar.md) or [foo](../dir/bar.md#anchor) -> [foo](#resolved-section-id)
+  const currentDir = path.posix.dirname(currentRelativePath.replace(/\\/g, "/"));
+  raw = raw.replace(/\]\((\.\.?\/[a-zA-Z0-9_/-]+)\.md(?:#[a-zA-Z0-9_-]+)?\)/g, (_, relTarget: string) => {
+    const resolved = path.posix.normalize(path.posix.join(currentDir, `${relTarget}.md`));
+    return `](#${toSectionId(resolved)})`;
+  });
+
+  // 8. Parse markdown with marked, then inject rendered KaTeX HTML so marked never mangles <math> or ~ inside KaTeX
+  const parsedHtml = marked.parse(raw, { async: false }) as string;
+  const withMath = parsedHtml.replace(
+    /<!--MATH_PLACEHOLDER_(\d+)-->/g,
+    (_, idxStr) => mathPlaceholders[Number(idxStr)],
+  );
+  return processAlerts(withMath);
 }
 
 function processAlerts(html: string): string {
@@ -123,22 +178,6 @@ function processAlerts(html: string): string {
       <div class="alert-content">${content}</div>
     </div>`;
   });
-}
-
-function preprocessMarkdown(raw: string): string {
-  // Convert ```mermaid ... ``` into <div class="mermaid">...</div>
-  raw = raw.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
-    return `<div class="mermaid">\n${code.trim()}\n</div>`;
-  });
-
-  // Convert math before markdown processing
-  raw = renderMath(raw);
-
-  // Normalize relative markdown links: [foo](./bar.md) -> [foo](#bar)
-  raw = raw.replace(/\]\(\.\/([a-zA-Z0-9_-]+)\.md\)/g, "](#$1)");
-  raw = raw.replace(/\]\(\.\.\/([a-zA-Z0-9_/-]+)\.md\)/g, "](#$1)");
-
-  return raw;
 }
 
 function generateHtml(): string {
@@ -171,11 +210,9 @@ function generateHtml(): string {
         continue;
       }
 
-      const fileId = path.basename(file.relativePath, ".md");
+      const fileId = toSectionId(file.relativePath);
       const rawMd = fs.readFileSync(filePath, "utf-8");
-      const processedMd = preprocessMarkdown(rawMd);
-      const parsedHtml = marked.parse(processedMd, { async: false }) as string;
-      const finalHtml = processAlerts(parsedHtml);
+      const finalHtml = preprocessAndParseMarkdown(rawMd, file.relativePath);
 
       tocHtml += `<li><a href="#${fileId}"><span class="toc-ch-num">${chapterIndex}.</span> ${file.title}</a></li>`;
 

@@ -210,9 +210,24 @@ function renderStaticWorkbench(): string {
     { scheme: scheme, authority: host, path: '/static/devextensions' },
     { scheme: scheme, authority: host, path: '/static/extensions/github-fs' },
   ];
+  config.configurationDefaults = config.configurationDefaults || {};
+  config.configurationDefaults["files.associations"] = {
+    "*.cfg": "cfd",
+    "*.cfgt": "cfd",
+    "*.su2": "cfd",
+    "*.inp": "fea",
+    "*.inpt": "fea",
+    "*.bdf": "fea"
+  };
   if (hash.startsWith('memfs')) {
     var template = hash.split(':')[1] || 'empty';
-    document.title = 'New Project — ModelScript IDE';
+    if (template.startsWith('artifact-')) {
+      document.title = 'Artifact #' + template.slice(9) + ' — ModelScript IDE';
+    } else if (template.startsWith('package-')) {
+      document.title = 'Package ' + template.slice(8) + ' — ModelScript IDE';
+    } else {
+      document.title = 'New Project — ModelScript IDE';
+    }
     config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
   } else {
     var parts = hash.split('@');
@@ -222,8 +237,7 @@ function renderStaticWorkbench(): string {
     var owner = p[0] || 'modelscript';
     var repo = p[1] || 'modelscript';
     document.title = owner + '/' + repo + ' — ModelScript IDE';
-    config.folderUri.path = '/' + owner + '/' + repo;
-    config.folderUri.query = 'ref=' + ref;
+    config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
   }
   
   // Same-origin extension host (no wildcard DNS required)
@@ -232,6 +246,34 @@ function renderStaticWorkbench(): string {
   config.productConfiguration.webEndpointUrlTemplate = endpoint;
   
   el.setAttribute('data-settings', JSON.stringify(config));
+
+  // Notify parent window when embedded in ModelScript Hub shell
+  if (window.parent && window.parent !== window) {
+    try {
+      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, window.location.origin);
+    } catch (e) {}
+
+    window.addEventListener('message', function(ev) {
+      if (ev.origin !== window.location.origin && !ev.origin.endsWith('.modelscript.org')) return;
+      if (!ev.data || typeof ev.data !== 'object') return;
+      if (ev.data.type === 'MODELSCRIPT_AUTH_SYNC' && ev.data.token) {
+        try {
+          sessionStorage.setItem('modelscript.token', ev.data.token);
+          if (ev.data.user) {
+            sessionStorage.setItem('modelscript.user', JSON.stringify(ev.data.user));
+          }
+        } catch (e) {}
+      }
+      if (ev.data.type === 'MODELSCRIPT_MOUNT_ARTIFACT' && ev.data.artifactId) {
+        try {
+          sessionStorage.setItem('modelscript.artifact_' + ev.data.artifactId, JSON.stringify(ev.data));
+          if (ev.data.title) {
+            document.title = ev.data.title + ' — ModelScript IDE';
+          }
+        } catch (e) {}
+      }
+    });
+  }
 })();
 </script>`;
 

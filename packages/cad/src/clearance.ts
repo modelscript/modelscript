@@ -8,6 +8,7 @@
  * requirements into real-time CAD verification.
  */
 
+import type { ManifoldSurfaceMesh } from "./manifold-worker.js";
 import { IDENTITY, mat4Multiply } from "./transforms.js";
 import type { Assembly, Mat4, Solid, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
@@ -200,7 +201,36 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
  *   d = 0: touching surfaces.
  *   d < 0: penetration depth (collision/interference).
  */
+let aabbWasmScratch: { wasm: any; aPtr: number; bPtr: number } | null = null;
+
 export function computeAABBDistance(a: AABB, b: AABB): number {
+  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+  if (wasm && typeof wasm.cad_aabb_distance === "function") {
+    if (!aabbWasmScratch || aabbWasmScratch.wasm !== wasm) {
+      aabbWasmScratch = {
+        wasm,
+        aPtr: wasm.__new(6 * 8, 0),
+        bPtr: wasm.__new(6 * 8, 0),
+      };
+    }
+    const buf = wasm.memory.buffer as ArrayBuffer;
+    const va = new Float64Array(buf, aabbWasmScratch.aPtr, 6);
+    va[0] = a.min[0];
+    va[1] = a.min[1];
+    va[2] = a.min[2];
+    va[3] = a.max[0];
+    va[4] = a.max[1];
+    va[5] = a.max[2];
+    const vb = new Float64Array(buf, aabbWasmScratch.bPtr, 6);
+    vb[0] = b.min[0];
+    vb[1] = b.min[1];
+    vb[2] = b.min[2];
+    vb[3] = b.max[0];
+    vb[4] = b.max[1];
+    vb[5] = b.max[2];
+    return wasm.cad_aabb_distance(aabbWasmScratch.aPtr, aabbWasmScratch.bPtr);
+  }
+
   let dx = 0;
   if (a.max[0] < b.min[0]) dx = b.min[0] - a.max[0];
   else if (b.max[0] < a.min[0]) dx = a.min[0] - b.max[0];
@@ -333,8 +363,35 @@ export function verifyAssemblyClearance(
  * Evaluates projected bounding polygon footprint along the normal vector, returning
  * the aerodynamic reference area A_front (e.g. 0.030 m² for the nominal quadcopter).
  */
-export function computeProjectedFrontalArea(solid: Solid, normal: Vec3 = [0, 0, 1]): number {
-  const aabb = computeSolidAABB(solid);
+export function computeProjectedFrontalArea(solid: Solid | ManifoldSurfaceMesh, normal: Vec3 = [0, 0, 1]): number {
+  let aabb: AABB;
+  if ("vertices" in solid) {
+    const verts = solid.vertices;
+    if (verts.length === 0) {
+      aabb = { min: [0, 0, 0], max: [0, 0, 0] };
+    } else {
+      let minX = Infinity,
+        minY = Infinity,
+        minZ = Infinity;
+      let maxX = -Infinity,
+        maxY = -Infinity,
+        maxZ = -Infinity;
+      for (let i = 0; i < verts.length; i += 3) {
+        const x = verts[i]!;
+        const y = verts[i + 1]!;
+        const z = verts[i + 2]!;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z;
+        if (z > maxZ) maxZ = z;
+      }
+      aabb = { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+    }
+  } else {
+    aabb = computeSolidAABB(solid);
+  }
   const dx = Math.abs(aabb.max[0] - aabb.min[0]);
   const dy = Math.abs(aabb.max[1] - aabb.min[1]);
   const dz = Math.abs(aabb.max[2] - aabb.min[2]);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { LspContext } from "../lsp-context.js";
+import { getCachedOwl2Taxonomy } from "../utils/owl2-tree-utils.js";
 
 export interface OWL2ClassNode {
   iri: string;
@@ -68,16 +68,7 @@ export function registerOwl2Endpoints(context: LspContext): void {
       try {
         const store = context.workspaceManager.unifiedWorkspace?.owl2Store;
         if (!store || !store.axioms || store.axioms.length === 0) return [];
-        const reasoner = new TableauReasoner();
-        await reasoner.init();
-        reasoner.loadOntology(store.axioms);
-        reasoner.classify();
-
-        const taxonomy = reasoner.getTaxonomy();
-        const taxMap = new Map<string, (typeof taxonomy)[0]>();
-        for (const node of taxonomy) {
-          taxMap.set(node.iri, node);
-        }
+        const { taxonomy, taxMap } = await getCachedOwl2Taxonomy(store);
 
         // Collect defined classes and disjoint pairs from axioms
         const definedClasses = new Set<string>();
@@ -193,6 +184,33 @@ export function registerOwl2Endpoints(context: LspContext): void {
           if (ax.type === "InverseObjectProperty") {
             inverseMap.set(ax.propertyIri, ax.inversePropertyIri);
             inverseMap.set(ax.inversePropertyIri, ax.propertyIri);
+          }
+          const anyAx = ax as any;
+          if ((anyAx.type === "ObjectPropertyDomain" || anyAx.type === "DataPropertyDomain") && anyAx.propertyIri) {
+            const dom = anyAx.domain ?? anyAx.domainIri ?? anyAx.classIri ?? anyAx.targetClassIri;
+            if (dom) {
+              const d = domainsMap.get(anyAx.propertyIri) ?? new Set();
+              d.add(dom);
+              domainsMap.set(anyAx.propertyIri, d);
+            }
+          }
+          if ((anyAx.type === "ObjectPropertyRange" || anyAx.type === "DataPropertyRange") && anyAx.propertyIri) {
+            const rng = anyAx.range ?? anyAx.rangeIri ?? anyAx.classIri ?? anyAx.targetClassIri;
+            if (rng) {
+              const r = rangesMap.get(anyAx.propertyIri) ?? new Set();
+              r.add(rng);
+              rangesMap.set(anyAx.propertyIri, r);
+            }
+          }
+          if (ax.type === "UniversalRestriction" && ax.propertyIri && ax.targetClassIri) {
+            if (ax.classIri && ax.classIri !== "owl:Thing") {
+              const d = domainsMap.get(ax.propertyIri) ?? new Set();
+              d.add(ax.classIri);
+              domainsMap.set(ax.propertyIri, d);
+            }
+            const r = rangesMap.get(ax.propertyIri) ?? new Set();
+            r.add(ax.targetClassIri);
+            rangesMap.set(ax.propertyIri, r);
           }
         }
 

@@ -743,6 +743,7 @@
                                     const raw = result.data;
                                     const uint32Data = raw instanceof Uint32Array ? raw
                                                      : Array.isArray(raw) ? new Uint32Array(raw)
+                                                     : ArrayBuffer.isView(raw) ? (raw.byteOffset % 4 === 0 ? new Uint32Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 4)) : new Uint32Array(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength).slice().buffer))
                                                      : raw.buffer ? new Uint32Array(raw.buffer)
                                                      : new Uint32Array(Object.values(raw));
                                     return { data: uint32Data, resultId: String(Date.now()) };
@@ -767,6 +768,7 @@
                                     const raw = result.data;
                                     const uint32Data = raw instanceof Uint32Array ? raw
                                                      : Array.isArray(raw) ? new Uint32Array(raw)
+                                                     : ArrayBuffer.isView(raw) ? (raw.byteOffset % 4 === 0 ? new Uint32Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 4)) : new Uint32Array(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength).slice().buffer))
                                                      : raw.buffer ? new Uint32Array(raw.buffer)
                                                      : new Uint32Array(Object.values(raw));
                                     return { data: uint32Data, resultId: String(Date.now()) };

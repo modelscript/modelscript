@@ -56,7 +56,7 @@ const features = [
 
       <div class="vscode-actions">
         <a
-          href="https://marketplace.visualstudio.com/items?itemName=modelscript.vscode"
+          href="https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript"
           target="_blank"
           rel="noopener noreferrer"
           class="btn-primary"
@@ -64,7 +64,7 @@ const features = [
           Install from Marketplace &rarr;
         </a>
         <a
-          href="https://open-vsx.org/extension/modelscript/vscode"
+          href="https://open-vsx.org/extension/modelscript/modelscript"
           target="_blank"
           rel="noopener noreferrer"
           class="btn-secondary"

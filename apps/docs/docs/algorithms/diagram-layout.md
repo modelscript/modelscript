@@ -5,6 +5,8 @@
 - Topology-Shape-Metrics Engine: `TsmLayoutEngine` in [`packages/diagram/src/tsm-layout.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/tsm-layout.ts)
 - Port Constraint & Alignment Solver: `PortIlpSolver` in [`packages/diagram/src/port-ilp-solver.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/port-ilp-solver.ts)
 - Obstacle-Avoiding Channel Router: `PortRouter` in [`packages/diagram/src/port-router.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/port-router.ts)
+- Specialized Engineering Diagram Layouts: `synthesizeFaultTreeDiagram` ([`packages/diagram/src/fault-tree.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/fault-tree.ts)), `computeSequenceLayout` ([`packages/diagram/src/sequence-layout.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/sequence-layout.ts)), `applySwimlaneLayout` ([`packages/diagram/src/swimlane-layout.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/swimlane-layout.ts)), and `buildPscadDiagram` ([`packages/diagram/src/pscad-diagram-builder.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/pscad-diagram-builder.ts))
+- Semantic Visual Diffing & Collaborative Presence: `buildVisualDiffGraph` ([`packages/diagram/src/visual-diff-graph.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/visual-diff-graph.ts)) and `CollabManager` ([`packages/diagram/src/collab-manager.ts`](https://github.com/modelscript/modelscript/tree/main/packages/diagram/src/collab-manager.ts))
 
 ---
 
@@ -96,12 +98,43 @@ Renders clean multi-segment connection polylines:
   $$\text{Cost}(p \to q) = \text{dist}(p, q) + \lambda_{\text{bend}} \cdot [\text{isTurn}(p, q)]$$
 - **Staggered Parallel Channels**: Multi-wire bus connections share a common corridor but are offset by `parallelIndex * channelSpacing`, preventing overlapping lines.
 
+### 4. Specialized Engineering Diagram Layouts
+
+Beyond acausal block schematics, ModelScript provides domain-specific geometric layout engines tailored to safety, behavioral, and power-systems engineering notations:
+
+1. **Fault Tree Gate Hierarchy Layout (`fault-tree.ts` / `fault-tree-layout.ts`)**:
+   - `synthesizeFaultTreeDiagram` transforms Minimal Cut Sets ($\text{MCS} = \{ C_1, \dots, C_m \}$) into four-tier standardized Fault Tree Analysis (FTA) diagrams:
+     - **Tier 1 ($y = 40$)**: Top Hazard Event rect node centered at $x_{\text{center}} = W / 2$.
+     - **Tier 2 ($y = 160$)**: Root Boolean `OR` gate (`createGateMarkup("OR")` SVG bezier shield) aggregating cut-set branches.
+     - **Tier 3 ($y = 280$)**: Intermediate `AND` gates for multi-point failure cut sets ($\text{order} > 1$), while order-1 Single Points of Failure (SPOFs) route directly in high-visibility crimson (`#dc2626`) to basic events.
+     - **Tier 4 ($y = 420$)**: Deduplicated circular Basic Event leaf nodes (`basicEventNodesMap`) distributed symmetrically across the horizontal span.
+2. **UML / SysML v2 Sequence & Activity Swimlane Layouts (`sequence-layout.ts`, `swimlane-layout.ts`)**:
+   - **Dual-Axis Sequence Layout (`computeSequenceLayout` / `applySequenceLayout`)**: Orders participant lifelines left-to-right ($x_i = x_{\text{left}} + i \cdot \Delta x_{\text{lifeline}} + W_{\text{hdr}}/2$), renders dashed vertical lifeline stems (`__seq_stem_*`), and stacks temporal messages top-to-bottom ($y_{k+1} = y_k + \Delta y_{\text{msg}}$) with distinct styling for synchronous (`sync`), asynchronous (`async`), dashed `reply`, and self-loop (`isSelf`, $1.5\times$ vertical spacing) messages.
+   - **2D Activity Swimlane Partitioning (`applySwimlaneLayout`)**: Groups SysML v2 action nodes into vertical or horizontal allocation partitions (`SwimlanePartition`), sizing uniform lane containers (`swimlane_<id>`) to the maximum member stack height and routing cross-lane object/control flows via `port-orthogonal-astar`.
+3. **PSCAD Power-System Single-Line Diagram (SLD) Busbar/Feeder Orthogonal Routing (`pscad-diagram-builder.ts` / `pscad-sld-builder.ts`)**:
+   - `buildPscadDiagram` renders `.pscx`/`.pslx` electromagnetic transient models into IEEE-standard Single-Line Diagrams with voltage-coded busbar glyphs ($\ge 200\text{ kV}$ red `#ff5252`, $\ge 69\text{ kV}$ amber `#ffab40`, $< 69\text{ kV}$ cyan `#40c4ff`), specialized IEEE apparatus vector glyphs (`transformerGlyph`, `generatorGlyph`, `inverterIbrGlyph`, `breakerGlyph`, `surgeArresterGlyph`, `faultGlyph`, `converterBridgeGlyph`), solder-dot wire T-junctions, and orthogonal feeder routing.
+
+### 5. Semantic Visual Diffing & Collaborative Presence
+
+1. **AST-Aware Structural Graph Diffing & Mental-Map Stabilization (`visual-diff-graph.ts`, `visual-diff-renderer.ts` / `visual-diff.ts`)**:
+   - `buildVisualDiffGraph` computes a semantic delta between `Base` and `Head` diagram revisions, classifying nodes and edges into `added`, `deleted`, `modified`, and `unchanged` states (`DiffStatus`).
+   - **Breaking Interface Detection**: Inspects property and port changes (`diffProperties`) against architectural breaking keys (`direction`, `isAbstract`, `typeName`, `multiplicity`, `causality`, `variability`, `flowDirection`) and flags deleted components or port-count mutations as `MODIFIED (BREAKING)`.
+   - **Anchor-Preserving Layout Stabilization (`computeIncrementalStabilization`)**: Locks `Base` node coordinates as immutable spatial anchors while iteratively relaxing newly added/modified `Head` nodes to eliminate bounding-box overlaps without destroying the reviewer's spatial mental map.
+2. **CRDT / WebSocket Cursor, Selection Lock & Spatial Delta Synchronization (`collab-manager.ts`)**:
+   - `CollabManager` coordinates real-time multi-user diagramming over WebSocket and VS Code Live Share transports:
+     - **60 FPS Spatial Delta Streaming (`broadcastSpatialDelta`)**: Streams live component drag transformations (`PlacementItem`) with Last-Write-Wins (`LWW`) timestamp conflict resolution (`d.timestamp >= existing.timestamp`).
+     - **Component Selection Locks (`SelectionLock`)**: Broadcasts per-peer component locks with distinct peer colors and automatic stale-peer heartbeat eviction (`purgeStalePeers`).
+     - **Anchored Visual Review Comments (`DiagramComment`)**: Synchronizes spatially pinned sticky-note threads (`addComment`, `resolveComment`) directly on the schematic canvas.
+
 ---
 
 ## Upstream & Downstream Integration
 
-| Pipeline Component  | Upstream Dependencies                                   | Downstream Consumers                                 |
-| :------------------ | :------------------------------------------------------ | :--------------------------------------------------- |
-| **PortIlpSolver**   | `SymbolIndex` connector ports, `Annotation` constraints | Port placement in `TsmLayoutEngine`                  |
-| **TsmLayoutEngine** | Polyglot connect graphs (Modelica, SysML v2)            | Node bounding box placement, routing channels        |
-| **PortRouter**      | Component layout coordinates, Port locations            | SVG polyline rendering, interactive 3D/2D IDE canvas |
+| Pipeline Component                  | Upstream Dependencies                                   | Downstream Consumers                                           |
+| :---------------------------------- | :------------------------------------------------------ | :------------------------------------------------------------- |
+| **PortIlpSolver**                   | `SymbolIndex` connector ports, `Annotation` constraints | Port placement in `TsmLayoutEngine`                            |
+| **TsmLayoutEngine**                 | Polyglot connect graphs (Modelica, SysML v2)            | Node bounding box placement, routing channels                  |
+| **PortRouter**                      | Component layout coordinates, Port locations            | SVG polyline rendering, interactive 3D/2D IDE canvas           |
+| **FaultTree / Sequence / Swimlane** | Safety MCS sets, SysML v2 interactions & activities     | X6 WebIDE canvas, headless SVG & PDF documentation export      |
+| **PscadDiagramBuilder**             | PSCAD `.pscx` / `.pslx` AST & bus/feeder netlists       | Power-system SLD viewer, EMT fault & breaker state overlays    |
+| **VisualDiffGraph & CollabManager** | Git Base/Head ASTs, WebSocket / Live Share peer streams | PR visual diff bundles (`html-diff-bundle.ts`), multi-user IDE |

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -24,15 +25,23 @@ export function runLanguageParserBuild(options) {
   const forceRebuild = process.argv.includes("--force");
   const outWasm = path.join(dir, "dist", "parser.wasm");
   const bindingsJs = path.join(dir, "src-gen", "bindings.js");
+  const bindingsDts = path.join(dir, "src-gen", "bindings.d.ts");
   const distBindingsJs = path.join(dir, "dist", "src-gen", "bindings.js");
+  const distBindingsDts = path.join(dir, "dist", "src-gen", "bindings.d.ts");
   const languagePath = fs.existsSync(path.join(dir, "src", "language.ts"))
     ? path.join(dir, "src", "language.ts")
     : path.join(dir, "language.ts");
   const dslDistPath = path.resolve(dir, "../../packages/dsl/dist/index.js");
-  const dslTemplatesPath = path.resolve(dir, "../../packages/dsl/dist/src-gen/runtime-templates.js");
+  const dslSrcTemplatesPath = path.resolve(dir, "../../packages/dsl/src/src-gen/runtime-templates.ts");
+  const dslTemplatesPath = fs.existsSync(dslSrcTemplatesPath)
+    ? dslSrcTemplatesPath
+    : path.resolve(dir, "../../packages/dsl/dist/src-gen/runtime-templates.js");
 
   const cacheDir = path.join(dir, ".cache");
   const cacheWasm = path.join(cacheDir, "parser.wasm");
+  const cacheHashFile = path.join(cacheDir, "parser.hash");
+  const cacheBindingsJs = path.join(cacheDir, "bindings.js");
+  const cacheBindingsDts = path.join(cacheDir, "bindings.d.ts");
 
   function getMaxMtime(targetPath) {
     if (!fs.existsSync(targetPath)) return 0;
@@ -46,8 +55,89 @@ export function runLanguageParserBuild(options) {
     return maxMtime;
   }
 
+  function hashPathInto(hash, targetPath) {
+    if (!fs.existsSync(targetPath)) return;
+    const stat = fs.statSync(targetPath);
+    if (!stat.isDirectory()) {
+      hash.update(targetPath);
+      hash.update(fs.readFileSync(targetPath));
+      return;
+    }
+    const entries = fs.readdirSync(targetPath, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      hashPathInto(hash, path.join(targetPath, entry.name));
+    }
+  }
+
+  function computeInputHash() {
+    const hash = crypto.createHash("sha256");
+    hash.update(langName);
+    hash.update(JSON.stringify(extraAscFlags));
+    hashPathInto(hash, languagePath);
+    hashPathInto(hash, dslDistPath);
+    hashPathInto(hash, dslTemplatesPath);
+    for (const extra of extraWatchFiles) {
+      hashPathInto(hash, path.join(dir, extra));
+    }
+    return hash.digest("hex");
+  }
+
+  function syncBindingsToDist() {
+    if (fs.existsSync(bindingsJs)) {
+      fs.mkdirSync(path.dirname(distBindingsJs), { recursive: true });
+      if (!fs.existsSync(distBindingsJs)) {
+        fs.copyFileSync(bindingsJs, distBindingsJs);
+      }
+      if (fs.existsSync(bindingsDts) && !fs.existsSync(distBindingsDts)) {
+        fs.copyFileSync(bindingsDts, distBindingsDts);
+      }
+    }
+  }
+
+  function persistCache(currentHash) {
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      if (fs.existsSync(outWasm)) {
+        fs.copyFileSync(outWasm, cacheWasm);
+      }
+      if (fs.existsSync(bindingsJs)) {
+        fs.copyFileSync(bindingsJs, cacheBindingsJs);
+      }
+      if (fs.existsSync(bindingsDts)) {
+        fs.copyFileSync(bindingsDts, cacheBindingsDts);
+      }
+      fs.writeFileSync(cacheHashFile, currentHash, "utf-8");
+    } catch {}
+  }
+
+  const currentHash = computeInputHash();
+
   function isParserUpToDate() {
     if (forceRebuild) return false;
+
+    // 1. Content-hash check (survives mtime updates when @modelscript/dsl rebuilds or CI cache restores)
+    if (fs.existsSync(cacheHashFile) && fs.existsSync(cacheWasm)) {
+      const savedHash = fs.readFileSync(cacheHashFile, "utf-8").trim();
+      const cacheStat = fs.statSync(cacheWasm);
+      if (savedHash === currentHash && cacheStat.size > 0) {
+        if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+          fs.mkdirSync(path.dirname(outWasm), { recursive: true });
+          fs.copyFileSync(cacheWasm, outWasm);
+        }
+        if (!fs.existsSync(bindingsJs) && fs.existsSync(cacheBindingsJs)) {
+          fs.mkdirSync(path.dirname(bindingsJs), { recursive: true });
+          fs.copyFileSync(cacheBindingsJs, bindingsJs);
+        }
+        if (!fs.existsSync(bindingsDts) && fs.existsSync(cacheBindingsDts)) {
+          fs.mkdirSync(path.dirname(bindingsDts), { recursive: true });
+          fs.copyFileSync(cacheBindingsDts, bindingsDts);
+        }
+        if (fs.existsSync(bindingsJs)) {
+          syncBindingsToDist();
+          return true;
+        }
+      }
+    }
 
     const latestInputTime = Math.max(
       getMaxMtime(languagePath),
@@ -62,6 +152,7 @@ export function runLanguageParserBuild(options) {
       if (cacheStat.size > 0 && cacheStat.mtimeMs > latestInputTime) {
         fs.mkdirSync(path.dirname(outWasm), { recursive: true });
         fs.copyFileSync(cacheWasm, outWasm);
+        persistCache(currentHash);
         return true;
       }
     }
@@ -73,23 +164,14 @@ export function runLanguageParserBuild(options) {
 
     if (latestInputTime > wasmTime) return false;
 
-    // Keep .cache in sync with valid outWasm
-    if (!fs.existsSync(cacheWasm) || fs.statSync(cacheWasm).mtimeMs < wasmTime) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-      fs.copyFileSync(outWasm, cacheWasm);
-    }
+    // Keep .cache and hash in sync with valid outWasm
+    persistCache(currentHash);
     return true;
   }
 
   if (isParserUpToDate()) {
     console.log(`[${langName}] WebAssembly parser is up to date, skipping GLR & asc build. (use --force to rebuild)`);
-    if (!fs.existsSync(distBindingsJs) && fs.existsSync(bindingsJs)) {
-      fs.mkdirSync(path.dirname(distBindingsJs), { recursive: true });
-      fs.copyFileSync(bindingsJs, distBindingsJs);
-      const bindingsDts = path.join(dir, "src-gen", "bindings.d.ts");
-      const distBindingsDts = path.join(dir, "dist", "src-gen", "bindings.d.ts");
-      if (fs.existsSync(bindingsDts)) fs.copyFileSync(bindingsDts, distBindingsDts);
-    }
+    syncBindingsToDist();
     return;
   }
 
@@ -158,10 +240,7 @@ execFileSync(
   fs.writeFileSync(buildScriptPath, buildScriptContent);
   try {
     execFileSync("npx", ["tsx", buildScriptPath], { stdio: "inherit", cwd: dir });
-    if (fs.existsSync(outWasm)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-      fs.copyFileSync(outWasm, cacheWasm);
-    }
+    persistCache(currentHash);
   } finally {
     if (fs.existsSync(buildScriptPath)) {
       fs.unlinkSync(buildScriptPath);

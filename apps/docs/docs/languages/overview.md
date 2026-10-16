@@ -1,68 +1,33 @@
-# Polyglot Engineering Languages
+# Polyglot Language Ecosystem
 
-ModelScript breaks down domain silos by providing first-class compiler and language server support for nine engineering languages. Every language features a native WebAssembly GLR incremental parser, shared CST arenas, and unified semantic queries — weaving together a cohesive **computable digital thread**.
-
----
-
-## Language Support Matrix
-
-| Language     | Directory            | Standard / Dialect             | Primary Domain                      | Parser Technology           |
-| :----------- | :------------------- | :----------------------------- | :---------------------------------- | :-------------------------- |
-| **Modelica** | `languages/modelica` | Modelica 3.x                   | 1D Multi-Domain Physical Simulation | WASM GLR (`parser.wasm`)    |
-| **SysML v2** | `languages/sysml2`   | SysML v2 / KerML               | Systems Architecture & Requirements | WASM GLR (`parser.wasm`)    |
-| **STEP**     | `languages/step`     | ISO 10303-21/203/214/242       | 3D CAD B-Rep Product Data           | WASM GLR (`parser.wasm`)    |
-| **OWL2**     | `languages/owl2`     | OWL 2 Functional-Style         | Ontological Knowledge & Taxonomies  | WASM GLR (`parser.wasm`)    |
-| **CSV**      | `languages/csv`      | RFC 4180 / Sensor CSV          | Telemetry & Calibration Datasets    | WASM GLR (`parser.wasm`)    |
-| **CFD**      | `languages/cfd`      | SU2 / OpenFOAM dialects        | Fluid Dynamics & Flow Boundaries    | WASM GLR (`parser.wasm`)    |
-| **FEA**      | `languages/fea`      | Bulk Data (.bdf) / Code_Aster  | Structural Stress & Finite Elements | WASM GLR (`parser.wasm`)    |
-| **OpenSCAD** | `languages/scad`     | OpenSCAD CSG                   | Programmatic 3D Solid Geometry      | WASM GLR (`parser.wasm`)    |
-| **SSP**      | `languages/ssp`      | Modelica Assoc. SSP 1.0        | Co-Simulation System Packaging      | WASM GLR / XML Parser       |
-| **PSCAD**    | `languages/pscad`    | PSCAD v4.6/v5.x (.pscx, .pswx) | Power Systems & EMT Transients      | XML Streaming AST / Netlist |
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All eleven engineering languages share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 
-## Unified Multi-Language Indexing
+## The 11 Supported Languages
 
-All languages share a unified symbol indexing interface defined in `@modelscript/dsl`:
-
-- **Flat Symbol Storage**: Every declaration is assigned a unique `SymbolId` and stored in a flat table with byte offsets back to source.
-- **Cross-Language References**: A SysML v2 component can directly reference a Modelica simulation model or STEP CAD file using URI identifiers.
-- **Single Workspace Index**: The Language Server Protocol (LSP) indexes mixed-language workspaces simultaneously, enabling cross-language go-to-definition, hover documentation, and rename refactorings.
-
-```mermaid
-flowchart TD
-    subgraph MultiFile ["Multi-Language Project Workspace"]
-        M1["system.sysml (Architecture)"]
-        M2["drive.mo (1D Physics)"]
-        M3["motor.step (3D CAD)"]
-        M4["domain.owl (Ontology Taxonomy)"]
-        M5["bench.csv (Sensor Telemetry)"]
-    end
-
-    subgraph UnifiedEngine ["Unified LSP & Query Engine"]
-        WI["WorkspaceIndex"]
-        QE["Salsa QueryEngine"]
-        TGG["TGG Graph Synchronizer"]
-    end
-
-    MultiFile --> WI
-    WI --> QE
-    QE --> TGG
-```
+| Language                          | Package                    | Extensions                               | Engineering Domain                                                             |
+| :-------------------------------- | :------------------------- | :--------------------------------------- | :----------------------------------------------------------------------------- |
+| **[Modelica 3.x](./modelica)**    | `@modelscript/modelica`    | `.mo`                                    | Multi-domain acausal physical modeling & DAE simulation                        |
+| **[SysML v2 & KerML](./sysml2)**  | `@modelscript/sysml2`      | `.sysml, .sysml2, .kerml`                | Systems architecture, requirements, state machines & verification              |
+| **[STEP (ISO 10303)](./step)**    | `@modelscript/step`        | `.step, .stp, .p21`                      | Mechanical CAD B-Rep geometry, assemblies & kinematic joints                   |
+| **[OWL2 Ontology](./owl2)**       | `@modelscript/owl2`        | `.owl, .owl2, .ofn, .ttl`                | Formal knowledge graphs, DL reasoning & SPARQL querying                        |
+| **[OpenSCAD](./scad)**            | `@modelscript/scad`        | `.scad`                                  | Parametric Constructive Solid Geometry (CSG)                                   |
+| **[SSP 1.0 / 2.0](./ssp)**        | `@modelscript/ssp`         | `.ssp, .ssd, .ssv`                       | Co-Simulation System Structure & Parameterization                              |
+| **[PSCAD / EMT](./pscad)**        | `@modelscript/pscad`       | `.pscx, .pslx, .pswx, .psmx, .cfg, .dat` | Electromagnetic transients, power networks & COMTRADE waveforms                |
+| **[CFD (SU2 & OpenFOAM)](./cfd)** | `@modelscript/cfd`         | `.cfd, .cfg, .cfgt, .su2`                | Computational Fluid Dynamics solver configuration & boundary markers           |
+| **[FEA](./fea)**                  | `@modelscript/fea`         | `.fea, .inp, .inpt, .bdf`                | CalculiX / Abaqus (`.inp`, `.inpt`) & NASTRAN (`.bdf`) structural mechanics    |
+| **[CSV](./csv)**                  | `@modelscript/csv`         | `.csv`                                   | Tabular empirical measurement series & lookup tables                           |
+| **[ModelScript](./modelscript)**  | `@modelscript/modelscript` | `.msx, .modelscript`                     | Native systems scripting, `@unmanaged struct` WASM/C++ kernels & FLWOR queries |
 
 ---
 
-## The 10-Domain Computable Digital Thread
+## Unified Polyglot Pipeline
 
-Rather than maintaining distinct files in isolation, ModelScript indexes these languages into a shared, linear-memory alignment hypergraph (`@modelscript/runtime/interop/thread_hypergraph`):
+Every language plugin implements the `LanguageDefinition` interface (`packages/dsl/src/language.ts`):
 
-1. **Architecture & Requirements**: SysML v2 part usages define requirements and structural hierarchies.
-2. **Physical Dynamics**: Modelica models define differential algebraic equations and power-conserving connections.
-3. **Power Grid & EMT Transients**: PSCAD projects define companion-circuit networks, Bergeron traveling-wave lines, and IEEE 2800 IBR grid code ride-through.
-4. **Geometric CAD**: STEP (ISO 10303) solids define mass properties, bounding volumes, and kinematic visual components.
-5. **Continuum Fields**: CFD and FEA dialects define boundary flow conditions and structural stress limits.
-6. **Ontologies & Taxonomies**: OWL2 knowledge bases formalize domain axioms and component classifications.
-7. **Telemetry & Calibration**: CSV streams feed empirical sensor data into parameter estimation and trade studies.
-8. **Packaging & Co-Simulation**: SSP topologies define FMI multi-model orchestration.
-
-Because the digital thread is **computable**, modifying a geometry file or parameter triggers automatic Salsa cache invalidation, TGG synchronization, and Nelson-Oppen verification across all connected domains.
+1. **Grammar DSL (`defineGrammar`)**: Compiled Ahead-of-Time into a compact `.wasm` binary parser table.
+2. **Symbol Indexer (`SymbolIndexer`)**: Walks the linear-memory CST and populates `SymbolEntry` declarations into the global `WorkspaceIndex`.
+3. **Salsa Queries (`queries`)**: Memoized semantic analyses (type resolution, unit inference, structural validation).
+4. **Compiler Lints (`lints`)**: Real-time diagnostics surfaced identically in the CLI (`msx lint`), LSP server, and Web IDE.
+5. **TGG Rules (`tggRules`)**: Declarative bidirectional synchronization rules linking AST nodes across languages (e.g., `SysMLv2 PartUsage` $\leftrightarrow$ `Modelica Component` $\leftrightarrow$ `STEP Product` $\leftrightarrow$ `ModelScript Struct`).

@@ -95,11 +95,84 @@ export function computeOptimalAllocation(options = {}) {
   };
 }
 
+function buildWorkspaceTestProjectMap() {
+  const map = new Map();
+  for (const group of ["packages", "languages", "apps"]) {
+    const groupDir = path.join(repoRoot, group);
+    if (!fs.existsSync(groupDir)) continue;
+    for (const entry of fs.readdirSync(groupDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const pkgDir = path.join(groupDir, entry.name);
+      const pkgJsonPath = path.join(pkgDir, "package.json");
+      if (!fs.existsSync(pkgJsonPath)) continue;
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        if (pkg.name && pkg.scripts && pkg.scripts.test) {
+          map.set(pkg.name, pkgDir);
+        }
+      } catch {}
+    }
+  }
+  return map;
+}
+
+function countTestFiles(dir) {
+  if (!fs.existsSync(dir)) return 0;
+  let count = 0;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "build" || entry.name === ".cache") {
+        continue;
+      }
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        count += countTestFiles(fullPath);
+      } else if (entry.isFile() && (entry.name.endsWith(".test.ts") || entry.name.startsWith("test-"))) {
+        count++;
+      }
+    }
+  } catch {}
+  return count;
+}
+
+export function partitionProjectsIntoShards(projects, totalShards, projectDirMap = buildWorkspaceTestProjectMap()) {
+  const weighted = projects.map((name) => {
+    const pkgDir = projectDirMap.get(name);
+    let weight = 1;
+    if (pkgDir) {
+      const testsCount = countTestFiles(path.join(pkgDir, "tests")) + countTestFiles(path.join(pkgDir, "validation"));
+      weight = Math.max(1, testsCount);
+    }
+    return { name, weight };
+  });
+
+  // Sort deterministically: largest test suites first, tie-break alphabetically
+  weighted.sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name));
+
+  const shards = Array.from({ length: totalShards }, () => ({ weight: 0, projects: [] }));
+  for (const item of weighted) {
+    let bestIdx = 0;
+    for (let i = 1; i < totalShards; i++) {
+      if (
+        shards[i].weight < shards[bestIdx].weight ||
+        (shards[i].weight === shards[bestIdx].weight && shards[i].projects.length < shards[bestIdx].projects.length)
+      ) {
+        bestIdx = i;
+      }
+    }
+    shards[bestIdx].projects.push(item.name);
+    shards[bestIdx].weight += item.weight;
+  }
+
+  return shards;
+}
+
 export function runCoordinator(argv = process.argv.slice(2)) {
   let mode = "affected"; // "affected" or "run-many"
   let dryRun = false;
   let userTasks = null;
   let userWorkers = null;
+  let shardSpec = null;
   const passThroughArgs = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -108,6 +181,10 @@ export function runCoordinator(argv = process.argv.slice(2)) {
       mode = arg;
     } else if (arg === "--dry-run") {
       dryRun = true;
+    } else if (arg.startsWith("--shard=")) {
+      shardSpec = arg.split("=")[1];
+    } else if (arg === "--shard" && argv[i + 1]) {
+      shardSpec = argv[++i];
     } else if (arg.startsWith("--parallel=")) {
       const parsed = parseInt(arg.split("=")[1], 10);
       if (Number.isFinite(parsed) && parsed > 0) userTasks = parsed;
@@ -134,12 +211,29 @@ export function runCoordinator(argv = process.argv.slice(2)) {
     if (Number.isFinite(parsed) && parsed > 0) userWorkers = userWorkers ?? parsed;
   }
 
-  // Quick detection of target count if not explicitly provided
-  let targetCount = null;
+  // Parse --shard=K/N if provided
+  let shardIndex = null;
+  let totalShards = null;
+  if (shardSpec) {
+    const parts = shardSpec.split("/");
+    const k = parseInt(parts[0], 10);
+    const n = parseInt(parts[1], 10);
+    if (Number.isFinite(k) && Number.isFinite(n) && k >= 1 && n >= 1 && k <= n) {
+      shardIndex = k;
+      totalShards = n;
+    } else {
+      console.error(`[test-coordinator] Invalid --shard specification: ${shardSpec} (expected K/N with 1 <= K <= N)`);
+      process.exit(1);
+    }
+  }
+
+  // Discover target projects
+  const projectDirMap = buildWorkspaceTestProjectMap();
+  let discoveredProjects = null;
   try {
     const targetProjectsArg = passThroughArgs.find((a) => a.startsWith("--projects=") || a.startsWith("-p="));
     if (targetProjectsArg) {
-      targetCount = targetProjectsArg.split("=")[1].split(",").filter(Boolean).length;
+      discoveredProjects = targetProjectsArg.split("=")[1].split(",").filter(Boolean);
     } else {
       const showFilterArgs = passThroughArgs.filter(
         (a) => a.startsWith("--base=") || a.startsWith("--head=") || a.startsWith("--exclude="),
@@ -155,15 +249,54 @@ export function runCoordinator(argv = process.argv.slice(2)) {
       const showCmd = spawnSync(process.execPath, showArgs, {
         cwd: repoRoot,
         encoding: "utf-8",
-        timeout: 4000,
+        timeout: 30000,
       });
-      if (showCmd.status === 0 && showCmd.stdout) {
-        const count = showCmd.stdout.trim().split("\n").filter(Boolean).length;
-        if (count > 0) targetCount = count;
+      if (showCmd.status === 0 && showCmd.stdout !== null) {
+        discoveredProjects = showCmd.stdout
+          .trim()
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      } else if (mode === "run-many") {
+        discoveredProjects = Array.from(projectDirMap.keys());
       }
     }
   } catch {
-    // If detection times out or errors, proceed with standard factorization
+    if (mode === "run-many") {
+      discoveredProjects = Array.from(projectDirMap.keys());
+    }
+  }
+
+  let effectivePassThroughArgs = [...passThroughArgs];
+  let effectiveMode = mode;
+
+  if (shardIndex !== null && totalShards !== null) {
+    const candidateProjects = discoveredProjects ?? Array.from(projectDirMap.keys());
+    const shards = partitionProjectsIntoShards(candidateProjects, totalShards, projectDirMap);
+    const chosenShard = shards[shardIndex - 1] || { weight: 0, projects: [] };
+    console.log(
+      `[test-coordinator] 🧩 Shard ${shardIndex}/${totalShards}: assigned ${chosenShard.projects.length}/${candidateProjects.length} projects ` +
+        `(~${chosenShard.weight} test files): ${chosenShard.projects.join(", ") || "(none)"}`,
+    );
+    if (chosenShard.projects.length === 0) {
+      if (dryRun) {
+        console.log(JSON.stringify({ shardIndex, totalShards, projects: [], weight: 0 }, null, 2));
+      }
+      return;
+    }
+    discoveredProjects = chosenShard.projects;
+    effectiveMode = "run-many";
+    effectivePassThroughArgs = passThroughArgs.filter(
+      (a) =>
+        !a.startsWith("--base=") && !a.startsWith("--head=") && !a.startsWith("--projects=") && !a.startsWith("-p="),
+    );
+    effectivePassThroughArgs.push(`--projects=${chosenShard.projects.join(",")}`);
+  }
+
+  const targetCount = discoveredProjects ? discoveredProjects.length : null;
+  if (discoveredProjects && discoveredProjects.length === 0) {
+    console.log("[test-coordinator] No target projects with 'test' found. Exiting cleanly.");
+    return;
   }
 
   const alloc = computeOptimalAllocation({
@@ -182,18 +315,24 @@ export function runCoordinator(argv = process.argv.slice(2)) {
   console.log(banner);
 
   if (dryRun) {
-    console.log(JSON.stringify(alloc, null, 2));
+    console.log(JSON.stringify({ ...alloc, projects: discoveredProjects }, null, 2));
     return;
   }
 
   // Set environment for child test-runner processes
   const env = {
     ...process.env,
+    NX_TUI: "false",
     TEST_CONCURRENCY: String(alloc.workers),
+    SHARD_HANDLED_BY_COORDINATOR: "1",
     NODE_OPTIONS: process.env.NODE_OPTIONS || "--max-old-space-size=2048",
   };
 
-  const nxArgs = [mode, "--target=test", `--parallel=${alloc.tasks}`, ...passThroughArgs];
+  if (!effectivePassThroughArgs.some((a) => a.startsWith("--output-style"))) {
+    effectivePassThroughArgs.push("--output-style=stream");
+  }
+
+  const nxArgs = [effectiveMode, "--target=test", `--parallel=${alloc.tasks}`, ...effectivePassThroughArgs];
 
   const child = spawn(process.execPath, [nxBin, ...nxArgs], {
     cwd: repoRoot,

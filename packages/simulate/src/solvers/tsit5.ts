@@ -27,6 +27,7 @@
  * - Proportional-Integral (PI) adaptive step-size controller tuned to prevent step oscillation around events.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { CommonSolverResult, ODEProblem, SolverStats } from "../core/problem-types.js";
 
 // ── Butcher Tableau for Tsitouras 5(4) ──
@@ -89,6 +90,29 @@ export type Tsit5EventCallback = (t: number, y: number[], eventIdx: number, dir:
  */
 export function tsit5Interpolate(y0: number[], y1: number[], k: number[][], h: number, theta: number): number[] {
   const n = y0.length;
+  const wasm: any = getDefaultWasmExports();
+  if (wasm && typeof wasm.dde_hermite_interpolate === "function" && typeof wasm.__new === "function" && n > 0) {
+    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+    const y0Ptr = alloc(n * 8);
+    const y1Ptr = alloc(n * 8);
+    const f0Ptr = alloc(n * 8);
+    const f1Ptr = alloc(n * 8);
+    const outPtr = alloc(n * 8);
+    const buf = wasm.memory.buffer;
+    const y0V = new Float64Array(buf, y0Ptr, n);
+    const y1V = new Float64Array(buf, y1Ptr, n);
+    const f0V = new Float64Array(buf, f0Ptr, n);
+    const f1V = new Float64Array(buf, f1Ptr, n);
+    for (let i = 0; i < n; i++) {
+      y0V[i] = y0[i] ?? 0;
+      y1V[i] = y1[i] ?? 0;
+      f0V[i] = k[0]?.[i] ?? 0;
+      f1V[i] = k[6]?.[i] ?? 0;
+    }
+    wasm.dde_hermite_interpolate(n, y0Ptr, y1Ptr, f0Ptr, f1Ptr, h, theta, outPtr);
+    return Array.from(new Float64Array(wasm.memory.buffer, outPtr, n));
+  }
+
   const out = new Array<number>(n);
   // Hermite cubic interpolation between y0 and y1 using slopes k[0] and k[6]
   const theta2 = theta * theta;

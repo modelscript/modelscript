@@ -60,28 +60,6 @@
       "@modelscript/modelscript/*": ["./languages/modelscript/src/*"]
     }
   },
-  "include": [
-    "scripts/**/*",
-    "eslint.config.ts",
-    "apps/*/scripts/**/*",
-    "apps/*/tests/**/*",
-    "packages/*/build-browser.js",
-    "packages/*/scripts/**/*",
-    "packages/*/tests/**/*",
-    "packages/examples/**/*",
-    "languages/*/build.js",
-    "languages/*/language.ts",
-    "languages/*/scripts/**/*",
-    "languages/*/tests/**/*"
-  ],
-  "exclude": [
-    "**/node_modules/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/as-gen/**",
-    "**/src-gen/**",
-    "**/scratch*",
-    "**/scratch*/**",
-    "packages/runtime/tests/wasm/**"
-  ]
+  "include": ["scripts/**/*", "eslint.config.ts"],
+  "exclude": ["scripts/benchmark-polyglot-incremental.ts"]
 }

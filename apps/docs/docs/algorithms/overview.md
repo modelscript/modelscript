@@ -43,11 +43,13 @@ flowchart TD
         ZONO["Constrained Zonotopes"]
     end
 
-    subgraph AbstractInt ["5. Abstract Interpretation"]
+    subgraph AbstractInt ["5. Abstract Interpretation & Reachability"]
         WTO["Bourdoncle WTO Fixpoint"]
         TVPI["Two Variables Per Inequality (TVPI)"]
         OCT["Octagon DBM Domain"]
         SEG["Array Segment Partitioning"]
+        DDE["DDE Method-of-Steps Flowpipes"]
+        HJI["HJI WENO5 PDE Level-Set BRT"]
     end
 
     subgraph Rewriting ["6. Graph Rewriting & Metaprogramming"]
@@ -59,13 +61,16 @@ flowchart TD
         SALSA["Salsa Query Dependency Graph"]
     end
 
-    subgraph Scientific ["7. Scientific Computing & Surrogates"]
+    subgraph Scientific ["7. Scientific Computing, Twins & Continuum CAD"]
         CHOL["Davis SuiteSparse Cholesky"]
         LU["Gilbert-Peierls Sparse LU"]
         QR["Householder QR Decomposition"]
         GROEBNER["Buchberger Gröbner Bases"]
         POD["Proper Orthogonal Decomposition"]
         PI["Buckingham Pi Theorem"]
+        TWIN["MHE, UKF, CUSUM Drift & RUL"]
+        CONT["WebGPU D3Q19 LBM & Corotational FEA"]
+        CAD_ECAD["Swept-Volume, GD&T & ECAD DRC/Router"]
     end
 
     DAE_Structural --> Solvers
@@ -80,18 +85,18 @@ flowchart TD
 
 ## Algorithm Directory
 
-| Category                     | Primary Algorithms                                                                                        | Implementation Package                                               |
-| :--------------------------- | :-------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------- |
-| **Structural DAE**           | [Pantelides Algorithm](./pantelides.md), [Tarjan BLT](./blt.md), [Cellier-Elmqvist Tearing](./tearing.md) | `@modelscript/runtime`                                               |
-| **Acausal Balancing**        | [Acausal Potential Equalization, Kirchhoff Flows, Stream Mixing](./connector-balancing.md)                | `@modelscript/modelica`                                              |
-| **Autodiff & Relaxations**   | [Dual Numbers, AdTape, CPR Graph Coloring, McCormick, Affine](./autodiff.md)                              | `@modelscript/runtime`                                               |
-| **Numerical Solvers**        | [Tsit5, Rodas-4P, TR-BDF2, SDE, BVP](./solvers-ode-dae.md)                                                | `@modelscript/simulate`                                              |
-| **Optimization**             | [L-BFGS-B, CMA-ES, Differential Evolution, PSO, NSGA-II](./optimization.md)                               | `@modelscript/simulate`                                              |
-| **SMT & Verification**       | [Nelson-Oppen, CDCL SAT, Craig Interpolation, HC4, STL, Zonotopes](./theory-coordinator.md)               | `@modelscript/runtime/formal`                                        |
-| **Model Checking**           | [Spacer CHC PDR & IC3 Engine](./verification-chc.md)                                                      | `@modelscript/runtime/formal`                                        |
-| **Abstract Interpretation**  | [WTO Fixpoint, TVPI, Octagon DBM, Array Segments](./abstract-interpretation.md)                           | `@modelscript/runtime/formal`                                        |
-| **Graph Rewriting**          | [Triple Graph Grammars, CPA, WCOJ, E-Graphs, GSS, Salsa](./graph-rewriting.md)                            | `@modelscript/dsl`                                                   |
-| **Linear Memory Structures** | [Roaring Bitmaps, Front-Coded Dictionary, Paged B+ Tree](./linear-memory-structures.md)                   | `@modelscript/runtime`                                               |
-| **Scientific Computing**     | [Sparse Cholesky, Sparse LU, Householder QR, Gröbner, POD, Buckingham Pi](./surrogates-linear-algebra.md) | `@modelscript/runtime` & `@modelscript/simulate`                     |
-| **SDP, BVP & CAD**           | [Primal-Dual SDP, Multiple Shooting BVP, CSG & CFD Patches](./sdp-bvp-cad.md)                             | `@modelscript/runtime`, `@modelscript/simulate` & `@modelscript/cad` |
-| **Diagram Layout**           | [Tamassia TSM, Port ILP Solver, Dogleg Channel Router](./diagram-layout.md)                               | `@modelscript/diagram`                                               |
+| Category                       | Primary Algorithms                                                                                                                                                                                                                | Implementation Package                                               |
+| :----------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------- |
+| **Structural DAE**             | [Pantelides Algorithm](./pantelides.md), [Tarjan BLT](./blt.md), [Cellier-Elmqvist Tearing](./tearing.md)                                                                                                                         | `@modelscript/runtime`                                               |
+| **Acausal Balancing**          | [Acausal Potential Equalization, Kirchhoff Flows, Stream Mixing](./connector-balancing.md)                                                                                                                                        | `@modelscript/modelica`                                              |
+| **Autodiff & Relaxations**     | [Dual Numbers, AdTape, CPR Graph Coloring, McCormick, Affine, Hybrid Adjoint Saltation Matrices, Aitken Dynamic $\Delta$-Relaxation](./autodiff.md)                                                                               | `@modelscript/runtime` & `@modelscript/simulate`                     |
+| **Numerical Solvers**          | [Tsit5, Rodas-4P, TR-BDF2, SDE, BVP](./solvers-ode-dae.md)                                                                                                                                                                        | `@modelscript/simulate`                                              |
+| **Optimization**               | [L-BFGS-B, CMA-ES, Differential Evolution, PSO, NSGA-II](./optimization.md)                                                                                                                                                       | `@modelscript/simulate`                                              |
+| **SMT & Verification**         | [Nelson-Oppen, CDCL SAT, Craig Interpolation, HC4, STL, Zonotopes](./theory-coordinator.md)                                                                                                                                       | `@modelscript/runtime/formal`                                        |
+| **Model Checking & Safety**    | [Spacer CHC PDR, IC3 Engine, Stochastic Barrier Certificates, WebGPU OWL 2 RL Reasoner, ISO 26262 / DO-178C Back-to-Back Equivalence](./verification-chc.md)                                                                      | `@modelscript/runtime/formal` & `@modelscript/runtime/gpu`           |
+| **Abstract Interpretation**    | [WTO Fixpoint, TVPI, Octagon DBM, Array Segments, DDE Method-of-Steps Flowpipes, Hamilton-Jacobi-Isaacs (HJI) Level-Set Reachability](./abstract-interpretation.md)                                                               | `@modelscript/runtime/formal` & `@modelscript/runtime/analysis`      |
+| **Graph Rewriting**            | [Triple Graph Grammars, CPA, WCOJ, E-Graphs, GSS, Salsa](./graph-rewriting.md)                                                                                                                                                    | `@modelscript/dsl`                                                   |
+| **Linear Memory Structures**   | [Roaring Bitmaps, Front-Coded Dictionary, Paged B+ Tree](./linear-memory-structures.md)                                                                                                                                           | `@modelscript/runtime`                                               |
+| **Scientific & Digital Twins** | [Sparse Cholesky, Sparse LU, Householder QR, Gröbner, POD, Buckingham Pi, Arena MHE, Joint-State UKF & MCMC Calibration, Page-Hinkley / CUSUM Drift, RUL Prognostics](./surrogates-linear-algebra.md)                             | `@modelscript/runtime` & `@modelscript/simulate`                     |
+| **SDP, BVP, Continuum & CAD**  | [Primal-Dual SDP, Multiple Shooting BVP, CSG, WebGPU D3Q19 LBM CFD, Tet4/Tet10 Corotational FEA, STEP B-Rep Mesher, Swept-Volume Clearance, GD&T Stack-Up, CAD Parameter Inversion, ECAD Gerber / Router / DRC](./sdp-bvp-cad.md) | `@modelscript/runtime`, `@modelscript/simulate` & `@modelscript/cad` |
+| **Diagram Layout & Diffing**   | [Tamassia TSM, Port ILP Solver, Dogleg Channel Router, Fault Tree / Sequence / Swimlane Layouts, PSCAD SLD Routing, Semantic Visual Diffing, CRDT Collaborative Presence](./diagram-layout.md)                                    | `@modelscript/diagram`                                               |

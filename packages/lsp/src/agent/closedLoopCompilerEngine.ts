@@ -905,56 +905,60 @@ export class ClosedLoopCompilerEngine {
 
     // --- Gate 1: Syntax (Prerequisite for semantic CST analysis) ---
     let tree: any = null;
-    if (targetGates.has(1)) {
-      const g1 = await verifyGate1Syntax(code, language, options?.parser);
-      gates.push(g1.result);
-      tree = g1.tree;
-      if (!g1.result.passed) {
+    try {
+      if (targetGates.has(1)) {
+        const g1 = await verifyGate1Syntax(code, language, options?.parser);
+        gates.push(g1.result);
+        tree = g1.tree;
+        if (!g1.result.passed) {
+          return {
+            allPassed: false,
+            gates,
+            summary: `Failed at Gate 1 (WASM GLR Syntax) with ${g1.result.diagnostics.length} syntax errors.`,
+            timestamp: new Date().toISOString(),
+          };
+        }
+      }
+
+      // --- Gates 2, 3, 4: Semantic Verification Gates (Evaluated Concurrently) ---
+      const semanticTasks: Promise<GateVerificationResult>[] = [];
+      if (targetGates.has(2)) {
+        semanticTasks.push(verifyGate2Dimensions(code, language, tree, docUri));
+      }
+      if (targetGates.has(3)) {
+        semanticTasks.push(verifyGate3Requirements(code, language, tree, docUri));
+      }
+      if (targetGates.has(4)) {
+        semanticTasks.push(verifyGate4DAEBalance(code, language, tree, this.lspContext));
+      }
+
+      if (semanticTasks.length > 0) {
+        const semanticResults = await Promise.all(semanticTasks);
+        for (const res of semanticResults) {
+          gates.push(res);
+        }
+      }
+
+      const failedGates = gates.filter((g) => !g.passed);
+      if (failedGates.length > 0) {
+        const totalDiags = failedGates.reduce((sum, g) => sum + g.diagnostics.length, 0);
+        const gateLabels = failedGates.map((g) => `Gate ${g.gate} (${g.gateName})`).join(", ");
         return {
           allPassed: false,
           gates,
-          summary: `Failed at Gate 1 (WASM GLR Syntax) with ${g1.result.diagnostics.length} syntax errors.`,
+          summary: `Failed at ${gateLabels} with ${totalDiags} total diagnostic${totalDiags === 1 ? "" : "s"}.`,
           timestamp: new Date().toISOString(),
         };
       }
-    }
 
-    // --- Gates 2, 3, 4: Semantic Verification Gates (Evaluated Concurrently) ---
-    const semanticTasks: Promise<GateVerificationResult>[] = [];
-    if (targetGates.has(2)) {
-      semanticTasks.push(verifyGate2Dimensions(code, language, tree, docUri));
-    }
-    if (targetGates.has(3)) {
-      semanticTasks.push(verifyGate3Requirements(code, language, tree, docUri));
-    }
-    if (targetGates.has(4)) {
-      semanticTasks.push(verifyGate4DAEBalance(code, language, tree, this.lspContext));
-    }
-
-    if (semanticTasks.length > 0) {
-      const semanticResults = await Promise.all(semanticTasks);
-      for (const res of semanticResults) {
-        gates.push(res);
-      }
-    }
-
-    const failedGates = gates.filter((g) => !g.passed);
-    if (failedGates.length > 0) {
-      const totalDiags = failedGates.reduce((sum, g) => sum + g.diagnostics.length, 0);
-      const gateLabels = failedGates.map((g) => `Gate ${g.gate} (${g.gateName})`).join(", ");
       return {
-        allPassed: false,
+        allPassed: true,
         gates,
-        summary: `Failed at ${gateLabels} with ${totalDiags} total diagnostic${totalDiags === 1 ? "" : "s"}.`,
+        summary: `All ${gates.length} verification gates certified successfully.`,
         timestamp: new Date().toISOString(),
       };
+    } finally {
+      tree?.delete?.();
     }
-
-    return {
-      allPassed: true,
-      gates,
-      summary: `All ${gates.length} verification gates certified successfully.`,
-      timestamp: new Date().toISOString(),
-    };
   }
 }

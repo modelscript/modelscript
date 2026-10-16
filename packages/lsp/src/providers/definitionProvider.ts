@@ -408,8 +408,8 @@ export function registerDefinitionProvider(
           try {
             const def = plugin.facade.getDefinition(0, offset);
             if (def) {
-              const start = def.startByte ?? def.startIndex ?? 0;
-              const end = def.endByte ?? def.endIndex ?? start;
+              const start = def.startOffset ?? def.startByte ?? def.startIndex ?? 0;
+              const end = def.endOffset ?? def.endByte ?? def.endIndex ?? start;
               return {
                 uri: document.uri,
                 range: {

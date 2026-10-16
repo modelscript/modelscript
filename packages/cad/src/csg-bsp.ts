@@ -140,6 +140,31 @@ const FRONT = 1;
 const BACK = 2;
 const SPANNING = 3;
 
+let bspWasmScratch: {
+  wasm: any;
+  inVertsPtr: number;
+  planeNormalPtr: number;
+  outFrontPtr: number;
+  outBackPtr: number;
+  outCountsPtr: number;
+} | null = null;
+
+function ensureBspWasmScratch(wasm: any) {
+  if (bspWasmScratch && bspWasmScratch.wasm === wasm) {
+    return bspWasmScratch;
+  }
+  const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+  bspWasmScratch = {
+    wasm,
+    inVertsPtr: alloc(64 * 3 * 8),
+    planeNormalPtr: alloc(3 * 8),
+    outFrontPtr: alloc(64 * 3 * 8),
+    outBackPtr: alloc(64 * 3 * 8),
+    outCountsPtr: alloc(2 * 4),
+  };
+  return bspWasmScratch;
+}
+
 function splitPolygon(
   plane: CsgPlane,
   polygon: CsgPolygon,
@@ -148,15 +173,92 @@ function splitPolygon(
   front: CsgPolygon[],
   back: CsgPolygon[],
 ): void {
-  let polygonType = 0;
-  const types: number[] = [];
-
   const nx = plane.normal[0];
   const ny = plane.normal[1];
   const nz = plane.normal[2];
   const w = plane.w;
+  const nVerts = polygon.vertices.length;
 
-  for (let i = 0; i < polygon.vertices.length; i++) {
+  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+  if (wasm && typeof wasm.cad_bsp_split_polygon === "function" && nVerts <= 32) {
+    const sc = ensureBspWasmScratch(wasm);
+    const buf = wasm.memory.buffer as ArrayBuffer;
+    const inView = new Float64Array(buf, sc.inVertsPtr, nVerts * 3);
+    for (let i = 0; i < nVerts; i++) {
+      const v = polygon.vertices[i];
+      const off = i * 3;
+      inView[off] = v.pos[0];
+      inView[off + 1] = v.pos[1];
+      inView[off + 2] = v.pos[2];
+    }
+    const pnView = new Float64Array(buf, sc.planeNormalPtr, 3);
+    pnView[0] = nx;
+    pnView[1] = ny;
+    pnView[2] = nz;
+
+    const polyType: number = wasm.cad_bsp_split_polygon(
+      nVerts,
+      sc.inVertsPtr,
+      sc.planeNormalPtr,
+      w,
+      sc.outFrontPtr,
+      sc.outBackPtr,
+      sc.outCountsPtr,
+    );
+
+    if (polyType === COPLANAR) {
+      const dot = nx * polygon.plane.normal[0] + ny * polygon.plane.normal[1] + nz * polygon.plane.normal[2];
+      if (dot > 0) coplanarFront.push(polygon);
+      else coplanarBack.push(polygon);
+      return;
+    }
+    if (polyType === FRONT) {
+      front.push(polygon);
+      return;
+    }
+    if (polyType === BACK) {
+      back.push(polygon);
+      return;
+    }
+    if (polyType === SPANNING) {
+      const counts = new Int32Array(wasm.memory.buffer, sc.outCountsPtr, 2);
+      const fCount = counts[0];
+      const bCount = counts[1];
+      const pNorm = polygon.plane.normal;
+      if (fCount >= 3) {
+        const fView = new Float64Array(wasm.memory.buffer, sc.outFrontPtr, fCount * 3);
+        const fVerts: CsgVertex[] = new Array(fCount);
+        for (let i = 0; i < fCount; i++) {
+          const off = i * 3;
+          fVerts[i] = {
+            pos: [fView[off], fView[off + 1], fView[off + 2]],
+            normal: [pNorm[0], pNorm[1], pNorm[2]],
+          };
+        }
+        const fp = createPolygon(fVerts, polygon.tagIndex, polygon.plane);
+        if (fp) front.push(fp);
+      }
+      if (bCount >= 3) {
+        const bView = new Float64Array(wasm.memory.buffer, sc.outBackPtr, bCount * 3);
+        const bVerts: CsgVertex[] = new Array(bCount);
+        for (let i = 0; i < bCount; i++) {
+          const off = i * 3;
+          bVerts[i] = {
+            pos: [bView[off], bView[off + 1], bView[off + 2]],
+            normal: [pNorm[0], pNorm[1], pNorm[2]],
+          };
+        }
+        const bp = createPolygon(bVerts, polygon.tagIndex, polygon.plane);
+        if (bp) back.push(bp);
+      }
+      return;
+    }
+  }
+
+  let polygonType = 0;
+  const types: number[] = [];
+
+  for (let i = 0; i < nVerts; i++) {
     const pos = polygon.vertices[i].pos;
     const t = nx * pos[0] + ny * pos[1] + nz * pos[2] - w;
     const type = t < -CSG_EPSILON ? BACK : t > CSG_EPSILON ? FRONT : COPLANAR;

@@ -2,9 +2,9 @@
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
-// @ts-nocheck
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
+import type { SyntaxNode } from "../utils/cst-facade.js";
 
 function isStepDocument(document: any): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
@@ -85,14 +85,20 @@ export function registerSignatureHelpProvider(
         });
       }
 
-      // Walk up to find a FunctionCall ancestor
+      // Walk up to find a FunctionCall / function_call ancestor
       let funcCallNode: SyntaxNode | null = node;
-      while (funcCallNode && funcCallNode.type !== "FunctionCall") {
+      while (funcCallNode && funcCallNode.type !== "FunctionCall" && funcCallNode.type !== "function_call") {
         funcCallNode = funcCallNode.parent;
       }
       if (!funcCallNode) return null;
 
-      const refNode = funcCallNode.children.find((c: SyntaxNode) => c.type === "ComponentReference");
+      const refNode = funcCallNode.children.find(
+        (c: SyntaxNode) =>
+          c.type === "ComponentReference" ||
+          c.type === "component_reference" ||
+          c.type === "name" ||
+          c.type === "IDENT",
+      );
       if (!refNode) return null;
 
       const bridge = documentLSPBridges.get(params.textDocument.uri);
@@ -127,7 +133,10 @@ export function registerSignatureHelpProvider(
       }
 
       // Determine which parameter is active based on comma count before cursor
-      const argsNode = funcCallNode.children.find((c: SyntaxNode) => c.type === "FunctionCallArguments");
+      const argsNode = funcCallNode.children.find(
+        (c: SyntaxNode) =>
+          c.type === "FunctionCallArguments" || c.type === "function_call_args" || c.type === "function_arguments",
+      );
       let activeParameter = 0;
       if (argsNode) {
         const argsText = text.substring(argsNode.startIndex, argsNode.endIndex);

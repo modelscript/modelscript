@@ -723,7 +723,7 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
           const childType = normType(child.type);
           if (childType === "ident" || childType === "identifier") {
             name = child.text;
-            nameStartByte = child.startIndex ?? compStart + (decl.startIndex ?? 0);
+            nameStartByte = child.startIndex ?? decl.startIndex ?? compStart;
             nameEndByte = nameStartByte + (name?.length ?? 0);
             break;
           }

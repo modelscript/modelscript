@@ -288,6 +288,297 @@ export class WasmEmtBridge {
   }
 
   /**
+   * Adds a 5th-order Krause d-q Induction Machine or Type-3 DFIG (with rotor crowbar protection)
+   * directly into the native WebAssembly EMT kernel.
+   */
+  public addInductionMachine(options: {
+    nodeA: number;
+    nodeB: number;
+    nodeC: number;
+    sBaseMva: number;
+    vBaseKvLL: number;
+    freqHz?: number;
+    rsPu?: number;
+    xsPu?: number;
+    xmPu?: number;
+    rrPu?: number;
+    xrPu?: number;
+    hInertia?: number;
+    dampingD?: number;
+    tmLoadPu?: number;
+    isDfig?: boolean;
+    crowbarThresholdPu?: number;
+  }): number {
+    return this.wasm.emt_add_induction_machine(
+      this.solverPtr,
+      options.nodeA,
+      options.nodeB,
+      options.nodeC,
+      options.sBaseMva,
+      options.vBaseKvLL,
+      options.freqHz ?? 60.0,
+      options.rsPu ?? 0.015,
+      options.xsPu ?? 0.1,
+      options.xmPu ?? 3.5,
+      options.rrPu ?? 0.015,
+      options.xrPu ?? 0.1,
+      options.hInertia ?? 1.5,
+      options.dampingD ?? 0.2,
+      options.tmLoadPu ?? 0.6,
+      Boolean(options.isDfig),
+      options.crowbarThresholdPu ?? 2.0,
+    );
+  }
+
+  /**
+   * Returns current per-unit rotor speed (omega_r) for the specified induction machine index.
+   */
+  public getInductionMachineSpeedPu(indIdx: number): number {
+    if (typeof this.wasm.emt_get_induction_machine_speed_pu === "function") {
+      return this.wasm.emt_get_induction_machine_speed_pu(this.solverPtr, indIdx);
+    }
+    return 1.0;
+  }
+
+  /**
+   * Returns current electromagnetic torque T_e (pu) for the specified induction machine index.
+   */
+  public getInductionMachineTorquePu(indIdx: number): number {
+    if (typeof this.wasm.emt_get_induction_machine_torque_pu === "function") {
+      return this.wasm.emt_get_induction_machine_torque_pu(this.solverPtr, indIdx);
+    }
+    return 0.0;
+  }
+
+  /**
+   * Returns true if the DFIG rotor overcurrent crowbar protection has triggered for the specified induction machine.
+   */
+  public isInductionMachineCrowbarActive(indIdx: number): boolean {
+    if (typeof this.wasm.emt_get_induction_machine_crowbar === "function") {
+      return Boolean(this.wasm.emt_get_induction_machine_crowbar(this.solverPtr, indIdx));
+    }
+    return false;
+  }
+
+  /**
+   * Adds a J. Marti / Vector-Fitted Frequency-Dependent Transmission Line (FD-Line)
+   * with recursive convolution poles for characteristic admittance Y_c(s) and propagation H(s).
+   */
+  public addFrequencyDependentLine(options: {
+    fromNode: number;
+    toNode: number;
+    gInf: number;
+    tauSec: number;
+    yPoles?: { pole: number; residue: number }[];
+    hPoles?: { pole: number; residue: number }[];
+  }): number {
+    const yPoles = options.yPoles ?? [];
+    const hPoles = options.hPoles ?? [];
+    const idx = this.wasm.emt_add_fd_line(
+      this.solverPtr,
+      options.fromNode,
+      options.toNode,
+      options.gInf,
+      options.tauSec,
+      Math.max(4, yPoles.length),
+      Math.max(4, hPoles.length),
+    );
+    if (idx >= 0) {
+      for (const p of yPoles) {
+        this.addFdLineYPole(idx, p.pole, p.residue);
+      }
+      for (const p of hPoles) {
+        this.addFdLineHPole(idx, p.pole, p.residue);
+      }
+    }
+    return idx;
+  }
+
+  /**
+   * Appends a rational pole-residue pair to Y_c(s) of the specified FD-Line.
+   */
+  public addFdLineYPole(fdLineIdx: number, poleRad: number, residueSiemens: number): number {
+    return this.wasm.emt_add_fd_line_y_pole(this.solverPtr, fdLineIdx, poleRad, residueSiemens);
+  }
+
+  /**
+   * Appends a rational pole-residue pair to H(s) of the specified FD-Line.
+   */
+  public addFdLineHPole(fdLineIdx: number, poleRad: number, residueDimless: number): number {
+    return this.wasm.emt_add_fd_line_h_pole(this.solverPtr, fdLineIdx, poleRad, residueDimless);
+  }
+
+  /**
+   * Returns current sending-end recursive convolution history current for the specified FD-Line.
+   */
+  public getFdLineHistFrom(fdLineIdx: number): number {
+    if (typeof this.wasm.emt_get_fd_line_hist_from === "function") {
+      return this.wasm.emt_get_fd_line_hist_from(this.solverPtr, fdLineIdx);
+    }
+    return 0.0;
+  }
+
+  /**
+   * Returns current receiving-end recursive convolution history current for the specified FD-Line.
+   */
+  public getFdLineHistTo(fdLineIdx: number): number {
+    if (typeof this.wasm.emt_get_fd_line_hist_to === "function") {
+      return this.wasm.emt_get_fd_line_hist_to(this.solverPtr, fdLineIdx);
+    }
+    return 0.0;
+  }
+
+  /**
+   * Adds a CSMF (Continuous System Modeling Functions) control block executed inside WASM at each step.
+   */
+  public addControlBlock(options: {
+    type:
+      | "const"
+      | "gain"
+      | "sum"
+      | "sub"
+      | "mult"
+      | "div"
+      | "limit"
+      | "pi"
+      | "lag"
+      | "lead_lag"
+      | "cmp"
+      | "node_v_sensor"
+      | "branch_i_sensor";
+    in1?: number;
+    in2?: number;
+    k1?: number;
+    k2?: number;
+    t1?: number;
+    t2?: number;
+    p0?: number;
+    p1?: number;
+    p2?: number;
+    minOut?: number;
+    maxOut?: number;
+  }): number {
+    const typeMap: Record<string, number> = {
+      const: 0,
+      gain: 1,
+      sum: 2,
+      sub: 3,
+      mult: 4,
+      div: 5,
+      limit: 6,
+      pi: 7,
+      lag: 8,
+      lead_lag: 9,
+      cmp: 10,
+      node_v_sensor: 11,
+      branch_i_sensor: 12,
+    };
+    const p0 = options.p0 ?? options.k1 ?? 1.0;
+    const p1 =
+      options.p1 ??
+      (options.type === "lag" || options.type === "lead_lag" ? (options.t1 ?? 0.05) : (options.k2 ?? 0.0));
+    const p2 = options.p2 ?? options.t2 ?? 0.0;
+    return this.wasm.emt_add_control_block(
+      this.solverPtr,
+      typeMap[options.type] ?? 0,
+      options.in1 ?? -1,
+      options.in2 ?? -1,
+      p0,
+      p1,
+      p2,
+      options.minOut ?? -1e9,
+      options.maxOut ?? 1e9,
+    );
+  }
+
+  /**
+   * Updates the external input values of a CSMF control block in WASM linear memory.
+   */
+  public setControlInput(blkIdx: number, u0: number, u1 = 0.0): void {
+    if (typeof this.wasm.emt_set_control_input === "function") {
+      this.wasm.emt_set_control_input(this.solverPtr, blkIdx, u0, u1);
+    }
+  }
+
+  /**
+   * Reads the instantaneous output of a CSMF control block in WASM linear memory.
+   */
+  public getControlOutput(blkIdx: number): number {
+    if (typeof this.wasm.emt_get_control_output === "function") {
+      return this.wasm.emt_get_control_output(this.solverPtr, blkIdx);
+    }
+    return 0.0;
+  }
+
+  /**
+   * Adds a 3-Phase Synchronous Reference Frame Phase-Locked Loop (SRF-PLL) in WASM linear memory.
+   */
+  public addPll(options: {
+    nodeA: number;
+    nodeB: number;
+    nodeC: number;
+    vBaseKvLL?: number;
+    vBasePeak?: number;
+    fNomHz?: number;
+    kp?: number;
+    ki?: number;
+  }): number {
+    const vBaseKvLL =
+      options.vBaseKvLL ??
+      (options.vBasePeak !== undefined ? (options.vBasePeak / 1000.0) * Math.sqrt(3.0 / 2.0) : 1.0);
+    return this.wasm.emt_add_pll(
+      this.solverPtr,
+      options.nodeA,
+      options.nodeB,
+      options.nodeC,
+      vBaseKvLL,
+      options.fNomHz ?? 60.0,
+      options.kp ?? 50.0,
+      options.ki ?? 500.0,
+    );
+  }
+
+  /**
+   * Returns tracked frequency (Hz) of the specified 3-phase SRF-PLL.
+   */
+  public getPllFreqHz(pllIdx: number): number {
+    if (typeof this.wasm.emt_get_pll_freq_hz === "function") {
+      return this.wasm.emt_get_pll_freq_hz(this.solverPtr, pllIdx);
+    }
+    return 60.0;
+  }
+
+  /**
+   * Returns tracked synchronous phase angle theta (radians in [0, 2*pi)) of the specified 3-phase SRF-PLL.
+   */
+  public getPllAngleRad(pllIdx: number): number {
+    if (typeof this.wasm.emt_get_pll_angle_rad === "function") {
+      return this.wasm.emt_get_pll_angle_rad(this.solverPtr, pllIdx);
+    }
+    return 0.0;
+  }
+
+  /**
+   * Returns positive-sequence d-axis voltage V_d (pu) of the specified 3-phase SRF-PLL.
+   */
+  public getPllVdPu(pllIdx: number): number {
+    if (typeof this.wasm.emt_get_pll_vd_pu === "function") {
+      return this.wasm.emt_get_pll_vd_pu(this.solverPtr, pllIdx);
+    }
+    return 0.0;
+  }
+
+  /**
+   * Returns quadrature q-axis voltage V_q (pu) of the specified 3-phase SRF-PLL.
+   */
+  public getPllVqPu(pllIdx: number): number {
+    if (typeof this.wasm.emt_get_pll_vq_pu === "function") {
+      return this.wasm.emt_get_pll_vq_pu(this.solverPtr, pllIdx);
+    }
+    return 0.0;
+  }
+
+  /**
    * Assembles the system conductance matrix [G] and factors it using
    * row-equilibrated LU decomposition with partial pivoting.
    */

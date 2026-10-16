@@ -210,10 +210,56 @@ export class Parser {
             currentEnc === InputEncoding.UTF32BE
           ? 4
           : 1;
+    const charToByteOffset = (charIdx) => {
+      if (charIdx <= 0 || typeof source !== "string") return charIdx * encMul;
+      const clamped = Math.min(charIdx, source.length);
+      if (
+        currentEnc === InputEncoding.UTF16LE ||
+        currentEnc === InputEncoding.UTF16BE
+      ) {
+        return clamped * 2;
+      }
+      if (
+        currentEnc === InputEncoding.UTF32LE ||
+        currentEnc === InputEncoding.UTF32BE
+      ) {
+        let cpCount = 0;
+        for (let i = 0; i < clamped; i++) {
+          const code = source.charCodeAt(i);
+          if (code >= 0xd800 && code <= 0xdbff && i + 1 < clamped) {
+            const low = source.charCodeAt(i + 1);
+            if (low >= 0xdc00 && low <= 0xdfff) i++;
+          }
+          cpCount++;
+        }
+        return cpCount * 4;
+      }
+      let utf8Bytes = 0;
+      for (let i = 0; i < clamped; i++) {
+        const code = source.charCodeAt(i);
+        if (code <= 0x7f) {
+          utf8Bytes += 1;
+        } else if (code <= 0x7ff) {
+          utf8Bytes += 2;
+        } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < clamped) {
+          const low = source.charCodeAt(i + 1);
+          if (low >= 0xdc00 && low <= 0xdfff) {
+            utf8Bytes += 4;
+            i++;
+          } else {
+            utf8Bytes += 3;
+          }
+        } else {
+          utf8Bytes += 3;
+        }
+      }
+      return utf8Bytes;
+    };
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-    let editStartByte = editStart * encMul;
+    let editStartByte = charToByteOffset(editStart);
     let editOldEndByte = editOldEnd * encMul;
-    let editNewEndByte = editNewEnd > 0 ? editNewEnd * encMul : view.length;
+    let editNewEndByte =
+      editNewEnd > 0 ? charToByteOffset(editNewEnd) : view.length;
     if (
       oldTreePtr === 0 ||
       (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
@@ -611,6 +657,7 @@ export class LspFacade {
     for (let i = 0; i < text.length; i++) {
       memArray16[i] = text.charCodeAt(i);
     }
+    this._inputEncoding = 1;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
@@ -713,6 +760,7 @@ export class LspFacade {
     const prevAstRoot = this.getDocumentRoot(uri);
     // Fast path for empty input (e.g., clearing the editor)
     if (newTotalLength <= 0) {
+      this._inputEncoding = 1;
       if (this.exports.lsp_setInputEncoding)
         this.exports.lsp_setInputEncoding(1);
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
@@ -850,6 +898,7 @@ export class LspFacade {
         : newTotalLength - netDelta;
     const prevAstRoot = this.getDocumentRoot(uri);
     if (newTotalLength <= 0) {
+      this._inputEncoding = 1;
       if (this.exports.lsp_setInputEncoding)
         this.exports.lsp_setInputEncoding(1);
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
@@ -907,6 +956,7 @@ export class LspFacade {
     }
     this._cachedLineStarts = null;
     this.currentInputLength = newTotalLength;
+    this._inputEncoding = 1;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
@@ -999,7 +1049,7 @@ export class LspFacade {
         } else {
           newLineStarts.push((rangeOffset + i + 1) * 2);
         }
-      } else if (c === 10 || c === 0x2028 || c === 0x2029) {
+      } else if (c === 10) {
         newLineStarts.push((rangeOffset + i + 1) * 2);
       }
     }
@@ -1085,7 +1135,7 @@ export class LspFacade {
           } else {
             starts.push((i + 1) * 2);
           }
-        } else if (c === 10 || c === 0x2028 || c === 0x2029) {
+        } else if (c === 10) {
           starts.push((i + 1) * 2);
         }
       }
@@ -1141,7 +1191,7 @@ export class LspFacade {
           } else {
             starts.push((i + 1) * 2);
           }
-        } else if (c === 10 || c === 0x2028 || c === 0x2029) {
+        } else if (c === 10) {
           starts.push((i + 1) * 2);
         }
       }
@@ -1255,10 +1305,25 @@ export class LspFacade {
             inputBufPtr + start,
             sliceLen,
           );
-          let text =
-            encoding === 1
-              ? new TextDecoder("utf-16le").decode(slice)
-              : new TextDecoder("utf-8").decode(slice);
+          let text = "";
+          if (encoding === 1) {
+            text = new TextDecoder("utf-16le").decode(slice);
+          } else if (encoding === 2) {
+            text = new TextDecoder("utf-16be").decode(slice);
+          } else if (encoding === 3 || encoding === 4) {
+            const view = new DataView(
+              this.wasmMemory.buffer,
+              inputBufPtr + start,
+              sliceLen,
+            );
+            const cps = [];
+            for (let k = 0; k + 3 < sliceLen; k += 4) {
+              cps.push(view.getUint32(k, encoding === 3));
+            }
+            text = String.fromCodePoint(...cps);
+          } else {
+            text = new TextDecoder("utf-8").decode(slice);
+          }
           text = text.trim();
           if (text.length > 0) {
             const m = text.match(/^[a-zA-Z_][a-zA-Z0-9_]*|[^\s\w]/);
@@ -1579,11 +1644,26 @@ export class LspFacade {
               const encoding = this.getInputEncoding();
               if (encoding === 1) {
                 chars = new TextDecoder("utf-16le").decode(slice);
+              } else if (encoding === 2) {
+                chars = new TextDecoder("utf-16be").decode(slice);
+              } else if (encoding === 3 || encoding === 4) {
+                const view = new DataView(
+                  slice.buffer,
+                  slice.byteOffset,
+                  slice.byteLength,
+                );
+                const cps = [];
+                for (let k = 0; k + 3 < sliceLen; k += 4) {
+                  cps.push(view.getUint32(k, encoding === 3));
+                }
+                chars = String.fromCodePoint(...cps);
               } else {
                 chars = new TextDecoder("utf-8").decode(slice);
               }
             }
             const dummyTree = {
+              _encoding: encoding,
+              _encMult: encStep,
               sourceCode: {
                 substring: (start, end) => {
                   const currentBuf = this.wasmMemory.buffer;
@@ -1597,27 +1677,50 @@ export class LspFacade {
                     typeof this.exports.inputLength.value === "number"
                       ? this.exports.inputLength.value
                       : this.currentInputLength > 0
-                        ? this.currentInputLength * 2
+                        ? this.currentInputLength * encStep
                         : 0;
-                  const totalLenChars = Math.floor(totalLenBytes / 2);
+                  const totalLenUnits = Math.floor(totalLenBytes / encStep);
                   if (
                     inputPtr > 0 &&
                     start >= 0 &&
-                    end <= totalLenChars &&
+                    end <= totalLenUnits &&
                     start <= end
                   ) {
-                    const byteLen = (end - start) * 2;
+                    const byteLen = (end - start) * encStep;
                     const u8 = new Uint8Array(byteLen);
                     u8.set(
-                      new Uint8Array(currentBuf, inputPtr + start * 2, byteLen),
+                      new Uint8Array(
+                        currentBuf,
+                        inputPtr + start * encStep,
+                        byteLen,
+                      ),
                     );
-                    return new TextDecoder("utf-16le").decode(u8);
+                    if (encoding === 1) {
+                      return new TextDecoder("utf-16le").decode(u8);
+                    } else if (encoding === 2) {
+                      return new TextDecoder("utf-16be").decode(u8);
+                    } else if (encoding === 3 || encoding === 4) {
+                      const view = new DataView(
+                        u8.buffer,
+                        u8.byteOffset,
+                        u8.byteLength,
+                      );
+                      const cps = [];
+                      for (let k = 0; k + 3 < byteLen; k += 4) {
+                        cps.push(view.getUint32(k, encoding === 3));
+                      }
+                      return String.fromCodePoint(...cps);
+                    }
+                    return new TextDecoder("utf-8").decode(u8);
                   }
                   return "";
                 },
               },
               mem32: memory,
-              offsetToPoint: (o) => this.offsetToPos(o, lineStarts),
+              offsetToPoint: (o) => {
+                const pos = this.offsetToPos(o, lineStarts);
+                return { row: pos.line, column: pos.character };
+              },
               facade: this,
             };
             const getSyntaxNodeForPtr = (ptr) => {
@@ -1746,13 +1849,12 @@ export class LspFacade {
       if (typeof msg === "string") {
         // Range shifting and clamping removed to preserve WASM output
       }
+      const charDiv = this.getEncodingDiv();
       if (endByte <= startByte) {
-        endByte = startByte + (this.getInputEncoding() === 1 ? 2 : 1);
+        endByte = startByte + charDiv;
       }
       let startPos = this.offsetToPos(startByte, lineStarts);
       let endPos = this.offsetToPos(endByte, lineStarts);
-      const encoding = this.getInputEncoding();
-      const charDiv = encoding === 1 ? 2 : 1;
       // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
       // clamp it to the end of the previous line so Monaco/VS Code doesn't render it under the next token.
       if (endPos.line > startPos.line && endPos.character === 0) {
@@ -1786,6 +1888,8 @@ export class LspFacade {
         endOffset: endCharOff,
         startCharOffset: startCharOff,
         endCharOffset: endCharOff,
+        startByte: startCharOff,
+        endByte: endCharOff,
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
@@ -1861,7 +1965,7 @@ export class LspFacade {
   /**
    * Retrieves semantic tokens for syntax highlighting.
    * Returns a raw `Uint32Array` mapped directly from WASM memory for speed.
-   * Array layout is: [lineDelta, charDelta, length, typeId] repeating.
+   * Array layout is: [byteStart, byteLen, tokenTypeId, bitmask] repeating.
    */
   getSemanticTokens(astRoot, sourceCode) {
     if (sourceCode !== undefined && typeof sourceCode === "string") {
@@ -1919,7 +2023,7 @@ export class LspFacade {
     return { resultId, edits };
   }
   /**
-   * Compares oldTree and newTree to compute the precise modified byte spans (ts_tree_get_changed_ranges equivalent).
+   * Compares oldTree and newTree to compute the precise modified character spans (ts_tree_get_changed_ranges equivalent).
    */
   getChangedRanges(oldTree, newTree) {
     if (!this.exports.lsp_getChangedRanges || !this.exports.lsp_getBinaryBuffer)
@@ -1927,12 +2031,21 @@ export class LspFacade {
     const count = this.exports.lsp_getChangedRanges(oldTree, newTree);
     const ranges = [];
     if (count === 0) return ranges;
+    const div = this.getEncodingDiv();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < count * 2; i += 2) {
+      const startByte = mem32[(dirPtr >>> 2) + i];
+      const endByte = mem32[(dirPtr >>> 2) + i + 1];
+      const startOff = Math.floor(startByte / div);
+      const endOff = Math.floor(endByte / div);
       ranges.push({
-        start: mem32[(dirPtr >>> 2) + i],
-        end: mem32[(dirPtr >>> 2) + i + 1],
+        start: startOff,
+        end: endOff,
+        startOffset: startOff,
+        endOffset: endOff,
+        startByte,
+        endByte,
       });
     }
     return ranges;
@@ -1972,12 +2085,19 @@ export class LspFacade {
     const numElements = this.exports.lsp_getDocumentSymbols(astRoot);
     const symbols = [];
     if (numElements === 0) return symbols;
+    const div = this.getEncodingDiv();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 4; i += 4) {
+      const rawStart = mem32[(dirPtr >>> 2) + i];
+      const rawEnd = mem32[(dirPtr >>> 2) + i + 1];
       symbols.push({
-        start: this.offsetToPos(mem32[(dirPtr >>> 2) + i], lineStarts),
-        end: this.offsetToPos(mem32[(dirPtr >>> 2) + i + 1], lineStarts),
+        start: this.offsetToPos(rawStart, lineStarts),
+        end: this.offsetToPos(rawEnd, lineStarts),
+        startOffset: Math.floor(rawStart / div),
+        endOffset: Math.floor(rawEnd / div),
+        startByte: rawStart,
+        endByte: rawEnd,
         typeId: mem32[(dirPtr >>> 2) + i + 2],
         nodePtr: mem32[(dirPtr >>> 2) + i + 3],
       });
@@ -2132,6 +2252,7 @@ export class LspFacade {
     const decoder = isUtf16
       ? new TextDecoder("utf-16le")
       : new TextDecoder("utf-8");
+    const div = this.getEncodingDiv();
     let offset = dirPtr >>> 2;
     for (let i = 0; i < numRecords; i++) {
       const kind = mem32[offset];
@@ -2139,8 +2260,8 @@ export class LspFacade {
         // RECORD_NODE
         const nodePtr = mem32[offset + 1];
         const typeId = mem32[offset + 2];
-        const startByte = mem32[offset + 3];
-        const endByte = mem32[offset + 4];
+        const rawStartByte = mem32[offset + 3];
+        const rawEndByte = mem32[offset + 4];
         const x = mem32[offset + 5] | 0;
         const y = mem32[offset + 6] | 0;
         const width = mem32[offset + 7];
@@ -2151,31 +2272,35 @@ export class LspFacade {
         if (
           inputBufPtr > 0 &&
           lenBytes > 0 &&
-          startByte < lenBytes &&
-          endByte <= lenBytes &&
-          startByte <= endByte
+          rawStartByte < lenBytes &&
+          rawEndByte <= lenBytes &&
+          rawStartByte <= rawEndByte
         ) {
           try {
-            const sliceLen = endByte - startByte;
+            const sliceLen = rawEndByte - rawStartByte;
             const slice = new Uint8Array(sliceLen);
             slice.set(
               new Uint8Array(
                 this.wasmMemory.buffer,
-                inputBufPtr + startByte,
+                inputBufPtr + rawStartByte,
                 sliceLen,
               ),
             );
             nodeText = decoder.decode(slice);
           } catch (_e) {}
         }
+        const startOff = Math.floor(rawStartByte / div);
+        const endOff = Math.floor(rawEndByte / div);
         nodes.push({
           id: `node_${nodePtr}`,
           nodePtr,
           typeId,
-          startByte,
-          endByte,
-          start: this.offsetToPos(startByte, lineStarts),
-          end: this.offsetToPos(endByte, lineStarts),
+          startOffset: startOff,
+          endOffset: endOff,
+          startByte: startOff,
+          endByte: endOff,
+          start: this.offsetToPos(rawStartByte, lineStarts),
+          end: this.offsetToPos(rawEndByte, lineStarts),
           x,
           y,
           width,
@@ -2393,6 +2518,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
+      const startByte = mem32[(dirPtr >>> 2) + i + 6];
+      const endByte = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2400,8 +2527,10 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte: mem32[(dirPtr >>> 2) + i + 6],
-        endByte: mem32[(dirPtr >>> 2) + i + 7],
+        startByte,
+        endByte,
+        startOffset: startByte,
+        endOffset: endByte,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2427,6 +2556,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
+      const startByte = mem32[(dirPtr >>> 2) + i + 6];
+      const endByte = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2434,8 +2565,10 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte: mem32[(dirPtr >>> 2) + i + 6],
-        endByte: mem32[(dirPtr >>> 2) + i + 7],
+        startByte,
+        endByte,
+        startOffset: startByte,
+        endOffset: endByte,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2454,6 +2587,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
+      const startByte = mem32[(dirPtr >>> 2) + i + 6];
+      const endByte = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2461,8 +2596,10 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte: mem32[(dirPtr >>> 2) + i + 6],
-        endByte: mem32[(dirPtr >>> 2) + i + 7],
+        startByte,
+        endByte,
+        startOffset: startByte,
+        endOffset: endByte,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2481,6 +2618,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
+      const startByte = mem32[(dirPtr >>> 2) + i + 6];
+      const endByte = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2488,8 +2627,10 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte: mem32[(dirPtr >>> 2) + i + 6],
-        endByte: mem32[(dirPtr >>> 2) + i + 7],
+        startByte,
+        endByte,
+        startOffset: startByte,
+        endOffset: endByte,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2562,14 +2703,18 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < count * 7; i += 7) {
       const kf = mem32[(dirPtr >>> 2) + i + 2];
+      const startByte = mem32[(dirPtr >>> 2) + i + 4];
+      const endByte = mem32[(dirPtr >>> 2) + i + 5];
       results.push({
         stubId: mem32[(dirPtr >>> 2) + i + 0],
         fileId: mem32[(dirPtr >>> 2) + i + 1],
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 3],
-        startByte: mem32[(dirPtr >>> 2) + i + 4],
-        endByte: mem32[(dirPtr >>> 2) + i + 5],
+        startByte,
+        endByte,
+        startOffset: startByte,
+        endOffset: endByte,
         score: mem32[(dirPtr >>> 2) + i + 6],
       });
     }
@@ -3964,6 +4109,7 @@ export class LspFacade {
     for (let i = 0; i < text.length; i++) {
       memArray16[i] = text.charCodeAt(i);
     }
+    this._inputEncoding = 1;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
@@ -3999,11 +4145,14 @@ export class LspFacade {
         }
         const editsPtr = this._editsScratchPtr;
         const mem32 = new Uint32Array(this.wasmMemory.buffer);
+        const div = this.getEncodingDiv();
         for (let i = 0; i < edits.length; i++) {
           const base = (editsPtr >>> 2) + i * 3;
-          mem32[base] = edits[i].startByte;
-          mem32[base + 1] = edits[i].oldEndByte;
-          mem32[base + 2] = edits[i].newEndByte;
+          mem32[base] = (edits[i].startOffset ?? edits[i].startByte) * div;
+          mem32[base + 1] =
+            (edits[i].oldEndOffset ?? edits[i].oldEndByte) * div;
+          mem32[base + 2] =
+            (edits[i].newEndOffset ?? edits[i].newEndByte) * div;
         }
         newAstRoot = this.exports.parseWithEdits(
           baseRoot,
@@ -4523,8 +4672,8 @@ export class SyntaxNode {
     if (this._cachedText !== null) return this._cachedText;
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
-      : 1;
-    if (enc === 0 && this.tree.facade?.wasmMemory) {
+      : (this.tree._encoding ?? 1);
+    if ((enc === 0 || enc === 3 || enc === 4) && this.tree.facade?.wasmMemory) {
       const getInputBuf =
         this.tree.facade.exports.getInputBuffer ||
         this.tree.facade.exports.lsp_getInputBuffer;
@@ -4535,6 +4684,18 @@ export class SyntaxNode {
           inputBufPtr + this._startOffset + this._cachedPad,
           this._cachedLen,
         );
+        if (enc === 3 || enc === 4) {
+          const view = new DataView(
+            rawBytes.buffer,
+            rawBytes.byteOffset,
+            rawBytes.byteLength,
+          );
+          const cps = [];
+          for (let k = 0; k + 3 < this._cachedLen; k += 4) {
+            cps.push(view.getUint32(k, enc === 3));
+          }
+          return (this._cachedText = String.fromCodePoint(...cps));
+        }
         return (this._cachedText =
           typeof TextDecoder !== "undefined"
             ? new TextDecoder("utf-8").decode(rawBytes)
@@ -4542,6 +4703,11 @@ export class SyntaxNode {
       }
     }
     if (!this.tree.sourceCode) return "";
+    if (enc === 3 || enc === 4) {
+      return (this._cachedText = Array.from(this.tree.sourceCode)
+        .slice(this.startIndex, this.endIndex)
+        .join(""));
+    }
     return (this._cachedText = this.tree.sourceCode.substring(
       this.startIndex,
       this.endIndex,
@@ -4555,7 +4721,7 @@ export class SyntaxNode {
   get _encodingDiv() {
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
-      : 1;
+      : (this.tree._encoding ?? 1);
     return enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
   }
   /** The start character offset of this node within the source text. */
@@ -4612,11 +4778,13 @@ export class SyntaxNode {
   }
   /** The line and column where this node starts. */
   get startPosition() {
-    return this.tree.offsetToPoint(this.startIndex * this.tree._encMult);
+    return this.tree.offsetToPoint(this._startOffset + this._cachedPad);
   }
   /** The line and column where this node ends. */
   get endPosition() {
-    return this.tree.offsetToPoint(this.endIndex * this.tree._encMult);
+    return this.tree.offsetToPoint(
+      this._startOffset + this._cachedPad + this._cachedLen,
+    );
   }
   /**
    * Returns a list of all visible child nodes by walking the WASM sibling linked list.
@@ -5236,6 +5404,7 @@ export class Tree {
   rootPtr;
   sourceCode;
   lineStarts;
+  _encoding;
   _encMult;
   _mem32 = null;
   get mem32() {
@@ -5252,6 +5421,7 @@ export class Tree {
     const enc = this.facade?.getInputEncoding
       ? this.facade.getInputEncoding()
       : 1;
+    this._encoding = enc;
     const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
     this._encMult = mult;
     if (
@@ -5262,8 +5432,87 @@ export class Tree {
       facade.rootSourceCode.set(rootPtr, sourceCode);
     }
     this.lineStarts = [0];
-    for (let i = 0; i < sourceCode.length; i++) {
-      if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * mult);
+    if (enc === 0) {
+      let byteOffset = 0;
+      for (let i = 0; i < sourceCode.length; i++) {
+        const code = sourceCode.charCodeAt(i);
+        if (code === 10) {
+          byteOffset += 1;
+          this.lineStarts.push(byteOffset);
+        } else if (code === 13) {
+          if (
+            i + 1 < sourceCode.length &&
+            sourceCode.charCodeAt(i + 1) === 10
+          ) {
+            byteOffset += 2;
+            i++;
+          } else {
+            byteOffset += 1;
+          }
+          this.lineStarts.push(byteOffset);
+        } else if (code < 0x80) {
+          byteOffset += 1;
+        } else if (code < 0x800) {
+          byteOffset += 2;
+        } else if (
+          code >= 0xd800 &&
+          code <= 0xdbff &&
+          i + 1 < sourceCode.length
+        ) {
+          const low = sourceCode.charCodeAt(i + 1);
+          if (low >= 0xdc00 && low <= 0xdfff) {
+            byteOffset += 4;
+            i++;
+          } else {
+            byteOffset += 3;
+          }
+        } else {
+          byteOffset += 3;
+        }
+      }
+    } else if (enc === 3 || enc === 4) {
+      let cpOffset = 0;
+      for (let i = 0; i < sourceCode.length; i++) {
+        const code = sourceCode.charCodeAt(i);
+        if (code === 10) {
+          cpOffset += 4;
+          this.lineStarts.push(cpOffset);
+        } else if (code === 13) {
+          if (
+            i + 1 < sourceCode.length &&
+            sourceCode.charCodeAt(i + 1) === 10
+          ) {
+            cpOffset += 8;
+            i++;
+          } else {
+            cpOffset += 4;
+          }
+          this.lineStarts.push(cpOffset);
+        } else {
+          if (code >= 0xd800 && code <= 0xdbff && i + 1 < sourceCode.length) {
+            const low = sourceCode.charCodeAt(i + 1);
+            if (low >= 0xdc00 && low <= 0xdfff) {
+              i++;
+            }
+          }
+          cpOffset += 4;
+        }
+      }
+    } else {
+      for (let i = 0; i < sourceCode.length; i++) {
+        const code = sourceCode.charCodeAt(i);
+        if (code === 10) {
+          this.lineStarts.push((i + 1) * mult);
+        } else if (code === 13) {
+          if (
+            i + 1 < sourceCode.length &&
+            sourceCode.charCodeAt(i + 1) === 10
+          ) {
+            i++;
+          }
+          this.lineStarts.push((i + 1) * mult);
+        }
+      }
     }
   }
   /** Gets the root node of the syntax tree. */
@@ -5296,6 +5545,17 @@ export class Tree {
   }
   /** Converts a linear byte offset into a row and column Point. */
   offsetToPoint(offset) {
+    if (
+      this._encoding === 0 &&
+      this.facade &&
+      typeof this.facade.offsetToPos === "function"
+    ) {
+      const pos = this.facade.offsetToPos(
+        offset,
+        new Uint32Array(this.lineStarts),
+      );
+      return { row: pos.line, column: pos.character };
+    }
     const mult = this._encMult;
     let low = 0;
     let high = this.lineStarts.length - 1;
@@ -5306,21 +5566,39 @@ export class Tree {
           mid === this.lineStarts.length - 1 ||
           this.lineStarts[mid + 1] > offset
         ) {
-          return { row: mid, column: (offset - this.lineStarts[mid]) / mult };
+          return {
+            row: mid,
+            column: Math.floor((offset - this.lineStarts[mid]) / mult),
+          };
         }
         low = mid + 1;
       } else {
         high = mid - 1;
       }
     }
-    return { row: 0, column: offset / mult };
+    return { row: 0, column: Math.floor(offset / mult) };
   }
   /** Converts a row and column Point into a linear character offset. */
   pointToOffset(point) {
     if (point.row < 0) return 0;
     if (point.row >= this.lineStarts.length) return this.sourceCode.length;
-    const lineStart = this.lineStarts[point.row] / this._encMult;
+    if (
+      this._encoding === 0 &&
+      this.facade &&
+      typeof this.facade.posToOffset === "function"
+    ) {
+      const byteOff = this.facade.posToOffset(
+        { line: point.row, character: point.column },
+        new Uint32Array(this.lineStarts),
+      );
+      return Math.min(this.sourceCode.length, byteOff);
+    }
+    const lineStart = Math.floor(this.lineStarts[point.row] / this._encMult);
     return Math.min(this.sourceCode.length, lineStart + point.column);
+  }
+  /** Releases any resources associated with this syntax tree wrapper. */
+  delete() {
+    this._mem32 = null;
   }
 }
 /**
@@ -5499,8 +5777,8 @@ export class LspWorkspaceManager {
         s.typeId,
         0,
         `symbol_${s.typeId}_${i}`,
-        s.start.line,
-        s.end.line,
+        s.startOffset ?? s.startByte,
+        s.endOffset ?? s.endByte,
       );
     }
     if (keepAst) {
@@ -5531,6 +5809,8 @@ export class LspWorkspaceManager {
       kind: r.kind,
       startByte: r.startByte,
       endByte: r.endByte,
+      startOffset: r.startOffset ?? r.startByte,
+      endOffset: r.endOffset ?? r.endByte,
       score: r.score,
     }));
   }

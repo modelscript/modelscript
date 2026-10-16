@@ -303,6 +303,17 @@ export class LSPBridge {
   }
 
   private resolveName(name: string, scopeId: SymbolId | null): SymbolEntry[] {
+    if (scopeId !== null && this.engine && typeof this.engine.query === "function") {
+      try {
+        const resolver = this.engine.query<((n: string) => SymbolEntry | null) | null>("resolveSimpleName", scopeId);
+        const resolved = typeof resolver === "function" ? resolver(name) : null;
+        if (resolved && this.isDecl(resolved)) {
+          return [resolved];
+        }
+      } catch {
+        // fallback to lexical walk
+      }
+    }
     let current = scopeId;
     while (current !== null) {
       const children = this.index.childrenOf.get(current) || [];
@@ -387,7 +398,10 @@ export class LSPBridge {
     for (const id of matchingIds) {
       const entry = this.index.symbols.get(id);
       if (entry && !this.isDecl(entry)) {
-        refs.push(entry);
+        const resolved = this.resolveRef(entry);
+        if (resolved.some((d) => d.id === declId)) {
+          refs.push(entry);
+        }
       }
     }
     return refs;
@@ -532,6 +546,28 @@ export class LSPBridge {
     const target = this.definitionRaw(byteOffset, sourceText);
     if (!target) return null;
 
+    const targetUri = target.resourceId || this.documentUri;
+    let targetPositions = this.positions;
+    let text: string | undefined = sourceText ?? this.positions.getSourceText();
+
+    if (target.resourceId && target.resourceId !== this.documentUri) {
+      const otherBridge = (globalThis as any).documentLSPBridges?.get(target.resourceId);
+      if (otherBridge?.positions) {
+        targetPositions = otherBridge.positions;
+        text = targetPositions.getSourceText();
+      } else {
+        const otherDocText =
+          (globalThis as any).documents?.get(target.resourceId)?.getText?.() ??
+          (globalThis as any).sharedFs?.readFile?.(target.resourceId);
+        if (typeof otherDocText === "string") {
+          targetPositions = new PositionIndex(otherDocText);
+          text = otherDocText;
+        } else {
+          text = undefined;
+        }
+      }
+    }
+
     const nameField =
       target.fieldRanges?.name ??
       (target.fieldRanges ? target.fieldRanges[target.namePath] || target.fieldRanges["identifier"] : undefined);
@@ -540,23 +576,20 @@ export class LSPBridge {
     if (nameField) {
       startOff = nameField.startOffset ?? nameField.startByte;
       endOff = nameField.endOffset ?? nameField.endByte;
-    } else {
-      const text = sourceText ?? this.positions.getSourceText();
-      if (text && target.name && target.name !== "<anonymous>") {
-        const baseStart = target.startOffset ?? target.startByte;
-        const baseEnd = target.endOffset ?? target.endByte;
-        const slice = text.slice(baseStart, Math.min(baseStart + 300, baseEnd));
-        const idx = slice.indexOf(target.name);
-        if (idx !== -1) {
-          startOff = baseStart + idx;
-          endOff = startOff + target.name.length;
-        }
+    } else if (text && target.name && target.name !== "<anonymous>") {
+      const baseStart = target.startOffset ?? target.startByte;
+      const baseEnd = target.endOffset ?? target.endByte;
+      const slice = text.slice(baseStart, Math.min(baseStart + 300, baseEnd));
+      const idx = slice.indexOf(target.name);
+      if (idx !== -1) {
+        startOff = baseStart + idx;
+        endOff = startOff + target.name.length;
       }
     }
 
     return {
-      uri: target.resourceId || this.documentUri,
-      range: this.positions.rangeFromOffsets(startOff, endOff),
+      uri: targetUri,
+      range: targetPositions.rangeFromOffsets(startOff, endOff),
     };
   }
 

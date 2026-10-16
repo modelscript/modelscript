@@ -35,6 +35,8 @@ export interface WasmStubSymbol {
   nameHash: number;
   startByte: number;
   endByte: number;
+  startOffset?: number;
+  endOffset?: number;
   merkleLow?: number;
   merkleHigh?: number;
 }
@@ -455,9 +457,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return this.uriToId.has(uri) || this.fileSymbols.has(uri) || this.fileLoaders.has(uri);
   }
 
-  private fileDirtyRanges = new Map<string, { startByte: number; endByte: number }[]>();
+  private fileDirtyRanges = new Map<
+    string,
+    { startByte: number; endByte: number; startOffset?: number; endOffset?: number }[]
+  >();
 
-  getDirtyRanges(uri: string): { startByte: number; endByte: number }[] | undefined {
+  getDirtyRanges(
+    uri: string,
+  ): { startByte: number; endByte: number; startOffset?: number; endOffset?: number }[] | undefined {
     return this.fileDirtyRanges.get(uri);
   }
 
@@ -675,7 +682,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
         symId = existingEntry.id;
         oldSymbolsToDelete.delete(symId);
-        if (existingEntry.startByte !== rootStart || existingEntry.endByte !== rootEnd) {
+        const prevStart = existingEntry.startOffset ?? existingEntry.startByte;
+        const prevEnd = existingEntry.endOffset ?? existingEntry.endByte;
+        if (prevStart !== rootStart || prevEnd !== rootEnd) {
           this.globalChangedIds.add(symId);
           this.globalStructuralChangedIds.add(symId);
           if (parentId !== null) {
@@ -902,18 +911,22 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         const matchKey = `${parentKey}:${hook.kind}:${name}:${hook.ruleName}`;
         let symId: SymbolId;
         const existingEntry = oldEntriesByKey.get(matchKey);
-        const nodeStart = node.startByte ?? node.startIndex ?? 0;
-        const nodeEnd = node.endByte ?? node.endIndex ?? 0;
+        const nodeStart = node.startOffset ?? node.startByte ?? node.startIndex ?? 0;
+        const nodeEnd = node.endOffset ?? node.endByte ?? node.endIndex ?? 0;
         if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
           symId = existingEntry.id;
           oldSymbolsToDelete.delete(symId);
           const dirtyRanges = this.fileDirtyRanges.get(uri);
+          const existingStart = existingEntry.startOffset ?? existingEntry.startByte;
+          const existingEnd = existingEntry.endOffset ?? existingEntry.endByte;
           const intersectsDirty =
             dirtyRanges && dirtyRanges.length > 0
               ? dirtyRanges.some(
-                  (r) => Math.max(r.startByte, existingEntry.startByte) <= Math.min(r.endByte, existingEntry.endByte),
+                  (r) =>
+                    Math.max(r.startOffset ?? r.startByte, existingStart) <=
+                    Math.min(r.endOffset ?? r.endByte, existingEnd),
                 )
-              : existingEntry.startByte !== nodeStart || existingEntry.endByte !== nodeEnd;
+              : existingStart !== nodeStart || existingEnd !== nodeEnd;
           if (intersectsDirty) {
             this.globalChangedIds.add(symId);
             this.globalStructuralChangedIds.add(symId);
@@ -939,10 +952,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           | Record<string, { startByte: number; endByte: number; startOffset?: number; endOffset?: number }>
           | undefined;
         if (nameNode) {
-          const nameStartByte = nameNode.startByte ?? nameNode.startIndex ?? nodeStart;
-          const nameEndByte = nameNode.endByte ?? nameNode.endIndex ?? nameStartByte + name.length;
-          const nameStartOff = nameNode.startOffset ?? nameNode.startIndex ?? nameStartByte;
-          const nameEndOff = nameNode.endOffset ?? nameNode.endIndex ?? nameEndByte;
+          const nameStartOff = nameNode.startOffset ?? nameNode.startByte ?? nameNode.startIndex ?? nodeStart;
+          const nameEndOff = nameNode.endOffset ?? nameNode.endByte ?? nameNode.endIndex ?? nameStartOff + name.length;
+          const nameStartByte = nameNode.startByte ?? nameStartOff;
+          const nameEndByte = nameNode.endByte ?? nameEndOff;
           fieldRanges = {
             name: {
               startByte: nameStartByte,
@@ -965,8 +978,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           fieldName: null,
           parentId,
           resourceId: uri,
-          startByte: nodeStart,
-          endByte: nodeEnd,
+          startByte: node.startByte ?? nodeStart,
+          endByte: node.endByte ?? nodeEnd,
           startOffset: nodeStart,
           endOffset: nodeEnd,
           fieldRanges,
@@ -1101,11 +1114,30 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       const oldId = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : Number(rawId);
       const newId = idMap.get(oldId) ?? oldId;
       const entry: SymbolEntry = { ...(rawEntry as SymbolEntry) };
-      if (entry.startOffset === undefined && typeof entry.startByte === "number") {
-        entry.startOffset = entry.startByte;
-      }
-      if (entry.endOffset === undefined && typeof entry.endByte === "number") {
-        entry.endOffset = entry.endByte;
+      const startOff = entry.startOffset ?? entry.startByte ?? 0;
+      const endOff = entry.endOffset ?? entry.endByte ?? 0;
+      entry.startOffset = startOff;
+      entry.endOffset = endOff;
+      entry.startByte = entry.startByte ?? startOff;
+      entry.endByte = entry.endByte ?? endOff;
+      if (entry.fieldRanges) {
+        const mappedRanges: Record<
+          string,
+          { startByte: number; endByte: number; startOffset?: number; endOffset?: number }
+        > = {};
+        for (const [k, v] of Object.entries(entry.fieldRanges)) {
+          if (v) {
+            const fStart = v.startOffset ?? v.startByte ?? 0;
+            const fEnd = v.endOffset ?? v.endByte ?? 0;
+            mappedRanges[k] = {
+              startByte: v.startByte ?? fStart,
+              endByte: v.endByte ?? fEnd,
+              startOffset: fStart,
+              endOffset: fEnd,
+            };
+          }
+        }
+        entry.fieldRanges = mappedRanges;
       }
       entry.id = newId as SymbolId;
 
@@ -1140,8 +1172,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             0,
             0,
             entry.name || "",
-            entry.startByte ?? 0,
-            entry.endByte ?? 0,
+            entry.startOffset ?? entry.startByte ?? 0,
+            entry.endOffset ?? entry.endByte ?? 0,
             0,
             0,
             parentFQN || "",
@@ -1281,6 +1313,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const ids = this.unifiedIndex.byName.get(name) ?? [];
     return ids.map((id) => {
       const sym = this.unifiedIndex.symbols.get(id);
+      const start = sym?.startOffset ?? sym?.startByte ?? 0;
+      const end = sym?.endOffset ?? sym?.endByte ?? 0;
       return {
         symbolId: id,
         fileId: sym ? (this.uriToId.get(sym.resourceId ?? "") ?? 0) : 0,
@@ -1288,8 +1322,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind: typeof sym?.kind === "number" ? sym.kind : 0,
         flags: 0,
         nameHash: 0,
-        startByte: sym?.startByte ?? 0,
-        endByte: sym?.endByte ?? 0,
+        startByte: sym?.startByte ?? start,
+        endByte: sym?.endByte ?? end,
+        startOffset: start,
+        endOffset: end,
       } as WasmStubSymbol;
     });
   }
@@ -1304,6 +1340,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const childrenIds = this.unifiedIndex.childrenOf.get(parentSymbolId) ?? [];
     return childrenIds.map((id) => {
       const sym = this.unifiedIndex.symbols.get(id);
+      const start = sym?.startOffset ?? sym?.startByte ?? 0;
+      const end = sym?.endOffset ?? sym?.endByte ?? 0;
       return {
         symbolId: id,
         fileId: sym ? (this.uriToId.get(sym.resourceId ?? "") ?? 0) : 0,
@@ -1311,8 +1349,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind: typeof sym?.kind === "number" ? sym.kind : 0,
         flags: 0,
         nameHash: 0,
-        startByte: sym?.startByte ?? 0,
-        endByte: sym?.endByte ?? 0,
+        startByte: sym?.startByte ?? start,
+        endByte: sym?.endByte ?? end,
+        startOffset: start,
+        endOffset: end,
       } as WasmStubSymbol;
     });
   }
@@ -1330,6 +1370,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const symIds = uri ? (this.fileSymbols.get(uri) ?? []) : [];
     return symIds.map((id) => {
       const sym = this.unifiedIndex.symbols.get(id);
+      const start = sym?.startOffset ?? sym?.startByte ?? 0;
+      const end = sym?.endOffset ?? sym?.endByte ?? 0;
       return {
         symbolId: id,
         fileId,
@@ -1337,8 +1379,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind: typeof sym?.kind === "number" ? sym.kind : 0,
         flags: 0,
         nameHash: 0,
-        startByte: sym?.startByte ?? 0,
-        endByte: sym?.endByte ?? 0,
+        startByte: sym?.startByte ?? start,
+        endByte: sym?.endByte ?? end,
+        startOffset: start,
+        endOffset: end,
       } as WasmStubSymbol;
     });
   }
@@ -1507,7 +1551,16 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
     }
 
-    for (const entry of entries) {
+    for (const rawEntry of entries) {
+      const startOff = rawEntry.startOffset ?? rawEntry.startByte ?? 0;
+      const endOff = rawEntry.endOffset ?? rawEntry.endByte ?? 0;
+      const entry: SymbolEntry = {
+        ...rawEntry,
+        startByte: rawEntry.startByte ?? startOff,
+        endByte: rawEntry.endByte ?? endOff,
+        startOffset: startOff,
+        endOffset: endOff,
+      };
       this.unifiedIndex.symbols.set(entry.id, entry);
       newIds.push(entry.id);
 
@@ -1959,10 +2012,16 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
               ? 0
               : remap(entry.parentId)
             : null;
+        const startOff = entry.startOffset ?? entry.startByte ?? 0;
+        const endOff = entry.endOffset ?? entry.endByte ?? 0;
         merged.symbols.set(newId, {
           ...entry,
           id: newId,
           parentId: newParentId,
+          startByte: entry.startByte ?? startOff,
+          endByte: entry.endByte ?? endOff,
+          startOffset: startOff,
+          endOffset: endOff,
           language: entry.language ?? lang,
         });
       }

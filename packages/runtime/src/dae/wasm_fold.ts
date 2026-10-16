@@ -3086,7 +3086,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         if (customType) out.setVarCustomType(scalarIdx, customType);
         if (enumLits) out.setVarEnumerationLiterals(scalarIdx, enumLits);
         if (cad) out.setVarCadAnnotation(scalarIdx, cad);
-        if (vRange) out.setVarSourceRange(scalarIdx, vRange.startByte, vRange.endByte);
+        if (vRange)
+          out.setVarSourceRange(scalarIdx, vRange.startOffset ?? vRange.startByte, vRange.endOffset ?? vRange.endByte);
 
         if (expr != null && expr >= 0) {
           if (dae.getExprKind(expr) === ExprKind.ArrayCtor) {
@@ -3130,7 +3131,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       if (customType) out.setVarCustomType(scalarIdx, customType);
       if (enumLits) out.setVarEnumerationLiterals(scalarIdx, enumLits);
       if (cad) out.setVarCadAnnotation(scalarIdx, cad);
-      if (vRange) out.setVarSourceRange(scalarIdx, vRange.startByte, vRange.endByte);
+      if (vRange)
+        out.setVarSourceRange(scalarIdx, vRange.startOffset ?? vRange.startByte, vRange.endOffset ?? vRange.endByte);
       if (expr != null && expr >= 0) {
         out.setVarExpression(scalarIdx, cloneExpr(expr, "", null));
       }
@@ -3169,7 +3171,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const desc = dae.getEqDescription?.(origEqIdx);
         if (desc) out.setEqDescription(newEqIdx, desc);
         const range = dae.getEqSourceRange?.(origEqIdx);
-        if (range) out.setEqSourceRange(newEqIdx, range.startByte, range.endByte);
+        if (range)
+          out.setEqSourceRange(newEqIdx, range.startOffset ?? range.startByte, range.endOffset ?? range.endByte);
       }
     };
 
@@ -3321,11 +3324,25 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       if (!isPlugCompatible) {
         if (!out.diagnostics.some((d) => d.code === 2002)) {
           const srcRange = origEqIdx !== undefined ? dae.getEqSourceRange?.(origEqIdx) : undefined;
+          const rStart = srcRange ? (srcRange.startOffset ?? srcRange.startByte) : undefined;
+          const rEnd = srcRange ? (srcRange.endOffset ?? srcRange.endByte) : undefined;
           out.diagnostics.push({
             severity: "error",
             code: 3003, // NOT_PLUG_COMPATIBLE
             message: `The connectors in connect(${lhsName}, ${rhsName}) are not type compatible.`,
-            range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+            startByte: rStart,
+            endByte: rEnd,
+            startOffset: rStart,
+            endOffset: rEnd,
+            range:
+              srcRange && rStart !== undefined && rEnd !== undefined
+                ? {
+                    startByte: srcRange.startByte ?? rStart,
+                    endByte: srcRange.endByte ?? rEnd,
+                    startOffset: rStart,
+                    endOffset: rEnd,
+                  }
+                : undefined,
           });
         }
         return;
@@ -3432,7 +3449,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const condId = cloneExpr(meta.conditionExprId, "", null);
         const ifIdx = out.addIfEquation(condId);
         const ifRange = dae.getEqSourceRange?.(i);
-        if (ifRange) out.setEqSourceRange(ifIdx, ifRange.startByte, ifRange.endByte);
+        if (ifRange)
+          out.setEqSourceRange(ifIdx, ifRange.startOffset ?? ifRange.startByte, ifRange.endOffset ?? ifRange.endByte);
         const outMeta = out.getIfEquationMeta(ifIdx);
         if (outMeta) {
           cloneInlineEqList(meta.thenEquations, outMeta.thenEquations);
@@ -3456,7 +3474,12 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
         const condId = cloneExpr(meta.conditionExprId, "", null);
         const whenIdx = out.addWhenEquation(condId);
         const whenRange = dae.getEqSourceRange?.(i);
-        if (whenRange) out.setEqSourceRange(whenIdx, whenRange.startByte, whenRange.endByte);
+        if (whenRange)
+          out.setEqSourceRange(
+            whenIdx,
+            whenRange.startOffset ?? whenRange.startByte,
+            whenRange.endOffset ?? whenRange.endByte,
+          );
         const outMeta = out.getWhenEquationMeta(whenIdx);
         if (outMeta) {
           for (const eq of meta.bodyEquations) {

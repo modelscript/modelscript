@@ -1,78 +1,85 @@
-# Modelica Language Support
+# Modelica 3.x (`.mo`)
 
-ModelScript provides full-featured compiler, linter, and simulation capabilities for **Modelica 3.x** under `languages/modelica/`.
-
-The implementation includes complete equation-based modeling, connector semantics, inheritance hierarchies, and rigorous conformance testing against the OpenModelica testsuite.
+`@modelscript/modelica` (`languages/modelica`) is the flagship physical modeling language of ModelScript. It provides a complete Modelica 3.x compiler pipeline—from a native WebAssembly GLR parser and Salsa query engine to an AssemblyScript/TypeScript arena flattener (`ModelicaFlattener`) and the full Modelica Standard Library (MSL 4.0.0).
 
 ---
 
-## Flattening Pipeline (`ModelicaFlattener`)
+## Compilation Pipeline
 
-The compiler lowers hierarchical Modelica classes into a flat system of differential-algebraic equations (DAE).
-
-### Backend Execution Modes
-
-The flattener (`languages/modelica/src/flattener.ts`) supports four execution backends:
-
-- `"hybrid"` _(default)_: High-performance mode coordinating the in-WASM AssemblyScript flattening kernel (`assembly/flattener.ts`) with the TypeScript Salsa query bridge.
-- `"wasm"`: Fully in-WASM kernel execution operating exclusively within linear memory buffers.
-- `"ts"`: Pure TypeScript fallback backend for debugging and detailed AST introspection.
-- `"diff"`: Conformance verification mode that runs both the WASM kernel and TS reference flattener side-by-side to detect drift.
-
----
-
-## Connector Balancing & Stream Semantics
-
-ModelScript implements strict Modelica connection semantics:
-
-- **Potential Variables** (non-flow): Equality equations generated across all connected pins:
-  $$v_1 = v_2 = \cdots = v_n$$
-- **Flow Variables** (e.g. current, flow rate): Conservation equations summing to zero:
-  $$\sum_{i=1}^n i_k = 0$$
-- **Stream Variables**: Upstream operator evaluation and mixing equations for fluid dynamics.
-
----
-
-## Example Modelica Model
-
-```modelica
-model DC_Motor "Permanent magnet DC motor with mechanical inertia"
-  // Parameters
-  parameter Real R = 1.5 "Armature resistance (Ohm)";
-  parameter Real L = 0.05 "Armature inductance (H)";
-  parameter Real k = 0.02 "Torque and back-EMF constant";
-  parameter Real J = 0.001 "Rotor inertia (kg.m^2)";
-  parameter Real b = 0.0001 "Viscous friction coefficient";
-
-  // State variables
-  Real i(start = 0, fixed = true) "Armature current (A)";
-  Real w(start = 0, fixed = true) "Angular velocity (rad/s)";
-  Real phi(start = 0, fixed = true) "Rotor angle (rad)";
-
-  // Inputs
-  input Real u "Applied voltage (V)";
-equation
-  // Electrical equation
-  L * der(i) + R * i = u - k * w;
-
-  // Mechanical equation
-  J * der(w) + b * w = k * i;
-
-  // Kinematic relation
-  der(phi) = w;
-end DC_Motor;
+```mermaid
+flowchart LR
+    MO[".mo Source"] --> GLR["WASM GLR Parser"]
+    GLR --> IDX["SymbolIndexer & WorkspaceIndex"]
+    IDX --> SALSA["QueryEngine (Salsa)"]
+    SALSA --> LINT["CompilerLints & Semantic Lints"]
+    SALSA --> FLAT["ModelicaFlattener (Hybrid WASM/TS)"]
+    FLAT --> DAE["DAEBuilder (Linear Memory)"]
+    DAE --> SIM["BLT / Pantelides / IDA / CVODE / WebGPU"]
 ```
 
 ---
 
-## CLI Compilation & Flattening
+## Core Language Coverage
 
-Compile and flatten a Modelica class using `msx`:
+- **Class Specializations**: `model`, `block`, `connector`, `expandable connector`, `record`, `type`, `package`, `function`, `operator`, `operator record`, `operator function`
+- **Inheritance & Redeclarations**: Multiple `extends`, `redeclare`, `replaceable`, `constrainedby`, `inner` / `outer` dynamic scoping, and deep hierarchical class modifications
+- **Equations & Algorithms**: Differential equations (`der(x)`), `connect(a, b)` (both potential/flow and `stream` connectors), `if`/`for`/`when` equations, `initial equation`, and imperative `algorithm` / `initial algorithm` sections
+- **Synchronous Clocks (Modelica 3.3+)**: `Clock`, `sample`, `hold`, `previous`, `subSample`, `superSample`, `shiftSample`, `backSample`
 
-```bash
-# Flatten to canonical DAE equations
-npx msx flatten DC_Motor motor.mo
+---
 
-# Simulate for 10 seconds and output CSV trajectory
-npx msx simulate DC_Motor motor.mo --stop-time 10 --output trajectory.csv
-```
+## Polyglot & Physical Extensions (`languages/modelica/src/extensions/`)
+
+Beyond standard Modelica 3.x, `@modelscript/modelica` includes first-class compiler extensions for 3D CAD geometry, multiphysics FEA/CFD studies, formal verification, and localization:
+
+1. **Embedded 3D CSG & STEP Export (`shape-flattener.ts`, `csg.ts`, `cad.ts`)**:
+   - `ShapeFlattener` extracts `Modelica.Mechanics.MultiBody.Visualizers.FixedShape` components, parametric dimensions, and `Placement` transformations directly from flattened models.
+   - Compiles visualizers into parametric OpenSCAD scripts (`npx msx csg ModelName file.mo`) or exports watertight ISO 10303-21 STEP B-Rep geometry via the `modelscript/exportShapeToStep` LSP command.
+2. **Embedded FEA & CFD Multiphysics Studies (`study-flattener.ts`, `studies.ts`)**:
+   - `StudyFlattener` (`modelscript/flattenStudy`) extracts embedded structural and fluid study annotations, material properties, and boundary conditions from Modelica components to synthesize CalculiX (`.inp`) and SU2 (`.cfg`) solver decks.
+3. **Octagon Abstract Interpretation & Formal Safety Verification (`src/formal/`)**:
+   - `ModelicaCfgLowerer` (`modelica-cfg-lowerer.ts`), `ModelicaAbstractEvaluator` (`modelica-abstract-evaluator.ts`), and `ModelicaStaticAnalyzer` (`modelica-analyzer.ts`) lower flattened DAE equations and `algorithm` statements into relational Control Flow Graphs evaluated over the **Octagon Abstract Domain** ($\pm x_i \pm x_j \le c$).
+   - `PhysicalInvariantBridge` (`physical-invariant-bridge.ts`) proves division-by-zero freedom, square-root/logarithm domain safety, and physical state invariants (`domain.octagon()`).
+4. **Gettext `.po` / `.pot` Internationalization (`po.ts`)**:
+   - Extracts translatable description strings and `Dialog`/`Documentation` annotations into GNU Gettext `.pot` templates and merges localized `.po` catalogs (`npx msx i18n`).
+
+---
+
+## Semantic Linter (`languages/modelica/src/lints/`)
+
+ModelScript enforces over 60 OpenModelica-compatible diagnostic rules across six modular analyzers:
+
+| Module                             | Representative Checks                                                                                             |
+| :--------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `syntax-placement.ts`              | `M1001`–`M1003`: Parse errors, missing tokens, empty array constructors                                           |
+| `queries.ts`                       | `M2001`–`M2005`: Duplicate elements, unresolved variables/classes/modifiers, identifier mismatches                |
+| `types-expressions.ts`             | `M3001`–`M3006`: Binding/modifier/argument type mismatches, array dimension checks                                |
+| `hierarchy-variability.ts`         | `M4001`–`M4005`: Circular `extends`, duplicate modifications, `protected` access violations, variability ordering |
+| `connections-streams.ts`           | `M3003`–`M3004`: Connector plug-compatibility, stream connector rules, cardinality checks                         |
+| `synchronous-clocks.ts` & `cfa.ts` | Clock partitioning rules, uninitialized discrete variables, structural singularity diagnostics                    |
+
+---
+
+## Dedicated `modelica-mcp` Server Tools
+
+The `@modelscript/modelica` MCP server (`languages/modelica/src/mcp.ts`) exposes 7 tools to AI agents:
+
+| MCP Tool               | Description                                                                                                              |
+| :--------------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `modelica_load`        | Loads `.mo` files or Modelica Standard Library packages into the persistent workspace session                            |
+| `modelica_parse`       | Parses Modelica source code with the WASM GLR parser and returns CST nodes and syntax diagnostics                        |
+| `modelica_flatten`     | Flattens a Modelica class via `ModelicaFlattener` and returns the flat Modelica DAE representation                       |
+| `modelica_simulate`    | Flattens, runs BLT/index reduction, integrates the DAE over $[t_0, t_{\text{stop}}]$, and returns trajectory time-series |
+| `modelica_doe`         | Executes a multi-parameter Design of Experiments (Full Factorial / Latin Hypercube) batch sweep                          |
+| `modelica_sensitivity` | Computes local finite-difference or forward sensitivity matrices $\partial y_i / \partial p_j$ for target outputs        |
+| `modelica_query`       | Queries the Salsa `QueryEngine` for class components, resolved types, variabilities, and modifications                   |
+
+---
+
+## SysML v2 Transformer & Polyglot TGG Rules
+
+- **Direct AST Transformer (`modelicaToSysML2` in `languages/modelica/src/transformers/sysml2.ts`)**: Converts complete Modelica packages and models into idiomatic SysML v2 textual notation (`part def`, `port def`, `attribute`, `connect`).
+- **10 Bidirectional TGG Rules (`languages/modelica/src/language.ts`)**:
+  - **Modelica $\leftrightarrow$ SysML v2 (6 rules)**: `ModelicaModelToSysML2PartDef`, `ModelicaConnectorToSysML2PortDef`, `ModelicaComponentToSysML2Part`, `ModelicaParameterToSysML2Attribute`, `ModelicaConnectorInstanceToSysML2Port`, `ModelicaConnectToSysML2Connection`
+  - **Modelica $\leftrightarrow$ OWL2 (2 rules)**: `ModelicaModelToOWL2Class`, `ModelicaParameterToOWL2DataProperty`
+  - **Modelica $\leftrightarrow$ STEP (2 rules)**: `ModelicaRevoluteToStepRevolute`, `ModelicaPrismaticToStepPrismatic`

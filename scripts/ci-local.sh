@@ -3,6 +3,7 @@
 
 # scripts/ci-local.sh - Local simulation of GitHub Actions CI pipeline
 set -eo pipefail
+export NX_TUI=false
 
 # Text colors
 RED='\033[0;31m'
@@ -114,9 +115,9 @@ run_task() {
   local description="$2"
   log_info "Starting: ${description}..."
   if [ "$RUN_ALL" = true ]; then
-    npx nx run-many -t "$target" --parallel=4
+    npx nx run-many -t "$target" --parallel=4 --output-style=stream
   else
-    npx nx affected -t "$target" --base="$BASE_REF" --parallel=4
+    npx nx affected -t "$target" --base="$BASE_REF" --parallel=4 --output-style=stream
   fi
   log_success "Completed: ${description}"
 }
@@ -124,7 +125,8 @@ run_task() {
 # 1. Lint Step
 if [ "$MODE_LINT" = true ]; then
   echo ""
-  log_info "Verifying project graph cycles, file headers and filename conventions..."
+  log_info "Verifying package-lock.json sync, project graph cycles, file headers and filename conventions..."
+  npm ci --dry-run --ignore-scripts >/dev/null
   npm run lint:cycles
   npm run lint:headers
   npm run lint:filenames
@@ -175,9 +177,9 @@ if [ "$MODE_BUILD" = true ]; then
   echo ""
   log_info "Starting: Package builds..."
   if [ "$RUN_ALL" = true ] || [ "$MODE_FULL" = true ]; then
-    npx nx run-many -t build --parallel=4
+    npx nx run-many -t build --parallel=4 --output-style=stream
   else
-    npx nx affected -t build --base="$BASE_REF" --parallel=4
+    npx nx affected -t build --base="$BASE_REF" --parallel=4 --output-style=stream
   fi
   log_success "Completed: Package builds"
 

@@ -286,7 +286,8 @@ export class Context {
     if (!tree) return null;
     const src = (tree as any).sourceCode as string | undefined;
     if (src) return src.substring(startByte, endByte);
-    return tree.rootNode.text.substring(startByte, endByte);
+    const offset = tree.rootNode.startIndex;
+    return tree.rootNode.text.substring(startByte - offset, endByte - offset);
   }
 
   getTreeNode(resourceId: string | undefined, startByte: number, endByte: number): any | null {

@@ -13,6 +13,8 @@ export interface RTECheckResult {
   astNodeId?: number;
   startByte?: number;
   endByte?: number;
+  startOffset?: number;
+  endOffset?: number;
   witnessValues?: Record<string, string>;
 }
 

@@ -16,7 +16,33 @@ Flagship Modelica physical modeling and simulation compiler for ModelScript. Fea
 - **Unit & Dimensional Checking**: Physical dimension inference and unit consistency verification across equations and component connections.
 - **Salsa Query Engine Integration**: Demand-driven memoization of class instantiation, type resolution, variability, causality, and effective modifications.
 - **Polyglot TGG Rules**: Declarative Triple Graph Grammar rules enabling bidirectional synchronization with SysML v2 blocks, OWL 2 ontological classes, and CSV telemetry datasets.
-- **Compiler Lints**: Over 70+ static and semantic diagnostic rules aligned with OpenModelica error codes (`M1xxx` through `M5xxx`).
+- **Compiler Lints**: Over 70+ static and semantic diagnostic rules aligned with OpenModelica error codes (`M1xxx` through `M6xxx`).
+
+---
+
+## Package Structure
+
+| Path                             | Description                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/language.ts`                | Modelica 3.x grammar specification, lexer rules, and CST combinators for `@modelscript/dsl` (`buildParser`)              |
+| `src/flattener.ts`               | TypeScript coordinator and hybrid bridge for the arena-native `ModelicaFlattener` (`hybrid`, `wasm`, `ts`, `diff` modes) |
+| `assembly/flattener.ts`          | In-WASM AssemblyScript flattening kernel lowering linear CST nodes directly into `DAEBuilder`                            |
+| `src/queries.ts`                 | Salsa `QueryEngine` semantic queries (`instantiate`, `classInstance`, `resolveSimpleName`, `variability`, `causality`)   |
+| `src/connections.ts`             | `ModelicaPortBalancer` for standard, stream, and expandable connector topological balancing                              |
+| `src/units.ts`                   | Physical dimension inference and SI unit consistency verification                                                        |
+| `src/lints/`                     | Linear CST and semantic `CompilerLint` diagnostic rules (`M1xxx`–`M6xxx`)                                                |
+| `src/extensions/`                | Embedded multi-physics extensions: CSG (`csg.ts`), shapes (`shape-flattener.ts`), FEA/CFD studies (`study-flattener.ts`) |
+| `transformers/`                  | Bidirectional Triple Graph Grammar (TGG) transformers for SysML v2, OWL 2, and CSV                                       |
+| `tests/testsuite-runner.ts`      | OpenModelica (`omc`) conformance testsuite runner                                                                        |
+| `tests/msl-comparison-runner.ts` | On-the-fly Modelica Standard Library (MSL) verification and benchmark runner                                             |
+
+---
+
+## Architecture: Arena-Native Flattening, Multi-File Indexing & Extensions
+
+- **Arena-Native `ModelicaFlattener` (`hybrid` | `wasm` | `ts` | `diff`)**: Equations, algorithm statements, and expressions are lowered directly from linear WebAssembly CST pointers into `DAEBuilder` struct-of-arrays tables without intermediate AST wrapper allocations. Combined with `@modelscript/runtime`, the pipeline performs constant folding (`foldArenaConstants`), alias elimination (`eliminateArenaAliases`), Pantelides index reduction, and Tarjan Block Lower Triangular (BLT) sorting.
+- **Multi-File `WorkspaceIndex` & Package Resolution**: Cross-file `within` clauses, `package.mo` / `package.order` hierarchies, and the full Modelica Standard Library (MSL) are unified into a workspace-wide symbol index with incremental Salsa dependency invalidation.
+- **Embedded CSG, FEA & CFD Extensions**: Supports native `shape` classes and constructive solid geometry (`src/extensions/csg.ts`, `shape-flattener.ts`), automated 3D multibody mass/inertia tensor synthesis (`multibody-generator.ts`), and embedded continuum FEA/CFD study definitions (`study-flattener.ts`, `studies.ts`) bridged to STEP B-Rep CAD and CAE solvers.
 
 ---
 

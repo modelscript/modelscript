@@ -24,10 +24,14 @@ export interface WritebackContext {
  * and avoids coupling to IDE/LSP line-column structures.
  */
 export interface WritebackEdit {
-  /** Start byte offset in the document */
+  /** Start byte/character offset in the document */
   startByte: number;
-  /** End byte offset in the document */
+  /** End byte/character offset in the document */
   endByte: number;
+  /** Start character offset in the document */
+  startOffset?: number;
+  /** End character offset in the document */
+  endOffset?: number;
   /** Replacement text to insert across [startByte, endByte] */
   newText: string;
 }

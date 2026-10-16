@@ -553,6 +553,60 @@ export class ScadEvaluator {
 
   private collectIdentifiers(node: any): string[] {
     const list: string[] = [];
+    if (node && typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
+      const mem32: Uint32Array = node.tree.mem32;
+      const syntaxNames: string[] = node.tree.facade.syntaxNames;
+      const exports = node.tree.facade.exports;
+      const enc = node.tree.facade.getInputEncoding ? node.tree.facade.getInputEncoding() : (node.tree._encoding ?? 1);
+      const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+
+      const ptrStack: number[] = [];
+      const offsetStack: number[] = [];
+      let curPtr = mem32[(node.ptr + 12) >>> 2]!;
+      let curOff = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
+
+      while (true) {
+        if (curPtr !== 0) {
+          const tf = mem32[curPtr >>> 2]!;
+          const tid = tf & 0x03ff;
+          const tName = syntaxNames[tid] || "";
+          const ehp = mem32[(curPtr + 4) >>> 2]!;
+          const rPad = tf >>> 22;
+          const isFat = (ehp >>> 23) & 1;
+          const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad;
+          const len = ehp & 0x007fffff;
+          const isInv = (tf & (1 << 14)) !== 0;
+
+          if (!isInv && tName === "IDENTIFIER" && node.tree.sourceCode) {
+            const s = Math.floor((curOff + pad) / div);
+            const e = Math.floor((curOff + pad + len) / div);
+            list.push(node.tree.sourceCode.substring(s, e).trim());
+          }
+
+          const nextPtr = mem32[(curPtr + 16) >>> 2]!;
+          const nextOff = curOff + pad + len;
+          const grandChildPtr = mem32[(curPtr + 12) >>> 2]!;
+
+          if (grandChildPtr !== 0) {
+            if (nextPtr !== 0) {
+              ptrStack.push(nextPtr);
+              offsetStack.push(nextOff);
+            }
+            curPtr = grandChildPtr;
+            curOff = curOff + pad;
+          } else {
+            curPtr = nextPtr;
+            curOff = nextOff;
+          }
+        } else {
+          if (ptrStack.length === 0) break;
+          curPtr = ptrStack.pop()!;
+          curOff = offsetStack.pop()!;
+        }
+      }
+      return list;
+    }
+
     const visit = (n: any) => {
       if (!n) return;
       if (n.type === "IDENTIFIER") {
@@ -1118,6 +1172,61 @@ export class ScadEvaluator {
 
   private findChildByType(node: any, targetType: string): any {
     if (!node) return null;
+    if (
+      typeof node.ptr === "number" &&
+      node.ptr > 0 &&
+      node.tree?.mem32 &&
+      node.tree?.facade?.syntaxNames &&
+      !node._cachedChildren
+    ) {
+      const mem32: Uint32Array = node.tree.mem32;
+      const syntaxNames: string[] = node.tree.facade.syntaxNames;
+      const exports = node.tree.facade.exports;
+      const NodeCtor = node.constructor as any;
+
+      const ptrStack: number[] = [];
+      const offsetStack: number[] = [];
+      let curPtr = mem32[(node.ptr + 12) >>> 2]!;
+      let curOff = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
+
+      while (true) {
+        if (curPtr !== 0) {
+          const tf = mem32[curPtr >>> 2]!;
+          const tid = tf & 0x03ff;
+          const tName = syntaxNames[tid] || "";
+          const ehp = mem32[(curPtr + 4) >>> 2]!;
+          const rPad = tf >>> 22;
+          const isFat = (ehp >>> 23) & 1;
+          const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad;
+          const len = ehp & 0x007fffff;
+          const isInv = (tf & (1 << 14)) !== 0;
+
+          const nextPtr = mem32[(curPtr + 16) >>> 2]!;
+          const nextOff = curOff + pad + len;
+
+          if (tName.startsWith("_") || isInv) {
+            if (nextPtr !== 0) {
+              ptrStack.push(nextPtr);
+              offsetStack.push(nextOff);
+            }
+            curPtr = mem32[(curPtr + 12) >>> 2]!;
+            curOff = curOff + pad;
+            continue;
+          } else if (tName === targetType) {
+            return new NodeCtor(node.tree, curPtr, curOff, node, pad, len, tid, -1);
+          }
+
+          curOff = nextOff;
+          curPtr = nextPtr;
+        } else {
+          if (ptrStack.length === 0) break;
+          curPtr = ptrStack.pop()!;
+          curOff = offsetStack.pop()!;
+        }
+      }
+      return null;
+    }
+
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
       if (c && c.type === targetType) return c;

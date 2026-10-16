@@ -74,7 +74,7 @@ const engineFrame: FmiLsBusFrame = {
 
 ## 2. In-Browser "Soft HIL" (WebSerial, WebUSB, WebHID)
 
-For desktop and browser-based testing, ModelScript provides the [`WebSerialParticipant`](file:///home/omar/git3/modelscript/packages/exchange/src/cosim/participants/web-hardware.ts):
+For desktop and browser-based testing, ModelScript provides the `WebSerialParticipant` (`packages/exchange/src/cosim/participants/web-hardware.ts`):
 
 ### Supported Hardware Adapters & Microcontrollers
 
@@ -104,7 +104,7 @@ session.addParticipant(hwParticipant);
 
 ### Unthrottled Browser Pacing via `AudioWorkletClock`
 
-Browsers throttle `setInterval` to 1 Hz when tabs are backgrounded. ModelScript's [`AudioWorkletClock`](file:///home/omar/git3/modelscript/packages/exchange/src/cosim/audio-worklet-clock.ts) leverages the high-priority OS audio thread (44.1 kHz) to drive the simulation loop with sub-millisecond precision, immune to background throttling.
+Browsers throttle `setInterval` to 1 Hz when tabs are backgrounded. ModelScript's `AudioWorkletClock` (`packages/exchange/src/cosim/audio-worklet-clock.ts`) leverages the high-priority OS audio thread (44.1 kHz) to drive the simulation loop with sub-millisecond precision, immune to background throttling.
 
 ---
 
@@ -117,6 +117,6 @@ For hard real-time execution with physical ECUs over CAN:
 2. **Compile Neural ROM Surrogates to C**:
    Use `exportROMToC(trainedRom)` from `@modelscript/simulate` to generate zero-dependency static C arrays for surrogate evaluation in < 20 µs.
 3. **Deploy with Standalone Runner**:
-   Use [`hil-runner-template.c`](file:///home/omar/git3/modelscript/packages/exchange/src/fmu/hil-runner-template.c):
+   Use `hil-runner-template.c` (`packages/exchange/src/fmu/hil-runner-template.c`):
    - Compiles with `gcc -O3 hil-runner-template.c model.c -lm -o model_hil`.
    - Runs with `sudo ./model_hil can0` under `SCHED_FIFO` priority 80 with `mlockall`.

@@ -20,12 +20,14 @@ export const stepLanguage = language({
 
   writeback: (ctx) => {
     const { entry, fullText, newValue } = ctx;
-    if (entry?.startByte != null && entry?.endByte != null && entry.endByte > entry.startByte) {
-      const declText = fullText.substring(entry.startByte, entry.endByte);
+    const startOffset = entry?.startOffset ?? entry?.startByte;
+    const endOffset = entry?.endOffset ?? entry?.endByte;
+    if (startOffset != null && endOffset != null && endOffset > startOffset) {
+      const declText = fullText.substring(startOffset, endOffset);
       // E.g. #10 = PRODUCT('DroneBody', ...)
       const strMatch = declText.match(/'([^'\\]*(?:\\.[^'\\]*)*)'/);
       if (strMatch && strMatch.index !== undefined) {
-        const valStartByte = entry.startByte + strMatch.index + 1;
+        const valStartByte = startOffset + strMatch.index + 1;
         const valEndByte = valStartByte + strMatch[1].length;
         const cleanVal = newValue.replace(/^'|'$/g, "");
         return { startByte: valStartByte, endByte: valEndByte, newText: cleanVal };

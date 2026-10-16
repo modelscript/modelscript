@@ -1,11 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-non-null-assertion */
-// @ts-nocheck
+import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
+import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
+import { DOMAIN_INDEX_TO_NAME } from "@modelscript/runtime";
+import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
+import { TextDocument } from "vscode-languageserver-textdocument";
 import { LspContext } from "../lsp-context.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
+import { getTraceabilityMatrix } from "../requirements.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
-import { loadDependencyFromRegistry } from "../vfs/library-loader.js";
+import { loadDependencyFromRegistry, type RegistryPackageInfo } from "../vfs/library-loader.js";
+
+export interface FlatSemanticEdit {
+  action: "insert" | "delete" | "update" | "none" | "move";
+  description: string;
+  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
+  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
+  kind?: string;
+  regulatoryImpact?: any;
+}
 
 function isValueCarryingEntry(entry: any, slice?: string): boolean {
   if (!entry.name) return false;
@@ -73,21 +87,26 @@ export function registerMiscEndpoints(context: LspContext) {
         context.validationService.documentViewports.delete(params.uri);
         return;
       }
-      // Use the bridge's PositionIndex to convert lines → byte offsets
+      // Use the bridge's PositionIndex to convert lines → character offsets
       const bridge = context.validationService.documentLSPBridges.get(params.uri);
       if (bridge && (bridge as any).positions) {
         const positions = (bridge as any).positions;
-        // Merge all visible ranges into one encompassing byte range
-        let minByte = Infinity;
-        let maxByte = 0;
+        // Merge all visible ranges into one encompassing offset range
+        let minOffset = Infinity;
+        let maxOffset = 0;
         for (const range of params.ranges) {
-          const startByte = positions.positionToOffset(range.startLine, 0);
-          const endByte = positions.positionToOffset(range.endLine + 1, 0); // end of last visible line
-          if (startByte < minByte) minByte = startByte;
-          if (endByte > maxByte) maxByte = endByte;
+          const startOffset = positions.positionToCharOffset(range.startLine, 0);
+          const endOffset = positions.positionToCharOffset(range.endLine + 1, 0); // end of last visible line
+          if (startOffset < minOffset) minOffset = startOffset;
+          if (endOffset > maxOffset) maxOffset = endOffset;
         }
-        if (minByte < maxByte) {
-          context.validationService.documentViewports.set(params.uri, { startByte: minByte, endByte: maxByte });
+        if (minOffset < maxOffset) {
+          context.validationService.documentViewports.set(params.uri, {
+            startOffset: minOffset,
+            endOffset: maxOffset,
+            startByte: minOffset,
+            endByte: maxOffset,
+          });
         }
       }
     },
@@ -183,8 +202,10 @@ export function registerMiscEndpoints(context: LspContext) {
         if (entry.resourceId) {
           const doc = context.documents.get(entry.resourceId);
           const fullText = doc?.getText() ?? context.documentManager.documentTrees.get(entry.resourceId)?.text;
-          if (fullText && entry.startByte != null && entry.endByte != null && entry.endByte > entry.startByte) {
-            const sourceText = fullText.substring(entry.startByte, entry.endByte);
+          const startOff = entry.startOffset ?? entry.startByte;
+          const endOff = entry.endOffset ?? entry.endByte;
+          if (fullText && startOff != null && endOff != null && endOff > startOff) {
+            const sourceText = fullText.substring(startOff, endOff);
             if (!isValueCarryingEntry(entry, sourceText)) continue;
 
             let valueText: string | undefined;
@@ -246,29 +267,33 @@ export function registerMiscEndpoints(context: LspContext) {
       let scopeStr = "";
 
       for (const change of params.changes) {
-        const isSysml = change.uri.endsWith(".sysml");
+        const isSysml = change.uri.endsWith(".sysml") || change.uri.endsWith(".sysml2");
         const isModelica = change.uri.endsWith(".mo");
         if (!isSysml && !isModelica) continue;
 
         scopeStr = isSysml ? "sysml" : "modelica";
 
-        const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
-        const qHooks = isSysml ? sysml2QueryHooks : modelicaQueryHooks;
-        const langParser = isSysml ? sysml2Parser : parser;
+        const langParser =
+          context.parserService.getParser(isSysml ? "sysml2" : "modelica") ??
+          (isSysml ? (globalThis as any).sysml2Parser : (globalThis as any).parser);
 
         if (!langParser) continue;
 
+        let oldTree: any = null;
+        let newTree: any = null;
         try {
-          const oldTree = langParser.parse(change.oldText);
-          const oldIndexer = new SymbolIndexer(hooks);
-          const oldIndex = oldIndexer.index(oldTree.rootNode);
-          const oldDb = new QueryEngine(oldIndex, qHooks);
+          oldTree = langParser.parse(change.oldText);
+          const oldWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
+          oldWs.reindexDocument(change.uri, () => oldTree.rootNode);
+          const oldIndex = oldWs.toUnifiedPartial();
+          const oldDb = isSysml ? createSysML2QueryEngine(oldIndex) : createModelicaQueryEngine(oldIndex);
           const oldRootEntries = oldIndex.childrenOf.get(null) || [];
 
-          const newTree = langParser.parse(change.newText);
-          const newIndexer = new SymbolIndexer(hooks);
-          const newIndex = newIndexer.index(newTree.rootNode);
-          const newDb = new QueryEngine(newIndex, qHooks);
+          newTree = langParser.parse(change.newText);
+          const newWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
+          newWs.reindexDocument(change.uri, () => newTree.rootNode);
+          const newIndex = newWs.toUnifiedPartial();
+          const newDb = isSysml ? createSysML2QueryEngine(newIndex) : createModelicaQueryEngine(newIndex);
           const newRootEntries = newIndex.childrenOf.get(null) || [];
 
           const maxLen = Math.max(oldRootEntries.length, newRootEntries.length);
@@ -285,7 +310,7 @@ export function registerMiscEndpoints(context: LspContext) {
               orderAgnostic: true,
             });
 
-            const collectDescriptions = (edit: SemanticEdit) => {
+            const collectDescriptions = (edit: any) => {
               if (edit.description) descriptions.push(edit.description);
               if (edit.children) {
                 for (const child of edit.children) collectDescriptions(child);
@@ -296,6 +321,9 @@ export function registerMiscEndpoints(context: LspContext) {
           }
         } catch (e) {
           console.error("Diff error", e);
+        } finally {
+          oldTree?.delete?.();
+          newTree?.delete?.();
         }
       }
 
@@ -312,31 +340,35 @@ export function registerMiscEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getSemanticDiff",
-    async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: FlatSemanticEdit[] }> => {
-      const isSysml = params.uri.endsWith(".sysml");
+    async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: any[] }> => {
+      const isSysml = params.uri.endsWith(".sysml") || params.uri.endsWith(".sysml2");
       const isModelica = params.uri.endsWith(".mo");
       if (!isSysml && !isModelica) return { diffs: [] };
 
-      const hooks = isSysml ? sysml2IndexerHooks : modelicaIndexerHooks;
-      const qHooks = isSysml ? sysml2QueryHooks : modelicaQueryHooks;
-      const langParser = isSysml ? sysml2Parser : parser;
+      const langParser =
+        context.parserService.getParser(isSysml ? "sysml2" : "modelica") ??
+        (isSysml ? (globalThis as any).sysml2Parser : (globalThis as any).parser);
 
       if (!langParser) return { diffs: [] };
 
+      let oldTree: any = null;
+      let newTree: any = null;
       try {
         const oldDoc = TextDocument.create(params.uri, isSysml ? "sysml2" : "modelica", 1, params.oldText);
         const newDoc = TextDocument.create(params.uri, isSysml ? "sysml2" : "modelica", 1, params.newText);
 
-        const oldTree = langParser.parse(params.oldText);
-        const oldIndexer = new SymbolIndexer(hooks);
-        const oldIndex = oldIndexer.index(oldTree.rootNode);
-        const oldDb = new QueryEngine(oldIndex, qHooks);
+        oldTree = langParser.parse(params.oldText);
+        const oldWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
+        oldWs.reindexDocument(params.uri, () => oldTree.rootNode);
+        const oldIndex = oldWs.toUnifiedPartial();
+        const oldDb = isSysml ? createSysML2QueryEngine(oldIndex) : createModelicaQueryEngine(oldIndex);
         const oldRootEntries = oldIndex.childrenOf.get(null) || [];
 
-        const newTree = langParser.parse(params.newText);
-        const newIndexer = new SymbolIndexer(hooks);
-        const newIndex = newIndexer.index(newTree.rootNode);
-        const newDb = new QueryEngine(newIndex, qHooks);
+        newTree = langParser.parse(params.newText);
+        const newWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
+        newWs.reindexDocument(params.uri, () => newTree.rootNode);
+        const newIndex = newWs.toUnifiedPartial();
+        const newDb = isSysml ? createSysML2QueryEngine(newIndex) : createModelicaQueryEngine(newIndex);
         const newRootEntries = newIndex.childrenOf.get(null) || [];
 
         // Pre-build index of safety critical symbols and their mitigations
@@ -348,10 +380,10 @@ export function registerMiscEndpoints(context: LspContext) {
           if (rule.includes("Hazard") || entry.metadata?.defKind === "hazard" || entry.metadata?.hazardId) {
             hazardSymbols.set(entry.name, entry);
             if (entry.metadata?.mitigates) {
-              mitigatedReqs.set(String(entry.metadata.mitigates), entry.metadata?.hazardId ?? entry.name);
+              mitigatedReqs.set(String(entry.metadata.mitigates), String(entry.metadata?.hazardId ?? entry.name));
             }
             if (entry.metadata?.mitigatedBy) {
-              mitigatedReqs.set(String(entry.metadata.mitigatedBy), entry.metadata?.hazardId ?? entry.name);
+              mitigatedReqs.set(String(entry.metadata.mitigatedBy), String(entry.metadata?.hazardId ?? entry.name));
             }
           }
         }
@@ -380,8 +412,8 @@ export function registerMiscEndpoints(context: LspContext) {
               };
 
               if (edit.oldEntry) {
-                const startPos = oldDoc.positionAt(edit.oldEntry.startByte);
-                const endPos = oldDoc.positionAt(edit.oldEntry.endByte);
+                const startPos = oldDoc.positionAt(edit.oldEntry.startOffset ?? edit.oldEntry.startByte);
+                const endPos = oldDoc.positionAt(edit.oldEntry.endOffset ?? edit.oldEntry.endByte);
                 flatEdit.oldRange = {
                   startLine: startPos.line,
                   startCharacter: startPos.character,
@@ -392,8 +424,8 @@ export function registerMiscEndpoints(context: LspContext) {
               }
 
               if (edit.newEntry) {
-                const startPos = newDoc.positionAt(edit.newEntry.startByte);
-                const endPos = newDoc.positionAt(edit.newEntry.endByte);
+                const startPos = newDoc.positionAt(edit.newEntry.startOffset ?? edit.newEntry.startByte);
+                const endPos = newDoc.positionAt(edit.newEntry.endOffset ?? edit.newEntry.endByte);
                 flatEdit.newRange = {
                   startLine: startPos.line,
                   startCharacter: startPos.character,
@@ -453,6 +485,9 @@ export function registerMiscEndpoints(context: LspContext) {
       } catch (e) {
         console.error("getSemanticDiff error", e);
         return { diffs: [] };
+      } finally {
+        oldTree?.delete?.();
+        newTree?.delete?.();
       }
     },
   );
@@ -533,5 +568,3 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 }
-
-// @ts-nocheck

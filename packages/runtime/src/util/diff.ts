@@ -3,6 +3,8 @@
 export interface EditRange {
   startByte: number;
   endByte: number;
+  startOffset?: number;
+  endOffset?: number;
   delta: number;
 }
 
@@ -95,6 +97,8 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
       {
         startByte: editStart,
         endByte: Math.max(editStart, editEnd),
+        startOffset: editStart,
+        endOffset: Math.max(editStart, editEnd),
         delta: newText.length - prevText.length,
       },
     ];
@@ -115,6 +119,8 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
       {
         startByte: editStart,
         endByte: Math.max(editStart, editEnd),
+        startOffset: editStart,
+        endOffset: Math.max(editStart, editEnd),
         delta: newText.length - prevText.length,
       },
     ];
@@ -129,6 +135,8 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
       {
         startByte: editStart,
         endByte: Math.max(editStart, editEnd),
+        startOffset: editStart,
+        endOffset: Math.max(editStart, editEnd),
         delta: newText.length - prevText.length,
       },
     ];
@@ -184,6 +192,8 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
       hunks.push({
         startByte: hunkStartInNew,
         endByte: hunkStartInNew + nLen,
+        startOffset: hunkStartInNew,
+        endOffset: hunkStartInNew + nLen,
         delta: nLen - pLen,
       });
       pOffset += pLen;
@@ -202,6 +212,8 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
       hunks.push({
         startByte: hunkStartInNew,
         endByte: hunkStartInNew + nLen,
+        startOffset: hunkStartInNew,
+        endOffset: hunkStartInNew + nLen,
         delta: nLen - pLen,
       });
       break;
@@ -214,6 +226,8 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
         {
           startByte: prefixLen,
           endByte: Math.max(prefixLen, newText.length - suffixLen),
+          startOffset: prefixLen,
+          endOffset: Math.max(prefixLen, newText.length - suffixLen),
           delta: newText.length - prevText.length,
         },
       ];

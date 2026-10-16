@@ -138,10 +138,6 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
         src: foundBindings,
         dest: `server/dist/${normalized.id}.bindings.js`,
       });
-      wasmAssets.push({
-        src: foundBindings,
-        dest: `server/dist/tree-sitter-${normalized.id}.bindings.js`,
-      });
       try {
         const fileUrl = path.isAbsolute(foundBindings) ? `file://${foundBindings}` : foundBindings;
         const mod = await dynamicImport(fileUrl);

@@ -61,7 +61,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
     });
 
     // Handle messages from webview
-    webviewPanel.webview.onDidReceiveMessage(async (msg) => {
+    const msgListener = webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "changeMetaclass":
           currentMetaclass = msg.metaclass ?? "part";
@@ -165,16 +165,19 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
     });
 
     webviewPanel.onDidDispose(() => {
+      msgListener.dispose();
       changeListener.dispose();
       projectTreeListener.dispose();
     });
   }
 
   private getHtmlForWebview(): string {
+    const nonce = getNonce();
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SysML v2 Element Table</title>
   <style>
@@ -381,7 +384,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
     </table>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     let currentTable = null;
     let sortColumn = "name";
@@ -622,4 +625,13 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
 </body>
 </html>`;
   }
+}
+
+function getNonce() {
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }

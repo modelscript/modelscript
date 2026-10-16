@@ -622,7 +622,10 @@ export class PolyglotTransformer {
   private hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
 
   /** CST source ranges for live bi-directional IDE spans */
-  private cstSpans = new Map<string, { startByte: number; endByte: number; line: number; column: number }>();
+  private cstSpans = new Map<
+    string,
+    { startByte: number; endByte: number; startOffset?: number; endOffset?: number; line: number; column: number }
+  >();
 
   /**
    * Stores unmapped shadow complement data for an asymmetric transformation.
@@ -705,14 +708,36 @@ export class PolyglotTransformer {
   /**
    * Associates an AST element with its concrete source byte spans.
    */
-  setCstSpan(id: string, span: { startByte: number; endByte: number; line: number; column: number }): void {
-    this.cstSpans.set(id, span);
+  setCstSpan(
+    id: string,
+    span: {
+      startByte: number;
+      endByte: number;
+      startOffset?: number;
+      endOffset?: number;
+      line: number;
+      column: number;
+    },
+  ): void {
+    const startOff = span.startOffset ?? span.startByte;
+    const endOff = span.endOffset ?? span.endByte;
+    this.cstSpans.set(id, {
+      ...span,
+      startByte: span.startByte ?? startOff,
+      endByte: span.endByte ?? endOff,
+      startOffset: startOff,
+      endOffset: endOff,
+    });
   }
 
   /**
    * Retrieves the source byte span for an element.
    */
-  getCstSpan(id: string): { startByte: number; endByte: number; line: number; column: number } | undefined {
+  getCstSpan(
+    id: string,
+  ):
+    | { startByte: number; endByte: number; startOffset?: number; endOffset?: number; line: number; column: number }
+    | undefined {
     return this.cstSpans.get(id);
   }
 

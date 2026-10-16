@@ -291,7 +291,7 @@ function parseArgumentList(argListNode: any): {
  */
 export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[] {
   if (!rootNode) return [];
-  const rawText = sourceText ?? rootNode.text ?? "";
+  const rawText = sourceText ?? rootNode.tree?.sourceCode ?? rootNode.text ?? "";
   const locator = new LineLocator(rawText);
   const diagnostics: ScadDiagnostic[] = [];
 

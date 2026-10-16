@@ -74,9 +74,13 @@ async function main() {
   assert.strictEqual(pkg.contributes.languages.length, 2);
   assert.strictEqual(pkg.contributes.languages[0].id, "calc");
   assert.strictEqual(pkg.contributes.languages[1].id, "minijson");
-  assert.strictEqual(pkg.contributes.customEditors.length, 2);
+  assert.strictEqual(pkg.contributes.customEditors.length, 6);
   assert.strictEqual(pkg.contributes.customEditors[0].viewType, "calc.diagramEditor");
   assert.strictEqual(pkg.contributes.customEditors[1].viewType, "minijson.diagramEditor");
+  assert.strictEqual(pkg.contributes.customEditors[2].viewType, "modelscript.diagram");
+  assert.strictEqual(pkg.contributes.customEditors[3].viewType, "modelscript.fmuViewer");
+  assert.strictEqual(pkg.contributes.customEditors[4].viewType, "modelscript.sspViewer");
+  assert.strictEqual(pkg.contributes.customEditors[5].viewType, "modelscript.gcodeViewer");
   assert.ok(pkg.contributes.notebooks);
   assert.ok(pkg.contributes.menus["editor/title"]);
   const openDiagMenu = pkg.contributes.menus["editor/title"].find((m: any) => m.command === "modelscript.openDiagram");

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { MeshQualityMetrics, Tet4Mesh } from "../fea/tet4-types.js";
 
 /**
@@ -12,6 +13,59 @@ export class MeshQualityAnalyzer {
    */
   public static analyze(mesh: Tet4Mesh): MeshQualityMetrics {
     const { nodeCoords, elements, numElements, nodesPerElement = 4 } = mesh;
+
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.fea_analyze_tet_mesh_quality === "function" &&
+      typeof wasm.__new === "function" &&
+      numElements > 0
+    ) {
+      const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+      const nodeCoordsPtr = alloc(nodeCoords.length * 8);
+      const elementsPtr = alloc(elements.length * 4);
+      const jacobiansPtr = alloc(numElements * 8);
+      const aspectRatiosPtr = alloc(numElements * 8);
+      const statsPtr = alloc(6 * 8);
+
+      const coordsF64 = new Float64Array(wasm.memory.buffer, nodeCoordsPtr, nodeCoords.length);
+      for (let i = 0; i < nodeCoords.length; i++) coordsF64[i] = nodeCoords[i]!;
+      const elemsI32 = new Int32Array(wasm.memory.buffer, elementsPtr, elements.length);
+      for (let i = 0; i < elements.length; i++) elemsI32[i] = elements[i]!;
+
+      const numInverted: number = wasm.fea_analyze_tet_mesh_quality(
+        numElements,
+        nodesPerElement,
+        nodeCoordsPtr,
+        elementsPtr,
+        jacobiansPtr,
+        aspectRatiosPtr,
+        statsPtr,
+      );
+
+      const jView = new Float64Array(wasm.memory.buffer, jacobiansPtr, numElements);
+      const arView = new Float64Array(wasm.memory.buffer, aspectRatiosPtr, numElements);
+      const stats = new Float64Array(wasm.memory.buffer, statsPtr, 6);
+
+      const elementJacobians = new Float32Array(numElements);
+      const elementAspectRatios = new Float32Array(numElements);
+      for (let e = 0; e < numElements; e++) {
+        elementJacobians[e] = jView[e]!;
+        elementAspectRatios[e] = arView[e]!;
+      }
+
+      return {
+        minJacobian: stats[0]!,
+        maxJacobian: stats[1]!,
+        avgJacobian: stats[2]!,
+        minAspectRatio: stats[3]!,
+        maxAspectRatio: stats[4]!,
+        avgAspectRatio: stats[5]!,
+        numInvertedElements: numInverted,
+        elementJacobians,
+        elementAspectRatios,
+      };
+    }
 
     const elementJacobians = new Float32Array(numElements);
     const elementAspectRatios = new Float32Array(numElements);

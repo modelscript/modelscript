@@ -124,6 +124,7 @@ export class MqttTreeProvider
 
   /** Start polling for participants. */
   startPolling(): void {
+    this.stopPolling();
     void this.fetchParticipants();
     this.pollTimer = setInterval(() => void this.fetchParticipants(), this.pollIntervalMs);
   }
@@ -134,6 +135,12 @@ export class MqttTreeProvider
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+  }
+
+  /** Dispose polling timer and event emitter. */
+  dispose(): void {
+    this.stopPolling();
+    this._onDidChangeTreeData.dispose();
   }
 
   /** Manually refresh the tree. */

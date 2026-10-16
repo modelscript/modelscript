@@ -173,7 +173,13 @@ export default defineConfig([
       "languages/**/tests/**/*.{ts,js,cjs,mjs}",
       "packages/examples/**/*.{ts,js,cjs,mjs}",
     ],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+      },
+    },
     rules: {
+      "@typescript-eslint/no-for-in-array": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",
       "@typescript-eslint/no-explicit-any": "off",

@@ -793,7 +793,13 @@ export class CstUnparser {
     let line = 0;
     let character = 0;
     for (let i = 0; i < offset && i < source.length; i++) {
-      if (source[i] === "\n") {
+      if (source[i] === "\r") {
+        line++;
+        character = 0;
+        if (i + 1 < offset && i + 1 < source.length && source[i + 1] === "\n") {
+          i++;
+        }
+      } else if (source[i] === "\n") {
         line++;
         character = 0;
       } else {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
-// @ts-nocheck
 import { buildFmuArchive, parseFmuModelDescription } from "@modelscript/exchange/fmu";
 import { readZipTextEntry } from "@modelscript/runtime/wasm_container.js";
 import { ArenaSimulator } from "@modelscript/simulate";
@@ -242,7 +241,18 @@ export function registerInteropEndpoints(context: LspContext) {
         }
 
         // Also register the FMU entity for class resolution
-        fmuEntity.instantiate();
+        const fmuEntity = {
+          name: desc.modelName || params.name,
+          compositeName: params.packageName
+            ? `${params.packageName}.${desc.modelName || params.name}`
+            : desc.modelName || params.name,
+          kind: "block",
+          classKind: "block",
+          description: desc.description ?? "",
+          instantiated: true,
+          instantiate() {},
+          variables: desc.variables,
+        };
         const fmuUri = `__fmu__:${params.name}`;
         context.workspaceManager.workspaceInstances.set(fmuUri, [fmuEntity as any]);
         context.connection.console.info(`[fmu-import] Registered FMU entity '${params.name}'`);
@@ -263,5 +273,3 @@ export function registerInteropEndpoints(context: LspContext) {
     },
   );
 }
-
-// @ts-nocheck

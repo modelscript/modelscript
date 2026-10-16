@@ -1,166 +1,127 @@
-# PSCAD™ Power Systems & EMT Simulation
+# PSCAD & Electromagnetic Transients (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.cfg`, `.dat`)
 
-ModelScript provides native, production-grade support for **PSCAD™ v4.6 and v5.x projects (`.pscx`, `.pswx`, `.psmx`)** under `languages/pscad/`, coupled with a high-performance **WebAssembly Electromagnetic Transient (EMT) companion-circuit backend solver** in `packages/simulate/src/solvers/emt/`.
-
-> [!NOTE]
-> **Trademark Notice**: PSCAD™ and EMTDC™ are registered trademarks of Manitoba Hydro International Ltd. (MHI). ModelScript is an independent open-source engineering compiler; references to PSCAD file formats and models are used strictly for compatibility and interoperability under nominative fair use.
+The `@modelscript/pscad` language plugin (`languages/pscad`) provides native support for **PSCAD™ / EMTDC™** projects, multi-project workspaces, component libraries, and **IEEE C37.111 COMTRADE** transient waveform recordings. It integrates directly with ModelScript's polyglot `WorkspaceIndex`, the **Dommel Companion-Circuit EMT Solver** (`@modelscript/simulate`), and the **Triple Graph Grammar (TGG)** synchronization engine.
 
 ---
 
-## Architecture Overview
+## Supported File Formats
 
-Power system simulation has historically been fragmented: open utility grids and proprietary vendor inverter controllers (wind, solar, battery storage) were locked inside Windows-only Fortran DLL runtimes. ModelScript solves this by unifying:
+| Extension | Format                        | Description                                                                                                           |
+| :-------- | :---------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `.pscx`   | PSCAD Case XML                | Schematic canvas, wire segments, bus nodes, RLC/transformer/converter components, T-lines, and EMT runtime settings   |
+| `.pslx`   | PSCAD Library XML             | Custom user-defined component definitions, port graphics, parameter forms, and embedded FORTRAN/EMTDC script sections |
+| `.pswx`   | PSCAD Workspace XML           | Multi-project workspace manifest indexing `.pscx` cases and `.pslx` libraries via `PscadWorkspaceIndex`               |
+| `.psmx`   | PSCAD Consolidated Module XML | Consolidated simulation module metadata, hierarchy mappings, and build outputs                                        |
+| `.cfg`    | IEEE C37.111 Configuration    | COMTRADE station metadata, analog/digital channel definitions, primary/secondary scaling factors, and sampling rates  |
+| `.dat`    | IEEE C37.111 Data             | ASCII or 16/32-bit Binary transient waveform time-series samples                                                      |
 
-1. **A White-Box Passive Grid Network Solver**: Open RLC branches, multi-winding power transformers, circuit breakers, and Bergeron transmission lines running Dommel's trapezoidal companion-circuit formulation.
-2. **A Black-Box OEM Inverter-Based Resource (IBR) Subsystem**: Vendor-proprietary wind and solar controllers packaged as **FMI 2.0/3.0 Co-Simulation FMUs**, stabilized by a dynamic Norton equivalent interface predictor.
+---
+
+## Architecture & Pipeline
 
 ```mermaid
-flowchart TD
-    subgraph Ingestion ["Ingestion & Verification (languages/pscad)"]
-        PSCX[".pscx / .pswx Projects"] --> XMLParser["Streaming XML Parser"]
-        XMLParser --> Netlist["EMT Netlist Extractor"]
-        Netlist --> Linter["Pre-Flight Linter (M6001-M6004)"]
+flowchart LR
+    subgraph Input["PSCAD & COMTRADE Artifacts"]
+        PSCX[".pscx / .pslx / .pswx / .psmx"]
+        COM[".cfg + .dat (COMTRADE)"]
     end
 
-    subgraph Visualization ["Visualization & Git Diff (packages/diagram)"]
-        Netlist --> SLD["Single-Line Diagram (SLD)"]
-        SLD --> Glyphs["Power System Glyphs (XFMR, IBR, Busbar)"]
-        Glyphs --> Diff["Visual & Semantic Git Diff"]
+    subgraph Parser["@modelscript/pscad"]
+        GLR["WASM GLR XML Parser"]
+        EXT["Schematic & Netlist Extractor"]
+        LINT["EMT Semantic Linter (PSCAD001–007)"]
     end
 
-    subgraph Simulation ["Hybrid EMT Engine (packages/simulate)"]
-        Netlist --> Companion["Trapezoidal Companion Generator"]
-        Companion --> GMatrix["Sparse Conductance Matrix [G]"]
-        GMatrix --> SparseLU["Sparse LU Factorization (Gilbert-Peierls)"]
-        SparseLU --> WhiteBox["Passive Network Solve [G][v] = [i] - [I_hist]"]
-        WhiteBox --> Norton["Norton Interface Predictor"]
-        Norton --> BlackBox["Black-Box OEM Inverter FMUs (FMI 2.0/3.0)"]
-        WhiteBox --> CDA["Critical Damping Adjustment (CDA)"]
+    subgraph Runtime["Compilation & Co-Simulation"]
+        PROJ_MO["Modelica Projection (.mo)"]
+        PROJ_SSD["SSP Topology Projection (.ssd)"]
+        DOMMEL["Dommel Nodal EMT Solver (G·v = i_hist)"]
+        BERGERON["Bergeron Traveling-Wave Lines"]
     end
 
-    subgraph DigitalThread ["Digital Thread Interoperability"]
-        Netlist --> ModelicaExport["Modelica OpenIPSL Export"]
-        Netlist --> SSPExport["SSP Containerization (SystemStructure.ssd)"]
-        Simulation --> COMTRADE["IEEE C37.111 COMTRADE Waveforms"]
-        COMTRADE --> IEEE2800["IEEE 2800-2022 Compliance Verification"]
-    end
+    PSCX --> GLR --> EXT --> LINT
+    EXT --> PROJ_MO
+    EXT --> PROJ_SSD
+    EXT --> DOMMEL
+    DOMMEL <--> BERGERON
+    COM --> DOMMEL
 ```
 
 ---
 
-## Numerical Formulation: The Dommel Companion Circuit
+## 1. Schematic & Netlist Extraction (`extract.ts`)
 
-For a fixed discrete time step $\Delta t \in [10\,\mu\text{s}, 50\,\mu\text{s}]$, linear reactive elements are converted into Norton companion circuits:
+PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`User` component instances and orthogonal `Wire` segments) rather than an explicit netlist. `@modelscript/pscad` reconstructs the electrical topology deterministically:
 
-### 1. Inductors and Capacitors (Trapezoidal Rule)
-
-- **Inductor**:
-  $$i(t) = G_L \cdot v(t) + I_{\text{hist}, L}(t-\Delta t), \quad G_L = \frac{\Delta t}{2L}, \quad I_{\text{hist}, L}(t-\Delta t) = i(t-\Delta t) + G_L \cdot v(t-\Delta t)$$
-- **Capacitor**:
-  $$i(t) = G_C \cdot v(t) + I_{\text{hist}, C}(t-\Delta t), \quad G_C = \frac{2C}{\Delta t}, \quad I_{\text{hist}, C}(t-\Delta t) = -i(t-\Delta t) - G_C \cdot v(t-\Delta t)$$
-
-### 2. Nodal Admittance Linear System
-
-All companion conductances are stamped into a global sparse matrix:
-$$[G] \cdot [v(t)] = [i_{\text{inj}}(t)] - [I_{\text{hist}}(t-\Delta t)]$$
-
-- $[G]$ is factorized once using **Gilbert-Peierls Sparse LU Decomposition**.
-- Each time step requires only $O(\text{nnz})$ forward/backward substitutions.
-
-### 3. Critical Damping Adjustment (CDA)
-
-During circuit breaker switching or diode commutations, the trapezoidal rule produces high-frequency numerical oscillations (chatter at $z = -1$). ModelScript executes **two half-steps of Backward Euler** ($\Delta t / 2$) at the switching instant to quench oscillations without artificial numerical damping during continuous steps.
-
-### 4. Traveling-Wave Transmission Lines (Bergeron Model)
-
-For transmission lines with wave travel time $\tau = \text{length} \cdot \sqrt{LC} > \Delta t$:
-
-- Sending terminal $k$ and receiving terminal $m$ decouple into historical delay queues:
-  $$i_{km}(t) = \frac{v_k(t)}{Z_c} + I_{\text{hist}, km}(t - \tau)$$
-  $$i_{mk}(t) = \frac{v_m(t)}{Z_c} + I_{\text{hist}, mk}(t - \tau)$$
-- Circular history buffers store modal traveling waves, splitting large power grids into independent sparse matrix blocks.
+1. **Component Port Resolution**: Resolves the pin offsets (`x`, `y`) and rotations (`orient`) of over 35 built-in `master:*` library definitions (e.g., `master:source3`, `master:resistor`, `master:inductor`, `master:capacitor`, `master:xfmr-3p2w`, `master:tline`, `master:igbt`, `master:breaker3`, `master:pgb`).
+2. **Union-Find Spatial Wire Clustering**: Performs geometric point-on-segment intersection across all orthogonal `<Wire>` segments and component pin coordinates to synthesize equipotential electrical nodes (`PscadElectricalNode`).
+3. **Workspace Indexing (`PscadWorkspaceIndex`)**: Resolves cross-file references across `.pswx` workspaces, linking custom `<Definition>` blocks in `.pslx` libraries to `<User>` instances in `.pscx` cases (`languages/pscad/src/workspace-index.ts`).
 
 ---
 
-## Black-Box OEM FMU Co-Simulation & Stability
+## 2. Semantic Linter Rules (`linter.ts`)
 
-Standard FMI 2.0 Co-Simulation introduces an explicit 1-step communication delay:
-$$i_{\text{FMU}}(t) \approx \text{fmi2DoStep}(v_{\text{terminal}}(t-\Delta t))$$
+`@modelscript/pscad` enforces electromagnetic transient modeling best practices before simulation starts:
 
-In stiff electrical networks, this delay causes severe numerical instability. ModelScript resolves this by treating the FMU as a dynamic **Norton Equivalent**:
-
-1. The solver estimates the high-frequency admittance $G_{\text{eq}} \approx \frac{\partial i}{\partial v}$ at the Point of Interconnection (POI).
-2. $G_{\text{eq}}$ is stamped directly onto the diagonal of the grid $[G]$ matrix.
-3. Injected currents are predicted:
-   $$i_{\text{inj}}^{\text{pred}}(t) = i_{\text{FMU}}(t-\Delta t) + G_{\text{eq}} \cdot (v(t) - v(t-\Delta t))$$
-4. This converts unstable explicit delay into a stable, semi-implicit boundary coupling.
-
----
-
-## Automated IEEE 2800-2022 Verification Pipeline
-
-ModelScript automates compliance checking against the **IEEE 2800-2022 Standard for Interconnection and Interoperability of Inverter-Based Resources**:
-
-| Clause         | Verification Test               | Pass/Fail Criteria                                                                     |
-| :------------- | :------------------------------ | :------------------------------------------------------------------------------------- |
-| **Clause 5.2** | Low-Voltage Ride-Through (LVRT) | No momentary cessation during voltage sags down to $0.05\,\text{pu}$.                  |
-| **Clause 5.3** | Fast Reactive Current Injection | Positive-sequence reactive current $I_q$ injected within $T_{90\%} \le 50\,\text{ms}$. |
-| **Clause 7.2** | Transient Overvoltage (TOV)     | Post-fault voltage recovery overshoot does not exceed $1.20\,\text{pu}$.               |
-
-Waveforms are evaluated using moving cycle peak envelopes ($\approx 16.6\,\text{ms}$ at $60\,\text{Hz}$) to eliminate zero-crossing artifacts.
+| Code       | Severity | Rule Description                                                                                                       |
+| :--------- | :------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `PSCAD001` | Warning  | **Large EMT Time Step**: `time_step > 250 µs` risks numerical aliasing of switching transients                         |
+| `PSCAD002` | Error    | **Invalid Simulation Duration**: `time_duration <= 0`                                                                  |
+| `PSCAD003` | Error    | **Sample Step Violates Nyquist**: `sample_step < time_step`                                                            |
+| `PSCAD004` | Warning  | **Floating Component Port**: Electrical component has zero connected netlist nodes                                     |
+| `PSCAD005` | Error    | **Non-Positive Passive Element**: $R \le 0$, $L \le 0$, or $C \le 0$ in passive RLC branch                             |
+| `PSCAD006` | Error    | **Bergeron Travel Time Violation**: Distributed line travel time $\tau = \ell / v < \Delta t$ violates wave decoupling |
+| `PSCAD007` | Warning  | **Orphaned Wire Segment**: Schematic wire segment does not touch any component port                                    |
 
 ---
 
-## Digital Thread Interoperability
+## 3. Polyglot Projections & TGG Synchronization
 
-PSCAD models in ModelScript interoperate across multiple standards:
+### Modelica & SSP Projections (`projections/modelica.ts`, `projections/ssp.ts`)
 
-- **Modelica Export (`.mo`)**: Generates clean, standards-compliant `Modelica.Electrical.Analog` and OpenIPSL models.
-- **System Structure & Parameterization (`.ssd`)**: Auto-generates SSP 1.0 container descriptions packaging multiple vendor inverter FMUs.
-- **IEEE COMTRADE (`.cfg`, `.dat`)**: Native reader and writer for IEEE C37.111 / IEC 60255-24 transient waveform interchange.
+- **`pscadToModelica(doc)`**: Projects a `.pscx` schematic and its reconstructed Union-Find electrical nodes into a complete Modelica model using `Modelica.Electrical.Analog` (`Basic.Resistor`, `Basic.Inductor`, `Basic.Capacitor`, `Basic.Ground`, `Ideal.IdealTransformer`, `Sources.SineVoltage`, and `Lines.OLine`).
+- **`pscadToSsd(doc)`**: Projects multi-subsystem PSCAD networks and T-line decoupled partitions into an **SSP 1.0 `.ssd`** System Structure Description XML document for FMI Co-Simulation.
 
----
+### Bidirectional TGG Rules
 
-## Pre-flight Linter Rules
+`@modelscript/pscad` registers 6 bidirectional **Triple Graph Grammar (TGG)** rules for cross-domain synchronization with `@modelscript/modelica` and `@modelscript/sysml2`:
 
-The compiler validates PSCAD models before running simulations:
-
-| Code    | Rule                           | Severity | Description                                                              |
-| :------ | :----------------------------- | :------- | :----------------------------------------------------------------------- |
-| `M6001` | `floating-electrical-node`     | Error    | Electrical bus or node has no closed branch connections.                 |
-| `M6002` | `transformer-winding-mismatch` | Warning  | Transformer primary/secondary rating mismatches connected bus base kV.   |
-| `M6003` | `invalid-parameter-bounds`     | Error    | Unphysical parameter values ($L \le 0$, $C \le 0$, negative resistance). |
-| `M6004` | `weak-grid-warning`            | Warning  | Point of Interconnection has Short-Circuit Ratio ($\text{SCR} < 1.5$).   |
+- `PscadProjectToModelicaModel`: Maps a `.pscx` project to a top-level Modelica `model`.
+- `PscadResistorToModelicaResistor`: Synchronizes `master:resistor` ($R$) with `Modelica.Electrical.Analog.Basic.Resistor`.
+- `PscadInductorToModelicaInductor`: Synchronizes `master:inductor` ($L$) with `Modelica.Electrical.Analog.Basic.Inductor`.
+- `PscadCapacitorToModelicaCapacitor`: Synchronizes `master:capacitor` ($C$) with `Modelica.Electrical.Analog.Basic.Capacitor`.
+- `PscadTLineToModelicaOLine`: Synchronizes distributed transmission lines (`master:tline`) with `Modelica.Electrical.Analog.Lines.OLine`.
+- `PscadComponentToSysmlPart`: Synchronizes PSCAD power apparatus with SysML v2 `PartUsage` blocks for system architecture traceability.
 
 ---
 
-## Model Context Protocol (MCP) Tools
+## 4. Dommel EMT Solver & Bergeron Lines (`@modelscript/simulate`)
 
-AI agents and MCP clients can interact directly with PSCAD models:
+For high-frequency power electronics and traveling-wave studies, `@modelscript/simulate` provides a dedicated **Electromagnetic Transient (EMT)** solver (`EmtSolver` in `packages/simulate/src/solvers/emt/emt-solver.ts`):
 
-```typescript
-// 1. Lint project
-await mcp.callTool("pscad_lint", { path: "IEEE9Bus.pscx" });
+- **Dommel Trapezoidal Companion Models**: Discretizes inductors ($G_L = \frac{\Delta t}{2L}$) and capacitors ($G_C = \frac{2C}{\Delta t}$) into constant nodal conductance matrices $\mathbf{G}\mathbf{v}(t) = \mathbf{i}_{\text{hist}}(t - \Delta t) + \mathbf{i}_{\text{src}}(t)$.
+- **Critical Damping Adjustment (CDA)**: Automatically switches from Trapezoidal to Backward Euler for one half-step following any breaker/IGBT switching event ($S_k(t) \neq S_k(t-\Delta t)$) to eliminate artificial numerical chatter ($dv/dt$ ringing).
+- **Bergeron Distributed-Parameter Lines**: Decouples sub-networks separated by transmission lines of length $\ell$ and wave speed $v$ whenever $\tau = \ell / v \ge \Delta t$, enabling embarrassingly parallel subsystem nodal solves.
+- **Norton Equivalent FMU Co-Simulation**: Exposes `getNortonEquivalent(portNode)` ($I_{\text{eq}}, G_{\text{eq}}$) so EMT sub-grids can couple directly with FMI 2.0/3.0 FMUs without algebraic delay instability.
 
-// 2. Run EMT simulation and get COMTRADE
-await mcp.callTool("pscad_simulate", {
-  path: "IEEE9Bus.pscx",
-  dt: 20e-6,
-  tstop: 0.1,
-  format: "comtrade",
-});
+---
 
-// 3. Automated IEEE 2800 compliance report
-await mcp.callTool("pscad_verify_ieee2800", {
-  path: "IEEE9Bus.pscx",
-  poiBus: "Bus1",
-  faultDurationMs: 150,
-});
+## 5. IEEE C37.111 COMTRADE Reader & Writer (`comtrade.ts`)
 
-// 4. Export to Modelica or SSP
-await mcp.callTool("pscad_export", {
-  path: "IEEE9Bus.pscx",
-  target: "modelica",
-  outputPath: "IEEE9Bus.mo",
+`@modelscript/pscad` includes a zero-dependency parser and serializer for IEEE Std C37.111-1999 / 2013 **COMTRADE** files:
+
+```ts
+import { parseComtrade, writeComtrade, EmtSolver } from "@modelscript/pscad";
+
+// Export an EMT simulation directly to IEEE C37.111 (.cfg + .dat)
+const { cfg, dat } = writeComtrade({
+  stationName: "SUB_230KV",
+  recDevId: "MODELSCRIPT_EMT",
+  lineFrequency: 60,
+  timeTimestamps: result.time,
+  analogChannels: [
+    { id: "VA_BUS1", unit: "V", values: result.nodeVoltages.get(1)! },
+    { id: "IA_LINE1", unit: "A", values: result.branchCurrents.get("BRK1")! },
+  ],
 });
 ```

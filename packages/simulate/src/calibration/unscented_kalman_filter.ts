@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+
 /**
  * @modelscript/simulate — Scaled Unscented Kalman Filter (UKF) for Nonlinear System & Parameter Estimation.
  *
@@ -154,12 +156,51 @@ export class UnscentedKalmanFilter {
     return true;
   }
 
+  private wasmUkfScratch?: {
+    wasm: any;
+    L: number;
+    statePtr: number;
+    covPtr: number;
+    cholPtr: number;
+    sigmaPtr: number;
+  };
+
   /**
    * Generates 2L + 1 sigma points around current mean and covariance.
    */
   private generateSigmaPoints(): void {
     const L = this.L;
     const gamma = Math.sqrt(L + this.lambda);
+
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.ukf_cholesky === "function" &&
+      typeof wasm.ukf_generate_sigma_points === "function" &&
+      typeof wasm.__new === "function" &&
+      L > 0
+    ) {
+      if (!this.wasmUkfScratch || this.wasmUkfScratch.wasm !== wasm || this.wasmUkfScratch.L !== L) {
+        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        this.wasmUkfScratch = {
+          wasm,
+          L,
+          statePtr: alloc(L * 8),
+          covPtr: alloc(L * L * 8),
+          cholPtr: alloc(L * L * 8),
+          sigmaPtr: alloc((2 * L + 1) * L * 8),
+        };
+      }
+      const s = this.wasmUkfScratch;
+      const buf = wasm.memory.buffer;
+      new Float64Array(buf, s.statePtr, L).set(this.state);
+      new Float64Array(buf, s.covPtr, L * L).set(this.cov);
+      wasm.ukf_cholesky(L, s.covPtr, s.cholPtr);
+      wasm.ukf_generate_sigma_points(L, gamma, s.statePtr, s.cholPtr, s.sigmaPtr);
+      this.sqrtL.set(new Float64Array(wasm.memory.buffer, s.cholPtr, L * L));
+      this.sigmaPoints.set(new Float64Array(wasm.memory.buffer, s.sigmaPtr, (2 * L + 1) * L));
+      return;
+    }
 
     // Cholesky factor of P
     this.cholesky(this.cov, L, this.sqrtL);

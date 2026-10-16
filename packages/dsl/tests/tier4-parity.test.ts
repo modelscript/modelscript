@@ -203,17 +203,17 @@ describe("Tier 4 & Tree-sitter Parity Architecture Suite", () => {
       const freshAst = activeFacade.parse(codeV2);
       const expectedSExpr = activeFacade.getAstSExpr(freshAst);
 
-      // Multi-range edit descriptors (in UTF-16 byte offsets)
+      // Multi-range edit descriptors (in character offsets, scaled by encoding div inside parse)
       const edits = [
         {
-          startByte: posA * 2,
-          oldEndByte: (posA + 1) * 2,
-          newEndByte: (posA + "alpha".length) * 2,
+          startByte: posA,
+          oldEndByte: posA + 1,
+          newEndByte: posA + "alpha".length,
         },
         {
-          startByte: (posB + 4) * 2, // shifted by +4 characters in new document
-          oldEndByte: (posB + 4 + 1) * 2,
-          newEndByte: (posB + 4 + "beta".length) * 2,
+          startByte: posB + 4, // shifted by +4 characters in new document
+          oldEndByte: posB + 4 + 1,
+          newEndByte: posB + 4 + "beta".length,
         },
       ];
 
@@ -252,8 +252,8 @@ describe("Tier 4 & Tree-sitter Parity Architecture Suite", () => {
       // The changed range should be within the Second model, NOT the First model
       const firstModelEnd = codeV1.indexOf("end First;\n") + "end First;\n".length;
       for (const diff of diffs) {
-        // start is in UTF-16 byte offset, so divide by 2 for character position
-        const charStart = diff.start / 2;
+        // diff.start is in character offset (divided by getEncodingDiv())
+        const charStart = diff.start;
         expect(charStart).toBeGreaterThanOrEqual(firstModelEnd);
       }
     });

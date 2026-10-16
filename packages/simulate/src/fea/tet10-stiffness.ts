@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+
 const ALPHA = (5.0 + 3.0 * Math.sqrt(5.0)) / 20.0;
 const BETA = (5.0 - Math.sqrt(5.0)) / 20.0;
 const GAUSS_WEIGHT = 1.0 / 24.0;
@@ -11,6 +13,14 @@ const GAUSS_POINTS: [number, number, number, number][] = [
   [BETA, BETA, ALPHA, BETA],
   [BETA, BETA, BETA, ALPHA],
 ];
+
+let wasmTet10Scratch: {
+  wasm: any;
+  coordsPtr: number;
+  dPtr: number;
+  kePtr: number;
+  bGaussPtr: number;
+} | null = null;
 
 /**
  * High-Order Quadratic 10-Node Tetrahedral (Tet10) Formulation.
@@ -96,6 +106,40 @@ export class Tet10Element {
   ): { Ke: Float64Array; B_gauss: Float64Array[]; volume: number } {
     if (nodes.length !== 10) {
       throw new Error(`Tet10Element requires exactly 10 nodes, got ${nodes.length}`);
+    }
+
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.fea_compute_tet10_stiffness === "function" && typeof wasm.__new === "function") {
+      if (!wasmTet10Scratch || wasmTet10Scratch.wasm !== wasm) {
+        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        wasmTet10Scratch = {
+          wasm,
+          coordsPtr: alloc(30 * 8),
+          dPtr: alloc(36 * 8),
+          kePtr: alloc(900 * 8),
+          bGaussPtr: alloc(720 * 8),
+        };
+      }
+      const s = wasmTet10Scratch;
+      const coordsView = new Float64Array(wasm.memory.buffer, s.coordsPtr, 30);
+      for (let i = 0; i < 10; i++) {
+        coordsView[i * 3 + 0] = nodes[i][0];
+        coordsView[i * 3 + 1] = nodes[i][1];
+        coordsView[i * 3 + 2] = nodes[i][2];
+      }
+      new Float64Array(wasm.memory.buffer, s.dPtr, 36).set(D.subarray(0, 36));
+      const volume: number = wasm.fea_compute_tet10_stiffness(s.coordsPtr, s.dPtr, s.kePtr, s.bGaussPtr);
+      if (volume > 0) {
+        const Ke = new Float64Array(900);
+        Ke.set(new Float64Array(wasm.memory.buffer, s.kePtr, 900));
+        const B_gauss: Float64Array[] = [];
+        for (let q = 0; q < 4; q++) {
+          const B = new Float64Array(180);
+          B.set(new Float64Array(wasm.memory.buffer, s.bGaussPtr + q * 180 * 8, 180));
+          B_gauss.push(B);
+        }
+        return { Ke, B_gauss, volume };
+      }
     }
 
     const Ke = new Float64Array(900); // 30 x 30

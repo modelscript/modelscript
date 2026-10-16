@@ -108,6 +108,7 @@ export {
 } from "./simulation/wasm_verifier.js";
 export * from "./solvers/solvers_bridge.js";
 export * from "./solvers/wasm_bdf.js";
+export * from "./solvers/wasm_cad_diagram.js";
 export * from "./solvers/wasm_dopri5.js";
 export * from "./solvers/wasm_gaussian.js";
 export * from "./solvers/wasm_groebner.js";

@@ -112,20 +112,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
+            .cache/asc-tests
             languages/*/.cache
             packages/runtime/build/*.wasm
             packages/simulate/src/wasm/*.wasm
             packages/simulate/.cache/**
             packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**') }}
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
       - name: Run Sharded Tests
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            npx nx affected -t test --shard=${{ matrix.shard }}/4 --parallel=2
+            node scripts/test-coordinator.js affected --shard=${{ matrix.shard }}/4
           else
-            npx nx run-many -t test --shard=${{ matrix.shard }}/4 --parallel=2
+            node scripts/test-coordinator.js run-many --shard=${{ matrix.shard }}/4
           fi
       - name: Upload CTRF Artifacts
         uses: actions/upload-artifact@v4
@@ -188,10 +189,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
+            .cache/asc-tests
             languages/*/.cache
             packages/runtime/build/*.wasm
             packages/simulate/src/wasm/*.wasm
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**') }}
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
       - name: Build Prerequisites
@@ -250,7 +252,7 @@ jobs:
         with:
           path: ctrf-artifacts
           pattern: ctrf-*
-          merge-multiple: true
+          merge-multiple: false
       - name: Generate Consolidated Hierarchical Test Summary
         if: always()
         run: |
@@ -284,7 +286,7 @@ jobs:
         with:
           path: coverage-artifacts
           pattern: coverage-*
-          merge-multiple: true
+          merge-multiple: false
         if: always()
       - name: Consolidate Code Coverage Reports
         if: always()

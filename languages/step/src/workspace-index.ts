@@ -87,8 +87,6 @@ function extractStepNames(text: string): {
   const products: StepNameMatch[] = [];
   const shapes: StepNameMatch[] = [];
 
-  const encoder = new TextEncoder();
-
   const headerRegex = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
   let headerMatch: RegExpExecArray | null;
 
@@ -137,12 +135,11 @@ function extractStepNames(text: string): {
       if (name && name.length > 0) {
         const matchEnd = endPos;
         const fullMatch = text.slice(matchStart, matchEnd);
-        const startByte = encoder.encode(text.substring(0, matchStart)).length;
-        const endByte = startByte + encoder.encode(fullMatch).length;
+        const startByte = matchStart;
+        const endByte = matchEnd;
         const nameIdx = fullMatch.indexOf(`'${name}'`);
-        const nameStart =
-          nameIdx >= 0 ? startByte + encoder.encode(fullMatch.substring(0, nameIdx + 1)).length : startByte;
-        const nameEnd = nameIdx >= 0 ? nameStart + encoder.encode(name).length : endByte;
+        const nameStart = nameIdx >= 0 ? matchStart + nameIdx + 1 : startByte;
+        const nameEnd = nameIdx >= 0 ? nameStart + name.length : endByte;
         if (entityType === "PRODUCT") {
           products.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
         } else {
@@ -261,18 +258,32 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     const productName = product?.name || this.deriveProductNameFromUri(uri);
 
     const productId = idCounter++;
+    const productStart = product?.startByte ?? 0;
+    const productEnd = product?.endByte ?? 0;
     const productEntry: SymbolEntry = {
       id: productId,
       kind: "Package",
       name: productName,
       ruleName: "step_product",
       namePath: productName,
-      startByte: product?.startByte ?? 0,
-      endByte: product?.endByte ?? 0,
+      startByte: productStart,
+      endByte: productEnd,
+      startOffset: productStart,
+      endOffset: productEnd,
       fieldRanges: product
         ? {
-            name: { startByte: product.nameStartByte, endByte: product.nameEndByte },
-            declaredName: { startByte: product.nameStartByte, endByte: product.nameEndByte },
+            name: {
+              startByte: product.nameStartByte,
+              endByte: product.nameEndByte,
+              startOffset: product.nameStartByte,
+              endOffset: product.nameEndByte,
+            },
+            declaredName: {
+              startByte: product.nameStartByte,
+              endByte: product.nameEndByte,
+              startOffset: product.nameStartByte,
+              endOffset: product.nameEndByte,
+            },
           }
         : undefined,
       parentId: null,
@@ -306,9 +317,21 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         namePath: `${productName}::${shape.name}`,
         startByte: shape.startByte,
         endByte: shape.endByte,
+        startOffset: shape.startByte,
+        endOffset: shape.endByte,
         fieldRanges: {
-          name: { startByte: shape.nameStartByte, endByte: shape.nameEndByte },
-          declaredName: { startByte: shape.nameStartByte, endByte: shape.nameEndByte },
+          name: {
+            startByte: shape.nameStartByte,
+            endByte: shape.nameEndByte,
+            startOffset: shape.nameStartByte,
+            endOffset: shape.nameEndByte,
+          },
+          declaredName: {
+            startByte: shape.nameStartByte,
+            endByte: shape.nameEndByte,
+            startOffset: shape.nameStartByte,
+            endOffset: shape.nameEndByte,
+          },
         },
         parentId: productId,
         exports: [],
@@ -341,6 +364,8 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         namePath: `${productName}::${meshName}`,
         startByte: 0,
         endByte: 0,
+        startOffset: 0,
+        endOffset: 0,
         parentId: productId,
         exports: [],
         inherits: [],

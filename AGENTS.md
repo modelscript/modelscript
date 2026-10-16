@@ -68,9 +68,11 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `packages/exchange/`      | FMI 2.0/3.0 FMU export/import, SSP container toolkit, Co-Simulation master orchestrator                                                                                     |
 | `packages/cad/`           | CAD and ECAD engine — CSG primitives, OpenCascade operations, STEP serialization/deserialization, Gerber parser                                                             |
 | `packages/mcp/`           | Model Context Protocol server exposing ModelScript compilation, simulation, and analysis tools to AI agents                                                                 |
+| `packages/ide/`           | VS Code Web Extension client (`@modelscript/ide-client`), custom editors, DAP simulation debugger, and specialized engineering webview panels                               |
 | `apps/cli/`               | `modelscript` (`msx`) command-line interface — flatten, simulate, optimize, lint, render, fmu, csg, surrogate, mc                                                           |
 | `apps/api/`               | REST, GraphQL, SPARQL, and simulation backend API server                                                                                                                    |
 | `apps/ide/` & `apps/web/` | WebAssembly-powered web IDE and visual modeling environment                                                                                                                 |
+| `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
 
 ### Polyglot Languages (`languages/`)
 
@@ -85,6 +87,7 @@ ModelScript is a polyglot compiler supporting multiple engineering domains with 
 - `languages/fea/`: Finite element analysis configuration
 - `languages/scad/`: OpenSCAD language support and CSG evaluator
 - `languages/ssp/`: System Structure and Parameterization definitions
+- `languages/pscad/`: PSCAD power systems (`.pscx`, `.pslx`), EMT solver, IEEE 2800 verification, and COMTRADE support
 - `languages/modelscript/`: Native ModelScript (`.msx`) language syntax and compiler
 
 ### SymbolIndex Data Model
@@ -178,6 +181,7 @@ RULE_NAME: {
 - `3xxx` — Type checking
 - `4xxx` — Structural / Semantic
 - `5xxx` — Equations & Algorithms
+- `6xxx` — Synchronous clocks, state machines & power systems (EMT)
 
 ### 2. Implement the Lint Rule
 

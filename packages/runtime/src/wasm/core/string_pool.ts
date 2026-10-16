@@ -217,6 +217,48 @@ export class ArenaStringPool {
     return id;
   }
 
+  internUtf32(srcPtr: usize, byteLen: u32): u32 {
+    if (byteLen == 0 || srcPtr == 0) return 0;
+    let charCount = byteLen >> 2;
+    if (charCount == 0) return 0;
+
+    let tempStart = this.charOffset;
+    let outOffset = tempStart;
+
+    for (let i: u32 = 0; i < charCount; i++) {
+      let cp = load<u32>(srcPtr + ((i as usize) << 2));
+      if (cp <= 0x7f) {
+        this.charBuffer.set(outOffset++, cp as u8);
+      } else if (cp <= 0x7ff) {
+        this.charBuffer.set(outOffset++, (0xc0 | ((cp >> 6) & 0x1f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | (cp & 0x3f)) as u8);
+      } else if (cp <= 0xffff) {
+        this.charBuffer.set(outOffset++, (0xe0 | ((cp >> 12) & 0x0f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | ((cp >> 6) & 0x3f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | (cp & 0x3f)) as u8);
+      } else {
+        this.charBuffer.set(outOffset++, (0xf0 | ((cp >> 18) & 0x07)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | ((cp >> 12) & 0x3f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | ((cp >> 6) & 0x3f)) as u8);
+        this.charBuffer.set(outOffset++, (0x80 | (cp & 0x3f)) as u8);
+      }
+    }
+
+    let outLen = outOffset - tempStart;
+    let h = hashChunkedBytes64(this.charBuffer, tempStart, outLen);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, tempStart, outLen)) {
+      return existingId;
+    }
+
+    let id = this.stringCount++;
+    this.stringOffsets.set(id, tempStart);
+    this.stringLengths.set(id, outLen);
+    this.charOffset += outLen;
+    this.getStringMap().set(h, id);
+    return id;
+  }
+
   lookup(srcPtr: usize, len: u32): u32 {
     if (len == 0 || srcPtr == 0) return 0;
     let h = hashBytes64(srcPtr, len);

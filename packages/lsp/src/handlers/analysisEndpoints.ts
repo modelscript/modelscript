@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
-// @ts-nocheck
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import {
   B2BEquivalenceVerifier,
   CandidateFilter,
+  Causality,
   DAEBuilder,
   EqKind,
+  foldArenaConstants,
   formatConstraint,
   performBltTransformationArena,
   RegionDecomposer,
@@ -45,6 +46,79 @@ import { LspContext } from "../lsp-context.js";
 import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arena-utils.js";
 import { flattenTargetClass } from "./simulationEndpoints.js";
+
+export interface BltAnalysisResult {
+  className: string;
+  variables: string[];
+  equations: string[];
+  algebraicLoops: { variables: string[]; equations: string[] }[];
+  equationCount: number;
+  unknownCount: number;
+}
+
+export interface IntervalBound {
+  variable: string;
+  lower: number;
+  upper: number;
+  isComputed: boolean;
+}
+
+export interface IntervalAnalysisResult {
+  className: string;
+  bounds: IntervalBound[];
+  totalVariables: number;
+  boundedCount: number;
+}
+
+export interface OptimizationResult {
+  className: string;
+  status: "optimal" | "infeasible" | "error";
+  objectiveValue: number | null;
+  parameters: { name: string; value: number }[];
+  iterations: number;
+  message: string;
+}
+
+export interface SysIdResult {
+  className: string;
+  status: "converged" | "failed" | "error";
+  fittedParameters: { name: string; initial: number; fitted: number }[];
+  residualNorm: number;
+  iterations: number;
+  message: string;
+}
+
+export interface SymbolicRewriteStep {
+  from: string;
+  to: string;
+  rule: string;
+}
+
+export interface SymbolicTraceResult {
+  className: string;
+  equation: string;
+  steps: SymbolicRewriteStep[];
+  simplified: string;
+}
+
+export interface CosimParticipantInfo {
+  id: string;
+  type: "fmu" | "modelica";
+  className: string;
+  fileName?: string;
+}
+
+export interface CosimCouplingInfo {
+  from: { participantId: string; variable: string };
+  to: { participantId: string; variable: string };
+}
+
+export interface CosimGraphResult {
+  ok: boolean;
+  participants?: CosimParticipantInfo[];
+  couplings?: CosimCouplingInfo[];
+  error?: string;
+}
 
 export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest(
@@ -335,7 +409,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       // ── Constraints injection ──
       let stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
-      const constraintsUri = params.constraintsUri ?? params.sysmlUri;
+      const constraintsUri = (params as any).constraintsUri ?? params.sysmlUri;
       const qe = context.workspaceManager.getQueryEngine("sysml2");
       if (constraintsUri && qe) {
         try {
@@ -347,11 +421,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
           const extractor = (globalThis as any).extractSysML2Constraints;
           const mapper = (globalThis as any).mapConstraintsToOptimizer;
           if (typeof extractor === "function") {
-            const rawConstraints = extractor(sysmlDb, params.sysmlFilter ?? params.constraintsFilter);
-            const variableMap =
-              (params.sysmlVariableMap ?? params.variableMap)
-                ? new Map(Object.entries(params.sysmlVariableMap ?? params.variableMap))
-                : undefined;
+            const rawConstraints = extractor(sysmlDb, params.sysmlFilter ?? (params as any).constraintsFilter);
+            const rawVarMap = params.sysmlVariableMap ?? (params as any).variableMap;
+            const variableMap = rawVarMap ? new Map(Object.entries(rawVarMap)) : undefined;
             stateConstraints = typeof mapper === "function" ? mapper(rawConstraints, variableMap) : rawConstraints;
             context.connection.console.info(`[optimize] Extracted ${stateConstraints?.length ?? 0} constraints`);
           }
@@ -421,7 +493,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
       try {
         let sourceText = "";
         try {
-          const doc = context.workspaceManager.getDocument(params.uri);
+          const doc = context.documents.get(params.uri);
           if (doc) sourceText = doc.getText();
         } catch {}
         if (!sourceText) {
@@ -516,7 +588,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         );
 
         // 5. Query active trade study Pareto fronts if requested
-        if (options.tradeStudy || (options as any).pareto) {
+        if ((options as any).tradeStudy || (options as any).pareto) {
           const rawCandidates =
             (context.workspaceManager as any)?.getCandidates?.(params.uri) || (params as any).candidates || [];
           if (rawCandidates.length > 0) {
@@ -543,7 +615,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
               formattedOutput = UnifiedVerifier.formatHtml(report);
               break;
             case "ctrf":
-              formattedOutput = UnifiedVerifier.formatCtrf(report);
+              formattedOutput = JSON.stringify(UnifiedVerifier.formatCtrf(report), null, 2);
               break;
             case "junit":
               formattedOutput = UnifiedVerifier.formatJunit(report);
@@ -644,9 +716,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         const b2bResult = await B2BEquivalenceVerifier.verify(arena, milResult, {
           tolerance: params.tolerance ?? 1e-4,
-          compiler: params.compiler ?? "gcc",
-          fixedStepDt: params.fixedStepDt,
-        });
+          compiler: (params.compiler ?? "gcc") as any,
+          ...(params.fixedStepDt !== undefined ? { fixedStepDt: params.fixedStepDt } : {}),
+        } as any);
 
         const violations: any[] = [];
         if (!b2bResult.passed) {
@@ -677,7 +749,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (params.format === "dhf") {
           const report: UnifiedVerificationReport = {
             timestamp: new Date().toISOString(),
-            target: arena.modelName || params.target || "model",
+            target: (arena as any).modelName || params.target || "model",
             summary: {
               totalStages: 1,
               passedStages: b2bResult.passed ? 1 : 0,
@@ -698,7 +770,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         return {
           success: b2bResult.passed,
           stage,
-          modelName: arena.modelName || params.target,
+          modelName: (arena as any).modelName || params.target,
           tolerance: params.tolerance ?? 1e-4,
           maxDiscrepancy: b2bResult.maxError,
           worstVariable: b2bResult.maxErrorVariable,
@@ -1064,7 +1136,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return null;
+        if (!docContext) return null;
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -1199,7 +1271,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return null;
+        if (!docContext) return null;
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -1257,7 +1329,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return null;
+        if (!docContext) return null;
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -1348,7 +1420,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return null;
+        if (!docContext) return null;
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -1432,7 +1504,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return errorResult("No Modelica context found.");
+        if (!docContext) return errorResult("No Modelica context found.");
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -1600,7 +1672,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return null;
+        if (!docContext) return null;
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -1747,7 +1819,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       try {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
-        if (!context) return null;
+        if (!docContext) return null;
 
         const arena = flattenArenaFromInstance(target, docContext);
 
@@ -2083,28 +2155,26 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/exploreEventTraces",
-    async (params: { uri: string; scope?: number; maxTraces?: number; activityName?: string }) => {
+    async (params: { uri: string; sourceText?: string; scope?: number; maxTraces?: number; activityName?: string }) => {
       try {
-        const qe =
-          context.workspaceManager.getQueryEngine("sysml2") ?? context.workspaceManager.globalSysML2QueryEngine;
-        if (!qe) {
-          return { success: false, error: "No SysML v2 query engine available." };
-        }
+        let text = params.sourceText ?? "";
         const doc = context.documents.get(params.uri);
-        if (doc) await context.validationService.validateTextDocument(doc);
+        if (doc) {
+          await context.validationService.validateTextDocument(doc);
+          if (!text) text = doc.getText();
+        }
 
-        const db = qe.toQueryDB();
-        const res = EventTraceExplorer.exploreTraces(db, {
+        const res = EventTraceExplorer.exploreText(text, {
           scope: params.scope ?? 2,
           maxTraces: params.maxTraces ?? 100,
-          activityName: params.activityName,
+          targetActivities: params.activityName ? [params.activityName] : undefined,
         });
 
         return {
           success: true,
           traces: res.traces,
-          hasDeadlocks: res.hasDeadlocks,
-          deadlockTraces: res.deadlockTraces,
+          hasDeadlocks: !res.isCertified,
+          deadlockTraces: [],
           assertionViolations: res.violations,
           summary: res.summary,
         };
@@ -2330,8 +2400,8 @@ export function registerAnalysisEndpoints(context: LspContext) {
         let decomp: any;
         try {
           const conds = lowered.inputs.map((inVar) => ({
-            expr: { kind: "var", name: inVar },
-            rel: "<=",
+            expr: { kind: "var" as const, name: inVar },
+            rel: "<=" as const,
             rhs: ((boundsMap.get(inVar)?.[0] ?? 0) + (boundsMap.get(inVar)?.[1] ?? 100)) / 2,
           }));
           decomp = RegionDecomposer.decompose(conds, { domainBounds: boundsMap });
@@ -2510,5 +2580,3 @@ export function registerAnalysisEndpoints(context: LspContext) {
     },
   );
 }
-
-// @ts-nocheck

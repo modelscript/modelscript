@@ -25,8 +25,16 @@ function escapeRegex(str: string): string {
 function offsetToPosition(text: string, offset: number): { line: number; character: number } {
   let line = 0;
   let character = 0;
-  for (let i = 0; i < offset && i < text.length; i++) {
-    if (text[i] === "\n") {
+  const limit = Math.min(offset, text.length);
+  for (let i = 0; i < limit; i++) {
+    const ch = text.charCodeAt(i);
+    if (ch === 10) {
+      line++;
+      character = 0;
+    } else if (ch === 13) {
+      if (i + 1 < text.length && text.charCodeAt(i + 1) === 10) {
+        continue;
+      }
       line++;
       character = 0;
     } else {
@@ -51,27 +59,31 @@ function computeGenericWriteback(
   // Tier 1: Check precomputed CST fieldRanges from AST indexing
   if (entry.fieldRanges) {
     const valField = entry.fieldRanges.value ?? entry.fieldRanges.expression ?? entry.fieldRanges.val;
-    if (valField && valField.endByte > valField.startByte) {
-      const startPos = doc ? doc.positionAt(valField.startByte) : offsetToPosition(fullText, valField.startByte);
-      const endPos = doc ? doc.positionAt(valField.endByte) : offsetToPosition(fullText, valField.endByte);
+    const valStart = valField?.startOffset ?? valField?.startByte;
+    const valEnd = valField?.endOffset ?? valField?.endByte;
+    if (valField && valStart != null && valEnd != null && valEnd > valStart) {
+      const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
+      const endPos = doc ? doc.positionAt(valEnd) : offsetToPosition(fullText, valEnd);
       return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
     }
   }
 
-  // Tier 2: Universal assignment locator within [startByte, endByte]
-  if (entry.startByte != null && entry.endByte != null && entry.endByte > entry.startByte) {
-    const declText = fullText.substring(entry.startByte, entry.endByte);
+  // Tier 2: Universal assignment locator within [startOffset, endOffset]
+  const entryStart = entry.startOffset ?? entry.startByte;
+  const entryEnd = entry.endOffset ?? entry.endByte;
+  if (entryStart != null && entryEnd != null && entryEnd > entryStart) {
+    const declText = fullText.substring(entryStart, entryEnd);
     const opPattern = operators.map(escapeRegex).join("|");
     const regex = new RegExp(`(${opPattern})\\s*([^;}\\r\\n,]+)`);
     const match = declText.match(regex);
     if (match && match.index !== undefined) {
       const rawVal = match[2].trimEnd();
       const valOffsetInDecl = match.index + declText.substring(match.index).indexOf(rawVal);
-      const valStartByte = entry.startByte + valOffsetInDecl;
-      const valEndByte = valStartByte + rawVal.length;
+      const valStartOffset = entryStart + valOffsetInDecl;
+      const valEndOffset = valStartOffset + rawVal.length;
 
-      const startPos = doc ? doc.positionAt(valStartByte) : offsetToPosition(fullText, valStartByte);
-      const endPos = doc ? doc.positionAt(valEndByte) : offsetToPosition(fullText, valEndByte);
+      const startPos = doc ? doc.positionAt(valStartOffset) : offsetToPosition(fullText, valStartOffset);
+      const endPos = doc ? doc.positionAt(valEndOffset) : offsetToPosition(fullText, valEndOffset);
       return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
     }
   }
@@ -181,9 +193,11 @@ export async function computeWritebackEdit(
     const result = handler(wbContext);
     if (result) {
       const rawEdits: WritebackEdit[] = Array.isArray(result) ? result : [result];
-      edits = rawEdits.map((e) => {
-        const startPos = doc ? doc.positionAt(e.startByte) : offsetToPosition(fullText, e.startByte);
-        const endPos = doc ? doc.positionAt(e.endByte) : offsetToPosition(fullText, e.endByte);
+      edits = rawEdits.map((e: any) => {
+        const sOff = e.startOffset ?? e.startByte;
+        const eOff = e.endOffset ?? e.endByte;
+        const startPos = doc ? doc.positionAt(sOff) : offsetToPosition(fullText, sOff);
+        const endPos = doc ? doc.positionAt(eOff) : offsetToPosition(fullText, eOff);
         return TextEdit.replace(Range.create(startPos, endPos), e.newText);
       });
     }

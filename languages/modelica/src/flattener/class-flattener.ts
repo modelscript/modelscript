@@ -2211,7 +2211,11 @@ export class ModelicaFlattener {
             typeof (dae.exports as any).flattener_getAlgorithmSectionCount === "function"
               ? (dae.exports as any).flattener_getAlgorithmSectionCount(wasmFlattener)
               : 0;
-          const hybridAlgorithmGate = !isStrictWasm && wasmErrorCode === 0 && algSectionCount > 0;
+          const hybridAlgorithmGate =
+            !isStrictWasm &&
+            wasmErrorCode === 0 &&
+            algSectionCount > 0 &&
+            Boolean((this.options as any)?.allowNonStandardModelica?.length);
           if (hybridAlgorithmGate) {
             wasmBail = describeWasmBail(WasmBailReason.HybridAlgorithmGate, undefined, undefined, "ts-fallback");
           }
@@ -3046,7 +3050,11 @@ export class ModelicaFlattener {
               const targetOffset =
                 targetCst._startOffset !== undefined
                   ? targetCst._startOffset
-                  : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                  : Math.max(
+                      0,
+                      (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize -
+                        (targetCst._cachedPad ?? 0),
+                    );
               register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
             }
             queue.push(resolved.id);
@@ -3068,7 +3076,11 @@ export class ModelicaFlattener {
             const targetOffset =
               targetCst._startOffset !== undefined
                 ? targetCst._startOffset
-                : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                : Math.max(
+                    0,
+                    (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize -
+                      (targetCst._cachedPad ?? 0),
+                  );
             register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
             register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
           }
@@ -3095,7 +3107,11 @@ export class ModelicaFlattener {
                 const targetOffset =
                   targetCst._startOffset !== undefined
                     ? targetCst._startOffset
-                    : (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startByte ?? 0) * unitSize;
+                    : Math.max(
+                        0,
+                        (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startByte ?? 0) * unitSize -
+                          (targetCst._cachedPad ?? 0),
+                      );
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }
@@ -3126,10 +3142,15 @@ export class ModelicaFlattener {
                 const targetOffset =
                   targetCst._startOffset !== undefined
                     ? targetCst._startOffset
-                    : (targetCst.startIndex ??
-                        targetCst.startOffset ??
-                        (this.db.symbol(targetId) as any)?.startByte ??
-                        0) * unitSize;
+                    : Math.max(
+                        0,
+                        (targetCst.startIndex ??
+                          targetCst.startOffset ??
+                          (this.db.symbol(targetId) as any)?.startByte ??
+                          0) *
+                          unitSize -
+                          (targetCst._cachedPad ?? 0),
+                      );
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }
@@ -3188,7 +3209,12 @@ export class ModelicaFlattener {
                 const targetOffset =
                   targetCst._startOffset !== undefined
                     ? targetCst._startOffset
-                    : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                    : Math.max(
+                        0,
+                        (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) *
+                          unitSize -
+                          (targetCst._cachedPad ?? 0),
+                      );
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }

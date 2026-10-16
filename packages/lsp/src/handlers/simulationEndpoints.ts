@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-// @ts-nocheck
 import {
   CoSimSession,
   FeaCoSimParticipant,
@@ -9,6 +8,7 @@ import {
   Orchestrator,
   WasmOpenFoamProvider,
 } from "@modelscript/exchange/cosim";
+import { generateMultiModelWrapper } from "@modelscript/exchange/fmu";
 import { Causality, DAEBuilder } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
 import { LspContext } from "../lsp-context.js";
@@ -236,18 +236,16 @@ export function registerSimulationEndpoints(context: LspContext) {
           ((params.domain === "fea" || params.domain === "cfd") && target.classKind === "model")
         ) {
           context.connection.console.info(`[simulate] Launching Co-Simulation Orchestrator for ${target.className}...`);
-          const session = new CoSimSession("vscode-cosim");
           const exp = arena.experiment;
           const cosimStartTime = params.startTime ?? exp.startTime ?? 0;
           const cosimStopTime = params.stopTime ?? exp.stopTime ?? 0.2;
           const cosimStepSize = params.interval ?? exp.interval ?? 0.005;
 
-          session.experiment = {
+          const session = new CoSimSession("vscode-cosim", {
             startTime: cosimStartTime,
             stopTime: cosimStopTime,
             stepSize: cosimStepSize,
-            tolerance: exp.tolerance ?? 1e-4,
-          };
+          });
 
           const modelica = new ModelScriptParticipant("1d-solver", target.className, arena);
           session.addParticipant(modelica);
@@ -293,7 +291,7 @@ export function registerSimulationEndpoints(context: LspContext) {
               loadTags: ["motor_mount", "motor1_mount", "motor2_mount", "motor3_mount", "motor4_mount", "tip_load"],
               loadAxis: "y",
               corotational: true,
-            });
+            } as any);
             session.addParticipant(feaParticipant);
 
             // Find all force/thrust variables in Modelica arena (supporting multi-mount drones)
@@ -510,7 +508,9 @@ export function registerSimulationEndpoints(context: LspContext) {
           return { t: [], y: [], states: [], parameters: [], experiment: exp };
         }
 
-        context.connection.console.info(`[simulate] Arena active variables: ${arena.activeVarCount}`);
+        context.connection.console.info(
+          `[simulate] Arena active variables: ${(arena as any).activeVarCount ?? arena.varCount}`,
+        );
         context.connection.console.info(`[simulate] Arena equations: ${arena.eqCount}`);
 
         const exp = arena.experiment;
@@ -755,21 +755,24 @@ export function registerSimulationEndpoints(context: LspContext) {
       uri: string;
     }): Promise<{ ok: boolean; source?: string; error?: string }> => {
       try {
-        const models = params.modelNames.map((name) => {
+        const fmus = params.modelNames.map((name) => {
           const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, name);
           if (!classInstance) throw new Error(`Could not resolve Modelica class ${name}`);
-          return classInstance;
+          const clsName = classInstance.name || name;
+          return {
+            className: clsName,
+            instanceName: clsName.charAt(0).toLowerCase() + clsName.slice(1),
+            fileName: `${clsName}.fmu`,
+          };
         });
 
         const source = generateMultiModelWrapper(
-          models,
+          params.wrapperName || "CosimWrapper",
+          fmus,
           params.couplings.map((c) => ({
-            fromModel: c.from.model,
-            fromVar: c.from.variable,
-            toModel: c.to.model,
-            toVar: c.to.variable,
+            source: `${c.from.model}.${c.from.variable}`,
+            target: `${c.to.model}.${c.to.variable}`,
           })),
-          params.wrapperName,
         );
 
         return { ok: true, source };
@@ -883,18 +886,23 @@ export function registerSimulationEndpoints(context: LspContext) {
 
     const tree = context.state.sharedContext.parse(".mos", text);
     if (!tree || !tree.rootNode) {
+      tree?.delete?.();
       return { output: "", error: "Failed to parse script." };
     }
 
-    const qe = context.workspaceManager.getQueryEngine("modelica");
-    const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
-    if (!InterpreterClass || !qe) {
-      return { output: "", error: "Script execution engine not initialized." };
-    }
+    try {
+      const qe = context.workspaceManager.getQueryEngine("modelica");
+      const InterpreterClass = (globalThis as any).ArenaScriptInterpreter;
+      if (!InterpreterClass || !qe) {
+        return { output: "", error: "Script execution engine not initialized." };
+      }
 
-    const interpreter = new InterpreterClass(qe);
-    const result = interpreter.execute(tree.rootNode);
-    return result;
+      const interpreter = new InterpreterClass(qe);
+      const result = interpreter.execute(tree.rootNode);
+      return result;
+    } finally {
+      tree.delete?.();
+    }
   });
 
   context.connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
@@ -1122,5 +1130,3 @@ export function registerSimulationEndpoints(context: LspContext) {
     return { success: false, message: "No active simulation found for this document." };
   });
 }
-
-// @ts-nocheck

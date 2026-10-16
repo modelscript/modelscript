@@ -47,10 +47,90 @@ export interface ActivePortInstance {
 }
 
 /**
- * Helper to recursively search for CST children of a given type.
+ * Zero-allocation linear-memory CST text extractor from raw `(startOffset, pad, len)` in `Tree`.
+ */
+function extractLinearNodeText(tree: any, startOffset: number, pad: number, len: number): string {
+  const enc = tree.facade?.getInputEncoding ? tree.facade.getInputEncoding() : (tree._encoding ?? 1);
+  if ((enc === 0 || enc === 3 || enc === 4) && tree.facade?.wasmMemory) {
+    const getInputBuf = tree.facade.exports?.getInputBuffer || tree.facade.exports?.lsp_getInputBuffer;
+    if (getInputBuf) {
+      const inputBufPtr = getInputBuf();
+      const rawBytes = new Uint8Array(tree.facade.wasmMemory.buffer, inputBufPtr + startOffset + pad, len);
+      if (enc === 0) {
+        return typeof TextDecoder !== "undefined"
+          ? new TextDecoder("utf-8").decode(rawBytes)
+          : String.fromCharCode(...rawBytes);
+      }
+    }
+  }
+  const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+  const s = Math.floor((startOffset + pad) / div);
+  const e = Math.floor((startOffset + pad + len) / div);
+  return tree.sourceCode ? tree.sourceCode.substring(s, e) : "";
+}
+
+/**
+ * Helper to recursively search for direct visible CST children of a given type.
+ * Uses direct WASM `mem32` pointer iteration when available to avoid allocating
+ * `SyntaxNode` wrappers for non-matching children.
  */
 export function findCstChildren(node: any, type: string, results: any[] = []): any[] {
   if (!node) return results;
+  if (
+    typeof node.ptr === "number" &&
+    node.ptr > 0 &&
+    node.tree?.mem32 &&
+    node.tree?.facade?.syntaxNames &&
+    !node._cachedChildren
+  ) {
+    const mem32: Uint32Array = node.tree.mem32;
+    const syntaxNames: string[] = node.tree.facade.syntaxNames;
+    const exports = node.tree.facade.exports;
+    const NodeCtor = node.constructor as any;
+
+    const ptrStack: number[] = [];
+    const offsetStack: number[] = [];
+    let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
+    let currentOffset = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
+
+    while (true) {
+      if (currentChildPtr !== 0) {
+        const typeFlags = mem32[currentChildPtr >>> 2]!;
+        const typeId = typeFlags & 0x03ff;
+        const name = syntaxNames[typeId] || "";
+        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
+        const rawPad = typeFlags >>> 22;
+        const isFat = (envHashPadding >>> 23) & 1;
+        const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad;
+        const len = envHashPadding & 0x007fffff;
+        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+
+        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
+        const nextOffset = currentOffset + pad + len;
+
+        if (name.startsWith("_") || isInvisible) {
+          if (nextChildPtr !== 0) {
+            ptrStack.push(nextChildPtr);
+            offsetStack.push(nextOffset);
+          }
+          currentChildPtr = mem32[(currentChildPtr + 12) >>> 2]!;
+          currentOffset = currentOffset + pad;
+          continue;
+        } else if (name === type) {
+          results.push(new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1));
+        }
+
+        currentOffset = nextOffset;
+        currentChildPtr = nextChildPtr;
+      } else {
+        if (ptrStack.length === 0) break;
+        currentChildPtr = ptrStack.pop()!;
+        currentOffset = offsetStack.pop()!;
+      }
+    }
+    return results;
+  }
+
   const count = node.childCount ?? node.children?.length ?? 0;
   for (let i = 0; i < count; i++) {
     const child = node.child ? node.child(i) : node.children[i];
@@ -64,9 +144,63 @@ export function findCstChildren(node: any, type: string, results: any[] = []): a
 
 /**
  * Helper to recursively search all descendants for nodes of a given type.
+ * Uses direct WASM linear-memory `u32` pointer traversal when available so only
+ * matching nodes allocate a `SyntaxNode` wrapper.
  */
 export function findCstDescendants(node: any, type: string, results: any[] = []): any[] {
   if (!node) return results;
+  if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
+    if (node.type === type) results.push(node);
+    const mem32: Uint32Array = node.tree.mem32;
+    const syntaxNames: string[] = node.tree.facade.syntaxNames;
+    const exports = node.tree.facade.exports;
+    const NodeCtor = node.constructor as any;
+
+    const ptrStack: number[] = [];
+    const offsetStack: number[] = [];
+    let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
+    let currentOffset = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
+
+    while (true) {
+      if (currentChildPtr !== 0) {
+        const typeFlags = mem32[currentChildPtr >>> 2]!;
+        const typeId = typeFlags & 0x03ff;
+        const name = syntaxNames[typeId] || "";
+        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
+        const rawPad = typeFlags >>> 22;
+        const isFat = (envHashPadding >>> 23) & 1;
+        const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad;
+        const len = envHashPadding & 0x007fffff;
+        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+
+        if (!isInvisible && name === type) {
+          results.push(new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1));
+        }
+
+        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
+        const nextOffset = currentOffset + pad + len;
+        const grandChildPtr = mem32[(currentChildPtr + 12) >>> 2]!;
+
+        if (grandChildPtr !== 0) {
+          if (nextChildPtr !== 0) {
+            ptrStack.push(nextChildPtr);
+            offsetStack.push(nextOffset);
+          }
+          currentChildPtr = grandChildPtr;
+          currentOffset = currentOffset + pad;
+        } else {
+          currentChildPtr = nextChildPtr;
+          currentOffset = nextOffset;
+        }
+      } else {
+        if (ptrStack.length === 0) break;
+        currentChildPtr = ptrStack.pop()!;
+        currentOffset = offsetStack.pop()!;
+      }
+    }
+    return results;
+  }
+
   if (node.type === type) results.push(node);
   const count = node.childCount ?? node.children?.length ?? 0;
   for (let i = 0; i < count; i++) {
@@ -77,10 +211,62 @@ export function findCstDescendants(node: any, type: string, results: any[] = [])
 }
 
 /**
- * Finds the first descendant of a given type.
+ * Finds the first descendant of a given type using direct WASM linear-memory `u32` pointer traversal.
  */
 export function findFirstDescendant(node: any, type: string): any | null {
   if (!node) return null;
+  if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
+    if (node.type === type) return node;
+    const mem32: Uint32Array = node.tree.mem32;
+    const syntaxNames: string[] = node.tree.facade.syntaxNames;
+    const exports = node.tree.facade.exports;
+    const NodeCtor = node.constructor as any;
+
+    const ptrStack: number[] = [];
+    const offsetStack: number[] = [];
+    let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
+    let currentOffset = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
+
+    while (true) {
+      if (currentChildPtr !== 0) {
+        const typeFlags = mem32[currentChildPtr >>> 2]!;
+        const typeId = typeFlags & 0x03ff;
+        const name = syntaxNames[typeId] || "";
+        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
+        const rawPad = typeFlags >>> 22;
+        const isFat = (envHashPadding >>> 23) & 1;
+        const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad;
+        const len = envHashPadding & 0x007fffff;
+        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+
+        if (!isInvisible && name === type) {
+          return new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1);
+        }
+
+        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
+        const nextOffset = currentOffset + pad + len;
+        const grandChildPtr = mem32[(currentChildPtr + 12) >>> 2]!;
+
+        if (grandChildPtr !== 0) {
+          if (nextChildPtr !== 0) {
+            ptrStack.push(nextChildPtr);
+            offsetStack.push(nextOffset);
+          }
+          currentChildPtr = grandChildPtr;
+          currentOffset = currentOffset + pad;
+        } else {
+          currentChildPtr = nextChildPtr;
+          currentOffset = nextOffset;
+        }
+      } else {
+        if (ptrStack.length === 0) break;
+        currentChildPtr = ptrStack.pop()!;
+        currentOffset = offsetStack.pop()!;
+      }
+    }
+    return null;
+  }
+
   if (node.type === type) return node;
   const count = node.childCount ?? node.children?.length ?? 0;
   for (let i = 0; i < count; i++) {
@@ -92,10 +278,293 @@ export function findFirstDescendant(node: any, type: string): any | null {
 }
 
 /**
+ * Lowers a SysML v2 / KerML CST expression directly from WASM linear memory (`mem32` u32 pointers)
+ * into `DAEBuilder` without allocating intermediate `SyntaxNode` wrapper objects.
+ */
+function lowerLinearWasmCstExpression(
+  tree: any,
+  ptr: number,
+  startOffset: number,
+  pad: number,
+  len: number,
+  typeId: number,
+  arena: DAEBuilder,
+  prefix: string,
+  localNames?: Set<string>,
+): number {
+  if (!ptr) return arena.addRealLiteral(0.0);
+  const mem32: Uint32Array = tree.mem32;
+  const syntaxNames: string[] = tree.facade.syntaxNames;
+  const exports = tree.facade.exports;
+
+  // Helper to collect visible direct children as flat (ptr, startOffset, pad, len, typeId) tuples
+  const getVisibleChildren = (pPtr: number, pStartOffset: number, pPad: number) => {
+    const cPtrs: number[] = [];
+    const cOffsets: number[] = [];
+    const cPads: number[] = [];
+    const cLens: number[] = [];
+    const cTypes: number[] = [];
+
+    const ptrStack: number[] = [];
+    const offsetStack: number[] = [];
+    let curPtr = mem32[(pPtr + 12) >>> 2]!;
+    let curOff = pStartOffset + pPad;
+
+    while (true) {
+      if (curPtr !== 0) {
+        const tf = mem32[curPtr >>> 2]!;
+        const tid = tf & 0x03ff;
+        const tName = syntaxNames[tid] || "";
+        const ehp = mem32[(curPtr + 4) >>> 2]!;
+        const rPad = tf >>> 22;
+        const isFat = (ehp >>> 23) & 1;
+        const cPad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad;
+        const cLen = ehp & 0x007fffff;
+        const isInv = (tf & (1 << 14)) !== 0;
+
+        const nextPtr = mem32[(curPtr + 16) >>> 2]!;
+        const nextOff = curOff + cPad + cLen;
+
+        if (tName.startsWith("_") || isInv) {
+          if (nextPtr !== 0) {
+            ptrStack.push(nextPtr);
+            offsetStack.push(nextOff);
+          }
+          curPtr = mem32[(curPtr + 12) >>> 2]!;
+          curOff = curOff + cPad;
+          continue;
+        } else {
+          cPtrs.push(curPtr);
+          cOffsets.push(curOff);
+          cPads.push(cPad);
+          cLens.push(cLen);
+          cTypes.push(tid);
+        }
+
+        curOff = nextOff;
+        curPtr = nextPtr;
+      } else {
+        if (ptrStack.length === 0) break;
+        curPtr = ptrStack.pop()!;
+        curOff = offsetStack.pop()!;
+      }
+    }
+    return { cPtrs, cOffsets, cPads, cLens, cTypes };
+  };
+
+  // Unwrap wrapper nodes
+  let curPtr = ptr;
+  let curOff = startOffset;
+  let curPad = pad;
+  let curLen = len;
+  let curTypeId = typeId;
+  let type = syntaxNames[curTypeId] || "";
+
+  while (
+    type === "OwnedExpression" ||
+    type === "SequenceExpression" ||
+    type === "ArgumentValue" ||
+    type === "ResultExpressionMember" ||
+    type === "_Expression" ||
+    type === "_BaseExpression"
+  ) {
+    const kids = getVisibleChildren(curPtr, curOff, curPad);
+    if (kids.cPtrs.length > 0 && kids.cPtrs[0] !== curPtr) {
+      curPtr = kids.cPtrs[0]!;
+      curOff = kids.cOffsets[0]!;
+      curPad = kids.cPads[0]!;
+      curLen = kids.cLens[0]!;
+      curTypeId = kids.cTypes[0]!;
+      type = syntaxNames[curTypeId] || "";
+    } else {
+      break;
+    }
+  }
+
+  const kids = getVisibleChildren(curPtr, curOff, curPad);
+  const count = kids.cPtrs.length;
+
+  // Parenthesized expression: ( expr )
+  if (count === 3) {
+    const firstText = extractLinearNodeText(tree, kids.cOffsets[0]!, kids.cPads[0]!, kids.cLens[0]!);
+    const lastText = extractLinearNodeText(tree, kids.cOffsets[2]!, kids.cPads[2]!, kids.cLens[2]!);
+    if (firstText === "(" && lastText === ")") {
+      return lowerLinearWasmCstExpression(
+        tree,
+        kids.cPtrs[1]!,
+        kids.cOffsets[1]!,
+        kids.cPads[1]!,
+        kids.cLens[1]!,
+        kids.cTypes[1]!,
+        arena,
+        prefix,
+        localNames,
+      );
+    }
+  }
+
+  // 1. Literals
+  if (type === "LiteralReal" || type === "RealValue" || type === "LiteralInteger" || type === "DECIMAL_VALUE") {
+    const val = parseFloat(extractLinearNodeText(tree, curOff, curPad, curLen).trim());
+    return arena.addRealLiteral(isNaN(val) ? 0.0 : val);
+  }
+  if (type === "LiteralBoolean") {
+    return arena.addBoolLiteral(extractLinearNodeText(tree, curOff, curPad, curLen).trim() === "true");
+  }
+
+  // 2. Unary Expression
+  if (type === "UnaryExpression" && count >= 2) {
+    const opText = extractLinearNodeText(tree, kids.cOffsets[0]!, kids.cPads[0]!, kids.cLens[0]!).trim() || "-";
+    const childId = lowerLinearWasmCstExpression(
+      tree,
+      kids.cPtrs[1]!,
+      kids.cOffsets[1]!,
+      kids.cPads[1]!,
+      kids.cLens[1]!,
+      kids.cTypes[1]!,
+      arena,
+      prefix,
+      localNames,
+    );
+    if (opText === "-") return arena.addUnaryExpr(UnaryOp.Negate, childId);
+    if (opText === "!" || opText === "not") return arena.addUnaryExpr(UnaryOp.Not, childId);
+    return childId;
+  }
+
+  // 3. Additive / Multiplicative / Relational / Equality / And / Or Expressions
+  if (
+    (type === "AdditiveExpression" ||
+      type === "MultiplicativeExpression" ||
+      type === "RelationalExpression" ||
+      type === "EqualityExpression" ||
+      type === "AndExpression" ||
+      type === "OrExpression") &&
+    count >= 1
+  ) {
+    let left = lowerLinearWasmCstExpression(
+      tree,
+      kids.cPtrs[0]!,
+      kids.cOffsets[0]!,
+      kids.cPads[0]!,
+      kids.cLens[0]!,
+      kids.cTypes[0]!,
+      arena,
+      prefix,
+      localNames,
+    );
+    for (let i = 1; i + 1 < count; i += 2) {
+      const opText = extractLinearNodeText(tree, kids.cOffsets[i]!, kids.cPads[i]!, kids.cLens[i]!).trim();
+      const right = lowerLinearWasmCstExpression(
+        tree,
+        kids.cPtrs[i + 1]!,
+        kids.cOffsets[i + 1]!,
+        kids.cPads[i + 1]!,
+        kids.cLens[i + 1]!,
+        kids.cTypes[i + 1]!,
+        arena,
+        prefix,
+        localNames,
+      );
+      if (type === "AdditiveExpression") {
+        left = arena.addBinaryExpr(opText === "-" ? BinOp.Sub : BinOp.Add, left, right);
+      } else if (type === "MultiplicativeExpression") {
+        if (opText === "%") left = arena.addCallExpr("mod", [left, right]);
+        else left = arena.addBinaryExpr(opText === "/" ? BinOp.Div : BinOp.Mul, left, right);
+      } else if (type === "RelationalExpression") {
+        let op = BinOp.Lt;
+        if (opText === "<=") op = BinOp.Lte;
+        else if (opText === ">") op = BinOp.Gt;
+        else if (opText === ">=") op = BinOp.Gte;
+        left = arena.addBinaryExpr(op, left, right);
+      } else if (type === "EqualityExpression") {
+        left = arena.addBinaryExpr(opText === "!=" ? BinOp.Neq : BinOp.Eq, left, right);
+      } else if (type === "AndExpression") {
+        left = arena.addBinaryExpr(BinOp.And, left, right);
+      } else {
+        left = arena.addBinaryExpr(BinOp.Or, left, right);
+      }
+    }
+    return left;
+  }
+
+  // 4. Exponentiation Expression
+  if (type === "ExponentiationExpression" && count >= 3) {
+    const baseId = lowerLinearWasmCstExpression(
+      tree,
+      kids.cPtrs[0]!,
+      kids.cOffsets[0]!,
+      kids.cPads[0]!,
+      kids.cLens[0]!,
+      kids.cTypes[0]!,
+      arena,
+      prefix,
+      localNames,
+    );
+    const expId = lowerLinearWasmCstExpression(
+      tree,
+      kids.cPtrs[2]!,
+      kids.cOffsets[2]!,
+      kids.cPads[2]!,
+      kids.cLens[2]!,
+      kids.cTypes[2]!,
+      arena,
+      prefix,
+      localNames,
+    );
+    return arena.addBinaryExpr(BinOp.Pow, baseId, expId);
+  }
+
+  // 5. Measurement Expression
+  if (type === "MeasurementExpression" && count >= 1) {
+    return lowerLinearWasmCstExpression(
+      tree,
+      kids.cPtrs[0]!,
+      kids.cOffsets[0]!,
+      kids.cPads[0]!,
+      kids.cLens[0]!,
+      kids.cTypes[0]!,
+      arena,
+      prefix,
+      localNames,
+    );
+  }
+
+  // 6. Feature Reference / Identifier
+  if (type === "FeatureReferenceExpression" || type === "Name" || type === "ID" || type === "QualifiedName") {
+    let rawName = extractLinearNodeText(tree, curOff, curPad, curLen).trim();
+    if (prefix && localNames) {
+      const dotIdx = rawName.indexOf(".");
+      const root = dotIdx === -1 ? rawName : rawName.slice(0, dotIdx);
+      if (localNames.has(root)) {
+        rawName = prefix + rawName;
+      }
+    }
+    return arena.addName(arena.interner.intern(rawName));
+  }
+
+  return -1;
+}
+
+/**
  * Lowers a SysML v2 / KerML CST expression node directly into an integer `ExprId` in `DAEBuilder`.
  */
 export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", localNames?: Set<string>): number {
   if (!node) return arena.addRealLiteral(0.0);
+
+  if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
+    const fastId = lowerLinearWasmCstExpression(
+      node.tree,
+      node.ptr,
+      node._startOffset ?? 0,
+      node._cachedPad ?? 0,
+      node._cachedLen ?? 0,
+      node.typeId ?? node.tree.mem32[node.ptr >>> 2]! & 0x03ff,
+      arena,
+      prefix,
+      localNames,
+    );
+    if (fastId >= 0) return fastId;
+  }
 
   // Unwrap wrapper nodes
   while (

@@ -392,7 +392,7 @@ async function run() {
     target: "es2022",
     minify: false,
     keepNames: true,
-    sourcemap: "inline",
+    sourcemap: "linked",
     define: {
       "process.env": "{}",
       "process.browser": "true",

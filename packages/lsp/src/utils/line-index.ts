@@ -45,9 +45,9 @@ export class LineIndex {
   private lineStarts: Uint32Array;
 
   /** Start column of each token (parallel array). */
-  private tokenStartCol: Uint16Array;
+  private tokenStartCol: Uint32Array;
   /** End column of each token (exclusive, parallel array). */
-  private tokenEndCol: Uint16Array;
+  private tokenEndCol: Uint32Array;
   /** AST node ID of each token (parallel array). */
   private tokenNodeId: Int32Array;
 
@@ -64,8 +64,8 @@ export class LineIndex {
     this.tokenCount = tokens.length;
 
     // Allocate parallel token arrays
-    this.tokenStartCol = new Uint16Array(tokens.length);
-    this.tokenEndCol = new Uint16Array(tokens.length);
+    this.tokenStartCol = new Uint32Array(tokens.length);
+    this.tokenEndCol = new Uint32Array(tokens.length);
     this.tokenNodeId = new Int32Array(tokens.length);
 
     // Fill token arrays

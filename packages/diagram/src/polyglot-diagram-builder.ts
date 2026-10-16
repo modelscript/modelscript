@@ -3001,12 +3001,10 @@ export function buildDiagramFromDSL(
       sourceText &&
       typeof rawNode.startByte === "number" &&
       typeof rawNode.endByte === "number" &&
-      rawNode.endByte > rawNode.startByte
+      rawNode.endByte > rawNode.startByte &&
+      rawNode.endByte <= sourceText.length
     ) {
-      if (rawNode.endByte <= sourceText.length) {
-        return sourceText.slice(rawNode.startByte, rawNode.endByte);
-      }
-      return sourceText.slice(rawNode.startByte >>> 1, rawNode.endByte >>> 1);
+      return sourceText.slice(rawNode.startByte, rawNode.endByte);
     }
     return "";
   };
