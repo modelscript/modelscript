@@ -758,6 +758,24 @@ export function instantiateElements(
         (state.innerComponents ??= new Set<string>()).add(fullCompName);
       }
 
+      const elemCstForShape = flattener.db.cstNode(elemId) as any;
+      const hasColonSubscript = /\[\s*:(?:\s*,\s*:)*\s*\]/.test(elemCstForShape?.text ?? "");
+      if (compInst?.name && hasColonSubscript && compInst?.modification?.bindingExpression?.text) {
+        const fullName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
+        const rawText = compInst.modification.bindingExpression.text.trim();
+        if (isArrayLiteral(rawText) && !/\bfor\b/.test(rawText)) {
+          const elems = parseArrayLiteralElements(rawText);
+          if (elems.length > 0) {
+            if (isArrayLiteral(elems[0]?.trim() ?? "")) {
+              const inner = parseArrayLiteralElements(elems[0]!.trim());
+              setNamedArrayShape(dae, fullName, [elems.length, inner.length]);
+            } else {
+              setNamedArrayShape(dae, fullName, [elems.length]);
+            }
+          }
+        }
+      }
+
       if (compInst?.variability === "constant") {
         const mod = compInst.modification;
         if (mod?.bindingExpression) {
@@ -785,11 +803,11 @@ export function instantiateElements(
           if (prefix && arg.value?.text) {
             const fullName = `${prefix}.${arg.name}`;
             const rawText = arg.value.text.trim();
-            if (rawText.startsWith("{") && rawText.endsWith("}")) {
+            if (isArrayLiteral(rawText)) {
               const elems = parseArrayLiteralElements(rawText);
               if (elems.length > 0) {
-                if (elems[0]?.trim().startsWith("{") && elems[0]?.trim().endsWith("}")) {
-                  const inner = parseArrayLiteralElements(elems[0].trim());
+                if (isArrayLiteral(elems[0]?.trim() ?? "")) {
+                  const inner = parseArrayLiteralElements(elems[0]!.trim());
                   setNamedArrayShape(dae, fullName, [elems.length, inner.length]);
                 } else {
                   setNamedArrayShape(dae, fullName, [elems.length]);
@@ -3582,6 +3600,7 @@ export function instantiateElements(
                       const rhsExprId = dae.getVarExpression(fVarIdx);
                       if (rhsExprId !== undefined && rhsExprId >= 0) {
                         dae.setVarExpression(fVarIdx, -1);
+                        dae.removeVarAttr(fVarIdx, "start");
                         dae.addEquation(EqKind.Simple, dae.addNameExpr(fVarName), rhsExprId);
                       }
                     }
@@ -6343,7 +6362,7 @@ export function instantiateElements(
               if (varType === VarType.Real && !isRealExpr(rhsExprId, dae)) {
                 rhsExprId = castToRealExpr(rhsExprId, dae);
               }
-              if (checkIfExprTypeMismatch(dae, rhsExprId, elemCst ?? exprCst, prefix)) {
+              if (checkIfExprTypeMismatch(dae, rhsExprId, elemCst ?? exprCst, prefix, arrayDims)) {
                 return;
               }
             } else if (bText.startsWith("{") && bText.endsWith("}")) {

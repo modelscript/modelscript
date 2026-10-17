@@ -34,7 +34,6 @@ export class NativeEmitter {
 
     const wasmFile = path.join(buildDir, "module.wasm");
     const cFile = path.join(buildDir, "module.c");
-    const hFile = path.join(buildDir, "module.h");
     const harnessFile = path.join(buildDir, "harness.c");
 
     // 1. Emit WASM bytecode

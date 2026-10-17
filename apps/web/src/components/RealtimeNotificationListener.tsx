@@ -10,7 +10,7 @@ import { useToast } from "./ToastContext";
  * Synthesizes a soft, pleasant harmonic chime using the Web Audio API.
  * Zero external audio assets required.
  */
-export function playNotificationChime(): void {
+function playNotificationChime(): void {
   try {
     const AudioCtx =
       window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;

@@ -260,7 +260,7 @@ echo "[HPC] Execution finished at $(date)."
     return outputs;
   }
 
-  public async setInputs(values: Map<string, CosimValue>): Promise<void> {
+  public async setInputs(_values: Map<string, CosimValue>): Promise<void> {
     // Prescribe cluster boundary conditions if needed
   }
 
@@ -276,7 +276,7 @@ echo "[HPC] Execution finished at $(date)."
     return null;
   }
 
-  public async loadGeometry(stepFileData: Uint8Array): Promise<void> {
+  public async loadGeometry(_stepFileData: Uint8Array): Promise<void> {
     // Packages CAD geometry for cluster upload
   }
 

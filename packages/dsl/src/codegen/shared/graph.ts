@@ -47,7 +47,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   const attrIdMap = new Map<string, number>();
   let nextBlackboardId = 100;
   if (grammar.model) {
-    for (const [nodeName, attrs] of Object.entries(grammar.model)) {
+    for (const [, attrs] of Object.entries(grammar.model)) {
       for (const attrName of Object.keys(attrs as any)) {
         if (!attrIdMap.has(attrName)) {
           attrIdMap.set(attrName, nextBlackboardId++);

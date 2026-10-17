@@ -145,7 +145,7 @@ export class CandidateFilter {
    */
   public static computeCrowdingDistances(
     front: DesignCandidate[],
-    directions: Record<string, ObjectiveDirection> = {},
+    _directions: Record<string, ObjectiveDirection> = {},
   ): void {
     const l = front.length;
     if (l === 0) return;
@@ -231,9 +231,6 @@ export class CegarRefinementSynthesizer {
     const delta = witness.actualValue - witness.thresholdValue; // > 0 means violation
     const suggestedBounds: Record<string, { min?: number; max?: number }> = {};
     const coefficients: Record<string, number> = {};
-
-    let dominantParam = "";
-    let maxSensitivity = 0;
 
     if (witness.sensitivityGradients && Object.keys(witness.sensitivityGradients).length > 0) {
       for (const [param, grad] of Object.entries(witness.sensitivityGradients)) {

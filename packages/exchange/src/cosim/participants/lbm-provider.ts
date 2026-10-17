@@ -114,7 +114,7 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     };
   }
 
-  public async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
+  public async initialize(startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     this.currentTime = startTime;
     this.lastResult = {
       aerodynamicForceN: [0, 0, 0],

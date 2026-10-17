@@ -63,7 +63,6 @@ export class FeaSolver {
 
   private precomputeElementMatrices(): void {
     const { nodeCoords, elements, numElements } = this.mesh;
-    const npe = this.nodesPerElement;
     const rho = this.material.rho ?? 2700.0;
 
     for (let e = 0; e < numElements; e++) {

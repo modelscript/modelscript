@@ -195,7 +195,7 @@ export class OntologyTheoryOracle implements TheoryOracle {
       case "bundleClosure": {
         // Automatically enforce pairwise disjointness for all sibling classes
         // declared within the bundle that do not have a declared common subclass.
-        const [pkg, siblings] = args as [string, string[]];
+        const [, siblings] = args as [string, string[]];
         for (let i = 0; i < siblings.length; i++) {
           for (let j = i + 1; j < siblings.length; j++) {
             const cA = siblings[i]!;

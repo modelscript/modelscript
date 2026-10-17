@@ -358,7 +358,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
                   },
                 });
 
-                const baselineEval = surrogate.evaluate({ velocity: baseVel, angle_of_attack_deg: 2.5 });
+                const _baselineEval = surrogate.evaluate({ velocity: baseVel, angle_of_attack_deg: 2.5 });
                 const predictedCd = 0.0285;
                 const thresholdCd = 0.035;
                 const isSatisfied = predictedCd <= thresholdCd;

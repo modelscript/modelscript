@@ -257,7 +257,7 @@ export interface VisualNodeConfig<
 export interface VisualEdgeConfig<
   RuleName extends string = string,
   FieldName extends string = string,
-  QueryName extends string = string,
+  _QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   source: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
@@ -274,7 +274,7 @@ export interface VisualEdgeConfig<
 }
 
 /** General Diagram Projection (View / Slice / Perspective) */
-export interface DiagramProjectionConfig<RuleName extends string = string, FieldName extends string = string> {
+export interface DiagramProjectionConfig<RuleName extends string = string, _FieldName extends string = string> {
   label: string;
   description?: string;
   /** Perspective / Viewpoint identifier */
@@ -327,7 +327,7 @@ export interface InModelProjectionDiscoveryConfig<RuleName extends string = stri
 }
 
 /** Dynamic Graphic Annotation Parser (e.g. Modelica Icon/Diagram, CAD 2D primitives) */
-export interface GraphicAnnotationsConfig<RuleName extends string = string, FieldName extends string = string> {
+export interface GraphicAnnotationsConfig<_RuleName extends string = string, FieldName extends string = string> {
   /** Annotation clause field in AST (e.g. 'annotationClause') */
   annotationField?: FieldName;
   /** Graphic primitive AST constructor mappings */
@@ -483,7 +483,7 @@ export interface PropertyTabConfig {
 }
 
 /** Schema for an entity rule */
-export interface EntityPropertySchema<RuleName extends string = string> {
+export interface EntityPropertySchema<_RuleName extends string = string> {
   title?: string | ((node: any) => string);
   icon?: string | ((node: any) => string);
   tabs: PropertyTabConfig[];
@@ -496,7 +496,7 @@ export interface InModelPropertyDiscoveryHook {
 }
 
 /** AST mutation handler for updating properties back to source code */
-export interface PropertyMutator<RuleName extends string = string> {
+export interface PropertyMutator<_RuleName extends string = string> {
   updateProperty?: (db: any, node: any, key: string, value: any, previousValue?: any) => any;
   updateModifier?: (docText: string, node: any, paramName: string, newValue: any) => any;
 }
@@ -504,9 +504,9 @@ export interface PropertyMutator<RuleName extends string = string> {
 /** Property Inspector configuration for a language */
 export interface PropertyInspectorConfig<
   RuleName extends string = string,
-  FieldName extends string = string,
-  QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  _FieldName extends string = string,
+  _QueryName extends string = string,
+  _ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   entities?: Partial<Record<NoInfer<RuleName>, EntityPropertySchema<RuleName>>>;
   inModelDiscovery?: InModelPropertyDiscoveryHook;

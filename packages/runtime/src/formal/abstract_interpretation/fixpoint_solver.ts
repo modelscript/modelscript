@@ -244,7 +244,7 @@ export class FixpointSolver {
     let potentialBug = 0;
     let deadCode = 0;
 
-    for (const [bId, inState] of inStates) {
+    for (const [, inState] of inStates) {
       if (this.domain.isBottom(inState)) {
         deadCode++;
       }

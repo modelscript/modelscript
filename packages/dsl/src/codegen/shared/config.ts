@@ -102,7 +102,7 @@ export function generateConfigDomain(
   code += `export let globalConfigPtr: u32 = 0;\n\n`;
 
   // Write offset constants
-  for (const [key, entry] of entries) {
+  for (const [, entry] of entries) {
     const safeConstName = `OFFSET_${entry.category.toUpperCase()}_${entry.name.toUpperCase()}`;
     code += `export const ${safeConstName}: u32 = ${entry.offset};\n`;
   }
@@ -118,7 +118,7 @@ export function generateConfigDomain(
   code += `}\n\n`;
 
   code += `@inline\nexport function config_resetDefaults(ptr: u32): void {\n`;
-  for (const [key, entry] of entries) {
+  for (const [, entry] of entries) {
     if (entry.type === "float") {
       code += `  store<f64>(ptr + ${entry.offset}, ${Number(entry.defaultValue).toFixed(8)});\n`;
     } else if (entry.type === "int") {
@@ -133,7 +133,7 @@ export function generateConfigDomain(
   code += `}\n\n`;
 
   // Getters & Setters
-  for (const [key, entry] of entries) {
+  for (const [, entry] of entries) {
     const fnSuffix = `${entry.category}_${entry.name}`;
     const safeConstName = `OFFSET_${entry.category.toUpperCase()}_${entry.name.toUpperCase()}`;
 

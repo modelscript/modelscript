@@ -406,7 +406,7 @@ export class BuckinghamPiEngine {
   private static identifyCanonicalGroup(
     vars: string[],
     exps: number[],
-    allVars: PhysicalVariableSpec[],
+    _allVars: PhysicalVariableSpec[],
   ): { type: DimensionlessGroup["canonical"]; symbol: string } | null {
     const varMap = new Map<string, number>();
     for (let i = 0; i < vars.length; i++) {

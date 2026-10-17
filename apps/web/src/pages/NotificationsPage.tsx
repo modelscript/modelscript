@@ -20,7 +20,7 @@ import {
   StarIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Label, Spinner, Text } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { getNotifications, markNotificationsRead } from "../api";
@@ -346,20 +346,23 @@ const NotificationsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NotificationCategory>("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const fetchNotifications = async (cat?: NotificationCategory) => {
-    if (!token) return;
-    try {
-      const data = await getNotifications(cat === "all" ? undefined : cat);
-      setNotifications(groupNotifications(data.notifications || []));
-      if (typeof data.unreadCount === "number") {
-        setUnreadCount(data.unreadCount);
+  const fetchNotifications = useCallback(
+    async (cat?: NotificationCategory) => {
+      if (!token) return;
+      try {
+        const data = await getNotifications(cat === "all" ? undefined : cat);
+        setNotifications(groupNotifications(data.notifications || []));
+        if (typeof data.unreadCount === "number") {
+          setUnreadCount(data.unreadCount);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [token, setUnreadCount],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -367,7 +370,7 @@ const NotificationsPage: React.FC = () => {
       return;
     }
     void fetchNotifications(activeTab);
-  }, [token, activeTab]);
+  }, [token, activeTab, fetchNotifications]);
 
   const markAllRead = () => {
     if (!token) return;

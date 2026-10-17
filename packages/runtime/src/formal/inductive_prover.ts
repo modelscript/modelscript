@@ -109,7 +109,7 @@ export function primeConstraint(c: NonlinearConstraint): NonlinearConstraint {
 /**
  * Negates a single constraint into an array of equivalent non-linear inequalities.
  */
-export function negateConstraint(c: NonlinearConstraint, eps = 1e-9): NonlinearConstraint[] {
+export function negateConstraint(c: NonlinearConstraint, _eps = 1e-9): NonlinearConstraint[] {
   if (c.rel === "<=") {
     return [{ expr: c.expr, rel: ">", rhs: c.rhs }];
   } else if (c.rel === ">=") {
@@ -363,7 +363,7 @@ export class InductiveProver {
    */
   private static synthesizeCandidateLemmas(
     spec: InductiveSpec,
-    ctiPreState: Map<string, Interval>,
+    _ctiPreState: Map<string, Interval>,
   ): NonlinearConstraint[] {
     const candidates: NonlinearConstraint[] = [];
     const vars = spec.variables.map((v) => toUnprimedVar(v));

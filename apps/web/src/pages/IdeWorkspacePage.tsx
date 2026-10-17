@@ -430,16 +430,17 @@ export const IdeWorkspacePage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (artifactMetadata) {
-      sendSyncState();
-    }
-  }, [artifactMetadata]);
-
   const syncStateRef = useRef(sendSyncState);
   useEffect(() => {
     syncStateRef.current = sendSyncState;
   });
+
+  useEffect(() => {
+    if (artifactMetadata) {
+      sendSyncState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifactMetadata]);
 
   // Listen to messages from child VS Code iframe via postMessage and BroadcastChannel
   useEffect(() => {

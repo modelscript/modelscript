@@ -65,7 +65,7 @@ export function generateJavaScriptWrapper(
   if (grammarDef.lints) {
     let nextLintId = 2000;
     let first = true;
-    for (const [lintName, lint] of Object.entries(grammarDef.lints)) {
+    for (const [_lintName, lint] of Object.entries(grammarDef.lints)) {
       const lintId =
         typeof lint === "object" && lint !== null && (lint as any).code ? (lint as any).code : nextLintId++;
       if (!first) {
@@ -163,7 +163,6 @@ export function generateJavaScriptWrapper(
     tokenTypes: Array.from(tokenTypesMap.keys()),
     tokenModifiers: Array.from(tokenModifiersMap.keys()),
   };
-  const legendStr = JSON.stringify(legend);
 
   // Add the legend exports manually to the generated wrapper code
   const jsWithLegend =

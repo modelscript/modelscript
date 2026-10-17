@@ -689,8 +689,8 @@ function stripComments(source: string): string {
 export async function verifyGate4DAEBalance(
   code: string,
   language: ClosedLoopLanguage,
-  tree?: any,
-  lspContext?: any,
+  _tree?: any,
+  _lspContext?: any,
 ): Promise<GateVerificationResult> {
   const diagnostics: GateDiagnostic[] = [];
   const norm = language.toLowerCase();

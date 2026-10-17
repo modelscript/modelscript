@@ -51,7 +51,7 @@ export class SuspectTracker {
     });
 
     // Clear any existing suspect flag for this symbol
-    for (const [key, val] of this.suspects.entries()) {
+    for (const key of this.suspects.keys()) {
       if (key.endsWith(`|${symbolName}`) || key.startsWith(`${symbolName}|`)) {
         this.suspects.delete(key);
       }

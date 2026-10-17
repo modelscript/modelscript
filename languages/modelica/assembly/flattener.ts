@@ -11259,7 +11259,11 @@ export class ModelicaFlattener {
     if (this.hasError) return 0;
 
     for (let p: u32 = 0; p < this.pendingArrayCount; p++) {
-      let rhsId = resolveVarToArrayCtor(this.dae, pool, this.pendingArrayRhs.get(p), this.exprVisitor.tempBuffer);
+      let rawRhs = this.pendingArrayRhs.get(p);
+      let rhsId =
+        this.dae.getExprKind(rawRhs) != ExprKind.Name || pool.hasDot(this.dae.getExprData1(rawRhs))
+          ? resolveVarToArrayCtor(this.dae, pool, rawRhs, this.exprVisitor.tempBuffer)
+          : rawRhs;
       this.dae.addEquation(EqKind.Array as u32, this.pendingArrayLhs.get(p), rhsId);
     }
     this.pendingArrayCount = 0;

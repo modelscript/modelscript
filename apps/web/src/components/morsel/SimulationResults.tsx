@@ -8,23 +8,7 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import { getSimulationJobResult } from "../../api";
 import { useTheme } from "../../theme";
 import { downloadParquetFile } from "../../util/binary-export";
-
-export const SIMULATION_COLORS = [
-  "#0969da",
-  "#2da44e",
-  "#bf3989",
-  "#db6d28",
-  "#8250df",
-  "#1168e3",
-  "#218bff",
-  "#a371f7",
-  "#3fb950",
-  "#e34c26",
-  "#56d364",
-  "#79c0ff",
-  "#d2a8ff",
-  "#ffa657",
-];
+import { SIMULATION_COLORS } from "./constants";
 
 interface CustomInspectionTooltipProps {
   active?: boolean;

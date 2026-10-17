@@ -224,7 +224,7 @@ function setStatus(text: string): void {
   if (el) el.textContent = text;
 }
 
-function escapeCalHtml(str: string): string {
+function _escapeCalHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

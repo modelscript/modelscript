@@ -146,7 +146,13 @@ export default defineConfig([
     rules: {
       ...reactHooks.configs.flat.recommended.rules,
       "react-hooks/set-state-in-effect": "off",
-      "react-refresh/only-export-components": "warn",
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+    },
+  },
+  {
+    files: ["apps/web/src/**/*Context.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
   {

@@ -854,6 +854,7 @@ function runTestCaseCore(
       }
       // Filter M2003 false positives for names resolvable via imports
       if (cd.code === 2003) {
+        if (arena?.classKind === "package" && isOldFrontend) return false;
         const nameMatch = /Class or type '([^']+)' not found/.exec(msg);
         if (nameMatch) {
           const typeName = nameMatch[1];

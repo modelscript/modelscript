@@ -558,7 +558,7 @@ function extractDerName(exprId: number, arena: DAEBuilder): string | null {
   return null;
 }
 
-function depsExcluding(deps: Set<string>, exclude: string): boolean {
+function _depsExcluding(deps: Set<string>, exclude: string): boolean {
   for (const d of deps) {
     if (d !== exclude) return true;
   }

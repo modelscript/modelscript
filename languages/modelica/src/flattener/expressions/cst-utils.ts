@@ -102,10 +102,53 @@ export function checkIfExprTypeMismatch(
   exprId: number,
   node: SyntaxNode | null | undefined,
   compName: string,
+  expectedDims?: number[] | null,
 ): boolean {
   if (exprId < 0) return false;
   const ifElseId = findIfElseExpr(dae, exprId);
-  if (ifElseId < 0) return false;
+  if (ifElseId < 0) {
+    if (
+      expectedDims &&
+      expectedDims.length > 0 &&
+      expectedDims.every((d) => d > 0) &&
+      dae.getExprKind(exprId) === ExprKind.ArrayCtor
+    ) {
+      const info = inferArenaExprShapeAndType(dae, exprId);
+      if (
+        info.shape.length > 0 &&
+        (info.shape.length !== expectedDims.length || info.shape.some((d, i) => d > 0 && d !== expectedDims[i]))
+      ) {
+        const out = new StringWriter();
+        const p = new ArenaDAEPrinter(out, dae, true);
+        p.printExpr(exprId);
+        const exprStr = out.toString();
+        const typeStr = `${info.typeName}[${info.shape.join(", ")}]`;
+        let targetNode: any = node;
+        let curr = node;
+        while (curr) {
+          if (curr.type === "component_clause") {
+            targetNode = curr;
+            break;
+          }
+          curr = curr.parent;
+        }
+        const startB = targetNode?.startIndex ?? targetNode?.startByte ?? 0;
+        const endB = targetNode?.endIndex ?? targetNode?.endByte ?? 0;
+        dae.diagnostics.push({
+          severity: "error",
+          message: `Array dimension mismatch, expression ${exprStr} has type ${typeStr}, expected array dimensions [${expectedDims.join(", ")}].`,
+          range: {
+            startByte: startB,
+            endByte: endB,
+            startPosition: targetNode?.startPosition,
+            endPosition: targetNode?.endPosition,
+          },
+        });
+        return true;
+      }
+    }
+    return false;
+  }
 
   let thenId = dae.getExprLeft(ifElseId);
   let elseId = dae.getExprRight(ifElseId);
@@ -188,7 +231,8 @@ export function checkIfExprTypeMismatch(
       if (condVal !== null) {
         const activeStr = condVal ? thenStr : elseStr;
         const activeTypeStr = condVal ? thenTypeStr : elseTypeStr;
-        const expectedShape = condVal ? elseInfo.shape : thenInfo.shape;
+        const expectedShape =
+          expectedDims && expectedDims.length > 0 ? expectedDims : condVal ? elseInfo.shape : thenInfo.shape;
         const isShapeMismatch =
           expectedShape.length !== (condVal ? thenInfo.shape.length : elseInfo.shape.length) ||
           expectedShape.some((d, i) => d !== (condVal ? thenInfo.shape[i] : elseInfo.shape[i]));
@@ -212,7 +256,7 @@ export function checkIfExprTypeMismatch(
       return true;
     }
     if (dae.getExprKind(elseId) === ExprKind.IfElse) {
-      return checkIfExprTypeMismatch(dae, elseId, node, compName);
+      return checkIfExprTypeMismatch(dae, elseId, node, compName, expectedDims);
     }
   }
   return false;
@@ -1120,7 +1164,7 @@ export function evaluateCSTNumber(
           if (
             startVal !== undefined &&
             !isNaN(startVal) &&
-            (startVal !== 0 || (requireConstOrParamVariability && startAttrExpr !== undefined))
+            (startVal !== 0 || (requireConstOrParamVariability && startAttrExpr !== undefined && startAttrExpr >= 0))
           ) {
             return startVal;
           }

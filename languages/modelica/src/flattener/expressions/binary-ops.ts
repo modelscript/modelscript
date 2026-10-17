@@ -684,6 +684,11 @@ export function addArrayBinaryExpr(op: BinOp, leftId: number, rightId: number, d
     }
   }
   if (op === BinOp.Add) {
+    if (leftKind === ExprKind.StringLiteral && rightKind === ExprKind.StringLiteral) {
+      const s1 = dae.interner.resolve(dae.getExprData1(leftId)) ?? "";
+      const s2 = dae.interner.resolve(dae.getExprData1(rightId)) ?? "";
+      return dae.addStringLiteral(s1 + s2);
+    }
     if (leftKind === ExprKind.RealLiteral && dae.getExprRealValue(leftId) === 0) return rightId;
     if (leftKind === ExprKind.IntLiteral && dae.getExprData1(leftId) === 0) return rightId;
     if (rightKind === ExprKind.RealLiteral && dae.getExprRealValue(rightId) === 0) return leftId;
@@ -753,13 +758,20 @@ export function broadcastElemBinOp(
     return dae.addArrayCtorExpr(newElems);
   } else if (lK !== ExprKind.ArrayCtor && rK === ExprKind.ArrayCtor) {
     const rElems = getArrayCtorElements(rightId, dae);
-    if (flattener?.options?.omcCompatibility && (baseOp === BinOp.Add || baseOp === BinOp.Mul)) {
+    const isStringOp = lK === ExprKind.StringLiteral || inferArenaExprVarType(dae, leftId) === VarType.String;
+    if (!isStringOp && flattener?.options?.omcCompatibility && (baseOp === BinOp.Add || baseOp === BinOp.Mul)) {
       const newElems = rElems.map((e) => broadcastElemBinOp(elemOp, baseOp, e, leftId, dae, flattener, false));
       return dae.addArrayCtorExpr(newElems);
     } else {
       const newElems = rElems.map((e) => broadcastElemBinOp(elemOp, baseOp, leftId, e, dae, flattener, false));
       return dae.addArrayCtorExpr(newElems);
     }
+  }
+
+  if (baseOp === BinOp.Add && lK === ExprKind.StringLiteral && rK === ExprKind.StringLiteral) {
+    const s1 = dae.interner.resolve(dae.getExprData1(leftId)) ?? "";
+    const s2 = dae.interner.resolve(dae.getExprData1(rightId)) ?? "";
+    return dae.addStringLiteral(s1 + s2);
   }
 
   if (

@@ -171,7 +171,6 @@ export class CaeParametricSampler {
         for (let i = 0; i < numNodes; i++) {
           const x = baselineMesh.positions[i * 3 + 0] ?? 0;
           const y = baselineMesh.positions[i * 3 + 1] ?? 0;
-          const z = baselineMesh.positions[i * 3 + 2] ?? 0;
 
           // Normalized chord station [0, 1]
           const chordNorm = Math.max(0, Math.min(1, (x + 1.0) / 2.0));

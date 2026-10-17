@@ -23,7 +23,7 @@ async function initParsers(serverDistBase: string, customWasmUrls?: Record<strin
 self.onmessage = async (e: MessageEvent<IndexerBatchRequest>) => {
   if (e.data.type !== "INDEX_BATCH") return;
 
-  const { batchId, serverDistBase, files, hooks: requestHooks, wasmUrls } = e.data;
+  const { batchId, serverDistBase, files, hooks: _requestHooks, wasmUrls } = e.data;
 
   try {
     await initParsers(serverDistBase, wasmUrls);

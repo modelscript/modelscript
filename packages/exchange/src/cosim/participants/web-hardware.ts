@@ -155,7 +155,7 @@ export class WebSerialParticipant implements CoSimParticipant {
     }
   }
 
-  async doStep(currentTime: number, stepSize: number): Promise<void> {
+  async doStep(_currentTime: number, _stepSize: number): Promise<void> {
     // 1. Send outputs (plant model outputs sent to physical hardware)
     await this.transmitOutputs();
 

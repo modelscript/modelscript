@@ -41,7 +41,6 @@ const btnCancelSession = document.getElementById("btn-cancel-session")!;
 
 const hilProtocolSelect = document.getElementById("hil-protocol-select") as HTMLSelectElement | null;
 const hilBaudSelect = document.getElementById("hil-baud-select") as HTMLSelectElement | null;
-const hilClockSelect = document.getElementById("hil-clock-select") as HTMLSelectElement | null;
 const hilStatusBadge = document.getElementById("hil-status-badge");
 const hilMetrics = document.getElementById("hil-metrics");
 const btnConnectHardware = document.getElementById("btn-connect-hardware") as HTMLButtonElement | null;

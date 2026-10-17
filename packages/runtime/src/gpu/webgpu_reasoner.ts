@@ -161,7 +161,7 @@ export class WebGPUOntologyReasoner {
     edges: [number, number][],
     reflexive: boolean = true,
   ): Promise<BitsetGraph> {
-    const start = performance.now();
+    const _start = performance.now();
     const graph = new BitsetGraph(nodeCount);
 
     if (reflexive) {

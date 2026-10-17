@@ -254,7 +254,6 @@ function generateAcausalFmuModel(
   let leftPortIndex = 0;
   let rightPortIndex = 0;
   let topPortIndex = 0;
-  let bottomPortIndex = 0;
 
   for (let i = 0; i < terminals.length; i++) {
     const t = terminals[i]!;

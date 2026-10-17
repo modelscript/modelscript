@@ -559,7 +559,7 @@ export class WasmFumlEngine {
       case ActivityNodeKind.Initial: {
         // Consume initial token
         const tokens = this.nodeTokens.get(node.id) || [];
-        const token = tokens.shift();
+        tokens.shift();
         if (tokens.length === 0) this.nodeTokens.delete(node.id);
 
         // Emit control token along all outgoing edges

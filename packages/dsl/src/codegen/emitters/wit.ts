@@ -2,7 +2,7 @@
 
 import { LanguageOptions } from "../../dsl/language.js";
 
-export function generateWit(grammarDef: LanguageOptions, normalized?: any): string {
+export function generateWit(grammarDef: LanguageOptions, _normalized?: any): string {
   const packageName = grammarDef.targets?.wit?.package || `modelscript:${grammarDef.name || "parser"}`;
   const worldName = grammarDef.targets?.wit?.world || "language-runner";
 

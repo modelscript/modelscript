@@ -479,7 +479,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     ts.forEachChild(node, findLanguageCalls);
   }
 
-  for (const [varName, expr] of topLevelVariables) {
+  for (const [, expr] of topLevelVariables) {
     if (ts.isObjectLiteralExpression(expr)) {
       extractLintsFromObject(expr);
     }

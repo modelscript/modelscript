@@ -56,7 +56,7 @@ export function generateCtrfReport(
   let passed = 0;
   let failed = 0;
 
-  const tests: CtrfTest[] = results.map((res, idx) => {
+  const tests: CtrfTest[] = results.map((res) => {
     const testName = res.requirementName
       ? `${res.requirementName} (Constraint #${res.constraintId})`
       : `Requirement_${res.requirementId}_Constraint_${res.constraintId}`;

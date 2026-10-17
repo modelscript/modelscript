@@ -170,7 +170,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         })
         .catch(console.error);
     }
-  }, [initialState]);
+  }, [initialState, artifactId]);
 
   const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
 

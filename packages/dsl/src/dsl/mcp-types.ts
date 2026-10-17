@@ -16,7 +16,7 @@ export interface McpPropertySchema {
   properties?: Record<string, McpPropertySchema>;
 }
 
-export interface McpToolDeclaration<RuleName extends string = string, QueryName extends string = string> {
+export interface McpToolDeclaration<_RuleName extends string = string, QueryName extends string = string> {
   name: string;
   description: string;
   category?: "ast" | "query" | "simulation" | "reasoning" | "transformation" | "custom";
@@ -51,9 +51,9 @@ export interface McpPromptDeclaration {
 
 export interface McpDeclarationConfig<
   RuleName extends string = string,
-  FieldName extends string = string,
+  _FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  _ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   serverName?: string;
   serverVersion?: string;

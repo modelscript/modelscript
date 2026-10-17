@@ -159,7 +159,7 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
  */
 export function verifySuiteLosslessness(
   rules: TGGRuleOptions[],
-  schemaRegistry?: Record<string, string[]>,
+  _schemaRegistry?: Record<string, string[]>,
 ): {
   isFullyLossless: boolean;
   reports: LosslessnessReport[];

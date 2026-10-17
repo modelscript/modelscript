@@ -273,18 +273,7 @@ export class DynamicClearanceVerifier {
           const thetaLo = dAngle.lo * factor;
           const thetaHi = dAngle.hi * factor;
 
-          // Expand bounding box to contain all corners rotated between [thetaLo, thetaHi]
-          const corners: [number, number, number][] = [
-            [currentBox.min[0], currentBox.min[1], currentBox.min[2]],
-            [currentBox.max[0], currentBox.min[1], currentBox.min[2]],
-            [currentBox.min[0], currentBox.max[1], currentBox.min[2]],
-            [currentBox.max[0], currentBox.max[1], currentBox.min[2]],
-            [currentBox.min[0], currentBox.min[1], currentBox.max[2]],
-            [currentBox.max[0], currentBox.min[1], currentBox.max[2]],
-            [currentBox.min[0], currentBox.max[1], currentBox.max[2]],
-            [currentBox.max[0], currentBox.max[1], currentBox.max[2]],
-          ];
-
+          // Expand bounding box to contain all angles rotated between [thetaLo, thetaHi]
           let rMinX = Infinity,
             rMinY = Infinity,
             rMinZ = Infinity;

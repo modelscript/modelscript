@@ -192,7 +192,7 @@ export class ModelicaCalibrator {
   // ────────────────────────────────────────────────────────────────────
 
   private solveHybridCmaesLM(): CalibrationResult {
-    const { parameters, parameterBounds, measurements } = this.problem;
+    const { parameters, parameterBounds } = this.problem;
     const nParams = parameters.length;
     const maxIter = this.problem.maxIterations ?? 80;
     const tol = this.problem.tolerance ?? 1e-8;
@@ -263,7 +263,7 @@ export class ModelicaCalibrator {
   // ────────────────────────────────────────────────────────────────────
 
   private solveLBFGSB(): CalibrationResult {
-    const { parameters, parameterBounds, measurements, weights } = this.problem;
+    const { parameters, parameterBounds, measurements } = this.problem;
     const tol = this.problem.tolerance ?? 1e-6;
     const maxIter = this.problem.maxIterations ?? 100;
     const nParams = parameters.length;

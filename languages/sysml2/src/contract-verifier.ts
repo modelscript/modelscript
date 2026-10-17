@@ -869,7 +869,7 @@ export function exportContractToNuXmv(contract: AssumeGuaranteeContract | Tempor
  */
 export function verifyTemporalContractSymbolic(
   contract: TemporalContract,
-  domainBounds?: Map<string, [number, number]>,
+  _domainBounds?: Map<string, [number, number]>,
 ): TemporalContractResult {
   const entailment = checkSymbolicEntailment([contract.assumption], contract.guarantee);
 

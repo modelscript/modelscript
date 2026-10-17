@@ -219,11 +219,7 @@ export interface MoldSimulationResult {
   };
 }
 
-export function runMoldSimulation(
-  meltTempStr: string,
-  injPressureStr: string,
-  gateVelStr: string,
-): MoldSimulationResult {
+function runMoldSimulation(meltTempStr: string, injPressureStr: string, gateVelStr: string): MoldSimulationResult {
   const meltTemp = Math.max(180, Math.min(300, parseFloat(meltTempStr) || 235));
   const injPressure = Math.max(20, Math.min(180, parseFloat(injPressureStr) || 85));
   const gateVel = Math.max(0.1, Math.min(2.5, parseFloat(gateVelStr) || 0.75));

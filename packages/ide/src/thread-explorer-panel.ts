@@ -132,7 +132,7 @@ export class ThreadExplorerPanel {
     }
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview): string {
+  private _getHtmlForWebview(_webview: vscode.Webview): string {
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>

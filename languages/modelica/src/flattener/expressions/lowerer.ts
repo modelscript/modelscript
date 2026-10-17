@@ -5104,7 +5104,7 @@ export function lowerCSTExpression(
             : fnDae.name.split(".").pop()!
           : fnDae.name;
       if (dae.extensionMetadata?.isOldFrontend && fnDae.externalDecl) {
-        const builtinMatch = fnDae.externalDecl.match(/=\s*(sin|cos)\s*\(/);
+        const builtinMatch = fnDae.externalDecl.match(/=\s*(sin|cos)\s*\(\s*[^)\s]/);
         if (builtinMatch) {
           targetFnCallName = builtinMatch[1]!;
         }
@@ -6127,6 +6127,38 @@ export function lowerCSTExpression(
       } else if (!isRealExpr(thenId, dae) && isRealExpr(currElseId, dae)) {
         thenId = castToRealExpr(thenId, dae);
       }
+      const thenDims = getExprDims(thenId, dae, db);
+      const elseDims = getExprDims(currElseId, dae, db);
+      if (
+        thenDims &&
+        elseDims &&
+        (thenDims.length !== elseDims.length || thenDims.some((d, i) => d > 0 && elseDims[i]! > 0 && d !== elseDims[i]))
+      ) {
+        const cVal = evalDaeExpr(condId, dae);
+        if (cVal === true || cVal === 1 || cVal === false || cVal === 0) {
+          const markParamsFinal = (id: number): void => {
+            if (id < 0) return;
+            const k = dae.getExprKind(id);
+            if (k === ExprKind.Name) {
+              const nm = dae.interner.resolve(dae.getExprData1(id));
+              if (nm) {
+                const vIdx = dae.lookupVariable(nm);
+                if (vIdx >= 0 && dae.getVarVariability(vIdx) === Variability.Parameter) {
+                  dae.setVarFinal(vIdx, true);
+                }
+              }
+            } else if (k === ExprKind.Binary || k === ExprKind.Subscript) {
+              markParamsFinal(dae.getExprLeft(id));
+              markParamsFinal(dae.getExprRight(id));
+            } else if (k === ExprKind.Unary || k === ExprKind.Negate) {
+              markParamsFinal(dae.getExprLeft(id));
+            }
+          };
+          markParamsFinal(condId);
+          currElseId = cVal === true || cVal === 1 ? thenId : currElseId;
+          continue;
+        }
+      }
       currElseId = dae.addExpression(ExprKind.IfElse, condId, thenId, currElseId);
     }
     return currElseId;
@@ -6329,23 +6361,21 @@ export function lowerCSTExpression(
           rType === VarType.String ||
           dae.getExprKind(rightId) === ExprKind.BoolLiteral ||
           dae.getExprKind(rightId) === ExprKind.StringLiteral;
-        if (
+        const isStringAdd =
           binOp === BinOp.Add &&
           (lType === VarType.String || dae.getExprKind(leftId) === ExprKind.StringLiteral) &&
-          (rType === VarType.String || dae.getExprKind(rightId) === ExprKind.StringLiteral)
+          (rType === VarType.String || dae.getExprKind(rightId) === ExprKind.StringLiteral);
+        if (
+          isStringAdd &&
+          dae.getExprKind(leftId) === ExprKind.StringLiteral &&
+          dae.getExprKind(rightId) === ExprKind.StringLiteral
         ) {
-          if (
-            dae.getExprKind(leftId) === ExprKind.StringLiteral &&
-            dae.getExprKind(rightId) === ExprKind.StringLiteral
-          ) {
-            const s1 = dae.interner.resolve(dae.getExprData1(leftId)) ?? "";
-            const s2 = dae.interner.resolve(dae.getExprData1(rightId)) ?? "";
-            return dae.addStringLiteral(s1 + s2);
-          }
-          return dae.addBinaryExpr(BinOp.Add, leftId, rightId);
+          const s1 = dae.interner.resolve(dae.getExprData1(leftId)) ?? "";
+          const s2 = dae.interner.resolve(dae.getExprData1(rightId)) ?? "";
+          return dae.addStringLiteral(s1 + s2);
         }
 
-        if (isLNonNumeric || isRNonNumeric) {
+        if (!isStringAdd && (isLNonNumeric || isRNonNumeric)) {
           const getOperandFullTypeStr = (id: number): string => {
             const t = inferArenaExprVarType(dae, id);
             if (t === VarType.Integer || dae.getExprKind(id) === ExprKind.IntLiteral) return "Integer";
@@ -6465,6 +6495,12 @@ export function lowerCSTExpression(
             const newElems = leftElems.map((e, i) => addArrayBinaryExpr(BinOp.Add, e, rightElems[i]!, dae));
             return dae.addArrayCtorExpr(newElems);
           }
+        }
+        if (
+          (inferArenaExprVarType(dae, leftId) === VarType.String || leftKind === ExprKind.StringLiteral) &&
+          (inferArenaExprVarType(dae, rightId) === VarType.String || rightKind === ExprKind.StringLiteral)
+        ) {
+          return dae.addBinaryExpr(BinOp.Add, leftId, rightId);
         }
         const leftDims = getExprDims(leftId, dae, flattener.db);
         const rightDims = getExprDims(rightId, dae, flattener.db);

@@ -2230,6 +2230,29 @@ export class ModelicaFlattener {
           if ((varCount > 0 || disabledCount > 0 || isStrictWasm) && wasmErrorCode === 0 && !hybridAlgorithmGate) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
+            if (dae.functions.size > 0 && typeof (dae.exports as any).dae_setExprData1 === "function") {
+              for (let eIdx = 0; eIdx < dae.exprCount; eIdx++) {
+                if (dae.getExprKind(eIdx) === ExprKind.Call) {
+                  const rawCallName = dae.interner.resolve(dae.getExprData1(eIdx));
+                  const fnDae = rawCallName ? dae.functions.get(rawCallName) : undefined;
+                  if (fnDae) {
+                    (fnDae as any).wasCalled = true;
+                    let targetFnCallName =
+                      fnDae.externalDecl && fnDae.externalDecl.includes('"builtin"') ? rawCallName : fnDae.name;
+                    if (isOldInst && fnDae.externalDecl) {
+                      const builtinMatch = fnDae.externalDecl.match(/=\s*(sin|cos)\s*\(\s*[^)\s]/);
+                      if (builtinMatch) {
+                        targetFnCallName = builtinMatch[1]!;
+                      }
+                    }
+                    if (targetFnCallName && targetFnCallName !== rawCallName) {
+                      const newId = dae.interner.intern(targetFnCallName);
+                      (dae.exports as any).dae_setExprData1(dae.ptr, eIdx, newId);
+                    }
+                  }
+                }
+              }
+            }
             const exAlg = dae.exports as any;
             if (typeof exAlg.flattener_getAlgorithmSectionCount === "function") {
               const secCount: number = exAlg.flattener_getAlgorithmSectionCount(wasmFlattener);

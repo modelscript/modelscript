@@ -62,7 +62,7 @@ export function compileTGGRules(
   } = {},
 ): CompiledTGGOutput {
   const allRules: TGGRuleOptions[] = Array.isArray(config) ? config : config.rules || [];
-  const typeMaps = !Array.isArray(config) ? config.typeMaps || {} : {};
+  const _typeMaps = !Array.isArray(config) ? config.typeMaps || {} : {};
 
   // Helper Proxy to evaluate pattern builder functions during compilation
   const $proxy: any = new Proxy(
@@ -421,7 +421,7 @@ export function compileTGGRules(
           code += `  }\n`;
         }
       } else if (c.kind === "exprMap") {
-        const [srcExpr, tgtExpr, dialect] = c.args;
+        const [srcExpr, tgtExpr, _dialect] = c.args;
         const srcExprName =
           typeof srcExpr === "string" && srcExpr.startsWith("__var_") ? srcExpr.slice(6) : String(srcExpr);
         const tgtExprName =

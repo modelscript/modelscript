@@ -360,7 +360,7 @@ export function evaluatePropertyPredicate(
     if (result === "true" || result === 1) return true;
     if (result === "false" || result === 0 || !result) return false;
     return Boolean(result);
-  } catch (e) {
+  } catch (_e) {
     // If parsing fails, fall back to safe identifier check or default to true
     if (trimmed.startsWith("!")) {
       const id = trimmed.slice(1).trim();

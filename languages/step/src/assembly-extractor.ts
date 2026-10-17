@@ -189,7 +189,6 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   let extractedVolume: number | undefined;
   let extractedCoM: [number, number, number] | undefined;
   let extractedInertia: StepMassProperties["inertiaTensor"] | undefined;
-  let targetPartId: string | undefined;
 
   for (const [id, ent] of entities.entries()) {
     const rawText = ent.args;

@@ -251,7 +251,7 @@ export class BayesianParameterCalibrator {
     threadId: number,
     telemetryNodeId: number,
     simulationNodeId: number,
-    calibrationResults: BayesianCalibrationResult[],
+    _calibrationResults: BayesianCalibrationResult[],
   ): number {
     return bindTelemetryToSimulationThread(hypergraph, threadId, telemetryNodeId, simulationNodeId);
   }

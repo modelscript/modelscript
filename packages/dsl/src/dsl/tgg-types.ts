@@ -46,10 +46,10 @@ export interface TGGConstraint {
 }
 
 export interface TGGRuleOptions<
-  RuleName extends string = string,
-  FieldName extends string = string,
-  QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  _RuleName extends string = string,
+  _FieldName extends string = string,
+  _QueryName extends string = string,
+  _ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   name: string;
   /** Existing structural prerequisites in source, target, and correspondence */

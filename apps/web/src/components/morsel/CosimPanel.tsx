@@ -26,7 +26,7 @@ export interface HistorianSession {
   signalCount: number;
 }
 
-export const DEFAULT_HISTORIAN_SESSIONS: HistorianSession[] = [
+const DEFAULT_HISTORIAN_SESSIONS: HistorianSession[] = [
   {
     id: "session-2026-09-27-01",
     name: "Coupled Thermal-Fluid Dynamics Test",

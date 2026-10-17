@@ -54,7 +54,7 @@ export class DaeFlowpipeBridge {
     const diffEqMap = new Map<number, number>(); // diffVarIdx -> rhsExprId
     const algEqIndices: number[] = [];
 
-    const stateVarSet = options?.stateVars ?? new Set<number>();
+    const _stateVarSet = options?.stateVars ?? new Set<number>();
     const algVarSet = options?.algVars ?? new Set<number>();
 
     // 1. Identify differential equations (der(x) = expr)

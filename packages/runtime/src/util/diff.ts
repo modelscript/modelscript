@@ -145,13 +145,13 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
   const hunks: EditRange[] = [];
   let pIdx = 0;
   let nIdx = 0;
-  let pOffset = prefixLen;
+  let _pOffset = prefixLen;
   let nOffset = prefixLen;
 
   while (pIdx < prevLines.length || nIdx < newLines.length) {
     while (pIdx < prevLines.length && nIdx < newLines.length && prevLines[pIdx] === newLines[nIdx]) {
       const lineLen = newLines[nIdx].length + 1;
-      pOffset += lineLen;
+      _pOffset += lineLen;
       nOffset += lineLen;
       pIdx++;
       nIdx++;
@@ -196,7 +196,7 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
         endOffset: hunkStartInNew + nLen,
         delta: nLen - pLen,
       });
-      pOffset += pLen;
+      _pOffset += pLen;
       nOffset += nLen;
       pIdx = foundP;
       nIdx = foundN;

@@ -23,7 +23,7 @@ export interface FaultTreeInput {
   minimalCutSets: MinimalCutSetItem[];
 }
 
-function createTextMarkup(text: string, fontSize = 12, fill = "#1e293b", fontWeight = "normal"): X6Markup {
+function _createTextMarkup(text: string, fontSize = 12, fill = "#1e293b", fontWeight = "normal"): X6Markup {
   return {
     tagName: "text",
     attrs: {
@@ -90,7 +90,7 @@ function createRectMarkup(fill: string, stroke: string, label: string, sublabel?
   };
 }
 
-function createGateMarkup(gateType: "OR" | "AND", label?: string): X6Markup {
+function createGateMarkup(gateType: "OR" | "AND", _label?: string): X6Markup {
   const isOr = gateType === "OR";
   const strokeColor = isOr ? "#2563eb" : "#059669";
   const fillColor = isOr ? "#eff6ff" : "#ecfdf5";

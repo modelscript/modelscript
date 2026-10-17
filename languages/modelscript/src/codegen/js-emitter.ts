@@ -328,8 +328,6 @@ export class JsEmitter {
     const returnVal = this.emit(returnClause?.childForFieldName?.("value"));
     if (orderByClause) {
       const crit = this.emit(orderByClause.childForFieldName?.("criteria"));
-      const dir = orderByClause.childForFieldName?.("direction")?.text || "asc";
-      const isDesc = dir.startsWith("desc");
       code += `      ${resVar}.push({ __criteria: ${crit}, __val: ${returnVal} });\n`;
     } else {
       code += `      ${resVar}.push(${returnVal});\n`;

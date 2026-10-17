@@ -323,7 +323,7 @@ export class TsmOrthogonalLayout {
 
       // Check which corner collides less with vertices
       const collides1 = this.hasVertexAt(vertices, corner1.x, corner1.y, u.id, v.id);
-      const collides2 = this.hasVertexAt(vertices, corner2.x, corner2.y, u.id, v.id);
+      const _collides2 = this.hasVertexAt(vertices, corner2.x, corner2.y, u.id, v.id);
 
       const chosenCorner = !collides1 ? corner1 : corner2;
 

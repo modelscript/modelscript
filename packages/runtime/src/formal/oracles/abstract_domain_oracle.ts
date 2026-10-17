@@ -78,7 +78,6 @@ export class AbstractDomainOracle implements TheoryOracle {
 
     if (idx >= this.dbm.numVars) {
       // Re-allocate larger DBM and copy
-      const oldDbm = this.dbm;
       this.dbm = new OctagonDBM(Math.max(this.dbm.numVars * 2, idx + 16));
       // Replay all asserted literals into new DBM
       for (const lit of this.assertedLiterals.values()) {

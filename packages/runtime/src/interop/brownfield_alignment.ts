@@ -216,11 +216,9 @@ export class BrownfieldAlignmentEngine {
    */
   computeStructuralAffinity(source: AlignmentElement, target: AlignmentElement): number {
     let score = 0.5; // neutral baseline
-    let signals = 0;
 
     // Compare ports
     if (source.ports && target.ports && source.ports.length > 0 && target.ports.length > 0) {
-      signals++;
       const sourceNormPorts = source.ports.flatMap((p) => this.tokenizeAndNormalize(p));
       const targetNormPorts = target.ports.flatMap((p) => this.tokenizeAndNormalize(p));
       const { score: portScore } = this.computeTokenSimilarity(sourceNormPorts, targetNormPorts);
@@ -229,7 +227,6 @@ export class BrownfieldAlignmentEngine {
 
     // Compare children
     if (source.children && target.children && source.children.length > 0 && target.children.length > 0) {
-      signals++;
       const sourceNormChildren = source.children.flatMap((c) => this.tokenizeAndNormalize(c));
       const targetNormChildren = target.children.flatMap((c) => this.tokenizeAndNormalize(c));
       const { score: childScore } = this.computeTokenSimilarity(sourceNormChildren, targetNormChildren);

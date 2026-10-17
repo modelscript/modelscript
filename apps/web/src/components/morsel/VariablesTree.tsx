@@ -2,7 +2,7 @@
 
 import { Checkbox, TreeView } from "@primer/react";
 import { useMemo } from "react";
-import { SIMULATION_COLORS } from "./SimulationResults";
+import { SIMULATION_COLORS } from "./constants";
 
 interface VariablesTreeProps {
   variables: string[];

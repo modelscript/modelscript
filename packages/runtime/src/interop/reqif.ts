@@ -223,7 +223,6 @@ export class ReqIfParser {
         });
 
         // Link directly onto requirement objects if present
-        const srcReq = reqMap.get(sourceId);
         const tgtReq = reqMap.get(targetId);
         if (typeMatch.toLowerCase().includes("satisf")) {
           if (tgtReq) tgtReq.satisfiedBy = (tgtReq.satisfiedBy || []).concat([sourceId]);

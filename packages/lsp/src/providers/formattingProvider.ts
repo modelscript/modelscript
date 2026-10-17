@@ -3,7 +3,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Connection, TextDocuments, TextEdit } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-const INDENT_STRING = "  ";
 
 // Nodes that increase indentation for their children/content (supporting both PascalCase and snake_case AST nodes)
 const INDENT_TRIGGER_NODES = new Set([

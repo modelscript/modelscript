@@ -68,7 +68,7 @@ export class RelationalVerifier {
     const y2 = `${outputVar}_2`;
 
     // 1. Build TVPI state for relational difference
-    const state = TvpiState.top();
+    const _state = TvpiState.top();
 
     // Map transfer constraints for copy 1 and copy 2
     const c1 = transferConstraints.map((c) => this.tagConstraint(c, "_1"));

@@ -517,7 +517,6 @@ export class Mdf4Writer {
 
     // 5. Build CN Blocks for Master Time and each Series
     let prevCnView: DataView | null = null;
-    let prevCnOffset = 0;
     const allChannels = [
       { name: "time", unit: "s", isMaster: true, byteOffset: 0 },
       ...timeSeries.map((s, idx) => ({
@@ -579,7 +578,6 @@ export class Mdf4Writer {
       cnView.setUint32(cnData + 8, 64, true); // 64 bits
 
       prevCnView = cnView;
-      prevCnOffset = cnOffset;
     }
 
     // 6. DT Block (Data Block)
